@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="a39bd0ee269f834933fd3f76d2529ba8d23e705a"><title>The Batch Size Can Be One: Test-Time Adaptation from Classifier Geometry 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jaeho Hwang、Yujin Oh、Juhyeon Shin、Juhye Lee、Sungroh Yoon、Uiwon Hwang</p><p>日期：2026-10-27（v1，cs.LG）</p><p>arXiv：2610.36628</p><p>閱讀說明：主文與附錄A–E精譯，略完整超參數、大表、演算法及書目；數字為作者自報，區分幾何loss、entropy入bank與reset判準，未重現。</p><p><a href="https://arxiv.org/html/2610.36628v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="oritta從source-classifier取得適應座標">OriTTA：從source classifier取得適應座標</h1>
+<h2 id="第12節問題">第1–2節：問題</h2>
+<p>單樣本或class-blocked串流難估batch statistics；confidence selection也可能收進自信錯誤。OriTTA在test data到達前固定class geometry，以selected features的angular／radial losses更新模型，並用class-indexed memory維持缺席類別及偵測collapse。（<a href="https://arxiv.org/html/2610.36628v1#S1">§1–2</a>）</p>
+<h2 id="第31節重新選原點與固定ideal-points">第3.1節：重新選原點與固定ideal points</h2>
+<p>Linear head <span class="math inline">\(\ell_c=w_c^\top z+b_c\)</span>先扣rows／bias均值，再normalize成<span class="math inline">\(v_c,\beta_c\)</span>。<span class="math inline">\(H_c:\ v_c^\top z+\beta_c=0\)</span>表示class logit等於平均logit。每類從noise最小化source model的class CE合成一張anchor；實作加小TV項，不需source images或test data。</p>
+<div class="math block">
+\[\omega=\arg\min_z\|Vz+\beta\|^2+\lambda\|z-\bar z^a\|^2,\qquad\lambda=K/100,\]
+</div>
+<p>兼顧hyperplanes與anchor feature centroid。在<span class="math inline">\(\mathcal I=\omega+\operatorname{rowspan}(V)\)</span>用<span class="math inline">\(\tilde z=\omega+P(z-\omega)\)</span>、<span class="math inline">\(P=V^+V\)</span>，投影保logit differences與softmax probabilities。<span class="math inline">\(\mu_c=\omega+sv_c\)</span>，<span class="math inline">\(s\)</span>為projected anchors到<span class="math inline">\(\omega\)</span>的class-median radius；frame全程固定。</p>
+<p>令<span class="math inline">\(u=\tilde z-\omega\)</span>、<span class="math inline">\(t_c=u^\top v_c\)</span>、<span class="math inline">\(d_{\perp,c}=\sqrt{\|u\|^2-t_c^2}\)</span>。Predicted class <span class="math inline">\(c\)</span>先須<span class="math inline">\(t_c&gt;.5\)</span>且<span class="math inline">\(d_{\perp,c}&lt;.11\sqrt r\,t_c\)</span>，再通過到<span class="math inline">\(\mu_c\)</span>距離的per-class running .2-quantile。前20個cone samples全放行，之後tracker按該類新樣本更新，不讀未來test set。（<a href="https://arxiv.org/html/2610.36628v1#S3.SS1">§3.1</a>、<a href="https://arxiv.org/html/2610.36628v1#A1.SS5">A.5</a>）</p>
+<h2 id="第3233節loss與記憶">第3.2–3.3節：loss與記憶</h2>
+<p>可靠樣本才計</p>
+<div class="math block">
+\[L_{ang}=-\log\frac{e^{-d_{\perp,c}/\sqrt s}}{\sum_je^{-d_{\perp,j}/\sqrt s}},\quad L_{rad}=\frac1r[\max(0,\|u\|-(s+\delta))]^2.\]
+</div>
+<p><span class="math inline">\(\delta\)</span>為ideal points的median nearest-neighbor距離三分之一。Angular以negative axis distances做CE；radial只壓過大radius。</p>
+<p>Bank每predicted-class slot一張input，初始anchor；update前entropy&lt;<span class="math inline">\(0.4\ln K\)</span>的input替換該slot，幾何gate不控制bank准入，故仍可能收confidently mislabeled input。不是整個方法都不用confidence。每<span class="math inline">\(\lceil30/B\rceil\)</span>steps輪取<span class="math inline">\(\min(20,K)\)</span>slots，以current backbone重encode，對齊原slot label的固定ideal point，不讓模型重標bank。總loss為<span class="math inline">\(L_{ang}+L_{align}+2L_{rad}\)</span>。（<a href="https://arxiv.org/html/2610.36628v1#S3.SS2">§3.2–3.3</a>、<a href="https://arxiv.org/html/2610.36628v1#A1.SS6">A.6</a>）</p>
+<h2 id="第34節collapse-reset">第3.4節：collapse reset</h2>
+<p>每<span class="math inline">\(\lceil200/B\rceil\)</span>steps重分類全bank，計<span class="math inline">\(\sigma=\max_j|\{c:\hat y(m_c)=j\}|/K\)</span>。若<span class="math inline">\(\sigma&gt;.25\)</span>且距初始化／上次reset至少1000frames，恢復source affine weights、重建optimizer、bank回anchors、清quantiles與warm-up。這量測bank預測集中，非直接估accuracy或標籤汙染；不以incoming class frequencies觸發。（<a href="https://arxiv.org/html/2610.36628v1#S3.SS4">§3.4</a>、<a href="https://arxiv.org/html/2610.36628v1#A1.SS6">A.6/B</a>）</p>
+<h2 id="第4142節設定與結果">第4.1–4.2節：設定與結果</h2>
+<p>四backbones：C10 WRN-28-10、C100 AugMix WRN-40-2、ImageNet ResNet-50-GN與ViT-B/16。只調norm affine，ViT最後LayerNorm亦freeze；BN保source running statistics。Adam lr按norm type設定。常數在IN-RN50選後共用，無逐setting重調。</p>
+<p>每dataset取15corruptions／severity5，每種CIFAR10000圖、ImageNet50000圖。Batch1一圖一update；episodic邊界回source，continual無邊界reset，但collapse reset仍啟用。Shuffled／class-blocked每seed重排，同seed各方法共用stream。主表10seeds2021–2030，16組=4backbones×2protocols×2orders。</p>
+<p>下表OriTTA accuracy%為15corruptions平均，再跨10seeds取均值±SD；欄序分別為episodic shuffled／class-blocked、continual shuffled／class-blocked。</p>
+<table>
+<thead>
+<tr>
+<th>Backbone</th>
+<th style="text-align:right">ES</th>
+<th style="text-align:right">EB</th>
+<th style="text-align:right">CS</th>
+<th style="text-align:right">CB</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>C10</td>
+<td style="text-align:right">73.38±.08</td>
+<td style="text-align:right">68.96±1.51</td>
+<td style="text-align:right">73.74±.17</td>
+<td style="text-align:right">66.04±1.43</td>
+</tr>
+<tr>
+<td>C100</td>
+<td style="text-align:right">62.16±.09</td>
+<td style="text-align:right">61.69±.33</td>
+<td style="text-align:right">58.77±.28</td>
+<td style="text-align:right">57.03±.29</td>
+</tr>
+<tr>
+<td>IN-RN50</td>
+<td style="text-align:right">49.59±.05</td>
+<td style="text-align:right">48.98±.10</td>
+<td style="text-align:right">40.81±1.02</td>
+<td style="text-align:right">41.98±.78</td>
+</tr>
+<tr>
+<td>IN-ViT</td>
+<td style="text-align:right">65.58±.05</td>
+<td style="text-align:right">66.23±.10</td>
+<td style="text-align:right">62.91±.96</td>
+<td style="text-align:right">62.00±.30</td>
+</tr>
+</tbody>
+</table>
+<p>16格均值皆領先所比較六baseline，非每種corruption皆勝；IN-RN50前三noise仍落後最佳baseline約2–3points，IN-ViT均值優勢約.4–1.3points。（<a href="https://arxiv.org/html/2610.36628v1#S4.T1">表1</a>、<a href="https://arxiv.org/html/2610.36628v1#S4.T3">表3</a>）</p>
+<p>另IN-RN50 episodic／shuffled的zoom、elastic、fog各跑100seeds2001–2100。表2以**fog accuracy&lt;5%**定義collapse seed比例：DeYO66%、ReCAP33%、SaTeen62%、TENT100%，EATA／SAR／OriTTA皆0%。OriTTA三種各100runs亦未collapse，accuracy46.5±.2／49.7±.3／59.0±.2；不與online bank threshold混為同一指標。（<a href="https://arxiv.org/html/2610.36628v1#S4.T2">表2</a>）</p>
+<h2 id="第4344節及附錄cd拆解效果">第4.3–4.4節及附錄C–D：拆解效果</h2>
+<p>IN-RN50 episodic shuffled移除projection49.59→47.02；C100 episodic class-blocked把origin改0並重算geometry61.69→59.73。SAR+RT保SAR loss／filter／optimizer、改bank detector與source reset，continual class-blocked21.57→38.51，resets約9025→3；OriTTA41.98／4.6。參考權重也由corruption起點改為source，非只換threshold。Episodic C10 class-blocked仍4/10runs reset，平均.5次。（<a href="https://arxiv.org/html/2610.36628v1#S4.T7">表6–7</a>、<a href="https://arxiv.org/html/2610.36628v1#A3">附錄C</a>）</p>
+<p>C10 class-block1000images，移除alignment68.96→60.94，reset .5→37.1次／run，恢復不能取代防遺忘。IN-RN50 episodic class-blocked改SGD反得50.93高於Adam48.98，但平均SD .32高於.10；作者為穩定性及跨scale／batch規則仍採Adam。B1–64的IN-RN50 episodic ablation中OriTTA均值皆最高，schedules按frames、lr隨<span class="math inline">\(\sqrt B\)</span>。（<a href="https://arxiv.org/html/2610.36628v1#A4">D.1–D.4</a>）</p>
+<h2 id="附錄a與第5節比較條件成本與界線">附錄A與第5節：比較條件、成本與界線</h2>
+<p>本文EATA實跑無Fisher的ETA；CIFAR ReCAP prior另取clean training features。Continual SAR／ReCAP wrapper的recovery回當前corruption起點，OriTTA回source。這些baseline設定應與結果一起讀。（<a href="https://arxiv.org/html/2610.36628v1#A1.SS10">A.10</a>）</p>
+<p>單RTX PRO6000 Blackwell96GB上，IN-RN50 episodic shuffled全15種5.4h，不含一次性anchor合成；快於SAR12h、ReCAP6h、SaTeen7h，慢於TENT2.8h／EATA4.5h／DeYO3.5h。（<a href="https://arxiv.org/html/2610.36628v1#A1.SS11">A.11</a>）</p>
+<p>作者限制：linear head centered rows需近equiangular，long-tailed training未必；<span class="math inline">\(K-1\ge D\)</span>時projection無作用，小K cone過窄且recenter弱；僅synthetic corruptions，natural shifts尚未測，VLM不在範圍。未來可回最近healthy state、校正小row-space cone及延伸dense prediction。（<a href="https://arxiv.org/html/2610.36628v1#S5">§5</a>、<a href="https://arxiv.org/html/2610.36628v1#A2">附錄B</a>）</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2610.36628_OriTTA.%E6%91%98%E8%A6%81.html">OriTTA摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 a39bd0ee</footer></main></body></html>
