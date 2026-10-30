@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="b30488b1c3b5897da60d05de4760308d2f1ed54e"><title>Your Policy Is Secretly a Harness: The Decision Geometry of Agent Interfaces 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jian Mu、Ruibo Shen、Yao Shu</p><p>日期：2026-10-27（v1，cs.LG）</p><p>arXiv：2610.37255</p><p>閱讀說明：完整自讀官方v1主文、書目、附錄A–F及F1–F8；數字為作者自報，區分KL-control定理、受控MiniWoB語意策略、regularized return與success、部署teacher proxy；未下載code或重現。</p><p><a href="https://arxiv.org/html/2610.37255v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="policyharness介面改變會同時移動任務上限與模型失配">PolicyHarness：介面改變會同時移動任務上限與模型失配</h1>
+<h2 id="核心主張">核心主張</h2>
+<p>Harness包含prompts、tools與control logic，決定模型看到什麼、output怎麼decode成具參數operation、operation如何執行。相同weights經不同encoder／decoder，可有不同semantic policy。論文在KL-regularized control下，把部署return寫成<span class="math inline">\(J=C-M\)</span>：<span class="math inline">\(C\)</span>是該harness／objective的最優regularized return，<span class="math inline">\(M\)</span>是policy沿自己trajectories偏離最優決策的損失。固定harness訓練只動<span class="math inline">\(M\)</span>；換harness可同時動<span class="math inline">\(C,M\)</span>，故固定checkpoint比較不等單獨測harness潛力。（<a href="https://arxiv.org/html/2610.37255v1#S2">§1–2</a>、<a href="https://arxiv.org/html/2610.37255v1#S5">§5</a>）</p>
+<p>「policy暗中是harness」精確指：<strong>在訓練介面下達最優的policy log odds，可識別該harness的相對action scores</strong>。不是weights含harness的程式、tool machinery，亦不能由behavior唯一復原reward、reference或dynamics。有限post-training checkpoint只是實測逐漸接近其target，不能直接套「已最優」。（<a href="https://arxiv.org/html/2610.37255v1#S3.SS1">§3.1</a>、<a href="https://arxiv.org/html/2610.37255v1#A3">附錄C</a>）</p>
+<h2 id="semantic-abstraction與理論條件">Semantic abstraction與理論條件</h2>
+<p>Interface <span class="math inline">\(\mathcal I=(c,d,e)\)</span>分encoder、semantic decoder與固定executor；semantic policy是所有decode成同一完整operation/arguments的token sequences機率和。State需含task、history／sufficient summary、tools、budget、controller memory；retry、verification、summary等若再次呼叫evaluated model，都是新decision epoch，不能藏進與policy無關的transition。Invalid output須定義failure／recovery action，不能丟掉重正規化。（<a href="https://arxiv.org/html/2610.37255v1#S2">§2</a>、<a href="https://arxiv.org/html/2610.37255v1#A2.SS2">附錄B.2</a>）</p>
+<p>定理用finite states/actions、bounded rewards、<span class="math inline">\(0\le\gamma&lt;1\)</span>、<span class="math inline">\(\tau&gt;0\)</span>、available actions上full-support reference；跨interface固定initial distribution、reward units、discount、regularization及state/action alignment。Log-score/readout另需actual policy在queried actions為正；固定interface的gap identity容許0policy probabilities，以<span class="math inline">\(0\log0=0\)</span>。Reference是control problem的一部分，每interface訓練中固定；自然地把frozen reference model經新prompt推到semantic space時，reference本身也可能改，target不一定不動。（<a href="https://arxiv.org/html/2610.37255v1#A2.SS1">附錄B.1</a>）</p>
+<p>Token-level training只有在同action fiber內reward、transition及discount相同，並保reference conditional realization時，sequence KL的chain rule才把optimization精確降成semantic KL。Autoregressive token KL要對應同含termination的sequence measure；token-dependent reward、length discount或中途新model decisions需擴state／決策模型。不能把任意token SFT/RL自動當已解semantic-control最優。（<a href="https://arxiv.org/html/2610.37255v1#A2.SS3">附錄B.3</a>；最後一句為本檔補註，非作者自陳）</p>
+<h2 id="可識別的是相對scores不是mechanism">可識別的是相對scores，不是mechanism</h2>
+<p>最優<span class="math inline">\(F^*=Q^*+\tau\log\pi^{ref}\)</span>，<span class="math inline">\(\Pi^*=softmax(F^*/\tau)\)</span>。同state全部actions加相同常數不改behavior，所以只識別<span class="math inline">\([F^*]\)</span>；達最優時<span class="math inline">\(\tau\log[\Pi(a|s)/\Pi(b|s)]=F^*(s,a)-F^*(s,b)\)</span>。不同reference、reward甚至transition可產同score class；reward常數平移亦可改absolute return卻不改decision。（<a href="https://arxiv.org/html/2610.37255v1#S3.SS1">§3.1</a>、<a href="https://arxiv.org/html/2610.37255v1#A3.SS3">附錄C.3</a>）</p>
+<p>實際readout為<span class="math inline">\(\widehat F_{\theta,I}=\tau P_\perp\log\Pi_{\theta,I}\)</span>。對aligned states/actions，部署score error分為target shift、source training residual、readout drift的<strong>向量和</strong>；它們可抵銷，不能將各norm或各loss任意相加。等價最優decision只設target shift為0，不保frozen model readout不變。（<a href="https://arxiv.org/html/2610.37255v1#S4.SS1">§4.1</a>）</p>
+<h2 id="return-loss的精確方向與adaptation門檻">Return loss的精確方向與adaptation門檻</h2>
+<div class="math block">
+\[M(\theta,I)=\frac{\tau}{1-\gamma}\mathbb E_{s\sim d_I^{\Pi_{\theta,I}}}\mathrm{KL}(\Pi_{\theta,I}(\cdot|s)\|\Pi_I^*(\cdot|s)),\qquad J_I=C_I-M(\theta,I).\]
+</div>
+<p>KL方向是<strong>actual→optimal</strong>，occupancy亦是actual policy在該部署interface的discounted occupancy，不是uniform states或optimal visitation。局部loss是<span class="math inline">\(D_\Phi(F^*,\widehat F)\)</span>，<span class="math inline">\(\Phi=\tau\log\sum\exp(F/\tau)\)</span>；Bregman兩參數不可顛倒。Ceiling依harness及objective，不是raw task success天花板；有成本／discount／KL時<span class="math inline">\(J\)</span>與success是不同量。（<a href="https://arxiv.org/html/2610.37255v1#S5.SS2">Proposition5.1、§5.2</a>、<a href="https://arxiv.org/html/2610.37255v1#A4.SS2">附錄D.1–D.2</a>）</p>
+<p>Frozen swap的<span class="math inline">\(\Delta J=\Delta C-\Delta M\)</span>。若原本有害，adapted source <span class="math inline">\(\theta_1\)</span>要超原source pair，充要條件為</p>
+<div class="math block">
+\[M(\theta_1,I_2)&lt;T=C_2-J(\theta_0,I_1)=\Delta C+M(\theta_0,I_1).\]
+</div>
+<p><span class="math inline">\(T\le0\)</span>時因<span class="math inline">\(M\ge0\)</span>，目標harness再怎麼適應也無法超source pair。這個recovery、同adapted checkpoint對兩harness的ranking、及相同budget下勝過source-harness continuation，是三種比較，不能互換；ranking reversal可只因source-interface performance下降。（<a href="https://arxiv.org/html/2610.37255v1#S5.SS3">Corollary5.2</a>、<a href="https://arxiv.org/html/2610.37255v1#A4.SS6">附錄D.6</a>）</p>
+<p>Score-error upper bound <span class="math inline">\(M\le\varepsilon_d^2/[4\tau(1-\gamma)]\)</span>用actual occupancy與positive probabilities；若此<strong>真upper bound</strong>低於<span class="math inline">\(T\)</span>才保recovery。Lower bound另需沿actual／optimal scores interpolation全程uniform <span class="math inline">\(p_{min}&gt;0\)</span>；無此overlap不能有獨立於機率的正quadratic lower constant。Output correspondence界readout drift亦需semantic-action fibers保持的bijection及finite token log-sensitivity。（<a href="https://arxiv.org/html/2610.37255v1#S6.SS1">§6.1</a>、<a href="https://arxiv.org/html/2610.37255v1#A4.SS4">附錄D.4</a>、<a href="https://arxiv.org/html/2610.37255v1#A5">附錄E</a>）</p>
+<h2 id="受控miniwob完整單token-action-menu">受控MiniWoB：完整單token action menu</h2>
+<p>三families：click-checkboxes、synonym版soft-checkboxes、ascending-numbers；編成checked finite acyclic task graphs，reward binary exact completion、zero explicit costs、每episode10actor decisions、<span class="math inline">\(\gamma=.95,\tau=.1\)</span>。H0一native action；H1額外ordered two-click batches，只算一decision／discount；H2automatic gate；H3optional program verification；H4frozen2B reviewer；H5只改instructions。H5雖同execution，frozen reference讀不同input，故regularized optimum另解，不把reference效應混稱新增物理能力。（<a href="https://arxiv.org/html/2610.37255v1#A6.SS1">附錄F.1、表4</a>）</p>
+<p>每family480train、96calibration、24train probe、192test；共1440train／288calibration／72probe／576test，probe是training subset，其餘public contents disjoint。每action及arguments對一case-sensitive single-token code，對完整menu next-token logits以temperature1正規化，故semantic distribution精確可讀；這不同於部署coding的open actions。（<a href="https://arxiv.org/html/2610.37255v1#A6.T5">表5</a>、<a href="https://arxiv.org/html/2610.37255v1#A6.SS1.SSS0.Px4">F.1 Readout</a>）</p>
+<p>Qwen3.5-2B＋rank16LoRA，frozen base/reference/reviewer；每harness1024Exact-PG updates×4tasks=4096task draws，lr<span class="math inline">\(10^{-5}\)</span>。Objective start mixture一半native、一半stratified reachable correction states，讓每reachable decision有positive training mass；評估從native starts。每harness相同update/task-draw budget，reachable graph／menu大小不同，不宣稱equal FLOPs。Fixed state-bank geometry MSE在train probe與calibration降69–90%；576heldout test的6×6transfer矩陣每deployment column中，其本harness訓練者error最低。（<a href="https://arxiv.org/html/2610.37255v1#A6.SS1">附錄F.1</a>、<a href="https://arxiv.org/html/2610.37255v1#S3.SS2">§3.2</a>）</p>
+<h2 id="presentation850192是readout實驗">Presentation：85.0→19.2是readout實驗</h2>
+<p>固定H0-trained update1024，在同576tasks上反轉top-level fields、menu改list、或shift／reverse／permute codes；content、semantic actions、decoder alignment、execution、reward及<strong>R0 frozen semantic reference</strong>都保留，無truncation。數值核最優probability drift≤<span class="math inline">\(8.3\times10^{-16}\)</span>、ceiling drift≤<span class="math inline">\(2.2\times10^{-16}\)</span>，所以這個特設study可隔離readout，而不是任何prompt改寫都自動target不變。（<a href="https://arxiv.org/html/2610.37255v1#A6.SS2">附錄F.2</a>）</p>
+<table>
+<thead>
+<tr>
+<th>Presentation</th>
+<th>最可能semantic action改變的state比例</th>
+<th>M</th>
+<th>J</th>
+<th>Success</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Original</td>
+<td>0.0%</td>
+<td>.015</td>
+<td>.423</td>
+<td>85.0%</td>
+</tr>
+<tr>
+<td>Reversed fields</td>
+<td>52.0%</td>
+<td>.484</td>
+<td>−.046</td>
+<td>19.2%</td>
+</tr>
+<tr>
+<td>Menu list</td>
+<td>9.2%</td>
+<td>.023</td>
+<td>.415</td>
+<td>86.0%</td>
+</tr>
+<tr>
+<td>Shifted codes</td>
+<td>27.7%</td>
+<td>.148</td>
+<td>.289</td>
+<td>57.1%</td>
+</tr>
+<tr>
+<td>Reversed codes</td>
+<td>30.0%</td>
+<td>.130</td>
+<td>.308</td>
+<td>68.2%</td>
+</tr>
+<tr>
+<td>Permuted codes</td>
+<td>25.3%</td>
+<td>.110</td>
+<td>.328</td>
+<td>67.6%</td>
+</tr>
+</tbody>
+</table>
+<p>State指標先task內平均、再各family同權；success是undiscounted exact-completion probability，<span class="math inline">\(J\)</span>是regularized return。2000paired task bootstrap的區間描述固定checkpoint的task variation，不是多training seeds不確定性。（<a href="https://arxiv.org/html/2610.37255v1#S4.T1">表1</a>、<a href="https://arxiv.org/html/2610.37255v1#A6.SS2">附錄F.2</a>）</p>
+<h2 id="h0h1等更新budget的兩分支">H0→H1：等更新budget的兩分支</h2>
+<p>兩branches同source LoRA、reset AdamW moments、paired task draws，各再1024updates／4096draws；一H0continuation，一H1adaptation。七個預定checkpoints0/32/64/128/256/512/1024全部列，不用test挑endpoint。Frozen source H0→H1的ceiling增.01248、mismatch增.12252、<span class="math inline">\(J\)</span>降.11004；與前面的presentation85→19.2是不同實驗。（<a href="https://arxiv.org/html/2610.37255v1#A6.SS3">附錄F.3</a>）</p>
+<table>
+<thead>
+<tr>
+<th>Pair</th>
+<th>J</th>
+<th>M</th>
+<th>Success</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Source/H0</td>
+<td>.42289</td>
+<td>.01485</td>
+<td>85.05%</td>
+</tr>
+<tr>
+<td>Source/H1</td>
+<td>.31285</td>
+<td>.13737</td>
+<td>72.90%</td>
+</tr>
+<tr>
+<td>H0 continuation/H0</td>
+<td>.42294</td>
+<td>.01481</td>
+<td>83.37%</td>
+</tr>
+<tr>
+<td>H1 adaptation/H0</td>
+<td>.38642</td>
+<td>.05132</td>
+<td>78.31%</td>
+</tr>
+<tr>
+<td>H1 adaptation/H1</td>
+<td>.43133</td>
+<td>.01889</td>
+<td>88.17%</td>
+</tr>
+</tbody>
+</table>
+<p><span class="math inline">\(T=.02733\)</span>，final target mismatch.01889低於門檻；final recovery .00844（CI[.00135,.01447]）、勝continuation .00840（CI[.00254,.01411]）。Interface ranking先反轉，首次mean recovery為正時CI仍含0；到final兩個paired intervals才均大於0。Task success與<span class="math inline">\(J\)</span>需分列：H0continuation <span class="math inline">\(J\)</span>近不變，success卻下降。（<a href="https://arxiv.org/html/2610.37255v1#A6.T9">表8–9</a>、<a href="https://arxiv.org/html/2610.37255v1#A6.SS3">附錄F.3</a>）</p>
+<p>30ordered swaps有22frozen受損，其中13的<span class="math inline">\(T\le0\)</span>；只adapt其餘9。七個ceiling上升者全在<strong>regularized return</strong>超source，兩個下降者沒有；H2→H5的<span class="math inline">\(J\)</span>gain+.045但raw success−.5pp，故不能說七個success皆提高。八個swaps事前記<span class="math inline">\(T-r_2\)</span>預測，H0→H1事後才算；八個gain符號全對、Spearman.95，ceiling-only.86、frozen loss.17。<span class="math inline">\(r_2\)</span>是直接在target post-trained checkpoint的mismatch，預測假設adaptation能達類似level，不保任意task／budget皆恢復。（<a href="https://arxiv.org/html/2610.37255v1#A6.SS4">附錄F.4、表10</a>）</p>
+<h2 id="finite-mismatch量測有oracle且昂貴">Finite mismatch量測：有oracle且昂貴</h2>
+<p>從independent pilot trajectories以<span class="math inline">\(\Pr(T=t)=(1-\gamma)\gamma^t\)</span>取occupancy states；termination後draw也保留，loss記0，不重正規化nonterminal mass。每state採完整menu的<span class="math inline">\(N\)</span>actions、pseudocount平滑，再算actual→oracle optimum KL。Estimator calibration另72tasks，與訓練／原calibration／test全disjoint；32候選budget/smoothing，選滿足bias/RMSE門檻且query較低者。（<a href="https://arxiv.org/html/2610.37255v1#S6.SS1">§6.1</a>、<a href="https://arxiv.org/html/2610.37255v1#A6.SS5">附錄F.5–F.6</a>）</p>
+<p>選<span class="math inline">\(m=256,N=1024,\alpha=.5\)</span>/action，平均每task／condition42553.3actor queries，初<span class="math inline">\(m64,N16\)</span>僅356.9，約119倍。30-action menu上平滑均勻成分48.4%→1.44%；少樣本不能當幾乎無偏。Calibration worst condition bias.24805→.00287、worst-node differenceRMSE.20259→.00672。（<a href="https://arxiv.org/html/2610.37255v1#A6.T11">表11</a>）</p>
+<p>Heldout576test上72checkpoint×configuration比較，<span class="math inline">\(\Delta C-\Delta\widehat M\)</span>RMSE.00230，ceiling-only.23470，同budgetfrequency rollout.00240；seven adaptation nodes的recovery／ranking RMSE為.00245／.00286，rollout .02672／.02667。70個超出.01tie-region的方向全對、三類判斷71/72；recovery7nodes對6、ranking對7，預測recovery比exact晚一checkpoint。Oracle仍提供ceiling與queried optimal distributions，finite samples是從cached real-model probabilities模擬，非完全不知optimum的black-box部署結果；區間是固定checkpoints的paired task bootstrap。（<a href="https://arxiv.org/html/2610.37255v1#A6.SS6">附錄F.6、表12</a>）</p>
+<h2 id="coding-harnessteacher-proxy只支持有限排序">Coding harness：teacher proxy只支持有限排序</h2>
+<p>Frozen Qwen3.5-9B、五native harnesses，Terminal-Bench Lite39tasks各三independent runs，accuracy是三次single-run rates mean±sample SD，timeouts/failures留分母。Model thinking on、temperature.6、32768output／65536context、50top-level decisions及task time limit；summary／subagent／retry亦計decision。（<a href="https://arxiv.org/html/2610.37255v1#A6.SS7">附錄F.7</a>）</p>
+<p>Proxy只用三probe tasks，各target/teacher原有每task三trajectories，僅full probes的complete trajectories入估計：teacher Pi7/9、其他9/9；target Pi7、DeepAgents6、DeepSeek8、Terminus／mini9/9。每recorded state重送context、只sample不執行tools；target128／teacher64samples，13common categories各pseudocount.5。Categories合併不同arguments/effects，非嚴格同semantic-action fiber；opaque／invalid保留，不是把難解析的output丟掉。（<a href="https://arxiv.org/html/2610.37255v1#A6.SS7.SSS0.Px5">F.7 Probes／Categories</a>）</p>
+<p>Teacher是GPT-5.6-luna，並非已知最優。Target的category distribution作reference、無discount、binary terminal reward，target自身KL0，所以<strong>真</strong><span class="math inline">\(C-M\)</span>等success；估計<span class="math inline">\(\widetilde C\)</span>是teacher regularized return、提供ceiling lower-bound proxy，<span class="math inline">\(\widetilde M\)</span>把teacher log-odds代optimal scores進quadratic式，只量對teacher距離，不繼承真mismatch upper-bound／recovery保證。（<a href="https://arxiv.org/html/2610.37255v1#A6.SS7.SSS0.Px7">F.7 Estimators</a>）</p>
+<table>
+<thead>
+<tr>
+<th>Harness</th>
+<th>C̃</th>
+<th>M̃</th>
+<th>C̃−M̃</th>
+<th>Accuracy</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Terminus-2</td>
+<td>.431</td>
+<td>.134</td>
+<td>.297</td>
+<td>64.1±5.1%</td>
+</tr>
+<tr>
+<td>mini-SWE-agent</td>
+<td>.631</td>
+<td>.335</td>
+<td>.296</td>
+<td>59.8±7.8%</td>
+</tr>
+<tr>
+<td>DeepSeek Harness</td>
+<td>.590</td>
+<td>.382</td>
+<td>.208</td>
+<td>54.7±3.9%</td>
+</tr>
+<tr>
+<td>Pi coding-agent</td>
+<td>.383</td>
+<td>.206</td>
+<td>.177</td>
+<td>51.3±2.6%</td>
+</tr>
+<tr>
+<td>DeepAgents</td>
+<td>.261</td>
+<td>.429</td>
+<td>−.168</td>
+<td>47.9±3.9%</td>
+</tr>
+</tbody>
+</table>
+<p>五點difference排序Spearman1.0，單ceiling .7、單mismatch−.7；不是proxy數值校準成accuracy，也不是對其他harness的泛化證明。Terminus／DeepAgents平均4.9／14.2calls，後者每decision mismatch近前者卻累積較多；DeepSeek每decision mismatch最大。三probe的complete-trajectory選擇與粗categories是估計邊界，不能當39tasks全部states已精確測得。（<a href="https://arxiv.org/html/2610.37255v1#S6.SS3">§6.3</a>、<a href="https://arxiv.org/html/2610.37255v1#A6.T13">表13–14</a>；最後泛化／probe界線為本檔補註，非作者自陳）</p>
+<h2 id="f8另解的exact-study與結論邊界">F.8另解的exact study與結論邊界</h2>
+<p>F.8用off-the-shelf9B／無adapter、thinking off／one-token menu、同576MiniWoB tasks，reference設同frozen actor，finite-horizon10decisions、<span class="math inline">\(\gamma=1,\tau=.1\)</span>。這是與post-training不同objective／reference的新control problems；backward/forward精確算<span class="math inline">\(C,J,M\)</span>，residual≤<span class="math inline">\(7.22\times10^{-16}\)</span>，每task/harness另256rollouts。由reference=self使<span class="math inline">\(J\)</span>等success，<span class="math inline">\(C-M\)</span>完整排序六harness；單<span class="math inline">\(-M\)</span>雖也選H3卻錯排H1／H0，單<span class="math inline">\(C\)</span>選H0。不能把此finite-horizon例當直接違反前面discounted定理的<span class="math inline">\(\gamma&lt;1\)</span>條件。（<a href="https://arxiv.org/html/2610.37255v1#A6.SS8">附錄F.8</a>；最後一句為本檔補註，非作者自陳）</p>
+<p>作者建議同時報ceiling、frozen return，跨多checkpoint看harness，並檢presentation對choices的影響。受控finite-menu結果和open coding proxy支持這個診斷方向；它們不保任何「更高ceiling」候選都能在任意有限訓練budget獲勝，更不以behavior唯一反推harness machinery。（<a href="https://arxiv.org/html/2610.37255v1#S7">§7</a>、<a href="https://arxiv.org/html/2610.37255v1#A2">附錄B–F</a>；後一範圍界線為本檔補註，非作者自陳）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.37255_PolicyHarness.zh-TW.html">PolicyHarness翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 b30488b1</footer></main></body></html>
