@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="671933474b5de0f6175527b12122240deaa2a9c9"><title>Constrained Decoding: Harmful or Beneficial? Revisiting Its Impact on LLM Performance 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Ngoc Trinh Hung Nguyen、Alonso Silva、Armen Aghasaryan、Mehwish Alam</p><p>日期：2026-10-26（v1，cs.CL／cs.AI）</p><p>arXiv：2610.35328</p><p>閱讀說明：主文、兩份Clarification及A.1–A.4精譯；省略完整prompt、數表及參考文獻；數字為作者自報，未執行程式或取得補充碼。</p><p><a href="https://arxiv.org/html/2610.35328v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="constrained-decoding從格式有效性到推理約束">Constrained Decoding：從格式、有效性到推理約束</h1>
+<h2 id="第12節別把格式改變與decoder-masking混在一起">第1–2節：別把格式改變與decoder masking混在一起</h2>
+<p>JSON內reasoning可能弱於自由reasoning，但這同時改了prompt與輸出空間。本文把約束分為FC（format結構）、VC（任務可行答案）、RC（reasoning軌跡）；應在同prompt、expected format下比較mask，不能把跨格式差距全算decoder的影響。（<a href="https://arxiv.org/html/2610.35328v1#S1">§1–2</a>）</p>
+<h2 id="第31節固定reasoning的答案機率">第3.1節：固定reasoning的答案機率</h2>
+<p>固定prompt <span class="math inline">\(x\)</span>、reasoning <span class="math inline">\(R\)</span>及最終答案長度；每步遮掉不允許token並局部重新正規化。<span class="math inline">\(Z_t\)</span>為允許tokens的原機率總和，假設<span class="math inline">\(0&lt;Z_t\le1\)</span>。Assumption1要求真答案<span class="math inline">\(Y^*\)</span>的語義及語法都被約束接受，則</p>
+<div class="math block">
+\[P_C(Y^*\mid x,R)=P_\theta(Y^*\mid x,R)/\prod_tZ_t(x,R,s^*_{&lt;t})\ge P_\theta(Y^*\mid x,R).\]
+</div>
+<p>Assumption2是在真答案某prefix移除具有正機率的非法token，使乘積小於1。作者據此寫strict gain；（本檔補註，非作者自陳）嚴格增加還需真答案原機率為正。若沿正解沒刪正機率token則相等。任意mask若排除正解，不受此保證。</p>
+<p>（本檔補註，非作者自陳）此為固定<span class="math inline">\(R\)</span>的序列機率／期望exact match，非greedy答案必改善，也不是完整序列的單一全域條件化。（<a href="https://arxiv.org/html/2610.35328v1#S3.SS1">§3.1</a>）</p>
+<h2 id="第32節改reasoning可能傷害">第3.2節：改reasoning可能傷害</h2>
+<p>完全排掉正確reasoning–answer pairs可令正確率歸零；oracle只留好pairs可達完美；實際部分保留好壞pairs，作用一般不確定。RC要有益，須先知道哪些路徑有益，不能直接套固定<span class="math inline">\(R\)</span>的答案定理。（<a href="https://arxiv.org/html/2610.35328v1#S3.SS2">§3.2</a>）</p>
+<h2 id="第4節及附錄a2a3公平比較">第4節及附錄A.2–A.3：公平比較</h2>
+<p>十個task solvers為Qwen3-1.7／4／8B、Qwen3.5-2／4／9／27B、Llama3-8B、Gemma2-9B、SmolLM3-3B；Qwen3-32B另作第二步extractor，合計十一模型。任務為GSM8K、四名字LastLetter、八名字Extended與AIME2026；非所有模型跑每任務。</p>
+<p>JSON輸出reason＋answer；NL-to-Format先自由reasoning再以第二模型抽取；InWriting單次先自由reasoning，EOS／PAD觸發後切換受限JSON。Litelines建在outlines-core上。每strategy固定prompt／expected format比較Unconstr.、FC及FC+VC；unconstrained仍收到格式指示。第二步抽取比較固定首步trace。</p>
+<p>FC將answer設str；VC限制GSM8K非負整數、AIME整數0–999、LastLetter恰4／8字母。RC強制既有step-by-step開頭，不是學得最佳軌跡。</p>
+<p>標準設定temperature0、sampling False、最多600reasoning tokens、thinking Off、seed1；AIME用default sampling、12800tokens、seeds42/43/44、thinking Off。標準JSON有3prompt組合，InWriting／NL-to-Format有9；AIME InWriting3formats×3seeds為9runs。Accuracy為抽取exact match，<span class="math inline">\(\pm\)</span>是適用seed／prompt組合的std。（<a href="https://arxiv.org/html/2610.35328v1#S4">§4</a>、<a href="https://arxiv.org/html/2610.35328v1#A1.SS2">附錄A.2–A.3</a>）</p>
+<h2 id="第5153節同設定可改善也可同分">第5.1–5.3節：同設定可改善，也可同分</h2>
+<p>Plain text也可約束：LastLetter NL-to-Format固定trace，Qwen3-1.7B <span class="math inline">\(60.7\pm4.3\)</span>→<span class="math inline">\(66.1\pm4.8\)</span>，Qwen3.5-9B <span class="math inline">\(86.8\pm1.2\)</span>→<span class="math inline">\(89.9\pm0.5\)</span>。表2六模型的同條件JSON抽取均值皆高於plain text。（<a href="https://arxiv.org/html/2610.35328v1#S5.T2">表1–2</a>）</p>
+<p>GSM8K InWriting Unconstr.→FC+VC：Qwen3-4B <span class="math inline">\(85.8\pm3.0\)</span>→<span class="math inline">\(89.7\pm0.4\)</span>，Qwen3.5-9B <span class="math inline">\(90.4\pm1.8\)</span>→<span class="math inline">\(93.9\pm0.3\)</span>。Gemma2-9B JSON的0→86.7伴隨parse恢復，不能全解作reasoning能力增加。（<a href="https://arxiv.org/html/2610.35328v1#A1.T6">表6</a>）</p>
+<p>LastLetter Llama3 InWriting的Unconstr.／FC／FC+VC為53.6／53.6／71.0，VC增17.4百分點；Qwen3.5-9B JSON則23.1／86.7／88.9，主要是FC。Extended Qwen3.5-27B InWriting79.5→83.9，但弱模型JSON仍可0→0，格式不保語義正確。（<a href="https://arxiv.org/html/2610.35328v1#A1.T9">表8–10</a>）</p>
+<h2 id="第54節rc不是一律有益">第5.4節：RC不是一律有益</h2>
+<p>GSM8K加RC：Qwen3-1.7B75.8→77.7、Qwen3.5-2B74.9→77.4；Qwen3-4B89.7→89.6、Qwen3.5-4B91.8→91.5，9B93.9同分。</p>
+<p>AIME Qwen3.5-4B <span class="math inline">\(62.2\pm3.1\)</span>→<span class="math inline">\(55.6\pm5.7\)</span>，下降6.6百分點；27B <span class="math inline">\(81.9\pm3.9\)</span>→<span class="math inline">\(84.3\pm5.6\)</span>。作者指出RC依賴模型／任務、會排除其他有效路徑，有益trace可能需不可得的oracle知識。（<a href="https://arxiv.org/html/2610.35328v1#S5.SS4">§5.4</a>、<a href="https://arxiv.org/html/2610.35328v1#A1.T14">表14–15</a>）</p>
+<h2 id="第5556節可解析與成本">第5.5–5.6節：可解析與成本</h2>
+<p>FC提高parse，但實測非全100%：GSM8K Qwen3.5-2B JSON82.2→88.4%；Extended Qwen3.5-27B JSON82.4→93.8%。InWriting與第二步extractor較接近100%。（<a href="https://arxiv.org/html/2610.35328v1#A1.T11">表11–12</a>）</p>
+<p>InWriting本篇新增少於15tokens，如GSM8K Qwen3-4B164.6→172.8。Token不等於全部compute：JSON從頭每步維護合法集合，兩步法多一次model call，InWriting只約束最終輸出。VC的「near-zero-cost」不可讀成latency零成本。（<a href="https://arxiv.org/html/2610.35328v1#S5.SS6">§5.6</a>、<a href="https://arxiv.org/html/2610.35328v1#A1.T13">表13</a>）</p>
+<h2 id="兩份clarification與附錄a3schema及資料">兩份Clarification與附錄A.3：schema及資料</h2>
+<p>第一份重申Assumption1保不退化，Assumptions1＋2支持增益；str欄位保答案自由度，但接受語法仍須與evaluator一致。第二份指向Extended建構：以names-dataset抽名字、排除compound names，由四延長八名字；作者以模型發布後建構降低leakage風險，未證明零污染。（<a href="https://arxiv.org/html/2610.35328v1#S6.SSx2">Clarifications</a>、<a href="https://arxiv.org/html/2610.35328v1#A1.SS3.SSS3">A.3.3</a>）</p>
+<h2 id="附錄a4增益的來源及反例">附錄A.4：增益的來源及反例</h2>
+<p>VC可在trace已列對字母時修漏字、重字或空格，也可將28.00規格化為28。作者指出字母與空格可能同在token內，因此是生成時一致性約束，非單純字串清洗；但這仍不代表每項增益來自更好的reasoning。</p>
+<p>嚴格JSON評分把自由前文＋JSON、Markdown fence包JSON視作parse failure；若應用接受fence，schema也須允許，否則soundness不對齊。</p>
+<p>IMDb初步禁原Positive／Negative而改同義label：Qwen3-4B baseline／原label約束／替代label92.6／92.6／83.4；Qwen3.5-4B94.6／94.8／85.8。替代說法保部分情緒能力，未追平原label，不是一般內容安全保證。（<a href="https://arxiv.org/html/2610.35328v1#A1.SS4">A.4.1–A.4.3</a>）</p>
+<h2 id="附錄a1與程式可用性">附錄A.1與程式可用性</h2>
+<p>作者限制：VC主要測LastLetter／Extended，IMDb初步，化學等待延伸；RC示範可行性但未提供找有益trace的實用法；只測簡單JSON，複雜結構加長reasoning待研究。</p>
+<p>摘要稱code available，但footnote與A.3.1說在Supplementary Materials、acceptance後公開；本檔未取得或查核repo。（<a href="https://arxiv.org/html/2610.35328v1#A1.SS1">A.1</a>、<a href="https://arxiv.org/html/2610.35328v1#A1.SS3.SSS1">A.3.1</a>）</p>
+<blockquote>
+<p>重點整理見 <a href="../summarize/2610.35328_ConstrainedDecoding.%E6%91%98%E8%A6%81.html">Constrained Decoding摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 67193347</footer></main></body></html>
