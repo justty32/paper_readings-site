@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="469b6756574ed970c6ccbe3764473d79e1691f5d"><title>At the Limits of Computability: Steps Towards Autonomous AI Discovery on the Busy Beaver Frontier 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Marco Dos Santos、Vivek Veeriah、Alex Havrilla、Andrew Bolt、Goran Zuzic、Satinder Singh、Tom Zahavy</p><p>日期：2026-10-19（v2；首稿2026-10-15，cs.AI/cs.FL）</p><p>arXiv：2610.22603</p><p>閱讀說明：依官方v2完整主文及附錄A–E整理；形式驗證與數字均為作者自報，未下載GitHub、重跑Lean或模擬；十一項新加速不等於解出halting，後續Flash階段與原始Pro管線分開。</p><p><a href="https://arxiv.org/html/2610.22603v2" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="busy-beaver-discovery用agent發現並形式驗證機器的算術加速規則">Busy Beaver Discovery：用agent發現並形式驗證機器的算術加速規則</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>作者把Turing machine執行軌跡壓成有參數的tape patterns，讓Gemini寫可執行的macro-transition猜想、主動測邊界、以非形式證明迭代，再用可修改定理陳述的Lean agent證明每條規則與整個系統closure。主要成果是十一台BB(6)機器的全新、形式驗證Collatz-like accelerations；它們的blank-tape halting問題被精確轉成算術trajectory是否到達halting條件，<strong>仍未解出halting／non-halting，也未求得BB(6)</strong>。Cryptid分類暫定且待community acceptance。（<a href="https://arxiv.org/html/2610.22603v2#S1">§1、§6</a>）</p>
+<h2 id="busy-beaverholdout與cryptid的分別">Busy Beaver、holdout與Cryptid的分別</h2>
+<p>BB(n,m)取n-state／m-symbol TM在blank tape上、所有會halt者的最大步數，二symbol慣寫BB(n)。Holdout僅指blank-tape halting未決。本文Definition2.1把Cryptid定為：有exact compact dynamical-system描述、但該trajectory是否到達halt仍未決的holdout；這比社群通常還要求對應數學問題「真正open且困難」更寬，因此新分類須社群接受。（<a href="https://arxiv.org/html/2610.22603v2#S2">§2.1–2.2</a>）</p>
+<p>Collatz-like指block exponents依parity／congruence選不同乘加分支，不等於已證等價於標準3x+1 conjecture。Generalized Collatz reachability不可判定也<strong>不證明任一具體BB(6)機器獨立於ZFC</strong>；作者明說接近provability frontier僅推測。加速替換多個raw steps，揭露結構，不能單憑簡單規則推論長期行為容易。（<a href="https://arxiv.org/html/2610.22603v2#S2.SS2">§2.2</a>）</p>
+<h2 id="四階段管線與規格">四階段管線與規格</h2>
+<h3 id="1-pattern-detection先無損壓縮再抽象">1. Pattern detection：先無損壓縮，再抽象</h3>
+<p>每machine先模擬<span class="math inline">\(S=5\times10^6\)</span>steps，記tape、head position與state。有限tape的head兩側各自從外端向head掃，保head marker及無限blank regions；以block repetition count／block length為simplicity score，優先短且重複多的block。一個lookahead比較留n或n−1個copies的當前加下一block coverage，只有後者嚴格較大才退一copy。預設compression search parameter16，因此candidate blocks最長8symbols；這個參數不是top-pattern數100。（<a href="https://arxiv.org/html/2610.22603v2#S3.SS1">§3.1</a>、<a href="https://arxiv.org/html/2610.22603v2#A4">附錄D</a>）</p>
+<p>Compression展開可重建原configuration；接著移除exponent數值，以block symbols、state與head direction形成pattern family，再按包含的unique configurations數排序取top100patterns。具體到抽象兩步不同：前者無損表示、後者把多個實例歸同族。（<a href="https://arxiv.org/html/2610.22603v2#S3.SS1">§3.1</a>、<a href="https://arxiv.org/html/2610.22603v2#S4.SS1">§4.1</a>）</p>
+<h3 id="2-可執行猜想與interactive-refinement">2. 可執行猜想與interactive refinement</h3>
+<p>對每pattern，從trace擷取<strong>同pattern相鄰出現</strong>的exponent-vector轉移，不是相鄰raw TM step；LLM寫Python函式預測下一組exponents。初猜可能在observed trajectory上全對仍漏分支，例如Antihydra在first exponent0、末exponent奇數時應halt，初程式卻產negative exponent。（<a href="https://arxiv.org/html/2610.22603v2#S3.SS2">§3.2</a>）</p>
+<p>LLM可指定synthetic exponents直接初始化該pattern，測即使尚不知是否blank-reachable的boundary cases；工具跑到重返target pattern、halt或每transition128000steps上限，最多5refinement turns。末尾改寫為piecewise math，可能再代數合成多步加速。**所有已記錄的初始及synthetic transitions預測100%**才進證明，這是有限資料filter，不能代替全參數proof。（<a href="https://arxiv.org/html/2610.22603v2#S3.SS3">§3.3–3.4</a>、<a href="https://arxiv.org/html/2610.22603v2#S4.SS1">§4.1</a>）</p>
+<h3 id="3-informal-proving同模型三個角色">3. Informal proving：同模型三個角色</h3>
+<p>逐case rule追蹤抽象tape，Proof Generator寫step-by-step proof；Correctness與Format Evaluators各給0／.5／1及feedback。只有兩者皆1才接受，最多4iterations／rule；同Gemini3.1Pro扮三role，並非三個獨立模型投票或kernel guarantee。（<a href="https://arxiv.org/html/2610.22603v2#S3.SS4">§3.4</a>、<a href="https://arxiv.org/html/2610.22603v2#S4.SS1">§4.1</a>）</p>
+<h3 id="4-lean-formal-proving允許修命題固定機器與起點">4. Lean formal proving：允許修命題，固定機器與起點</h3>
+<p>沿BusyLean定義／lemmas，給agent初始equivalence、closure與halting／non-halting theorem statements及informal proofs作scaffold。<strong>初始命題不是不可更動的ground truth</strong>：Problem Setter可補parameter bounds、加缺失boundary rules；Planner拆lemmas協調，Writer證明，Critic審formalization／proof，四persona在shared workspace round-robin。Compiler／Writer／Critic feedback可回Setter，simulation也可再查規則。（<a href="https://arxiv.org/html/2610.22603v2#S3.SS5">§3.5</a>）</p>
+<p>改動僅限rules，<strong>Lean machine definition與start configuration固定</strong>；start從blank tape直接simulation核對。有效系統須每rule對固定machine證明，且start與每rule output要麼halt、要麼match某rule input，構成closed system。不得靠false hypotheses把命題變空；成功條件為Critic確認所有必要theorems編譯、無sorry及unauthorized axioms，否則到72h限時失敗。本文核心環境為Gemini3.1Pro與Lean4.28.1。初始化含halting statements不表示最終已解Cryptid halting；主要證成的是acceleration及closure。（<a href="https://arxiv.org/html/2610.22603v2#S3.SS5">§3.5</a>、<a href="https://arxiv.org/html/2610.22603v2#S4.SS1">§4.1</a>）</p>
+<h2 id="搜尋分母與結果分類">搜尋分母與結果分類</h2>
+<p>表2是<strong>論文2026年8月domain快照</strong>，不是本檔重查的最新社群狀態。Holdouts與candidates不是已證成功數。（<a href="https://arxiv.org/html/2610.22603v2#S1.T2">表2</a>）</p>
+<table>
+<thead>
+<tr>
+<th>Domain</th>
+<th style="text-align:right">掃描holdouts</th>
+<th style="text-align:right">社群Cryptids</th>
+<th style="text-align:right">Initial candidates</th>
+<th style="text-align:right">Rediscoveries</th>
+<th style="text-align:right">New Cryptids（暫定）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BB(6)</td>
+<td style="text-align:right">1094</td>
+<td style="text-align:right">18</td>
+<td style="text-align:right">50</td>
+<td style="text-align:right">14</td>
+<td style="text-align:right">11</td>
+</tr>
+<tr>
+<td>BB(2,5)</td>
+<td style="text-align:right">65</td>
+<td style="text-align:right">2</td>
+<td style="text-align:right">2</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">0</td>
+</tr>
+<tr>
+<td>BB(3,3)</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0</td>
+</tr>
+</tbody>
+</table>
+<p>初掃每pattern一次猜想；52promising machines各有至少兩個通100%empirical filter的conjectures。再只對這52台提高到每pattern4attempts，依序過informal與formal gates。論文未提供全部stage-wise attempts／pass counts、共同token或compute budget，不能把11/52當無條件單次成功率，亦不能把52宣稱52個已形式驗證Cryptids。（<a href="https://arxiv.org/html/2610.22603v2#S4.SS2">§4.2</a>；未報欄位及比率界線為本檔補註，非作者自陳）</p>
+<p>表1分Full（新acceleration＋proof）、Acceleration（已知machine的新acceleration及proof）、Proof（similar known rules的formal proof）。十一new discoveries皆BB(6)；另十五rediscoveries為14BB(6)＋1BB(2,5)，不是十五個全新machine analyses。部分new machines先前僅被列高complexity holdouts、沒有rules；已被提到不等於已有相當分析。附錄C也說某些初掃candidate後來已resolved、已非holdout，不能把該名單當持續未決清單。（<a href="https://arxiv.org/html/2610.22603v2#S1.T1">表1</a>、<a href="https://arxiv.org/html/2610.22603v2#A3">附錄C</a>）</p>
+<h2 id="後續stage2與人工查驗的限定">後續Stage2與人工查驗的限定</h2>
+<p>§4.1核心用Gemini3.1Pro；表1的⋆另標<strong>full pipeline完成後</strong>，以Gemini3.8Flash general-purpose auto-research system取得既有results／code，選擇性處理remaining suspects，按加速數與壓縮程度reward。此後續階段與固定前段預算／模型不同，不能把整表寫成同一種single-attempt Pro實驗。（<a href="https://arxiv.org/html/2610.22603v2#S1.T1">表1caption</a>、<a href="https://arxiv.org/html/2610.22603v2#A5">附錄E</a>）</p>
+<p>§4.3概述手核final Lean statements；表1caption對‡標記rediscoveries具體注明「system形式證明、作者未手核」。因此不能泛稱所有表列結果逐項手核。附錄E是suspect32的<strong>prompt要求</strong>：少於15rules的目標、非空／非vacuous invariant、positive progress、parameter coverage、固定declarations、只准propext／Classical.choice／Quot.sound，以及independent-checker replay等；這份prompt不是每項audit實際執行成功的log。本檔未重跑Lean或另審repo。（<a href="https://arxiv.org/html/2610.22603v2#S4.SS3">§4.3</a>、<a href="https://arxiv.org/html/2610.22603v2#S1.T1">表1caption</a>、<a href="https://arxiv.org/html/2610.22603v2#A5">附錄E</a>）</p>
+<h2 id="新規則的具體例子有closed-description仍未解halt">新規則的具體例子：有closed description仍未解halt</h2>
+<p>附錄A.9的machine為<code>1RB1RC_1LC1LC_1RE0LD_1LB1RF_---1RA_0RD1RD</code>。先以兩family <span class="math inline">\(C_0,C_1\)</span>描述，再以<span class="math inline">\(C_0(a,b,c)=C(2a,b,c)\)</span>、<span class="math inline">\(C_1(a,b,c)=C(2a+1,b,c)\)</span>合併成</p>
+<div class="math block">
+\[C(a,b,c)=0^\infty1^{a+2}\mathrm{E}{&gt;}1^{2b+2}01^{2c+2}0^\infty.\]
+</div>
+<p>Blank tape經100raw steps到<span class="math inline">\(C(5,2,0)\)</span>。七條simplified rules中包括<span class="math inline">\(C(a,b+1,c+1)\to C(a+6,b,c)\)</span>與<span class="math inline">\(C(a,0,0)\to Halt\)</span>，另依首參數parity及其他零邊界分支。這些例子僅節選，完整系統在原附錄；「存在halt branch」不等於這個start trajectory必會走到該branch。其他新systems也保留parity、下界或有限parameter集合，如A.11的<span class="math inline">\(d\in\{3,6\}\)</span>，不可省掉條件後當普遍規則。（<a href="https://arxiv.org/html/2610.22603v2#A1.SS9">A.9</a>、<a href="https://arxiv.org/html/2610.22603v2#A1.SS11">A.11</a>）</p>
+<h2 id="rediscovery到底新增什麼">Rediscovery到底新增什麼</h2>
+<p>附錄B按和社群rules的關係分：Exact2（up to renaming等，新增formal closure proof）；Equivalent reformulated8（同dynamics、family／acceleration level改寫，社群higher-level exponential formulations<strong>未證</strong>）；Different decomposition3（partial／conditional community system或不同加速層）；Undetermined2（Discord rules未能reproduce）。Correspondences是direct simulation核對，不等同所有equivalence皆另外Lean證成。BMO1原rules已在Lean證過，故主文「先前未形式驗證」概述不可套到每台；有些成果是替代proof／decomposition。（<a href="https://arxiv.org/html/2610.22603v2#A2.T3">附錄B，表3</a>、<a href="https://arxiv.org/html/2610.22603v2#S1.T1">表1</a>）</p>
+<h2 id="意義與作者限制">意義與作者限制</h2>
+<p>價值是把empirical code synthesis接到可修正規格的formal closure，不只讓LLM給看似合理的數學敘述；synthetic counterexample queries能查blank trajectory未露出的case。Grey-box exploration不直接靠TM source code推猜，作者說原理可延伸Python／C++等Turing-complete語言；本文未提供那些domain的實驗。（<a href="https://arxiv.org/html/2610.22603v2#S3">§1、§3</a>；最後一句為本檔補註，非作者自陳）</p>
+<p>作者承認現在仍不是完全open-ended：只找人類已研究的Collatz-like functions；未展示自主發明全新open-problem類型。Busy Beaver可不斷生題，不保證每題的廣泛數學重要性，也不保證研究這些Cryptids能解標準Collatz。十一新reduction是形式化結構發現的進展，不能寫成跨越不可計算性、解決ZFC獨立性或證出BB(6)。（<a href="https://arxiv.org/html/2610.22603v2#S6">§6</a>；最後一項界線為本檔補註，非作者自陳）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.22603_BusyBeaverDiscovery.zh-TW.html">BusyBeaverDiscovery翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 469b6756</footer></main></body></html>
