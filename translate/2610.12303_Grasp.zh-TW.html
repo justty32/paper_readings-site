@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="b2e8380de71a2382c65cf004354210132717ecb1"><title>Learning Probabilistic Logic Programs with Functional Gradient Guided Language Models 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Saurabh Mathur、Sahil Sidheekh、Bhavan Vasu、Farbod Tavakkoli、Prasad Tadepalli、Kristian Kersting、Sriraam Natarajan</p><p>日期：2026-10-08（v1，cs.AI）</p><p>arXiv：2610.12303</p><p>閱讀說明：完整主文§1–5精譯，未見附錄，略完整結果表與書目；數字為作者自報，按正文3具名資料集／14targets，理論與可解釋性宣稱保留證據界線，未重現。</p><p><a href="https://arxiv.org/html/2610.12303v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="graspgradient-guided的機率邏輯程式合成">grasp：gradient-guided的機率邏輯程式合成</h1>
+<h2 id="第12節由組合搜尋轉向資料引導proposal">第1–2節：由組合搜尋轉向資料引導proposal</h2>
+<p>機率邏輯程式以weighted first-order clauses表達relations。固定structure後可學weights，但找clause structures隨rule長度、arity與relational depth組合爆炸。LLM能提案卻可能語意合理、資料上不準。grasp以functional gradient boosting控制提案及評估，LLM只是proposal oracle。</p>
+<p>給定background <span class="math inline">\(B\)</span>與binary labels，<span class="math inline">\(p(e)=\sigma(F(e))\)</span>，</p>
+<div class="math block">
+\[F_T(e)=F_0+\sum_{t=1}^T\eta\varphi_t(e),\qquad r_i^{(t)}=y_i-\sigma(F_{t-1}(e_i)).\]
+</div>
+<p>Residual指出current ensemble未解釋的部分，正負分別提示under／over-prediction。（<a href="https://arxiv.org/html/2610.12303v1#S2">§1–2</a>）</p>
+<h2 id="第3132節一次性抽象及局部context">第3.1–3.2節：一次性抽象及局部context</h2>
+<p>先給LLM schema、entities及domain，產counts／existence／neighborhood cardinalities等aggregate predicates，通syntax及runtime executability後加到<span class="math inline">\(B\)</span>。再建clause template，限制body predicates、typed arguments及合法組合。</p>
+<p>每輪選<span class="math inline">\(|r|\)</span>最大的examples，以template生成compact local relational descriptions，實作為restricted mode declarations下的bottom clauses，讓numeric gradient有具體relational context。（<a href="https://arxiv.org/html/2610.12303v1#S3.SS1">§3.1–3.2</a>）</p>
+<h2 id="第33節兩leaf規則與symbolic-fit">第3.3節：兩leaf規則與symbolic fit</h2>
+<p>LLM讀schema／template／domain、current ensemble及高殘差examples和signed residuals，提candidate clauses；invalid syntax丟棄。Solver求rule coverage <span class="math inline">\(h(e_i)\in\{0,1\}\)</span>，</p>
+<div class="math block">
+\[\varphi_h(e_i)=w^1h(e_i)+w^0(1-h(e_i)).\]
+</div>
+<p>Covered及uncovered各有prediction，未覆蓋不等於零。對非空兩組，最小residual SSE的weights是各組mean residual；選candidate weighted SSE最小者更新<span class="math inline">\(F_t=F_{t-1}+\eta\varphi_t\)</span>。Weights來自資料fit，不是LLM confidence。</p>
+<p>作者宣稱保留boosting convergence；intro要求降低residual loss才admit，方法節具體是候選最小SSE。本文未另給oracle weak-learning條件、line search、收斂率或global optimum定理，實驗<span class="math inline">\(\eta=1\)</span>，不能擴成任意提案皆保test loss下降。空coverage partition處理也未說明。（<a href="https://arxiv.org/html/2610.12303v1#S1">§1</a>、<a href="https://arxiv.org/html/2610.12303v1#S3.SS3">§3.3</a>；理論及空partition界線為本檔補註，非作者自陳）</p>
+<h2 id="第4節評估設定">第4節：評估設定</h2>
+<p>正文具名3datasets：Mutagenesis、Cora duplicate-record citation matching、Tox21的12個NR／SR endpoints，共14target rows。Cora不是一般node classification。摘要／Q2有four措辭，以下按具名與表列範圍呈現。</p>
+<p>Grasp-Gem用Gemini-3.5-Flash，Grasp-Cdx用GPT-5.2-Codex。比BoostedRDN、NeuralLP及不作gradient steering／迭代的One-shot LLM。Grasp和RDN設20boosting rounds；grasp每prompt10高殘差examples、5candidates、<span class="math inline">\(\eta=1\)</span>，實際admitted rules可少於20。</p>
+<p>報AUC-ROC及AUC-PR百分比，三trials均值±SD；不是accuracy。原文未列train/test split策略比例、樣本數、trial seeds、完整compute budget或One-shot底模配對，無法由本文重建全部實驗條件。（<a href="https://arxiv.org/html/2610.12303v1#S4.SS0.SSS0.Px1">§4 Datasets/Metrics/Baselines</a>；未報資訊為本檔補註，非作者自陳）</p>
+<h2 id="第4節q1q2表現與例外">第4節Q1–Q2：表現與例外</h2>
+<p>兩grasp variants聯合在14targets取ROC最高10、PR最高12，PR含nr_ar與RDN並列；不是單一variant或每個cell皆勝。</p>
+<table>
+<thead>
+<tr>
+<th>Target／metric</th>
+<th style="text-align:right">RDN</th>
+<th style="text-align:right">NeuralLP</th>
+<th style="text-align:right">Gem</th>
+<th style="text-align:right">Cdx</th>
+<th style="text-align:right">One-shot</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cora ROC</td>
+<td style="text-align:right">95.02±1.96</td>
+<td style="text-align:right">91.86±.00</td>
+<td style="text-align:right">92.99±.51</td>
+<td style="text-align:right">97.67±.26</td>
+<td style="text-align:right">74.78±21.57</td>
+</tr>
+<tr>
+<td>Cora PR</td>
+<td style="text-align:right">96.10±1.57</td>
+<td style="text-align:right">94.15±.00</td>
+<td style="text-align:right">94.36±.37</td>
+<td style="text-align:right">98.23±.00</td>
+<td style="text-align:right">78.89±17.77</td>
+</tr>
+<tr>
+<td>Mutagen ROC</td>
+<td style="text-align:right">82.92±2.37</td>
+<td style="text-align:right">79.08±2.44</td>
+<td style="text-align:right">88.36±1.72</td>
+<td style="text-align:right">88.41±1.82</td>
+<td style="text-align:right">82.72±2.85</td>
+</tr>
+<tr>
+<td>Mutagen PR</td>
+<td style="text-align:right">86.53±1.47</td>
+<td style="text-align:right">89.53±1.48</td>
+<td style="text-align:right">94.36±.65</td>
+<td style="text-align:right">93.65±.77</td>
+<td style="text-align:right">90.23±2.51</td>
+</tr>
+<tr>
+<td>nr_ahr ROC</td>
+<td style="text-align:right">81.98±.47</td>
+<td style="text-align:right">68.80±.07</td>
+<td style="text-align:right">76.11±1.45</td>
+<td style="text-align:right">81.41±.65</td>
+<td style="text-align:right">63.81±7.73</td>
+</tr>
+<tr>
+<td>nr_ar ROC</td>
+<td style="text-align:right">75.84±1.36</td>
+<td style="text-align:right">78.82±.19</td>
+<td style="text-align:right">74.81±1.71</td>
+<td style="text-align:right">78.11±3.04</td>
+<td style="text-align:right">61.73±10.80</td>
+</tr>
+<tr>
+<td>nr_ar PR</td>
+<td style="text-align:right">41.99±2.41</td>
+<td style="text-align:right">13.32±.02</td>
+<td style="text-align:right">38.77±3.02</td>
+<td style="text-align:right">41.99±1.93</td>
+<td style="text-align:right">13.79±11.05</td>
+</tr>
+</tbody>
+</table>
+<p>nr_ahr兩metrics與sr_are兩metrics由RDN勝；nr_ar ROC由NeuralLP勝，nr_aromatase ROC的RDN73.18略高於Cdx73.10。One-shot整體較弱且variance大，但mutagen PR90.23仍高於RDN／NeuralLP，不是每項最低；nr_ar_lbd及sr_are無可用結果，非0分。（<a href="https://arxiv.org/html/2610.12303v1#S4.T1">表1</a>、<a href="https://arxiv.org/html/2610.12303v1#S4.T2">表2</a>）</p>
+<h2 id="第4節q3rule-importance與ensemble-efficiency">第4節Q3：rule importance與ensemble efficiency</h2>
+<p>Mutagenesis insertion／deletion curves按absolute discriminative weight排序，Cdx另有random／reverse對照；加入高權重rules很快恢復性能。Cdx初刪重要rule時仍較random穩，作者歸因semantic redundancy，建議coverage-overlap penalty。作者報前20%ensemble、約2–4rules可恢復peak。</p>
+<p>表3 top rule以<span class="math inline">\(|w_1-w_0|\)</span>排序。表4的Cora Gem11.7／Cdx20rules，平均4.7／3literals，max12／8；RDN20rules、平均及max2。規則不必更短。Tox21 complexity按各method成功產rules的targets平均，One-shot分母不可假定含全12。</p>
+<p>這些curves支持rule importance與compactness；作者稱weight calibration，但未另測probability calibration，亦非獨立人類simulatability study。（<a href="https://arxiv.org/html/2610.12303v1#S4.F2">圖2</a>、<a href="https://arxiv.org/html/2610.12303v1#S4.T3">表3</a>、<a href="https://arxiv.org/html/2610.12303v1#S4.T4">表4</a>；後一證據界線為本檔補註，非作者自陳）</p>
+<h2 id="第4節q4與第5節可解讀規則及未來方向">第4節Q4與第5節：可解讀規則及未來方向</h2>
+<p>Mutagen top rule是atom count&gt;25且LUMO&lt;-1.1；nr_ar為two-ring scaffold加ketone／halogen／aromatic-N counts；sr_mmp為halogens≥3、esters≥2、rings≥4。作者以既有化學關係解釋，展示aggregate predicates及thresholds；這些是預測關聯，非因果實驗或普遍化學定律。（<a href="https://arxiv.org/html/2610.12303v1#S4.T3">表3</a>；末句為本檔補註，非作者自陳）</p>
+<p>目前僅structured relational data上的symbolic predicates。作者未來想接neural predicates支援images／text、讓專家檢視修訂rules／aggregations／entities，以及fine-tune black-box proposer；本文未端到端學視覺／文字predicates。（<a href="https://arxiv.org/html/2610.12303v1#S5">§5</a>）</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2610.12303_Grasp.%E6%91%98%E8%A6%81.html">Grasp摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 b2e8380d</footer></main></body></html>

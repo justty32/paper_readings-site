@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="b2e8380de71a2382c65cf004354210132717ecb1"><title>Low-Rank Kolmogorov–Arnold Generator Flows for Interpretable Operator Learning 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Minjong Cheon</p><p>日期：2026-10-09（v1，cs.LG/physics.comp-ph）</p><p>arXiv：2610.13028</p><p>閱讀說明：依官方v1完整主文、書目後Supplementary Texts S1/S2及Table S1整理；數字為作者自報，區分generator／propagator、線性exactness與完整數值flow、神經／symbolic及收斂seed分母；未下載程式或重現。</p><p><a href="https://arxiv.org/html/2610.13028v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="kaflow以低秩生成元學習可蒸餾的物理算子">KAFlow：以低秩生成元學習可蒸餾的物理算子</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>KAFlow把physical field的generator拆成translation-invariant spectral multiplier、少量position×frequency separable terms及gauge-fixed KAN非線性，再用FFT與Lawson／Strang flow演化；從univariate functions自動選sparse supports、refit closed forms。在KANO synthetic operators上降低unseen-family loss並恢復係數，在quantum與非局部PDE上提高rollout準確度。這裡「exact」主要指<strong>離散低秩quantization與特定線性流</strong>，不是所有learned nonlinear dynamics都零誤差。（<a href="https://arxiv.org/html/2610.13028v1#S2">§2–3</a>、<a href="https://arxiv.org/html/2610.13028v1#Sx2.SSx1">Text S1</a>）</p>
+<h2 id="低秩的是什麼linear-symbol與generator的範圍">低秩的是什麼：linear symbol與generator的範圍</h2>
+<p>在periodic uniform grid上，Kohn–Nirenberg quantization以symbol <span class="math inline">\(p(x,\xi)\)</span>作用輸入。Proposition1對finite-order <strong>linear</strong> variable-coefficient operator <span class="math inline">\(\mathcal G=\sum_{k=0}^Kc_k(x)\partial^{\alpha_k}\)</span>及任意translation-invariant multiplier <span class="math inline">\(\mathcal M(\xi)\)</span>，其symbol</p>
+<div class="math block">
+\[p(x,\xi)=1\cdot\mathcal M(\xi)+\sum_{k=0}^Kc_k(x)(i\xi)^{\alpha_k}\]
+</div>
+<p>是<span class="math inline">\(K+2\)</span>outer products之和，separation rank≤<span class="math inline">\(K+2\)</span>，不隨resolution增加。這不是任意nonlinear／variable-order operator都exact finite rank的定理。KANO三synthetic benchmarks的<strong>線性symbol</strong>及quantum Hamiltonian linear part均rank2；<span class="math inline">\(f^3\)</span>等pointwise nonlinearity另表示。Official KANO checkpoints的learned symbols亦有<span class="math inline">\(\sigma_3/\sigma_1\le3.5\times10^{-6}\)</span>。（<a href="https://arxiv.org/html/2610.13028v1#S2.SS4">§2.4</a>、<a href="https://arxiv.org/html/2610.13028v1#Sx2.SSx1">Text S1</a>）</p>
+<p>Generator低秩不保propagator低秩：transport <span class="math inline">\(u_t=c(x)u_x\)</span>的rank1 generator，其flow composition symbol為<span class="math inline">\(e^{i\xi(\varphi_{\Delta t}(x)-x)}\)</span>。作者測<span class="math inline">\(\varphi(x)=x+\varepsilon\sin x\)</span>，benchmark grid上tol<span class="math inline">\(10^{-4}\)</span>的numerical ranks為11／16／20，對應<span class="math inline">\(\varepsilon=.1/.2/.3\)</span>。故學generator、交integrator演化，可避免static network直接學較高秩propagator。（<a href="https://arxiv.org/html/2610.13028v1#S2.SS6">§2.6</a>）</p>
+<h2 id="exact低秩quantization與成本">Exact低秩quantization與成本</h2>
+<p>對<span class="math inline">\(p=\ell(\xi)+\sum_{r=1}^Ra_r(x)m_r(\xi)\)</span>，有離散恆等式</p>
+<div class="math block">
+\[\operatorname{Op}_m(p)u=\mathcal F_m^{-1}[\ell\mathcal F_mu]+\sum_{r=1}^Ra_r(x)\,\mathcal F_m^{-1}[m_r\mathcal F_mu].\]
+</div>
+<p>Position factor在inverse FFT後乘，符合Kohn–Nirenberg ordering。這是<strong>給定separable symbol</strong>的exact application，不是把arbitrary dense symbol任選小R仍保exact。d維成本<span class="math inline">\(O((R+1)m^d\log m^d)\)</span>、symbol evaluations <span class="math inline">\(O((R+1)m^d)\)</span>；general dense symbol為<span class="math inline">\(O(m^{2d})\)</span>，KANO reference materialize triple phase tensor則<span class="math inline">\(O(m^{3d})\)</span>。不要把reference implementation額外成本當所有dense quantization不可改善的下界。（<a href="https://arxiv.org/html/2610.13028v1#S2.SS5">§2.5，Proposition2</a>、<a href="https://arxiv.org/html/2610.13028v1#Sx2.SSx1">Text S1</a>）</p>
+<h2 id="kaflow架構與gauge-allocation">KAFlow架構與gauge allocation</h2>
+<div class="math block">
+\[\mathcal G_\theta u=\operatorname{Op}_m(\ell)u+\sum_{r=1}^Ra_r(x)\operatorname{Op}_m(m_r)u+\Phi^{nl}(u,\operatorname{Op}_m(\mu)u,x).\]
+</div>
+<p>直接作用physical field，無latent lifting／projection；static task輸出<span class="math inline">\(\mathcal G_\theta u\)</span>，dynamic task輸出integrated flow。Spectral functions是dictionary-augmented KAN edges：半頻譜上complex coefficients乘<span class="math inline">\(|\xi|^p\)</span>，<span class="math inline">\(p\in\{0,.5,1,1.5,\ldots,4\}\)</span>，再加B-spline residual；residual按training energy spectrum加權penalty，弱約束頻段受更大懲罰。Position functions用linear＋splines；nonlinearity以univariate sums及product terms表示。（<a href="https://arxiv.org/html/2610.13028v1#S2.SS7">§2.7</a>、<a href="https://arxiv.org/html/2610.13028v1#Sx2.SSx2">Text S2</a>）</p>
+<p>Gauge固定：<span class="math inline">\(a_r\)</span> zero mean，constant coefficients放<span class="math inline">\(\ell\)</span>；再</p>
+<div class="math block">
+\[\Phi^{nl}(z,x)=\Phi(z,x)-\Phi(0,x)-\nabla_z\Phi(0,x)\cdot z,\]
+</div>
+<p>去掉非線性module的constant／linear-in-z部分，讓position-dependent linear terms歸symbol。作者的unique place是這個<strong>架構分工</strong>；不把它擴成從任何部分觀測都唯一辨識真實physical law，或任意低秩factorization全無縮放／混合等價。（<a href="https://arxiv.org/html/2610.13028v1#S2.SS7">§2.7</a>；最後一句為本檔補註，非作者自陳）</p>
+<h2 id="exact-integration需要哪些前提">Exact integration需要哪些前提</h2>
+<p>一般dynamics用fourth-order Lawson integrating-factor RK與2/3dealiasing，將diagonal stiff linear part <span class="math inline">\(e^{\Delta t\ell}\)</span>精確處理。TextS1明確：<strong>只有<span class="math inline">\(\mathcal N\equiv0\)</span>時</strong>完整一步回exact linear flow，該線性部分無time-discretization error／step-size restriction；有nonlinearity仍是數值RK，不能保任意步長全系統精確或穩定。（<a href="https://arxiv.org/html/2610.13028v1#S2.SS7">§2.7</a>、<a href="https://arxiv.org/html/2610.13028v1#Sx2.SSx1">Text S1</a>）</p>
+<p>Quantum用<span class="math inline">\(H=T(\xi)+v(x)+\kappa_1\rho+\kappa_2\rho^2\)</span>、<span class="math inline">\(\rho=|\psi|^2\)</span>，Strang split的potential／kinetic exponential factors對real <span class="math inline">\(V,T\)</span>皆unitary，故任意parameters保norm；不等於noncommuting split沒有time error。Kinetic用非負softplus coefficients、monotone、<span class="math inline">\(T(0)=0\)</span>固定global-phase gauge。這些是physics與架構約束，不是模型從零無prior發現unitarity。（<a href="https://arxiv.org/html/2610.13028v1#S2.SS7">§2.7</a>、<a href="https://arxiv.org/html/2610.13028v1#Sx2.SSx1">Text S1/S2</a>；split-error及prior界線為本檔補註，非作者自陳）</p>
+<h2 id="自動symbolic-distillation仍有候選library">自動symbolic distillation仍有候選library</h2>
+<p>Position-dependent part回歸到centered monomials <span class="math inline">\((x^n-\langle x^n\rangle)(i\xi)^p\)</span>，spectral part用上述power dictionary，nonlinearity用<span class="math inline">\(f^2,f^3,ff_x,f^2f_x,ff_{xx},f_x^2,xf^2,xf^3\)</span>。沿BIC path及各size best-subset選supports，丟condition number&gt;<span class="math inline">\(10^3\)</span>者；每candidate以closed form重訓，再選training-family held-out loss≤best的1.1倍中最小support，dense model也可保留，最後double-precision L-BFGS refit。（<a href="https://arxiv.org/html/2610.13028v1#S2.SS8">§2.8</a>）</p>
+<p>「無人工指定symbolic template」指不用人看edge後為每task指定最終equation，<strong>不等於沒有power／monomial／product library或模型prior</strong>；Whitham最終即保dense spline。Quantum DW另用learned potential polynomial fit，NLSE用distillation加Kerr profile-likelihood refinement。（<a href="https://arxiv.org/html/2610.13028v1#S2.SS8">§2.8</a>、<a href="https://arxiv.org/html/2610.13028v1#Sx2.SSx2">Text S2</a>、<a href="https://arxiv.org/html/2610.13028v1#S3.SS5">§3.5</a>）</p>
+<h2 id="synthetic-operatorsunseen-families與precision-floor">Synthetic operators：unseen families與precision floor</h2>
+<p>三task為<span class="math inline">\(G_1f=x^2f-f_{xx}\)</span>、<span class="math inline">\(G_2f=xf_x+f_{xx}\)</span>、<span class="math inline">\(G_3f=f^3+xf_x+f_{xx}\)</span>，128points。GroupA有2000training＋400held-out pairs，GroupB400test pairs，分別是不同input families；selection用A held-out，不用B。R2／J1，三initializations先Adam1000iterations取A validation最佳後續訓及L-BFGS；報六random seeds，不把restart3與seed6當同分母。（<a href="https://arxiv.org/html/2610.13028v1#S2.SS9">§2.9–2.10</a>、<a href="https://arxiv.org/html/2610.13028v1#Sx2.SSx2">Text S2</a>）</p>
+<p>下表是GroupB mean relative <span class="math inline">\(\ell_2\)</span> <strong>loss乘<span class="math inline">\(10^{-4}\)</span></strong>，非accuracy；數字均作者自報。（<a href="https://arxiv.org/html/2610.13028v1#S3.T1">表1</a>）</p>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th style="text-align:right">G1</th>
+<th style="text-align:right">G2</th>
+<th style="text-align:right">G3</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>KANO（152params）</td>
+<td style="text-align:right">1.44</td>
+<td style="text-align:right">.749</td>
+<td style="text-align:right">.737</td>
+</tr>
+<tr>
+<td>KAFlow without separable（216）</td>
+<td style="text-align:right">1.53</td>
+<td style="text-align:right">1.38</td>
+<td style="text-align:right">1.96</td>
+</tr>
+<tr>
+<td>KAFlow（336）</td>
+<td style="text-align:right">.422</td>
+<td style="text-align:right">.067</td>
+<td style="text-align:right">.101</td>
+</tr>
+<tr>
+<td>KAFlow-symbolic</td>
+<td style="text-align:right">.0125</td>
+<td style="text-align:right">.0115</td>
+<td style="text-align:right">.0133</td>
+</tr>
+<tr>
+<td>Exact operator對stored labels</td>
+<td style="text-align:right">.0129</td>
+<td style="text-align:right">.0119</td>
+<td style="text-align:right">.0128</td>
+</tr>
+</tbody>
+</table>
+<p>Neural KAFlow比KANO低約3.4／11／7.3倍，不能把這個比值套到symbolic rows。Distillation18models（6seeds×3tasks）選相同正確supports，G1/G2 coefficient errors&lt;<span class="math inline">\(10^{-5}\)</span>、G3≤<span class="math inline">\(8.4\times10^{-5}\)</span>；loss接近single-precision labels的precision floor，不是數學真值本身有非零error。最佳neural OOD loss也不是已證所有inputs global operator recovery。（<a href="https://arxiv.org/html/2610.13028v1#S3.SS2">§3.1–3.2</a>；最後一句為本檔補註，非作者自陳）</p>
+<h2 id="quantum90step外推與supervision分開">Quantum：90step外推與supervision分開</h2>
+<p>DW／NLSE用official KANO資料、200initial states、100snapshots每.1ms，前10steps訓練、再90step外推。Metric按本文為<span class="math inline">\(1-|\langle\tilde\psi,\psi\rangle|\)</span>，<strong>沒有另平方</strong>。Full用relative <span class="math inline">\(\ell_2\)</span> wavefunction loss；pos&amp;mom／pos用PMF KL losses，double precision。三seeds，25／27params。（<a href="https://arxiv.org/html/2610.13028v1#S2.SS9">§2.9</a>、<a href="https://arxiv.org/html/2610.13028v1#Sx2.SSx2">Text S2</a>）</p>
+<table>
+<thead>
+<tr>
+<th>Supervision／model</th>
+<th style="text-align:right">DW step100 infidelity</th>
+<th style="text-align:right">NLSE step100 infidelity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Full Q-KANO</td>
+<td style="text-align:right"><span class="math inline">\(6.3\times10^{-6}\)</span></td>
+<td style="text-align:right"><span class="math inline">\(6.8\times10^{-6}\)</span></td>
+</tr>
+<tr>
+<td>Full Q-KANO-symbolic</td>
+<td style="text-align:right"><span class="math inline">\(2.0\times10^{-8}\)</span></td>
+<td style="text-align:right"><span class="math inline">\(2.0\times10^{-8}\)</span></td>
+</tr>
+<tr>
+<td>Full KAFlow</td>
+<td style="text-align:right"><span class="math inline">\(2.3\times10^{-10}\)</span></td>
+<td style="text-align:right"><span class="math inline">\(7.4\times10^{-12}\)</span></td>
+</tr>
+<tr>
+<td>Pos&amp;mom Q-KANO</td>
+<td style="text-align:right"><span class="math inline">\(6.3\times10^{-6}\)</span></td>
+<td style="text-align:right"><span class="math inline">\(5.6\times10^{-6}\)</span></td>
+</tr>
+<tr>
+<td>Pos&amp;mom Q-KANO-symbolic</td>
+<td style="text-align:right"><span class="math inline">\(2.0\times10^{-8}\)</span></td>
+<td style="text-align:right"><span class="math inline">\(3.0\times10^{-8}\)</span></td>
+</tr>
+<tr>
+<td>Pos&amp;mom KAFlow</td>
+<td style="text-align:right"><span class="math inline">\(1.9\times10^{-7}\)</span></td>
+<td style="text-align:right"><span class="math inline">\(1.8\times10^{-7}\)</span></td>
+</tr>
+<tr>
+<td>Pos KAFlow</td>
+<td style="text-align:right"><span class="math inline">\(1.6\times10^{-4}\)</span></td>
+<td style="text-align:right"><span class="math inline">\(1.7\times10^{-4}\)</span></td>
+</tr>
+</tbody>
+</table>
+<p>Full相對Q-KANO neural高達約6orders改善；pos&amp;mom約30倍低於neural版，但<strong>仍高於其symbolic版</strong>。僅pos相對Q-KANO<span class="math inline">\(4.7\times10^{-3}/6.1\times10^{-2}\)</span>較低，不與full跨supervision混排。Full NLSE Kerr1.0000，pos&amp;mom只<span class="math inline">\(\kappa_1=.959\pm.001\)</span>；不能把synthetic all coefficients&lt;<span class="math inline">\(10^{-4}\)</span>擴成部分觀測也精確辨識全部係數。表4 DW仍有−.0001$x^3$及linear .0627對真值.0625的殘差。（<a href="https://arxiv.org/html/2610.13028v1#S3.T3">表3</a>、<a href="https://arxiv.org/html/2610.13028v1#S3.T4">表4</a>）</p>
+<h2 id="variable-order與五種evolution-equations">Variable-order與五種evolution equations</h2>
+<p><span class="math inline">\(G_4f=\operatorname{Op}(|\xi|^{1+.5\sin x})f\)</span>，order .5–1.5、benchmark numerical rank4／tol<span class="math inline">\(10^{-4}\)</span>；同A/B分法，outputs用double precision full-grid quantization。R4 KAFlow unseen loss<span class="math inline">\(.293\times10^{-2}\)</span>，R2$.886\times10^{-2}$、FNO<span class="math inline">\(4.44\times10^{-2}\)</span>、KANO-MLP<span class="math inline">\(5.06\times10^{-2}\)</span>；「15倍」對FNO、「17倍」對MLP。Published additive-real-part KANO configuration無法表示此symbol，B loss<span class="math inline">\(206\times10^{-2}\)</span>，不能把它與MLP混為單一KANO comparator。456params對FNO566k約.08%。（<a href="https://arxiv.org/html/2610.13028v1#S3.T5">§3.4、表5</a>）</p>
+<p>五PDE為Burgers、fractional Burgers、Benjamin–Ono、KdV、Whitham；128points、256training trajectories內末32validation，另64test，每條100steps。Initial Fourier modes1–4；data solver20Lawson substeps，KAFlow4substeps／observation、R0／2nonlocal features，以rollout curriculum訓練；FNO同validation與curriculum調參。KdV／Whitham僅在架構設計期間held out，<strong>仍有各自training data</strong>。Sparse baselines PDE-FIND／WeakSINDy用local polynomial library與validation-selected thresholds。（<a href="https://arxiv.org/html/2610.13028v1#S2.SS9">§2.9</a>、<a href="https://arxiv.org/html/2610.13028v1#Sx2.SSx2">Text S2</a>）</p>
+<p>KAFlow100step test losses依序<span class="math inline">\(.00429/.00488/.00290/.0161/.103\)</span>，FNO<span class="math inline">\(.0130/.0159/.00312/.0198/.442\)</span>；不是每題orders-of-magnitude勝。302params對FNO287k–550k。KAFlow一般六seeds，但BO／KdV只報<strong>五個收斂者</strong>的mean±SD，FNO三seeds。Sparse regression在local Burgers成功，fractional／nonlocal項超出指定library時失敗；Whitham PDE-FIND diverged。（<a href="https://arxiv.org/html/2610.13028v1#S3.T6">§3.5、表6</a>）</p>
+<p>Burgers／fractional／BO／KdV可選出closed-form linear symbols，coefficient errors .02%–.6%；Whitham保spline、resolved band relative error.25%，ground truth在表6為<span class="math inline">\(-i\sqrt{\xi\tanh\xi}\)</span>。係數／symbols取lowest-validation model，不是全部seeds平均，也沒有在未受data約束頻段保準確。（<a href="https://arxiv.org/html/2610.13028v1#S3.SS5">§3.5</a>、<a href="https://arxiv.org/html/2610.13028v1#S2.SS10">§2.10</a>）</p>
+<h2 id="實測成本與適用界線">實測成本與適用界線</h2>
+<p>128points、batch64 forward＋backward CPU training step：KANO10.1ms、KAFlow8.5ms。表7另測Intel Xeon Silver4510／8threads、batch16 <strong>forward含symbol evaluation</strong>；m1024時KAFlow5.2ms，對作者<span class="math inline">\(O(m^2)\)</span> KANO implementation3596ms，約690倍；official KANO在1024是未列結果，不能說690倍是同解析度training speedup或直接對official實測。其optimized KANO和official outputs relative difference<span class="math inline">\(6.8\times10^{-6}\)</span>。（<a href="https://arxiv.org/html/2610.13028v1#S3.T7">§3.6、表7</a>）</p>
+<p>作者未來方向是2D／3D，本文實驗為1D periodic grids；resolution-independent rank／parameters不自動保證跨resolution與任意boundary條件泛化。Low-rank class、chosen dictionary、energy-supported frequency band及observational identifiability都是需保留的範圍。KANO benchmarks的多數baseline沿原報告，作者以official checkpoints重現FNO／KANO／KANO-symbolic；本次自訓baselines三seeds，不把全部視為同一重訓協議。新data generators／models／code作者稱upon reasonable request，非本文附完整公開可執行包。（<a href="https://arxiv.org/html/2610.13028v1#S2.SS10">§2.10</a>、<a href="https://arxiv.org/html/2610.13028v1#S4">§4</a>、<a href="https://arxiv.org/html/2610.13028v1#Sx1.SSx4">Data Availability</a>；泛化界線為本檔補註，非作者自陳）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.13028_LRKANGeneratorFlows.zh-TW.html">LRKANGeneratorFlows翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 b2e8380d</footer></main></body></html>
