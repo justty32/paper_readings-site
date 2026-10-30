@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="f126acfd257ba1c82bd2e402c3851fd01d6a682f"><title>Speculative Decoding for Mixture-of-Experts Models: Expert Bytes, Kernel Bandwidth and the Best Draft Length 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yuzheng Lan</p><p>日期：2026-10-25（v1，cs.LG／cs.DC／cs.PF）</p><p>arXiv：2610.34440</p><p>閱讀說明：主文與A–E重要條件精譯；省略逐式證明與完整數表；數字為作者自報，區分事後計算及事先op-time測試，未執行程式或Lean。</p><p><a href="https://arxiv.org/html/2610.34440v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="moe推測解碼bytes與頻寬一起決定最佳draft長度">MoE推測解碼：bytes與頻寬一起決定最佳draft長度</h1>
+<h2 id="第12節重用expert不自動省時間">第1–2節：重用expert不自動省時間</h2>
+<p>一步draft <span class="math inline">\(k\)</span>個token、verify <span class="math inline">\(n=k+1\)</span>個。每token選<span class="math inline">\(m\)</span>個experts；per-slot kernel對<span class="math inline">\(nm\)</span>個slots逐一運算，dedup kernel按expert分組。前者可由cache服務重複reads，後者雖少請求bytes，仍可能以較低有效頻寬處理。</p>
+<p>平穩routing下，聯集期望<span class="math inline">\(U_l(n)=m\sum_{j=1}^n(1-\rho_l(j))\)</span>；<span class="math inline">\(\rho_l(j)\)</span>為第<span class="math inline">\(j\)</span>個token選到先前已見experts的期望比例。令<span class="math inline">\(w_l\)</span>為單expert bytes、<span class="math inline">\(W=\sum_lw_l\)</span>，則<span class="math inline">\(E_{\rm dedup}=\sum_lw_lU_l(n)\)</span>、<span class="math inline">\(E_{\rm slot}=mnW\)</span>。這些是requested bytes，不是必然從DRAM讀取量。（<a href="https://arxiv.org/html/2610.34440v1#S1">§1</a>）</p>
+<p>有效頻寬為requested bytes／operation time，依kernel、模型及pass size量測。所有測得<span class="math inline">\(n=2,\ldots,8\)</span>配置皆per-slot較高，<span class="math inline">\(r=\beta_{\rm dedup}/\beta_{\rm slot}\)</span>約0.32–0.75；重複reads命中cache可使此定義高於DRAM標稱值。（<a href="https://arxiv.org/html/2610.34440v1#S2">§2</a>）</p>
+<h2 id="第31節去重何時比較快">第3.1節：去重何時比較快</h2>
+<div class="math block">
+\[\tau_p(n)=t_0+D(n)/\beta_D+E_p(n)/\beta_p(n)+\phi_p(n),\qquad V(k)=\tau_p(k+1)+h(k).\]
+</div>
+<p><span class="math inline">\(D(n)\)</span>含routing無關與KV reads，<span class="math inline">\(\phi\)</span>是launch等固定work，<span class="math inline">\(h\)</span>是draft／host時間。令<span class="math inline">\(\bar u=E_{\rm dedup}/E_{\rm slot}\)</span>。在<span class="math inline">\(f_l=1\)</span>且固定work相等時，</p>
+<div class="math block">
+\[S(n)=\tau_{\rm slot}-\tau_{\rm dedup}=\frac{E_{\rm slot}}{\beta_{\rm slot}}(1-\bar u/r).\]
+</div>
+<p>去重較快恰在<span class="math inline">\(\bar u&lt;r\)</span>；固定work不同須再扣差額。<span class="math inline">\(n=2\)</span>時所有測點<span class="math inline">\(\bar u&gt;r\)</span>，去重反而慢；交界可到5–8tokens或始終不存在。實作<span class="math inline">\(f_l\)</span>也可高於1，附錄E按padding／重讀調整。（<a href="https://arxiv.org/html/2610.34440v1#S3.SS1">§3.1</a>、<a href="https://arxiv.org/html/2610.34440v1#A5.T6">表6</a>）</p>
+<h2 id="第3234節加速條件與階梯">第3.2–3.4節：加速條件與階梯</h2>
+<p>幾何acceptance <span class="math inline">\(a\in[0,1)\)</span>下<span class="math inline">\(G_a(k)=1+a+\cdots+a^k\)</span>，throughput <span class="math inline">\(T_a(k)=G_a(k)/V(k)\)</span>。有限候選集<span class="math inline">\(k\in\{0,\ldots,k_{\max}\}\)</span>、<span class="math inline">\(k_{\max}\ge1\)</span>上，任意固定正成本<span class="math inline">\(V(k)\)</span>：</p>
+<div class="math block">
+\[T_a(k)&gt;T_a(0)\iff V(k)-V(0)&lt;(a+\cdots+a^k)V(0).\]
+</div>
+<p>最佳<span class="math inline">\(k^*(a)\)</span>取最小maximizer；它隨<span class="math inline">\(a\)</span>單調不減，可一次跳多格，不必假定對<span class="math inline">\(k\)</span>單峰。若成本另滿足凸且非遞減、<span class="math inline">\(0\le c_1\le c_2\le\cdots\)</span>，即可用相鄰判定</p>
+<div class="math block">
+\[k^*(a)\ge j\iff a^jV(j-1)&gt;G_a(j-1)c_j.\]
+</div>
+<p><span class="math inline">\(c_j=V(j)-V(j-1)\)</span>。單draft門檻<span class="math inline">\(a&gt;V(1)/V(0)-1\)</span>，在一般成本下不等於任意長度的首個加速點。</p>
+<p>去重特化<span class="math inline">\(f_l=1,h=0\)</span>時，<span class="math inline">\(E=mW+mWk(1-\bar\rho_k)\)</span>；式14給byte-weighted reuse門檻，含pass各自bandwidth、KV增量與固定work。更多reuse維持加速還要求固定<span class="math inline">\(n\)</span>的bandwidth／work不隨expert重複模式改變；<span class="math inline">\(k_{\max}\ge2\)</span>時，單一reuse統計不能通判所有routing。（<a href="https://arxiv.org/html/2610.34440v1#S3.SS2">§3.2–3.4</a>）</p>
+<h2 id="第35節哪些預測最怕誤差">第3.5節：哪些預測最怕誤差</h2>
+<p>每bandwidth相對誤差<span class="math inline">\(|e|\le\varepsilon&lt;1\)</span>、其他項精確時，verify-time誤差至多memory time的<span class="math inline">\(\varepsilon/(1-\varepsilon)\)</span>；saving誤差界乘的是兩個expert times的和，接近交界時相對誤差會放大。</p>
+<p>若完整step-time符合<span class="math inline">\((1-\delta)V\le\hat V\le(1+\delta)V\)</span>、<span class="math inline">\(\delta&lt;1\)</span>，則</p>
+<div class="math block">
+\[T_a(\hat k^*)\ge\frac{1-\delta}{1+\delta}T_a(k^*).\]
+</div>
+<p>這只界throughput損失；exact argmax尚需分離margin。所有step-time乘同常數不改最佳長度。（<a href="https://arxiv.org/html/2610.34440v1#S3.T2">§3.5，表2</a>）</p>
+<h2 id="第4節實驗與預測的時間先後">第4節：實驗與預測的時間先後</h2>
+<p>batch1平台為M4 Max上的Metal／MLX及RTX4070Ti SUPER上的CUDA；OLMoE、Qwen3、gpt-oss在不同可用引擎與depth512／4096形成12配置，非全組合。Routing用WikiText-103 test，whole-model用validation的6prompts。Oracle draft幾乎零成本，<span class="math inline">\(k=0,\ldots,8\)</span>、11個<span class="math inline">\(a=0.2\)</span>–0.98。</p>
+<p>Prediction由chosen IDs擬operation time再套recorded routing；measured-time版直接取operation medians；calibrated版另由whole-model dedup-off補非expert時間增長。三者仍需whole-model單token baseline，Apple <span class="math inline">\(n=9\)</span>外推。</p>
+<p>原三模型皆在whole-model資料已有後計算；觀察結果後將錯用的dedup單tokenfit改為共用per-slot baseline。DeepSeek只有measured-time／calibrated版與評分script在speculative runs前寫定，後補fit仍屬事後。（<a href="https://arxiv.org/html/2610.34440v1#S4">§4</a>、<a href="https://arxiv.org/html/2610.34440v1#S4.SS4">§4.4</a>）</p>
+<h2 id="第4143節命中與失敗均保留">第4.1–4.3節：命中與失敗均保留</h2>
+<p>CUDA70個單層profiles中，dedup DRAM量距union bytes為0.2–2.5%，per-slot實讀介於union與2.35倍union；Apple bytes僅依source。深context gpt-oss的重複生成讓routing偏離Wiki。（<a href="https://arxiv.org/html/2610.34440v1#S4.SS1">§4.1</a>）</p>
+<p>經驗<span class="math inline">\(\varepsilon\)</span>為CUDA0.054、Metal0.031、MLX0.148，取recorded routing的median誤差彙總。以此畫saving band，命中CUDA28/28、MLX16/16、Metal36/48。Wiki crossover誤差至多1pass為10/12配置，兩miss皆Metal gpt-oss；用verified-text routing為11/12。</p>
+<p>CUDA prediction長度每配置10或11/11 acceptance值誤差至多1，measured-time全11/11；Apple僅7–10/11。後者漏attention／dense時間隨<span class="math inline">\(n\)</span>增長，長度也被移動。</p>
+<p>330個配置／版本／acceptance組，以事後最大step-time誤差<span class="math inline">\(\delta\)</span>計算的throughput／speedup量皆在界內；對實際CUDA speculative throughput，gpt-oss深context另有2/11 speedup-bound miss，受oracle輸出短缺及host時間差影響。（<a href="https://arxiv.org/html/2610.34440v1#S4.SS2">§4.2–4.3</a>、<a href="https://arxiv.org/html/2610.34440v1#A5.SS0.SSS0.Px4">附錄E</a>）</p>
+<h2 id="第44節deepseek事先op-time測試">第4.4節：DeepSeek事先op-time測試</h2>
+<p>DeepSeek-V2-Lite有64routed experts、每token6個、2shared experts、latent attention及dense首層。事先量26MoE層operation並取三個<span class="math inline">\(k=0\)</span>whole-model數。</p>
+<p>CUDA兩depth共22acceptance值最佳長度皆誤差至多1，verify-time誤差最大10.1%、throughput損失2.9%／4.1%，六個預設規則全過；<span class="math inline">\(n\le8\)</span>去重皆較慢。</p>
+<p>Metal saving符號對，但verify-time低估最多34%，長度9/11及6/11，loss最高22.5%；未過長度、loss及verify-time規則。事先calibrated版長度改善為20/22。</p>
+<p>事後CUDA fits仍給22/22長度誤差至多1，卻錯預測<span class="math inline">\(n=7\)</span>有crossover，實測<span class="math inline">\(n\le8\)</span>沒有。Saving band只中13/14 CUDA、11/16 Metal。最佳長度好不代表交界準。（<a href="https://arxiv.org/html/2610.34440v1#S4.T4">§4.4，表4</a>）</p>
+<h2 id="第56節及附錄be適用邊界">第5–6節及附錄B–E：適用邊界</h2>
+<p>作者Limits保留幾何acceptance、stationary連續routing、去重特化無draft成本、每模型重測bandwidth；一般正<span class="math inline">\(V\)</span>代數可另含已知draft／host成本。每平台一機、batch1、四個7B–30B模型，DRAM counter只CUDA。跨model頻寬transfer誤差9–206%；量化格式與model混雜。Metal慢GPU state未排除，無thermal warning不等於原因已明。（<a href="https://arxiv.org/html/2610.34440v1#S5">§5</a>）</p>
+<p>真draft補充實驗Qwen3-0.6B→Qwen3-30B／Metal，37held-out prompts有33plain最快，median speedup在<span class="math inline">\(k=1\)</span>為0.877、<span class="math inline">\(k=8\)</span>為0.517。（<a href="https://arxiv.org/html/2610.34440v1#A4.SS3">附錄D.3</a>）</p>
+<p>作者稱Lean4.34.1／pinned Mathlib檢主要代數，但source讀法、部分byte→time及語義對應仍手證。TimeThreshold及ErrBounds尚未逐行對照paper陳述；本檔未重跑Lean。程式、trace與formalization須向作者索取。（<a href="https://arxiv.org/html/2610.34440v1#A2">附錄B–C</a>、<a href="https://arxiv.org/html/2610.34440v1#Sx1">availability</a>）</p>
+<blockquote>
+<p>重點整理見 <a href="../summarize/2610.34440_MoESpecDecode.%E6%91%98%E8%A6%81.html">MoE推測解碼摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 f126acfd</footer></main></body></html>
