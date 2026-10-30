@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="2c3e567c03fc3cd3bc3e16ae04f9fac0f65091bd"><title>AgenticEvolve: Evolutionary Program Search with Persistent Language Model Agents that Design and Run Experiments 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Ze-Yu Peng、Qing-Yu Lan、Zhan-He Wang、Jun Zhang、Yun-Song Piao</p><p>日期：2026-10-22（v1，cs.NE／cs.AI／cs.LG）</p><p>arXiv：2610.31326</p><p>閱讀說明：依主文與S1–S4附錄整理；數字為作者自報，分清正式評估與本地分析、模型成本、結構恢復及作者Acc與條件性NMSE計數。</p><p><a href="https://arxiv.org/html/2610.31326v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="agenticevolve-重點摘要">AgenticEvolve 重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>AgenticEvolve讓每個演化島由持續對話的LLM agent掌管，提交候選前可自寫並執行實驗，查假說、擬參數及測程式；外層仍保留MAP-Elites、族群與島間遷移。主要對照No-analysis關掉實驗工具，檢驗「可實驗」是否比只靠正式評分改程式更有效。結果支持較高程式品質及較少正式評估，但節省的是特定資源，並非所有模型或成本預算都全面較便宜。</p>
+<h2 id="搜尋架構與持續狀態">搜尋架構與持續狀態</h2>
+<p>任務提供說明、初始 <code>program.py</code> 與evaluator，可另提供實驗資料。各島從同一初始程式開始；agent用read/write/edit修程式、在 <code>analysis.py</code> 寫實驗，<code>run_analysis</code>回傳stdout，<code>commit</code>才作正式評估，<code>read_commit</code>可讀任意已存程式。分析每commit至多10次，由agent決定做什麼及何時提交。（<a href="https://arxiv.org/html/2610.31326v1#S3.SS2">§III-A–B</a>）</p>
+<p>archive保存所有commit，包括失敗；各島另有MAP-Elites grid，只讓成功且較優的程式占據對應特徵cell。ring相鄰島定期把精英作migration candidates放入摘要，agent可自行決定讀取、延用或忽略，不是強迫替換。正式結束回傳全島成功評估中fitness最高的程式。（<a href="https://arxiv.org/html/2610.31326v1#S3.SS3">§III-A、C</a>）</p>
+<p>對話累積程式修改、實驗及評分；超context門檻時由agent摘要失敗方案、已知發現與計畫，新對話接目前程式及回饋。程式、analysis檔、archive與budget counters持續保留。實驗context上限50萬token，70%門檻後在回饋要求結束turn並壓縮，90%即取消turn；30個heuristic AgenticEvolve runs有15個觸發，共25次壓縮。（<a href="https://arxiv.org/html/2610.31326v1#S3.SS2">§III-B</a>、<a href="https://arxiv.org/html/2610.31326v1#S1.SS1">S1-A</a>）</p>
+<h2 id="no-analysis控制與執行邊界">No-analysis控制與執行邊界</h2>
+<p>No-analysis移除 <code>run_analysis</code>、<code>analysis.py</code>與相關提示，其餘持續對話、編輯、正式評估、archive、migration、compaction及budget保留。它仍在commit執行候選，故不是完全沒有程式執行；候選也可能在import時做計算。（<a href="https://arxiv.org/html/2610.31326v1#S3.SS4">§III-D</a>、<a href="https://arxiv.org/html/2610.31326v1#S7">§VII</a>）</p>
+<p>本文描述的新回饋協議只回指標或有限錯誤資訊，避免候選用exception把正式評估中的資料送回agent；但<strong>heuristic正式runs早於此限制，失敗仍回truncated output與完整traceback</strong>。SR正式No-analysis後來改用v0.2.1限制回饋及candidate loading check，其他SR方法是v0.2.0。不能把「框架設計上的matched控制」誤述為所有已報實驗在錯誤回饋及版本上完全一致。（<a href="https://arxiv.org/html/2610.31326v1#S4.SS3">§IV-C、VII</a>、<a href="https://arxiv.org/html/2610.31326v1#S1.SS5">S1-E</a>、<a href="https://arxiv.org/html/2610.31326v1#S4.SS2a">S4-B</a>）</p>
+<h2 id="heuristic任務比較及資源">Heuristic任務、比較及資源</h2>
+<p>OBP逐件放箱，品質是使用箱數對Martello–Toth <span class="math inline">\(L_2\)</span> 下界的超額百分比，越低越好，不是已知最優差距。描述告知每序列120件、大小均勻整數20–100、箱容量150；正式評估100條隱藏序列，實驗只能自產序列。另測20個OR1與100條新同分布序列。（<a href="https://arxiv.org/html/2610.31326v1#S4.SS1">§IV-A</a>）</p>
+<p>DJSS為10機器動態排程，五個utilization／due-date allowance設定各10個隱藏seed；先丟500件warm-up，測其後2000件平均tardiness，對規則R1正規化後跨scenario取幾何平均，越低越好。新seed測新arrival streams，<strong>不是新scenario</strong>。（<a href="https://arxiv.org/html/2610.31326v1#S4.SS1">§IV-A</a>）</p>
+<p>三模型為DeepSeek-V4.1-Flash、GLM-5.3-Flash、Qwen3.8-Flash；前兩者high reasoning，Qwen medium。每法／模型／任務5次獨立run，非配對比較。AgenticEvolve與No-analysis各3島×30commit，加初始程式共91次正式評估；失敗與timeout皆算。OpenEvolve跑180iteration，無有效diff的iteration可能不評估，因此iteration不能直接當evaluation。完整run預算不同，另以共同evaluation及模型成本軸比較。（<a href="https://arxiv.org/html/2610.31326v1#S4.SS2">§IV-B–C</a>、<a href="https://arxiv.org/html/2610.31326v1#S1.SS2">S1-B</a>）</p>
+<p>OpenEvolve保留單次request產diff及其親代採樣；對齊模型、task、initial、evaluator、islands及grid特徵等設定，但仍有feature正規化、四位小數指標、請求方式及重試差異。與OpenEvolve是系統比較，No-analysis才是主要實驗工具控制。（<a href="https://arxiv.org/html/2610.31326v1#S1.SS2">S1-A–B</a>）</p>
+<h2 id="作者自報heuristic結果">作者自報heuristic結果</h2>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>OBP hidden：Agent／No-analysis／Open</th>
+<th>DJSS hidden：Agent／No-analysis／Open</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DeepSeek</td>
+<td>3.42／5.54／5.74%</td>
+<td>0.840／0.970／0.911</td>
+</tr>
+<tr>
+<td>GLM</td>
+<td>4.46／6.30／5.54%</td>
+<td>0.847／0.928／0.931</td>
+</tr>
+<tr>
+<td>Qwen</td>
+<td>3.70／5.98／6.13%</td>
+<td>0.820／0.981／0.978</td>
+</tr>
+</tbody>
+</table>
+<p>表列五run均值；原表含標準差。Agent在所有hidden及unseen組合均值最好，但12個hidden兩兩差異只有9個Mann–Whitney檢定 <span class="math inline">\(p&lt;0.05\)</span>：GLM DJSS對No-analysis、DeepSeek DJSS對Open、GLM OBP對Open未顯著。bootstrap均值差95%區間皆不含0，與rank-test結論不能混為同一件事；原文報未校正p，另稱每task/model三比較Holm不改既有顯著判定。（<a href="https://arxiv.org/html/2610.31326v1#S5.T2">§V-A，表 II</a>、<a href="https://arxiv.org/html/2610.31326v1#S2.T3">表 S3</a>）</p>
+<p>unseen OR1的Agent均值依模型為2.92／4.14／3.10%，FunSearch heuristic為5.30%、Best Fit5.81%；新DJSS seeds為0.846／0.863／0.841。正式評估軸不計analyses，六組中五組在20次內達OpenEvolve最終均值，剩GLM DJSS需26次。此優勢不是「總程式執行次數少同樣倍數」。（<a href="https://arxiv.org/html/2610.31326v1#S5.SS2">§V-A–B</a>、<a href="https://arxiv.org/html/2610.31326v1#S2.T4">表 S2、S4</a>）</p>
+<h2 id="成本不普遍支配">成本不普遍支配</h2>
+<p>模型成本由記錄token與當時牌價估計，不含把本地analysis或正式evaluator換成完整硬體成本。完整run時Agent比No-analysis貴數倍；相對Open，DeepSeek較便宜，GLM/Qwen較貴。相同成本對Open，DeepSeek/Qwen更好、GLM接近；對No-analysis，OBP各模型有利，DJSS初期No-analysis便宜改善，Agent要到較高成本才追上。作者明示未測讓No-analysis以Agent總成本增加正式評估後能否追平品質。（<a href="https://arxiv.org/html/2610.31326v1#S5.SS3">§V-C</a>、<a href="https://arxiv.org/html/2610.31326v1#S7">§VII</a>）</p>
+<p>99%重送input由cache提供；Agent輸入量仍是Open的24–164倍。DeepSeek的Open每request輸出約1.5–2.7萬token，Agent約1000；GLM/Qwen的cache讀價較高，cache成本分別占Agent約87%／78%。因此工具減少盲目長推理，是否省美元還依模型牌價及cache命中。（<a href="https://arxiv.org/html/2610.31326v1#S7">§V-C、VII</a>）</p>
+<h2 id="符號迴歸協議及結構恢復">符號迴歸協議及結構恢復</h2>
+<p>預先從LLM-SRBench依複雜度四分位範圍、資訊性OOD及逐項刪除後訓練NMSE高於 <span class="math inline">\(10^{-3}\)</span> 選12題。四個LLM方法用DeepSeek、高推理，至多1000requests／題；Agent／No-analysis每島達333commit、333request或連續5turn無工具即停，最早者優先。各法每題只跑一次。（<a href="https://arxiv.org/html/2610.31326v1#S6.SS1">§VI-A</a>）</p>
+<p>共同evaluator把Python函數trace成至多30node expression tree、至多10個自由常數，以共同初值least squares擬合；PySR維持自身搜尋／擬常數。最後所有方法共同refit，在training error–node Pareto front保留誤差不超最小值1.5倍者，以最高PySR score選式；不讀隱藏ID/OOD作選擇。LLM-SR與SR-Scientist換了原BFGS，故不是其原封不動的published成績。（<a href="https://arxiv.org/html/2610.31326v1#S6.SS1">§VI-A</a>、<a href="https://arxiv.org/html/2610.31326v1#S1.SS3">S1-C</a>）</p>
+<p>結構exact允許常數重參數化；negligible extra term須移除後各訓練點的變化低於target標準差 <span class="math inline">\(10^{-3}\)</span>，兩種恢復都另需全式及去偽項式在每訓練點達此絕對誤差要求。缺掉真項不視為negligible。三個material題全部split滿足 <span class="math inline">\(T=273+500\varepsilon\)</span>，只判該軌跡下reduced truth，無法辨識獨立溫度作用。（<a href="https://arxiv.org/html/2610.31326v1#S3.SS1a">S3-A</a>）</p>
+<table>
+<thead>
+<tr>
+<th>指標／12題</th>
+<th style="text-align:right">Agent</th>
+<th style="text-align:right">No-analysis</th>
+<th style="text-align:right">LLM-SR</th>
+<th style="text-align:right">SR-Scientist</th>
+<th style="text-align:right">PySR</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>最終exact</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">1</td>
+</tr>
+<tr>
+<td>最終exact或negligible extras</td>
+<td style="text-align:right">11</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1</td>
+</tr>
+<tr>
+<td>候選集合曾有exact</td>
+<td style="text-align:right">11</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">1</td>
+</tr>
+<tr>
+<td>模型成本（USD）</td>
+<td style="text-align:right">6.54</td>
+<td style="text-align:right">12.12</td>
+<td style="text-align:right">111.34</td>
+<td style="text-align:right">6.59</td>
+<td style="text-align:right">未列</td>
+</tr>
+</tbody>
+</table>
+<p>來源：<a href="https://arxiv.org/html/2610.31326v1#S6.T4">表 III–IV</a>、<a href="https://arxiv.org/html/2610.31326v1#S3.T9">表 S9</a>。Agent九個非材料題全恢復，另兩個材料題僅reduced truth。MatSci11沒有方法恢復reduced structure；Agent有極小OOD誤差仍不等於找回其Arrhenius因子。Agent另有5題本已找到exact，但共同selection選了negligible extras，故候選集11exact不等於最後11exact。（<a href="https://arxiv.org/html/2610.31326v1#S6.SS2">§VI-B</a>、<a href="https://arxiv.org/html/2610.31326v1#S3.SS3a">S3-C</a>）</p>
+<h2 id="作者acc與條件性nmse計數">作者Acc與條件性NMSE計數</h2>
+<p>表III自報Acc OOD為12／8／3／8／1。<strong>（本檔補註，非作者自陳）若僅假設以表IV／S8逐題NMSE <span class="math inline">\(\le10^{-3}\)</span> 為條件，本檔計數為12／11／8／8／6。</strong> 表III未明示Acc等同此條件；兩者按不同條件分別列報，不能據此認定矛盾或算錯，也不以本檔NMSE計數更正作者Acc。S3-A逐點誤差門檻屬結構判定，不能直接代為定義Acc。（<a href="https://arxiv.org/html/2610.31326v1#S6.T3">表 III</a>、<a href="https://arxiv.org/html/2610.31326v1#S6.T4">表 IV</a>、<a href="https://arxiv.org/html/2610.31326v1#S3.T8">表 S8</a>）</p>
+<h2 id="分析案例稽核與作者限制">分析案例、稽核與作者限制</h2>
+<p>BPG18的 <span class="math inline">\(\dot P=P(a+bP+c\sin\omega t)\)</span> 在自由頻率時共同optimizer會落錯局部解。Agent掃頻、每頻率線性擬其他係數，將 <span class="math inline">\(\omega\approx0.77606\)</span> 固為literal，兩島第一commit即exact；No-analysis以重複正式commit試頻率也能找回，SR-Scientist亦用本地分析成功。這說明改變計算程序而非只多產候選的價值，不是只有本框架會掃頻。（<a href="https://arxiv.org/html/2610.31326v1#S6.SS4">§VI-D</a>）</p>
+<p>code以一般host process執行，沒有OS sandbox。稽核見heuristic兩個No-analysis run以exception傳回自產實驗統計，但未傳回隱藏instances；舊SR No-analysis曾沿traceback路徑找到training data，該輪被替換，才引入v0.2.1。最終各法仍有找隱藏資料的失敗嘗試；稽核只憑已記錄code／output／reasoning，不能排除紀錄外效果，LLM-SR只存提取後函數而非完整回答。不能把「稽核未見未授權取得」寫成強制隔離保證。（<a href="https://arxiv.org/html/2610.31326v1#S7">§VII</a>、<a href="https://arxiv.org/html/2610.31326v1#S4a">S4</a>）</p>
+<p>作者另明示：migration後改善是相關觀察，未做migration-off消融；三模型都是Flash級，強模型效益未測；SR每題一次未測run間變異，兩heuristic與12方程覆蓋有限。正式evaluation數不計analysis，SR又能在analysis直接重現training score，兩任務資源意義不同。開放問題是agent主導搜尋究竟還需要多少外部演化結構。（<a href="https://arxiv.org/html/2610.31326v1#S7">§VII–VIII</a>）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.31326_AgenticEvolve.zh-TW.html">AgenticEvolve 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 2c3e567c</footer></main></body></html>
