@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="de4ea2f3635be5ed3d4a1ca20777e6c2eb840820"><title>The View from Nowhere: Population-Centered Agent Evolution 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Shuo Yan、Ningning Hou、Haoyu He、Haochen Pei、Shang Gao</p><p>日期：2026-10-27（v1，cs.AI）</p><p>arXiv：2610.36660</p><p>閱讀說明：依主文及附錄整理；數字為作者自報，分清搜尋分數、重複評估、族群覆蓋及token總量。</p><p><a href="https://arxiv.org/html/2610.36660v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="pce-重點摘要">PCE 重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>PCE 把演化族群當成「診斷證據」：先比較同一任務在各變體的成功、失敗及修改史，壓成可查核的 population block，再讓診斷者回查當前親代程式碼提出單一 harness 修改。它不更新基礎模型參數，也不直接把所有變體合併；目標是將分散於族群的有效經驗留在更強的個體中。</p>
+<h2 id="問題與貢獻定位">問題與貢獻定位</h2>
+<p>DGM 保存可分枝的 archive，HGM 估計親代及後代譜系潛力，GEA 共享被選親代群的任務紀錄及修改。PCE 區別的是<strong>本次診斷可讀哪些變體的證據</strong>，而非只換親代選擇法。作者以 population coverage 定義至少一個演化變體解出的任務比例，觀察 GEA 一輪 Held-in 60 的聯集比最佳個體多9題，即15個百分點，說明成功可能散落於不同變體。coverage 不是可部署單一代理的成功率。（<a href="https://arxiv.org/html/2610.36660v1#S1">§1–2</a>）</p>
+<h2 id="方法證據族群與可選親代分開">方法：證據族群與可選親代分開</h2>
+<p>PCE 維持所有有任務紀錄的受評變體集合 <span class="math inline">\(\mathcal V\)</span>，另有可選為親代的 archive <span class="math inline">\(\mathcal A\subseteq\mathcal V\)</span>。不適合保留為親代的變體，仍能以失敗或成功紀錄提供診斷證據。紀錄含執行 log、任務 patch、評估結果；變體 harness 可由初始程式與修改鏈重建。（<a href="https://arxiv.org/html/2610.36660v1#S3">§3、3.1</a>）</p>
+<p>對選定親代的診斷任務，先由程式統計所有可用紀錄的結果分布；distillation agent 再在預算內選讀相關 log、task patch、harness 原碼與過往修改，而非保證逐字讀完全部紀錄。population block 分三欄：程式計算的 outcome evidence、跨變體比較所提出的 observation 假說、建議查的 candidate files。後者無可信定位時可空白；量測結果與解釋分開。（<a href="https://arxiv.org/html/2610.36660v1#S3.SS1">§3.1</a>）</p>
+<p>蒸餾者至多250 steps，observation 至多60 words，candidate files 為0–3個。同任務至少有3份紀錄才蒸餾；不足或未產生可用 observation 就回退 parent-local 診斷，最早在 generation 1 使用 block。這是壓縮後的調查起點，不是已證實的因果判斷或指定修改。（<a href="https://arxiv.org/html/2610.36660v1#A1.SS0.SSS0.Px5">附錄 A「Population distillation」</a>）</p>
+<p>診斷者將 block 與親代自己的紀錄及原碼對照，確認觀察是否適用，也可查其他檔案，再提出一個 harness 修改；自修改代理在親代副本實作，可能改提示、工具或執行工作流，基礎模型與推論限制固定。範例 django-12209 的17筆紀錄含6個解題patch、10個空patch、1個僅測試patch；跨紀錄觀察顯示加重試預算未一致解決問題，回查後才加入 episode 結束前patch檢查及有界修補。（<a href="https://arxiv.org/html/2610.36660v1#S3.SS2">§3.2</a>）</p>
+<h2 id="演化與保留規則">演化與保留規則</h2>
+<p>每輪10代、每代2個子代；generation 0 從初始harness分別做單親代診斷，之後用GEA的performance-novelty規則挑2親代，每親代均勻抽一個合格任務。診斷輸入先放繼承來源親代紀錄，再放另一親代紀錄；PCE 額外加前者任務的block。（<a href="https://arxiv.org/html/2610.36660v1#S3.SS3">§3.3</a>、<a href="https://arxiv.org/html/2610.36660v1#A1.SS0.SSS0.Px4">附錄 A</a>）</p>
+<p>可改檔案限 <code>coding_agent.py</code>、<code>harness_def.py</code>、<code>tools/</code>、<code>utils/</code>，排除評估及調度輔助程式；模型、輸出上限、tool loop 固定。產生harness patch後先測10題gate，SWE至少解1題、Polyglot至少4題才續測其餘50題。archive還要求至少一個非空task patch且修改都在允許路徑，從不裁剪；所有受評子代不論是否入archive皆加入 <span class="math inline">\(\mathcal V\)</span>。因此蒸餾可用證據比可選親代多，且部分子代可能只有gate任務紀錄。（<a href="https://arxiv.org/html/2610.36660v1#A1.SS0.SSS0.Px2">附錄 A「Task sets」「Evolution loop」</a>）</p>
+<h2 id="實驗與分母">實驗與分母</h2>
+<p>SWE-bench Verified 使用DGM的200題子集，不是完整Verified集；其中Held-in 60用於演化，Held-out 140只作最後評估。Polyglot共有225題，60用於演化、165留出。另建SWE Held-out 60，涵蓋12個repository，與Overall 200分開。SWE演化60題是35個Django及25個Sphinx；140留出是118個Django及22個Astropy。（<a href="https://arxiv.org/html/2610.36660v1#S4.SS1">§4.1</a>、<a href="https://arxiv.org/html/2610.36660v1#A1.SS0.SSS0.Px2">附錄 A</a>）</p>
+<p>兩法配對相同模型、初始harness、親代選擇、診斷提示、可改檔及評估協議。任務執行與自修改，SWE用DeepSeek-V4-Flash，Polyglot用DeepSeek-V4.1-Flash；診斷與PCE蒸餾用DeepSeek-V4-Pro，經OpenRouter固定CoreWeave provider。（<a href="https://arxiv.org/html/2610.36660v1#S4.SS2">§4.2</a>、<a href="https://arxiv.org/html/2610.36660v1#A1.SS0.SSS0.Px1">附錄 A</a>）</p>
+<p>以Held-in搜尋分數選最佳個體，選完<strong>不再自修改</strong>。Held-in 60與額外SWE Held-out 60各獨立評估5次，報平均及樣本標準差；Held-out 140／165各只評1次。Overall是五次held-in平均與單次held-out按題數加權，不是完整測試集跑5次的平均。所有題皆留在分母，包括未獲評分的嘗試。（<a href="https://arxiv.org/html/2610.36660v1#S4.SS3">§4.3</a>、<a href="https://arxiv.org/html/2610.36660v1#A1.T7">表 7</a>）</p>
+<h2 id="作者自報性能">作者自報性能</h2>
+<table>
+<thead>
+<tr>
+<th>基準</th>
+<th style="text-align:right">初始Overall</th>
+<th style="text-align:right">GEA Overall</th>
+<th style="text-align:right">PCE Overall</th>
+<th style="text-align:right">PCE差值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SWE Overall 200</td>
+<td style="text-align:right">52.0%</td>
+<td style="text-align:right">68.9%</td>
+<td style="text-align:right">72.1%</td>
+<td style="text-align:right">+3.2百分點</td>
+</tr>
+<tr>
+<td>Polyglot Overall 225</td>
+<td style="text-align:right">65.1%</td>
+<td style="text-align:right">90.8%</td>
+<td style="text-align:right">96.7%</td>
+<td style="text-align:right">+5.9百分點</td>
+</tr>
+</tbody>
+</table>
+<p>這是匹配設定的GEA比較；表中另外列出的DGM、OpenHands、Aider沿用原模型與協議，只供背景，不能當同模型控制。SWE每法做2次獨立演化，表2彙整兩輪，但主性能及成本使用run 1；Polyglot各設定一輪演化。（<a href="https://arxiv.org/html/2610.36660v1#S5.T1">§5.1，表 1</a>、<a href="https://arxiv.org/html/2610.36660v1#A3">附錄 C</a>）</p>
+<table>
+<thead>
+<tr>
+<th>最後評估集合</th>
+<th style="text-align:right">GEA</th>
+<th style="text-align:right">PCE</th>
+<th style="text-align:right">評估次數</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SWE Held-in 60</td>
+<td style="text-align:right">66.3±2.2%</td>
+<td style="text-align:right">70.3±4.3%</td>
+<td style="text-align:right">5</td>
+</tr>
+<tr>
+<td>額外SWE Held-out 60</td>
+<td style="text-align:right">65.3±2.5%</td>
+<td style="text-align:right">70.3±2.5%</td>
+<td style="text-align:right">5</td>
+</tr>
+<tr>
+<td>SWE Held-out 140</td>
+<td style="text-align:right">98/140，70.0%</td>
+<td style="text-align:right">102/140，72.9%</td>
+<td style="text-align:right">1</td>
+</tr>
+<tr>
+<td>Polyglot Held-in 60</td>
+<td style="text-align:right">92.0±2.5%</td>
+<td style="text-align:right">96.0±2.8%</td>
+<td style="text-align:right">5</td>
+</tr>
+<tr>
+<td>Polyglot Held-out 165</td>
+<td style="text-align:right">149/165，90.3%</td>
+<td style="text-align:right">160/165，97.0%</td>
+<td style="text-align:right">1</td>
+</tr>
+</tbody>
+</table>
+<p>來源：<a href="https://arxiv.org/html/2610.36660v1#A1.T7">表 7</a>。Polyglot搜尋時曾有一個體60/60，不等於該代理重新評估仍保證全解；五次held-in評估平均是96.0%。</p>
+<h2 id="族群能力有沒有集中到領先個體">族群能力有沒有集中到領先個體？</h2>
+<p>表2的Union是至少一個<strong>受評子代</strong>解過的held-in題聯集，Gap為Union減Top-1搜尋分數。SWE兩輪平均，GEA的Union84.2%、Top-1 70.0%、gap14.2百分點；PCE為85.0%、75.0%、10.0百分點。作者概括為縮小約三分之一，表中實際差為4.2百分點。Polyglot兩群都覆蓋100%，GEA最佳90%、gap10；PCE最佳100%、gap0。PCE不是主要靠擴大已知可解題聯集，而是讓較強個體涵蓋更多分散成果。（<a href="https://arxiv.org/html/2610.36660v1#S5.T2">§5.2，表 2</a>）</p>
+<p>Top-5最低分亦改善：SWE為66.7→70.8%，Polyglot83.3→96.7%，不是只有單個幸運最佳體。這仍是held-in搜尋觀察，不能拿這個Union直接預測新任務上的可合併能力。（本檔補註，非作者自陳）（<a href="https://arxiv.org/html/2610.36660v1#S5.T2">表 2</a>）</p>
+<h2 id="蒸餾消融與診斷探針">蒸餾消融與診斷探針</h2>
+<p>Polyglot的parent-only distillation使用相同蒸餾模型、工具、steps與輸出格式，只能讀所選親代證據。最佳搜尋分數GEA／parent-only／PCE為90.0／91.7／100.0%；各最佳體五次held-in平均為92.0／92.0／96.0%。五次都解出的Intersection為85.0／78.3／88.3%；至少解過一次的Union為100／98.3／100%。<strong>這裡Union是同一被選代理五次評估的聯集，與表2跨演化子代的族群Union不同。</strong>（<a href="https://arxiv.org/html/2610.36660v1#S5.T3">§5.3，表 3</a>）</p>
+<p>固定3個SWE診斷context，各條件生成5個proposal，親代、原碼、修改史與焦點任務不變，只改輔助證據。加block在其中2個context改變主要修改目標：Sphinx-7748中episode logic提案2/5→5/5；Sphinx-9229有2/5提議episode後patch檢查，其他條件只改指令；Sphinx-8638無相似轉移。提案未實作、未評性能，所以只證明診斷行為改變，不能當下游成功增益的因果驗證。（<a href="https://arxiv.org/html/2610.36660v1#S5.SS3">§5.3</a>、<a href="https://arxiv.org/html/2610.36660v1#A2">表 6、附錄 B</a>）</p>
+<h2 id="token效率及機制界線">Token效率及機制界線</h2>
+<p>主演化整輪provider總token含任務執行、診斷、自修改與蒸餾：SWE GEA/PCE為2.98／1.92 billion，約少36%；Polyglot0.99／0.41 billion，約少59%。這是token數，不是美元成本，也不能跨不同模型token直接當等價FLOPs。前者是作者報告指標；後者為本檔閱讀界線。（本檔補註，非作者自陳）（<a href="https://arxiv.org/html/2610.36660v1#S5.T4">§5.4，表 4</a>）</p>
+<p>PCE並非少評題：SWE task episodes為1100→1200，Polyglot1147→1177；request為114629→69539、52034→28823；distillation calls為758／775。成功與失敗軌跡都較短，SWE超過50萬字元的軌跡158→45。作者以patch檢查範例說明可能如何減少反覆低效行為，同時明示單一案例不能解釋全部節省；沒有把這個故事當成本變化的充分機制證明。（<a href="https://arxiv.org/html/2610.36660v1#S5.T4">§5.4，表 4</a>）</p>
+<h2 id="尚未驗證的部分">尚未驗證的部分</h2>
+<p>正文沒有獨立Limitations節。作者結尾提出：當演化史成長、應用超出coding agent時，仍需研究證據歸因、壓縮及轉移。（<a href="https://arxiv.org/html/2610.36660v1#S6">§6</a>）</p>
+<p>（本檔補註，非作者自陳）目前受控證據限兩個程式任務基準及指定DeepSeek配置；Polyglot各法一輪演化、SWE兩輪，重複評估不能替代大量獨立演化重現。held-out 140／165只跑一次，沒有證明每項差異統計顯著。population block的observation是待親代原碼查核的假說，未驗證自動蒸餾能無偏解釋任意大族群，也沒有保證coverage聯集一定可壓成一個個體。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.36660_PCE.zh-TW.html">PCE 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 de4ea2f3</footer></main></body></html>
