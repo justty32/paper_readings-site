@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="0587756c1566dffdcd9cfc98c441cbfa72ce27d6"><title>Repulsive Population Policy Gradients for Behaviorally Diverse Reinforcement Learning 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Saeed Hedayatian、Harsh Shah、Celine Mneimneh、Stefanos Nikolaidis</p><p>日期：2026-10-27（v1，cs.LG）</p><p>arXiv：2610.36425</p><p>閱讀說明：主文與附錄A–H精譯，略超參數、大表及範例；數字為作者自報，分開exact gradient／PPO heuristics，未重現。</p><p><a href="https://arxiv.org/html/2610.36425v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="reppo直接訓練多樣policy-population">RePPO：直接訓練多樣policy population</h1>
+<h2 id="第13節softqd與additive-descriptors">第1–3節：SoftQD與additive descriptors</h2>
+<p>RePPO直接訓練compact population，沿用SoftQD lower bound：</p>
+<div class="math block">
+\[S=\sum_kf_k-\sum_{i&lt;j}\sqrt{f_if_j}\exp[-\lVert b_i-b_j\rVert^2/\ell^2].\]
+</div>
+<p>品質高但相近的behaviors受overlap penalty。定理需<span class="math inline">\(f&gt;0\)</span>、<span class="math inline">\(f=\mathbb E\sum_t\gamma^tr_t\)</span>及additive Markovian <span class="math inline">\(b=\mathbb E\sum_t\gamma^tm_t\)</span>；固定direction <span class="math inline">\(v\)</span>的descriptor gradient可用reward <span class="math inline">\(v^\top m\)</span>之policy gradient估，不需對environment微分。不是任意black-box descriptor皆適用。（<a href="https://arxiv.org/html/2610.36425v1#S3">§3</a>；末句為本檔補註，非作者自陳）</p>
+<h2 id="第41節與附錄aexact-gradient的範圍">第4.1節與附錄A：exact gradient的範圍</h2>
+<p>對independent policy parameters、positive qualities、finite expectations與usual regularity，</p>
+<div class="math block">
+\[\nabla_{\theta_k}S=W_k\nabla f_k+(\nabla b_k)^\top c_k,\]
+</div>
+<p><span class="math inline">\(W_k\)</span>為quality marginal coefficient，<span class="math inline">\(c_k\)</span>為quality／overlap加權的behavior repulsion。</p>
+<p>在current population，固定<span class="math inline">\(W,c\)</span>後，reward <span class="math inline">\(\tilde r_k=W_kr+c_k^\top m\)</span>之policy gradient與原objective一致；chain rule已計入依賴，不是stop-gradient近似。完全重合或遠離時pair repulsion皆可消失。</p>
+<p>但<span class="math inline">\(W\)</span>可為負、反轉task learning；Humanoid三seed exact-coefficient消融collapse，best282±230。實際RePPO固定task weight1，已偏離exact gradient。（<a href="https://arxiv.org/html/2610.36425v1#S4.SS1">§4.1</a>、<a href="https://arxiv.org/html/2610.36425v1#A1">A/D</a>）</p>
+<h2 id="第4243節實作ppo-weights">第4.2–4.3節：實作PPO weights</h2>
+<p>EMA記completed-episode undiscounted returns與episode-average BD，無episode完成保留前值；qualities shift成<span class="math inline">\(f_k^+=\hat F_k-\min_j\hat F_j+\epsilon_f\)</span>。BD normalize到<span class="math inline">\([-1,1]\)</span>，在logit <span class="math inline">\(g(d)=\log[(1+d)/(1-d)]\)</span>算local Gaussian repulsion，再轉回原signals：</p>
+<div class="math block">
+\[p_k=\operatorname{cap}_{C_{max}}[J_g(\hat d_k)^\top c_k^{local}],\quad J_g=\operatorname{diag}[2/(1-d_j^2)].\]
+</div>
+<p>先boundary clip再算logit／Jacobian，cap保direction。Nearest neighbors：continuous <span class="math inline">\(K=8\)</span>、Atari7、LLM4。Task／behavior critics預測固定signals，channel標準化後以<span class="math inline">\(\tilde A=\bar A^r+\sum_jp_j\bar A^{m_j}\)</span>做clipped PPO。Weights在同rollout固定。</p>
+<p>Episode EMA／averages、positive shift、discounted GAE surrogate、unit task weight、local neighbors、cap、channel standardization均偏離exact update；logit Jacobian則是coordinate chain rule。（<a href="https://arxiv.org/html/2610.36425v1#A1.SS2">附錄A.2</a>）</p>
+<h2 id="第5節與附錄b評估分母">第5節與附錄B：評估分母</h2>
+<p>重新評每policy：continuous256episodes、Atari32full games、LLM每problem八samples。Filter以task全部methods／seeds的best <span class="math inline">\(f^\star\)</span>為準，留≥.1$f^\star$，Ant改.25排低質stationary contacts；LLM不移members。Best fitness在filter前，其餘對retained set。Quality是mean fitness，VS是normalized mean BDs之Gaussian Gram matrix <span class="math inline">\(G/n\)</span>eigenvalue entropy的exponential，kernel <span class="math inline">\(\sigma^2=.5\)</span>；qVS=mean fitness×VS。不是archive occupancy，也非training logit kernel。（<a href="https://arxiv.org/html/2610.36425v1#A2">附錄B</a>；末句為本檔補註，非作者自陳）</p>
+<h2 id="第51節與附錄cdcontinuous-control">第5.1節與附錄C/D：continuous control</h2>
+<p>Ant／HalfCheetah／Humanoid／Walker2D測腳contact fractions。RePPO與<span class="math inline">\(p=0\)</span>的Ind-PPO各32policies、total2.05Bsteps；另比PPGA（2.74B）、PGA-ME／DCRL-ME／Sep-CMA-MAE（約／至多2.05B），非budget完全相同。</p>
+<p>四task RePPO qVS皆最高，但mean fitness皆低於Ind。DCRL在Ant／Walker2D VS2.69／5.21高於Re1.82／4.59；Humanoid PPGA best9907高於Re8190。Training32也不等於retained：Ant Re只留12。較佳trade-off不等於每指標全勝。（<a href="https://arxiv.org/html/2610.36425v1#A3.T4">附錄C，表4</a>）</p>
+<p>Humanoid ablations各三seeds：只被較高quality neighbors排斥的asymmetric variant降低qVS39212→34086；過大cap／bandwidth損quality。<span class="math inline">\(K=16\)</span>的qVS40734高於default39212，八neighbors是效能／成本選擇。Fixed total budget增<span class="math inline">\(N=64\)</span>提高VS但每policy少經驗、mean下降，非免費擴population。（<a href="https://arxiv.org/html/2610.36425v1#A4">附錄D</a>）</p>
+<h2 id="第52節與附錄eatari">第5.2節與附錄E：Atari</h2>
+<p>四games為Boxing、Asterix、Seaquest、Ms.Pac-Man，BD為RAM position／distance或清maze順序。RePPO／Ind各八個獨立1.69M Nature CNN，每policy10Msteps、total80M，四frame stack。Task以lost life終episode，behavior以full game終止。RefQD共享representation、1000cells decision heads、單frame、Double DQN／isoline，budget86.4M；不只是換repulsion的比較。</p>
+<p>四game qVS皆RePPO較高，Seaquest mean1855／VS4.33，相對Ind1469／1.50；四／五seed best轉近水面。但Ms.Pac-Man Re best2588、mean2088低於Ind2730／2215，VS3.38也低於RefQD3.65。按表8保留例外。（<a href="https://arxiv.org/html/2610.36425v1#A5.T8">附錄E，表8</a>）</p>
+<h2 id="第53節與附錄fllm-fine-tuning">第5.3節與附錄F：LLM fine-tuning</h2>
+<p>Qwen3-1.7B-Base與Granite-4.1-3B-Base各五members，共享frozen backbone、獨立rank32actor／rank64critic LoRA。MATH levels3–5的5584problems訓練，384validation選checkpoint；100iterations、每member每輪128problems×8solutions，PPO <span class="math inline">\(\gamma=\lambda=1\)</span>、無KL／entropy。</p>
+<p>≤4096tokens且last boxed answer通Math-Verify才<span class="math inline">\(r=1\)</span>。四BD為code share、verification rate、LaTeX share、markdown，<span class="math inline">\(d_j=r\tanh[(x_j-\mu_j)/\sigma_j]\)</span>，錯解為0，reward／BD僅terminal token給。Descriptor量風格，不保證推理策略。（<a href="https://arxiv.org/html/2610.36425v1#A6.SS1">附錄F.1–F.2</a>；末句為本檔補註，非作者自陳）</p>
+<p>Test含MATH-500／Minerva／English text-only OlympiadBench，每member八samples、base40，temperature.6／top-p.95。pass@1跨members／samples平均；population pass@<span class="math inline">\(5j\)</span>每member取<span class="math inline">\(j\)</span>。ID是按problems split的TF-IDF logistic author classifier accuracy，chance20%。另比base及corners／emphasis prompts。（<a href="https://arxiv.org/html/2610.36425v1#A6.SS3">附錄F.3</a>）</p>
+<table>
+<thead>
+<tr>
+<th>Model／method</th>
+<th style="text-align:right">pass@1</th>
+<th style="text-align:right">VS</th>
+<th style="text-align:right">ID</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen base</td>
+<td style="text-align:right">.320</td>
+<td style="text-align:right">—</td>
+<td style="text-align:right">—</td>
+</tr>
+<tr>
+<td>Qwen Ind-PPO</td>
+<td style="text-align:right">.423</td>
+<td style="text-align:right">1.04</td>
+<td style="text-align:right">41%</td>
+</tr>
+<tr>
+<td>Qwen RePPO</td>
+<td style="text-align:right">.413</td>
+<td style="text-align:right">1.85</td>
+<td style="text-align:right">82%</td>
+</tr>
+<tr>
+<td>Granite base</td>
+<td style="text-align:right">.233</td>
+<td style="text-align:right">—</td>
+<td style="text-align:right">—</td>
+</tr>
+<tr>
+<td>Granite Ind-PPO</td>
+<td style="text-align:right">.560</td>
+<td style="text-align:right">1.03</td>
+<td style="text-align:right">53%</td>
+</tr>
+<tr>
+<td>Granite RePPO</td>
+<td style="text-align:right">.550</td>
+<td style="text-align:right">2.57</td>
+<td style="text-align:right">81%</td>
+</tr>
+</tbody>
+</table>
+<p>兩models pass@1降1percentage point；pass@40 Re／Ind為Qwen.715／.713、Granite.791／.793，population coverage近似。Prompting改style較少且accuracy更低。Qwen code member無interpreter，輸出自猜、作者自報只有半數符合code；Granite有重複verification。座位例所有members同strategy，主要不同presentation。（<a href="https://arxiv.org/html/2610.36425v1#S5.T1">表1</a>、<a href="https://arxiv.org/html/2610.36425v1#A6.SS4">附錄F.4–F.5</a>）</p>
+<h2 id="附錄gh與第6節成本與界線">附錄G/H與第6節：成本與界線</h2>
+<p>Pixel locomotion三tasks、16CNNpolicies、total262Msteps，qVS皆提高但Humanoid mean下降。LunarLander以first-contact的sparse BD測試，Re qVS381高於Ind286，但mean185低於Ind272。</p>
+<p>LLM每population五A6000，Qwen21h／約100GPU-hours、Granite64h／320GPU-hours，Ind資源相近；timings跨GPU不當普遍speedup。（<a href="https://arxiv.org/html/2610.36425v1#A7">附錄G/H</a>；speedup界線為本檔補註，非作者自陳）</p>
+<p>作者限制為compact非exhaustive coverage、需additive descriptors；LLM features主要產presentation差異。未來可學descriptors、調bandwidth／population或結合archives。（本檔補註，非作者自陳）exact proposition不給heuristic PPO全域monotonic SoftQD保證。（<a href="https://arxiv.org/html/2610.36425v1#S6">§6</a>）</p>
+<blockquote>
+<p>重點整理見 <a href="../summarize/2610.36425_RePPO.%E6%91%98%E8%A6%81.html">RePPO摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 0587756c</footer></main></body></html>
