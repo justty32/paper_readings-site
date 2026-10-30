@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="b1bd901ebc35581dfea714cf8186299d00bbe42d"><title>Where Should the Evaluation Budget Go in LLM-Driven Agent Scaffold Evolution? 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Sichun Luo、Yi Huang、Mukai Li、Haochen Luo、Guanzhi Deng、Haibo Wang、Jian Xu、Zefa Hu、Junlan Feng、Qi Liu</p><p>日期：2026-10-27（v1，cs.LG／cs.AI／cs.CL／cs.NE）</p><p>arXiv：2610.37276</p><p>閱讀說明：依官方v1完整主文與表格整理；數字為作者自報，區分固定候選回放與線上演化、名目cell預算與相對Full成本；未執行作者程式或重現實驗。</p><p><a href="https://arxiv.org/html/2610.37276v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="evalalloc把scaffold演化評估拆成搜尋回饋與最終確認">EvalAlloc：把scaffold演化評估拆成搜尋回饋與最終確認</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>LLM產生agent scaffold時，不必每個候選都跑完整題庫：EvalAlloc先用少量全評候選校準共用題目與評分模型，搜尋中用共享的高資訊量小題集給可比較回饋，最後才集中預算，以重用快取的paired successive halving（SH）確認勝者。四benchmark、兩演化框架的三seed平均結果優於Full，評估cells約為Full的一半；這不等於token或端到端成本也一律減半。（<a href="https://arxiv.org/html/2610.37276v1#S1">§1</a>、<a href="https://arxiv.org/html/2610.37276v1#S5.T3">表3</a>、<a href="https://arxiv.org/html/2610.37276v1#S6.T5">表5</a>）</p>
+<h2 id="問題搜尋回饋與最後選誰要求不同">問題：搜尋回饋與最後選誰，要求不同</h2>
+<p>Scaffold是協調LLM呼叫、中間狀態、工具與外部資訊的可執行程式。一次scaffold–item執行是一個evaluation cell，回報<span class="math inline">\(Y_{ci}^{(r)}\in[0,1]\)</span>。目標是在搜尋與最終選擇的總預算限制下，最大化最後選中程式的預期fitness。全文區分含重複執行期望的<span class="math inline">\(F(c)\)</span>，與每題只執行一次的full-set reference <span class="math inline">\(F_{\mathrm{ref}}(c)\)</span>；後者並不等於無雜訊真值。（<a href="https://arxiv.org/html/2610.37276v1#S1">§1</a>、<a href="https://arxiv.org/html/2610.37276v1#S3">§3</a>）</p>
+<p>搜尋只要便宜且足以比較的回饋來更新archive、選parent；最後選擇則需分辨接近的強候選。EvalAlloc是可插入既有演化框架的evaluator，保留原生proposal、archive與parent-selection政策，改的是觀察哪些題、如何估fitness及終選，不是另創scaffold生成器。（<a href="https://arxiv.org/html/2610.37276v1#S5">§5</a>）</p>
+<h2 id="實驗設定與回放能回答的問題">實驗設定與回放能回答的問題</h2>
+<p>HotpotQA、HoVer、DROP、IFBench各分SEARCH300、DEV150；TEST前三者300，IFBench294。SEARCH供演化與終選，DEV只做audit，TEST只評選出的程式。ShinkaEvolve及以SkyDiscover實作的AdaEvolve，各從相同初始程式做80次proposals，每設定三seed。Executor是Qwen3.5-9B（temperature0、關閉thinking、最多16384輸出tokens），proposer是DeepSeek-V4-Flash-0731；單節點八張NVIDIA H20、vLLM本地服務。（<a href="https://arxiv.org/html/2610.37276v1#S4.SS1">§4.1</a>、<a href="https://arxiv.org/html/2610.37276v1#S4.T1">表1</a>）</p>
+<p>作者多數調查以24條Full軌跡（4×2×3）做離線replay，每軌跡三次；<strong>固定已生成候選序列，只改可見cells</strong>。前10候選全評，之後各看60/300題。這能檢驗同一候選池的估分／排序，不能直接當成改評估後線上搜尋軌跡的因果效果。近對agreement只看full-SEARCH平均差≤0.03的候選pair；archive regret是每時點真正top10與估計top10的full-SEARCH均分差，再沿run平均。（<a href="https://arxiv.org/html/2610.37276v1#S4.SS1">§4.1–4.3</a>）</p>
+<p>DROP與HotpotQA的線上搜尋曲線顯示無feedback較差，random partial仍可接近Full；改善多在早期，但作者明說這不建立最佳時間預算配置。終選SH可大幅救回無回饋搜尋的候選，random partial的收益較小且不一致，Full餘地很少。（<a href="https://arxiv.org/html/2610.37276v1#S4.SS2">§4.2</a>、<a href="https://arxiv.org/html/2610.37276v1#S4.SS4">§4.4</a>）</p>
+<h2 id="為何共享高資訊題與固定分數基準都重要">為何共享高資訊題與固定分數基準都重要</h2>
+<table>
+<thead>
+<tr>
+<th>回放題目／估計器</th>
+<th style="text-align:right">Spearman</th>
+<th style="text-align:right">近對agreement</th>
+<th style="text-align:right">Archive regret↓</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>共享informative＋model</td>
+<td style="text-align:right">.862</td>
+<td style="text-align:right">.732</td>
+<td style="text-align:right">.0043</td>
+</tr>
+<tr>
+<td>共享informative＋raw mean</td>
+<td style="text-align:right">.865</td>
+<td style="text-align:right">.698</td>
+<td style="text-align:right">.0102</td>
+</tr>
+<tr>
+<td>不共享informative＋model</td>
+<td style="text-align:right">.795</td>
+<td style="text-align:right">.674</td>
+<td style="text-align:right">.0056</td>
+</tr>
+<tr>
+<td>共享random＋model</td>
+<td style="text-align:right">.750</td>
+<td style="text-align:right">.649</td>
+<td style="text-align:right">.0071</td>
+</tr>
+<tr>
+<td>獨立random＋model</td>
+<td style="text-align:right">.717</td>
+<td style="text-align:right">.626</td>
+<td style="text-align:right">.0078</td>
+</tr>
+</tbody>
+</table>
+<p>不共享informative是每候選由最有資訊的120題抽60題。共享題使候選差值保留<span class="math inline">\(-2\operatorname{Cov}(Y_a,Y_b)\)</span>項；當候選反應正相關時可減少pair比較變異。Raw mean雖有相近Spearman，卻把全評warm-up與偏選informative小題集的分數混在archive中，導致更高regret；固定response model把兩者放回共同full-SEARCH尺度。共享的好處依反應相關性，不能泛稱任何共享集合必然更準。（<a href="https://arxiv.org/html/2610.37276v1#S4.T2">§4.3，表2</a>、<a href="https://arxiv.org/html/2610.37276v1#S5.SS2">§5.2</a>）</p>
+<h2 id="三階段方法">三階段方法</h2>
+<h3 id="1-core-calibration">1. Core calibration</h3>
+<p>前<span class="math inline">\(W=10\)</span>個有效候選全跑<span class="math inline">\(N=300\)</span>題，以觀察到的全題平均回饋。題目<span class="math inline">\(i\)</span>的full-credit次數<span class="math inline">\(a_i\)</span>／觀察次數<span class="math inline">\(n_i\)</span>建立</p>
+<div class="math block">
+\[p_i\sim\operatorname{Beta}(a_i+1,n_i-a_i+1),\quad I_i=4\left(\mathbb{E}[p_i(1-p_i)]-z\sqrt{\operatorname{Var}(p_i(1-p_i))}\right).\]
+</div>
+<p>低於滿分的fractional outcome在這個<strong>選題統計</strong>算失敗；response model仍以fractional cross-entropy擬合原分數，不是整條管線二值化。<span class="math inline">\(z=2\)</span>用來抑制證據不足的題目。（<a href="https://arxiv.org/html/2610.37276v1#S5.SS1">§5.1</a>、<a href="https://arxiv.org/html/2610.37276v1#S6.SS1">§6.1</a>）</p>
+<p>MIRT低秩logistic模型為</p>
+<div class="math block">
+\[q_{ci}=\sigma(\mu+\eta_i+b_c+u_i^\top v_c),\quad u_i,v_c\in\mathbb{R}^{d}.\]
+</div>
+<p>Warm-up擬合global/item參數，及供後續候選使用的Gaussian prior。<strong>搜尋期間</strong>固定<span class="math inline">\(\mu\)</span>、item參數與candidate prior；新候選只以MAP推<span class="math inline">\(b_c,v_c\)</span>，不反覆重訓、也不重新估archive。預設<span class="math inline">\(d=2\)</span>、regularization <span class="math inline">\(\rho=1\)</span>。（<a href="https://arxiv.org/html/2610.37276v1#S5.SS1">§5.1</a>、<a href="https://arxiv.org/html/2610.37276v1#S6.SS1">§6.1</a>）</p>
+<h3 id="2-shared-core-evolution">2. Shared-core evolution</h3>
+<p>各後續候選評<span class="math inline">\(k=60\)</span>題：前述warm-up挑出的<span class="math inline">\(k_0=54\)</span>題固定共用，其餘6題由core外依當前<span class="math inline">\(I_i/\tau\)</span>做Gumbel-top-<span class="math inline">\(k\)</span>抽樣，<span class="math inline">\(\tau=0.001\)</span>，近似最有資訊題加隨機破同分。Core不變，acquisition統計每候選後更新。已測分數與未測模型預測合成</p>
+<div class="math block">
+\[\widehat F(c)=\frac1N\left(\sum_{i\in S_c}Y_{ci}+\sum_{i\notin S_c}q_{ci}\right),\]
+</div>
+<p>交回原框架，所有觀察快取保留。80有效proposals的搜尋名目成本為<span class="math inline">\((10\times300+70\times60)/(80\times300)=30\%\)</span>；這尚未含終選新增cells。（<a href="https://arxiv.org/html/2610.37276v1#S5.SS2">§5.2–5.3</a>、<a href="https://arxiv.org/html/2610.37276v1#S6.SS1">§6.1</a>）</p>
+<h3 id="3-warm-started-paired-sh">3. Warm-started paired SH</h3>
+<p>先合併移除docstring後AST相同的程式；對所有有效候選終選。共用SEARCH隨機排列的累積prefix30、60、120、300題，每輪保留30、15、8、1候選。對<span class="math inline">\(c\)</span>只補跑<span class="math inline">\(U_c^r=O_c\cup P_r\)</span>中未有的cells，<span class="math inline">\(O_c\)</span>是搜尋既有觀察；第一輪用union實測均分。（<a href="https://arxiv.org/html/2610.37276v1#S5.SS3">§5.3</a>、<a href="https://arxiv.org/html/2610.37276v1#S6.SS1">§6.1</a>）</p>
+<p>第一輪後以搜尋＋該輪觀察重fit模型，對非warm-up候選做兩fold cross-fitting：某fold的修正模型只用warm-up及另一fold擬合。第二輪起加上「全SEARCH預測均值減已觀察union預測均值」的difference correction，係數是存活候選內pooled regression slope，clip至<span class="math inline">\([0,1.5]\)</span>；不是直接讓模型預測贏家。Warm-up全觀察使修正為0；最後prefix全300題使所有存活者修正為0，勝者按<strong>觀察到的full-SEARCH均分</strong>決定。（<a href="https://arxiv.org/html/2610.37276v1#S5.SS3">§5.3，式8–10</a>）</p>
+<h2 id="作者自報成本與成績要分清分母">作者自報：成本與成績要分清分母</h2>
+<p>表3 Score是三seed TEST均分；Average是四benchmark不加權平均。Cost涵蓋搜尋＋終選，以「每次proposal皆全評」的名目預算作分母：ShinkaEvolve為80×300，AdaEvolve為81×300。載入失敗或每個已測item都error的程式成本記0；AdaEvolve遇invalid會重試生成，ShinkaEvolve直接丟棄，所以Full實際cost也可低於100%。（<a href="https://arxiv.org/html/2610.37276v1#S5.T3">表3</a>、<a href="https://arxiv.org/html/2610.37276v1#S6.SS2">§6.2</a>）</p>
+<table>
+<thead>
+<tr>
+<th>框架／策略</th>
+<th style="text-align:right">四benchmark平均Score</th>
+<th style="text-align:right">名目Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ShinkaEvolve Full</td>
+<td style="text-align:right">.6973</td>
+<td style="text-align:right">84.4%</td>
+</tr>
+<tr>
+<td>ShinkaEvolve EvalAlloc</td>
+<td style="text-align:right">.7084</td>
+<td style="text-align:right">43.8%</td>
+</tr>
+<tr>
+<td>AdaEvolve Full</td>
+<td style="text-align:right">.7091</td>
+<td style="text-align:right">99.2%</td>
+</tr>
+<tr>
+<td>AdaEvolve EvalAlloc</td>
+<td style="text-align:right">.7226</td>
+<td style="text-align:right">46.4%</td>
+</tr>
+</tbody>
+</table>
+<p>EvalAlloc在DROP／HotpotQA／HoVer／IFBench：ShinkaEvolve為.8907／.7411／.7278／.4739，AdaEvolve為.8881／.7456／.7844／.4722；在這八setting的均值皆略高於Full。但Cascade在兩框架的HoVer分別.7289／.7922，高於EvalAlloc，不能稱EvalAlloc每項均為所有策略最佳。Random、Cascade的跨benchmark均值較低，三seed變異也不能被平均值抹去。（<a href="https://arxiv.org/html/2610.37276v1#S5.T3">表3</a>）</p>
+<p>表5改以<strong>各benchmark的Full實際成本=100%後再平均比例</strong>：EvalAlloc的cells／executor prompt+completion tokens在ShinkaEvolve為52.13%／64.76%，AdaEvolve為46.83%／45.47%。這不是直接用表3兩個平均Cost相除的相同統計。作者觀察高分候選每題token較多（Full池within-run Spearman .25／.36），最有變異60題的token為平均1.08／1.13倍；AdaEvolve token平均又受一條特別耗token的HoVer Full run影響。Cells只數執行次數，不能替代實際token／延遲。（<a href="https://arxiv.org/html/2610.37276v1#S6.T5">§6.4，表5</a>）</p>
+<h2 id="消融與配置邊界">消融與配置邊界</h2>
+<p>ShinkaEvolve四benchmark均值：完整.7084；無終選.6911（−.0173、cost27.4%），無response model .6965（−.0119、44.2%），無informative選題.6793（−.0291、43.4%）。無終選使用相同搜尋run，依refit估分挑選；後兩者會改search feedback，另做演化run。Informative選題與最後確認最重要，response model影響較小且不一致，並非每benchmark移除都下降。（<a href="https://arxiv.org/html/2610.37276v1#S5.T4">§6.3，表4</a>）</p>
+<p>DROP＋ShinkaEvolve中，固定search預算時warm-up10的均值最高，但差異在seed變異內；search目標20%–40%中30%最高，20%也有相近表現且便宜。只對top30做SH已取得大部分增益，對全部候選有小幅額外收益。改用gpt-oss-120b proposer（IFBench）或Llama-3.1-8B-Instruct executor（DROP）仍有競爭力，但策略相對表現隨模型變動。（<a href="https://arxiv.org/html/2610.37276v1#S6.SS4">§6.4</a>）</p>
+<p>（本檔補註，非作者自陳）全文沒有獨立Limitations節；證據範圍是上述四題庫、兩框架、各三seed及有限替代模型。回放固定候選不能證明所有線上演化皆有相同改善；共享核心與MIRT可能受候選分布變化影響，本文結果不建立任務無關最優預算或顯著性保證，也未把總體生成／部署成本等同cell成本。這些是閱讀時的適用界線，不冒充作者實測失敗。（<a href="https://arxiv.org/html/2610.37276v1#S4.SS1">§4.1–4.3</a>、<a href="https://arxiv.org/html/2610.37276v1#S6.SS4">§6.4</a>、<a href="https://arxiv.org/html/2610.37276v1#S7">§7</a>）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.37276_EvalBudgetScaffold.zh-TW.html">EvalAlloc翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 b1bd901e</footer></main></body></html>
