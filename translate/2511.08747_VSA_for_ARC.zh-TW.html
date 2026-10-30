@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Vector Symbolic Algebras for the Abstraction and Reasoning Corpus（用向量符號代數求解抽象與推理語料庫） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Isaac Joffe, Chris Eliasmith（University of Waterloo）</p><p>日期：2025-11</p><p>arXiv：2511.08747</p><p><a href="https://arxiv.org/abs/2511.08747" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="vector-symbolic-algebras-for-the-abstraction-and-reasoning-corpus">Vector Symbolic Algebras for the Abstraction and Reasoning Corpus</h1>
+<p>Isaac Joffe、Chris Eliasmith（University of Waterloo）</p>
+<h2 id="摘要">摘要</h2>
+<p>ARC-AGI 是生成式、few-shot 的流體智能基準。人類輕鬆解，最先進 AI 系統卻極難。受橫跨神經科學到心理學的人類智能建模方法啟發，我們提出一個<strong>認知合理（cognitively plausible）<strong>的 ARC-AGI 求解器。它以基於</strong>向量符號代數（VSA）<strong>的神經符號方法，把 <strong>System 1 直覺</strong>與 <strong>System 2 推理</strong>整合進一個高效且可解釋的歷程。求解器以</strong>物件中心程式合成</strong>運作，利用 VSA 表徵抽象物件、引導解搜尋、並支援樣本高效的神經學習。初步結果顯示成功：ARC-AGI-1-Train 得 <strong>10.8%</strong>、Eval 得 <strong>3.0%</strong>；在較簡單基準上表現佳——Sort-of-ARC <strong>94.5%</strong>、1D-ARC <strong>83.1%</strong>，後者<strong>以極小算力勝過 GPT-4</strong>。我們相信這是<strong>首個把 VSA 用於 ARC-AGI</strong>、且<strong>至今最具認知合理性</strong>的 ARC-AGI 求解器。程式碼開源於 github.com/ijoffe/ARC-VSA-2025。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>ARC-AGI（Chollet 2019）挑戰深度學習的巨大進展。它是流體智能基準，由格子預測任務組成：給數對輸入-輸出格子，推斷符號變換的底層規則，再對單獨測試輸入預測輸出。人類約 85% 且兩位專家合計解出全部任務；AI 卻極難——儘管多場百萬美元競賽，基準仍未被攻克，GPT-3 得 <strong>0.0%</strong>。人類與 AI 的鴻溝暗示主流 AI 路線有根本問題。</p>
+<p>文獻常指兩大問題：<strong>樣本高效學習</strong>與<strong>顯式推理</strong>。深度學習需海量（常需標註）高品質資料，在「樣本稀少」régime 失效；且難表徵顯式規則，OOD 泛化差。<strong>VSA</strong>——一種把句法結構引入高維分散式表示的神經符號方法——有望克服這兩點：VSA 用高維向量表徵結構化低維資料（離散或連續），<strong>不靠海量資料學嵌入，而是把資料編成帶所需歸納偏置的向量</strong>；並定義組合與系統化處理的運算子，<strong>解析地</strong>表達某些操作（而非學易差泛化的捷徑變換）；同時支援離散搜尋與神經學習，且能生物合理地建模認知歷程。我們相信這是首個把 VSA 用於 ARC-AGI、也是至今最具認知合理性的求解器。</p>
+<h2 id="2-背景">2. 背景</h2>
+<h3 id="21-向量符號代數">2.1 向量符號代數</h3>
+<p>VSA（又稱<strong>超維計算</strong>）是定義在高維向量空間上一族運算的代數。本文用 **全像簡化表示（Holographic Reduced Representations, HRR；Plate 1991/1995/2003）**這一種 VSA。HRR 提供綁定、疊加、相似度等運算，把符號結構編進固定維度的分散式向量。</p>
+<h3 id="22-雙歷程理論">2.2 雙歷程理論</h3>
+<p>常以雙歷程理論的隱喻解釋求解器運作，支持認知合理性（System 1 直覺 / System 2 推理）。</p>
+<h3 id="23-抽象與推理語料庫">2.3 抽象與推理語料庫</h3>
+<p>ARC-AGI-1 含 400 公開訓練 + 400 公開評估 + 200 私有評估任務；ARC-AGI-2 含 1000 訓練 + 120 + 120。各任務有訓練成分（少數示範對，通常約 3 對）與測試成分（通常 1 個查詢）。格子 r×c（1–30），像素為 10 種離散符號（顏色僅為顯示方便，無任務依賴顏色事實）。任務特性：<strong>生成式</strong>（須從零生成輸出，非選擇題）、<strong>抽象</strong>（物件無真實對應、動作為高層概念如「移動至接觸」、規則為相對/模糊概念如「最大者」）、<strong>無兩任務相同</strong>。ARC-AGI 僅基於四大核心知識先驗：<strong>物件性、目標導向、數字、幾何</strong>。</p>
+<p>關於人類如何解 ARC 的事實：(1) 以<strong>物件</strong>推理（像素群被一起操作）；(2) 花時間做<strong>顯式假設生成</strong>（開頭常有一段不動作）；(3) 能<strong>程式化</strong>表達解；(4) 用<strong>高層抽象</strong>概念化（「尾巴」「花」「撞上」）；(5) 失誤模式與機器不同（人類失敗常呈部分正確＝有部分理解，機器失敗則顯示幾乎沒理解）。這些指向：<strong>人類以物件中心程式合成解 ARC</strong>。</p>
+<h2 id="3-求解器物件中心程式合成">3. 求解器（物件中心程式合成）</h2>
+<p>解一道 ARC 任務＝合成一個能對任意有效輸入生成正確輸出的通用程式。搜尋<strong>受限且有意</strong>：System 2 資源有限，只認真檢視少數假設；<strong>System 1 直覺引導探哪條路</strong>（快速否決荒謬點子、只認真查概念上契合任務內容者）。求解器迭代建構並測試「以解程式表示的假設」。</p>
+<ul>
+<li><strong>示範歸因（demonstration abduction）</strong>：迭代嘗試物件假設，找能解釋所有示範的<strong>最簡動作集</strong>。需智能遍歷物件假設空間、推斷哪個輸入物件解釋各輸出物件、推斷哪些動作能完成各輸入-輸出物件變換。在人類，這些搜尋由 System 1 啟發式引導；此處用 <strong>VSA 啟發式</strong>（物件表示上的快速計算）建模——快、簡、準確強但不完美。對三類子任務各提一個 VSA 啟發式。</li>
+<li><strong>規則歸納（rule induction）</strong>：對動作集中每個操作，迭代把觀察泛化成基於不同物件屬性的簡單規則，智能遍歷物件屬性空間，同樣用 VSA 啟發式建模 System 1（門檻任意設為如 50%）。</li>
+</ul>
+<h3 id="vsa-上的神經學習">VSA 上的神經學習</h3>
+<p>解程式需「每操作的條件套用規則」預測器，與「各操作各參數」預測器。兩者皆以 <strong>NN</strong> 實作——因 VSA 產生的高維分散式物件表示<strong>本身就像深度學到的嵌入</strong>；VSA 的歸納偏置讓 NN 更易發現條件背後的抽象、學到決定參數的映射（雖不用深度學習，VSA 表示扮演深學嵌入的角色）。</p>
+<p><strong>操作預測器</strong>：單層、帶<strong>學習非線性</strong>、SGD 訓練的 NN。學一個權重向量，透過點積變換輸入物件的相關屬性表示；權重若正規化即為<strong>合法 VSA 向量</strong>，故訓練時限制其為單位長度，並學控制決策非線性陡度與門檻的參數。學習非線性使 NN 能對離散特徵做精確模式匹配、對高層特徵建模模糊抽象。如此，學到的權重向量＝「受該操作作用之物件的<strong>原型</strong>」；NN 計算「學到原型」與「輸入物件表示」的相似度、過 sigmoid 映成機率——<strong>越像原型，越可能受該操作作用</strong>。以「依結果加權的輸入物件表示之疊加」初始化權重向量加速訓練。試過更複雜更深的架構，但此簡法<strong>最可解釋、最有理論基礎</strong>。</p>
+<h2 id="結果所有實驗用-n4096-維向量">結果（所有實驗用 N=4096 維向量）</h2>
+<p>因求解器把解生成為神經符號程式，可在訓練輸入格子與測試輸入格子上<strong>執行解程式</strong>來探查表現：能解示範＝對任務有某種理解；能解查詢＝有真正可泛化的理解。報告 <strong>accuracy</strong>（解對的示範/查詢比例）與 <strong>task accuracy</strong>（所有關聯示範/查詢全對的任務比例），主指標為<strong>查詢 task accuracy</strong>。</p>
+<ul>
+<li><strong>ARC-AGI-1</strong>：Train <strong>10.8%</strong>、Eval <strong>3.0%</strong>（訓練集不作預訓練；求解器不需任何預訓練）。ARC-AGI-2 更低，評估集低於訓練集（皆符合預期）。</li>
+<li><strong>較簡單基準</strong>：<strong>Sort-of-ARC 94.5%</strong>、<strong>1D-ARC 83.1%</strong>——後者<strong>勝 GPT-4，且只花其極小一部分算力</strong>。</li>
+</ul>
+<p>整體而言，這是首個把 VSA 用於 ARC-AGI、且至今最具認知合理性的求解器，展現高效、可解釋、生物合理的物件中心程式合成路徑。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2511.08747_VSA_for_ARC.%E6%91%98%E8%A6%81.html"><code>../summarize/2511.08747_VSA_for_ARC.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

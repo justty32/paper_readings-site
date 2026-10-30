@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2502.09061_CRANE.zh-TW.html">回 2502.09061_CRANE.zh-TW 目錄</a>　<a href="02_%E5%8F%97%E7%B4%84%E6%9D%9F%E8%A7%A3%E7%A2%BC%E7%9A%84%E8%A1%A8%E9%81%94%E5%8A%9B.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>程式碼生成、符號數學推理等任務要求 LLM 產出<strong>同時符合語法與語義</strong>的輸出。受約束 LLM 生成（constrained LLM generation）是強制輸出遵守形式文法的有前景方向，但先前研究<strong>實測</strong>發現：嚴格施加形式約束往往會<strong>削弱 LLM 的推理能力</strong>。本文首先給出理論解釋，說明為何把 LLM 輸出約束到「只允許語法合法的最終答案」的極限制型文法會降低模型推理力；其次證明，只要在輸出文法中<strong>擴增精心設計的額外規則</strong>，就總能在保證語法與語義正確的同時保住 LLM 的推理力。基於這些理論洞見，提出一個推理增強的受約束解碼演算法 <strong>CRANE</strong>，有效平衡「受約束生成的正確性」與「無約束生成的彈性」。在多個開源 LLM 與基準上的實驗顯示，CRANE 顯著勝過 SOTA 受約束解碼策略與標準無約束解碼，在具挑戰性的符號推理基準 GSM-Symbolic 與 FOLIO 上<strong>比基線最多高 10 個百分點</strong>。程式碼已開源。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>以 Transformer 為基礎的 LLM 廣泛用於與傳統軟體工具互動的 AI 系統：程式碼生成（Python 直譯器）、邏輯求解器、定理證明器等。這些工具對輸入有特定的語法與語義約束，要求 LLM 產出正確格式（例如輸出必須能被特定邏輯求解器解析；Wolfram Alpha 把數學問題翻成 DSL 再交給符號求解器）。然而預訓練 LLM 的輸出<strong>不總是</strong>符合下游工具的輸入要求。受約束解碼演算法把 LLM 輸出<strong>投影</strong>到使用者指定的形式約束（例如上下文無關文法 G 定義的語法規則）上，藉此保證滿足下游任務的輸入要求。</p>
+<p>如圖 1 所示，受約束解碼能改善輸出的<strong>語法正確性</strong>（例如生成格式良好的數學運算式），但<strong>不保證功能正確性</strong>（該運算式是否真的答對使用者問題）。Tam et al.（2024）等近期研究實測發現：對輸出施加約束在某些情況下反而<strong>降低功能正確率</strong>，並歸因於受約束解碼下<strong>LLM 推理能力的衰退</strong>。由此引出兩個開放問題：</p>
+<ul>
+<li><strong>RQ1</strong>：LLM 在受約束解碼下是否真的失去推理能力？</li>
+<li><strong>RQ2</strong>：如何在利用受約束解碼「減少語法錯誤」的好處的同時，保住 LLM 無約束時的推理能力？</li>
+</ul>
+<p>（圖 1：GSM-Symbolic 的例子——無約束生成產出語法錯誤的輸出，受約束生成產出語法合法但<strong>答錯</strong>的答案，而 CRANE 產出正確答案。）</p>
+<p><strong>關鍵挑戰</strong>：其一，要<strong>形式化</strong>地找出「預訓練 LLM 在受約束生成下端到端系統功能正確率下降」的根因，且此解釋不限於實驗用的特定 LLM、而要<strong>推廣到任何 LLM（含未來更強的）</strong>。其二，要設計出<strong>成本高效</strong>的解碼策略以彌補既有受約束解碼的缺陷、提升功能正確率。本文<strong>不考慮</strong>為每個任務做微調（微調對每個任務都算力昂貴，且不像受約束解碼那樣能保證輸出遵守形式約束）。</p>
+<p><strong>貢獻</strong>：</p>
+<ol>
+<li>理論證明：常數層 LLM（已知能用 O(n) 推理步模擬任意圖靈機 M 的 n 步）一旦被約束成「只能生成合限制型文法 G 的合法輸出串」，就只能解<strong>相對受限的電路複雜度類</strong>內的問題——即限制型文法下受約束解碼會<strong>降低 LLM 的解題能力</strong>。</li>
+<li>理論證明：表達力損失的根因是輸出文法 G <strong>太過限制、容不下計算答案所需的中間推理步驟</strong>；只要用特定額外產生規則把 G 擴增成 <code>G_a</code>，就能讓 LLM 生成中間推理步驟、同時保證最終輸出仍遵守目標結構——用擴增文法 <code>G_a</code>，LLM 在受約束解碼下<strong>保住表達力</strong>。</li>
+<li>提出簡單且成本高效的解碼策略 <strong>CRANE</strong>（Constrained Reasoning Augmented Generation）：在「無約束生成以進行推理」與「受約束生成以產出結構正確輸出」之間<strong>交替切換</strong>。實驗證明 CRANE 顯著勝過 SOTA 受約束解碼與標準無約束解碼，在 GSM-Symbolic 與 FOLIO 上最多高 10%。</li>
+</ol>
+<h2 id="2-預備知識">2. 預備知識</h2>
+<p><strong>符號</strong>：小寫字母表常數、粗體小寫表字串、大寫表函數、<code>·</code> 表字串串接、<code>|x|</code> 表字串長度。LLM 一律指<strong>固定層數</strong>的 Transformer LLM。</p>
+<h3 id="21-受約束-llm-解碼">2.1 受約束 LLM 解碼</h3>
+<p>自回歸語言模型 ℒ 透過在詞彙表 V 上的機率分佈迭代生成 token（對模型分數 S 取 softmax）。常見解碼法有 greedy、溫度取樣、beam search。<strong>受約束 LLM 解碼</strong>在特定位置排除特定 token（如避開有害詞、或遵守 JSON/SQL 等使用者定義的輸出文法）：每一步由函數 <code>f_m</code> 產生二元遮罩 <code>m∈{0,1}^|V|</code>，<code>m_i=1</code> 為合法 token、<code>m_i=0</code> 為排除；解碼在遮罩後的分佈 <code>m⊙softmax(S)</code> 上進行。</p>
+<h3 id="22-確定性-llm-解碼">2.2 確定性 LLM 解碼</h3>
+<p>CRANE 相容於各種（受約束與無約束）解碼策略、允許 ℒ 輸出為隨機。但為了第 3 節理論設定的簡潔，遵循既有工作假設 ℒ 對任何輸入串的輸出在受約束與無約束下皆<strong>確定</strong>。</p>
+<ul>
+<li><strong>定義 2.1（確定性 LLM 步）</strong>：單一自回歸步建模為確定性函數 <code>ℒ_f: V*→V</code>，對輸入串 x 預測下一 token <code>ℒ_f(x)</code>。</li>
+<li><strong>定義 2.2（確定性無約束解碼）</strong>：<code>y=ℒ(x)</code> 為依學到分佈在 x 上最可能的輸出序列，經 |y| 個自回歸步迭代算出。</li>
+<li><strong>定義 2.3（文法下的確定性受約束解碼）</strong>：在形式文法 G 下輸出串記為 <code>y_G=ℒ_G(x)</code>，且 <code>y_G∈L(G)</code>（G 定義的語言）。對**健全（sound）**的受約束解碼演算法，若無約束輸出本已在文法內（<code>y∈L(G)</code>），則受約束輸出不變（<code>ℒ(x)=ℒ_G(x)</code>）。</li>
+</ul>
+<h3 id="23-llm-表達力">2.3 LLM 表達力</h3>
+<p>介紹圖靈機與相關的均勻電路複雜度類。</p>
+<ul>
+<li><strong>定義 2.4（圖靈機）</strong>：具 k 條工作帶與一條輸出帶的圖靈機 M 是 8 元組 ⟨Σ, Γ, k, b, Q, q₀, δ, F⟩（輸入字母、帶字母、帶數、空白符、狀態集、初始狀態、轉移函數、停機狀態集）。計算是從初始組態出發的一串組態，每個組態 γ 記錄當前狀態、各帶內容與各帶頭位置；轉移函數 δ 依當前狀態與 k+2 條帶頭位置的符號算出下一組態。M 到達停機狀態即停，輸出寫在輸出帶上。</li>
+<li><strong>定義 2.5（布林電路）</strong>：評估定長二元串上布林函數的計算模型，表為有向無環圖（葉節點為輸入變數或其否定、內部節點做 AND/OR 等運算）。複雜度由<strong>大小</strong>（節點數）與<strong>深度</strong>（最長路徑）決定。因單一電路只處理定長輸入，需<strong>電路族</strong>（每種輸入長度一個電路）刻劃變長問題；為避免非均勻電路族解出不可判定問題的退化情形，須施加<strong>均勻性</strong>條件。本文聚焦<strong>常數深度、多項式大小的 logspace-uniform 閾值電路（TC⁰）</strong>（ℬ 只含閾值閘）——它為「不使用 CoT 式推理步」的 LLM 計算力提供上界。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

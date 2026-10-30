@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2402.03744_INSIDE.zh-TW.html">回 2402.03744_INSIDE.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4 實驗</h2>
+<h3 id="41-實驗設置">4.1 實驗設置</h3>
+<p><strong>資料集</strong>：兩個開放書式對話 QA 資料集 <strong>CoQA</strong>（development split，7,983 題）、<strong>SQuAD</strong>（development-v2.0 排除 is_impossible 的子集，5,928 題），以及兩個封閉書式 QA 資料集 <strong>TriviaQA</strong>（rc.nocontext 去重子集，9,960 題）、<strong>Natural Questions (NQ)</strong>（validation split，3,610 題）。CoQA、SQuAD 的標準答案較長，TriviaQA 通常只有一兩個詞。</p>
+<p><strong>模型</strong>：LLaMA-7B、LLaMA-13B、OPT-6.7B（皆用預訓練權重、不微調）。</p>
+<p><strong>評估指標</strong>：AUROC（AUC_s 用句相似度、AUC_r 用 ROUGE-L 作正確性判準）與 Pearson 相關係數（PCC）。</p>
+<p><strong>基線</strong>：Perplexity、LN-Entropy、Lexical Similarity，以及一個常見 OOD 偵測方法 Energy Score 作對照。</p>
+<p><strong>正確性判準</strong>：ROUGE-L（f-measure）門檻設 0.5；或用 nli-roberta-large 抽句嵌入後的餘弦相似度，門檻設 0.9。</p>
+<p><strong>實作細節</strong>：解碼溫度 0.5、top-p 0.99、top-k 5；生成次數 K=10；句嵌入取中間層（int(L/2)）最後一個 token；協方差正則項 α=0.001；feature clipping 記憶庫容量 N=3000。</p>
+<h3 id="42-主要結果">4.2 主要結果</h3>
+<p>在三個模型、四個資料集上，EigenScore 在 CoQA、SQuAD、NQ 上以顯著差距全面超越其他方法，相比 Lexical Similarity 在 AUROC 上最多勝出 CoQA +5.6%、SQuAD +8.9%。在 TriviaQA 上 Perplexity 表現最佳但在其他資料集表現差，原因是 TriviaQA 的生成與標準答案通常只有一兩個詞，簡單平均 token 級信心的方式在此類任務上已足夠有效，各方法差距因此縮小。整體而言，LLaMA-13B 的偵測表現優於 LLaMA-7B 與 OPT-6.7B，顯示更強的預訓練 LLM 能帶來更好的幻覺偵測表現。</p>
+<p><strong>Feature Clipping 的效果</strong>：對 LN-Entropy、Lexical Similarity、EigenScore 施加 feature clipping 後表現皆一致提升，AUROC 最大提升 1.8%。</p>
+<h3 id="43-消融研究">4.3 消融研究</h3>
+<p><strong>生成次數 K</strong>：以 LLaMA-7B、NQ 資料集測試 K∈{5,10,15,20,30,40}。EigenScore 在各 K 下均大幅超越 LN-Entropy 與 Lexical Similarity；K&lt;15 時表現隨 K 增加而提升，K&gt;15 後趨於穩定，作者建議 K=20 是效能與推論成本的最佳折衷；LN-Entropy 對 K 較不敏感，反映 Lexical Similarity 與 EigenScore 更能有效利用多次生成的資訊。</p>
+<p><strong>不同句嵌入層的表現</strong>：使用淺層或末層的句嵌入表現明顯劣於中間層附近；取最後一個 token 的嵌入優於對所有 token 取平均，顯示中間層最後一個 token 保留更多與真實性相關的資訊。</p>
+<p><strong>對正確性判準門檻的敏感度</strong>：門檻的設定對最終幻覺偵測表現影響很大；在不同門檻下 EigenScore 皆持續優於對照方法，且門檻越嚴格，各方法的偵測表現通常越好。</p>
+<h2 id="5-相關工作">5 相關工作</h2>
+<p><strong>LLM 可靠性評估</strong>：不確定性型指標（預測信心或輸出 token 的熵）與一致性型指標（假設模型猶豫/幻覺時對同一問題會生成邏輯不一致的回應）是兩大主流；基於一致性假設，亦有研究讓 LLM 直接自我評估回應。</p>
+<p><strong>特徵值作為發散度量</strong>：協方差矩陣的特徵值/行列式在多種機器學習任務中被廣泛用作發散度量，如 PCA（最大特徵值對應主要語意成分）、determinantal point process（DPP，用行列式取樣多樣子集）、以及以協方差矩陣的對數行列式近似微分熵的既有研究。</p>
+<h2 id="6-結論">6 結論</h2>
+<p>衡量 LLM 生成的幻覺程度，對提升以 LLM 為基礎的系統之安全性與可靠性至關重要。本文提出 INSIDE 框架，利用 LLM 內部狀態中保留的語意資訊做幻覺偵測：EigenScore 測量嵌入空間中多次生成間的語意一致性；feature clipping 截斷極端特徵以降低過度自信生成，藉此辨識既有方法忽略的自一致（過度自信）型幻覺。方法在多個常用 LLM 與 QA 基準上取得顯著提升。雖然實驗聚焦 QA 任務，方法本身不對任務模態做任何假設，作者相信可廣泛應用於摘要、翻譯等其他任務。</p>
+<h2 id="附錄要點">附錄要點</h2>
+<ul>
+<li><strong>附錄 A（TruthfulQA）</strong>：在此高難度真實性基準上，零樣本表現普遍不佳；隨 in-distribution 提示數增加（5/20/50-shot），EigenScore 表現持續提升，並在 50-shot 下逼近需訓練 1024 個二元分類器的 ITI（作者指出 ITI 的最佳表現係於驗證集上取得，可能有限制其他領域泛化能力之虞）。</li>
+<li><strong>附錄 B（與更強方法比較）</strong>：在 CoQA 上與 Semantic Entropy、SentSAR、SelfCheckGPT 比較（LLaMA 用 K=5、OPT-6.7B 用 K=10），EigenScore 全面勝出；SentSAR 與 SelfCheckGPT 表現相近，明顯優於 Semantic Entropy。作者強調：相較 Semantic Entropy 或 SelfCheckGPT 需依賴另一個語言模型抽取句嵌入，本文方法直接利用 LLM 自身內部狀態，且 EigenScore 的 LogDet 定義比逐句相似度更能有效捕捉語意一致性；feature clipping 對過度自信幻覺的處理也是既有方法未觸及的。</li>
+<li><strong>附錄 C（更多 LLM）</strong>：在 LLaMA2-7B、Falcon-7B 上驗證，結果與主實驗一致穩健。</li>
+<li><strong>附錄 D（計算效率）</strong>：在 NVIDIA A100 上、K=10 設定下，EigenScore 的推理時間約為依賴額外大模型做一致性評估的 SelfCheckGPT 的十分之一，與 LN-Entropy、Lexical Similarity 相近；相對生成多個輸出的開銷，feature clipping 與 EigenScore 本身的計算成本可忽略（約 0.06 秒）。</li>
+<li><strong>附錄 G（限制與未來工作）</strong>：方法依賴 LLM 內部資訊，<strong>無法應用於無法存取隱藏狀態的黑箱模型</strong>；屬取樣式方法，需生成多個輸出，帶來額外推論開銷；本研究僅聚焦幻覺<strong>偵測</strong>，尚未用本方法<strong>緩解</strong>幻覺，留待未來工作降低推論成本並探索幻覺緩解。</li>
+<li><strong>附錄 H（案例研究）</strong>：以 LLaMA-7B、NQ 資料集展示具體案例，以最大化 G-Mean 決定各方法的偵測門檻（Perplexity 0.535、LN-Entropy 0.153、Lexical Similarity 0.489、SelfCheckGPT 0.168、EigenScore -1.74），並展示不同方法對同一案例判斷正確與否的具體例子。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2402.03744_INSIDE.%E6%91%98%E8%A6%81.html"><code>../summarize/2402.03744_INSIDE.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

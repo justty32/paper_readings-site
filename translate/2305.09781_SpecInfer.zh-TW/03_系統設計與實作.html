@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_系統設計與實作 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.09781_SpecInfer.zh-TW.html">回 2305.09781_SpecInfer.zh-TW 目錄</a>　<a href="02_%E4%BB%A5%E5%AD%B8%E7%BF%92%E7%82%BA%E5%9F%BA%E7%A4%8E%E7%9A%84%E6%8E%A8%E6%B8%AC%E5%99%A8.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-系統設計與實作">5. 系統設計與實作</h2>
+<p><strong>5.1 執行期設計</strong>：<strong>request manager</strong> 接收服務請求，採用 Orca 的迭代級排程（iteration-level scheduling）逐次挑請求做一輪推測推論與樹驗證。SSM 小、可放進單卡，故以<strong>資料平行</strong>均分 GPU 服務多個 SSM；SSM 產出的 token 送回 request manager，由 tree merge 為每個請求產生推測樹。LLM 則以 Megatron-LM 的混合平行策略服務——節點內用<strong>張量模型平行（tensor parallelism）</strong>、跨節點用<strong>管線模型平行（pipeline parallelism）</strong>。所有 GPU 做樹狀平行解碼算 tree attention，回傳 token 由 request manager 驗證。request manager 的排程／合併／驗證開銷、以及只傳 token（不傳向量表示）的通訊開銷，相對 LLM 推論皆可忽略。並採 Orca 的 <strong>continuous batching</strong>（連續批次）以迭代為粒度排程、隨完隨送、隨到隨收。</p>
+<p><strong>5.2 實作</strong>：建於 <strong>FlexFlow</strong>（分散式多 GPU DNN 執行期）之上，相容 PyTorch 模型定義，HuggingFace 開源 LLM 可直接匯入服務。DNN 表為運算圖，經 layer→operator→task 三層抽象編譯，task 為平行化單位。<strong>CUDA kernel 最佳化</strong>：為避免 cuBLAS/cuDNN 的高 kernel 啟動開銷並善用 shared memory，SpecInfer 以 FasterTransformer 為基礎自訂注意力 kernel（每個 thread block 為單一請求算單一 head），並用拓樸感知因果遮罩支援樹狀平行解碼。</p>
+<p><strong>5.3 推測與驗證的開銷</strong>：<strong>記憶體</strong>——多存 SSM 參數（SSM 比 LLM 小 100–1000×，每個 SSM 增加不到 1% 記憶體）＋樹驗證引擎的 KV 與注意力分數（相對長序列的 KV 快取可忽略）。<strong>運算</strong>——以逐步模式跑 SSM 產候選（多 SSM 跨 GPU 平行以壓低延遲）＋驗證整棵樹（多數 token 不會命中）；但既有系統受 KV 快取所限、並行請求數少、GPU 運算資源常閒置，SpecInfer 正是利用這些<strong>閒置資源</strong>做樹驗證，故相對逐步解碼幾乎不增執行期開銷。</p>
+<p><strong>5.4 應用</strong>：(1) <strong>分散式 LLM 推論</strong>——大模型參數需跨多 GPU，瓶頸在各解碼步之間傳輸中介 activation 的延遲；SpecInfer 雖不直接減少跨 GPU 通訊量，但驗證機制能<strong>增大通訊粒度、減少解碼步數</strong>。(2) <strong>卸載式 LLM 推論</strong>——把參數放 CPU DRAM、分批載入 GPU，瓶頸在 CPU-GPU 間傳參；機會性驗證多 token 可減少解碼步數與 CPU-GPU 傳輸。</p>
+<h2 id="6-評測">6. 評測</h2>
+<p><strong>設定</strong>：LLM 用 OPT 與 LLaMA 家族——LLaMA-7B、OPT-13B、OPT-30B、LLaMA-65B 作 LLM；LLaMA-68M、OPT-125M 作 SSM。資料集五個：CIP、CP、WebQA、Alpaca、PIQA（只取 prompt/問句）。平台：兩台 AWS g5.12xlarge，每台 4 張 NVIDIA A10 24GB，100 Gbps 乙太互連。預設用 expansion 建樹、配置 ⟨1,1,3,1,1,1,1,1⟩。</p>
+<p><strong>6.2 分散式推論</strong>：與 vLLM、HuggingFace TGI、FasterTransformer 比較。SpecInfer 的「incremental decoding」變體（推測器產空樹）與既有系統效能相當（同平行策略、同 kernel 函式庫）。啟用樹狀推測驗證後，SpecInfer 較逐步解碼系統加速<strong>單節點多卡 1.5–2.5×、多節點多卡 2.4–2.8×</strong>，且對所有 prompt 產生與逐步解碼完全相同的 token 序列。相較序列式推測，樹狀法再快 <strong>1.2–1.5×</strong>。注意：批次（並行請求數）愈大，SpecInfer 相對優勢愈小——因大批次讓逐步解碼本身有更多可平行運算、閒置資源變少；SpecInfer 對<strong>低延遲</strong>推論最有利。</p>
+<p><strong>6.3 卸載式推論</strong>：與 FlexGen 在單張 24GB A10 上服務 OPT-13B、OPT-30B 比較，SpecInfer 把每 token 延遲降低 <strong>2.6–3.5×</strong>——因卸載式瓶頸在 CPU-GPU 傳參，機會性驗證多 token 減少了解碼步數與資料傳輸。</p>
+<p><strong>6.4 建樹</strong>：研究樹寬影響（配置 ⟨1,1,k,1,1,1,1,1⟩）。相比序列式（樹寬=1），token tree 可把 LLM 解碼步數降低 <strong>1.2–1.5×（貪婪）／1.3–1.4×（隨機）</strong>。表 2（每解碼步平均驗證 token 數，LLaMA-7B/68M，推測長度 8）例：Alpaca 貪婪樹寬 1→5 為 2.95→3.43，隨機為 1.79→2.38。端到端延遲上（圖 10）：小批次（BS=1,2）加大樹寬能持續降延遲；大批次（BS≥4）樹寬 2 或 3 最佳（在推測效能與驗證延遲間取得平衡）。</p>
+<p><strong>6.5 樹狀平行解碼</strong>：相對既有序列式解碼，小批次時效能相當、大批次時最高快 <strong>1.8×</strong>——來自 (1) 消除共享前綴的冗餘注意力運算、(2) 用拓樸感知因果遮罩把全樹注意力融進單一 kernel。</p>
+<p><strong>6.6 Multi-step speculative sampling</strong>：以 naive sampling 為基準（直接從 LLM 取樣再檢查是否在樹中）。表 3（樹寬 5、深度 8）顯示 MSS 相對 NS 一致提升每步驗證 token 數 <strong>1.2–1.3×</strong>（如 Alpaca 1.87→2.38，1.27×），且保證與 LLM 相同的輸出分佈。</p>
+<h2 id="7-相關工作">7. 相關工作</h2>
+<p><strong>無損加速（lossless）</strong>：既有工作探索把 LLM 當驗證器而非解碼器——如 Yang 等的 inference with reference（利用 LLM 輸出與檢索文件的重疊）、以及受推測執行啟發的 speculative decoding。與這些工作兩點不同：(1) SpecInfer 生成並驗證的是 <strong>token tree</strong>（多序列），用 tree attention 平行算注意力並重用共享中介結果；(2) 既有法多用<strong>單一</strong>小模型推測、受容量鴻溝所限，SpecInfer 用「單 SSM 擴張＋多 SSM 合併」大幅增加對 LLM 輸出的覆蓋。TVM/Ansor/TASO/PET 等 ML 運算最佳化與 SpecInfer 正交、可結合。</p>
+<p><strong>有損加速（lossy）</strong>：BiLD 用單一 SSM 加速但可能損及生成品質；量化、結構化剪枝等模型壓縮以犧牲預測品質換速度。與這些不同，SpecInfer <strong>不直接減少 LLM 運算量</strong>，而是把推論運算<strong>重組為更可平行</strong>的形式，以可控的記憶體/運算開銷換取更少的記憶體存取與更低延遲（無損）。</p>
+<p><strong>樹狀注意力</strong>：Nguyen 等的 tree-structured attention 讓模型跑在文本的<strong>剖析樹</strong>上以捕捉層級組合；與 SpecInfer 兩點不同——SpecInfer 用樹<strong>凝縮候選序列的共享前綴</strong>（非以剖析樹表示單一序列），且其注意力輸出為 token 序列而非樹。</p>
+<p><strong>多樣本解碼</strong>：beam search、top-k、top-p 也在每步考慮多候選，但它們是直接施於 LLM 輸出機率的<strong>解碼策略</strong>、不減少解碼步數；SpecInfer 則以 SSM 推測並平行驗證多候選以減少解碼迭代。兩者正交，SpecInfer 支援 beam search / top-k / top-p 並可與樹狀推測結合。</p>
+<h2 id="8-結論">8. 結論</h2>
+<p>SpecInfer 以樹狀推測推論與驗證加速生成式 LLM 推論。核心洞見是同時考慮多樣推測候選、組織為 token tree、並以樹狀平行解碼對 LLM 一次平行驗證，顯著減少對 LLM 參數的記憶體存取與端到端延遲，對分散式與卸載式推論皆適用。（原文另附 Artifact Appendix，說明重現實驗所需的程式、資料集與硬體/軟體環境，此處略。）</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2305.09781_SpecInfer.%E6%91%98%E8%A6%81.html"><code>../summarize/2305.09781_SpecInfer.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

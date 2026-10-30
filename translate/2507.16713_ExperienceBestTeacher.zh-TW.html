@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Experience is the Best Teacher: Grounding VLMs for Robotics through Self-Generated Memory 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Guowei Lan、Kaixian Qu、Rene Zurbrügg、Changan Chen、Christopher E. Mower、Haitham Bou-Ammar、Marco Hutter</p><p>日期：2025-07-22（v1，cs.RO）</p><p>arXiv：2507.16713</p><p><a href="https://arxiv.org/abs/2507.16713" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="experience-is-the-best-teacher-grounding-vlms-for-robotics-through-self-generated-memory">Experience is the Best Teacher: Grounding VLMs for Robotics through Self-Generated Memory</h1>
+<h2 id="摘要與問題第-1-節">摘要與問題（第 1 節）</h2>
+<p>網路資料訓練的視覺語言模型懂得人類常識，卻未必懂一台特定機器人的感知死角與操作能力。人看見被遮住一部分的球，仍會直覺伸手去拿；機器人可能因深度感知不完整而抓取失敗。若 VLM 不知道自己的 embodiment 限制，合理的語言規劃仍會變成不可執行的動作。</p>
+<p>EXPTEACH 的想法是讓機器人以自己的硬體經驗替 VLM 接地。系統自行規劃、執行、檢查結果並反思失敗，把當前任務的調整留在短期記憶，成功後再摘要成長期記憶。新任務到來時，以檢索增強生成取回相似經驗，讓規劃從一開始就考慮這台機器過去真正做得到的事。</p>
+<h2 id="方法第-34-節">方法（第 3、4 節）</h2>
+<p>agent 接收自然語言指令與第一人稱 RGB-D 觀察，從預先定義、可帶參數的技能庫選動作。相同的 VLM 同時擔任任務規劃器與成功檢測器，並以函式呼叫格式限制輸出。每次執行後，檢測器從新影像產生場景描述、成敗判斷、失敗原因與下一步建議，再交回規劃器。</p>
+<p>短期記憶保存本次任務至今的動作與回饋。它不是單純重試紀錄，而是反思迴路：抓不到被遮住的物體時，agent 可先推開障礙；夾不起小物體時，也可能改用附近物品當工具。任務完成後，experience summarizer 把短期記憶濃縮成長期記憶的一筆 key-value。key 結合使用者指令與初始場景描述，value 是成功經驗摘要；新情境用文字 embedding 與 cosine similarity 取回最相近經驗，加入規劃提示。</p>
+<p>為補強空間推理，系統另提供按需影像標註。VLM 先判斷是否需要工具，再以開放詞彙分割取得物體 mask，於候選位置上加編號供模型選擇。放置與推動用取樣位置表示目標；抓取則結合 AnyGrasp 候選、逆運動學可行性與 VLM 選定位置，避免只因幾何表面較大便抓到肉串的肉或冰淇淋頂端。</p>
+<h2 id="主要實驗第-5-節作者自報">主要實驗（第 5 節，作者自報）</h2>
+<p>實驗平台是帶機械臂的 ANYmal，VLM 使用 gpt-4o。若失敗動作改變了場景，會由人類操作員重設後續實驗。短期記憶在四項困難操作上把整體成功率由百分之三十六提高到百分之八十四；無短期記憶的基線容易重複同一失敗，有反思的 agent 則出現先移障礙、以海綿推糖果及改推易碎物等行為。</p>
+<p>長期記憶由成功經驗與無關的簡單任務經驗混合而成。作者在十二種真實情境中測試，其中八種未曾出現；相較無長期記憶的基線，單次成功率由百分之二十二提高到百分之八十。這表示記憶不只重播原任務，也能把「先移開遮擋物」或「借用柔軟工具推小物」轉移到結構相似的新場景。</p>
+<p>檢索消融只評估動作序列規劃，不執行機器人。隨機取五筆記憶的成功率為百分之二十七，把完整長期記憶全部塞進脈絡為百分之六十七，RAG 取回最相關記憶則為百分之八十九。作者將差異歸因於無關內容會淹沒真正有用的經驗。影像標註消融則顯示，它對必須選對物體部位的抓取特別有幫助，也能降低推動目標的位置誤差。</p>
+<h2 id="結論與局限第-67-節">結論與局限（第 6、7 節）</h2>
+<p>EXPTEACH 把失敗變成兩個時間尺度的資產：短期記憶支援當下恢復，長期記憶把成功策略帶到後續相似情境。VLM 因而不是只靠網路常識規劃，而會逐步形成對自身機器能力的經驗性認識。</p>
+<p>作者明列三項限制。目前只處理操作任務，尚未延伸到移動操作；系統假設視覺回饋足以支援判斷，觸覺或聽覺等資訊仍未整合；記憶也尚未與個別使用者偏好對齊。作者另把讓 VLM 自行提出任務、產生指令並從結果學習，列為降低人力需求的後續方向。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2507.16713_ExperienceBestTeacher.%E6%91%98%E8%A6%81.html"><code>../summarize/2507.16713_ExperienceBestTeacher.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

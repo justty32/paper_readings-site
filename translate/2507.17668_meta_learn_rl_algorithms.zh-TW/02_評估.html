@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_評估 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2507.17668_meta_learn_rl_algorithms.zh-TW.html">回 2507.17668_meta_learn_rl_algorithms.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="6-評估">6. 評估</h2>
+<p>無單一成功量度（有人願犧牲回報換可解釋）。考量：<strong>分布內（i.d.）回報、分布外（o.o.d.）回報、元學習樣本成本（在峰值內分布表現處停）、元訓練 wall-clock、元測試 wall-clock、可解釋性（主觀低/中/高）</strong>。</p>
+<p>前饋演算法從單環境 <strong>Ant(Brax)</strong> 與多環境 <strong>MinAtar</strong> 元學習；遞迴 OPEN 用 Goldie et al. 的預訓練優化器、只用多環境設定（蒸餾對遞迴更貴）。元測試於多元環境：MinAtar 的 Freeway/Space Invaders/Asterix/Breakout、Brax 的 Humanoid/Hopper/Walker/Ant、gym 的 Cartpole、Craftax-Classic。LPG 依 Oh et al. 在隨機 gridworld 元訓練、遷移到 MinAtar。</p>
+<p><strong>不對遞迴演算法做符號蒸餾</strong>：Zheng et al. 用單輸入定窗蒸遞迴優化器，但 LPG 有 19 輸入、OPEN 有 20；窗大 20 則需 380+ 符號變數，對符號迴歸極難、AST 節點數計算不可行（搜尋空間隨樹大小指數成長）。</p>
+<p>繪圖時各環境回報除以黑箱學習平均分正規化，聚合為「內/外分布」，除非另述顯示 <strong>IQM 回報 + 95% 分層 bootstrap 信賴區間（16 seeds）</strong>。因成本高，每演算法只元學習單一 seed、不調 meta 超參。</p>
+<h2 id="7-結果">7. 結果</h2>
+<ul>
+<li><strong>7.1 LPO</strong>：所有蒸餾表現相近、常小幅提升泛化不傷 i.d.；<strong>LLM 提案 i.d. 顯著較差但 o.o.d. 最佳</strong>（提案皆近 PPO 暖啟動、跨任務泛化好）。重泛化選 LLM；兼顧內外選同尺寸蒸餾。</li>
+<li><strong>7.2 前饋 No Features</strong>：Ant 上黑箱優化器學不起來（No Features 本就是很弱的學習式演算法）→蒸餾救不了（<strong>老師爛蒸餾無能為力</strong>）；8 輸入使符號蒸餾也吃力；<strong>LLM 全面最強</strong>（梯度優化在 LLM 語料常見、輸入易懂、又有為其 SGD 初始化調好的逐環境學習率＝近似 few-shot 元測試）。</li>
+<li><strong>7.3 前饋 OPEN</strong>：輸入更多→<strong>LLM 與符號蒸餾災難性失敗</strong>（符號收斂成近常數；LLM 即便給了形狀範圍仍常用錯特徵、產生報錯）。縮小蒸餾可能變差；同尺寸蒸餾對 MinAtar 模型小幅助泛化（小模型表徵力不足，但正則化助泛化）。</li>
+<li><strong>7.4 遞迴 LPG</strong>：在 gridworld 訓練、遷移 MinAtar，只比黑箱學習與蒸餾。因 LPG 的 bootstrap 為類別分布，難找有文獻根據的暖啟動→<strong>排除 LLM 提案</strong>（凸顯 LLM 須有起點的限制）。蒸餾（縮小與同尺寸）皆提升 IQM 泛化（LPG 大網路 200k 參數，正則化降方差、助泛化）。</li>
+<li><strong>7.5 遞迴 OPEN</strong>：OPEN 在整個 RL 訓練上展開（可達數萬步），故只在「長 rollout（100 步）」「短 rollout（20 步）」上蒸餾預訓練 OPEN。<strong>蒸餾表現差</strong>（長展開太難蒸）；LLM（以 Adam 暖啟動，優於前饋的 SGD）在 o.o.d. 勝黑箱（最佳 LLM 演算法很接近 Adam、訓練早期就發現、用調好的逐環境學習率、只用額外特徵做逐層學習率；後續加更多特徵反而變差）。整體：黑箱學到強但過擬合，LLM 學到簡單但更泛化（但變化不大）。</li>
+<li><strong>7.6 額外指標（表 1）</strong>：</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>樣本</th>
+<th>訓練時間</th>
+<th>測試時間</th>
+<th>可解釋性</th>
+<th>可擴展性</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>黑箱學習</td>
+<td>高</td>
+<td>慢</td>
+<td>慢</td>
+<td>差</td>
+<td>最佳</td>
+</tr>
+<tr>
+<td>同尺寸蒸餾</td>
+<td>無額外</td>
+<td>慢</td>
+<td>慢</td>
+<td>差</td>
+<td>好</td>
+</tr>
+<tr>
+<td>縮小蒸餾</td>
+<td>無額外</td>
+<td>中</td>
+<td>中</td>
+<td>差</td>
+<td>好</td>
+</tr>
+<tr>
+<td>符號蒸餾</td>
+<td>無額外</td>
+<td>中-慢</td>
+<td>快</td>
+<td>中</td>
+<td>差</td>
+</tr>
+<tr>
+<td>LLM 提案</td>
+<td>低</td>
+<td>快</td>
+<td>快</td>
+<td>好</td>
+<td>中</td>
+</tr>
+</tbody>
+</table>
+<p>黑箱學習需大量線上互動（樣本高），但其蒸餾用合成資料免額外樣本；LLM 只評估少量演算法故樣本高效。速度上符號蒸餾隨 AST 最大節點數指數成長（最慢，簡單演算法可較快）；LLM 因暖啟動 + 只評估少量高品質演算法而快。可解釋性上黑箱幾乎不可解釋，<strong>LLM 最可解釋</strong>（生成時以純文字解釋），符號蒸餾因引入許多常數而較難懂。<strong>黑箱是唯一能在長 rollout + 多特徵上元訓練者，最可擴展</strong>。</p>
+<h2 id="8-設計建議">8. 設計建議</h2>
+<ul>
+<li>對<strong>少輸入或輸入易懂</strong>的被學演算法，<strong>提示 LLM</strong> 是樣本高效找泛化演算法的好法。三個前提：須有易定義的高效暖啟動函數；須能在元測試環境調超參；i.d. 表現可能不如黑箱（尤其多元樣本時）。</li>
+<li>只要能定義暖啟動初始化函數，<strong>提示 LLM 幾乎總優於符號蒸餾</strong>。符號蒸餾除產可解釋式外，不太可能提升性能（與 Chen et al. 「符號式應更泛化」的建議相反）。</li>
+<li><strong>黑箱蒸餾常（非總）能改善泛化</strong>。建議對所有前饋或短遞迴展開的黑箱演算法做<strong>同尺寸蒸餾</strong>（不增樣本、訓練快、偶得便宜增益）。縮小蒸餾風險較大、增益較小。</li>
+<li><strong>多特徵演算法實際上只能用黑箱</strong>（如 OPEN，LLM 無法提出兼用全部特徵的高效演算法）。</li>
+</ul>
+<h2 id="9-局限與未來工作">9. 局限與未來工作</h2>
+<p>未來可探：LLM 提案演算法對超參的依賴與敏感度；黑箱蒸餾中<strong>表示/架構改變</strong>的影響（如蒸成 transformer）；<strong>混合不同元學習法</strong>（如先用黑箱網路編碼輸入再符號蒸餾以擴展到高維、或從符號蒸餾結果暖啟動 LLM）；不同提示風格/agentic 框架的影響。</p>
+<h2 id="10-結論">10. 結論</h2>
+<p>本文呈現大規模實證比較多種 RL 元學習法（黑箱、同尺寸/縮小蒸餾、符號蒸餾、LLM 提案），並提出元學習 RL 演算法的數條建議：一般優先用 LLM 發現新演算法（須能從高效起點初始化且能調超參）、試同尺寸黑箱蒸餾以求泛化。這些建議有助確保學到的 RL 演算法盡可能高效，並減少不必要的實驗。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2507.17668_meta_learn_rl_algorithms.%E6%91%98%E8%A6%81.html"><code>../summarize/2507.17668_meta_learn_rl_algorithms.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

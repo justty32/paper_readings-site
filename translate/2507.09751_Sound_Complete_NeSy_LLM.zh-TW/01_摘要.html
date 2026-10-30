@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2507.09751_Sound_Complete_NeSy_LLM.zh-TW.html">回 2507.09751_Sound_Complete_NeSy_LLM.zh-TW 目錄</a>　<a href="02_%E7%B5%90%E8%AB%96%E8%88%87%E6%9C%AA%E4%BE%86%E5%B7%A5%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）在自然語言理解與生成上展現亮眼能力，但其輸出存在<strong>邏輯一致性問題</strong>。儘管 LLM 不一致，我們如何在形式推理中駕馭其廣覆蓋的參數知識？本文提出一種方法，把 LLM <strong>直接整合進一種超協調邏輯（paraconsistent logic）之形式語意的解釋函數中</strong>。我們以短答事實性基準 GPQA 與 SimpleQA 衍生的資料集做實證評估，顯示<strong>雙邊事實性評估</strong>在兩個基準上把 macro-F1 較單邊基線提升約 6 個百分點（代價是覆蓋率降低，因為在不一致或不確定情形會觸發棄權）。我們進一步描述一個實作該方法的概念驗證 tableau 推理器，並應用於一個用藥安全知識庫（228 條斷言 + 712 條推論）：系統偵測到 <strong>92 個 gluts</strong>，對應醫療上顯著的錯誤（如鴉片類被推論為非成癮、β-阻斷劑被推論為氣喘患者安全），同時系統<strong>仍保持可滿足</strong>，證明矛盾被<strong>局部化</strong>而非導致邏輯爆炸。</p>
+<hr />
+<h2 id="1-引言introduction">1. 引言（Introduction）</h2>
+<p>本文處理根本問題：LLM 編碼大量知識卻不一致、不完整，作為知識庫並不可靠。作者提出透過超協調邏輯的「<strong>LLM 接地解釋（LLM-grounded interpretations）</strong>」把 LLM 直接整合進形式邏輯語意。不用 prompting、也不用外部 solver，而是把一個 <strong>LLM 評審（judge）嵌入作為解釋函數本身</strong>。關鍵創新是使用<strong>廣義真值</strong>（驗證/反駁評估的成對值）取代二元判斷，植根於「<strong>Belnap 電腦</strong>」——處理不完整/不一致資訊的理論建構。</p>
+<h2 id="2-相關工作related-work">2. 相關工作（Related Work）</h2>
+<ul>
+<li><strong>2.1 LLM 的邏輯推理</strong>：當前取向分三類——(a) prompt 式（LLM 用自然語言推理）、(b) solver 式（LLM 產形式語句交外部推理器）、(c) 預訓練/微調（LLM 從證明範例學習）。作者提出新穎的 (d) <strong>解釋式</strong>取向：「LLM 評審可為 𝐀𝐂 提供一個保持推理健全與完整的解釋」。</li>
+<li><strong>2.2 用 LLM 評審做事實性評估</strong>：近期工作用 LLM 評審擴展事實性評估，提示模型賦予真值。作者以廣義真值延伸——同時捕捉驗證與反駁的可能，提供比二元判斷更豐富的知識論資訊。</li>
+<li><strong>2.3 超協調推理的多值邏輯</strong>：本文建立於 Belnap 四值語意與超協調描述邏輯。選用 Angell 的<strong>分析包含邏輯（logic of analytic containment, 𝐀𝐂）</strong>，因為它同時處理超協調性（容忍矛盾不爆炸）與超完備性（拒絕排中律），適合模糊/不完整資訊。</li>
+</ul>
+<h2 id="3-原子公式的雙邊事實性評估">3. 原子公式的雙邊事實性評估</h2>
+<p>方法把**雙邊論（bilateralism）**操作化——理解一個命題需同時掌握其斷言與否認條件的哲學原則。</p>
+<p><strong>流程</strong>：</p>
+<ol>
+<li>把原子公式 φ 語句化為自然語言；</li>
+<li>對 LLM 提示兩次：一次驗證（「你能驗證這個嗎？」），一次反駁（「你能反駁這個嗎？」）;</li>
+<li>把回應映到 weak Kleene 真值：𝔱（真）、𝔢（未定義）、𝔣（假）;</li>
+<li>組合為有序對 ⟨u,v⟩ ∈ 𝒱₃ × 𝒱₃。</li>
+</ol>
+<p><strong>關鍵定義</strong>：</p>
+<ul>
+<li><strong>Def 3.1 語句化函數</strong>：δ:𝒫(ℒ)→Σ* 是把公式集映到 token 序列的全函數；可為模板式或 LLM 生成。</li>
+<li><strong>Def 3.2 驗證函數</strong>：P⁺:Σ*→Σ* 提示 LLM「取原子公式 φ 的語句化、生成陳述 φ 已被驗證或無法驗證的 token 序列 σ⁺」。</li>
+<li><strong>Def 3.3 反駁函數</strong>：P⁻:Σ*→Σ* 類似地提示反駁陳述。</li>
+<li><strong>Def 3.4 雙邊事實性評估</strong>：ζ:ℒ_AT→𝒱₃×𝒱₃ 產生 ⟨u,v⟩——若輸出含 &quot;VERIFIED&quot; 則 u=𝔱，含 &quot;CANNOT VERIFY&quot; 則 u=𝔣，否則 u=𝔢;v 以反駁 token 類推。</li>
+<li><strong>Def 3.5 快取函數</strong>：ζ_c 確保穩定性——一旦某原子公式被評估，重複呼叫回傳快取值，這對需要跨推導維持穩定賦值的 tableau 推理至關重要。</li>
+</ul>
+<p><strong>例（Figure 3）</strong>：查詢「America was discovered in 1492」產生驗證陳述：「在歐洲探索脈絡下準確但不完整」→ 無法驗證（u=𝔣）；反駁：「從歐洲視角看不矛盾」→ 無法反駁（v=𝔣）。結果 ⟨𝔣,𝔣⟩，表示知識不完整。</p>
+<h2 id="4-llm-接地的解釋llm-grounded-interpretations">4. LLM 接地的解釋（LLM-Grounded Interpretations）</h2>
+<p>本節建立形式保證：LLM 評審可取代標準解釋函數而保持健全與完整。</p>
+<ul>
+<li><strong>Def 4.1 LLM 接地的 𝐀𝐂 解釋</strong>：ℐ=⟨𝐂^ℐ,𝐑^ℐ⟩ 是一個 𝐀𝐂 解釋，使得對每個函數 R^ℐ∈𝐑^ℐ：R^ℐ(c₁^ℐ,…,cₙ^ℐ)=ζ_c(R(c₁,…,cₙ))。雙邊評估函數直接計算謂詞真值。</li>
+<li><strong>Lemma 4.2 穩定性</strong>：對任一 LLM 接地解釋，ℐ(φ) 良定義且首次計算後恆定（證明依賴 Def 3.5 的快取）。</li>
+<li><strong>Lemma 4.4 LLM 接地 → 標準的映射</strong>：對任一 LLM 接地 𝐀𝐂 解釋 ℐ，存在一個標準 𝐀𝐂 解釋 ℐ′ 在所有公式上保持 ℐ 的語意行為（透過固定快取的賦值建構出同定義域與關係的 ℐ′）。</li>
+<li><strong>Lemma 4.6 標準 → LLM 接地的映射</strong>：反之，任一標準解釋可透過以標準解釋的真值預填快取，轉成 LLM 接地形式。</li>
+<li><strong>Theorem 4.8 保持健全性</strong>：若 Γ⊢_ACrQ φ，則對所有 LLM 接地 𝐀𝐂 解釋 ℐ，Γ⊧_ℐ φ 有效。證明：由 Ferguson (2021b)，語法推導蘊涵標準語意有效；因 LLM 接地解釋與標準解釋等價，有效性轉移。</li>
+<li><strong>Theorem 4.10 保持完整性</strong>：若對所有 LLM 接地 𝐀𝐂 解釋 ℐ 皆有 Γ⊧_ℐ φ，則 Γ⊢_ACrQ φ。證明：Lemma 4.4 把任一 LLM 接地反例轉成標準形式；ACrQ tableau 系統的完整性即可導出結論。</li>
+</ul>
+<p>含意：<strong>以 LLM 評審作為解釋函數的推理，維持底層形式系統的邏輯保證</strong>。</p>
+<h2 id="5-評估evaluation">5. 評估（Evaluation）</h2>
+<ul>
+<li><strong>5.1 資料與指標</strong>：由短答事實性基準 GPQA 與 SimpleQA 構造兩個資料集（各 N=400）。問答對近似原子公式的語句化。指標：<strong>Macro F1（在不棄權時）</strong>、<strong>Coverage（評審給出非棄權賦值的比例）</strong>、執行時間與 token 用量。</li>
+<li><strong>5.2 LLM 評審</strong>：測六個模型——三旗艦（Llama 4 Maverick、GPT-4o、Claude 3.5 Sonnet）與三蒸餾（Llama 4 Scout、GPT-4o Mini、Claude 3.5 Haiku）；三種 prompt 變體（direct、zero-shot CoT、few-shot CoT）；基線為單邊評估（僅 𝔱 或 𝔣）。標準誤以 bootstrap 重抽樣估計（1000 子樣本，N=100）。</li>
+</ul>
+<h3 id="53-結果">5.3 結果</h3>
+<table>
+<thead>
+<tr>
+<th>資料集</th>
+<th>模型類型</th>
+<th>雙邊 F1</th>
+<th>覆蓋率</th>
+<th>單邊 F1</th>
+<th>覆蓋率</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPQA</td>
+<td>旗艦</td>
+<td>0.699</td>
+<td>0.589</td>
+<td>0.633</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>GPQA</td>
+<td>蒸餾</td>
+<td>0.608</td>
+<td>0.504</td>
+<td>0.559</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>SimpleQA</td>
+<td>旗艦</td>
+<td>0.736</td>
+<td>0.584</td>
+<td>0.657</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>SimpleQA</td>
+<td>蒸餾</td>
+<td>0.624</td>
+<td>0.499</td>
+<td>0.570</td>
+<td>1.000</td>
+</tr>
+</tbody>
+</table>
+<p><strong>關鍵發現</strong>：</p>
+<ol>
+<li>雙邊評估 macro F1 勝單邊（p&lt;0.01），代價是較低覆蓋率（平均差 +0.062 F1、−0.456 覆蓋率）。</li>
+<li>旗艦明顯勝蒸餾（雙邊差 0.091–0.112，單邊差 0.074–0.087）。</li>
+<li>雙邊評估約耗 2× 執行時間與 token（旗艦 GPQA：36.7s/4782 tokens vs 12.4s/2213 tokens）。</li>
+<li>「不一致顯著比不完整更常見」（p&lt;0.05）——⟨𝔱,𝔱⟩（矛盾）約 30% vs ⟨𝔣,𝔣⟩（不完整）11%。</li>
+</ol>
+<p><strong>Table 3 真值分佈（GPQA 旗艦）</strong>：⟨𝔱,𝔱⟩ 0.301、⟨𝔱,𝔣⟩ 0.211、⟨𝔣,𝔱⟩ 0.378、⟨𝔣,𝔣⟩ 0.110。值得注意：未產生任何 u=𝔢 或 v=𝔢（未定義）的實例。</p>
+<h3 id="54-局限">5.4 局限</h3>
+<p>計算複雜度取決於需評估的原子公式數，最壞情形可能呈指數。每個原子需 2k 次 LLM API 呼叫（k-sample 多數投票）。快取與 tableau 優化預期有助益，但尚未驗證。本文缺乏完整端到端推理器實作——僅實作了解釋函數（原子公式評估）。提議的未來方向：把 𝐀𝐂 翻譯成古典描述邏輯（如 SROIQ），以透過 Pellet 等既有工具整合推理器。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

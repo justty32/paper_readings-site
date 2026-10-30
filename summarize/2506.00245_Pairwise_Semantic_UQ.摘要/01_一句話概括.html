@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2506.00245_Pairwise_Semantic_UQ.%E6%91%98%E8%A6%81.html">回 2506.00245_Pairwise_Semantic_UQ.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>SNNE（語意最近鄰熵，Semantic Nearest Neighbor Entropy）</strong>：捨棄語意熵（Semantic Entropy, SE）「先用雙向蘊涵把答案<strong>硬分群</strong>、再對群機率算熵」的兩步驟，改用 <strong>LogSumExp 聚合的成對（pairwise）語意相似度</strong>直接估計熵——不分群、天然同時捕捉群內離散度與群間距離；理論上證明 SE／DSE 只是 SNNE／WSNNE 在特定相似度函式下的<strong>退化特例</strong>，實證在問答、摘要、翻譯共九個資料集、六個 LLM 上全面優於 SE 及多個既有黑箱／白箱基線，在現代 LLM 愈生愈長的單句輸出情境下優勢最明顯。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>語意熵（SE，Farquhar et al. 2024）用雙向蘊涵（NLI）把同一問題的多個取樣答案硬分成語意等價類，再對「類機率」算熵，藉此把不確定性算在「意思」而非「措辭」上。但這個離散分群步驟丟失了兩種連續資訊：<strong>群內相似度</strong>（intra-cluster similarity，同一群裡答案彼此有多接近）與<strong>群間相似度</strong>（inter-cluster similarity，不同群之間的語意距離）。作者實測發現，現代 LLM 傾向生成更長的單句輸出：在五個 QA 資料集上，Llama-3.1-8B 與 Phi-3-mini 平均輸出 4.1、4.9 個字，遠高於 Llama2-7B 的 2.3 個字；輸出長度與語意分群數的 Spearman 相關係數達 0.83。當分群數 M 逼近取樣數 n 時，離散版 SE（DSE）會退化成與答案內容無關的常數，SE 本身的鑑別力也隨之下滑——這正是本文要修補的缺口。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>SNNE 定義</strong>：不分群，直接對 n 個取樣答案兩兩 (i, j) 計算相似度 f(aⁱ, aʲ|q)，除以溫度 τ 取 exp 後對 j 求和取 log，再對 i 取平均、取負號：SNNE(q) = −(1/n) Σᵢ log Σⱼ exp(f(aⁱ,aʲ|q)/τ)。LogSumExp 是 max 函式的平滑近似，讓 SNNE 近似「最近鄰熵估計」（nearest neighbor entropy estimation, Beirlant et al. 1997），因此比用求和（summation）聚合相似度的 LexSim、graph-based 方法對離群值更穩健。</li>
+<li><strong>白箱擴充 WSNNE</strong>：把每個答案 i 的 log-sum-exp 項改用其正規化序列機率加權平均（取代簡單平均 1/n），納入 token 機率資訊，在能取得模型內部機率時可用。</li>
+<li><strong>相似度函式 f 的三種選擇</strong>：ROUGE-L（如 LexSim 所用）、NLI 模型的蘊涵預測分數（如 graph-based 方法）、或句嵌入的餘弦相似度。</li>
+<li><strong>理論結果（形式化 SE 為特例）</strong>：Theorem 4.1 證明，若把 f 設為「同群給定值 τlog(1/n)、異群給 −∞」（即完全忽略群間相似度、群內相似度簡化成常數），SNNE 精確等於 DSE。Theorem 4.2 證明，若把 f 改成「同群依答案的正規化序列機率給值、異群 −∞」，WSNNE 精確等於 SE。也就是說，<strong>SE／DSE 是 SNNE／WSNNE 在特定、資訊量較少的相似度函式選擇下的退化特例</strong>，SNNE／WSNNE 嚴格更具表達力。此外，當 τ→0 且 f 取為蘊涵機率的線性函式時，SNNE 漸近等於 LUQ-Pair 的 atomic score，顯示 SNNE 亦可整合進 LUQ 做長文本的逐句不確定性估計（作者留待未來工作，未實作）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>QA（6 模型 × 5 資料集，AUROC/AUARC）</strong>：SNNE 在黑箱設定全面最佳或並列最佳（如 Phi-3-mini AUROC 0.84，優於 DSE 與 SE 的 0.80）；WSNNE 在白箱設定同樣全面最佳或並列最佳（如 Llama-3.1-8B AUROC 0.83，優於 SE 的 0.79、KLE_full 的 0.80）。</li>
+<li><strong>摘要（XSUM、AESLC）＋翻譯（WMT-14 de-en、fr-en），PRR，Phi-3-mini</strong>：SNNE 在黑箱設定全面最佳（如 XSUM 的 BERTScore-PRR 0.64 對 DSE 0.56、LexSim 0.58；ROUGE-PRR 0.26 對 DSE 0.21）；白箱的 KLE_heat 在少數指標上略優於 SNNE，但 SNNE 仍大幅拉開與 SE 本身的差距，證實「直接用 pairwise 相似度」比 SE 的硬分群更適合長輸出情境。</li>
+<li><strong>取樣數與溫度消融</strong>（Llama-3.1-8B on SQuAD）：AUROC 隨取樣數增加而提升，低溫下約 10 個生成即趨於飽和；溫度過低（0.5）或過高（2.0）都會降低效能。論文主實驗設定（溫度 1.0、10 個生成）直接沿用 SE 原論文設定，未另外調優。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>論文明言未處理<strong>多句/整段生成</strong>情境，自陳可能的 naive 解法是逐句算不確定性再聚合，留待未來工作。</li>
+<li>對數學式、LaTeX、程式碼等資料格式，需要額外設計相似度函式 f 才能推廣，論文未實作驗證。</li>
+<li>與其他取樣式 UQ 方法相同，SNNE 仍需對同一問題取樣多個答案（n=10）才能估計熵，帶來額外推理成本——本文優化的是<strong>分數品質</strong>而非<strong>取樣成本</strong>本身。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《讓 LLM 從串流經驗中透過回饋學會合成（StreamSynth / SynLearner）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zhenlin Hu, Yan Wang, Zhen Bi 等（湖州師範學院、阿里巴巴集團、浙江大學）</p><p>日期：2026-05</p><p>arXiv：2605.29940</p><p><a href="https://arxiv.org/abs/2605.29940" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="讓-llm-從串流經驗中透過回饋學會合成streamsynth--synlearner重點摘要">《讓 LLM 從串流經驗中透過回饋學會合成（StreamSynth / SynLearner）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>StreamSynth（設定）＋ SynLearner（方法）</strong>：把「LLM 合成資料」從一組<strong>孤立任務</strong>改寫成<strong>任務串流上的經驗驅動學習</strong>——任務依序到達、未來不可見，模型須靠<strong>回饋（reward）驅動</strong>在串流中<strong>累積、重用、遷移</strong>合成經驗；SynLearner 用「多樣性感知初始化＋高效微調＋階層式雙層回饋（樣本品質＋集合多樣性）的 GRPO 強化學習」邊做邊精修生成行為，讓早期任務學到的合成策略泛化到後期甚至跨型別（數學推理）任務。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>既有 LLM 合成方法（從零合成、從種子合成）把合成當成<strong>靜態、任務專屬</strong>的程序，未回答更根本的問題：模型能否<strong>從過去任務累積可遷移的合成策略</strong>並泛化到未來任務。三個缺口：（1）主流「生成後過濾」管線與明確回饋脫鉤，模型不知為何某些生成較佳；（2）缺乏在串流上累積／組織合成經驗的機制；（3）評估多停在<strong>單樣本層級</strong>，忽略對可重用語料關鍵的<strong>集合層級多樣性</strong>。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>StreamSynth 設定</strong>：任務序列 T={T₁…T_N}，Tₜ=（提示分佈 Pₜ, 輸出空間 Yₜ）；步驟 t 只見歷史與當前任務、未來不可見。目標 max E_{j&gt;t}[U(Mₜ,Tⱼ)]，效用兼顧樣本品質與集合多樣性。表 1 沿五維度（序列任務／合成目標／歷史經驗／回饋最佳化／未來泛化）證明唯有 StreamSynth 全中，區隔於多任務合成、持續學習、元學習。</li>
+<li><strong>SynLearner 三組件</strong>：
+<ol>
+<li><strong>DAI（多樣性感知初始化）</strong>：動態提示（共享模板 p_base ＋任務槽位賦值，經一致性約束過濾）＋演化式擴展（depth-oriented 增內部複雜度、breadth-oriented 擴領域/風格/題型覆蓋）。</li>
+<li><strong>EFT（高效微調）</strong>：對每個到來任務用動態提示樣本做 SFT，從 Mₜ₋₁ 得任務適配初始化 M̃ₜ，提供基本任務遵循與結構有效生成。</li>
+<li><strong>HRO（階層式回饋最佳化）</strong>：GRPO 強化學習，<strong>雙層回饋</strong> r_total = λ·r_sample + (1−λ)·r_set；r_sample = γ₁·結構有效性 + γ₂·流暢度 + γ₃·任務相關性；r_set = 批內局部區辨分數 exp（−k·局部密度），懲罰冗餘、鼓勵多樣。</li>
+</ol>
+</li>
+<li><strong>關鍵設計哲學</strong>：經驗<strong>隱式</strong>存於逐任務轉移的模型參數（含合成資料一併前傳），無需顯式重播或任務專屬記憶體。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>主結果（表 2）</strong>：LLaMA3.1-8B / Qwen2.5-7B 上多為最佳或近最佳，<strong>後段任務優勢更明顯</strong>（遷移更重要處）。</li>
+<li><strong>前向遷移（表 4）</strong>：直接把早期模型用於下一未見任務，Δ 多為正而基線多為負——LLaMA Step2→3（Yahoo）<strong>+4.02</strong>、Step3→4（MNLI）<strong>+2.8</strong>；Qwen Step1→2 <strong>+1.35</strong>（基線 −0.46 至 −3.07）。</li>
+<li><strong>跨型別泛化（表 5）</strong>：追加第 5 步數學推理，相對 Ori：MATH-500 上 LLaMA <strong>+7.80</strong>、Qwen <strong>+12.20</strong>；GSM8K 亦一致增益。</li>
+<li><strong>消融（表 3）</strong>：移除 GRPO 掉幅最大，證回饋最佳化是超越純監督合成的關鍵；順序排列穩健（表 7），規模 7B–8B 後飽和（表 6）——效果非單靠參數。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>歷史經驗僅<strong>隱式</strong>藏於回饋驅動的參數更新，未顯式隨時間建模，長程時間依賴與細粒度任務演化可能漏捕。</li>
+<li>評估集中在<strong>語意中度相關</strong>的串流；更異質/差異大的領域效果未充分探究。</li>
+<li>屬概念驗證式：分類/NLI 為主，指令生成、開放域 QA、程式碼合成、agentic 任務留待未來。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>本篇對 ai_core §3.6「固化引擎」的啟發＝提供「線上／串流」的固化時機模型</strong>：ai_core 想把 LLM 反覆處理的案例結晶成可重用資產，而本篇證明這種「累積可重用能力」<strong>不必是離線批次壓縮，可以邊做邊固化</strong>——任務串流到達時即以回饋驅動地累積、重用、遷移，且<strong>後段任務增益更大</strong>正呼應「固化應隨經驗滾動變強」的直覺。可與 <a class="paper-reference" href="2401.16467_ReGAL.%E6%91%98%E8%A6%81.html">2401.16467</a>（ReGAL，增量式抽出可重用抽象）、<a class="paper-reference" href="2401.12869_TroVE.%E6%91%98%E8%A6%81.html">2401.12869</a>（TroVE，使用中修剪工具庫）對照，構成<strong>線上固化光譜</strong>：ReGAL＝增量新增、TroVE＝使用中修剪、StreamSynth＝串流回饋驅動累積。</li>
+<li><strong>但要警覺一個反向對照（非轉述）</strong>：本篇把經驗<strong>隱式</strong>壓進模型權重（作者自列為局限），這<strong>恰與 ai_core「固化＝顯式確定性程式碼／抽象庫」的北極星相反</strong>。因此對 ai_core 而言，本篇更像在回答「<strong>何時／多頻繁固化</strong>（串流 vs 批次）」與「回饋如何驅動固化」，而非「固化成什麼形態」；ai_core 若採其串流時機，仍須把 SynLearner 的隱式權重換成顯式資產，才符合「逐步剃除 LLM 依賴」的目標。歸 <strong>I 類</strong>。</li>
+<li>適合關注 <strong>合成資料生成、持續/串流學習、經驗驅動自我改進、GRPO 回饋最佳化、線上固化時機</strong> 的讀者。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2605.29940_StreamSynth.zh-TW.html"><code>../translate/2605.29940_StreamSynth.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

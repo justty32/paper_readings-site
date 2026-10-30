@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.25975_WakeSleep_Schank_Primitives.zh-TW.html">回 2603.25975_WakeSleep_Schank_Primitives.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="31-世界狀態表示">3.1 世界狀態表示</h3>
+<p>狀態 = 三元組 <code>(s,r,o)</code> 集合。事件 = (before, after) 對 + NL 描述；狀態差 <code>Δ(W_before, W_after) = (W_after∖W_before, W_before∖W_after)</code>。</p>
+<h3 id="32-運算子-dsl">3.2 運算子 DSL</h3>
+<p>運算子模板 = 名稱 + 帶型別槽（entity/location/property/value）+ remove 模式 + add 模式（以 $ 變數綁定槽）。實例綁定具體實體產生具體狀態差；程式 = 一串運算子實例，其組合差解釋事件狀態變化。</p>
+<p><strong>Seed 庫（4 個極通用運算子）</strong>：<code>SET(e,p,v)</code> 加三元組（新事實出現）；<code>UNSET(e,p,v)</code> 移三元組（事實消失）；<code>MOVE_PROP(s,d,p,v)</code> 移 <code>(s,p,v)</code> 加 <code>(d,p,v)</code>（轉移：source 失去 destination 得到）；<code>CHANGE(e,p,v_old,v_new)</code> 移舊加新（值替換）。它們刻意極簡——能表達任何狀態變化但無語意承諾；目標是發現哪些特化會反覆出現。</p>
+<h3 id="33-wake-階段程式搜尋">3.3 Wake 階段：程式搜尋</h3>
+<p>給目標差 Δ* 與庫 L，找程式 P=[o₁,…,oₙ] 使組合差匹配 Δ*。用 beam search（寬 30、深度 ≤3、運算子按 arity 升序＝偏好特化）；對每運算子枚舉綁定（槽值限定為目標差中出現的實體與關係），早剪枝掉與剩餘未解釋差無重疊者。</p>
+<h3 id="34-sleep-階段抽象發現">3.4 Sleep 階段：抽象發現</h3>
+<ul>
+<li><strong>Specialization</strong>：對每通用運算子，按操作關係分組實例。若 MOVE_PROP 在 ≥k 事件以 property=&quot;has&quot; 實例化，提出 <code>MOVE_PROP_has</code>（property 槽硬編、降 arity 1、每用省 1 bit）。</li>
+<li><strong>Composition</strong>：辨識跨程式頻繁相鄰的運算子對。若 <code>o_A→o_B</code> 在 ≥k 程式出現，提出複合 <code>o_{A∘B}</code>（合併模式、統一共享綁定），把 2 步換成 1 步。</li>
+<li>兩者皆以 MDL 節省評估：<code>savings = n·c_old − (c_lib + n·c_new)</code>（n=頻率，c_old/c_new=既有/新庫的每用成本，c_lib=新運算子模板描述長度）。</li>
+</ul>
+<p>具體算例：MOVE_PROP 庫成本 = 4 槽 + 2 模式 = 6；特化為 ATRANS（3 槽 + 2 模式 = 5），每用程式成本由 4+? 降，<strong>每用省 1 bit</strong>；資料中 110 個 ATRANS 型事件共省 110 bit，遠超 5-bit 庫成本（5 次回本）。MAIL 複合（ATRANS∘PTRANS、5 共享綁定）每用 6 bit vs 分開 10 bit，<strong>每用省 4 bit</strong>。</p>
+<h3 id="35-pruning-階段">3.5 Pruning 階段</h3>
+<p>收斂後移除「實際使用不足以攤平庫成本」的運算子（消除「按頻率提出但搜尋程序其實不偏好」者）。</p>
+<h3 id="與壓縮的類比">與壓縮的類比</h3>
+<p>Specialization 對應 <strong>Huffman 編碼</strong>（高頻運算子+關係組合得短碼）；Composition 對應 <strong>BPE</strong>（最頻繁運算子對合併為新 token、犧牲詞彙量換序列縮短）；此過程迭代建立越來越抽象的運算子階層。三者（Huffman、BPE、本演算法）目標相同：在懲罰碼本複雜度下最小化資料總描述長度；差別只在「符號」是帶型別、可組合的狀態轉換而非字元，「合併」須尊重運算子組合的代數結構（共享綁定須統一、add/remove 模式須一致合併）。由此觀點：<strong>Schank primitive 即事件語意的 Huffman 碼</strong>——把最短描述指派給最常見的狀態轉換；ATRANS/PTRANS/MTRANS 在迭代 1 最先被發現，正對應 Huffman 先給最高頻符號最短碼。</p>
+<h3 id="雙-mdl">雙 MDL</h3>
+<p>簡化 MDL（計結構單元）作搜尋啟發（快、足以引導發現）；貝氏 MDL（−log₂頻率作運算子選擇成本、log₂|實體池|作每綁定成本）作最終模型比較（經 Bayes factor）。此分離對應 DreamCoder 慣例（搜尋用代理目標、評估用完整生成模型）。</p>
+<h2 id="46-評估與討論精要">4–6 評估與討論（精要）</h2>
+<ul>
+<li><strong>合成資料</strong>（14 模板、7 類別）：學出庫貝氏 MDL 在 Schank 的 4% 內，解釋 100% 事件 vs Schank 81%。</li>
+<li><strong>真實 ATOMIC</strong>：Schank primitive 只解釋 10%，學出的庫解釋 100%；主導運算子為 CHANGE_wants(20%)、CHANGE_feels(18%)、CHANGE_is(18%)（心理/情緒/屬性變化），皆不在 Schank 分類學。</li>
+<li>也做 train/test 泛化、Bayes factor 模型比較、與貝氏程式理論及 JEPA/世界模型的連結（自然綜合：用 JEPA 式潛在狀態當世界狀態表示、用本 wake-sleep 迴圈在其上發現離散運算子詞彙）。</li>
+<li><strong>討論要點</strong>：為何壓縮能還原 Schank（因 Schank primitive 確為高頻轉換的短碼）；Schank 漏了什麼（情緒/心理運算子）；MTRANS 洞見；組合性；侷限（依賴結構化 before/after 表示、seed 與 DSL 表達力限制）。</li>
+</ul>
+<h2 id="7-結論">7. 結論</h2>
+<p>首次實證事件 primitive 可由壓縮壓力推得；Schank 核心物理 primitive 資訊論上成立但不完整，真實常識事件由心理/情緒運算子主導。把「神經元是否夢見 primitive 運算子」這個問題，用 wake-sleep 壓縮給出了肯定且可量化的答案。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2603.25975_WakeSleep_Schank_Primitives.%E6%91%98%E8%A6%81.html"><code>../summarize/2603.25975_WakeSleep_Schank_Primitives.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

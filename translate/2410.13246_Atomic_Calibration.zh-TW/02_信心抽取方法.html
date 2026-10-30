@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_信心抽取方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2410.13246_Atomic_Calibration.zh-TW.html">回 2410.13246_Atomic_Calibration.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E8%A8%8E%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-信心抽取方法">4 信心抽取方法</h2>
+<p>本節定義兩類信心抽取方法——生成式與判別式，並介紹兩種考慮信心分歧的新融合策略。對查詢 q 的回應 x，先拆成原子主張集合 C（依循 Min et al. 2023 等前作，每個原子主張只含單一資訊且須自足）。生成式方法需額外取樣一組回應 K，與原回應 x 比較；每個 C 中的原子主張都會被賦予一個信心分數。</p>
+<h3 id="41-生成式方法">4.1 生成式方法</h3>
+<p>生成式方法假設不同生成樣本間的一致性能可靠反映模型的不確定性，通常搭配自然語言推論（NLI）模型計算一致性，有兩種變體：</p>
+<p><strong>Gen-Binary</strong>：基本假設是若某事實在多次取樣中頻繁出現，模型即被視為對該事實「有信心」。用 NLI 模型 M_NLI 檢查原子主張 c_i 是否被每個額外樣本支持；設 K_s 為支持 c_i 的樣本集合，則信心 Conf(c_i, K) = |K_s| / |K|。</p>
+<p><strong>Gen-Multi</strong>：假設模型對「表述一致」的事實更有信心。與 Gen-Binary 不同，把「不支持」進一步細分為「衝突」K_c（樣本中以不同方式陳述該事實）與「未提及」K_nm（樣本未提到該事實），只考慮支持與衝突樣本：Conf(c_i, K) = |K_s| / (|K_s| + |K_c|)。</p>
+<h3 id="42-判別式方法">4.2 判別式方法</h3>
+<p>判別式方法直接詢問模型本身以評估不確定性，動機來自「模型在判別式任務上通常表現更好」的發現，即模型可能已具備以判別方式評估自身輸出信心的能力。</p>
+<p><strong>Dis-Single</strong>：直接問模型某個原子主張是真是假，取模型生成「True」token 的機率 P(true) 當信心。因每個原子主張獨立判斷，此法的優點是判斷時不受其他主張交叉影響。</p>
+<p><strong>Dis-Context</strong>：在「各主張自足判斷」之外，額外提供上下文（原子主張所在段落、或產生該回應的 prompt），幫助模型更準確定位該主張，同樣以 P(true) 作為信心分數。</p>
+<p><strong>Dis-Rating</strong>：不用 P(true)，而是直接提示模型給出代表信心的數值：0 表示毫無信心，10 表示最高信心（另一做法是用「非常不確定」到「非常確定」等語意描述，但 Tian et al. (2023) 顯示 LLM 用數值評分效果相當甚至更好）。</p>
+<h3 id="43-信心融合策略">4.3 信心融合策略</h3>
+<p>組合多個信心分數已被證實有助於校準，但既有方法通常只用單一固定權重 α 組合分數 A、B：C = A·α + B·(1-α)，忽略了<strong>信心分歧</strong> d = B - A。例如 α = 0.5 時，信心組合 (0, 1) 與 (0.4, 0.6) 會被同等處理，儘管前者的分歧明顯更大、代表更高的不確定性。為此，我們提出兩種考慮分歧 d 的簡單有效方法：</p>
+<p><strong>AdjustedAlpha</strong>：依信心差異動態調整權重：α′ = α + γ_a·d（γ_a 為小常數，如 0.1），再用 C′ = A·α′ + B·(1-α′) 融合。</p>
+<p><strong>DampedFusion</strong>：依分歧程度施加阻尼：γ(d) = 1 - k·|d|（k 為小常數，如 0.02，控制阻尼靈敏度），再用 C′ = C·γ(d) 縮放原融合分數。基線另包含 MinConf（取最小信心）、HMean（調和平均）、ProdConf（相乘）。</p>
+<h2 id="5-實驗與結果">5 實驗與結果</h2>
+<h3 id="51-實驗設定">5.1 實驗設定</h3>
+<p><strong>模型</strong>：七個來自三個模型家族、不同規模的 LLM——Llama3 Instruct（8B、70B）、Mistral Instruct（7B、8x7B）、Qwen2 Instruct（7B、57B-A14B、72B）。</p>
+<p><strong>資料集</strong>：三個長文 QA 資料集——Bios（Min et al. 2023，500 位 Wikipedia 人物，模型需生成傳記）；LongFact（Wei et al. 2024，擴充 Bios，涵蓋 38 個人工挑選主題共 1,140 題）；WildHallu（Zhao et al. 2024，源自百萬則真實使用者—聊天機器人互動、含 7,917 個實體）。</p>
+<p><strong>原子事實生成與驗證</strong>：三個資料集皆採用基於 FActScore（Min et al. 2023）的事實性評估流程：先用 GPT-4o 把回應拆成原子事實，再用 GPT-4o 交叉比對 Wikipedia 與 Google 搜尋逐項驗證。</p>
+<p><strong>信心抽取基線</strong>：P(true)、Self-Rating、語意熵（SE）、特徵值總和（EigV），皆在 response 層級計算。Gen-Binary 使用 Llama-3-8B-Instruct 做 NLI；WAvg、AdjustedAlpha、DampedFusion 用獨立驗證集調參。</p>
+<p><strong>指標</strong>：主要用 ECE 與 Brier Score（BS）（可同時適用於原子與 macro 校準，便於直接比較），並加入 AUROC 評估原子校準、Spearman 相關係數評估 macro 校準的個案表現。</p>
+<h3 id="52-結果">5.2 結果</h3>
+<p>整體而言，測試的 LLM 在原子事實層級校準不佳。即使最穩健的方法 Gen-Binary，ECE 仍約落在 10% 左右，顯示明顯的校準落差（一般認為良好校準的 ECE 應接近 1%）；七個模型中 Qwen2-7B-Instruct 表現略優於另兩家族。</p>
+<p><strong>「response-level 校準良好」不代表「原子層級也校準良好」</strong>：把 atomic-level 與 response-level 的 ECE、Brier Score 逐點比較，資料點一致落在恆等線上方，即原子層級誤差高於 response 層級誤差，顯示原子校準對細粒度評估至關重要。</p>
+<p><strong>原子校準能提升 macro 校準</strong>：把五種原子層級方法的各主張信心取平均得出 response-level 信心，其表現優於直接的 response-level 基線方法，凸顯細粒度校準分析的價值。</p>
+<p><strong>考慮信心分歧的融合方法勝出</strong>：AdjustedAlpha 與 DampedFusion 持續取得最佳表現；值得注意的是，同類型方法融合（如 Dis-Rating 與 Dis-Context）並未帶來校準改善，反而是跨類型融合效果較好。</p>
+<p><strong>模型變大不必然帶來更好校準</strong>：比較不同尺寸模型後發現：(1) 生成式方法下，大小模型的校準差異不大；(2) 判別式方法下，大模型通常校準較好——推測因為判別式方法要求模型自評輸出的信心，而大模型通常具備更強的判別能力。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

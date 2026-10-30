@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《信心式級聯延後何時足夠？（When Does Confidence-Based Cascade Deferral Suffice?）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Wittawat Jitkrittum, Neha Gupta, Aditya Krishna Menon, Harikrishna Narasimhan, Ankit Singh Rawat, Sanjiv Kumar（Google Research, New York）</p><p>日期：2023-07</p><p>arXiv：2307.02764</p><p><a href="https://arxiv.org/abs/2307.02764" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="信心式級聯延後何時足夠重點摘要">《信心式級聯延後何時足夠？》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>本文用貝氏最優（Bayes-optimal）延後規則證明：級聯「該不該往上丟」的正確信號不是「當前模型信心夠不夠低」，而是「下游模型答對機率減去當前模型答對機率是否超過呼叫成本 c」</strong>——只看第一個模型信心的「信心式延後（confidence-based deferral）」只在下游模型錯誤率均勻時最優，一旦下游是專家（specialist）、有標籤雜訊、或訓練/測試分布偏移就會失準，此時需改用只靠第一個模型輸出訓練的 <strong>post-hoc 延後規則</strong>來逼近最優規則。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>級聯（cascade）把由便宜到昂貴的多個分類器排成序列，用延後規則（deferral rule）決定「回傳當前預測」還是「往上丟給更貴的下一個模型」，以在「簡單樣本」上省算力。最常用的延後規則是門檻化當前模型的最大 softmax 機率（信心式延後）——它<strong>完全不看下游模型的行為</strong>，卻在實務上表現出奇地好，甚至能媲美需重訓模型的複雜方法。但<strong>為何有效、何時會失效，此前並無理論說明</strong>。本文首次系統性刻畫其失效條件。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>前提設定</strong>：K=2 的級聯，兩個模型皆為<strong>預訓練、固定的黑箱</strong>，只學延後規則 r(x)∈{0,1}。目標＝在「呼叫下游模型的比例 ≤ τ」約束下最小化誤分類；用拉格朗日轉成無約束風險（每次呼叫下游計成本 c）。</li>
+<li><strong>貝氏最優規則（Prop 3.1）</strong>：<code>r*(x)=1[η_{h2(x)}(x) − η_{h1(x)}(x) &gt; c]</code>，其中 η 為「該模型對 x 答對的機率」。直覺：<strong>當下游帶來的誤差下降幅度大於其成本才往上丟</strong>。關鍵量是「兩模型答對機率之差」，同時依賴模型 1 與模型 2 的信心（而信心式延後只用模型 1）。</li>
+<li><strong>何時信心式延後最優（Lemma 4.1）</strong>：當「模型 1 的絕對信心」與「模型 1 對模型 2 的相對信心」給出相同排序時等價於最優。<strong>充分條件＝下游模型錯誤率為常數（如它是完美專家）</strong>。</li>
+<li><strong>三種失效模式</strong>：(1) 下游是<strong>專家</strong>（只在子群 X_good 上準）→ 信心式會把 X_bad 誤丟給表現更差的下游；(2) <strong>標籤雜訊</strong>→ 兩模型皆掉到隨機水準，卻因模型 1 信心低而白白往上丟浪費預算；(3) <strong>分布偏移</strong>（如訓練標籤偏斜）→ 模型 1 的機率估計在測試端失真。</li>
+<li><strong>Post-hoc 延後規則（Table 1）</strong>：訓一個輕量 MLP <code>g(x)=MLP(p^(1)(x))</code>，<strong>只吃模型 1 的輸出</strong>（推論時不需呼叫模型 2），在留出驗證集上回歸逼近最優規則。三個變體：<strong>Diff-01</strong>（預測 <code>1[y=h2]−1[y=h1]</code>）、<strong>Diff-Prob</strong>（預測 <code>p_y^(2)−p_y^(1)</code>）、<strong>MaxProb</strong>（預測 <code>max p^(2)</code>）。附有限樣本泛化界（Lemma 4.2，逼近誤差＋估計誤差）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>ImageNet 狗專家</strong>（h1=MobileNetV2 通才、h2=EfficientNet-B0 狗專家）：下游越專精，Relative Confidence／post-hoc 相對信心式延後增益越大，尤其在低延後率區間。</li>
+<li><strong>CIFAR-100 標籤雜訊</strong>（前 0/10/25 類加隨機標籤，ResNet-8 vs ResNet-14）：雜訊越大，post-hoc 在大範圍延後率上準確率明顯高於信心式。</li>
+<li><strong>CIFAR-100 長尾分布偏移</strong>（head 類 100/50/25，ResNet-8 vs ResNet-56）：偏移越大，post-hoc（尤其 Diff-01）能辨識 ResNet-56 對尾類更強而選擇性往上丟。</li>
+<li><strong>無偏移／通才對通才時</strong>：post-hoc 幾乎無增益，信心式延後已具高度競爭力——與理論一致。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>只在圖像分類上驗證，NLP／生成式級聯留待未來；失效模式清單非窮盡（如 OOD 未深入）。</li>
+<li>Post-hoc 模型<strong>會過擬合</strong>（§5.3：下游錯誤較不可預測時 Diff-01 嚴重過擬合），須控容量；且 post-hoc 亦有其失效模式：當 p^(2) 恰為貝氏機率且 p^(1) 已夠準時無資訊可撈、當 p^(2) 誤差不可預測時 post-hoc 退化回信心式延後。</li>
+<li>需一份留出（同分布）驗證集來訓練 g。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>歸 I 類</strong>。本篇是 ai_core <strong>§3.3「升級信號設計」的理論地基</strong>：級聯路由「何時該往上丟」的正確信號，貝氏最優給的是「下游答對機率 − 當前答對機率 &gt; 成本 c」，而非只看當前節點自己的信心——這把 ai_core 的成本梯度／級聯路由從啟發式提升為有最優性刻畫的判準。它同時界定了<strong>信心足夠 vs 不足</strong>的邊界：下游錯誤率均勻（＝穩定的後驗估計器）時，只看當前信心就最優；一旦下游是專家、有雜訊、或分布偏移就會系統性失準。</li>
+<li>對 <strong>§3.4「憑證何時可信」</strong>：把「自報信心」當作准入憑證時，本篇正是「<strong>此憑證何時可信</strong>」的形式化答案——憑證可信 ⟺ 下游模型是真後驗一致估計器；在專家／雜訊／偏移三情境下自報信心不可信，須改用<strong>只憑上游輸出訓練的 post-hoc 憑證</strong>（拒絕為預設＋憑證准入的治理仍成立，只是憑證來源要換）。可直接借用其 Diff-01／Diff-Prob／MaxProb 作為升級信號與憑證的具體實作範式。</li>
+<li>最值得記：<strong>「答對機率之差 &gt; 成本」的最優延後判準</strong>、<strong>信心式延後最優的充要條件（Lemma 4.1）與三大失效模式</strong>、以及<strong>用僅吃上游輸出的輕量 post-hoc 模型逼近最優規則</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2307.02764_CascadeDeferral.zh-TW.html"><code>../translate/2307.02764_CascadeDeferral.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《LLM Agent 不確定性量化：基礎、新興挑戰與機會》全文翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Changdae Oh, Seongheon Park, To Eun Kim, Jiatong Li, Wendi Li, Samuel Yeh, Xuefeng Du, Hamed Hassani, Paul Bogdan, Dawn Song, Sharon Li</p><p>日期：2026-04-20 (v3)</p><p>arXiv：2602.05073</p><p><a href="https://arxiv.org/abs/2602.05073" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="llm-agent-不確定性量化基礎新興挑戰與機會">LLM Agent 不確定性量化：基礎、新興挑戰與機會</h1>
+<p>Changdae Oh^1, Seongheon Park^1, To Eun Kim^2, Jiatong Li^1, Wendi Li^1, Samuel Yeh^1, Xuefeng Du^3, Hamed Hassani^4, Paul Bogdan^5, Dawn Song^6, Sharon Li^1</p>
+<p>^1 UW-Madison, ^2 CMU, ^3 NTU, ^4 UPenn, ^5 USC, ^6 UC Berkeley</p>
+<hr />
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）的不確定性量化（UQ）是日常 LLM 應用安全護欄的關鍵基石。然而，即便 LLM agent 正被部署於日益複雜的任務中，多數 UQ 研究仍聚焦於單輪問答。我們主張：UQ 研究必須轉向具互動 agent 的真實場景，且需要一個新的原則性框架。本文提出三大支柱以建立 agent UQ 的堅實基礎：(1) 基礎——首次提出 agent UQ 的一般化形式定義，涵蓋廣泛的既有 UQ 設置；(2) 挑戰——識別四項 agent 場景特有的技術挑戰：不確定性估計器選擇、異質實體的不確定性、互動系統中的不確定性動態建模、精細標註基準的缺乏，並在 τ²-bench 上提供數值分析；(3) 未來方向——總結 agent UQ 的實務意涵與待解開放問題。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>基於 LLM 的 agent 在開放環境中採取的行動具有真實後果：執行高成本預訂、修改資料庫、發出不可逆指令。在這樣的場景中，失敗不再僅限於不正確的文字生成——agent 可能在未解決的模糊性下提前行動，將錯誤沿著長互動軌跡傳播，或做出代價高昂或難以撤銷的決策。agent 必須能評估失敗可能性，這使 UQ 成為 agentic 系統的迫切核心需求。</p>
+<p>現有多數 UQ 研究將 LLM 視為靜態預言機：系統被單次提示、單次回答、以單一回應的不確定性進行評估。這些方法隱含假設系統在初始提示後不獲取新資訊。這不滿足 agent 場景的需求——其特徵為長時程互動環境與異質實體。</p>
+<p>LLM agent 在此設置中經由多輪互動與使用者及系統元件交換反饋以完成複雜任務。例如，訂票 agent 需決定是確認預約還是追問日期、預算或轉機偏好。早期高不確定性應觸發資訊尋求行動，而後續對話與資料庫查詢則可消減不確定性。這顯著偏離經典 LLM UQ——agent 現跨越多輪更新長互動日誌、涉及來自其他實體的訊息，並從環境獲取額外資訊。</p>
+<hr />
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p><strong>LLM UQ</strong>：主流方法包括聚合輸出 token 機率、量測多次生成間的一致性、語言化信心表達、共形預測。多數以單步 QA 為測試床，限制了對 agent 場景的適用性。</p>
+<p><strong>推理與 agent 場景 UQ</strong>：近期研究開始嘗試在互動或 agentic 推理中建模不確定性，但尚未反映來自不同實體（如使用者）的不確定性，也未關注開放環境中不確定性的可消減本質。</p>
+<hr />
+<h2 id="3-agent-uq-的一般化形式框架">3. Agent UQ 的一般化形式框架</h2>
+<h3 id="31-問題陳述與定義">3.1 問題陳述與定義</h3>
+<p><strong>定義 1（隨機 Agent 系統）</strong>：令 E_i 為環境狀態（包含對話記憶與系統資料庫狀態），O_i 與 A_i 為第 i 輪的觀察與動作，分別來自分佈 P 與 P_{π,𝒯}（𝒯 為工具集，π 為 LLM 策略）。在任務規範 E_0 與初始提問 O_0 下，軌跡定義為 ℱ_{≤T} = {(A_t, E_t, O_t)}^T_{t=0}。生成過程：
+A_i ~ P_{π,𝒯}(·|E_{i-1}, O_{i-1}), O_i ~ P(·|A_i, E_i), E_i = h(E_{i-1}, O_{i-1}, A_i)</p>
+<p>軌跡的聯合機率：P(ℱ_{≤T}) = P(E_0, O_0) Π^T_{i=1} P_{π,𝒯}(A_i|E_{i-1}, O_{i-1}) P(O_i|A_i, E_i)</p>
+<p><strong>定義 2（Agent UQ）</strong>：對 T 輪軌跡，agent UQ 同時估計每輪條件不確定性 U(ℱ_t|ℱ_{t-1}) 與軌跡級聯合不確定性 U(ℱ_{≤T})。取 U 為資訊內容（負對數機率）時，總不確定性展開為：
+U(ℱ_{≤T}) = U(E_0, O_0) + Σ^T_{i=1} [U(A_i|E_{i-1}, O_{i-1}) + U(O_i|A_i, E_i)]</p>
+<p><strong>目標</strong>：對任意 r_1 &gt; r_2，E[U(ℱ_{≤T})|r(ℱ_{≤T})=r_1] &lt; E[U(ℱ_{≤T})|r(ℱ_{≤T})=r_2]，即不確定性與獎勵呈反向單調。</p>
+<h3 id="32-既有-uq-的統一視角">3.2 既有 UQ 的統一視角</h3>
+<ul>
+<li><strong>化簡為單輪 LLM UQ</strong>：T=1 時，U(ℱ) = U(O_0) + U(A_1|O_0) ≥ U(A_1|O_0)</li>
+<li><strong>化簡為多步推理 UQ</strong>：U(ℱ) = U(O_0) + Σ U(A_i|A_{&lt;i}, O_0)，可視為 max_i U(A_i|…) 或 Σ w_i U(A_i|…)（加權平均）</li>
+<li><strong>與過程獎勵模型的連結</strong>：兩者皆對中間步驟分配信用（credit），並以聚合步驟級信號導出軌跡級評估</li>
+</ul>
+<hr />
+<h2 id="4-四項技術挑戰含-τ2-bench-實證">4. 四項技術挑戰（含 τ²-bench 實證）</h2>
+<h3 id="41-不確定性估計器選擇">4.1 不確定性估計器選擇</h3>
+<p>三類方法各有致命缺陷在 agent 場景被放大：</p>
+<ul>
+<li><strong>機率式</strong>：需輸出機率存取，前沿模型常不提供；長自由格式生成使聚合 token 機率失靈</li>
+<li><strong>一致性式</strong>：長時程多輪場景下推理成本不可行</li>
+<li><strong>語言化信心</strong>：動態膨脹的記憶與雜訊觀察使其膨脹失真</li>
+</ul>
+<p>τ²-bench 上 NLL/Entropy/語言化信心的 AUROC 0.47–0.69，Spearman/Kendall 相關多數不顯著——接近隨機分類表現。</p>
+<h3 id="42-異質實體的不確定性">4.2 異質實體的不確定性</h3>
+<p>agent 的觀察來自使用者與工具——其底層分佈與 LLM 不同。以 agent LLM 近似使用者分佈產生顯著偏差。τ²-bench 上 agent LLM 與 ground truth 使用者模擬器的 NLL 密度分佈明顯偏離。使用輔助 LLM 作為世界模型可部分緩解。</p>
+<h3 id="43-互動系統中的不確定性動態">4.3 互動系統中的不確定性動態</h3>
+<p>既有加權平均聚合忽略「互動行動可消減不確定性」——簡單平均無法區分成功與失敗群（τ²-bench 實證：兩組軌跡的不確定性演化無顯著差異）。作者建議<strong>條件不確定性消減過程</strong>：以資訊閘控函數 g(ℱ_i) 按動作類型（互動且有事實根據 vs. 其他）決定該輪不確定性消減或傳播：</p>
+<p>U(ℱ_{≤T}) ≥ U(E_0,O_0) + Σ U(A_i|E_{i-1},O_{i-1})·g(ℱ_i)</p>
+<p>其中對互動性動作，g(·) 注入負資訊增益實現不確定性消減。</p>
+<h3 id="44-精細標註基準的稀缺">4.4 精細標註基準的稀缺</h3>
+<p>調查 44 個現代 agent 基準（2023.2–2026.2）：僅 4 個（9%）提供輪級標註，18% 提供里程碑級，73% 僅軌跡級。原因：長 rollout（百步以上）、標註成本高昂、任務策略複雜。</p>
+<hr />
+<h2 id="5-實務意涵">5. 實務意涵</h2>
+<ul>
+<li><strong>前沿 LLM</strong>：不確定性預算驅動自適應推理（提早停止/觸發互動）；多輪 RL 中的 credit assignment 與探索策略</li>
+<li><strong>醫療 agent</strong>：不確定性閘控人機協作——高不確定性時邀請臨床醫師</li>
+<li><strong>軟體工程 agent</strong>：不確定性觸發回滾與分支，實現可靠自主編碼</li>
+<li><strong>機器人 agent</strong>：資訊尋求行動消減不確定性後才執行不可逆物理動作</li>
+</ul>
+<hr />
+<h2 id="6-開放問題">6. 開放問題</h2>
+<ol>
+<li><strong>內在解多重性</strong>：高不確定性源自知識缺乏還是該步驟本質上存在多重有效行動？難以區分</li>
+<li><strong>超越任務成敗的評估</strong>：需新指標納入動態解多重性、任務難度、不可消減的外部模糊性</li>
+<li><strong>多 agent 系統 UQ</strong>：多 agent 聯合不確定性動態尚無人設計專屬方法</li>
+<li><strong>自我改進 agent 的 UQ</strong>：互動式自我演化環境增加非平穩因子，需反映跨週期的非平穩工具集與參數</li>
+</ol>
+<hr />
+<h2 id="7-結論">7. 結論</h2>
+<p>LLM UQ 需從點估計轉向互動式長時程的序列不確定性動態模型。本文以一般化定義與形式框架奠定基礎，識別四項關鍵挑戰並提供數值分析，並從實務應用與開放問題提出前瞻討論，為未來不確定性感知、可靠 agentic 系統的研究提供方向。</p>
+<hr />
+<blockquote>
+<p>原文連結：https://arxiv.org/abs/2602.05073
+專案頁面：https://agentuq.github.io/
+Artifacts：https://huggingface.co/datasets/changdae/tau2-uq-artifacts</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Verify Smarter, Evolve Further: Efficient Harness Evolution through Behavior-Aware Verification 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jinghan Xu、Yikai Zhang、Aili Chen、Weiyuan Li、Jiaqing Liang、Deqing Yang</p><p>日期：2026-08-27（v1，cs.AI）</p><p>arXiv：2608.27311</p><p><a href="https://arxiv.org/abs/2608.27311" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="verify-smarter-evolve-further-efficient-harness-evolution-through-behavior-aware-verification-重點摘要">Verify Smarter, Evolve Further: Efficient Harness Evolution through Behavior-Aware Verification 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>HarnessLens 不再用同一批任務驗證每個 harness 修改，而是依修改想改變的行為挑選相關任務，再以可歸因的軌跡證據決定是否接受修改，讓有限 rollout 預算優先花在真正能辨別改動效果的地方。</p>
+<h2 id="方法架構">方法架構</h2>
+<ul>
+<li><strong>問題</strong>：既有 propose-and-verify 方法常用固定或隨機任務批次評估所有候選修改。與修改無關的任務會稀釋訊號，而總分改善也可能掩蓋特定行為退步。</li>
+<li><strong>Context Exploration</strong>：Task-Space Exploration 只讀任務查詢、環境規則與工具描述，依主要目標替訓練任務分組；Harness-Space Exploration 則盤點 framework 暴露給使用者的可修改元件、更新方式、作用範圍與可能受影響行為。兩者都不接觸測試集。</li>
+<li><strong>Trajectory Diagnosis</strong>：Experience Extraction 從成功與失敗軌跡整理可重用經驗與反覆缺陷，並保留支持每項診斷的軌跡；Experience Analysis 再把診斷、任務群與可修改元件連起來，剔除證據不足的提案。</li>
+<li><strong>Behavior-Aware Verification</strong>：每輪只改目前已確認 harness 的複本。驗證批次優先納入支持提案的原任務、目標或工具需求相近的任務，以及可能暴露回歸的任務；現行 harness 與候選 harness 在配對條件下執行，再比較行為而非只看總分。</li>
+<li><strong>Attributable-Evidence Gate</strong>：候選必須呈現可由軌跡歸因於修改的改善，且沒有觀察到回歸，才進入新的確認批次。確認時仍要求行為證據成立；主要指標單獨上升不構成接受理由。控制器負責隔離候選、追蹤預算、重用 rollout，並在預算不足或沒有充分支持的提案時停止。</li>
+</ul>
+<h2 id="作者報告的結果">作者報告的結果</h2>
+<p>實驗涵蓋 OpenCode、Codex CLI、Pi Coding Agent 三種 harness，以及 Retail、Banking、Terminal-Bench 2.0、BIRD Mini-Dev 四個 benchmark。HarnessLens 在固定底層模型下，於十二個 harness 與 benchmark 配對中有八個取得最佳或並列最佳 pass@1；各 harness 的平均 held-out 改善為 7.6%–13.6%（作者自報）。OpenCode 的平均分由 41.83 升至 47.53，Codex 由 40.94 升至 44.06，Pi 由 45.49 升至 49.67（作者自報）。</p>
+<p>預算上，HarnessLens 的上限是 200 個總單位，且同時計入任務 rollout 與 LLM session；Self-Harness、Meta-Harness、HarnessFix 的設定上限分別為 <code>4,800</code>、660、300 個訓練 rollout（作者自報）。OpenCode 消融中，完整方法在 Retail、Banking、BIRD 的 pass@1 分別為 85.00、25.37、45.83；固定批次只得到 75.00、20.90、37.50，僅看總指標的 gate 則為 80.00、20.90、37.50（作者自報）。結果支持兩個缺一不可的設計：選對能觀察目標行為的任務，以及拒絕無法由軌跡歸因的分數波動。</p>
+<h2 id="局限">局限</h2>
+<p>作者自陳，評估只涵蓋一個模型家族、三種 harness 與四個公開 benchmark，尚未驗證更廣泛的模型、harness 架構與開放式部署環境。預算雖把 LLM session 與任務 trial 算成可稽核的互動單位，卻未跨角色與 benchmark 正規化 token 用量、延遲或金錢成本。因此，「較省預算」指本文採用的互動單位，不等於已證明各種實際成本都較低。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>這篇最值得 ai_core 借用的不是又一套自我改寫流程，而是修改與驗證之間的證據契約。每個候選先聲明要改變哪種行為、由哪些軌跡支持、可能傷到哪些既有能力，驗證器才據此組出最小而有辨識力的測試批次。這可直接轉成固化規則或 agent harness 的准入條件：分數變好只是訊號，只有「變好能歸因於這次修改」且「相關回歸面已覆蓋」才允許晉級。它也補足單純回歸測試的盲點：同一套固定測試不一定能看見不同改動真正影響的行為。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2608.27311_HarnessLens.zh-TW.html"><code>../translate/2608.27311_HarnessLens.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

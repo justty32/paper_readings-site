@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《用 Transformer 做通用推理的障礙（及如何克服）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Oliver Kraus、Yash Sarrof、Yuekun Yao、Alexander Koller、Michael Hahn（Saarland University / Ohio State University）</p><p>日期：2026-04（arXiv v1，Preprint under review）</p><p>arXiv：2604.25800</p><p><a href="https://arxiv.org/abs/2604.25800" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="用-transformer-做通用推理的障礙及如何克服重點摘要">《用 Transformer 做通用推理的障礙（及如何克服）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>理論證明：在<strong>標準位置編碼 + 有限字母表</strong>下，配 CoT（思維鏈）的 Transformer 即便表達力達圖靈完備，在「<strong>可長度泛化學習</strong>」這個更嚴格要求下也<strong>只能解 TC⁰ 內的問題</strong>（CoT 的表達力紅利在長度泛化下蒸發）；但若<strong>允許字母表隨問題規模增長</strong>，可得「可長度泛化地模擬任意圖靈機」的構造——靠<strong>signpost（路標）token</strong> 給每個帶位置唯一定址 + <strong>只記錄值的變化（value-change encoding）</strong> 用計數回復當前帶符號，繞過長度泛化的兩大障礙（重複複製、最後出現檢索），並用實驗證明這兩招能真實改善困難任務的長度泛化。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>CoT 經驗上提升 Transformer 推理，理論上把表達力抬到圖靈完備（無 CoT 則受限 TC⁰）。但這些都只是「<strong>存在</strong>這樣的模擬」，不保證<strong>能從有限 CoT 軌跡學到</strong>。實證上 Transformer 準確率隨 CoT 變長急墜（演算法、邏輯、規劃、符號推理皆然），理論上不明白為何。本文用最新的 Transformer 長度泛化理論框架（C-RASP、C*-RASP、Limit Transformers）回答：表達力 ≠ 可長度泛化學習。</p>
+<h2 id="核心方法理論">核心方法／理論</h2>
+<ul>
+<li><strong>第一結果（負面，定理 3.4）</strong>：在標準位置編碼 + 有限字母表下，任何能用 <strong>C-RASP[Pos]</strong> 表達的任務（含其 CoT）都可在 <strong>TC⁰</strong> 內定義 → 配 CoT 的 Transformer <strong>只會在 TC⁰ 內的問題上長度泛化</strong>，即使被訓練去做 CoT 推理。這強化了 Jiang et al.(2026) 「C-RASP CoT 非圖靈完備」的結果（升級為「屬於 TC⁰」），且<strong>與 CoT 長度無關</strong>。配套引理：當 L 不在 TC⁰，長度泛化在無窮多個 n 上會失敗。</li>
+<li><strong>兩大障礙</strong>：(1) <strong>複製任意字串</strong>（repeated copying）；(2) <strong>基於位置的檢索／最後出現檢索</strong>（last-occurrence retrieval）——兩者對 Transformer 長度泛化都很難。</li>
+<li><strong>第二結果（正面，克服之道）</strong>：若允許 (a) 無窮的 <strong>signpost 符號</strong>字母表、(b) 把圖靈機計算「以正確方式」編進 CoT，則可<strong>可長度泛化地學會模擬任意圖靈機</strong>，且 CoT 軌跡長度與模擬執行時間呈線性（至多差常數）。技術核心：
+<ul>
+<li><strong>signpost token</strong>：給每個帶位置一個唯一路標符號（繞過「複製」障礙；理論上解釋了 index hints 為何有用）。</li>
+<li><strong>value-change encoding（值變化編碼）</strong>：CoT <strong>只在值改變時記錄</strong>「新值相對舊值的變化」，當前帶符號可由「比較各符號對之間的變化計數」回復（繞過「最後出現檢索」障礙）。</li>
+<li>這讓每個 CoT 步驟可寫進 <em><em>C</em>-RASP</em>*（C-RASP 的無限字母表擴展）；Sarrof et al.(2026) 證在理想化學習模型 + 無限字母表下，C*-RASP 可表達的問題 Transformer 可證地長度泛化。</li>
+</ul>
+</li>
+</ul>
+<h2 id="結果實驗驗證">結果（實驗驗證）</h2>
+<ul>
+<li><strong>從零訓練</strong>：在 Parity、Boolean Evaluation、S5 Permutation 三個演算法推理任務上，用 GPT-2（APE、6 層、8 頭、dim 512、25M 參數）訓練於最大長 30/50、評估到 2 倍長。
+<ul>
+<li><strong>PARITY</strong>：value-change 編碼可<strong>穩健泛化到 2 倍長</strong>，樸素 CoT 版本失敗。</li>
+<li><strong>S5 與 Boolean Evaluation</strong>：加 signpost token 帶來顯著長度泛化改善；S5 只泛化到訓練長的約 <strong>1.7 倍</strong>（疑有捷徑使其較難），但仍大幅勝過無 signpost 版。</li>
+</ul>
+</li>
+<li><strong>預訓練 LLM 提示</strong>：把 signpost / value-change 的洞見用到提示格式，改善 Qwen2.5-7B-Instruct、Mistral-Small-24B、Llama-3.3-70B 在這些任務上的表現（如把 Boolean 公式按後序遍歷加路標、把變數多次賦值的變化記在註解中）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>正面構造需要<strong>字母表隨規模增長</strong>（無限 signpost 庫）——是理想化條件，現實 tokenizer 有限。</li>
+<li>正面結果建立在 Sarrof et al.(2026) 的<strong>理想化學習模型</strong>假設上。</li>
+<li>S5 仍只到 1.7 倍且疑有捷徑；複雜真實任務的 value-change 格式設計仍需手工。</li>
+<li>結論是「圖靈完備不被保證、而是<strong>高度依賴 CoT 的具體格式</strong>」——好處要靠對的 formatting 才兌現。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>[[長度泛化]] 與 [[演算法推理]] 的硬核理論支柱：清楚切開「<strong>表達力</strong>（圖靈完備）vs <strong>可長度泛化學習</strong>（受困 TC⁰）」，解釋了為何 CoT 在長任務上脆弱。與本批 <a class="paper-reference" href="2605.26035_MLP_LDRU_Length_Gen.%E6%91%98%E8%A6%81.html">2605.26035</a>（MLP-LDRU 用結合律偏置長度泛化）、<a class="paper-reference" href="2603.01959_Diagonal_SSM_StateTracking_Limits.%E6%91%98%E8%A6%81.html">2603.01959</a>（對角 SSM 狀態追蹤極限）、<a class="paper-reference" href="2412.01417_ECA_Transformers.%E6%91%98%E8%A6%81.html">2412.01417</a>（Transformer 學 ECA）同屬「Transformer 計算能力邊界」家族。</li>
+<li>最值得記：<strong>signpost token ＝ index hints 的理論正名</strong>、<strong>value-change encoding</strong> 把「最後出現檢索」轉成「計數」這個漂亮招式；以及「<strong>CoT 格式決定能否兌現圖靈完備</strong>」的核心訊息——對設計推理提示／scratchpad 格式有直接操作價值。</li>
+<li>與想做 [[C-RASP]]、[[形式語言與 Transformer]]、CoT 提示工程、可證長度泛化的人高度相關（程式碼：github.com/coli-saar/BarriersToUniversalReasoningWTransformers）。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2604.25800_Barriers_Universal_Reasoning_CoT.zh-TW.html"><code>../translate/2604.25800_Barriers_Universal_Reasoning_CoT.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

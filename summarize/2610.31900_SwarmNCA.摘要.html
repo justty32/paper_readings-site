@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Distributed Swarm Morphogenesis with Neural Cellular Automata 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Ray Verma、Eliseo Ferrante、Anthony Tzes</p><p>日期：2026-10-26（v2，cs.RO）</p><p>arXiv：2610.31900</p><p><a href="https://arxiv.org/html/2610.31900v2" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="distributed-swarm-morphogenesis-with-neural-cellular-automata-重點摘要">Distributed Swarm Morphogenesis with Neural Cellular Automata 重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>這套框架讓已就位機器人用神經細胞自動機（NCA）逐步產生相鄰招募位置，再由既有分散分派與控制器引導其他機器人加入；以離線稀疏保留微調及假陽性損失，縮小虛擬 NCA 生長與實體逐步組裝的落差。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>傳統形狀組裝方法通常預先取得幾何或目標位置。本文改問：能否只靠局部狀態交換，在部署過程逐步發現「哪些位置應該存在」？NCA 負責產生 attachment sites，分派與避碰控制則是獨立模組，並非重新提出完整任務分派或控制演算法。</p>
+<p>完整目標形態只在離線訓練時提供；部署不給完整位置清單。但每種形態各訓練一個專用 NCA，部署時固定權重，只演化局部狀態，沒有在線重新學習新形態。（<a href="https://arxiv.org/html/2610.31900v2#S3">§I、§III、§IV</a>）</p>
+<h2 id="核心方法">核心方法</h2>
+<h3 id="局部符號格點與角色切換">局部符號格點與角色切換</h3>
+<p>作者假設同質、holonomic 機器人在平面方格上漸進組裝。目標是包含 seed 的有限四鄰連通格點集合，每格最多一台，目標格數不超過機器人總數。seed 在組裝期間保持不動。</p>
+<p>已就位的 Advertiser 保存並交換 NCA 狀態、廣播候選位置；未就位的 Joiner 接收廣播，選位置並移動，就位後轉成 Advertiser。Joiner 以附近已就位機器人的相對位置及符號座標，解剛體最小平方對齊，把 lattice 座標轉成本體座標。只有 seed 時無法決定 lattice 方向；第一台加入者就位後，由 seed 指向它的實體方向建立對應格點軸，不預設全域方向。後續 Joiner 只要可觀察兩台具有不同已知格點座標的已就位機器人，即可估平面剛體轉換；更多觀察可做最小平方擬合。（作者自報，<a href="https://arxiv.org/html/2610.31900v2#S3.SS1">§III-A～B</a>）</p>
+<h3 id="nca-只發現候選位置既有模組負責選擇與靠近">NCA 只發現候選位置，既有模組負責選擇與靠近</h3>
+<p>每個 Advertiser 保存以自身格點為中心的 <code>5×5</code> 狀態 patch，利用收到的已佔據格點狀態刷新內容，再以 <code>3×3</code> 鄰域的共享 NCA 規則更新。alpha 通道代表該格是否屬於形態；僅將四個 cardinal 鄰格中，局部已知未佔據且 alpha 超過門檻者廣播為候選。廣播攜帶候選格的符號座標及 NCA 狀態，供新加入者延續生長。（作者自報，<a href="https://arxiv.org/html/2610.31900v2#S3.SS3">§III-C、圖 1</a>）</p>
+<p>位置分派與控制採用 Li 等人既有方法：artificial-light-field 分派偏好附近較低機器人密度的位置，constrained controller 在目標追蹤、避碰及速度平滑之間協調。本文新意主要在局部 attachment-site discovery 與其訓練適配；分派、控制器可獨立替換。（<a href="https://arxiv.org/html/2610.31900v2#S3.SS4">§III-D</a>）</p>
+<h3 id="用-sparse-retention-模擬逐步就位">用 sparse retention 模擬逐步就位</h3>
+<p>標準 Growing NCA 在完整虛擬網格上更新，可暫時活化遠端格點；實體組裝卻只由已佔據位置及其附近狀態繼續預測。直接部署預訓練 NCA，會遭遇訓練時少見的稀疏、不規則生長脈絡。</p>
+<p>微調 rollout 先更新虛擬狀態，再從已佔據集合的相鄰 foreground 候選中隨機保留一部分，當作新增就位機器人；移除已佔據格點及其相鄰格以外的虛擬狀態，再繼續更新。稀疏 rollout 與一般 NCA rollout 混合，保留原有生長能力。另以目標圖的背景遮罩，在離線訓練時懲罰不應存在的 alpha 活化，抑制不應佔據位置的活化；再加上最終 RGBA 重建損失。（<a href="https://arxiv.org/html/2610.31900v2#S3.SS5">§III-E、式 4～10</a>）</p>
+<h2 id="結果">結果</h2>
+<h3 id="模擬形態與縮放">模擬形態與縮放</h3>
+<p>以下均為作者自報。模擬採固定 NCA 權重、非同步機器人局部更新，初始位置在場地均勻抽樣，結果涵蓋 30 個隨機種子。Lizard、Tree、Pretzel、Hand-heart 四形態各以 250 台機器人示範；Tree 另改變機器人數，作者觀察飽和時間約隨數量線性增加，最終 F1 隨規模緩慢下降。這是該模擬設定下的縮放觀察。（<a href="https://arxiv.org/html/2610.31900v2#S4.SS1">§IV、§IV-A、圖 2</a>）</p>
+<p>形態準確度是期望格點 <code>T</code> 與已佔據格點 <code>A(t)</code> 的 Dice／F1：</p>
+<p><code>F1(t)=2|A(t)∩T|/(|A(t)|+|T|)</code>。</p>
+<p>它同時懲罰缺格與錯佔格。飽和時間 <code>t_sat</code> 定義為最早進入並持續接近本次 episode 終值的時刻，作者明定 <code>epsilon_sat=0.05×F1(T)</code>，要求其後所有時刻與終值的差均不超過此容許量。圖 2 的 snapshot 進度百分比則以 <code>F1(t_sat)</code> 為基準。（作者自報，<a href="https://arxiv.org/html/2610.31900v2#S4">§IV、式 11 與飽和時間定義</a>）</p>
+<h3 id="tree-的微調消融">Tree 的微調消融</h3>
+<p>在 Tree、250 台機器人、相同部署框架下，作者報告飽和時刻的 F1 如下；<code>±</code> 為跨執行的標準差，數值不是成功率百分比。（作者自報，<a href="https://arxiv.org/html/2610.31900v2#S4.SS1">§IV-A、表 II</a>）</p>
+<table>
+<thead>
+<tr>
+<th>訓練配置</th>
+<th><code>F1(t_sat)</code>，平均±標準差</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Standard Growing NCA</td>
+<td>0.583±0.107</td>
+</tr>
+<tr>
+<td>加 sparse-retention fine-tuning</td>
+<td>0.764±0.141</td>
+</tr>
+<tr>
+<td>再加 false-positive loss</td>
+<td>0.988±0.004</td>
+</tr>
+</tbody>
+</table>
+<p>稀疏保留改善平均形態重合度，再加假陽性懲罰使平均值更高、跨執行變異更小。這個比較支持訓練需對齊逐步實體組裝。</p>
+<h3 id="八台-crazyflie-的硬體示範">八台 Crazyflie 的硬體示範</h3>
+<p>作者以八台 Crazyflie quadrotors 組成 E 與數字 4，展示漸進招募與就位。<strong>平台沒有所需的相對位置感測，因此使用 Lighthouse 外部追蹤與集中計算</strong>，將追蹤位置重建成每台機器人的局部座標觀察，再輸出本體速度命令。</p>
+<p>作者認為這保留了演算法的局部資訊結構，並在定位雜訊、致動誤差及非同步運動下展示整合流程。（作者自報之實驗設定，<a href="https://arxiv.org/html/2610.31900v2#S4.SS2">§IV-B、圖 3</a>）</p>
+<h2 id="局限">局限</h2>
+<p><strong>作者明載的假設與實驗邊界</strong>：每個目標形態有專用離線訓練模型；目標為含 seed 的有限連通平面方格集合，seed 固定，候選位置必須能由控制器到達。座標估計需要足夠局部參照與感測範圍。硬體依賴外部追蹤及集中計算接口，沒有直接驗證平台自身的相對感測。（<a href="https://arxiv.org/html/2610.31900v2#S3.SS1">§II、§III-A～B、§IV-B</a>）</p>
+<p><strong>本檔補註，非作者自陳</strong>：模擬的大規模結果與八台硬體示範應分開解讀；後者不是無外部定位、全機載運算的分散系統驗證。本文未給出同規模實機的 F1／飽和時間統計。Tree 的近線性飽和時間不是一般形態的複雜度保證，消融也不是與所有 swarm formation 方法的全面比較。NCA 文獻具有再生能力，不代表這篇已測試受損後修復、換目標後重新組裝或任意通訊故障；固定權重的成功組裝也不是在線適應已成立的證據。</p>
+<h2 id="對讀者的價值接點">對讀者的價值・接點</h2>
+<p><strong>本檔補註，非作者自陳</strong>：對分散機器人與世界模型，值得借用的是將「產生局部可行的下一個位置」與「分派、控制」分層，再把真實執行會遇到的稀疏狀態直接放入離線訓練。生成器不必持有完整目標清單，但仍需檢查局部預測錯誤能否被後續物理動作修正，尤其當就位近似不可逆時。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.31900_SwarmNCA.zh-TW.html">SwarmNCA 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

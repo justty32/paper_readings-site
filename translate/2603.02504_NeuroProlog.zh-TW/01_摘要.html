@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.02504_NeuroProlog.zh-TW.html">回 2603.02504_NeuroProlog.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）在自然語言任務上表現優異，但在數學推理上仍不可靠——產出流暢卻邏輯不一致的解。我們提出 NeuroProlog，一個神經符號框架，透過將數學文字題編譯為具備形式驗證保證的可執行 Prolog 程式來確保可驗證推理。我們提出<strong>雞尾酒式多任務訓練策略</strong>，在統一符號表徵空間內聯合優化三個協同目標：(i) 數學公式→規則翻譯（KB），(ii) 自然語言→程式合成（SOLVE），(iii) 程式—答案對齊。此聯合監督促成正遷移——公式翻譯中的符號接地直接改善組合推理能力。推論時，引入<strong>執行引導解碼管線</strong>，搭配細粒度五類錯誤分類法，實現迭代程式修復並量化模型自我除錯能力。</p>
+<p>跨四種模型尺度（3B–32B）的 GSM8K 評估顯示一致改善：雞尾酒訓練較單任務基線顯著提升 +5.23%（Qwen-32B，p&lt;0.01）、+3.43%（GPT-OSS-20B，p&lt;0.01）、+5.54%（Llama-3B，p&lt;0.05）。最佳配置 GPT-OSS-20B（88.3%）超越更大規模的程式合成系統（ToRA-Code-34B 80.7%）並以 3.5× 更少參數逼近 OpenMath-70B（84.6%）。系統性錯誤分析揭示尺度相依學習動態：32B 尺度下雞尾酒訓練將不可修的型別錯誤（12% 修復率）轉化為可修的域錯誤（96% 修復率），達成 92.7% 總體修正率；8B 尺度下相同訓練消除語法錯誤卻引入語意錯誤，揭示型別安全符號推理的關鍵容量門檻。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 在 GSM8K 等數學推理基準上表現強勁，得益於思維鏈（CoT）與思維程式（PoT）等技術。但近期研究揭示 LLM 推理常依賴機率模式匹配而非形式邏輯推論，導致脆弱行為：產出看似合理但錯誤的解、在擾動下失效、無法驗證中間推理步驟。</p>
+<p>既有神經符號方法（Logic-LM、Faithful CoT、LINC）將符號推理作為推論時的「事後校正」——以外部的定理證明器或邏輯引擎驗證或精煉 LLM 輸出。這種去耦合設計使模型無法在訓練期間內化符號結構：符號組件作為驗證工具而非學到的推理能力，LLM 仍難以系統性地泛化至新問題組合。</p>
+<p>我們認為，接地的數學推理要求模型聯合學習三項核心能力：(1) 將自然語言映射至形式邏輯，(2) 生成編碼結構化推理的可執行程式，(3) 將符號輸出與數值驗證對齊。<strong>NeuroProlog</strong> 透過雞尾酒式多任務訓練同時監督公式翻譯、程式合成與執行驗證，誘導跨任務遷移並使模型內化系統性推理模式。</p>
+<p><strong>主要貢獻</strong>：(1) 多任務神經符號訓練——結合宣告式知識（公式→Prolog）與程序式解題（文字題→程式），在統一符號空間內誘導跨任務遷移；(2) 執行引導解碼——五類錯誤分類法的迭代精煉管線，32B 達 92.7% 修正率，無需除錯專屬訓練；(3) 尺度相依錯誤轉化——32B 將 TYPE_ERROR→DOMAIN_ERROR，8B 僅 SYNTAX→TYPE_ERROR，揭示語意型別理解需 &gt;8B 參數；(4) 全面評估——12 組配置，3/4 模型顯著提升（+3.43%~+5.54%）；(5) 開放釋出——完整資料集、程式碼、LoRA 適配器。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p><strong>LLM 數學推理</strong>：CoT、PAL、PoT 在推理時將計算委派給 Python 解譯器，但未在訓練中內化符號推理。研究表明 LLM 進行機率模式匹配而非系統性推理，在分佈轉移下失效。本研究透過微調期間的符號監督教導模型生成可驗證邏輯程式。</p>
+<p><strong>神經符號 AI</strong>：Logic-LM 使用外部 Prolog 求解器，Faithful CoT 將推理轉為形式邏輯驗證，LINC 透過自監督精煉學習神經–符號轉換。這些方法皆在推理時做事後符號推理。Prolog 的宣告式語意適合數學推理，GSM8K-Prolog 提供單任務監督的 Prolog 標註。我們延伸為多任務雞尾酒訓練與語意對齊，在訓練期間內化符號結構。</p>
+<p><strong>多任務學習</strong>：雞尾酒效應從互補任務中產出協同增益。FLAN/T0 混合指令格式，CodeT5+ 聯合訓練代碼理解與生成。我們的雞尾酒資料集獨特地結合三種監督訊號：公式→Prolog 翻譯（符號接地）、自然語言註釋（語意對齊）、程式執行（數值驗證），混合推理模態而非任務格式。</p>
+<h2 id="程式合成與錯誤修正codexalphacodecodellama-針對通用程式設計self-repair-訓練錯誤修正對reflexion-使用語言反饋迭代改善我們延伸執行引導解碼利用-prolog-錯誤分類法引導系統性自我修正"><strong>程式合成與錯誤修正</strong>：Codex、AlphaCode、CodeLlama 針對通用程式設計，Self-Repair 訓練錯誤修正對，Reflexion 使用語言反饋迭代改善。我們延伸執行引導解碼，利用 Prolog 錯誤分類法引導系統性自我修正。</h2>
+<h2 id="title-neuroprolog第-3-節方法論-source-260302504_neuroprologzh-twmd">title: NeuroProlog（第 3 節：方法論）
+source: ../2603.02504_NeuroProlog.zh-TW.md</h2>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

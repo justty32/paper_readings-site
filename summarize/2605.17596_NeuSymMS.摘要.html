@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《NeuSymMS：持久、自我策展的 LLM Agent 混合神經符號記憶系統》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Mujahid Sultan, Sri Thuraisamy, Daya Rajaratnam（iVedha Corp. / MLSoft Inc., Toronto）</p><p>日期：2026-05，神經符號 Agent 記憶（CLIPS 規則引擎 + LLM 事實萃取 + RDBMS 三元組儲存）</p><p>arXiv：2605.17596</p><p><a href="https://arxiv.org/abs/2605.17596" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="neusymms持久自我策展的-llm-agent-混合神經符號記憶系統重點摘要">《NeuSymMS：持久、自我策展的 LLM Agent 混合神經符號記憶系統》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>讓 LLM 只做它擅長的事（從對話中萃取事實），分類、去重、矛盾處理與生命週期管理全部交給 CLIPS 規則引擎</strong>——構成一個可審計、低成本、跨會話的 Agent 記憶層：知識以（subject, relation, value）三元組存於 PostgreSQL，支援短／長期雙層記憶與基於存取次數的自動晉升／淘汰，並以 user/agent/flow 三層隔離防止跨實體污染。</p>
+<h2 id="核心貢獻">核心貢獻</h2>
+<ol>
+<li>
+<p><strong>混合神經符號架構</strong>：神經端（LLM 萃取器，低溫度 0.1）僅產出 JSON 格式的候選事實；符號端（CLIPS 前向鏈推理）負責分類、矛盾檢測（Levenshtein 相似度門檻 0.85）、真值維護（negation-aware retraction）與儲存決策——分類與推理兩步零 API 成本、微秒級延遲、完全可審計（每個決策都帶 reason 欄位）。</p>
+</li>
+<li>
+<p><strong>雙層記憶 + 存取促晉升</strong>：短期記憶（預設 24h TTL）vs. 長期記憶（personal/preference/skill/instruction 類別自動晉升）；短期事實 access_count &gt;= 3 即晉升為長期；低存取短期事實逾時淘汰——以實際使用頻率作為重要性訊號，無需額外評分模型。</p>
+</li>
+<li>
+<p><strong>三層隔離</strong>：user scope（注入 LLM prompt 的個人知識）vs. agent scope vs. flow scope（多 Agent 協同作業的工作流上下文）——僅 user scope 進 prompt，其餘留作分析層，杜絕不同實體間的知識污染。</p>
+</li>
+<li>
+<p><strong>優雅降級與低成本</strong>：LLM 萃取失敗→記憶不更新；CLIPS 錯誤→降級存為短期；記憶載入失敗→Agent 無上下文繼續——記憶始終為增強而非單點故障。無需向量檢索或嵌入，純字串拼接注入 prompt。</p>
+</li>
+</ol>
+<h2 id="對讀者的價值與-ai_core-的接點">對讀者的價值（與 ai_core 的接點）</h2>
+<p>本論文對 ai_core 最直接的價值落在 <strong>§3.6 固化引擎</strong>：</p>
+<ul>
+<li><strong>NeuSymMS 就是一個「自我策展的固化記憶」的工程化參考實現</strong>：它展示了如何把 LLM 在對話中反覆處理的事實（user state、偏好、技能）從 LLM 的上下文中「剝離」出來，交給確定性的規則引擎管理，使 LLM 每次只需被注入精選後的結構化事實，而非原始日誌。這正是固化引擎的核心意圖——<strong>把 LLM 反覆處理的案例結晶成確定性、可審計、可版本化的知識單元</strong>。</li>
+<li>其 <strong>access-count 晉升機制</strong> 對應固化引擎的「常用路徑自動凝結」：頻繁被 Agent 引用的知識自動從短期升為長期資產，等於一種被動的自動固化。CLIPS 的矛盾檢測 + 真值維護則提供了固化資產的<strong>版本管理與過時撤銷</strong>能力——使用者改了工作、搬家，舊事實被 retract，不堆積。</li>
+<li>與庫內既有脈絡對照：<a class="paper-reference" href="2305.16291_Voyager.%E6%91%98%E8%A6%81.html">2305.16291</a>（Voyager 技能庫＝資產庫）是 Agent 自主累積技能程式碼；本作 NeuSymMS 則補充了<strong>使用者面向的符號化知識固化</strong>——Voyager 固化 Agent 自己的能力，NeuSymMS 固化使用者的事實。加上 <a class="paper-reference" href="2006.08381_DreamCoder.%E6%91%98%E8%A6%81.html">2006.08381</a>（DreamCoder 程式合成式固化），三條線構成 ai_core §3.6 的完整圖景：<strong>程式碼固化（DreamCoder）+ 技能固化（Voyager）+ 使用者知識固化（NeuSymMS）</strong>。</li>
+<li>技術棧（Django + PostgreSQL + CLIPSPy + LiteLLM）對 ai_core 有實務參考價值：基於 Django 的 REST API 讓記憶層可被任意 Agent 平台呼叫，LiteLLM 的 provider-agnostic 設計確保不綁定特定 LLM 廠商——與 ai_core「provider 不可知」的設計原則一致。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2605.17596_NeuSymMS.zh-TW.html"><code>../translate/2605.17596_NeuSymMS.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

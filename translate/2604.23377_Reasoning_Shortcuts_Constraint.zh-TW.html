@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>神經符號學習中推理捷徑的約束式分析（Constraint-Based Analysis of Reasoning Shortcuts in Neurosymbolic Learning） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：（RSBench 相關團隊；ASP / clingo 實作）</p><p>日期：2026-04</p><p>arXiv：2604.23377</p><p><a href="https://arxiv.org/abs/2604.23377" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="神經符號學習中推理捷徑的約束式分析">神經符號學習中推理捷徑的約束式分析</h1>
+<h2 id="摘要">摘要</h2>
+<p>神經符號（NeSy）系統可在學習中<strong>滿足邏輯約束、卻達不到預期的概念-標籤對應</strong>——此問題即<strong>推理捷徑（reasoning shortcuts, RS）</strong>。我們把 RS 形式化為<strong>約束滿足問題（CSP）</strong>，研究在何種條件下約束能唯一決定概念映射。我們證明 <strong>discrimination 性質</strong>（要求沒有任何有效概念映射能藉「交換兩概念值」變成另一有效映射）是雙射映射下<strong>無捷徑的必要條件</strong>，但以反例證明即使約束圖連通它也<strong>不充分</strong>。我們開發<strong>基於 ASP 的演算法</strong>驗證給定約束集是否唯一決定預期概念映射，並證明其健全性與完備性。偵測到捷徑時，<strong>貪婪修復演算法</strong>藉增補約束消除之，在至多 k 次迭代收斂（k 為替代有效映射數）。我們給出複雜度分類：判定無捷徑為 <strong>coNP-complete</strong>、計數捷徑為 <strong>#P-complete</strong>、找最小修復為 <strong>NP-hard</strong>。並建立樣本複雜度界：有利情形下對數筆標籤查詢即足以消歧，最壞情形需查詢所有歧義位置。8 個 benchmark 領域的實驗驗證了本方法。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>NeSy 結合神經網路的感知與符號邏輯的推理，能處理原始感測資料並對高階概念維持結構化、可解釋的推理。但近期工作指出一個關鍵問題——<strong>推理捷徑</strong>：模型滿足約束、卻學到與預期不同的概念映射。</p>
+<p>例（視覺算術）：神經網路從影像預測數字概念，約束強制算術關係（如兩影像標籤之和為 3）。系統可在訓練任務達高準確度，但學到的概念可能被<strong>交換</strong>（把 1 預測成 2、反之亦然），仍滿足所有約束。此捷徑同時破壞<strong>正確性</strong>（概念不對應標籤）與<strong>穩健性</strong>（OOD 任務失敗）。</p>
+<p>我們聚焦約束式 NeSy 系統（概念映射上的邏輯規則為顯式），刻畫<strong>約束集何時唯一決定預期概念映射、代價多大</strong>。我們把問題形式化為 CSP：給定約束集 C，問 C 是否恰好接受唯一有效映射（無捷徑）或多個（有捷徑）。</p>
+<p><strong>主要貢獻</strong>：</p>
+<ul>
+<li><strong>充分 / 必要條件</strong>：discrimination（無有效映射經一次概念對換可達另一有效映射）是無捷徑的必要條件（定理 1），但一般不充分；我們構造反例——discrimination 成立、約束圖連通，仍因更長的置換環而有捷徑（例 4）。</li>
+<li><strong>複雜度分類</strong>：判定無捷徑＝coNP-complete、計數＝#P-complete、最小修復＝NP-hard（定理 4-6）。</li>
+<li><strong>消歧成本界</strong>：定義捷徑多重度（連結 M-unambiguity），證明有利情形對數筆標籤查詢足以消歧，最壞需查所有歧義位置（定理 2）。</li>
+<li><strong>實用演算法</strong>：基於 ASP 的驗證（Algorithm 1，原生模型枚舉適合窮舉捷徑搜尋，有正確性保證）、貪婪修復（Algorithm 2，增補約束消捷徑、有收斂保證）、主動學習策略。</li>
+</ul>
+<p><strong>核心觀察</strong>：RS 源於<strong>約束結構的對稱性</strong>。不連通約束圖容許各分量內獨立概念交換（例 1）；對稱約束（如模算術）即使圖連通也容許旋轉式捷徑（例 4）。</p>
+<h2 id="2-背景與相關工作">2 背景與相關工作</h2>
+<ul>
+<li>2.1 NeSy 系統中的推理捷徑（既有偵測方法多為實證 / 近似）。</li>
+<li>2.2 NeSy 整合與約束式學習。本文補上<strong>形式基礎</strong>：證明捷徑何時可 / 不可存在、刻畫其計算複雜度、給出有正確性保證的驗證與修復演算法。</li>
+</ul>
+<h2 id="3-範例4-節點加法問題">3 範例：4 節點加法問題</h2>
+<p>考慮從 4 個神經輸出學一個到 4 個數字概念的映射，使用加法約束（圖 1）。約束圖 G 分解成兩個不連通分量 G1、G2；此不連通使兩個分量級對換組合成 8 個有效雙射。預期映射（實線）與捷徑（虛線）都滿足所有約束，但捷徑錯誤地交換了概念 1 與 2。框架可 (1) 經 ASP 驗證偵測此類捷徑、(2) 增補約束消除之（如加「⋯」把 8 個有效映射降到 4 個）。</p>
+<h2 id="4-5-理論與修復">4-5 理論與修復</h2>
+<ul>
+<li>約束圖（定義 2）：捕捉概念間的約束耦合結構。</li>
+<li>discrimination 必要不充分（定理 1 + 反例例 4）。</li>
+<li>複雜度三聯（定理 4-6）。</li>
+<li>驗證可只搜「是否存在任一替代映射」即判無捷徑；分析可用有界枚舉（--models=M）、隨機重啟、增量驗證近似。</li>
+<li><strong>貪婪修復</strong>（5.2）：以候選 pinning 約束增補，至多 k 次迭代收斂。</li>
+</ul>
+<h2 id="6-實驗">6 實驗</h2>
+<p>在 RSBench 套件 8 個領域驗證 Algorithm 1（驗證）與 Algorithm 2（貪婪修復）：視覺算術（MNIST-Half/XOR/EvenOdd/Math）、視覺邏輯（CLE4EVR、Kandinsky）、自駕（BDD-OIA、SDD-OIA）。N（神經輸出數）2 到 21。全用 clingo --models=10,000 有界枚舉，10 次平均。</p>
+<p>兩種編碼：<strong>base</strong>（每個神經輸出恰映到一個概念，但容許多輸出共享同一標籤）；<strong>bijective</strong>（再要求每概念恰用一次）。理論假設雙射，但納入 base 以顯示「光是雙射」能解多少歧義。</p>
+<p><strong>結果</strong>（呼應複雜度分類的經驗難度光譜）：</p>
+<ul>
+<li>驗證實用：即使最大領域（21 輸出），有界枚舉 1 秒內完成。</li>
+<li>修復難度隨領域劇變：MNIST 1-2 次迭代修復；BDD-OIA 需 21 條 pinning 約束；<strong>SDD-OIA 抵抗所有測試策略</strong>（符合最小修復 NP-hard）。</li>
+<li>貪婪與隨機策略互補（BDD-OIA 貪婪勝、CLE4EVR 隨機勝）→ 混合策略有前途。</li>
+<li>與 RSBench 原本「窮舉所有真值概念向量 + SAT」相比：後者對小領域（MNIST-Half）可行，對大領域（Kandinsky 18 個三元概念＝數百萬向量）不可行。本文改用最小約束集上的 ASP 枚舉；因 C ⊆ C&#x27; 蘊含單調性，計數為上界（最小約束下無捷徑即保證任何超集亦無捷徑）。</li>
+<li>非 MNIST 領域（表中標 ∗）用 2-8 個合成樣本；Kandinsky 概念域從 18 縮到 8。</li>
+<li>表 1（節錄）：MNIST-XOR（N=2）base/bij 各 1 個捷徑、~300-350ms；MNIST-Half（N=5）base 2 個、bij 0 個（雙射本身即消歧）、~290ms。</li>
+</ul>
+<h2 id="7-結論">7 結論</h2>
+<p>把 NeSy 推理捷徑形式化為 CSP，給出何時約束唯一決定概念映射的充分 / 必要條件、複雜度分類、與有保證的驗證 / 修復 / 主動學習演算法，並在 8 個 RSBench 領域實證。為從業者提供可直接部署的工具：ASP 驗證無需解析證明即可檢查無捷徑、修復演算法有收斂保證、主動學習近最優標籤效率。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2604.23377_Reasoning_Shortcuts_Constraint.%E6%91%98%E8%A6%81.html"><code>../summarize/2604.23377_Reasoning_Shortcuts_Constraint.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

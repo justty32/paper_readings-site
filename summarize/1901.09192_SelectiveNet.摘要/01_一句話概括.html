@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../1901.09192_SelectiveNet.%E6%91%98%E8%A6%81.html">回 1901.09192_SelectiveNet.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>SelectiveNet</strong>：把「預測」與「拒絕（棄權）」放進<strong>同一個神經網路、端到端聯合訓練</strong>，而非像既有做法那樣在已訓練好的網路上事後加一層信心閾值——在<strong>目標覆蓋率（coverage）約束</strong>下直接最小化 selective risk，於 CIFAR-10、SVHN、Cats vs. Dogs 分類與 Concrete Compressive Strength 迴歸資料集上，risk-coverage 取捨全面優於 Softmax Response（SR）與 MC-dropout 兩大基線。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>既有的 DNN 拒絕機制幾乎都是「先訓練一個全覆蓋（c=1）的普通分類器 f，再對其信心分數（如 softmax 最大值、MC-dropout 變異數）設閾值來決定何時拒絕」——選擇函數 g 是<strong>事後（post-hoc）<strong>加上去的，從未參與 f 的訓練。作者主張：若能讓網路在訓練時就</strong>知道自己最終只需覆蓋 c 比例的樣本</strong>，就能把表徵容量集中在「會被保留」的那部分資料上，理應學到更好的模型（論文用「Alice 只準備考五題、Bob 被迫十題都準備」的比喻說明）。因此本文要解決的是<strong>如何針對指定的目標覆蓋率 c，端到端聯合最佳化預測與拒絕</strong>，而非事後校準。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>問題形式化</strong>：選擇性模型 (f,g)，g:𝒳→{0,1}（或 [0,1] 軟版本）決定是否輸出 f(x)；覆蓋率 φ(g)=E[g(x)]，selective risk R(f,g)=E[ℓ(f(x),y)g(x)]/φ(g)。給定目標覆蓋率 c，最佳化目標是 min R(f_θ,g_θ) s.t. φ(g_θ)≥c。</li>
+<li><strong>三頭架構</strong>：共享的 main body block（VGG-16 或全連接層，視任務而定）輸出表徵層後接三個頭——<strong>prediction head f</strong>（softmax 或線性輸出，做實際預測）、<strong>selection head g</strong>（一層隱藏層＋單一 sigmoid 輸出神經元，g(x)≥0.5 才輸出 f(x)，否則棄權）、<strong>auxiliary head h</strong>（訓練時額外加的輔助預測頭，與 f 同任務但完全不受覆蓋率影響，目的是讓 main body 在訓練全程持續看到<strong>所有</strong>訓練樣本，避免 g 尚未收斂、f 就過早只在錯誤子集上過擬合）。h 僅用於訓練，推論時不用。</li>
+<li><strong>以（懲罰法）內點法變體最佳化覆蓋率約束</strong>：把約束最佳化問題轉成無約束目標 L_(f,g)=r̂_ℓ(f,g)+λΨ(c−φ̂(g))，Ψ(a)=max(0,a)²（二次懲罰項），λ 為固定超參數（實驗中設 32）。總損失為 selective loss 與 auxiliary loss 的凸組合 L=αL_(f,g)+(1−α)L_h，全部實驗固定 α=0.5、未做超參搜尋。</li>
+<li><strong>訓練後覆蓋率校準</strong>：深度網路的高容量會讓約束式 ERM 在測試集上出現覆蓋率違反（實測 SelectiveNet 平均違反 3.63%，SR 高達 11.98%）。作者提出用獨立無標籤驗證集，取 g(x) 分布的 100(1−c) 百分位數當閾值 τ，並用 Hoeffding bound 給出「以機率 ≥1−δ、覆蓋率落在 [c−ε, c+ε]」的統計保證。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>CIFAR-10</strong>（VGG-16，覆蓋率 0.7–0.95）：SelectiveNet 全面優於 SR 與 MC-dropout；相對優勢在 0.95 覆蓋率時約 8.5%（vs SR），在 0.75 覆蓋率時最高達 26.8%（vs MC-dropout）。</li>
+<li><strong>SVHN</strong>（覆蓋率 0.8–0.95）：最高相對優勢 14.07%（0.8 覆蓋率）；0.95 覆蓋率時三法統計上無顯著差異。</li>
+<li><strong>Cats vs. Dogs</strong>（64×64 影像，覆蓋率 0.8–0.95）：同樣全面優於兩基線。</li>
+<li><strong>Concrete Compressive Strength 迴歸</strong>（UCI，MSE，覆蓋率 0.5–1.0）：SR 因無 softmax 層而不適用；相較 MC-dropout（唯一可比的非集成方法），SelectiveNet 在 0.9 以下覆蓋率相對優勢達 26.81%–30.48%，是<strong>首個快速的深度選擇性迴歸方案</strong>。</li>
+<li><strong>覆蓋率準確度</strong>：SelectiveNet 原生覆蓋率違反遠小於 SR（3.63% vs 11.98%），經校準程序後可進一步逼近目標覆蓋率並帶統計保證。</li>
+<li><strong>表徵分析（t-SNE）</strong>：SelectiveNet 的「被拒絕樣本」在表徵空間中彼此糾纏、分離度差；相較之下 SR（事後拒絕）的表徵不論是否被拒絕都維持良好分離。作者解讀為 SelectiveNet 沒有把容量浪費在分離「反正會被拒絕」的樣本上，因而能把更多容量留給「會被保留」的樣本。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>僅實驗單一分類器設定；論文明言「集成（ensemble）likely 能再改善結果」但未實作驗證。</li>
+<li>selection head g 的容量／架構完全未調參，作者承認不同資料集、不同覆蓋率可能需要不同的 g 架構。</li>
+<li>約束式訓練在測試集上仍會違反目標覆蓋率（雖遠小於 SR），仍需額外一個無標籤驗證集做事後校準才能取得統計保證——覆蓋率精確度並非單靠端到端訓練就能完全解決。</li>
+<li>僅驗證分類（0/1 loss）與迴歸（平方損失）在影像／表格資料上的效果；未觸及 NLP 或大型語言模型場景。</li>
+<li>與 active learning 的潛在關聯（覆蓋率選擇與主動學習樣本選擇的理論親緣）留作未來開放問題，未實作。</li>
+<li>原文比較資料集為 CIFAR-10、SVHN、Cats vs. Dogs（分類）與 Concrete Compressive Strength（迴歸），<strong>並未使用 CIFAR-100</strong>。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

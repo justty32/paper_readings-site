@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《ARC-AGI-2 技術報告：LongT5 + 測試時訓練 + 對稱多視角的神經解法》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Wallyson Lemes de Oliveira 等 13 人（Kaggle 參賽隊伍解法報告）</p><p>日期：2025-11，ARC-AGI-2 神經解法技術報告</p><p>arXiv：2603.06590</p><p><a href="https://arxiv.org/abs/2603.06590" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="arc-agi-2-技術報告longt5--測試時訓練--對稱多視角重點摘要">《ARC-AGI-2 技術報告：LongT5 + 測試時訓練 + 對稱多視角》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>一支 Kaggle 隊伍的完整解法報告（非官方 benchmark 報告）：把 ARC 視為<strong>序列建模</strong>，用<strong>僅 125 token 的緊湊任務編碼</strong> + 改造的 <strong>LongT5 編碼器-解碼器</strong>（200M 參數），靠四根支柱——①對稱性/遍歷/細胞自動機<strong>資料增強</strong>②<strong>測試時訓練（TTT）+ 輕量 LoRA</strong>逐題專化③<strong>對稱感知的解碼與評分</strong>（聚合多增強視角的似然＝「多視角推理」）④符號先驗<strong>過濾</strong>——在 ARC-AGI-2 半私有評測集達 <strong>27%</strong>。報告最珍貴處是一張清楚的<strong>增量歸因表</strong>：從 llama 1B 的 3.75% 一路加技術到 27.08%，每招貢獻幾個百分點都列出來。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>ARC 要求從極少範例推出符號規則、且<strong>像素級全對才算對</strong>（一個 token 錯整題零分）。如何在 Kaggle 嚴格的執行時間/算力預算內，用一個小神經模型逼近人類級泛化？</p>
+<h2 id="核心方法四支柱--流水線">核心方法（四支柱 + 流水線）</h2>
+<ul>
+<li><strong>緊湊編碼</strong>：每個任務序列化成僅 <strong>125 token</strong>（多示範對串接時最長約 10,000 token），用 <strong>LongT5</strong>（transient global attention）做高效長上下文處理 + 整合 <strong>FlashAttention</strong> 加速。</li>
+<li><strong>注入先驗 / 資料增強</strong>：
+<ul>
+<li><strong>符號過濾</strong>：顏色一致性、網格尺寸一致性、包含性過濾，砍掉不合理候選。</li>
+<li><strong>對稱增強</strong>：群對稱（旋轉/反射/轉置）。</li>
+<li><strong>遍歷先驗</strong>：把網格序列化成「逐行（RbR）」與「蛇形（zig-zag）」兩種遍歷，當作表示層增強。</li>
+<li><strong>細胞自動機擾動</strong>：用可局部反演的 CA 生成增強樣本（含「共軛技巧」）。</li>
+</ul>
+</li>
+<li><strong>三階段增強分工</strong>：TTT 用 AE、候選生成用 AEIDR、評分用 AEI。</li>
+<li><strong>測試時訓練（TTT）</strong>：對每個未見任務，用該任務示範對的增強資料做 <strong>LoRA（r=8、35 epoch、lr=8e-4）<strong>微調，加上</strong>任務專屬外部記憶</strong>做跨任務檢索，局部專化又不災難性遺忘。</li>
+<li><strong>離線訓練技巧</strong>：課程學習、UL2 遮罩去噪多任務訓練（「training to understand」）、以及<strong>grokking</strong>（延長訓練到泛化突現）。</li>
+<li><strong>對稱感知評分</strong>：對候選在多種對稱條件視角下做前向，聚合似然算每像素信心分；ARC 取分數最高的 2 個候選作答。</li>
+</ul>
+<h2 id="結果增量歸因半私有kaggle">結果（增量歸因，半私有/Kaggle）</h2>
+<ul>
+<li>最終：<strong>200M LongT5 → 半私有評測集 27%</strong>（受算力約束下具競爭力）。</li>
+<li>增量歷程（同隊自報）：llama3.1 1B <strong>3.75%</strong> → 調參 <strong>5.00%</strong> → 換 LongT5 <strong>7.08%</strong> → 跑全資料集 <strong>12.08%</strong> → 加 grokking <strong>19.86%</strong> → 加 2-遍歷 <strong>25.00%</strong> → 加多任務 UL2 <strong>27.08%</strong>。</li>
+<li>單招絕對增益：遍歷 +6.14%、grokking +5.14%、UL2 多任務 +2.08%、HPC 優化（架構換 + FlashAttention 等）使 5%→12.08%（+7.08%）。</li>
+<li>解碼：beam search 優於 BFS/DFS（後者即便閾值降到 1% 仍低約 0.5–1%）；真解有時以僅 0.1% 機率出現於某個剛性變換。</li>
+<li>相關工作對比表：2024 ARC Prize 第二名 fine-tune Mistral-NeMo-Minitron-8B 達 hidden 56.5%；第三名 Qwen2.5-0.5B 達 40%（單獨 LLM 33%）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>半私有集 27% 仍遠低於人類；ARC-AGI-2 需多重組合規則，純神經序列模型仍吃力。</li>
+<li>BARC 大資料集因雜訊高、含缺乏人類可解邏輯的任務而被排除——顯示對資料品質極敏感。</li>
+<li>因 Kaggle 測試集未公開，論文所有數字是在自製 177 個人工任務上計算（非官方私有集）。</li>
+<li>TTT 每題需即時 LoRA 微調，計算成本高、需大量 HPC 工程才塞進時間預算。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 E 類中<strong>最完整的「TTT + 神經序列模型」工程實戰範本</strong>——把編碼、增強、TTT/LoRA、grokking、UL2、對稱評分、beam vs BFS/DFS 全部攤開講，含真實的增量歸因，極適合想復刻或改進 ARC 神經解法的人。</li>
+<li>與 <a class="paper-reference" href="2601.10904_ARC_Prize_2025.%E6%91%98%E8%A6%81.html">2601.10904</a>（2025 報告，把 TTT 列為冠軍主路）互為總綱與實作；與 <a class="paper-reference" href="2411.07279_Test_Time_Training.%E6%91%98%E8%A6%81.html">2411.07279</a>（TTT 少樣本理論）、<a class="paper-reference" href="2505.07859_Product_of_Experts_ARC.%E6%91%98%E8%A6%81.html">2505.07859</a>（Product of Experts、多視角評分）、<a class="paper-reference" href="2411.08706_LPN_Latent_Program_Search.%E6%91%98%E8%A6%81.html">2411.08706</a> LPN、<a class="paper-reference" href="2411.02272_Induction_Transduction.%E6%91%98%E8%A6%81.html">2411.02272</a>（歸納 vs 轉導）同屬「神經 ARC」家族；與 <a class="paper-reference" href="2512.06104_CompressARC.%E6%91%98%E8%A6%81.html">2512.06104</a> CompressARC、<a class="paper-reference" href="2511.14761_VARC_ARC_Vision.%E6%91%98%E8%A6%81.html">2511.14761</a> VARC 形成「TTT 預訓練大模型 vs 零預訓練小模型」對照。</li>
+<li>最值得記：<strong>「多視角推理」＝同一候選在多種對稱/遍歷視角下聚合似然</strong>；<strong>grokking 與 UL2 去噪是被低估的離線增益來源</strong>；<strong>beam search 比 BFS/DFS 更能撈到低機率真解</strong>；以及「每招貢獻幾個百分點」這種誠實的工程歸因。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2603.06590_ARC_AGI2_TTT_LongT5.zh-TW.html"><code>../translate/2603.06590_ARC_AGI2_TTT_LongT5.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.24245_AutoSpec_ILP.zh-TW.html">回 2606.24245_AutoSpec_ILP.zh-TW 目錄</a>　<a href="02_%E8%A9%95%E4%BC%B0%E8%88%87%E7%B5%90%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>LLM 智能體越來越多地透過整合語言模型與外部工具/環境來自動化複雜任務，但其自主性帶來重大安全風險：智能體可能執行毀滅性指令、洩漏敏感資料、違反領域約束。現有安全做法面臨根本取捨：<strong>手寫規則可解釋但脆弱</strong>——過於保守的規則擋掉安全操作（高偽陽性），過於寬鬆的規則漏掉危險行為（高偽陰性）；<strong>神經分類器則缺乏安全關鍵部署所需的可解釋性</strong>。</p>
+<p>我們提出 <strong>AutoSpec</strong>：一個從使用者 safe/unsafe 標註出發、透過<strong>反例引導歸納合成（CEGIS）並由歸納邏輯編程（ILP）引導</strong>，自動演化「已部署之專家設計安全規則」的框架。從專家規則與一串標註軌跡開始，AutoSpec 迭代地：評估規則、挖掘偽陽性與偽陰性反例、用 ILP 學「哪些謂詞能區分它們」、生成候選規則編輯、驗證候選以選出最佳修訂。<strong>關鍵洞見是：ILP 能高效辨識「頻繁出現在偽陰性、卻罕見於偽陽性」（或反之）的謂詞，戲劇性地剪枝規則編輯的指數搜尋空間。</strong> 持續至收斂，產出平衡精確率與召回率的可解釋規則。</p>
+<p>我們在 <strong>291 條執行軌跡</strong>（橫跨程式執行與具身智能體域）上評估：AutoSpec 把兩域的規則 F1 提升至 <strong>0.98 與 0.93</strong>，達成最多 <strong>94% 的偽陽性削減</strong>並維持高召回，且在 <strong>4–5 次迭代內收斂</strong>。ILP 引導法比啟發式 CEGIS 的 F1 高達 <strong>4.8 倍</strong>。學出的規則人類可讀、可審計、能泛化到未見情境。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 智能體透過整合 LLM 與外部工具、記憶、規劃能力，已能執行程式碼、操作檔案、控制機器人、與物理環境互動，應用從軟體開發助手到自駕、家用機器人。但使其強大的自主性也使其危險：被要求「清理暫存檔」的智能體可能執行 <code>rm -rf /</code>，家用機器人可能把筆電放在運轉中的爐子旁。</p>
+<p><strong>安全挑戰</strong>：LLM 智能體在開放式環境以自然語言輸入運作，使部署前驗證難以處理；即使良好測試過的智能體也會在部署時出現新失效模式。</p>
+<p><strong>關鍵動機：專家規則必須隨智能體一起演化。</strong> 實務中，部署的智能體很少從白紙開始——它們附帶一組捕捉已知危害的<strong>專家設計安全規則</strong>（如阻擋 <code>rm -rf /</code>、限制存取敏感檔案）。這些手寫規則編碼寶貴領域專業、可解釋可審計，正因如此實務者依賴它們。難處在於：<strong>規則是靜態的，智能體卻不是</strong>——模型更新、新工具接入、prompt 改版，持續移動 safe/unsafe 的邊界。風險也常來自<strong>動作的組合</strong>而非單一動作。</p>
+<p><strong>我們的方法：ILP 引導的 CEGIS。</strong> AutoSpec 用 ILP 引導 CEGIS 搜尋。給定偽陽性與偽陰性反例，AutoSpec 形成一個 ILP 學習任務：學一個假設以區分 unsafe 軌跡（正例）與 safe 軌跡（負例）。ILP 求解器（<strong>ILASP</strong>）輸出一份「附建議編輯操作的排序謂詞清單」（如「把 <code>is_temp_file</code> 加為例外以減少偽陽性」）。AutoSpec 依建議生成候選規則編輯，在全資料集驗證每個候選，用「優先 F1、兼顧 precision、剩餘反例更少、規則更簡」的分數選最佳修訂，迭代至收斂或達目標分數。</p>
+<p><strong>貢獻</strong>：(1) 概念上，把安全規則維護框定為「從使用者標註演化已部署專家規則」，並轉化為 ILP 引導的 CEGIS——標註即反例、ILP 剪枝規則編輯的指數空間；(2) 技術上，建出 AutoSpec——首個安全演化工具，透過反例挖掘、ILP 引導謂詞排序、候選生成、驗證來精煉符號護欄，產出可審計、可直接部署的規則；(3) 實證上，跨 291 條軌跡達 F1 0.98/0.93，ILP 引導比啟發式 CEGIS 改善達 4.8×，規則 4–5 次迭代收斂、泛化到未見任務、被實務者評為遠比神經分類器可解釋可信。</p>
+<h2 id="2-背景與問題建模">2. 背景與問題建模</h2>
+<p>把安全知識建模為「軌跡上謂詞約束的集合」。核心物件是<strong>謂詞庫 P</strong>：每個謂詞捕捉事件或其局部脈絡的可解釋性質。規則由謂詞組合成合取、例外、析取分支。</p>
+<p><strong>謂詞庫</strong>：AutoSpec 維護跨域謂詞庫，每謂詞是布林函數（以程式函數實作，斷言謂詞是否在特定事件成立）。例：<code>destructive_os_inst</code> 檢查程式執行動作是否呼叫 <code>rm -rf</code>/<code>os.remove</code>，<code>near_danger_zone</code> 檢查機器人是否靠近危險區（爐、刀、火）。每域謂詞庫 16–24 個。</p>
+<p><strong>兩層結構</strong>：規則作用於個別事件，監督卻在<strong>軌跡</strong>粒度提供——反映常見實務：人類操作員觀察到一次 session 產生不良後果，未必能指出確切違規動作。AutoSpec 在 ILP 編碼中記錄「每個事件上有哪些謂詞成立」，再學軌跡層級分類規則。</p>
+<p><strong>ILP 背景</strong>：給定背景知識庫 B、正例 E⁺、負例 E⁻，ILP 求解器搜尋假設 H（一組 Horn 子句）使 H ∪ B 蘊含所有正例、不蘊含任一負例。假設空間由 <strong>mode declaration</strong> 約束（規定可學子句結構，如限定為固定詞彙中謂詞的合取、每謂詞至多出現一次）。ILASP 支持 ASP 語意，可透過長度評分優化假設簡潔性。</p>
+<h2 id="3-方法概覽">3. 方法概覽</h2>
+<p>AutoSpec 結合兩種合成範式：<strong>ILP</strong> 學判別謂詞、<strong>CEGIS</strong> 做迭代精煉。輸入：(1) 初始規則集 R₀（部署中既有專家護欄；也接受最小 seed 規則以 bootstrap，但 AutoSpec 目標是演化部署規則而非從零合成）、(2) 帶真值安全標籤的軌跡資料集、(3) 謂詞庫 P。輸出：高驗證品質的精煉規則集（以 F1 為主指標）。因搜尋空間隨謂詞數與編輯步數<strong>指數成長</strong>、窮舉不可行，AutoSpec 用 ILP 引導的 CEGIS 高效導航。</p>
+<h2 id="4-ilp-引導的規則演化迴圈algorithm-1">4. ILP 引導的規則演化迴圈（Algorithm 1）</h2>
+<p>每次精煉迭代分四階段，每階段為下一階段收窄空間：</p>
+<p>➀ <strong>反例挖掘</strong>：在標註集評估 R，蒐集被誤分類的軌跡——偽陰性（漏掉的 unsafe）與偽陽性（誤報的 safe），精準定位規則失效處。</p>
+<p>➁ <strong>ILP 引導謂詞學習</strong>（§4.3）：每域 16–24 謂詞配多個運算子，試遍所有組合不可行，故從反例中學有用謂詞。問題刻意收窄：<strong>在所有謂詞中，哪幾個能分離「漏掉的 unsafe（FN）」與「誤報的 safe（FP）」？</strong> 交給 ILASP——它回傳符號假設（既有謂詞的小組合）、偏好最少謂詞、抗過擬合。<strong>ILP 不寫規則、只提名謂詞</strong>，由編輯運算子（Table 2）改寫。編碼：謂詞改為 per-event 評估（事實記錄謂詞於軌跡某事件成立），FN 為正例、FP 為負例，求「成立於每個正例、不成立於任一負例」的最簡謂詞組合。</p>
+<p>➂ <strong>候選生成與選擇</strong>：用 Table 2 運算子（AddException、AddDisjunct 等）把建議轉成具體編輯，在 D 上評分，保留最佳。</p>
+<p>➃ <strong>驗證</strong>：候選若提升分數則接受（greedy-ascent 保證單調進步），否則停；達目標分數或耗盡迭代預算 N 亦停。</p>
+<p>AutoSpec 意在<strong>持續、週期性維護</strong>而非一次性離線調參：部署的智能體持續產生工具呼叫軌跡與核准訊號當標籤，AutoSpec 隨模型/工具/工作負載演化而非同步精煉規則。ILP 引導貢獻的不只是搜尋速度，更是<strong>規則品質</strong>——移除它則最終品質大幅下降（啟發式 CEGIS 與隨機搜尋的 F1 遠低），因均勻探索編輯空間在實務預算內鮮少碰到能乾淨分離反例的謂詞組合。不宣稱全域最優，目標是實務、可審計地改善既有護欄。</p>
+<p><strong>走查例</strong>（從一條規則、10 unsafe + 15 safe 軌跡，兩次迭代達精確規則）：迭代 1 發現 9 個套件管理腳本被誤報（FP），ILP 發現 <code>is_pkg_mgr</code> 區分之、加為例外，precision 升至 0.75；迭代 2 發現一個經 <code>subprocess</code> 連網的漏報外洩腳本（FN，<code>net_call</code> 從未觸發），ILP 發現 <code>reads_cred ∧ ext_host</code> 刻畫之、加為分支，規則集收斂。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

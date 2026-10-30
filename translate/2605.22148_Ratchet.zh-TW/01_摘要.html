@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.22148_Ratchet.zh-TW.html">回 2605.22148_Ratchet.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>自演化技能庫由 Voyager 開創，讓凍結的 LLM 智能體在無權重更新的情況下累積可重用知識，但近期評估顯示 LLM 自產技能對無技能基線的增益為 +0.0pp，而人類策展技能達 +16.2pp：瓶頸不是技能作者而是生命週期管理。我們提出 Ratchet，一個單智能體迴圈，讓凍結的 LLM 自行撰寫、檢索、策展、退役自然語言技能。Ratchet 整合四項候選衛生機制：結果驅動退役（outcome-driven retirement）、受限活躍容量（bounded active-cap）、後設技能作者指引（meta-skill authoring guidance）、模式正規化（pattern canonicalisation）。在 MBPP+ hard-100 上以 Claude Opus 4.7 測試，Ratchet 將留出集 pass@1 從 0.258 ± 0.047 基線提升到 100 輪 3 種子的晚窗口滾動平均 0.584（峰值 0.658 ± 0.042），滾動平均增益 +0.328 ± 0.018，而無技能控制組僅漂移 +0.002 ± 0.005；同一配方轉移到 SWE-bench Verified 上的 agentic solver（峰值提升 +0.22，20 輪）。八項消融（A1–A8）揭示最小有效配方比我們的設計更小：退休機制與後設技能作者先驗是承重的，而顯式去重（正規化、cover-guard）被後設技能本身取代。非發散命題證明有界容量與退休門檻共同防止期望效能跌破無技能下限。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>一個凍結的 LLM 今天解決了困難任務，卻不會學到任何幫助明天的東西。在不做權重更新的情況下橋接此差距，需要一個外部記憶，讓同一個模型在下次嘗試前可以查閱。近期工作將此類記憶定位於經驗壓縮譜上，從原始軌跡（L0，如 Reflexion）經情節記憶（L1，如 MemGPT）與程序性技能（L2，如 Voyager）到宣告式規則（L3，如 RuleShaping），並匯總了一個尖銳發現：人類策展技能對無技能基線的增益為 +16.2pp，而 LLM 自產技能為 +0.0pp（SkillsBench）。在兩打被調查的系統中，瓶頸不是作者而是圖書館員：生命週期管理（版本控制、衝突檢測、廢棄）「普遍被忽視」。我們將此缺口稱為<strong>庫漂移（library drift）</strong>：技能庫有效品質因未受控的膨脹、冗餘或不成熟修剪而無聲退化。自演化是正確方向，與苦澀教訓一致，但我們的命題 1（第 3.5 節）證明若無有界 active-cap 與退休門檻，最差效能邊界會坍塌為空泛。問題不是「是否該自演化」，而是「什麼最小結構能使自演化不發散」。</p>
+<p>Ratchet 是一個單智能體迴圈，凍結的 LLM 撰寫、檢索、策展、退役自己的自然語言技能，透過四項治理機制使圖書館員顯式化。模式正規化合併近重複的 critic 標籤，使同一 bug 的兩種失敗描述產出一個技能而非兩個。帶證據地板的貢獻分數退休以實證結果淘汰邊際技能，取代先前系統的啟發式更新規則。受限 active-cap 迫使技能競爭 Router 的短名單，使檢索不隨庫增長而退化。後設技能作者先驗約束 Synthesizer 產出風格一致的技能，隱含去重而不需要獨立過濾器。因為技能是從失敗群集合成而非從成功合成，它們天然面向陷阱（pitfall-oriented），繼承了 L3 規則已發現的「護欄勝過指引」（guardrails beat guidance）效果。</p>
+<p>在 MBPP+ hard-100 上以 Claude Opus 4.7 測試，Ratchet 將 10 輪滾動平均留出 pass@1 從 0.258 ± 0.047 提升到 100 輪的晚窗口 0.584（3 種子平均增益 +0.328 ± 0.018），而強制無技能控制組僅 +0.002 ± 0.005。</p>
+<p><strong>貢獻</strong>：</p>
+<ul>
+<li><strong>論點</strong>：重新框架 SkillsBench 的虛無結果——自演化技能庫的瓶頸不是作者品質而是生命週期管理：退休、容量控制、作者指引。</li>
+<li><strong>實證</strong>：僅處理圖書館員瓶頸（凍結作者，無權重更新）就在 MBPP+ hard-100 上產生 +0.328 滾動平均增益，在 SWE-bench Verified 上產生 +0.22 峰值提升，據我們所知是第一個縮小與人類策展效能差距的 LLM 自產技能庫。</li>
+<li><strong>機制性</strong>：八項消融具體識別「圖書館員」的含義。結果驅動退休與後設技能作者先驗是承重的（移除先驗 −0.141；嚴苛退休 −0.019）；顯式去重在此規模被作者先驗取代；頻繁後設技能刷新（A8）以 55% wall-time 換取邊際增益。</li>
+<li><strong>理論</strong>：非發散邊界（命題 1）形式化證明容量與門檻是最小治理：期望 pass@1 不能跌破無技能下限超過 τ + ε + Cδ，僅因兩者有限才有限。</li>
+</ul>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p><strong>情節自我糾正</strong>：Reflexion、Self-Refine、ReAct 在單一情節內反思或批評並在邊界丟棄狀態。Ratchet 將此模式提升為跨任務持久化。</p>
+<p><strong>跨任務技能庫</strong>：Voyager 開創了不斷增長的技能庫，含可執行的 Minecraft 技能；ExpeL 從軌跡提取文字洞察但缺乏結果驅動退休；AutoManual 為每個領域編譯平面指令手冊。DSPy、OPRO、TextGrad 優化 prompt 但不持久化每技能證據。MemGPT 與 Generative Agents 管理記憶層級但不定義具型態、可退役的技能工件。2025–2026 的並行工作沿正交軸推進技能庫前沿：EvolveR 將軌跡蒸餾為策略原則；Trace2Skill 透過平行子智能體從軌跡池誘導技能；CASCADE 配對後設技能與累積技能創建；AutoSkill 提供最接近的生命週期機制（版本控制 + 標準化綱要）但不依測量的每任務貢獻退役；SkillRL 將技能庫與 RL 權重更新耦合（不同於凍結 LLM 體系）；SSL 將技能分解為排程、結構、邏輯層；Strategy Genes 將失敗歷史作為第一級後設資料附加。近期一項對 20+ 此類系統的調查報告生命週期管理普遍缺失；無一採用結果驅動退休配對受限 active-cap。表 1 將比較分解為八個設計特徵，涵蓋訊號品質、作者、治理。我們的 A1–A8 消融分別隔離 Ratchet 自身被剝離各項時的後果。</p>
+<p><strong>Critic 可靠性與生命週期</strong>：Zheng 等人報告強 LLM 裁判與人類偏好之間 &gt;80% 的一致性；我們進一步將 Critic 限制在閉合標籤集並要求三個共享正規化模式的失敗後才能產生任何技能。基於權重更新的持續學習使用 EWC 等正則化器；Ratchet 完全避免權重更新遺忘（權重凍結）並以貢獻分數退休處理技能空間的類比問題。近期工作顯示否定約束勝過正面指令，一種 reward shaping 效果，Ratchet 在建構上繼承此效果，因為技能從失敗群集合成。我們在 MBPP+ 上評估，該資料集以額外單元測試擴展 MBPP，排除虛假通過。Router 類似檢索加重排序管線；我們的 A2 消融隔離 LLM 閘門貢獻與純檢索的差異。</p>
+<h3 id="表-1技能庫系統的設計軸比較">表 1：技能庫系統的設計軸比較</h3>
+<p>Ratchet 在全部八軸（獨立 Critic、證據日誌、失敗群集合成、具型態技能綱要、後設技能層、模式正規化、結果驅動退休、受限 active-cap）均為 ✓。所有先前系統（MemGPT、DSPy、Voyager、AWM、AutoManual、ExpeL、CASCADE、EvolveR、SSL、AutoSkill、Strategy Genes、SkillRL、Trace2Skill）在大部分軸上為 × 或 ∼（部分）。尤其結果驅動退休（OR）與受限 active-cap（AC）在所有先前系統中均缺失。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

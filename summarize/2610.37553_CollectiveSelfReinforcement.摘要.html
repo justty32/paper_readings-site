@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Collective Dynamics of Self-Reinforcement: How Cross-Task Coupling Drives Policy Collapse in Unsupervised RLVR 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Peize Ding</p><p>日期：2026-10-27（v1，cs.LG）</p><p>arXiv：2610.37553</p><p><a href="https://arxiv.org/html/2610.37553v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="collective-dynamics-of-self-reinforcement-重點摘要">Collective Dynamics of Self-Reinforcement 重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>多數票自我獎勵不只會強化每題原本的答案，也可能透過共享參數把不同題目推向同一答案。作者以「各題自行變確定」與「共同偏差放大」的競速解釋資料量門檻，並用小型 Transformer 做因果介入；但初始核只能粗略排序風險，平衡答案分布也不足以保住準確率。</p>
+<h2 id="問題與可解模型">問題與可解模型</h2>
+<p>無標籤 RLVR 把同題多次抽樣的多數答案當偽標籤，獎勵與它一致的樣本。因此獎勵上升可能只是模型越來越一致，不代表答案越來越正確。過往單題「銳化」分析未解釋為何增加訓練題數，會使不同題目共同倒向同一答案；本文的跨題耦合分析針對這個缺口。（<a href="https://arxiv.org/html/2610.37553v1#S1">§1–2</a>）</p>
+<p>二元答案機率為 <span class="math inline">\(p=\sigma(z)\)</span>。每題抽三個答案、以 REINFORCE 更新時，期望漂移為 <span class="math inline">\(F(z)=p(1-p)(2p-1)\)</span>；它會強化當前多數答案。共享偏差的放大則取決於斜率：<span class="math inline">\(F&#x27;(z)&gt;0\)</span> 的範圍是 <span class="math inline">\(|z|&lt;z^*=\ln(2+\sqrt3)\approx1.317\)</span>，約等於 <span class="math inline">\(0.21&lt;p&lt;0.79\)</span>。三樣本時，群組平均基線與 GRPO 的漂移分別是 <span class="math inline">\(2F/3\)</span> 與 <span class="math inline">\(\sqrt2F\)</span>，只改時間尺度。（<a href="https://arxiv.org/html/2610.37553v1#S3">§3，式 1–3</a>、<a href="https://arxiv.org/html/2610.37553v1#A1.SS1">附錄 A.1</a>）</p>
+<p>作者令每題 logit 為 <span class="math inline">\(z_i=u_i+\lambda v\)</span>：<span class="math inline">\(u_i\)</span> 為題目專屬參數，<span class="math inline">\(v\)</span> 是所有題共用的偏差，<span class="math inline">\(\lambda\)</span> 為耦合強度。對小步長的平均更新，題目專屬銳化速度為 <span class="math inline">\(\eta F(z_i)/N\)</span>，共享項為 <span class="math inline">\(\eta\lambda^2\langle F\rangle\)</span>。增加題數 <span class="math inline">\(N\)</span> 會延緩每題離開不確定區間，卻不同比例減慢共同偏差，給後者更多時間長大。（<a href="https://arxiv.org/html/2610.37553v1#S4.SS1">§4.1</a>）</p>
+<h2 id="理論結論與適用條件">理論結論與適用條件</h2>
+<p>對初始正負偏好平衡、信心同為 <span class="math inline">\(a\)</span> 的族群，共同微擾沿銳化軌跡的瞬時增長，在 <span class="math inline">\(1/N\)</span> 領先階由 <span class="math inline">\(\langle F&#x27;\rangle&gt;0\)</span> 決定。<strong>這是暫態增長條件，不是固定點穩定性，也不足以單獨判定崩塌。</strong> 真正要比較微擾離開不穩定區間前累積了多少放大。（<a href="https://arxiv.org/html/2610.37553v1#S4.SS2">§4.2</a>）</p>
+<p>在均質、固定耦合模型及不穩定區間內，累積對數放大量與近似臨界題數為</p>
+<div class="math block">
+\[\Lambda=\lambda^2NG(a),\qquad G(a)=\ln\frac{F^*}{F(a)},\qquad
+N_c\simeq\frac{\ln(1/\delta)}{\lambda^2G(a)}.\]
+</div>
+<p><span class="math inline">\(F^*=F(z^*)\)</span>，<span class="math inline">\(\delta\)</span> 是抽樣雜訊或初始不對稱引入的種子。這預測 <span class="math inline">\(N_c\)</span> 對耦合約呈 <span class="math inline">\(\lambda^{-2}\)</span>，另有雜訊造成的對數修正；固定步長時 batch 大小只帶來對數影響，按 <span class="math inline">\(\eta\propto B\)</span> 調整步長則在該近似中抵消。均質模型若一開始已在 <span class="math inline">\(a&gt;z^*\)</span>，小微擾持續衰減；這項穩定結論不能直接套到會學習特徵的網路。異質信心與多答案版本改用各自的積分增益與雅可比特徵值。（<a href="https://arxiv.org/html/2610.37553v1#S4.SS3">§4.3–4.4</a>）</p>
+<p>網路的經驗神經切線核（NTK）近似把耦合分成共同答案方向 <span class="math inline">\(k_u\)</span> 與沿各題原有預測銳化的保護方向 <span class="math inline">\(k_s\)</span>。排除兩者後的局部成分為 <span class="math inline">\(k_d&#x27;=k_d-k_u-k_s\)</span>，得到 <span class="math inline">\(\Lambda(N)=GNk_u/(k_d&#x27;+Nk_s)\)</span>；當保護方向夠強，放大量隨題數飽和。這依賴核近似固定、只保留兩個集體方向，並略去門檻中的有限局部項；不能當成任意神經網路的安全界線。（<a href="https://arxiv.org/html/2610.37553v1#S4.SS5">§4.5</a>、<a href="https://arxiv.org/html/2610.37553v1#A1.SS6">附錄 A.6</a>）</p>
+<h2 id="作者自報的可解模型結果">作者自報的可解模型結果</h2>
+<p>實驗將結束時 <span class="math inline">\(\Phi=|\langle\mathrm{sign}(z_i)\rangle|&gt;0.5\)</span> 定義為崩塌，<span class="math inline">\(N_c\)</span> 則是崩塌機率對 <span class="math inline">\(\ln N\)</span> 的 logistic 擬合中點，兩者不能混為每次訓練的硬界線。預設為三樣本 REINFORCE、SGD、batch 32、步長 4、300 epochs，初始多數答案有 80% 正確。（<a href="https://arxiv.org/html/2610.37553v1#S5">§5</a>、<a href="https://arxiv.org/html/2610.37553v1#A5">附錄 E</a>）</p>
+<table>
+<thead>
+<tr>
+<th>改動或觀測</th>
+<th>作者自報結果</th>
+<th>解讀界限</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>崩塌的二元可解模型</td>
+<td>自評獎勵趨近 0.999，準確率由 0.80 降到 0.50</td>
+<td>高自評獎勵不代表正確</td>
+</tr>
+<tr>
+<td>耦合 <span class="math inline">\(\lambda=0.035\to0.28\)</span></td>
+<td>臨界題數由 5,750 降至 60；擬合斜率 −2.22</td>
+<td>近似反平方律含對數修正</td>
+</tr>
+<tr>
+<td>耦合與信心掃描</td>
+<td>臨界放大量擬合為 2.64，十二組掃描落在 2.1–3.6</td>
+<td>2.64 是模型校準值，不是普遍常數</td>
+</tr>
+<tr>
+<td>固定步長，batch <span class="math inline">\(8\to128\)</span></td>
+<td><span class="math inline">\(N_c\)</span> 為 <span class="math inline">\(355\to765\)</span>；線性步長縮放時為 521–572</td>
+<td>大 batch 並非強力解方；過大步長另會破壞近似</td>
+</tr>
+<tr>
+<td>初始 <span class="math inline">\(a\in\{1.4,1.6,2.0\}&gt;z^*\)</span></td>
+<td>18 組設定、每組 16 種種子均無答案翻轉</td>
+<td>僅支持指定固定耦合模型的穩定性</td>
+</tr>
+</tbody>
+</table>
+<p>來源：<a href="https://arxiv.org/html/2610.37553v1#A2.SS1">附錄 B.1–B.3</a>。異質信心、保護耦合、GRPO、更大群組及多答案實驗保留同類競速現象；Adam 改變增長率，仍得到 <span class="math inline">\(N_c\propto\lambda^{-2}\)</span>，但常數不同，不能宣稱所有設定共享完全相同門檻。（<a href="https://arxiv.org/html/2610.37553v1#S5.SS2">§5.2–5.3</a>、<a href="https://arxiv.org/html/2610.37553v1#A3">附錄 C</a>）</p>
+<h2 id="小型-transformer因果證據與預測失準">小型 Transformer：因果證據與預測失準</h2>
+<p>任務比較六個數字的前三個與後三個總和，排除平手。網路為寬度 64、兩層、四注意力頭的 Transformer，先短暫有標籤預訓練，再用無標籤多數票 REINFORCE；未測試預訓練語言模型。22 種架構／基礎模型／溫度／偏差設定，各跑七個題數與六種種子，共 924 次 RL，另以 2,000 題評估準確率。（<a href="https://arxiv.org/html/2610.37553v1#S6.SS1">§6.1</a>、<a href="https://arxiv.org/html/2610.37553v1#A4.SS1">附錄 D.1、E</a>）</p>
+<p>反對稱讀出 <span class="math inline">\(z(x)=h(x)-h(\bar{x})\)</span> 以交換輸入兩半抵消共同方向，無額外偏差時 168 次訓練均未崩塌；加回共同偏差，強度 <span class="math inline">\(\rho_b\geq1\)</span> 時 336 次中有 335 次崩塌。這支持該任務中共享方向的因果角色。一般讀出模型則呈現題數及溫度增加時更易崩塌。（<a href="https://arxiv.org/html/2610.37553v1#S6.SS2">§6.2</a>、<a href="https://arxiv.org/html/2610.37553v1#A4.SS2">附錄 D.2</a>）</p>
+<p>初始核校準的隨機代理模型在 154 個條件／題數格子的二分判定一致率為 71%，<strong>低於永遠預測崩塌的 73%</strong>；作者的條件層 bootstrap 亦未區分兩者。代理的 ROC AUC 為 0.87，Brier 分數為 0.235，優於永遠崩塌的 0.289，但不及用實際崩塌率事後擬合的常數預測 0.205。平均預測崩塌機率 0.46，實際為 0.71，故它較適合排序風險，並非校準良好的穩定保證。（<a href="https://arxiv.org/html/2610.37553v1#A4.SS3">附錄 D.3</a>）</p>
+<p>一般模型 base-120、溫度 1 的初始 <span class="math inline">\(G\)</span> 四捨五入至三位小數為 0.000，仍有 17/42 次崩塌。部分反對稱模型訓練時保護耦合減弱，另一些自核迅速變大；一般模型的核漂移卻較小，無法解釋全部失準。作者未分離其他集體方向與小資料初始不平衡的貢獻。（<a href="https://arxiv.org/html/2610.37553v1#A4.SS4">附錄 D.3–D.4</a>）</p>
+<h2 id="熵獎勵的限制與作者結論">熵獎勵的限制與作者結論</h2>
+<p>加入 batch 平均答案的邊際熵獎勵 <span class="math inline">\(\beta H(\bar p)\)</span>，在對稱二元模型可抑制均勻共同方向；理論門檻 <span class="math inline">\(\beta_c(a)=F&#x27;(a)/(4[p(1-p)]^2)\leq1/2\)</span>。它不等於增加每題答案熵，而是鼓勵跨題的答案分布平衡。（<a href="https://arxiv.org/html/2610.37553v1#S4.SS6">§4.6</a>）</p>
+<p>Transformer 的補救實驗中，<span class="math inline">\(\beta\in\{0.5,1,2\}\)</span> 共 24 次均不再超過上述不平衡門檻，但準確率仍接近隨機。其他與目前預測不對齊的集體核方向會接管，使輸出確定且平衡，卻遵循與任務無關的規則。因此「沒有全題同答」不等於「沒有集體失敗」。（<a href="https://arxiv.org/html/2610.37553v1#A4.SS5">附錄 D.5</a>）</p>
+<p>作者明示限制：分析在答案層級、採線性化耦合，真實語言模型有會變動的多個共享方向；臨界常數依賴雜訊種子；受算力限制，未測試預訓練語言模型。依信心安排課程或分小塊訓練是理論建議，尚未實測；強迫邊際平衡也不適合真實答案分布高度偏斜的任務。（<a href="https://arxiv.org/html/2610.37553v1#S7">§7</a>）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.37553_CollectiveSelfReinforcement.zh-TW.html">Collective Self-Reinforcement 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《以混合思維表徵的大型語言模型級聯達成低成本推理（Large Language Model Cascades with Mixture of Thought Representations for Cost-Efficient Reasoning）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Murong Yue, Jie Zhao, Min Zhang, Liang Du, Ziyu Yao（George Mason University / Microsoft / Virginia Tech）</p><p>日期：2023-10</p><p>arXiv：2310.03094</p><p><a href="https://arxiv.org/abs/2310.03094" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="以混合思維表徵的大型語言模型級聯達成低成本推理重點摘要">《以混合思維表徵的大型語言模型級聯達成低成本推理》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Mixture-of-Thought LLM Cascade（混合思維級聯）</strong>：不再訓練外部評分器去猜題目難度，而是把<strong>弱模型自身的「答案一致性（answer consistency）」當成免費的難度信號</strong>——弱模型（GPT-3.5-turbo）對一題多次取樣後若答案高度一致就直接採用、不一致才升級到強模型（GPT-4）；關鍵創新是讓弱模型同時用 <strong>思維鏈（CoT，自然語言）與思維程式（PoT，可執行程式碼）兩種思維表徵互檢</strong>，因為「不同表徵下仍給出同一答案」才代表真正有把握，藉此在<strong>六個推理資料集上達到與純用 GPT-4 相當的準確率，卻只花約 40% 成本</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>把 LLM 用於大規模推理任務（數學、符號、因果）非常貴——GPT-4 的輸出 token 費用是 GPT-3.5-turbo 的 30 倍。既有的「LLM 級聯」（FrugalGPT / Chen et al. 2023a）做法是<strong>微調一個小模型當外部評分器（external verifier）</strong>，依「題目＋弱模型答案」的字面描述打分決定是否升級。作者觀察到：對複雜推理任務，這種靠字面評估的評分器<strong>表現不佳</strong>——推理路徑看起來合理但錯誤可能很細微，光看文字很難判斷題目難度與答案正確性。因此需要一個<strong>免訓練、不綁定特定弱模型</strong>的難度判斷機制。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>級聯結構（§2.1）</strong>：題目先給弱模型 <code>LLM^w</code> 得答案 <code>A^w</code>；決策器（decision maker）判斷是否接受；拒絕才呼叫強模型 <code>LLM^s</code>。總成本 <code>C = C^w + C^d + 1_reject · C^s</code>（<code>C^d</code> 為決策成本）。理想決策器只在弱模型答錯時才升級。</li>
+<li><strong>一致性作為難度信號（§2.2）</strong>：假設「弱模型對同一題多次取樣答案越一致，越可能答對，就不必動用強模型」。取樣三種多樣性來源：(1) 同 prompt 非零溫度重取樣（in-distribution）；(2) 同思維表徵、不同示範集（2D）；(3) <strong>不同思維表徵（CoT + PoT，即 MoT）</strong>——只有答案「與中間步驟如何表達無關」時才算真高信心。</li>
+<li><strong>兩種決策法</strong>：
+<ul>
+<li><strong>Vote-based（投票）</strong>：多樣本對多數決答案的同意比例 <code>s = (Σ 1[A_i=A^w]) / K</code>，<code>s ≥ τ</code>（門檻）則接受。適合有預算約束、可調門檻的場景。</li>
+<li><strong>Verification-based（互檢）</strong>：兩個不同 prompt 各自的多數決答案相同（<code>s=1</code>）才接受。免調門檻但較不靈活。</li>
+</ul>
+</li>
+<li><strong>10 種實作（§2.3，圖 2）</strong>：6 種投票（CoT/PoT/MoT × 1D/2D-Vote）＋ 4 種互檢（CoT/PoT-2D-Verify、MoT-1D/2D-Verify）。並做<strong>成本對齊</strong>（cost-comparable sample size）：不同方法調整取樣數 K 使弱模型成本 <code>C^w</code> 相當、公平比較。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>主結果（§3.2，六資料集：GSM8k/ASDIV/TabMWP/DATE/Navigate/CREPE）</strong>：弱=GPT-3.5-turbo、強=GPT-4-CoT-SC；K=20（弱）/K=3（強）、溫度 0.4、M=8-shot。四個 <strong>MoT 變體平均達 ~0.929 準確率</strong>，逼近 GPT-4-CoT-SC 的 0.931，但<strong>只需 40% 成本</strong>；在 CREPE 上 MoT 甚至反超（0.885 vs 0.871）且只花 47% 成本。CoT-2D-Vote 平均 0.924 準確率、僅 57% 成本。</li>
+<li><strong>多樣取樣有效</strong>：CoT-2D-Vote 在同樣 0.4 相對成本下比 CoT-1D-Vote 高 1.4% 絕對準確率；<strong>混合思維表徵（MoT）優於任一單一表徵</strong>——因 CoT 換示範集常犯同樣錯（高一致性假象），PoT 則以不同方式出錯，MoT 能拉大「易題 vs 難題」的一致性分數差距（§3.3，圖 4）。調示範集不如換思維表徵有用。</li>
+<li><strong>勝過外部評分器（§3.5，圖 6）</strong>：對比 Finetuned-Q/QA（RoBERTa）與 LLM-Q/QA（用 GPT-3.5 當評判）。GSM8k 上外部評分器最高僅 0.892，遠低於本法 0.951 與 GPT-4 的 0.958——印證字面式評分器在複雜推理上失效。</li>
+<li><strong>穩健性（§3.4）</strong>：溫度 0.4→0.8、樣本數 20→40 下 MoT 一致優於 CoT；平衡成本與準確率的門檻通常落在 0.5–0.6。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>弱模型不能太弱</strong>（§3.6）：改用 LLAMA2-13B 當弱模型時，GSM8k/CREPE 太難、它無法穩定作答，級聯失效；弱模型選擇須視任務難度而定。</li>
+<li><strong>弱模型的提示無助於強模型</strong>：把弱模型不確定時的答案當「hints」傳給強模型，只在 DATE 微幅改善，卻嚴重拖累 GSM8k/CREPE。</li>
+<li>需對每題都先跑弱模型多次取樣（K=20），簡單題也付這筆固定取樣成本；成本對齊只能做到「近似可比」而非精確相等。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>本篇歸 I 類（成本梯度／級聯路由 + 一致性作廉價憑證）</strong>，直接對應 ai_core 的兩個核心：<strong>§3.3 成本梯度／級聯路由</strong>——它給出「貴稀有智能 vs 便宜高頻智能」之間<strong>如何動態分流</strong>的可操作範式：預設走便宜路徑，只有便宜路徑「沒把握」時才升級到昂貴節點，40% 成本達強模型水準正是成本梯度落地的量化證據。</li>
+<li>更關鍵的是對 <strong>§3.4 治理＝拒絕為預設＋憑證准入</strong> 的啟發：本文的「答案一致性」本質是一張<strong>廉價、免訓練、由弱模型自己產生的憑證</strong>——一致（<code>s ≥ τ</code> 或兩表徵互檢相符）＝准入、放行便宜答案；不一致＝拒絕、升級。它示範了<strong>憑證不必來自外部評分器（那反而在複雜任務上失效），而可以是「同一問題在多種表徵下的自洽性」</strong>。對 ai_core 把 LLM 呼叫包成可靠函數的目標，這提供了一個「用複本互檢當作放行門檻」的具體憑證設計：CoT 與 PoT 互為對照，等同「用程式碼執行結果去驗證自然語言推理」，天然契合 ai_core「多數確定性節點＋少數 LLM」的計算圖觀——PoT 那一路可執行、可驗證。</li>
+<li>最值得記：<strong>一致性＝免費難度信號、拒絕昂貴模型的預設門檻</strong>；<strong>跨表徵（CoT×PoT）互檢比跨示範集更能暴露不確定性</strong>；<strong>外部字面評分器在複雜推理上不可靠，自洽性更強</strong>。適合做 <strong>級聯路由、成本-準確率取捨、免訓練難度估計、憑證式准入</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2310.03094_MixtureThoughtCascade.zh-TW.html"><code>../translate/2310.03094_MixtureThoughtCascade.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

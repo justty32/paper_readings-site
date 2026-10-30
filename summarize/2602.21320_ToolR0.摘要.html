@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Tool-R0：零資料自演化 LLM 工具學習代理》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Emre Can Acikgoz, Cheng Qian (UIUC), Jonas Hübotter (ETH Zurich), Heng Ji, Dilek Hakkani-Tür, Gokhan Tur (UIUC)</p><p>日期：2026-02</p><p>arXiv：2602.21320</p><p><a href="https://arxiv.org/abs/2602.21320" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="tool-r0零資料自演化-llm-工具學習代理重點摘要">《Tool-R0：零資料自演化 LLM 工具學習代理》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Tool-R0</strong>：從同一基礎 LLM 初始化 <strong>Generator（任務生成器）</strong> 與 <strong>Solver（解題器）</strong>，透過對抗式 self-play RL 在<strong>零人類資料</strong>下共生演化——Generator 以難度感知獎勵產出對 Solver 最適挑戰（competence frontier 帶通濾波），Solver 以工具呼叫準確度獎勵學習解題，形成自洽飛輪。五基準平均相對改善 <strong>92.5%</strong>，超越 4k–210k 人類標註資料訓練的監督基線，且跨 Qwen/Llama 架構與 0.5B–3B 規模皆有效。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>既有 LLM 工具呼叫訓練依賴大量人工標註（task–solution pairs），存在根本性規模化瓶頸——模型越強，構造高品質資料集越不可持續，且靜態人類資料無法捕捉代理在線學習中的動態需求。核心命題：<strong>能否在零資料假設下，僅透過 self-play RL 讓弱 LLM 自主演化出通用工具呼叫能力？</strong> 此前的 Agent0、Dr. Zero 僅限於單一工具類型（code 或 search），Tool-R0 是首個領域無關、零資料、通用工具呼叫 self-play 框架。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>雙角色共生架構</strong>：同一基礎 LLM 初始化為 Generator（πθ）與 Solver（πϕ），參數分離——共享參數造成梯度干擾，效能下降 36.41%。</li>
+<li><strong>接地任務生成（Grounded Task Specification）</strong>：Generator 受控於 s=(d, c, m, n) 規格（領域、互動情境、工具數、gold 呼叫數），從 32 個領域均勻採樣，防止 free-form 生成的 mode collapse。</li>
+<li><strong>Generator 三層獎勵（rfmt + rvalid + rcurr）</strong>：
+<ul>
+<li>rfmt：格式合規（JSON 可解析標籤完整性）</li>
+<li>rvalid：內部一致性（工具存在於菜單、參數完備、值來自問題本身）</li>
+<li>rcurr = rdiff + rsem：<strong>難度帶通濾波</strong>（對凍結 Solver 做 K=8 MC 採樣，p̂succ∈[0.25,0.75] 滿分，兩側 Gaussian 衰減，避免硬截斷震盪）+ 語意連貫評分（Solver 當裁判，1–5 分）</li>
+</ul>
+</li>
+<li><strong>Solver 資料集建構</strong>：Generator 凍結後產 10k 候選→去重→Solver 交叉驗證（保留一致解題）→pass@K 分桶 easy/medium/hard→域多樣性平衡＋批次級由易到難課程。</li>
+<li><strong>Solver 訓練</strong>：GRPO、格式獎勵 + 密集準確度獎勵（工具名/key 重疊/value 匹配 + 多餘呼叫懲罰 α=0.25）。Solver 成功率回饋更新 Generator 的 rdiff，閉合 self-play 迴圈。K=3 次迭代。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<table>
+<thead>
+<tr>
+<th>指標</th>
+<th>數值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen2.5-1.5B 五基準平均</td>
+<td>24.85→<strong>47.84</strong> (+92.52%)</td>
+</tr>
+<tr>
+<td>0.5B 模型</td>
+<td>15.47→30.57，<strong>超越 1.5B 基線</strong> (+101%)</td>
+</tr>
+<tr>
+<td>vs. 最強監督基線 ToolRL</td>
+<td>47.84 vs 46.06（Tool-R0 勝，且零外部資料）</td>
+</tr>
+<tr>
+<td>vs. 共享參數</td>
+<td>+17.42pp（↓36.41% 劣化）</td>
+</tr>
+<tr>
+<td>vs. 凍結 Generator</td>
+<td>+6.19pp（↓12.94% 劣化）</td>
+</tr>
+<tr>
+<td>vs. 移除 rdiff</td>
+<td>+4.30pp（↓8.99%）</td>
+</tr>
+<tr>
+<td>跨架構 Llama-3.2-3B</td>
+<td>36.12→40.47 (+12.04%)</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Self-play 覆蓋率優於人類資料</strong>：Tool-R0 生成課程與五基準的 cosine 相似度最高且最均勻，解釋為何超越監督基線——模型「自己最知道需要什麼資料」。</li>
+<li><strong>失敗分析</strong>：基礎模型以結構錯誤為主（選錯工具、呼叫數錯誤、幻覺參數），Tool-R0 將其減半；語意錯誤仍為瓶頸，格式錯誤趨零。</li>
+<li><strong>收斂行為</strong>：小模型約 3 迭代飽和（Nash 均衡/知識邊界），3B 模型持續改善無飽和。</li>
+<li><strong>Mid-training 效益</strong>：Tool-R0 迭代可作為 RL mid-training，使後續 SFT 從相同人類資料提取更多——self-play 強化監督對齊的基礎。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>小模型偶有 reward hacking（通過可驗證檢查但品質低），需語意連貫檢查緩解。</li>
+<li>難度估計需多次 Solver 查詢（計算成本），loss-based/gradient-based 訊號更直接。</li>
+<li>目前無多輪標準誤差分析（受限於計算資源），最終版本將補上。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>ai_core §5 意圖→工具</strong>：Tool-R0 的 Generator 將使用者意圖（task specification s）轉化為具體工具菜單＋gold 呼叫，正是 §5「上層意圖→下層工具序列」的 RL 化實例——且完全零人類標註，證明意圖到工具的映射可<strong>從零自浮現</strong>。</li>
+<li><strong>ai_core §3.6 固化</strong>：self-play 迭代中 Solver 的 tool-calling 能力經課程排序固化為可重現策略（Generator 凍結產資料→Solver 收斂→信心回饋更新 Generator），每次迭代產出一層固化能力，呼應 §3.6「何時該固化」的時機決策——難度帶通濾波本質就是自動化固化觸發閾值。</li>
+<li><strong>「零資料自演化工具學習 = 意圖→工具 + 固化」</strong>：Generator 負責「從意圖生成工具使用情境」（§5），self-play 迭代負責「將成功工具使用模式沉澱為穩定能力」（§3.6），兩者互為前提、共同構成無監督工具學習飛輪。與 <a class="paper-reference" href="2302.04761_Toolformer.%E6%91%98%E8%A6%81.html">2302.04761</a> Toolformer（自監督工具學習但需種子資料）對比，Tool-R0 往完全自主更進一步。</li>
+<li>與 <a class="paper-reference" href="https://arxiv.org/abs/2501.12948">2501.12948</a> DeepSeek-R1（推理 self-play）對讀：Tool-R0 是推理 self-play 往<strong>開放域工具代理</strong>的泛化；與 <a class="paper-reference" href="2305.16291_Voyager.%E6%91%98%E8%A6%81.html">2305.16291</a> Voyager（技能庫固化）對讀：Tool-R0 的課程固化是技能庫的 RL 自演化版本。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2602.21320_ToolR0.zh-TW.html"><code>../translate/2602.21320_ToolR0.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_基礎設施 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><p>← <a href="../2407.17789_AgentScopeLargeScaleSimulation.zh-TW.html">回母檔</a>｜<a href="03_%E5%AF%A6%E9%A9%97%E8%88%87%E7%B5%90%E8%AB%96.html">下一節</a></p>
+<h2 id="3-基礎設施">3. 基礎設施</h2>
+<h3 id="31-actor-式分散機制">3.1 Actor 式分散機制</h3>
+<p>actor 是獨立接收訊息與運算的基本單位。多 agent 模擬常由許多小型、彼此隔離的互動群組構成，因此能在 agent 級平行化。沒有依賴，或依賴都已完成的 agent 可以同時執行；輸出抵達後，再喚醒等待它的 agent。</p>
+<p>AgentScope 提供兩種行程配置。一對一模式讓每個 agent 佔一個行程，適合計算密集工作並避開 Python GIL。多對一模式讓多個 agent 共用行程、CPU、通訊埠與全域變數，適合等待遠端 API 的 I/O 密集工作。跨行程、跨裝置通訊使用 RPC，並有 Python 與 C++ 實作。作者主張這比只靠 Python 非同步 I/O 更能利用資源，也避免像 Ray 為每個 actor 配一個 worker 所造成的浪費。</p>
+<p><code>to_dist</code> 的轉換有兩階段。先把中央流程內的 agent 移往指定裝置，中央留下介面相同的 proxy。proxy 負責把訊息轉送給遠端 agent。接著以 placeholder 取代尚未完成的遠端結果：proxy 收到訊息後立刻回 placeholder，中央流程得以繼續；遠端 agent 若收到含 placeholder 的輸入，才向對應 agent 要求並等待真正結果。如此既有的命令式流程不用重寫成手工平行排程。</p>
+<h3 id="32-agent-與環境互動">3.2 Agent 與環境互動</h3>
+<p>大型環境要同時支援高併發、多種狀態、雙向互動與多個環境。本文把環境抽象成一種特殊 agent，以共享變數保存狀態，透過 RPC 供其他 agent 高併發查詢與修改。使用者可新增狀態操作函式；listener 可附著在這些函式上，條件成立時由環境主動傳訊給 agent。</p>
+<p>環境與 agent 可以巢狀組合。例如每個群組各有局部環境，負責群內共享資訊；其上再設全域環境同步跨群組狀態。這讓模擬同時擁有群內合作與群間資訊差異。</p>
+<h3 id="33-異質配置">3.3 異質配置</h3>
+<p>使用者先指定人口總數，再從年齡、性別、職業、國籍與教育等範本設定比例，也能擴充新屬性。啟動模擬時，系統依分布抽樣，轉成 JSON 並填入 meta-prompt，交由 LLM 產生完整角色背景。改變隨機種子與溫度可增加背景差異。</p>
+<h3 id="34-大規模-agent-管理">3.4 大規模 Agent 管理</h3>
+<p>Agent-Manager 先在各遠端裝置啟動常駐 server。server 負責遠端建立、監控與停止分散式 agent，並將資料同步到網頁介面。使用者能查看 server 身分、IP、運行狀態、資源使用與其上的 agent。server 可跨多次模擬重用，因此主要管理 server，而不是逐一操作所有 agent。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

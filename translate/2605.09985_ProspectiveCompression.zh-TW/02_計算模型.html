@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_計算模型 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.09985_ProspectiveCompression.zh-TW.html">回 2605.09985_ProspectiveCompression.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-計算模型">3 計算模型</h2>
+<p>我們評估一族解 PBT 程式合成問題的模型（含或不含庫學習），看哪個最能捕捉人類行為。</p>
+<h3 id="31-基線由下而上程式合成無庫">3.1 基線：由下而上程式合成（無庫）</h3>
+<p>對基礎 DSL 做窮舉搜尋（ℒ=∅）。以程式大小 k 做由下而上列舉，按 k 遞增（等同對程式空間做廣度優先遍歷）。用**觀察等價（observational equivalence）<strong>剪枝，每個等價類只留一個最短代表。此模型獨立解每個任務，只帶</strong>最小描述長度（MDL）**偏好。</p>
+<h3 id="32-回溯式壓縮庫學習">3.2 回溯式壓縮庫學習</h3>
+<p>在由下而上合成上加入「對靜態任務分佈的增量抽象重用」。解完每個任務 i 後，合成產生一條推導軌跡 𝒟⁽ⁱ⁾（最終解程式＋搜尋中的中間子程式）。定義抽象運算子 𝒜 從軌跡選子程式晉升入庫：ℒ⁽ⁱ⁺¹⁾ = ℒ⁽ⁱ⁾ ∪ 𝒜(𝒟⁽ⁱ⁾)。三種變體：</p>
+<ul>
+<li><strong>模型 2a：回溯式壓縮（RC）</strong>——遵循 DreamCoder 的增量建庫原則。解完任務 i 後，軌跡中每個候選按「對當前解語料 {p₁…pᵢ} 的 CU」評分，貪婪地選 top-k（每加一個就重算效用）。與 DreamCoder 每題只加一個 helper 不同，RC 每題加 <strong>k</strong> 個；為與人類公平比較，k 設為行為實驗中「每題建立 helper 的平均數」。</li>
+<li><strong>模型 2b：貪婪庫學習（GL）</strong>——RC 計算昂貴，而人類認知常受計算資源限制，故此運算子只選<strong>最終解程式</strong>（對完成程式做局部貪婪 MDL 更新）。</li>
+<li><strong>模型 2c：機率式庫學習（PL）</strong>——以 Bernoulli(q) 隨機從軌跡選元素晉升，形成含噪壓縮過程。</li>
+</ul>
+<p>這三者都是對<strong>靜態任務分佈</strong>的不同壓縮準則，並不預測某組 helper 是否對未見的未來任務有用。</p>
+<h3 id="33-僅含歸納偏好的庫學習llm-式">3.3 僅含歸納偏好的庫學習（LLM 式）</h3>
+<p>第三族將「歸納偏好驅動的抽象學習」操作化，無顯式壓縮目標。用 LLM 在通用語言（Python）做程式合成。每個 trial t 給模型：(i) PBT 領域說明、(ii) 當前目標圖案、(iii) 編碼為 Python 函式的 DSL primitive、(iv) 先前引入的 helper 函式。若目標未正確重建，提示 LLM 精修（helper 延續到後續精修迭代），最多重複 5 次。所有模型用 <strong>gpt5.2、low reasoning</strong> 當後端（選它是因為它是 gpt 家族中「有足夠程式合成能力在 5 步精修內完成各實驗目標」的最小版本）。</p>
+<ul>
+<li><strong>模型 3a：無記憶（LLM-PS）</strong>——只給當前 DSL 與 helper 集，捕捉「純由預訓練歸納偏好驅動、除可用 helper 外不顯式條件於任務歷史」的抽象。</li>
+<li><strong>模型 3b：附歷史（LLM-PS-H）</strong>——提示另含完整的過去任務與解序列，讓 helper 建立能條件於過去任務，檢驗這是否額外有助於還原共享任務結構。</li>
+</ul>
+<h3 id="34-人類庫學習作為前瞻式壓縮">3.4 人類庫學習作為前瞻式壓縮</h3>
+<p>把<strong>前瞻式壓縮</strong>定義為抽象晉升的<strong>規範性原則</strong>（圖 1）。依式 2，前瞻抽象運算子選出「最大化對當前與預期未來解之期望壓縮效用」的 helper：</p>
+<blockquote>
+<p>𝒜_PC(𝒟⁽ⁱ⁾) = arg max_ℋ  𝔼_{P(𝒫*|𝒞₁:ᵢ)} [ CU(ℋ, 𝒫*) ]</p>
+</blockquote>
+<p>其中 P(𝒫*|𝒞₁:ᵢ) 是「以至今所見任務為條件、對完整（含未來）解語料」的分佈。此定義形式化了「人類庫學習實現前瞻式壓縮」的假說，且<strong>刻意對 P(𝒫*|𝒞₁:ᵢ) 如何指定保持不可知</strong>——只要求 helper 選擇壓縮的是未來任務而非僅過去任務。</p>
+<p><strong>圖 3 要旨</strong>：兩個互補課程各以前 8 個目標的推導呈現，彩色高亮標示各課程隱含的 helper。E2 中灰底面板標示共同運算子群組，每組由「固定四種變換（+、−、∪、(¬,+)）作用於一個組內共享的 helper 與另一 primitive」導出。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

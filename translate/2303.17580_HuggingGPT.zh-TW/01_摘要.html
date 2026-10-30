@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2303.17580_HuggingGPT.zh-TW.html">回 2303.17580_HuggingGPT.zh-TW 目錄</a>　<a href="02_HuggingGPT.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>解決跨領域、跨模態的複雜 AI 任務是邁向通用人工智慧的關鍵一步。雖然針對各領域與模態已有大量可用 AI 模型，它們卻無法自主處理複雜的 AI 任務。考量到大型語言模型（LLM）在語言理解、生成、互動與推理上展現出的卓越能力，我們主張 LLM 可以扮演<strong>控制器（controller）<strong>的角色去管理現有 AI 模型以解決複雜 AI 任務，並以</strong>語言作為賦能這件事的通用介面</strong>。基於此理念，我們提出 <strong>HuggingGPT</strong>——一個由 LLM（如 ChatGPT）驅動的智能體，它連結機器學習社群（如 Hugging Face）中的各種 AI 模型來解決 AI 任務。具體而言，我們用 ChatGPT 在收到用戶請求時進行任務規劃，依 Hugging Face 上可取得的模型功能描述選擇模型，用選定的 AI 模型執行每個子任務，並依執行結果彙總回應。借助 ChatGPT 強大的語言能力與 Hugging Face 豐富的 AI 模型，HuggingGPT 能處理橫跨語言、視覺、語音等多種模態與領域的複雜 AI 任務，並取得令人印象深刻的結果，為實現通用人工智慧鋪出一條新路。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM（如 ChatGPT）近年在 NLP 任務上的卓越表現吸引了學界與業界的高度關注。基於大規模文本語料預訓練與人類回饋強化學習（RLHF），LLM 在語言理解、生成、推理上展現優越能力，也帶動了 in-context learning、instruction learning、chain-of-thought prompting 等新興研究方向，為推進通用人工智慧帶來無限可能。</p>
+<p>儘管取得這些成功，現有 LLM 技術仍不完美，在邁向先進 AI 系統的路上面臨幾項迫切挑戰：1）<strong>受限於文字生成的輸入輸出形式</strong>，現有 LLM 儘管在 NLP 任務上成就顯著，仍缺乏處理視覺、語音等複雜資訊的能力；2）真實場景中，一些複雜任務通常由多個子任務組成，需要多個模型的排程與協作，這超出了語言模型本身的能力；3）對某些具挑戰性的任務，LLM 在零樣本或少樣本設定下表現優異，但仍弱於某些專家模型（如微調過的模型）。如何解決這些問題，可能是 LLM 邁向通用人工智慧的關鍵一步。</p>
+<p>本文指出，要處理複雜 AI 任務，LLM 應能與外部模型協調以借力使力。核心問題於是變成：<strong>如何選擇合適的中介層（middleware）來搭建 LLM 與 AI 模型之間的橋樑</strong>。我們注意到，每個 AI 模型都可以用總結其功能的語言形式來描述。因此我們提出一個概念：「<strong>語言作為 LLM 與 AI 模型協作的通用介面</strong>」。換言之，把這些模型描述納入 prompt 後，LLM 就可被視為管理 AI 模型（規劃、排程、協作）的大腦。這使 LLM 得以調用外部模型解決 AI 任務。然而，整合多個 AI 模型到 LLM 中還有另一個挑戰：解決大量 AI 任務需要收集大量高品質的模型描述，這需要繁重的 prompt 工程。恰好，一些公開的機器學習社群（如 Hugging Face）通常提供大量帶有良好定義描述的可用模型，用於解決語言、視覺、語音等特定 AI 任務。這帶來啟發：<strong>能否透過語言介面把 LLM（如 ChatGPT）與公開機器學習社群（如 GitHub、Hugging Face）連結起來，解決複雜 AI 任務？</strong></p>
+<p>本文提出 LLM 驅動的智能體 <strong>HuggingGPT</strong>，自主處理各種複雜 AI 任務，它連結 LLM（即 ChatGPT）與機器學習社群（即 Hugging Face），能處理不同模態的輸入。具體而言，LLM 扮演大腦的角色：一方面根據用戶請求拆解任務，另一方面依模型描述為任務指派合適的模型。透過執行模型並整合規劃任務中的結果，HuggingGPT 能自主完成複雜用戶請求。整個流程可分為四個階段：</p>
+<ul>
+<li><strong>任務規劃</strong>：用 ChatGPT 分析用戶請求以理解其意圖，拆解成可能可解的任務。</li>
+<li><strong>模型選擇</strong>：為解決規劃出的任務，ChatGPT 依模型描述從 Hugging Face 上託管的模型中選擇專家模型。</li>
+<li><strong>任務執行</strong>：調用並執行每個被選中的模型，並將結果回傳給 ChatGPT。</li>
+<li><strong>回應生成</strong>：最後由 ChatGPT 整合所有模型的預測結果，為用戶生成回應。</li>
+</ul>
+<p>受益於這樣的設計，HuggingGPT 能自動從用戶請求生成計畫並使用外部模型，使其能整合多模態感知能力並處理各種複雜 AI 任務。更值得一提的是，此流程讓 HuggingGPT 能持續吸收特定任務專家模型的能力，促進 AI 能力的成長與可擴展性。</p>
+<p><strong>貢獻總結</strong>：1）為結合大型語言模型與專家模型各自的優勢，提出具備「模型間協作協定」的 HuggingGPT，用 LLM 當大腦做規劃決策、自動調用並執行每個特定任務的專家模型，為設計通用 AI 解決方案提供新路徑；2）透過把 Hugging Face hub 與圍繞 ChatGPT 的大量特定任務模型整合，HuggingGPT 能處理涵蓋多模態多領域的通用化 AI 任務，透過模型的開放協作為用戶提供多模態、可靠的對話服務；3）指出任務規劃與模型選擇在 HuggingGPT（及自主智能體）中的重要性，並設計了一些實驗評估以衡量 LLM 在規劃與模型選擇上的能力；4）在涵蓋語言、視覺、語音與跨模態的多項挑戰性 AI 任務上的大量實驗，證明了 HuggingGPT 理解與解決多模態多領域複雜任務的能力與巨大潛力。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>近年 NLP 領域因 LLM（如 GPT-3、GPT-4、PaLM、LLaMa）興起而發生革命性變化，這些模型在零樣本/少樣本任務及數學問題、常識推理等更複雜任務上都展現優異能力。要把 LLM 的能力擴展到文字生成之外，當代研究可分兩個分支：1）一些工作設計統一的多模態語言模型解決各種 AI 任務，如 Flamingo（結合凍結的預訓練視覺與語言模型做感知與推理）、BLIP-2（用 Q-former 協調語言與視覺語意）、Kosmos-1（把視覺輸入融入文字序列）；2）近期一些研究者開始探索在 LLM 中整合工具或模型的使用，如 Toolformer（開創性地在文字序列中引入外部 API 標籤，讓 LLM 具備存取外部工具的能力）、Visual ChatGPT（融合 BLIP、ControlNet 等視覺基礎模型與 LLM）、Visual Programming 與 ViperGPT（用程式語言把視覺查詢解析成可解釋的 Python 程式碼步驟）。</p>
+<p>HuggingGPT 與這些方法的差異在於：1）用 LLM 當控制器把用戶請求路由給專家模型，有效結合 LLM 的語言理解能力與其他專家模型的專業能力；2）透過 LLM 組織模型間協作，可以應對任意模態或任意領域的任務，得益於任務規劃設計，本系統能自動有效生成任務流程、解決更複雜的問題；3）提供更靈活的模型選擇方式，僅憑模型描述即可指派並編排任務，讓 HuggingGPT 能持續便利地整合來自 AI 社群的各種專家模型，而無需更動任何架構或 prompt 設定，這種開放、持續的方式讓我們離實現通用人工智慧更近一步。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

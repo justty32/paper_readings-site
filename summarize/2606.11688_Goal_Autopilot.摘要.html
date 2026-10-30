@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Goal-Autopilot: A Verifiable Anti-Fabrication Firewall for Unattended Long-Horizon Agents · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Youwang Deng</p><p>日期：2026-06</p><p>arXiv：2606.11688</p><p><a href="https://arxiv.org/abs/2606.11688" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="goal-autopilot無人長程-agent-的可驗證防捏造防火牆">Goal-Autopilot：無人長程 Agent 的可驗證防捏造防火牆</h1>
+<h2 id="一句話結論">一句話結論</h2>
+<p>Goal-Autopilot 把「成功」從模型自述改成只有實際執行過的 gate 才能抵達的 terminal state，因而大幅降低 fabricated success；但保證完全條件化於 gate soundness 與 plan coverage，而其大規模 SWE-bench Lite 結果是 0% true success、99.3% stall。它證明的是保守拒答層能防止假成功，不是 agent 更會完成長程任務。</p>
+<h2 id="方法與思想模型">方法與思想模型</h2>
+<p>系統先用一次 LLM call 把自然語言 goal 編譯成有限狀態機：每個 state 含可執行、可證偽 gate、retry bound、known fixes 與 dependency。之後 scheduler 每個 tick 都啟動新 session，只從 durable JSON state <code>S</code> 重建上下文，做一單位工作、實際執行 gate、記錄 literal result，通過才前進；超過 retry 則 <code>STALL</code>。<code>S</code> 每次 temp-file+rename 原子寫入並進 git，形成 replayable audit trail。</p>
+<p>成功 sink 只有 <code>DONE</code>，且 floor 不允許模型憑文字或 exit code 自行宣告。形式定理依賴：A1 gate 回傳 true 必然表示該 state predicate 成立；A2 所有到 DONE 的 transition 都要求 gate 確實執行且為 true；A3 accepting path 上 gates 的合取蘊含真正 goal。三者成立時，<code>DONE ⇒ G</code> 幾乎是構造性結果。false negative 只會造成 honest stall，形成「少報成功、不可多報」的不對稱。</p>
+<p>最大的 trust point 是 A3：LLM 可能把 goal 編譯成漏條件或錯語義的 plan。作者先用 <code>jq+grep</code> 靜態 auditor 檢查 goal token coverage，再在需要時用 LLM judge 做 semantic coverage net；這是風險降低，不是對 A3 的證明。</p>
+<h2 id="實驗">實驗</h2>
+<p>scaled corpus 為 20 trap tasks + 50 SWE-bench Lite tasks，橫跨 11 個 OSS repositories；3 systems × 3 models × 5 seeds，共 3,150 cells，形成 1,050 paired triples。每 cell 600 秒，bootstrap <code>B=5000</code>。</p>
+<ul>
+<li>Autopilot 在 1,050 cells 中 TRUE 85、FAB 10、STALL 928、UND 32，fabrication 0.95%（95% CI 0.38–1.62）。Reflexion 為 8.10%，StateFlow 25.05%。相對 StateFlow 差 −24.10 pp（CI −26.76, −21.43）。</li>
+<li>trap 的差異不顯著：1.67% vs 3.33%，差 −1.67 pp，CI −4.33 到 +1.00。</li>
+<li>SWE-bench Lite：Autopilot 0.67% fabrication，Reflexion 10.27%，StateFlow 33.73%；相對 StateFlow 差 −33.07 pp（CI −36.53, −29.73）。但 Autopilot true success 是 0/750；結果實際是 745 stalls + 5 fabrications。</li>
+<li>928 個 Autopilot stalls 中 866（93.3%）在 action 前即被 A3 auditor 擋下；43（4.6%）timeout，19（2.0%）為 harness artifact。</li>
+<li>所有 10 個 Autopilot fabrications 都來自最強 F2 model：F2 為 2.86%，兩個較弱模型均 0%；這支持 gate 而非模型自信主導結果，但也反映較弱模型主要被轉成 stall。</li>
+<li>35-cell pilot 中，auditor 有 7/35 次擋住原本能通過 oracle 的結果，顯示明顯 over-blocking。</li>
+</ul>
+<h2 id="原文張力與限制">原文張力與限制</h2>
+<p>「structurally impossible」必須連同 A1–A3 閱讀。A2 可由控制流靜態檢查；A1 涉及外部 check 是否真能代表 predicate，A3 涉及 plan 是否完整，都不是單靠 code path 可保證。限制節又承認 auditor 只把 A3 降成文字 token coverage，語義不一致仍可能穿透；因此實測仍有 10 次 fabrication，與無條件「never fabricates」不同。</p>
+<p>另一個核心 trade-off 是 coverage：SWE-bench Lite 降低假成功的同時把 true success 降至零。StateFlow 的 293 true successes 對 263 fabrications，Autopilot 則 85 true 對 10 fab；若部署目標是 overnight CI，stall 可能比錯 patch 好，但仍需 human queue、retry、不同 verifier 或 escalation policy 承接 88.4% 整體 stall。</p>
+<p>作者首次 baseline run 曾因 silent driver flag rejection，使兩基線看似 100% fabrication；修正 abstain semantics 後重跑 2,100 baseline cells。透明揭露值得肯定，也說明 benchmark harness 本身正是需要驗證的 agent 元件。</p>
+<h2 id="證據成熟度">證據成熟度</h2>
+<p>有清楚 theorem、paired design、CI、artifact 與 error audit，證據比小型 demo 完整；但目前是 preliminary evaluation、單作者 independent research preprint，模型匿名分 tier，沒有跨領域長程工作或 production incident。最佳定位是「verified termination claim / abstention firewall」的有力原型，而不是通用 autonomous reliability solution。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

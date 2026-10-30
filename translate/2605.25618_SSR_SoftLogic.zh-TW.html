@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《SSR：符號-神經軟邏輯推理》逐節精要翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>arXiv：2605.25618</p><p><a href="https://arxiv.org/abs/2605.25618" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="符號-神經軟邏輯推理以協同演化邁向穩健可驗證思維鏈">符號-神經軟邏輯推理：以協同演化邁向穩健可驗證思維鏈</h1>
+<blockquote>
+<p>逐節精要翻譯（非逐字）。原文 arXiv:2605.25618v1（北京大學）。</p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>LLM 在複雜推理上的進步多由 CoT 驅動，但 CoT 受限於神經生成的機率本質，產生不忠實的推理鏈而損及可靠性。神經符號方法把 LLM 接符號求解器以緩解，但仍面臨：幻覺式翻譯、自然語言與形式邏輯的錯配、對 LLM 內在推理增強有限。我們提出 <strong>SSR</strong>，統一框架整合 LLM 與符號推理，藉<strong>鬆弛嚴格邏輯決定論同時保留可驗證性</strong>來提升穩健性。SSR 提升推理表現、自動生成可驗證且人類般的邏輯思維鏈（供訓練/微調）、並支援跨學科應用（如 AI for Math）。多模型多基準實驗顯示 SSR 一致勝過既有框架。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>LLM 推理＝維持邏輯一致的內部狀態、整合世界知識、長脈絡多步演繹。但自迴歸生成有「一步瓶頸」：長序列相依的 token 預測難維持正確推理線，導致過早放棄、亂猜、陷入局部循環。CoT 把難題拆成顯式中間步來緩解（Tree/Program of Thoughts 進一步增強），且提供可解釋性與監督訊號。然而 CoT 仍脆弱：可能事後合理化（不忠實）、確認偏誤、繼承幻覺（捏造/錯推/誤用規則）——即便最終答案對，也損及可靠性與教育價值。</p>
+<p>神經符號框架把 LLM 與符號求解器結合，LLM 把自然語言譯成符號約束、求解器確定性求解。但此法引入新問題：自動形式化會幻覺/遺漏/結構錯誤；自然語言的歧義與脈絡依賴 ↔ 形式邏輯的嚴格語義衝突 → 脆弱或不可滿足；把核心推理完全外包給求解器，質疑是否真增強 LLM 內在推理。<strong>作者主張這些限制源於「把符號推理當嚴格決定論、對不確定零容忍」</strong>。SSR 整合軟邏輯約束以在噪聲/不完整/不確定前提下增強穩健，允許約束「近似滿足而非絕對」，緩解局部錯誤的級聯失敗；並引入神經與符號更深的互動，以前向/後向演繹自動生成可驗證、人類般的推理鏈。目標：(i) 提升現有 LLM 推理準確率；(ii) 自動生成忠實可解釋的邏輯推理鏈供訓練/評估；(iii) 支援推理密集應用（規劃、有限離散數學問題求解）。</p>
+<h2 id="2-方法">2 方法</h2>
+<p>SSR 結合 LLM 的語義彈性與符號求解器的一致性保證：LLM 先把題目抽象成受限邏輯程式，SMT 求解器做可驗證推理；因 LLM 譯形式語言可能出錯或題目本身無唯一解，SSR 進一步引入軟邏輯鬆弛、並在雙系統互動式檢索推理中辨識「鏈斷點」;SSR 也能生成形式化推理鏈，再譯成精簡自然語言鏈或當訓練資料。</p>
+<h3 id="21-硬邏輯推理理想設定">2.1 硬邏輯推理（理想設定）</h3>
+<p>理想下 LLM 無歧義無錯地把輸入譯成形式邏輯，把核心推理化為確定性 SMT 求解。LLM 產出 facts（已知約束）＋ queries（待推目標謂詞）。謂詞分 Numeric Sort（有限可枚舉值，如 <code>Age(Bob)=16</code>）與 Boolean Sort（真值，如 <code>Happy(Anne)</code>），皆用受限 SMT 相容語法以保一致與可驗證。事實集 Φ＝⋀ᵢ₌₁ⁿ φᵢ；查詢集 Q＝{q₁,…,qₘ}。Boolean query qᵢ：檢查 Φ∧qᵢ 與 Φ∧¬qᵢ（只一個 sat→回該真值；都 sat→Unknown）。Numeric query（自由謂詞變數 aᵢ）：逐候選賦值檢查 Φ∧(aᵢ=v)，解集＝{v∈Dᵢ｜sat}。算術以符號運算式處理。硬邏輯把推理委派求解器、強制全域一致、避免幻覺；但 LLM 邏輯一旦有雜訊/不完整/過約束就脆弱。</p>
+<h3 id="22-軟邏輯鬆弛">2.2 軟邏輯鬆弛</h3>
+<p>硬邏輯在「翻譯約束不完全可靠」時失效（遺漏前提、不精確謂詞、缺否定、隱含常識）。SSR 把硬約束鬆弛成<strong>信賴度加權軟邏輯</strong>——軟邏輯把約束關聯到實值信賴分數而非全部強制為真（Pryor et al., 2022），當規則不完美/矛盾/機率性時更穩健。求解前先做語法層過濾：明顯壞掉的式子（自然語言碎片、無效謂詞、亂碼）替換成非資訊性佔位 <code>BoolVal(True)</code> 防 parser 崩潰；若 Φ 含多個佔位、或 query 被替換 → 視為嚴重損毀、退回傳統 CoT。其餘每條 φ 給權重 w(φ)&gt;0：用均勻先驗或熵式確定度分數 <strong>w(φ)＝exp(−H(φ))</strong>，H 為該 φ 對應 LLM 輸出的長度正規化熵（由 token logit 機率算；與內在不確定負相關、不受句長影響）。權重衡量「事實集互相張力時模型多信任某約束」。給定加權事實與 query，枚舉候選 qᵢⱼ；先檢查 Φ 是否 sat，若 unsat 則搜尋「總信賴權重最大的可滿足子集」。鬆弛後：恰一候選 sat → 回它；無候選 sat → 對每個候選找最大權重可滿足子集 Φ′ⱼ、選最大權重者；Boolean query 若 True 與 False 都被選 → Unknown。如此保留 SMT 可滿足性為有效性判準，但以信賴度加權約束選擇取代全有全無失敗。</p>
+<h3 id="23-軟邏輯歧義下的雙系統定向檢索">2.3 軟邏輯歧義下的雙系統定向檢索</h3>
+<p>軟鬆弛解了不一致，但可能仍多候選 sat（翻譯遺漏/錯誤，或題目隱含資訊/常識未被識別而缺決定性條件）。SSR 以定向檢索處理歧義：解器先找出「哪個謂詞賦值能讓答案唯一」，LLM 再驗證該賦值是否被題目陳述或常識支撐。多候選 sat 時，枚舉謂詞函數值、搜尋使恰一候選 sat 的賦值 a=value：Φ∧(a=value)∧(qᵢ=qᵢⱼ)。</p>
+<h3 id="24-人類般-cot-自動生成">2.4 人類般 CoT 自動生成</h3>
+<p>SMT 求解產出可驗證答案但無人類可讀軌跡。SSR 從已驗證的邏輯程式構造符號推理鏈——解釋根植於符號推理而非 LLM 隨機生成。先把符號輸入正規化成 properties（謂詞賦值給定或排除，如 <code>Predicate(Object)</code>／<code>¬Predicate(Object)</code>）與 rules（properties 間蘊含），再以前向/後向演繹生成可讀鏈（圖 2 範例），可譯成精簡自然語言鏈或當訓練資料。</p>
+<h2 id="3-實驗要點">3 實驗（要點）</h2>
+<p>在 BigBench、ProofWriter、FOLIO 多模型多基準上，SSR 在最終答案準確率與推理鏈品質一致勝過既有框架，跨資料集泛化良好（FOLIO 提升尤明顯），並對比總推論時間。失敗主要來自基於檢索的前向/後向推理程序的限制。</p>
+<h2 id="結論">結論</h2>
+<p>SSR 以「軟邏輯鬆弛 ＋ 雙系統定向檢索 ＋ 符號根植的 CoT 生成」同時提升 LLM 推理的穩健性與可解釋性，並能產出可驗證的訓練資料。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2605.25618_SSR_SoftLogic.%E6%91%98%E8%A6%81.html"><code>../summarize/2605.25618_SSR_SoftLogic.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

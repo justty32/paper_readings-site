@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_Context-Aware_動態草稿樹 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2406.16858_EAGLE2.zh-TW.html">回 2406.16858_EAGLE2.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-context-aware-動態草稿樹">4 Context-Aware 動態草稿樹</h2>
+<p>EAGLE-2 動態調整草稿樹，但<strong>不改變草稿模型的訓練與推論，也不影響驗證階段</strong>。改進聚焦兩處：如何**擴展（expansion）<strong>草稿樹（§4.1）、如何</strong>重排（reranking）**草稿 token（§4.2）。擴展階段把最新一層中最有希望的節點輸入草稿模型以形成下一層；重排階段挑接受機率較高的 token 組成給原 LLM 驗證的輸入。（下文「節點 node」與「token」互換使用。）</p>
+<h3 id="41-擴展階段">4.1 擴展階段</h3>
+<p>靠 tree attention，草稿模型能在單次前向同時輸入當前層所有 token 並算出各自下一 token 的機率，一次展開整層。但一次輸入太多 token 會拖慢草稿模型前向，且每層節點數指數成長，故須<strong>選擇性擴展</strong>。</p>
+<p>我們選當前層中<strong>全域接受機率（global acceptance probability）最高的 top-k 個 token</strong> 來擴展。由於拒絕一個草稿 token 會丟棄其後全部，一個 token 只有在其所有前綴都被接受時才最終被接受，故定義節點 t_i 的 <strong>value V_i ＝從根節點到 t_i 路徑上所有 token 接受率的連乘</strong>，並用信心分數 c_j 近似接受率 p_j：</p>
+<p>V_i = ∏_{t_j ∈ Path(root, t_i)} p_j ≈ ∏_{t_j ∈ Path(root, t_i)} c_j</p>
+<p>value 較高的分支較可能被接受，故取最後一層中 value 最高的 top-k 節點輸入草稿模型、依輸出擴展草稿樹（圖 7 上半）。</p>
+<h3 id="42-重排階段">4.2 重排階段</h3>
+<p>擴展的目的是<strong>加深</strong>草稿樹。因接受率介於 0 與 1，較深 token 的 value 必然較低，某些未被展開的<strong>淺節點 value 反而高於已展開的深節點</strong>。故不直接把擴展階段選出的 token 當草稿，而是把<strong>所有</strong>草稿 token <strong>重排</strong>、取 value 最高的 top-m 個。由於節點 value 恆 ≤ 其父節點，且 value 相同時優先取較淺節點，可保證重排後選出的 top-m 仍構成一棵<strong>連通樹</strong>。</p>
+<p>之後把選出的 token 攤平成一維序列作為驗證階段輸入。為與原始自回歸解碼一致，需調整 attention mask：原始解碼中每個 token 可看到所有前面 token（下三角矩陣）；用草稿樹時不同分支的 token 彼此不可見，故須依樹結構調整 mask，使每個 token 只能看見其祖先節點（圖 7 下半）。</p>
+<h2 id="5-實驗">5 實驗</h2>
+<ul>
+<li><strong>模型</strong>：Vicuna 7B/13B、LLaMA2-Chat 7B/13B/70B、LLaMA3-Instruct 8B/70B。</li>
+<li><strong>任務</strong>：6 個生成任務對應 MT-bench、HumanEval、GSM8K、Alpaca、CNN/Daily Mail、Natural Questions；各任務對原 LLM 沿用同一組草稿模型權重。</li>
+<li><strong>指標</strong>：因 EAGLE-2 無損，不評估生成品質，只評加速——(1) <strong>加速比（speedup ratio）</strong>：相對原始自回歸解碼的實測加速；(2) <strong>平均接受長度 τ</strong>：每個 draft-verify 週期平均生成（被接受）的 token 數，與硬體無關但不反映草稿模型開銷。為何不看接受率？因 EAGLE-2 不改草稿模型結構，接受率與 EAGLE 相同。</li>
+<li><strong>比較對象</strong>：以原始自回歸解碼為 1.00x 基準，對比標準推測式取樣、PLD、Medusa、Lookahead、Hydra、EAGLE；用 Spec-Bench、同硬體確保公平。</li>
+</ul>
+<h3 id="51-有效性">5.1 有效性</h3>
+<p>跨所有資料集與 LLM，EAGLE-2 加速比皆最高。多數方法在程式生成（HumanEval）加速最大（程式碼多用固定模板）；EAGLE 在程式生成上加速可達 5x。PLD 因基於檢索的草稿生成，在 Vicuna 摘要（CNN/DM）上加速比最高。</p>
+<p>平均接受長度上 EAGLE-2 也最長：<strong>每週期約 4–5.5 個 token，約為標準推測式取樣與 Medusa 的兩倍</strong>。代表性數據（表 1／表 2，摘錄 Mean 與 MT-bench）：</p>
+<table>
+<thead>
+<tr>
+<th>原 LLM</th>
+<th>方法</th>
+<th>MT-bench Speedup / τ</th>
+<th>六任務 Mean Speedup / τ（T=0）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Vicuna 13B</td>
+<td>EAGLE</td>
+<td>3.07x / 3.98</td>
+<td>2.95x / 3.82</td>
+</tr>
+<tr>
+<td>Vicuna 13B</td>
+<td><strong>EAGLE-2</strong></td>
+<td><strong>4.26x / 4.83</strong></td>
+<td><strong>4.04x / 4.65</strong></td>
+</tr>
+<tr>
+<td>LLaMA2-Chat 13B</td>
+<td>EAGLE</td>
+<td>3.03x / 3.90</td>
+<td>3.09x / 3.89</td>
+</tr>
+<tr>
+<td>LLaMA2-Chat 13B</td>
+<td><strong>EAGLE-2</strong></td>
+<td><strong>4.21x / 4.75</strong></td>
+<td><strong>4.10x / 4.68</strong></td>
+</tr>
+<tr>
+<td>Vicuna 7B</td>
+<td><strong>EAGLE-2</strong></td>
+<td><strong>3.62x / 4.98</strong></td>
+<td><strong>3.39x / 4.68</strong></td>
+</tr>
+<tr>
+<td>LLaMA2-Chat 70B</td>
+<td><strong>EAGLE-2</strong></td>
+<td><strong>3.51x / 4.48</strong></td>
+<td>—（僅 MT-bench）</td>
+</tr>
+<tr>
+<td>LLaMA3-Instruct 8B</td>
+<td><strong>EAGLE-2</strong></td>
+<td><strong>3.46x / 4.53</strong></td>
+<td>—（僅 MT-bench）</td>
+</tr>
+</tbody>
+</table>
+<p>在 MT-bench 上 EAGLE-2 約比 Medusa 快 2x、比 Lookahead 快 2.3x，且輸出分布不變。Medusa、Hydra、EAGLE、EAGLE-2 在 QA（Natural Questions）與摘要（CNN/DM）上接受長度較低，標準推測式取樣則無此下降——因前者草稿模型只用 SFT 資料訓練，而世界知識主要來自預訓練、摘要在 SFT 資料中也較少；即便如此 EAGLE-2 在這兩項仍優於標準推測式取樣，也暗示擴充草稿模型訓練資料有潛在好處。</p>
+<h3 id="52-消融實驗vicuna-7b-t0">5.2 消融實驗（Vicuna 7B, T=0）</h3>
+<ul>
+<li><strong>§5.2.1 value vs 信心分數</strong>：草稿模型的信心是**局部（local）**近似，無法反映一個草稿 token 被接受的實際（全域）機率。用 value（信心沿路徑連乘）而非單一信心來排序節點，加速比與接受長度都更高。</li>
+<li><strong>§5.2.2 重排</strong>：擴展選出的 token 在全域上可能不如未被選的淺節點，故重排全部草稿 token。消融顯示重排同時提升接受長度與加速比。</li>
+</ul>
+<p>表 3（MT-bench）：w/o both 2.81x/3.92 → w/o value 3.21x/4.39 → w/o reranking 3.48x/4.86 → <strong>EAGLE-2 3.62x/4.98</strong>，證明 value 與重排各有貢獻。</p>
+<h2 id="6-相關工作">6 相關工作</h2>
+<p>加速 LLM 推論的工作包括低位元量化、剪枝、知識蒸餾，但這些多少會降低模型品質，是「生成品質 vs 計算開銷」的取捨。推測式取樣則靠原 LLM 驗證達成<strong>無損</strong>加速。後續工作多聚焦於降低草稿開銷、提升草稿與原 LLM 的一致性：SpecInfer 整合多個小模型並用 tree attention 平行驗證；Medusa 訓練多個 MLP 用原 LLM 特徵平行預測多 token；EAGLE 在特徵層自回歸以消除不確定性；Hydra、Recurrent Drafter 沿用此消除不確定性原則；Lookahead、Ouroboros、CLLMs 等用 Jacobi 迭代生成草稿；Draft &amp; Verify 等用 layer skipping／early exit 拿原 LLM 部分參數當草稿模型；REST、LLMA 用檢索生成草稿；亦有級聯不同大小草稿模型的工作。部分方法為更高加速而犧牲品質（如 BiLD 放寬接受條件，Medusa-2、CLLMs、SPACE 微調原 LLM）。</p>
+<p>已有工作用<strong>部分動態</strong>的草稿樹：BiLD、Kangaroo 依草稿模型信心做 early stopping 控制樹深；GLIDE 與 CAPE 在 top-1 信心低時加候選，但這些額外候選不再進一步展開，樹結構受限。相較之下 EAGLE-2 沒有此限制，能靈活動態調整草稿樹結構，性能更好。</p>
+<h2 id="7-結論">7 結論</h2>
+<p>本文提出 EAGLE-2，一種高效且無損的推測式取樣方法。我們發現 EAGLE 的草稿模型信心是草稿 token 接受率的良好近似，據此 EAGLE-2 採用 context-dependent 的草稿樹結構，顯著提高被接受的草稿 token 數、取得更好加速比。EAGLE-2 保證生成結果與原 LLM 一致且不需額外訓練；在多種 LLM、多個資料集、與多個先進方法的比較中，EAGLE-2 皆取得最高加速比。</p>
+<h2 id="附錄-a-實作細節擇要">附錄 A 實作細節（擇要）</h2>
+<p>Vanilla 用 HuggingFace transformers（PyTorch、預配置 KV cache）；標準推測式取樣用 HF 的 assisted generation；PLD/Lookahead/Medusa/Hydra 用官方權重與預設；EAGLE 的 Vicuna、LLaMA2-Chat 用官方權重，LLaMA3-Instruct 以 ShareGPT 訓練。<strong>EAGLE-2</strong>：7B（8B）／13B／70B 原 LLM 分別設草稿 token 總數 60／50／48，草稿樹深度 6，擴展階段選 10 個節點。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2406.16858_EAGLE2.%E6%91%98%E8%A6%81.html"><code>../summarize/2406.16858_EAGLE2.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

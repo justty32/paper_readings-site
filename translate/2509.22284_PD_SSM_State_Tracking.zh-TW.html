@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>以結構稀疏轉移矩陣令狀態空間模型具備狀態追蹤（Structured Sparse Transition Matrices to Enable State Tracking in State-Space Models） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Aleksandar Terzić、Nicolas Menet、Michael Hersche、Thomas Hofmann、Abbas Rahimi（IBM Research Zurich／ETH Zürich）</p><p>日期：2025-09</p><p>arXiv：2509.22284</p><p><a href="https://arxiv.org/abs/2509.22284" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="以結構稀疏轉移矩陣令狀態空間模型具備狀態追蹤pd-ssm">以結構稀疏轉移矩陣令狀態空間模型具備狀態追蹤（PD-SSM）</h1>
+<p>IBM Research Zurich／ETH Zürich　程式碼：github.com/IBM/expressive-sparse-state-space-model</p>
+<h2 id="摘要">摘要</h2>
+<p>現代狀態空間模型（SSM）面臨表達力與效率的根本取捨。<strong>對角</strong>轉移矩陣計算高效，卻無法模擬所有有限狀態自動機（FSA），尤其是非可解群如 A₅、S₅；反之<strong>非結構稠密</strong>矩陣表達力最優，但需 Θ(LN³) 的算力與記憶體，難以實用。本文提出將轉移矩陣參數化為 <strong>A=P·D</strong> 的 PD-SSM，兼得通用 FSA 表達力與可平行的 Θ(LN) 複雜度。</p>
+<h2 id="1-問題">1. 問題</h2>
+<p>「非結構稠密轉移矩陣在表達力上最優，但代價是過高的算力與記憶體。」對角矩陣雖高效卻表達力不足。如何在<strong>可平行</strong>的前提下取得<strong>通用 FSA 表達力</strong>，是本文核心。</p>
+<h2 id="2-方法pd-參數化">2. 方法：PD 參數化</h2>
+<p>轉移矩陣寫成 A(uₜ)=P(uₜ)D(uₜ)：</p>
+<ul>
+<li><strong>P 矩陣（逐列 one-hot）</strong>：對可學字典 {Mᵢ}ᵢ∈[K] 用 softmax 權重 s(uₜ) 做軟選，再逐列套 hardmax 強制稀疏；反傳時以 softmax 近似 hardmax 梯度（surrogate gradient）。</li>
+<li><strong>D 矩陣（複數對角）</strong>：由兩個 MLP 產生——幅值產生器給 |D(uₜ)|∈(0,1)ᴺ（sigmoid 正規化以保 BIBO 穩定）、相位產生器給 ϕ∈(0,2π)ᴺ，映到複數極式。</li>
+</ul>
+<p>逐列 one-hot 矩陣 P∈ℍ^(N×N) 在乘法下構成<strong>單群</strong>（封閉、保稀疏），使平行掃描可在 Θ(LN) 完成（與對角相同）；ℍ^(N×N) 的矩陣乘積靠列索引組合，降為 Θ(N) 的 gather-scatter。</p>
+<pre><code class="language-mermaid">flowchart LR
+  u[&quot;輸入 uₜ&quot;] --&gt; P[&quot;P(uₜ)：逐列 one-hot&lt;br/&gt;(字典 softmax→hardmax)&quot;]
+  u --&gt; D[&quot;D(uₜ)：複數對角&lt;br/&gt;(幅值 MLP + 相位 MLP)&quot;]
+  P --&gt; A[&quot;A = P·D&quot;]
+  D --&gt; A
+  A --&gt; scan[&quot;平行掃描 Θ(LN)&lt;br/&gt;(單群封閉性)&quot;]
+</code></pre>
+<h2 id="3-理論結果">3. 理論結果</h2>
+<ul>
+<li><strong>命題 2（表達力）</strong>：任何 N 狀態 FSA，皆可由「狀態維度 N、N×N 線性讀出」的單層 PD-SSM 精確表示。</li>
+<li><strong>命題 1（穩定）</strong>：當 ‖Aₜ‖∞ ≤ 1−ε 時系統 BIBO 穩定，狀態有界：‖xₜ‖₂ ≤ √N·B/ε。</li>
+<li><strong>命題 3（最優）</strong>：PD-SSM 達近最小狀態維度——對某些 N 狀態自動機，任何具唯一狀態編碼的單層 SSM 都需至少 N−1 維。</li>
+</ul>
+<h2 id="4-實驗">4. 實驗</h2>
+<ul>
+<li><strong>FSA 模擬</strong>（Cycle Navigation、Even Pairs、Modular Arithmetic、Parity）：PD-SSM 98.8±0.9%；次佳可平行 D-DE-SLiCE 85.1±8.2%；複數對角 73.6±7.1%。</li>
+<li><strong>非可解群</strong>（A₅，2 生成元）：PD-SSM 單層 100.0%；Gated DeltaProduct 單層 97.9%、雙層在 12 生成元 A₅ 仍 68.4%。</li>
+<li><strong>多變量時間序列</strong>（UEA 6 資料集）：PD-SSM 67.0±2.02%；最佳基線 LinOSS-IM 67.8±2.00；NCDE 60.2±1.76。</li>
+<li><strong>Long-Range Arena</strong>（序列至 4k）：時變模型中 PD-SSM 平均 74.4% vs Mamba 73.9%。</li>
+<li><strong>自然語言狀態追蹤</strong>：凍結 Qwen-2.5 1.5B + 單層 PD-SSM，成功追蹤編碼於變長英文句中的 A₅ 自動機轉移；對角 SSM 在同任務上完全失敗。</li>
+<li><strong>執行時間</strong>：D=5632 時比稠密 SSM 快 71×；比對角 SSM 慢 7×（主要源自 P 矩陣生成）。</li>
+</ul>
+<h2 id="5-局限">5. 局限</h2>
+<ul>
+<li>P 矩陣生成的額外開銷（相對純對角）。</li>
+<li>在 LRA、時間序列等真實基準上的提升邊際或落在標準差內。</li>
+<li>需謹慎調字典大小 K。</li>
+<li>hardmax→softmax 的 surrogate 梯度仍屬啟發式。</li>
+</ul>
+<h2 id="6-貢獻">6. 貢獻</h2>
+<ol>
+<li><strong>首個結構稀疏 FSA 解</strong>：單層、維度 N、N×N 讀出即達通用 N 狀態 FSA 模擬，並符合理論下界，同時保 Θ(LN) 可平行。</li>
+<li><strong>新代數框架</strong>：形式化逐列 one-hot 矩陣單群 ℍ^(N×N)，證其封閉性以支援高效平行掃描。</li>
+<li><strong>真實設定驗證</strong>：在自然語言編碼的複雜自動機上展示狀態追蹤，對角 SSM 於此失敗。</li>
+<li><strong>完整基準</strong>：跨合成（FSA）、時間序列、語言任務，含 5 seeds 與標準差的統計報告。</li>
+</ol>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2509.22284_PD_SSM_State_Tracking.%E6%91%98%E8%A6%81.html"><code>../summarize/2509.22284_PD_SSM_State_Tracking.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_評估五軸 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.00669_NeuroLog_Datalog_SMT.zh-TW.html">回 2606.00669_NeuroLog_Datalog_SMT.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="7-評估五軸">7. 評估（五軸）</h2>
+<h3 id="71-端到端-cve-重現">7.1 端到端 CVE 重現</h3>
+<p>重現 8 個完整 + 1 個部分 CVE 級問題（未把 CVE 當輸入）。「端到端」＝流水線在與已發表 CVE 相同的原始碼行產生 Datalog 發現。代表案例：兩個 stb CVE 經 libFuzzer/ASan 獨立確認（fuzz_vorbis 產 23 個獨特崩潰群聚於靜態發現點）；<strong>CVE-2023-38545（curl SOCKS5，CVSS 9.8）</strong>——<code>do_SOCKS5</code> 非同步 yield 主機名越界寫，規則 <code>JointBufferBoundUnsafe</code>，合成驅動非同步狀態機（800ms stub 延遲足矣）確認 2,000-byte 溢位。FFmpeg H.264 sentinel-collision 刻意不寫成單一規則：規則網產四個成分關係，由 host agent 組合。</p>
+<ul>
+<li>libxml2 規模展示：40 檔、2,707 函式、185,839 事實、73 分鐘全流水線；氣味掃描與機械底座一致性：2,707 次呼叫中 1 處新增、0 處更正。</li>
+</ul>
+<h3 id="72-libarchive-head-新-bug">7.2 libarchive HEAD 新 bug</h3>
+<p>審計現役原始碼挖到 5 個記憶體安全 bug（cpio reader 與 XAR/WARC/7zip writer），4 個前所未報，全數上報、多個修補已合併；<strong>cpio use-after-free 回歸 7 小時內被官方確認</strong>。</p>
+<h3 id="73-氣味掃描的成本與召回">7.3 氣味掃描的成本與召回</h3>
+<p>見 §5：90× 快、70× 便宜，bug 相關召回相同。</p>
+<h3 id="74-符號執行精度與-phase-e-過濾">7.4 符號執行精度與 Phase E 過濾</h3>
+<ul>
+<li>Phase A→B（程序內→程序間，函式摘要＋有界內聯 d=3）。</li>
+<li>Phase E1 依賴過濾：把「下游回聲」發現降階到 <code>downstream_symptom</code> 層並附根因指標，只標註不刪除。</li>
+<li>Phase E2 likely-invariants：FFmpeg demuxer 子集、3 個種子產 245 不變量（18,602 觀測、348 中斷點），<strong>降階 13.2% 可行集</strong>，含一個合成花 5 次嘗試的靜態假陽性（matroska_parse_webvtt）。</li>
+</ul>
+<h3 id="75-phase-d-並行-symbex">7.5 Phase D 並行 symbex</h3>
+<p>378 個 FFmpeg demuxer 發現：序列 1.19s → 4-worker 0.60s（1.98×）；260 個 mov-demuxer 發現：2.55×。4–8 worker 後遇每 worker 固定成本（FactStore 反序列化 ~50ms）平台期，純 Z3 線性擴展。</p>
+<h3 id="76-phase-c-崩潰合成">7.6 Phase C 崩潰合成</h3>
+<p>stb_vorbis CVE-2023-45676 校準：Phase A 證可達 <code>setup_malloc</code>；合成 agent 認出 Vorbis（Ogg capture_pattern）；第 1 輪 <code>len=0xFFFFFFFF</code>→0-byte 配置（無故障），ASan 尾巴回饋；第 2 輪 <code>len=0x7FFFFFFF</code>→~2GB 請求觸發 allocation-size-too-big；102-byte 檔確定性崩潰，~5 分鐘（多為網路往返），<strong>無 fuzzer</strong>。誠實負例：matroska_parse_webvtt:3853 過了 Phase E2 卻仍是靜態假陽性，合成 5 次嘗試皆流暢但到不了 bug。</p>
+<h3 id="77-誠實負例局限">7.7 誠實負例（局限）</h3>
+<p>規則網盲區（前向切片盲點）；免編譯取捨（函式指標前向路徑、宏/前處理不可見）；單一 LLM 供應商；評估規模（libxml2 最大 2,707 函式，&gt;500K LoC 未試）；Phase E2 依賴語料是否走到該路徑。</p>
+<h2 id="8-相關工作--結論">8. 相關工作 / 結論</h2>
+<p>NeuroLog 把 LLM、Datalog、SMT 組成免編譯漏洞分析棧，各層做別人擅長的事；tier-don&#x27;t-drop 確保無靜默降階、審計日誌支援事後驗證。量化總結：8 端到端 CVE 重現 + 1 部分、5 個 libarchive 新發現（4 新、全上報）、stb 抽取 37s/$0.005、2 CVE 共 23 獨特崩潰、Phase E2 降階 13.2%、symbex 並行 1.98–2.55×、102-byte 崩潰 2 次迭代/~5 分鐘、libxml2 規模 2,707 函式/185,839 事實/73 分鐘。on-demand Datalog 查詢工具（一次調查 19 查詢）是超越前代「靜態收窄 SMT」系統的架構新增。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2606.00669_NeuroLog_Datalog_SMT.%E6%91%98%E8%A6%81.html"><code>../summarize/2606.00669_NeuroLog_Datalog_SMT.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

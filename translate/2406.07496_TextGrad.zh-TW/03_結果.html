@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_結果 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2406.07496_TextGrad.zh-TW.html">回 2406.07496_TextGrad.zh-TW 目錄</a>　<a href="02_TextGrad%EF%BC%9A%E4%BB%A5%E5%8F%8D%E5%90%91%E5%82%B3%E6%92%AD%E6%96%87%E6%9C%AC%E5%8F%8D%E9%A5%8B%E4%BE%86%E5%84%AA%E5%8C%96_AI_%E7%B3%BB%E7%B5%B1.html">← 上一節</a>　<a href="04_%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-結果">3. 結果</h2>
+<p>在五個多樣應用上展示 TextGrad 的靈活性。</p>
+<h3 id="31-程式碼優化">3.1 程式碼優化</h3>
+<p>程式碼優化是 instance optimization 的代表用例。常見計算圖為 <code>Code-Refinement Objective = LLM(Problem + Code + 測試時指令 + 本地測試結果)</code>，我們在有限的本地測試監督與自我評估下優化 Code。圖 1e 例子：對一道「回傳中位數等於 k 的非空子陣列數量」的難題，gpt-4o 首個解未過測試，TextGrad 指出一個邊界案例並給出改進建議，優化後的實作通過所有測試。</p>
+<ul>
+<li><strong>任務</strong>：LeetCode Hard 資料集，成功指標為 <strong>Completion Rate</strong>（通過某題全部測試案例；GPT-4 據報僅 7%）。測試案例不公開，須提交平台在未見測試上評估。</li>
+<li><strong>基線</strong>：Reflexion（該資料集 SOTA，用候選單元測試自我反思再改碼）以 gpt-4o 跑 1-shot；另有 gpt-4o zero-shot 基線。TextGrad 在 <strong>zero-shot（無任何示範）</strong> 下運行。</li>
+<li><strong>結果（表 1，5 個 seed 平均）</strong>：zero-shot 0.26；Reflexion（1 示範、5 迭代）0.31±0.012；<strong>TextGrad（0 示範、5 迭代）0.36±0.018</strong>。考慮到 Reflexion 用了 in-context 示範而 TextGrad 沒有，此增益更顯突出。</li>
+</ul>
+<p>評估用的 loss prompt 大意：「你是最佳化系統中的評估者，分析程式實作與單元測試結果；程式會用更難的測試檢驗，故不要只看有沒有通過提供的測試；思考正確性與更難案例下的表現；對每個失敗案例以『這段程式沒通過此測試是因為…』開頭分析；不要提供修正版實作，只給出問題與反饋。」</p>
+<h3 id="32-以測試時訓練優化解答來改進解題">3.2 以測試時訓練優化解答來改進解題</h3>
+<p>在 solution optimization 中目標是改進複雜問題（如量子力學、有機化學題）的解答。計算圖為 <code>Solution Refinement Objective = LLM(Question + Solution + 測試時指令)</code>，待優化參數是 Solution，loss 由對解答的評估（如用 LLM）取得。每輪把問題、當前解答、與一段「請批判/檢視當前版本」的測試時指令餵給 LLM，沿優化軌跡靠<strong>自我評估</strong>精修解答。這一般稱為<strong>測試時訓練（test-time training）</strong>——在測試實例上、常以自監督目標訓練模型；近期工作也顯示自我精修對推理任務有益（即使 LLM 首次答錯，也能靠迭代精修改善）。</p>
+<p>其精修目標函數（GPQA 例）大意：「以下是選擇題與一個預測。你是批判且富創意的科學家，任務是調查這個預測，批判性地走過推理步驟，看看預測是否可能有誤。用 Janusian 思考法，考慮其他答案是否可能為真。問題：{Question}；語言模型的答案：{Solution}。」</p>
+<p><strong>代表性實作（Code Snippet 1）</strong>：取得 zero-shot 解答後 <code>solution = zero_shot_llm(question)</code>；<code>optimizer = tg.TextualGradientDescent(parameters=[solution])</code>；迴圈中 <code>optimizer.zero_grad()</code>、<code>loss = test_time_loss_fn(question, solution)</code>（<strong>注意 loss 是自監督、不依賴任何 ground truth</strong>）、<code>loss.backward()</code>、<code>optimizer.step()</code>。</p>
+<ul>
+<li><strong>任務</strong>：GPQA（研究生級、由 PhD 領域專家出題並標註的 google-proof 選擇題；專家 81%、熟練非專家僅 22%，且表現尚未飽和，gpt-4o 於 diamond 子集約 53.6%）；另用 MMLU 兩個難子集（機器學習、大學物理，專家人類約 90%）。</li>
+<li><strong>方法</strong>：對 gpt-4o 做 3 次測試時更新（更新解答三次）後對所有解答做<strong>多數投票</strong>得最終答案，用字串比對算準確率。</li>
+<li><strong>結果（表 2）</strong>：GPQA CoT 51.0 → 最佳報告 53.6 → <strong>TextGrad 55.0</strong>（迄今最佳）；MMLU-機器學習 85.7 → <strong>88.4</strong>；MMLU-大學物理 91.2 → <strong>95.1</strong>。顯示在測試時多花算力做 TextGrad 自我精修，能改進即便是最強模型的問答表現。</li>
+</ul>
+<h3 id="33-推理任務的-prompt-優化">3.3 推理任務的 prompt 優化</h3>
+<p>LLM 推理表現對 prompt 敏感，選對 prompt 可顯著改善。prompt 優化的目標是找一個能引導 LLM 在給定任務表現良好的 prompt/指令。計算圖為 <code>Answer = LLM(Prompt, Question)</code>、<code>Evaluation Metric = Evaluator(Answer, Ground Truth)</code>。給少量訓練例，目標是最大化 LLM 在該任務的表現。實驗中我們的目標是<strong>用強模型（gpt-4o）產生的反饋去改進較弱較便宜模型（gpt-3.5-turbo-0125）的表現</strong>——這在實務上有用：付一次性固定成本優化 prompt，之後就能用便宜模型以較低推論成本運行，取代昂貴強模型。</p>
+<p><strong>實作（Code Snippet 2）</strong>：<code>system_prompt = tg.Variable(&quot;You are a helpful language model. Think step by step.&quot;, requires_grad=True, role_description=&quot;...&quot;)</code>；<code>model = tg.BlackboxLLM(system_prompt=system_prompt)</code>；<code>optimizer = tg.TextualGradientDescent(parameters=[system_prompt])</code>；每輪取一個 batch，前向 <code>responses = model(batch_x)</code>、<code>losses = [loss_fn(r,y) ...]</code>、<code>total_loss = tg.sum(losses)</code>、<code>total_loss.backward()</code>、<code>optimizer.step()</code>。用 minibatch SGD，優化的是「一個對整個 benchmark 都好用的單一 prompt」（不同於 instance 優化逐一改解答）。</p>
+<ul>
+<li><strong>任務</strong>：Big Bench Hard 的 Object Counting 與 Word Sorting（50/100/100 訓練/驗證/測試）、GSM8k（用 DSPy 的切分）。GSM8k 與 Object Counting 用字串精確比對，Word Sorting 用 LLM 比對。</li>
+<li><strong>方法</strong>：forward 推理模型是 gpt-3.5-turbo-0125，用 gpt-4o 於反向傳播提供反饋改進 prompt；batch size 3、12 迭代（共見 36 個訓練例，抽樣有放回）；每輪跑驗證集，較上輪好才更新 prompt。</li>
+<li><strong>基線</strong>：zero-shot CoT（初始 prompt「Think step-by-step」）；<strong>DSPy</strong>（SOTA 的 LLM 程式化與 prompt 優化框架，用 BootstrappedFewShotRandomSearch：生成能通過 metric 的 LLM 輸入輸出軌跡當 few-shot 示範，對至多 8-shot 子集做隨機搜尋）。</li>
+<li><strong>結果（表 3）</strong>：Object Counting CoT 77.8 / DSPy 84.9 / <strong>TextGrad 91.9</strong>（勝 DSPy 7%）；Word Sorting 76.7 / 79.8 / 79.8；GSM8k 72.9 / 81.1 / 81.1。<strong>DSPy（加 in-context 示範）與 TextGrad（優化 system 指令）做的是互補調整</strong>——把 DSPy 選的示範併入 TextGrad 優化的 prompt，GSM8k 進一步升到 82.1，顯示結合兩者是有前景的方向。</li>
+</ul>
+<p><strong>優化前後 prompt 對比（GSM8k）</strong>：初始「You will answer a mathematical reasoning question. Think step by step...」（72.9%）→ 12 輪後變成「…用自己的話重述問題以確保理解；把問題拆成小步、詳細解釋每步計算；驗證每步並重新核對計算；用正確數學記號、與題目脈絡保持一致…」（81.1%）。</p>
+<h3 id="34-分子優化">3.4 分子優化</h3>
+<p>TextGrad 也支援科學/工程常見的<strong>多目標優化</strong>。以藥物分子優化為例，展示框架如何與計算工具介接、同時改善結合親和力與 druglikeness。</p>
+<ul>
+<li><strong>任務</strong>：藥物分子的<strong>結合親和力</strong>由自由能 ΔG 刻畫（越負越可能結合標的），用 AutoDock Vina 的 Vina score 估計（docking 模擬）；<strong>druglikeness</strong> 用 QED score（0~1，綜合分子量、親脂性、極性表面積等）。Vina 偏好大而多官能基的分子，QED 偏好輕而簡單的分子——兩目標衝突，同時優化非平凡。</li>
+<li><strong>方法</strong>：把分子編碼為 <strong>SMILES 字串</strong>當變數，用 Vina 與 QED 構造多目標 loss <code>Evaluation = LLM(Affinity(SMILES_i, target), Druglikeness(SMILES_i))</code>，再以 <code>SMILES_{i+1} = TGD.step(SMILES_i, ∂Evaluation/∂SMILES_i)</code> 更新。LLM 用 gpt-4o；每輪用 AutoDock Vina 估親和力、RDKit 算 QED。用 <strong>DOCKSTRING</strong> 基準的全部 58 個標的（皆為臨床相關蛋白，其中 29 個有臨床核准藥），每個標的用 3 個不同起始片段（各從一官能基小片段起）優化 10 輪。</li>
+<li><strong>結果</strong>：58 個標的上，無論起始片段為何，TextGrad 一致生成親和力與 druglikeness 皆改善的分子；對 29 個有臨床藥的標的，生成分子在同一 loss 下與臨床核准藥<strong>高度競爭</strong>，且結構新穎、in silico 安全性相近。相較 de novo 分子生成的其他 ML 方法，TextGrad 兩大優勢：(1) 結合傳統化學資訊學工具與 LLM 的通用知識與推理，<strong>即使無先驗訓練集</strong>也有競爭力；(2) 自然語言梯度產生<strong>可解釋</strong>的決策，讓研究者理解分子結構「如何且為何」被構建。</li>
+</ul>
+<h3 id="35-放射治療計畫優化">3.5 放射治療計畫優化</h3>
+<p>放療用高能束（如 X 光）殺癌細胞，治療前團隊須設計有效計畫（決定劑量與精確照射位置）。放療計畫可視為<strong>兩層優化</strong>：內圈（inverse planning，如影響圖優化、直接孔徑優化）是受約束的數值優化，最小化平衡多個衝突目標的加權成本函數——既要對<strong>計畫標的體積（PTV，含腫瘤與邊界）</strong> 給足處方劑量，又要保護<strong>危及器官（OARs）</strong> 不受過量照射。主要難處是「把整體臨床目標翻譯成加權目標函數與劑量約束」，人類規劃者常用試誤法反覆調整超參數（各 PTV/器官權重），過程主觀、耗時、且反覆呼叫昂貴的優化算法。</p>
+<ul>
+<li><strong>方法</strong>：TextGrad 做<strong>外圈</strong>優化——即內圈數值優化器的超參數優化。用 gpt-4o 做 instance optimization，超參數以字串表示 <code>θ = &quot;weight for PTV: [...], weight for bladder: [...], weight for rectum: [...], weight for femoral heads: [...], weight for body: [...]&quot;</code>。給定超參數，先用數值優化器 <strong>matRad</strong> 解內圈得治療計畫 <code>P(θ) = matRad(θ)</code>；loss 由 LLM 就「計畫 P 與臨床目標 g」計算 <code>L = LLM(P(θ), g)</code>；再 <code>θ_new = TGD.step(θ, ∂L/∂θ)</code>。為幫 LLM 理解 θ 與 P 的關係，TGD.step 時額外提供一組配對的 {(P_i, θ_i)} 當脈絡。</li>
+<li><strong>評估指標</strong>：平均劑量、以及 D_q（標的/器官體積中 q% 所受的最小劑量，如 D95）。</li>
+<li><strong>結果</strong>：TextGrad 的梯度提供有意義的引導——當劑量溢出 PTV 時，梯度建議提高 PTV 權重使劑量更均勻集中；但這會降低膀胱、直腸的相對權重致保護不足，故下一步梯度又建議略提膀胱與直腸權重。對 5 名前列腺癌病人，TextGrad 優化計畫在 PTV 的所有指標上優於臨床計畫（更高平均劑量、D95 精確匹配處方劑量），且對膀胱、直腸的平均劑量更低（更好的器官保護）。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

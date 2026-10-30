@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>ClawTrace：成本感知的 LLM Agent 技能蒸餾追蹤（2/3） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.23853_ClawTrace.zh-TW.html">回 2604.23853_ClawTrace.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>技能蒸餾管線從 LLM agent 軌跡中學習可重用規則，但它們缺少一個關鍵訊號：每一步的成本是多少。沒有逐步成本訊號，管線就無法區分「為了修補錯誤而新增一個缺失步驟」與「刪除一個昂貴但從未影響結果的步驟」。我們利用成本歸因落差來提問：蒸餾出的技能內部的規則型別，是否以相同方式轉移到新任務。ClawTrace 記錄成本歸因的 agent 軌跡，並將每個 session 編譯成一張 TraceCard；CostCraft 讀取 TraceCard 並撰寫三種技能修補：preserve（保留）、prune（修剪）、repair（修復）。我們發現聚合指標隱藏了一種模式。在 30 個 held-out SpreadsheetBench 任務上跨兩種子執行，移除 prune 修補使品質衰退數量大約三倍，而中位成本並未降低。在完整的 84 任務 SkillsBench 轉移中，CostCraft 未節省任何聚合成本。全部三個品質衰退追溯至 preserve 路徑，兩次品質提升追溯至 prune 路徑：prune 修補充當品質護欄，而 preserve 修補驅動衰退。我們主張可重用 agent 技能應以規則型別層級進行評估，而非作為單一指令套件。為支持此主張，我們釋出 ClawTrace、TraceCard schema 及完整的型別化技能集。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>Agent 技能是一種結構化指令套件，在不更新權重的情況下引導 LLM agent [19]。近期系統直接從 agent 執行軌跡中蒸餾此類技能 [14, 26, 28]。聚合增益是真實但不均勻的：在 SkillsBench [12] 上，策展技能將平均通過率提升了 16.2 個百分點，但 84 個任務中有 16 個衰退，而自生成技能未提供任何平均效益。聚合指標隱藏了相互抵消的得失。</p>
+<p>這些衰退的核心原因是現有蒸餾管線將技能視為單一單元。它們將軌跡劃分為成功與失敗，然後從每個劃分中提取規則 [14]。這種劃分混淆了兩種不同的操作。修復錯誤需要向失敗軌跡中新增一個缺失步驟。壓縮浪費需要從已經成功的軌跡中刪除一個昂貴但不必要的步驟。第二種操作需要逐步成本：管線必須識別哪些步驟是昂貴的，才能主張刪除它們是安全的。標準可觀測性堆疊（LangSmith [9]、Langfuse [10]、Phoenix [3]）遵循 OpenTelemetry [16] 慣例記錄 per-span token 和成本。它們以儀表板分析的形式將這些資訊暴露給人類操作員，而非蒸餾管線可直接攝取的緊湊摘要。技能挖掘分析師需要的是：排名後的逐步成本、冗餘標記、失敗標記，格式小到足以讓多個 session 裝入單一 context window。</p>
+<p>本文在兩個方面做出貢獻。首先，ClawTrace 是一個開源追蹤平台，註冊了八個事件 hook，涵蓋每次 LLM 呼叫、工具使用和子 agent 生成。它將子 session 鏈回父 span，並以實際費率對快取 token 計費。從這些事件中，它為每個 session 編譯一張 TraceCard：約 1.5 kB 的 YAML 摘要，列出逐步 USD 成本、分型 token 計數、冗餘工具呼叫集群，以及失敗或已修復的步驟。該外掛目前為 OpenClaw 提供，而 schema 刻意設計為框架無關；理論上任何 agent harness 都可以透過向攝取 API 發送符合規範的 JSON 來產生 TraceCard，儘管我們僅對 OpenClaw 路徑進行了端到端驗證。</p>
+<p>其次，CostCraft 讀取 TraceCard 並產出三種技能修補：preserve（保留有效的）、prune（刪除不必要的成本）、repair（修復特定失敗）。這種劃分將 Trace2Skill [14] 的成功 vs 錯誤劃分替換為正確性 vs 效率劃分。§3.3 給出了修補准入規則和衝突感知合併。</p>
+<p>跨基準評測支持第三項貢獻：蒸餾出的 agent 技能包含可分離的規則型別，這些型別以不同方式轉移。在 30 個 held-out SpreadsheetBench [13] 任務（跨兩種子）和完整的 84 任務 SkillsBench [12] 基準上，prune 規則針對重複出現的浪費並轉移到新任務，而 preserve 規則編碼了 SpreadsheetBench 特有的慣例並過擬合。對 agent 技能社群而言，這表明可重用技能不僅應作為整體指令套件進行評估，還應按其組成規則型別的轉移行為進行評估。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>**Agent 技能與基準。**Anthropic [19] 將 agent 技能引入為不更新權重即可增強 LLM agent 的結構化套件。Xu 與 Yan [25] 區分技能與原子工具及一次性計劃，將其定義為具有適用性條件的可重用模組。SkillsBench [12] 提供首個系統性基準：策展技能將平均通過率提升 16.2 個百分點，但自生成技能未提供平均效益。SWE-SkillsBench [6] 評估軟體工程任務中的技能注入，並報告 context 不匹配下的效能下降。SpreadsheetBench [13] 提供 912 個真實世界任務，具有確定性儲存格匹配評分，是我們的主要評測基準。</p>
+<p>**軌跡挖掘與技能蒸餾。**Trace2Skill [14] 是最接近的前期工作。它分派平行的分析子 agent，採用成功 vs 錯誤的劃分，錯誤分析師使用多輪 ReAct 迴圈 [27] 並具備 oracle 存取權限。我們採用其分析師結構，但將雙向劃分替換為三向劃分，加入 prune 修補以從成功軌跡中移除浪費。</p>
+<p>**經驗記憶與可觀測性。**Voyager [21] 透過開放式互動累積技能。Reflexion [20] 透過語言自我反思精煉決策。ReasoningBank [17] 將軌跡衍生的洞察儲存在檢索庫中；Trace2Skill 顯示蒸餾為緊湊技能文件比檢索高出 13.8 個百分點。在可觀測性方面，LangSmith、Langfuse、Phoenix 和 Arize 基於 OpenTelemetry [16] 慣例提供步驟級日誌和 per-span token 成本。這些工具服務人類操作員；無一產生蒸餾管線可直接消費的緊湊中間表示。</p>
+<h2 id="llm-成本最佳化frugalgpt-4-透過模型級聯和快取減少-llm-推論成本routellm-15-學習在品質允許時將查詢路由到更便宜模型這些系統在推論時最佳化成本costcraft-在不同的點上運作它從過往軌跡中挖掘成本模式產生可重用技能規則以減少未來執行中的浪費">**LLM 成本最佳化。**FrugalGPT [4] 透過模型級聯和快取減少 LLM 推論成本，RouteLLM [15] 學習在品質允許時將查詢路由到更便宜模型。這些系統在推論時最佳化成本。CostCraft 在不同的點上運作：它從過往軌跡中挖掘成本模式，產生可重用技能規則，以減少未來執行中的浪費。</h2>
+<h2 id="title-clawtrace成本感知的-llm-agent-技能蒸餾追蹤part-23方法-source-httpsarxivorgabs260423853-arxiv_id-260423853-date-2026-05">title: ClawTrace：成本感知的 LLM Agent 技能蒸餾追蹤（part 2/3：方法）
+source: https://arxiv.org/abs/2604.23853
+arxiv_id: 2604.23853
+date: 2026-05</h2>
+<h1 id="clawtrace成本感知的-llm-agent-技能蒸餾追蹤23">ClawTrace：成本感知的 LLM Agent 技能蒸餾追蹤（2/3）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

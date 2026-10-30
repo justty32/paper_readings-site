@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>One Life to Learn: Inferring Symbolic World Models for Stochastic Environments from Unguided Exploration 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zaid Khan、Archiki Prasad、Elias Stengel-Eskin、Jaemin Cho、Mohit Bansal</p><p>日期：2025-10-14（v1，cs.AI）</p><p>arXiv：2510.12088</p><p><a href="https://arxiv.org/abs/2510.12088" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="one-life-to-learn">One Life to Learn</h1>
+<h2 id="摘要與問題第-1-至-2-節">摘要與問題（第 1 至 2 節）</h2>
+<p>符號世界模型要把環境轉移動態寫成可執行程式。既有方法多半假設環境近乎決定性、互動資料充足，還有人類指定的目標或獎勵。OneLife 改問更苛刻的問題：agent 只有一次生命，要在危險且具隨機性的開放世界中自由探索，沒有環境專屬指引，能否反向工程出世界法則？</p>
+<p>作者選擇顯式程式而非潛在神經表徵，目的是得到可讀、可改、可驗證，而且可供後續規劃使用的轉移模型。難點在於完整狀態龐大而分層，多數法則在任一時刻都不啟動；若讓所有規則同時對所有狀態欄位投票，推論與責任分配都難以擴展。</p>
+<h2 id="crafter-oo-與法則混合第-31-至-32-節">Crafter－OO 與法則混合（第 3.1 至 3.2 節）</h2>
+<p>作者重寫 Crafter 為 Crafter－OO。環境狀態是結構化、物件導向的文字表示，轉移函式只依賴顯式狀態與動作，不藏額外變數。這讓 LLM 能直接閱讀狀態並撰寫修改它的程式，也讓研究者能建構合法與違法的候選下一狀態。</p>
+<p>OneLife 把世界模型表示為多條模組化法則的機率混合。每條法則由前置條件與效果組成；前置條件決定它是否適用，效果只預測自己管轄的屬性。observable extractor 把複雜狀態拆成原始值向量。某次轉移裡只有啟動且實際預測相關 observable 的法則進入運算圖，因此模型不必讓每條法則解釋整個世界。</p>
+<h2 id="無引導探索合成與參數推論第-33-至-35-節">無引導探索、合成與參數推論（第 3.3 至 3.5 節）</h2>
+<p>探索策略由 LLM 驅動，只收到「盡量發現世界機制」這種高層目標，不取得遊戲獎勵或人工任務。agent 保留近期軌跡及暫時性的規則摘要，一面行動，一面修正對世界的理解。</p>
+<p>法則合成器對觀察到的轉移提出簡單、原子的候選程式。像戰鬥同時改變玩家生命與殭屍位置時，不寫成一條巨型規則，而拆成分別負責生命與移動的法則。接著以觀察轉移的對數概似學習各法則權重；梯度只流向當下啟動、且預測發生變化之欄位的規則，作者以 L－BFGS 最佳化。前向模擬時，模型對每個 observable 組合啟動法則的加權預測，抽樣具體值，再重建完整下一狀態與長程 rollout。</p>
+<h2 id="評估協定第-4-節">評估協定（第 4 節）</h2>
+<p>作者提出兩條互補軸線。state ranking 檢查模型能否把真實下一狀態排在由 mutator 製造的違法干擾狀態之前，以 Rank＠1 與 MRR 衡量；state fidelity 則以 JSON Patch 編輯距離衡量生成狀態和真實狀態的接近程度。前者測「懂不懂法則」，後者測「能不能生成像真的完整狀態」。這個區分很重要，因為只預測不變欄位也可能得到低編輯距離，卻無法識別不合法轉移。</p>
+<h2 id="主要實驗第-5-節作者自報">主要實驗（第 5 節，作者自報）</h2>
+<p>比較對象包含隨機世界模型與改造後的 PoE－World。作者自報 OneLife 的 Rank＠1 為 18.7％、MRR 為 0.479，分別比 PoE－World 高 7.9 個百分點與 0.128；逐情境比較則在 23 個核心機制中的 16 個勝過基準。生成完整未來狀態依舊困難，但 predictive judgment 明顯改善，也顯示低編輯距離不保證良好排序。</p>
+<p>規劃實驗涵蓋戰鬥、工具使用與資源消耗三種情境。每個情境各有有效與低效方案，模型在想像中模擬兩者，再和真環境的偏好排序比較。作者自報三個情境都選出和真環境相同的較佳方案；每個方案執行 10 次，最長序列超過 30 步。這是受控的方案比較，不等同於自由形式規劃能力。</p>
+<h2 id="結論與局限第-6-節">結論與局限（第 6 節）</h2>
+<p>OneLife 的關鍵不是讓一個大程式一次解釋世界，而是用條件啟動的原子法則建立動態運算圖，只把責任分配給真正參與該次狀態變化的規則。結果顯示，有限且無環境獎勵的探索仍可學到足以排序未來狀態、支援基本想像規劃的符號模型。</p>
+<p>（<strong>以下限制為本檔依實驗設計推得，非作者自列</strong>）證據仍限於 Crafter－OO 與單次 episode 的探索設定；物件導向、無隱變數的完整狀態也是強假設。實驗顯示完整狀態生成仍有高誤差，規劃只比較預先寫好的兩個方案與三個情境，尚未證明模型能自行提出長程計畫，或能轉移到真實、部分可觀測且狀態抽取有誤差的環境。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2510.12088_OneLifeToLearn.%E6%91%98%E8%A6%81.html"><code>../summarize/2510.12088_OneLifeToLearn.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Compile, Then Page 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>arXiv：2607.11346</p><p><a href="https://arxiv.org/abs/2607.11346" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="compile-then-page-executable-sop-programs-and-a-capability-gated-runtime-for-procedural-llm-agents">Compile, Then Page: Executable SOP Programs and a Capability-Gated Runtime for Procedural LLM Agents</h1>
+<h2 id="核心貢獻">核心貢獻</h2>
+<p>將標準作業程序（SOP）從「提示詞文字」提升為「可執行的偽代碼程式」，並設計一個兩層式堆疊機（stack machine）執行期（runtime），僅將當前活躍幀（active frame, ~570字元）分頁送入LLM上下文，而非將整個SOP常駐（baseline ~10^4字元）。貢獻包含：(1) 一個確定性SOP-to-program編譯器（無LLM參與，830項任務全數編譯通過，零人工映射表）；(2) 一個堆疊分頁執行期（pg runtime），以軟性強制（soft enforcement）進行記錄與審計（audit trail），不阻擋偏差但使其可觀測；(3) 六模型七領域歸因研究，分離表徵（compiled text vs. official prose）與執行期（runtime paging）兩個層次的效應。</p>
+<h2 id="方法">方法</h2>
+<p><strong>編譯器（離線，無LLM）</strong>：讀取SOPBench的機器可讀依賴樹、約束條件與驗證方案，產出兩層式偽代碼程式——每個使用者目標對應一個處理函數（process function），呼叫規則子程式（rule subroutine）執行具體驗證，並回傳{holds, evidence}結構。五大機制：具狀態的子程式、遞移驗證閘拉升（transitive verifier-gate hoisting）、兩種析取（普通or收集所有證據；gate為短路求值）、幀因式分解（frame factoring）、附證據回傳。</p>
+<p><strong>執行期（線上）</strong>：透過單一工具 pg_program_step 驅動堆疊機，維護呼叫堆疊、游標（cursor）與變數儲存，僅將活躍幀揭露至上下文。Call推入新幀、return恢復呼叫者並綁定結果。狀態在對話外持久化，支援中斷後恢復。</p>
+<p><strong>軟性強制</strong>：管理注意力而非權限——每個操作皆可執行，但跳過的檢查與無支撐的回傳在堆疊審計軌跡中可觀測。此設計預測了能力閾值效應。</p>
+<h2 id="實驗">實驗</h2>
+<p><strong>三臂設計</strong>（SOPBench，七領域）：</p>
+<ul>
+<li>offtext：官方文字SOP常駐（基準）</li>
+<li>flat：完整編譯程式常駐（僅表徵）</li>
+<li>pg：編譯程式+堆疊分頁執行期（表徵+執行期）</li>
+</ul>
+<p><strong>六模型</strong>：DeepSeek-V4-Flash、Qwen3.7-Plus（強）、Qwen3.6-35B-A3B、Qwen3.6-27B（過渡）、Qwen2.5-7B、GPT-4o-mini（弱）。</p>
+<h2 id="關鍵結果">關鍵結果</h2>
+<ol>
+<li>
+<p><strong>編譯效果</strong>（Bank, V4-Flash）：offtext 70.4% → flat 86.4%（+16.0, p&lt;.001）。編譯程式文字從不顯著傷害效能，且在官方散文表現不佳處獲益最大。</p>
+</li>
+<li>
+<p><strong>執行期效果具能力閘控</strong>：強模型受益（V4 +6.4, Plus +3.2），弱模型受損（7B -14.4, GPT-4o-mini -26.4）。池化兩個強模型跨七領域：V4 58:19 discordant pairs (p&lt;.001)，Plus 75:31 (p&lt;.001)。Bank 全程 70.4→86.4→92.8，拒絕正確率達100%。</p>
+</li>
+<li>
+<p><strong>完整程式游標消融</strong>：保留完整程式於活躍幀下方（full-cursor 91.0），恢復了大部分強模型拒絕增益（flat 88.2→full-cursor 91.0→pg 92.9）；選擇性可見性提供較小增量。</p>
+</li>
+<li>
+<p><strong>能力閘的機制</strong>：定向狀態重構探針在所有模型上接近天花板（0.91–0.99），說明劣勢非因無法重構狀態；而是自發的狀態紀律——兩個受損模型在目標動作後多發出非必要的領域呼叫（post-goal over-verification），注意力層級觀察到V4對其2.1%上下文幀保持了等比例注意力，而7B僅達到0.15倍。</p>
+</li>
+<li>
+<p><strong>內容 vs. 格式 2x2 析因</strong>：content pays above a capability line；code format flips sign across capability tiers。</p>
+</li>
+</ol>
+<h2 id="ai_core-36sop程序編譯固化引擎">ai_core §3.6（SOP程序編譯=固化引擎）</h2>
+<p>本論文的SOP編譯器將非結構化的操作程序約束樹轉換為結構化偽代碼——程序定義、規則子程式、閘控與證據回傳合約——的過程，即是<strong>將領域知識固化為可執行引擎</strong>（engine）的實例。ai_core §3.6所描述的「程序編譯」正對應此處從依賴樹到確定性兩層程式的轉換：離線、無LLM參與、830項任務全編譯通過、零人工映射表。該固化引擎的價值在於：將「該做什麼」與「如何驗證」分離，使每一次驗證都成為可審計的堆疊轉換，並將執行正確性從對長上下文注意力的依賴，轉移到對本地幀忠實執行的依賴上。</p>
+<h2 id="實務指引">實務指引</h2>
+<p>先編譯（compile first）；僅在模型級紀律檢查通過後才啟用分頁（page only after discipline check）。弱模型應使用強執行韁繩但無需主動幀引導。不可逆操作仍需硬性工具層防護。程式碼語法僅在模型確實受益時使用。</p>
+<h2 id="限制">限制</h2>
+<p>單一基準（SOPBench七領域）；六模型無定量能力尺度；Pass@1無採樣變異估計；僅機器可讀依賴樹（自然語言SOP輸入未評估）；軟強制在不可逆操作上仍需硬防護。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

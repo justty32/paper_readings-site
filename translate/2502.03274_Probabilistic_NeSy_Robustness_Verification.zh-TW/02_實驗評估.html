@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗評估 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2502.03274_Probabilistic_NeSy_Robustness_Verification.zh-TW.html">回 2502.03274_Probabilistic_NeSy_Robustness_Verification.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗評估">4. 實驗評估</h2>
+<p>合成任務（MNIST 加法）評估可擴展性 + 真實自駕資料集（兩個 6 層 CNN 上驗安全駕駛性質）。硬體 128× AMD EPYC 7543 / 400GB RAM。</p>
+<h3 id="41-多位數-mnist-加法">4.1 多位數 MNIST 加法</h3>
+<p>評估符號組件複雜度增加時的可擴展性。比較：</p>
+<ol>
+<li><strong>E2E-R</strong>（本文法）：在 <strong>auto_LiRPA</strong>（SOTA 鬆弛驗證工具）實作，NeSy 系統內部轉 ONNX，用其 IBP 驗證。</li>
+<li><strong>R+SLV</strong>（混合）：NN 部分用 auto_LiRPA/IBP 鬆弛，符號部分轉多項式、用 <strong>Gurobi</strong> 解約束最佳化（精確界）。比較精確 vs 近似符號界傳播的可擴展性-品質權衡。</li>
+<li><strong>Marabou</strong>（SMT 精確）：不支援 Softmax/張量索引等 → 只能驗 NeSy 的神經部分（MNIST 數字辨識 CNN 的穩健性）。</li>
+</ol>
+<p><strong>資料</strong>：多位數 MNIST 加法（每實例多張數字圖、標籤為總和）。可控數字數（如 3 位數實例＝三張圖），由 MNIST 測試集構造，每圖只用一次。CNN（2 卷積 + max pooling + 2 線性 + softmax）單數字辨識，測試準確高。符號部分＝多位數加法規則；<strong>加數愈多推理電路愈大</strong>（構造某和的方式更多）。5 種數字數 × 3 種擾動大小 = 15 實驗，各 72h timeout。E2E-R 單執行緒，R+SLV 的 Gurobi 動態用至 1024 執行緒。</p>
+<p><strong>可擴展性（圖 2，對數尺度）</strong>：<strong>E2E-R 比 R+SLV 指數級更快</strong>（因 §3.2 的精確界傳播複雜度）。R+SLV 在 6 位數無法在 timeout 內驗任何實例、5 位數僅驗 &lt;5%。Marabou 光驗 CNN 穩健性就 <strong>314 秒/樣本</strong>（慢數個數量級，且只是 NeSy 驗證的子任務）。印證 SMT 法可擴展性差的理論與實證證據；在可能含多 NN 與複雜推理的 NeSy 設定中，此「完備性 vs 可擴展性」權衡偏向有利。</p>
+<p><strong>驗證結果品質（Table 1）</strong>：報 (a) 輸出界緊度（正確和機率的上下界區間）、(b) 穩健性（穩健樣本比例）。如預期 <strong>R+SLV 界嚴格更緊</strong>;E2E-R 界品質隨推理電路變大下降（誤差沿大端到端圖累積），但 <strong>R+SLV 與 E2E-R 差異極小（尤其穩健性）</strong>。</p>
+<h3 id="42-自駕">4.2 自駕</h3>
+<p>真實自駕資料集，驗安全與常識性質的穩健性（擾動是否使原本滿足約束的神經系統違反約束）。兩個 6 層 CNN（物件偵測 + 動作選擇）。<strong>Table 2</strong>：報穩健性（穩健實例比例）與 E2E-R 執行時間（5 種擾動大小）。因此任務是小算術電路 + 大得多的神經組件，後者主導計算開銷與界傳播累積誤差 → E2E-R 與 R+SLV（僅符號組件不同）結果幾乎相同（故省略 R+SLV）。如預期穩健準確隨擾動增大而降；且 <strong>E2E-R 執行時間大致不受擾動大小影響</strong>（強化 §4.1 結果）。</p>
+<h2 id="5-相關工作">5. 相關工作</h2>
+<p>（NN 驗證、抽象解釋、NeSy 驗證等。）</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>提出可擴展驗證機率 NeSy 推理系統穩健性的技術：結合 NN 驗證的鬆弛技術 + 知識編譯，評估輸入擾動對系統機率邏輯輸出的影響。經理論分析動機化、合成與真實資料實證有效。未來：擴展到更精巧的 NN 驗證（（反向）符號區間傳播）、認證訓練技術，以提升估計穩健性。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2502.03274_Probabilistic_NeSy_Robustness_Verification.%E6%91%98%E8%A6%81.html"><code>../summarize/2502.03274_Probabilistic_NeSy_Robustness_Verification.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

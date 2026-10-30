@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>04_品質 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2501.10868_JSONSchemaBench.zh-TW.html">回 2501.10868_JSONSchemaBench.zh-TW 目錄</a>　<a href="03_%E8%A6%86%E8%93%8B%E7%8E%87.html">← 上一節</a></p>
+</blockquote>
+<h2 id="6-品質">6. 品質</h2>
+<p>原則上受約束解碼只過濾非法 token，不應影響輸出品質。但因 <strong>tokenization 的歧義</strong> 與約束干預造成的<strong>分佈偏移（distributional shift）</strong>，情況更複雜。舉一個假想的玩具例子：LM 在 GSM8K 題中可能答 <code>89,000</code> 而非正確的 <code>89000</code>；受約束解碼會擋掉非法的 <code>,</code>，雖強制了結構合規，卻可能讓 LM 走出分佈而改生成 <code>890000</code>。Will Kurt（2024b）則主張，先前研究（Tam 等人 2024）觀察到的效能下降，來自<strong>不當的 prompting、上下文資訊不足、以及設計拙劣的 schema</strong>。</p>
+<h3 id="61-設定">6.1 設定</h3>
+<p>沿用並擴充 Kurt（2024b）與 Tam 等人（2024）引入的任務，採其中三個推理任務評估受約束解碼對任務準確率的影響（Table 7）。這些任務刻意設計成輸出結構簡單，以隔離受約束解碼對「推理本身」的影響。用 <strong>Llama-3.1-8B-Instruct</strong> 量測，遵循 Kurt（2024b）的原始設定與 prompt。</p>
+<p>三任務（Table 7）：</p>
+<ul>
+<li><strong>Last Letter</strong>：輸入數個名字，輸出各字首尾字母的串接（如 <code>nrdn</code>）；CoT 推理 + 答案為 a–z；大小寫敏感精確匹配。</li>
+<li><strong>Shuffle Objects</strong>：輸入一連串交換序列與選項，輸出 A–E；CoT 推理 + 答案為 A–E；精確匹配。</li>
+<li><strong>GSM8K</strong>：基礎計算題，輸出數字；CoT 推理 + 答案為整數；數字精確匹配。</li>
+</ul>
+<p>三任務約束：Last Letter 輸出須為 a–z 字母串接；Shuffle Objects 輸出須為括號內單一 A–E 字母；GSM8K 輸出須為合法整數或浮點數。三者輸出統一為含 <code>&quot;reasoning&quot;</code> 與 <code>&quot;answer&quot;</code> 兩欄的 JSON 物件：<code>{&quot;reasoning&quot;: &lt;對答案的推理&gt;, &quot;answer&quot;: &lt;最終答案&gt;}</code>。</p>
+<h3 id="62-結果table-8">6.2 結果（Table 8）</h3>
+<p><strong>無論哪個框架，受約束解碼都優於無約束設定。</strong> Guidance 在所有任務一致最佳，每個任務約比 LM-only 高 3%，作者認為可能歸功於其 token-healing 實作。</p>
+<table>
+<thead>
+<tr>
+<th>框架</th>
+<th>Last Letters</th>
+<th>Shuffle Objects</th>
+<th>GSM8K</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LM only</td>
+<td>50.7%</td>
+<td>52.6%</td>
+<td>80.1%</td>
+</tr>
+<tr>
+<td>XGrammar</td>
+<td>51.2%</td>
+<td>52.7%</td>
+<td>83.7%</td>
+</tr>
+<tr>
+<td>Llamacpp</td>
+<td>52.0%</td>
+<td>52.6%</td>
+<td>82.4%</td>
+</tr>
+<tr>
+<td>Outlines</td>
+<td>53.3%</td>
+<td>53.0%</td>
+<td>81.6%</td>
+</tr>
+<tr>
+<td><strong>Guidance</strong></td>
+<td><strong>54.0%</strong></td>
+<td><strong>55.9%</strong></td>
+<td><strong>83.8%</strong></td>
+</tr>
+</tbody>
+</table>
+<h2 id="7-結論">7. 結論</h2>
+<p>我們提出了一個以 JSON schema 為對象、聚焦效率／覆蓋率／輸出品質三面向的完整受約束解碼評估框架，並引入含 10K 條真實 JSON schema 的 JSONSchemaBench，讓評估能在真實條件下穩健進行。評估既凸顯了當前最先進框架的進展，也揭示其限制。我們希望這些發現與基準能引導結構化生成的後續研究，並協助社群辨識最有效的工具、擴展受約束解碼的能力。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2501.10868_JSONSchemaBench.%E6%91%98%E8%A6%81.html"><code>../summarize/2501.10868_JSONSchemaBench.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

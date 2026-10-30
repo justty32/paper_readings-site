@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>ACT：代理式分類樹（3/4） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2509.26433_ACT.zh-TW.html">回 2509.26433_ACT.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-方法論">3. 方法論</h2>
+<h3 id="31-傳統決策樹cart-與-c45">3.1 傳統決策樹：CART 與 C4.5</h3>
+<p>經典決策樹演算法遞迴地根據特徵值分割資料集。每個節點的分裂由數值特徵的閾值或類別值的子集定義。分裂品質由不純度準則衡量——通常為 Gini 不純度（CART）或資訊增益比（C4.5）——演算法貪婪地選擇產生最大不純度降低的分裂，遞迴進行直到滿足停止準則。這些方法對結構化表格資料高效且可解釋，但無法直接操作非結構化輸入。</p>
+<h3 id="32-提出的方法代理式分類樹act">3.2 提出的方法：代理式分類樹（ACT）</h3>
+<p>ACT 將經典決策樹方法擴展到非結構化資料，以 LLM 生成的自然語言問題取代數值或類別特徵分裂點，遞迴地分割輸入空間。</p>
+<p><strong>節點定義</strong>：ACT 中的每個節點 n 由一個 prompt p 定義，透過 LLM 對資料進行語義分割。給定實例 x_i，LLM 被查詢 p 並回應二元答案（yes/no），決定分支分配：</p>
+<ul>
+<li>D^n_L = {(x_i, y_i) ∈ D_n | f_split(p, x_i) = yes}</li>
+<li>D^n_R = D_n \ D^n_L</li>
+</ul>
+<p>分裂過程以中性通用問題初始化：</p>
+<blockquote>
+<p>「Based on the provided example, does it belong to the positive class? (yes/no)」</p>
+</blockquote>
+<p>由於 f_split 既未經任務訓練也未被告知目標標籤，初始分割預期不具意義。這是刻意的設計：隱瞞任務特定資訊確保決策 prompt 從訓練資料中衍生而非源於先驗知識。與 TextGrad 從任務特定問題開始不同，ACT 從中性 prompt 出發並透過資料驅動的精煉發現有意義的問題。</p>
+<p><strong>最佳分裂準則</strong>：ACT 透過迭代精煉 NL 問題 p^(k) 來優化每個決策節點，以實現有效的語義分割。過程結合兩種要素：</p>
+<p><strong>(1) 量化不純度評估</strong>：使用標準不純度準則 δ(p^(k))（如加權 Gini 不純度），量化語義分割對類別標籤的分離效果。</p>
+<p><strong>(2) 透過 LLM 的語義純度分析</strong>：量化評估量測類別標籤異質性，但不揭示導致不純度的語義因素。為使這些來源顯式化，ACT 獨立分析每個子節點，透過對比其類別條件子集（正確 vs. 誤分類樣本）。為此，ACT 將預測答案（yes/no）與真實標籤對齊：</p>
+<ul>
+<li>X^n_correct = {(x_i, y_i) ∈ g | y_i = ŷ_g}</li>
+<li>X^n_error = {(x_i, y_i) ∈ g | y_i ≠ ŷ_g}</li>
+</ul>
+<p>這種對齊引入人工的「分支結果↔類別標籤」對應關係（yes→正類， no→負類），但實務證明更有效：LLM 更容易利用以正確/錯誤預測為框架的回饋，而非直接對比兩個分支。</p>
+<p>然後，LLM（f_purity）分析這兩組並識別區分它們的關鍵語義特徵，回傳簡潔、可操作的回饋 s_g。對 D_L 和 D_R 分別執行此分析，獲得針對性回饋 s_DL 與 s_DR。</p>
+<p><strong>最佳分裂搜尋</strong>：每個節點的目標是精煉 prompt p^(k) 以使加權 Gini 不純度 δ(p^(k)) 最小化。定義語義-不純度目標：</p>
+<blockquote>
+<p>L(p^(k)) = f_loss(p^(k), s_DL, s_DR, δ(p^(k)))</p>
+</blockquote>
+<p>其中 f_loss 由 LLM 實例化，根據當前問題、不純度統計與語義回饋，回傳對其局限的自然語言診斷。</p>
+<p>精煉過程透過 <strong>TextGrad</strong> 實現，每次迭代分兩階段：</p>
+<ol>
+<li><strong>引導階段（Guidance）</strong>：TextGrad.feedback(p^(k), L(p^(k))) 生成 NL 編輯指令 ∇_p L(p^(k))</li>
+<li><strong>修訂階段（Revision）</strong>：TextGrad.step(p^(k), ∇_p L(p^(k))) 產生更新的 prompt p^(k+1)</li>
+</ol>
+<p>優化迴圈最多執行 K 步或直至收斂。在所有候選 prompt p^(0), ..., p^(K) 中，選擇訓練不純度最低者 p* = arg min_k δ(p^(k))。</p>
+<p><strong>樹建構</strong>：ACT 遞迴地自頂向下建樹。每個節點的最佳 prompt 經上述流程優化。若結果子集純淨或滿足停止準則（最小節點大小、Gini 低於門檻、最大深度），則創建葉節點並以多數類別標記。</p>
+<h3 id="36-樹的可解釋性36-llmdeterministic">3.6 樹的可解釋性（§3.6 LLM→deterministic）</h3>
+<p>決策樹因其透明的結構與參數，被廣泛認為具可解釋性。得益於淺層決策樹結構與 NL 節點問題，ACT 展現相同的理想屬性。實務上，可解釋性取決於樹深（決策路徑上的問題數量）與問題清晰度。因此，ACT 將樹深限制在 2–4 層以保持決策路徑簡潔，並在訓練期間明確指示 TextGrad 生成簡單問題，限制邏輯子句（and/or）數量至多 L = 2。</p>
+<p><strong>推論階段的確定性退化</strong>：訓練完成後，ACT 推論無需自由形式 LLM 推理——每個輸入從根節點開始，在每個節點由 LLM 回答 yes/no，沿樹走到葉節點即得預測類別。這正是 ai_core §2 所描述的「決策層退化」：訓練時用 LLM 探索語義空間並固化為樹結構，推論時走確定性路徑，完全繞過 LLM 自由形式生成的不確定性。</p>
+<p><strong>prompt 精煉約束</strong>：在 prompt 優化過程中施加額外約束來保持問題清晰可解釋：</p>
+<ul>
+<li>問題必須清晰簡單</li>
+<li>必須包含至少一個與前一版本不同的特徵</li>
+<li>新問題內容必須與當前版本顯著不同</li>
+<li>最多使用 L 個邏輯算子（and/or）</li>
+<li>問題必須僅能以 yes/no 回答</li>
+<li>必須以「(yes/no)?」結尾</li>
+<li>不得使用模糊詞彙（could、might、possibly）</li>
+<li>不得使用空白或佔位標籤</li>
+</ul>
+<h1 id="act代理式分類樹34">ACT：代理式分類樹（3/4）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

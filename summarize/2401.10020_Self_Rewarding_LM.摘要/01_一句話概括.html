@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2401.10020_Self_Rewarding_LM.%E6%91%98%E8%A6%81.html">回 2401.10020_Self_Rewarding_LM.摘要 目錄</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Self-Rewarding LM（自我獎勵語言模型）</strong>：讓同一個模型同時扮演「回應生成器」與「獎勵模型」——用 <strong>LLM-as-a-Judge prompting</strong> 對自己抽樣出的 N=4 個候選回應打 0–5 分，取最高／最低分組成偏好對，再以 <strong>Iterative DPO</strong> 訓練下一代模型；Llama 2 70B 跑三輪後 AlpacaEval 2.0 對 GPT-4 Turbo 勝率由 <strong>9.94% → 15.38% → 20.44%</strong>，超越 Claude 2（17.19%）、Gemini Pro（16.85%）、GPT-4 0613（15.76%），且<strong>獎勵模型本身也一起變強</strong>（與人類偏好的成對準確率 65.1% → 78.7% → 80.4% → 81.7%）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>標準 RLHF 從人類偏好資料訓練一個<strong>凍結的獎勵模型</strong>，再用 PPO 訓練 LLM；DPO 則直接用人類偏好訓練。兩者都被「人類偏好資料的規模與品質」卡住上限，且 RLHF 的獎勵模型一旦訓好就凍結、<strong>無法在 LLM 變強的同時跟著變強</strong>。作者主張：要走向超人類智能體，就需要超人類的回饋訊號；因此不該把獎勵模型與語言模型拆成兩個系統，而應把「獎勵建模」當成<strong>另一項指令遵循任務</strong>併入同一個模型，讓兩種能力互相遷移、共同迭代。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>雙技能設定</strong>：模型同時具備 (1) 指令遵循（對提示生成高品質回應）與 (2) 自我指令創建（生成並評估新的訓練樣本），用 AI Feedback 做自我對齊。</li>
+<li><strong>兩種種子資料</strong>：<strong>IFT</strong>（Open Assistant 人工撰寫的 3,200 筆首輪高品質對話，用 SFT 訓練）＋ <strong>EFT</strong>（1,630 筆訓練／541 筆評估的 LLM-as-a-Judge 資料，輸入是「指令＋回應」，輸出是思維鏈理由＋滿分 5 分的評分）。</li>
+<li><strong>加法式 5 分制評分 prompt</strong>（Figure 2）：相關性、涵蓋度、有用性、清晰度、專業度，各滿足一項加 1 分；先寫 100 字以內理由，最後輸出 <code>Score: &lt;總分&gt;</code>。此 prompt 設計極為關鍵——換成 Li et al. 的「多選品質分桶」式 5 分制，SFT baseline 的成對準確率從 <strong>65.1% 崩到 26.6%</strong>。</li>
+<li><strong>自我指令創建迴圈</strong>：用 8-shot self-instruct（主實驗中由固定的 Llama 2-Chat 70B 生提示）造新提示 → 待訓模型以 T=0.7 抽樣 N=4 個候選回應 → 同一模型當 judge 評分（評 3 次取平均以降變異）→ 取最高分為 winner、最低分為 loser，分數相同則丟棄，組成偏好對。</li>
+<li><strong>迭代序列</strong>：M₁＝在 IFT+EFT 上 SFT；M₂＝用 AIFT(M₁) 的 <strong>3,964 對</strong>做 DPO；M₃＝用 AIFT(M₂) 的 <strong>6,942 對</strong>做 DPO。等同 Xu et al. (2023) 的 Iterative DPO，差別在於<strong>獎勵模型不再是外部固定的，而是模型自己</strong>。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>AlpacaEval 2.0（對 GPT-4 Turbo 勝率）</strong>：M₁ 9.94% → M₂ 15.38% → M₃ 20.44%；M₃ 勝過 Claude 2（17.19%）、Gemini Pro（16.85%）、GPT-4 0613（15.76%）、GPT-3.5 Turbo 0613（14.13%）、LLaMA2 Chat 70B（13.87%），僅次於 GPT-4 0314（22.07%）與 Mistral Medium（21.86%）。</li>
+<li><strong>對戰式評測（GPT-4 評 256 題）</strong>：M₂ vs M₁ ＝ 55.5% : 11.7%；M₃ vs M₂ ＝ 47.7% : 12.5%；M₃ vs SFT baseline ＝ 62.5% : 9.8%。50 題的人類（作者）盲測結果與 GPT-4 判斷一致。</li>
+<li><strong>獎勵建模能力（對 held-out 人類排序）</strong>：成對準確率 SFT baseline 65.1% → M₁ 78.7% → M₂ 80.4% → M₃ 81.7%；Spearman 0.253 → 0.349；Kendall τ 0.233 → 0.324。<strong>注意 M₂、M₃ 完全沒有再吃新的 EFT 資料</strong>，作者推測是「一般指令遵循變強」帶動了 judge 能力。</li>
+<li><strong>MT-Bench</strong>：SFT baseline 6.85 → M₁ 6.78 → M₂ 7.01 → M₃ 7.25；但拆開看，數學／程式／推理只從 3.93 → 4.17，遠小於人文、STEM、角色扮演、寫作類（8.60 → 9.10）的增幅。</li>
+<li><strong>NLP 基準大致持平</strong>（ARC-c 57.40 → M₃ 53.13、MMLU 68.90 → 69.37、GSM8K 56.80 → 57.70），未見嚴重「對齊稅」，但也未見提升。</li>
+<li><strong>消融</strong>：只用 IFT 種子（無 EFT）時模型常無法照格式評分、分數多半塌在 4 分，AIFT 只收得到 541／429 對，效果明顯落後；只加「拿滿分 5 分的正例」做 SFT（11,254 筆）<strong>完全沒有幫助</strong>（29% vs 30% 勝率），必須用偏好對做 DPO。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>作者自陳結果仍屬<strong>初步</strong>：只在單一設定跑了 <strong>3 輪</strong>迭代，迭代的「scaling law」與飽和點未知。</li>
+<li><strong>回應長度隨迭代暴增</strong>（AlpacaEval 平均長度 M₁ 1092 → M₂ 1552 → M₃ 2552 字元），而長度與 GPT-4 判定的品質已知有相關性，因此增益有多少來自長度偏誤並未釐清。</li>
+<li><strong>獎勵駭客（reward hacking）未被排除</strong>：訓練訊號來自語言模型、最終評測也用語言模型（GPT-4），作者明言「是否會發生 reward hacking、在什麼情況下會發生」需要比本文更深的分析。</li>
+<li>在<strong>數學與邏輯推理</strong>類任務上幾乎沒有增益——作者認為本法主要是讓模型更善於<strong>運用既有知識</strong>，而非取得新能力（部分歸因於 Open Assistant 種子提示偏少推理題）。</li>
+<li>完全<strong>未做安全性評估</strong>，安全訓練留待未來。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>對 ai_core <strong>§3.4「治理＝拒絕為預設＋憑證准入」</strong>：本篇是「<strong>接地訊號來源可信度</strong>」這個問題最尖銳的反面教材。ai_core 的憑證准入要求改進迴圈的准入憑證由<strong>外部、與被評者獨立</strong>的驗證器或接地訊號簽發；Self-Rewarding 卻把<strong>簽發者與被簽發者合而為一</strong>——judge 是模型自己，且 judge 會隨著被訓練的策略一起漂移。它的結果確實漂亮，但漂亮本身無法區分「真的變好」與「學會取悅自己的評分函數」；論文自己承認回應長度從 1092 膨脹到 2552 字元、reward hacking 未被排除、且評測者 GPT-4 與訓練獎勵同屬 LLM 家族——這正是**訊號污染（signal contamination）**的教科書形態：迴圈裡沒有任何一個節點是確定性的、可被獨立稽核的。</li>
+<li><strong>與庫中對照篇的明確分野</strong>（同為自我改進迴圈，差別全在獎勵訊號從哪來）：
+<ul>
+<li><strong>2203.14465 STaR</strong>：接地在<strong>外部標準答案</strong>——rationale 只有在推導出正確答案時才進訓練集，過濾器是確定性字串比對，模型騙不了它。</li>
+<li><strong>2110.14168 GSM8K verifiers</strong>／<strong>2305.20050 步級過程監督</strong>：接地在<strong>外部驗證器</strong>（獨立訓練的 verifier、人工標註的步級標籤），刻意讓評分者與生成者分離；2305.20050 更直接示範「過程監督比結果監督更能抵抗獎勵駭客」。</li>
+<li><strong>2310.02304 STOP</strong>：迴圈由<strong>外部 utility 函數</strong>接地，而且該文明白記錄了改進器如何嘗試繞過沙箱、關掉安全旗標——把 reward hacking 當成必須被監控的一級風險來寫。</li>
+<li><strong>2310.01798（LLM 無法自我修正推理）</strong>：反證——沒有外部訊號時，模型的「自我修正」在推理任務上不僅無效還可能倒退。Self-Rewarding 在數學／推理類幾乎零增益，恰好與這條反證彼此印證：自我獎勵能提升的是<strong>風格與偏好對齊</strong>（有大量表面訊號可循），碰到<strong>有客觀對錯</strong>的任務就失靈。</li>
+<li>換言之，光譜的一端是「外部確定性接地」（STaR、verifiers），另一端是「純自我接地」（Self-Rewarding），2310.01798 標出後者的失效邊界，STOP 標出後者的風險形態。</li>
+</ul>
+</li>
+<li>實務啟示：LLM-as-a-Judge 可以是<strong>廉價高頻的篩選器</strong>（§2 的資產消費者一側），但<strong>不該被當作固化資產的驗證憑證</strong>（§3.6）。本篇的 prompt 敏感性數據（65.1% vs 26.6%，只換了 5 分制的措辭）也是強力提醒——把 judge 當函數用時，它的行為對表述形式極度脆弱，正是 ai_core 主張「包成可靠函數、逐步剃除 LLM 依賴」時該優先加護欄／換確定性檢查的位置。</li>
+<li>主題 <strong>7 自我改進／反思迴圈</strong>。歸 <strong>I 類</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../../translate/2401.10020_Self_Rewarding_LM.zh-TW.html"><code>../translate/2401.10020_Self_Rewarding_LM.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

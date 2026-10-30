@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>BoxWorld: Let World Engines Control and Video Generators Render 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zike Wu、Ahmed Hatem、Chintan Trivedi、Wallace Michel Pinto Lira、Xuebin Qin、Lele Wang、Renjie Liao</p><p>日期：2026-10-26（v1，cs.CV）</p><p>arXiv：2610.36371</p><p><a href="https://arxiv.org/html/2610.36371v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="boxworld-let-world-engines-control-and-video-generators-render-重點摘要">BoxWorld: Let World Engines Control and Video Generators Render 重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>BoxWorld 把互動規則交給外部引擎，以物件框、外觀與動態狀態驅動影片生成器；在作者的配對互動測試中，渲染器較能表現已指定的事件與禁止結果，但這不代表它自行推斷了世界規則。</p>
+<h2 id="架構與訓練">架構與訓練</h2>
+<p>使用者先指定互動規則，coding agent 依模板建立 Box World Engine；互動時引擎接收動作、更新物件與全域狀態，並把每個物件的二維框、持續屬性及即時狀態送至緩衝區。渲染器非同步讀取最新狀態，以生成歷史與當前狀態自迴歸產生影片。引擎可替換為能輸出相同介面的現有引擎，但其轉移規則與結果由外部系統決定。（<a href="https://arxiv.org/html/2610.36371v1#S3.SS1">§3.1～3.2</a>、<a href="https://arxiv.org/html/2610.36371v1#A2">附錄 B</a>）</p>
+<p>渲染器在每幀以空間遮罩 cross-attention 將物件狀態連到框內視覺 token；時間一致性由原本的因果 self-attention 處理。作者以 LongLive 初始化並分三階段訓練：（<a href="https://arxiv.org/html/2610.36371v1#S3.SS3">§3.2～3.3</a>）</p>
+<ol>
+<li>在開放領域影片訓練物件框與屬性的 grounding 模組，凍結骨幹。</li>
+<li>在遊戲影片訓練 LoRA，使用真實歷史幀學習物件狀態切換。</li>
+<li>以自身生成歷史作 rollout distillation，補足訓練時真實歷史與推論時自生成歷史的差距，恢復少步生成。</li>
+</ol>
+<p>狀態標註由影片描述、偵測、追蹤及逐物件文字描述自動取得，訓練渲染器不需要動作配對互動紀錄。第二階段使用線上收集的 4,000 個短遊戲片段；本文未以此聲稱模型自影片可靠學得完整真實世界物理。（<a href="https://arxiv.org/html/2610.36371v1#S3.SS4">§3.4</a>、<a href="https://arxiv.org/html/2610.36371v1#S4.SS1">§4.1</a>）</p>
+<h2 id="作者自報互動控制">作者自報：互動控制</h2>
+<p>PairedStateBench 含 16 個場景家族的 87 個案例，其中有 37 對共用場景及初始布局、但動作和預期結果不同的分支。兩個模型分別檢視影片時間序列 contact sheet，522 個影片中 39 個判斷有分歧，交由人工複核。評分與引擎參考狀態比較：Trigger 衡量應發事件，Suppress 衡量禁止結果未出現，Paired-CF 要求一對分支均符合，Task 要求同一影片的階段、禁止狀態、順序及最終結果全部正確。（<a href="https://arxiv.org/html/2610.36371v1#A3.SS2">附錄 C.2</a>）</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th style="text-align:right">Trigger</th>
+<th style="text-align:right">Suppress</th>
+<th style="text-align:right">Paired-CF</th>
+<th style="text-align:right">Task</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BoxWorld</td>
+<td style="text-align:right">92.2%</td>
+<td style="text-align:right">90.5%</td>
+<td style="text-align:right">97.3%</td>
+<td style="text-align:right">83.9%</td>
+</tr>
+<tr>
+<td>LingBot-v1</td>
+<td style="text-align:right">53.5%</td>
+<td style="text-align:right">11.1%</td>
+<td style="text-align:right">16.2%</td>
+<td style="text-align:right">25.3%</td>
+</tr>
+<tr>
+<td>LingBot-v2（公開的相機控制版本）</td>
+<td style="text-align:right">21.3%</td>
+<td style="text-align:right">63.5%</td>
+<td style="text-align:right">10.8%</td>
+<td style="text-align:right">11.5%</td>
+</tr>
+<tr>
+<td>LongLive</td>
+<td style="text-align:right">10.7%</td>
+<td style="text-align:right">50.8%</td>
+<td style="text-align:right">13.5%</td>
+<td style="text-align:right">8.0%</td>
+</tr>
+</tbody>
+</table>
+<p>這些是作者在自建基準的整體數值。<strong>輸入並不對等</strong>：BoxWorld 得到引擎輸出的逐物件框與動態狀態；LongLive 只得全域提示，LingBot 使用各自公開介面可接受的初始影格、動作或相機條件。LingBot 的 oracle 版本另獲以文字描述已解析的互動結果，Paired-CF 均為 <code>16.2%</code>；文字並不等同逐幀物件狀態。此比較衡量整套介面與渲染系統，不能單獨證明渲染骨幹更能自主推理規則。（<a href="https://arxiv.org/html/2610.36371v1#S4.SS1">§4.1～4.2、表 1</a>、<a href="https://arxiv.org/html/2610.36371v1#A3.SS2">附錄 C.2</a>）</p>
+<h2 id="消融與公開基準">消融與公開基準</h2>
+<p>三階段共用相同引擎狀態序列的測試中，Suppress 從階段 1 的 <code>60.3%</code> 提升到階段 2 的 <code>85.7%</code>、階段 3 的 <code>90.5%</code>；Task 為 <code>49.4% → 64.4% → 83.9%</code>。將動態狀態換成靜態描述，Trigger <code>92.2% → 42.5%</code>、OnTime <code>91.2% → 16.1%</code>，支持所測渲染器需要事件狀態訊號。（<a href="https://arxiv.org/html/2610.36371v1#S4.SS4">§4.4、表 2</a>、<a href="https://arxiv.org/html/2610.36371v1#A3.SS5">附錄 C.5</a>）</p>
+<p>VBench 評估中，作者報告 BoxWorld 階段 3 與 LongLive 均為 <code>20.7 FPS</code>，Total <code>83.76</code> 對 <code>84.87</code>，Semantic <code>79.54</code> 對 <code>76.47</code>；這不是所有影片品質指標皆更高。此測試的物件狀態來自對同提示 LongLive 生成影片再套用標註流程，不是從未知互動中由 BoxWorld 引擎自主發現。YouTube-VIS 使用真實軌跡框與逐軌描述；先前方法數值引用既有結果，須保留評估協定差異。（<a href="https://arxiv.org/html/2610.36371v1#S4.SS3">§4.3</a>、<a href="https://arxiv.org/html/2610.36371v1#A3.SS3">附錄 C.3～C.4</a>）</p>
+<h2 id="限制">限制</h2>
+<p>作者指出，每個新規則系統都需要引擎實作，所報模板生成的引擎為 <code>205～714</code> 行程式、中位數 <code>351</code> 行；互動結果的正確性取決於規則與引擎。框和文字狀態不足以精確指定複雜幾何、關節運動與大量接觸；自動追蹤與標註的漏失也可能造成事件缺漏或身分交換。生成影片具有視覺物理效果，不等於經驗證的物理模擬。（<a href="https://arxiv.org/html/2610.36371v1#A2">附錄 B</a>、<a href="https://arxiv.org/html/2610.36371v1#A4">附錄 D</a>）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.36371_BoxWorld.zh-TW.html">BoxWorld 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

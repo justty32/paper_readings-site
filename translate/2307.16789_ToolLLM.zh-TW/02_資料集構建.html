@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_資料集構建 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2307.16789_ToolLLM.zh-TW.html">回 2307.16789_ToolLLM.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="2-資料集構建">2. 資料集構建</h2>
+<p>本節介紹 ToolBench 的三階段構建流程：API 收集（§2.1）、指令生成（§2.2）、解答路徑標註（§2.3）。所有流程均基於 ChatGPT（gpt-3.5-turbo-16k），僅需極少人工監督，且可輕易擴展至新 API。</p>
+<h3 id="21-api-收集">2.1 API 收集</h3>
+<p><strong>RapidAPI Hub</strong>：RapidAPI 是連接開發者與數千個真實世界 API 的領先 API 市場，簡化了將多樣化服務整合進應用程式的流程。開發者僅需註冊一組 RapidAPI 金鑰即可測試並串接各種 API。RapidAPI 上的所有 API 可分為 49 個粗粒度類別（如運動、金融、天氣），此外還提供 500 多個細粒度分類，稱為 collection（如中文 API、資料庫 API），同一 collection 內的 API 通常有相似功能或目標。</p>
+<p><strong>RapidAPI 的層級結構</strong>：如圖 3 所示，每個 tool（工具）可能由多個 API 組成。針對每個 tool，我們爬取：工具名稱與描述、host 的 URL，以及該工具下所有可用 API；針對每個 API，我們記錄其名稱、描述、HTTP 方法、必要／選填參數、request body、可執行的 API 呼叫程式碼片段，以及一個範例 API 回應。這些豐富詳盡的元資料是 LLM 理解並有效使用 API 的寶貴資源，即便在零樣本情境下亦然。</p>
+<p><strong>API 過濾</strong>：我們最初從 RapidAPI 收集了 10,853 個工具（53,190 個 API），但這些 API 的品質與可靠性參差不齊——部分 API 疏於維護，例如回傳 404 或其他內部錯誤。為此我們執行嚴謹的過濾流程（細節見附錄 A.1），確保 ToolBench 最終的工具集可靠且可用。最終保留 <strong>3,451</strong> 個高品質工具（<strong>16,464</strong> 個 API）。</p>
+<h3 id="22-指令生成">2.2 指令生成</h3>
+<p>不同於既有工作，我們特別聚焦指令生成的兩個關鍵面向：(1) <strong>多樣性</strong>：訓練 LLM 應付廣泛的 API 使用情境，從而提升其泛化性與穩健性；(2) <strong>多工具使用</strong>：反映真實世界常需多工具交互運作的情況，提升 LLM 的實務適用性與靈活度。為此，我們不從零腦力激盪指令再搜尋相關 API，而是先採樣不同的 API 組合，再為其構思各種指令。</p>
+<p><strong>為 API 生成指令</strong>：定義整個 API 集合為 𝕊API，每次從中採樣少量 API：𝕊Nsub = {API1, ⋯, APIN}。我們提示 ChatGPT 理解這些 API 的功能，接著生成 (1) 涉及 𝕊Nsub 中 API 的可能指令，以及 (2) 每條指令對應的相關 API 子集。prompt 由三部分組成：(1) 任務的一般性描述；(2) 𝕊Nsub 中每個 API 的完整文件，幫助 ChatGPT 理解其功能與相互關係；(3) 三個由人類專家撰寫的、示範理想指令生成方式的 in-context seed examples——單工具與多工具情境各準備 12／36 個多樣化 seed，每次隨機抽三個。</p>
+<p><strong>針對不同情境的採樣策略</strong>：如圖 3 所示，對單工具指令（I1），我們逐一遍歷每個工具、為其 API 生成指令。而對多工具情境，由於 RapidAPI 中不同工具之間的連結本就稀疏，若直接從整個工具集隨機採樣工具組合，往往會湊出一堆彼此無關、無法被單一指令自然涵蓋的工具。為緩解此稀疏性問題，我們利用 RapidAPI 的層級資訊：由於同一 RapidAPI 類別或 collection 內的工具通常在功能與目標上彼此相關，我們從同一類別／collection 中隨機挑選 2–5 個工具、每個工具最多採樣 3 個 API 來生成指令，分別稱為**類別內多工具指令（I2）**與 <strong>collection 內多工具指令（I3）</strong>。經嚴謹的人工評估，這種方式生成的指令已具有涵蓋各種實務情境的高度多樣性（並用 Atlas 做視覺化佐證）。</p>
+<p>生成初始指令集後，我們進一步過濾掉相關 API 存在幻覺（即不存在於 𝕊Nsub 中）的指令。最終收集近 20 萬筆合格的（指令， 相關 API）配對，其中 I1、I2、I3 分別為 87,413、84,815、25,251 筆——這些配對也用於 §3.1 訓練 API 檢索器。</p>
+<h3 id="23-解答路徑標註">2.3 解答路徑標註</h3>
+<p>如圖 4 所示，給定指令，我們提示 ChatGPT 搜尋一個有效的動作序列 {a1, ⋯, aN}。這個多步決策過程被鑄成 ChatGPT 的多輪對話：在每一輪 t，模型依先前互動生成動作 at，其中 r* 表示真實 API 回應。每個 at 需指定「Thought（想法）」、要用哪個 API、以及該 API 的具體參數，格式為「Thought: ⋯, API Name: ⋯, Parameters: ⋯」。</p>
+<p>為利用 ChatGPT 的函式呼叫功能，我們把每個 API 當作一個特殊函式，將其 API 文件餵進 ChatGPT 的 function 欄位，讓模型理解如何呼叫該 API。對每條指令，我們把所有採樣到的 API 𝕊Nsub 都作為可用函式餵給 ChatGPT。為讓 ChatGPT 能完整結束一個動作序列，我們額外定義兩個函式：「Finish with Final Answer（以最終答案結束）」與「Finish by Giving Up（放棄結束）」——前者帶有一個對應原指令詳細最終答案的參數；後者則用於「所提供的 API 在多次呼叫嘗試後仍無法完成原指令」的情況。</p>
+<p><strong>深度優先搜尋決策樹（DFSDT）</strong>：在前期研究中，我們發現 CoT 或 ReAct 存在固有限制：(1) <strong>錯誤傳播</strong>：一個錯誤動作可能讓後續錯誤層層累積，使模型陷入錯誤迴圈，例如持續以錯誤方式呼叫某 API 或產生 API 幻覺；(2) <strong>探索受限</strong>：CoT 或 ReAct 只探索一個可能方向，導致對整個動作空間的探索有限。因此即便 GPT-4 也常找不到有效解答路徑，讓標註工作困難重重。</p>
+<p>為此，我們提出構建一棵決策樹以擴大搜尋空間、提高找到有效路徑的機率。如圖 4 所示，我們的 DFSDT 讓模型能評估不同的推理路徑，選擇 (1) 沿有希望的路徑繼續前進，或 (2) 呼叫「Finish by Giving Up」放棄現有節點、展開新節點。展開節點時，為使子節點多樣化、擴大搜尋空間，我們把先前已生成節點的資訊提供給 ChatGPT，並明確鼓勵模型生成有別於既有節點的新節點。搜尋過程上，我們偏好深度優先搜尋（DFS）而非廣度優先搜尋（BFS），因為只要找到一條有效路徑標註即可完成，用 BFS 將耗費過多 OpenAI API 呼叫（更多細節見附錄 A.8）。</p>
+<p>我們對所有生成的指令執行 DFSDT，只保留那些通過的解答路徑。最終生成 <strong>126,486</strong> 筆（指令， 解答路徑）配對，用於 §3.2 訓練 ToolLLaMA。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

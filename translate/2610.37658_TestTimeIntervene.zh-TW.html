@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>When Should We Intervene at Test Time? 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jiahao Zhang、Xinling Wen、Liangliang Li、Yu Chen</p><p>日期：2026-10-27（v1，cs.LG）</p><p>arXiv：2610.37658</p><p><a href="https://arxiv.org/html/2610.37658v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="何時應在測試階段介入">何時應在測試階段介入？</h1>
+<h2 id="摘要與第-1-節問題">摘要與第 1 節：問題</h2>
+<p>測試階段調整可以改善分布改變後的預測，也可能傷害另一批資料。作者以 batch normalization（BN）更新與影像水平翻轉為例：整體平均準確率無法告訴部署者何時該用哪個規則。PORTAL 利用少量目標標籤，在候選預測中選擇、決定查詢哪個輸入，並決定何時停止。（<a href="https://arxiv.org/html/2610.37658v1#S1">摘要與 §1</a>）</p>
+<h2 id="第-2-節共享標籤與介入選擇">第 2 節：共享標籤與介入選擇</h2>
+<p>每批的候選含未改動的現有模型及若干介入規則；候選的當批預測在取得當前標籤前固定。資料分成查詢集與獨立部署集，角色在資料流中固定；每次查詢一個完整類別標籤，就可同時評估所有候選在該輸入的對錯。以部署集所有標籤挑最佳候選的 batch oracle 僅為評估參考。（<a href="https://arxiv.org/html/2610.37658v1#S2.SS1">§2.1</a>）</p>
+<p>系統依所有候選的預測類別組合將輸入分層，使用 Dirichlet 先驗與已取得的標籤估計各層類別機率，再依部署集各層比例計算候選預期準確率與共同變異。共享錯誤因此不被當成獨立資訊。核心假設是同一層的查詢與部署輸入共享條件類別分布；重用歷史計數還需該分布隨時間維持穩定。（<a href="https://arxiv.org/html/2610.37658v1#S2.SS2">§2.2</a>）</p>
+<p>控制器先檢查剩餘可用標籤能否讓競爭者超過目前領先者；若可以，選擇預期最有助決策的層查詢。單一查詢無法立即改變領先者時，改以可達競爭者的成對變異減量指引。當其他候選在剩餘預算下無法勝出，或額外標籤的價格已高於預期改善上界，就停止。當前決策結束後，同一批標籤亦可訓練供後續批次使用的候選。（<a href="https://arxiv.org/html/2610.37658v1#S2.SS3">§2.3</a>）</p>
+<h2 id="第-3-節需要多少證據">第 3 節：需要多少證據</h2>
+<p>在預測模式與目標權重固定、同層查詢與部署標籤同分布的理論實驗裡，候選的共同正確或共同錯誤不改變兩者的成對差；只有預測不同的層提供區分資訊。作者的資訊下界假設去除完全相同的候選後有唯一最佳者、每層查詢標籤條件獨立，且程序對允許的分布一致地以至少 <code>1−δ</code> 機率選出最佳候選。局部小差距分析另要求類別機率與查詢比例遠離零；先令錯誤機率趨零，再令差距趨小，且令步距參數趨零時，未設上限、最佳化精確或漸近精確的先導與新樣本確認程序達局部帶正分配下界的主導係數；另需 active coverage 及 allocation floor 不活躍，才等於無約束資訊下界。相近候選一般需要更多標籤，成對共享誤差則可降低需辨識的變異。（<a href="https://arxiv.org/html/2610.37658v1#S3.SS1">§3.1</a>、<a href="https://arxiv.org/html/2610.37658v1#A2.SS1">附錄 B.1</a>）</p>
+<p>定理 1 的停止上界是模型下對當前批次的充分條件：獨立正 Dirichlet 先驗、類別標籤似然及固定目標權重成立時，未來查詢可帶來的期望準確率改善受完美資訊價值上界限制；若每個可行的剩餘標籤配置都無法使競爭者勝出，則這些標籤對當批選擇的期望準確率價值為零。它不是在任意分布漂移或偏差查詢下的保證。（<a href="https://arxiv.org/html/2610.37658v1#S2.SS3">§2.3</a>、<a href="https://arxiv.org/html/2610.37658v1#A4.SS2">附錄 D.2</a>）</p>
+<p>作者另用固定查詢池的無放回抽樣計算有限預算下的選錯機率。簡化的常態估計模型顯示：若查詢偏差足以反轉候選優勢的符號，增加標籤可能使錯誤選擇更確定，而非修復偏差。（<a href="https://arxiv.org/html/2610.37658v1#S3.SS2">§3.2</a>）</p>
+<h2 id="第-4144-節介入風險與固定規則">第 4.1–4.4 節：介入風險與固定規則</h2>
+<p>在 Photo 訓練的 ResNet-50 與 PACS 類別分塊到達、batch size 64 的設定，作者自報固定 BN+flip 準確率 22.58%，未改動模型為 50.88%，PORTAL 為 51.28%；結果平均三個到達順序。BN+flip 的淨批次傷害為 32.41 個百分點，PORTAL 為 0.34 個百分點。（<a href="https://arxiv.org/html/2610.37658v1#S4.SS1">§4.1，圖 2</a>）</p>
+<p>ImageNet-C 完整 75 萬張影像的 shared-prefix 變體中，EATTA 重用選擇標籤作已提交更新，作者自報錯誤率由 50.14% 降至 49.55%，15 種 corruption 均改善；全部批次平均查詢前綴 3.999 個標籤。試驗更新另可取得未包含在該數字的標籤，因此不能把 3.999 當成完整標註成本。（<a href="https://arxiv.org/html/2610.37658v1#S4.SS2">§4.2</a>）</p>
+<p>在 CIFAR-10-C／100-C，固定 BN+flip 分別達 79.65%／54.32%，PORTAL 達 79.26%／53.87%。相對 Top-KL 選擇，作者報使用標籤分別少 91.3%／94.6%；強固定規則在此例以零標籤取得更高平均準確率。對 brightness 與 JPEG 片段，作者的無放回抽樣計算顯示，即使查詢 75 個標籤，仍有約 24～39% 的機率選到較差輸出。（<a href="https://arxiv.org/html/2610.37658v1#S4.SS3">§4.3–4.4</a>）</p>
+<h2 id="第-4546-節停止與歷史過時">第 4.5–4.6 節：停止與歷史過時</h2>
+<p>四候選 PACS、每批三個標籤額度的設定下，PORTAL 各自維持歷史時以平均 140.0 個標籤達 59.35%，信心停止用 392.8 個達 59.39%。在共享起始證據的對照中，兩者準確率相同，分別使用 85.6 與 392.8 個標籤；主要節省來自剩餘預算無法改變勝出者。這些是指定價格、預算與候選組合的結果。（<a href="https://arxiv.org/html/2610.37658v1#S4.SS5">§4.5，表 3</a>）</p>
+<p>合成資料流固定候選預測與各層比例，但在層內反轉標籤分布。作者自報累積歷史的後期準確率由穩定時的 72.21% 降至突變後 22.54%；以 0.9 衰減舊計數為 67.66%。這顯示追蹤預測模式比例本身無法偵測模式內標籤關係改變。（<a href="https://arxiv.org/html/2610.37658v1#S4.SS6">§4.6</a>）</p>
+<p>在相同標籤上限下，作者重建的指數加權（EW）選擇器作比較；兩模式合成資料流以 120 標籤上限，防護選擇器在突變後高 9.52 個百分點、漸變後高 4.87 個百分點，十批內恢復比例分別為 0.92、0.80。300 個隱藏模式的稀疏設定中，100 標籤下反覆變化三次的恢復比例為 0.685／0.798／0.642；160 標籤變體同時改了預算與設定，最後一次為 0.893，仍低於每次 0.90 的目標。（<a href="https://arxiv.org/html/2610.37658v1#S4.SS6">§4.6，表 4</a>）</p>
+<h2 id="第-4748-節用標籤學未來候選">第 4.7–4.8 節：用標籤學未來候選</h2>
+<p>PACS 五個資料流順序下，作者自報固定 BN+flip 為 59.68%；PORTAL 選擇已學習及固定候選後達 <code>72.64±1.05%</code>，其學習候選若一律使用為 73.03%。所有學習政策每個資料流共用 393 個標籤，PORTAL 平均 70.8 個用於當前決策，這些標籤也用於日後訓練；因此 70.8 不是總標籤成本。（<a href="https://arxiv.org/html/2610.37658v1#S4.SS7">§4.7，表 5</a>）</p>
+<p>在保留或撤銷一次更新的配對實驗，作者報保留更新使當批增加 0.23 個百分點，但下一批準確率改變 −0.20 個百分點。當前較好不必然代表後續較好。（<a href="https://arxiv.org/html/2610.37658v1#S4.SS8">§4.8</a>）</p>
+<h2 id="第-5-節結論與界限">第 5 節：結論與界限</h2>
+<p>作者將候選品質、選擇證據與跨批更新分開處理：共享標籤可減少重複比較，停止規則節省對當前決策無用的標籤，歷史與週期檢查可協助因應變化。有效性受候選集合、查詢與部署分布關係、標籤預算及到達順序限制；合成漂移結果與有限影像基準不能直接當成所有部署場景的保證。（<a href="https://arxiv.org/html/2610.37658v1#S5">§5</a>、<a href="https://arxiv.org/html/2610.37658v1#A23.SS7">附錄 W.7</a>）</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2610.37658_TestTimeIntervene.%E6%91%98%E8%A6%81.html">PORTAL 摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

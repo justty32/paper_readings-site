@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2509.07665_DeepGraphLog.zh-TW.html">回 2509.07665_DeepGraphLog.zh-TW 目錄</a>　<a href="02_DeepGraphLog_%E6%A1%86%E6%9E%B6.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>神經符號 AI（NeSy）旨在整合神經網路的統計優勢與符號推理的可解釋性和結構。然而當前 NeSy 框架（如 <strong>DeepProbLog</strong>）強制一個<strong>固定流向</strong>：符號推理永遠跟在神經處理之後。這限制了它們對複雜相依關係的建模能力，尤其在圖這類不規則資料結構上。本文提出 <strong>DeepGraphLog</strong>——一個以<strong>圖神經謂詞（Graph Neural Predicates）<strong>擴展 ProbLog 的新 NeSy 框架。DeepGraphLog 支援</strong>多層神經-符號推理</strong>，允許神經與符號元件以<strong>任意順序分層</strong>。不同於無法以神經方法做符號推理的 DeepProbLog，DeepGraphLog <strong>把符號表示視為圖</strong>，使其能被圖神經網路（GNN）處理。我們在<strong>規劃、帶遠監督的知識圖譜補全、GNN 表示力</strong>等任務上展示其能力，結果顯示 DeepGraphLog 能有效捕捉複雜的關係相依，克服既有 NeSy 系統的關鍵限制，並把 NeSy 的適用範圍拓展到圖結構領域，提供更具表示力與彈性的神經-符號整合框架。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>NeSy 旨在把學習與推理整合進統一框架。多數現有 NeSy 系統用神經元件處理子符號（subsymbolic）資料，再把得到的符號輸出傳給推理模組——形成固定的 <strong>subsymbolic→neural→symbolic</strong> 結構。</p>
+<p>此結構的主要限制是<strong>推理時神經與符號互動受限</strong>：神經網路通常只做感知、不能直接對不完整的符號資料運算；同時符號模組也無法利用神經模型學到的內部表示，限制了整合推理。</p>
+<p>但許多任務要求<strong>迭代推理</strong>：符號表示被神經元件反覆精煉。推理可從不完整符號輸入開始，被神經模組精煉成新的符號形式——產生 <strong>symbolic→neural→symbolic</strong> 流。要在此設定中學習，需神經與符號元件<strong>全程可微</strong>，讓梯度跨多階段傳播。</p>
+<p>圖 1 以 Blocks World 任務（為簡化，目標是移動單一方塊）呈現兩種推理範式：(a) <strong>subsymbolic→neural→symbolic</strong>：視覺輸入經神經網路抽取符號關係（如 <code>on</code>、<code>next_to</code>），再交符號模組判斷 <code>legal_move(a)</code> 是否有效；(b) 仍從子符號輸入開始，但推理<strong>分多個交替階段展開</strong>：神經元件不只在感知層、也作用在中間符號結構（<code>on</code>、<code>next_to</code>）上推更高層關係（<code>move(a)</code>），再供符號模組進一步推理。(b) 凸顯傳統 NeSy 的限制：<strong>缺乏對「神經與符號跨多步互動的遞迴、分層推理」的支援</strong>。允許符號表示被神經推理動態精煉，便能在知識不完整時仍有效推理。</p>
+<p>克服此限制需要「能對符號結構（常不完整、關係性、不規則）推理」而非只處理原始子符號輸入的神經元件——這促成使用 <strong>GNN</strong>（結構化學習與神經式推理的強力架構，擅長建模圖結構資料，適合在動態符號表示上學習與推理）。然而 GNN 尚未被深度整合進 NeSy 以支援多層、雙向的神經-符號互動。</p>
+<p>為此提出 <strong>DeepGraphLog</strong>：在一個完全宣告式的語言中整合 GNN 與符號推理。它建立在 <strong>DeepProbLog</strong>（用<strong>神經謂詞</strong>把神經網路接到機率邏輯程式）之上，把此概念擴展為<strong>圖神經謂詞</strong>——不只處理子符號資料，還接受圖結構，使推理可發生在模型的<strong>任一層</strong>。</p>
+<p><strong>主要貢獻</strong>：(i) 新的神經符號語言 DeepGraphLog，把圖神經謂詞整合進機率邏輯程式語言 ProbLog，讓神經與符號元件在 NeSy 模型的多個層級間<strong>雙向互動</strong>;(ii) GNN 的新學習設定，支援<strong>弱監督學習與約束整合</strong>;(iii) 一組實驗，展示其在「圖學習＋結構化推理」任務上的彈性與優勢，凸顯解決現有 NeSy 無法處理之問題的潛力。</p>
+<h2 id="2-預備知識">2. 預備知識</h2>
+<p><strong>圖</strong>：有向、多關係、帶標籤的圖是三元組 (V, E, ℓ)——頂點集、帶標籤邊集（同一對頂點間可有多條帶標籤邊）、與把頂點標籤子集指派給每個頂點的函數。</p>
+<p><strong>邏輯程式</strong>：項（term）是常數、變數或結構項；原子（atom）是 <code>p(t1,…,tn)</code>（p 為謂詞符號）；文字（literal）是原子或其否定；不含變數即 ground。替換（substitution）把項指派給變數；兩表達式可合一（unify）若存在替換使其相等（假設變數域有限，故可能的 ground 替換有限）。規則 <code>head :- body</code>（<code>:-</code> 為蘊涵、逗號為合取）；空 body 即<strong>事實</strong>。邏輯程式是規則集。可能世界（possible world）是所有 ground 原子的子集；滿足規則的 ground 實例＝「body 全真則 head 真」；滿足程式所有規則即為其模型。若每個模型都滿足某 ground 原子 a，則 a 是程式的邏輯後果。<strong>最小模型</strong>（依集合包含最小者）＝所有邏輯後果的集合，即唯一最小模型。</p>
+<p><strong>邏輯程式中的圖</strong>：若只看一元與二元謂詞、且無函數符號，<strong>一個可能世界可自然解讀為一張圖</strong>——常數＝頂點；每個二元 ground 原子 <code>r(a,b)</code>＝從 a 到 b、標籤為 r 的有向邊；每個一元 ground 原子＝頂點標籤。邊的方向在 GNN 訊息傳遞時重要（沿有向邊從源到目標傳播）；若要當無向處理，須同時含 <code>r(a,b)</code> 與 <code>r(b,a)</code> 以保雙向訊息流。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

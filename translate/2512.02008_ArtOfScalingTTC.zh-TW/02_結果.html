@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_結果 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2512.02008_ArtOfScalingTTC.zh-TW.html">回 2512.02008_ArtOfScalingTTC.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="3-結果">3. 結果</h2>
+<h3 id="31-beam-search-呈現反向或零擴展">3.1 Beam search 呈現反向或零擴展</h3>
+<p>Short-horizon 與 non-reasoning 模型上 beam search 展現一致的 inverse-scaling：beam size N 增大→正確率單調下降（Figure 1）。Short-horizon 模型（R1, QwQ-32B）在 N&gt;2 時正確率急遽下降；non-reasoning 模型也有較溫和的下降趨勢。Long-horizon 模型（GPT-OSS-120B, Qwen3-32B）也無法從 beam 擴展中受益——正確率曲線持平或下降。由於總 token 消耗隨 beam 寬度增加，這是明確的 inverse compute scaling。</p>
+<p><strong>發現：Beam search 在 AIME/GPQA 等推理資料集上，效能隨 beam size 增加而下降或持平。</strong></p>
+<h3 id="32-trace-長度與品質的相關性">3.2 Trace 長度與品質的相關性</h3>
+<p>為理解 FFS/LFS 的長度假設（&quot;短更好&quot; vs &quot;長更好&quot;），依 trace 長度區間×問題難度報告正確率（Table 1）。關鍵考量是問題難度與 trace 長度混淆：短 trace 通常來自簡單問題、長 trace 對應困難問題。為緩解此混淆，僅分析同時有短和長 trace 可用的任務。</p>
+<p><strong>Short-horizon 模型</strong>（R1, QwQ-32B, DAPO-32B）：對給定難度，短 trace 比長 trace 更可能正確——&quot;shorter is always better&quot;。
+<strong>Long-horizon 模型</strong>（GPT-OSS-120B, Qwen3-32B, R1-32B）：簡單題短好、困難題長好——&quot;shorter is better for easy, longer is better for hard&quot;。
+<strong>Non-reasoning 模型</strong>（Qwen3-235B, DeepSeek-Chat）：也呈現 short-horizon 行為。
+<strong>DAPO-32B 長度偏差程度接近 R1</strong>，DAPO 宣稱的 GRPO 偏差修正效果有限。</p>
+<h2 id="4-分析">4. 分析</h2>
+<p>FFS-k@N 與 LFS-k@N 在不同 k、N 值上跨模型的行為（Figures 4-5）。</p>
+<p><strong>LFS 永遠劣於 MV</strong>：對 LFS 家族，最優效能總是在 k 大（即 k=N）時達成——而 k=N 就是 MV@N，消耗相同 tokens 但 LFS 用最長 trace 過濾一致降低正確率。</p>
+<p><strong>FFS 更細緻</strong>：對所有模型類型，k 增加時效能提升（同時消耗更多 tokens）；但對固定 k 的 N 行為不同。Short-horizon 模型上更大 N 總是最好的（更高效能、更少 token）；Long-horizon 和非推理模型則存在效能與計算的權衡——但調節方向相反：long-horizon 要縮小 N 換效能（等同 simple decoding）、非推理要放大 N。</p>
+<h2 id="5-處方">5. 處方</h2>
+<p>決策矩陣（Table 2）：最優 TTS 策略取決於模型家族×計算預算的組合（與難度無關）。</p>
+<p><strong>Short-horizon</strong>：低預算 → FFS-k@N, k=1, N 大；高預算 → MV@N, N 大。因短 trace 永遠較好、FFS 隨 k 增加在正確率與計算成本上均改善、效能隨 N 增加而提升。</p>
+<p><strong>Long-horizon</strong>：低預算 → Simple Decoding；高預算 → MV@N, N 大。因 LFS@N 隨 N 改善、固定 N 時效能隨 k 增加、低預算下 N=k=1 即 simple decoding。有趣的是，雖然不同難度下的 trace 偏好不同（簡單題短好/困難題長好），最優策略最終與難度無關。</p>
+<p><strong>Non-reasoning</strong>：與 short-horizon 相同——低預算 FFS-1@N、高預算 MV@N。</p>
+<p><strong>發現：最優 TTS 策略與任務難度無關。</strong></p>
+<h2 id="6-結論">6. 結論</h2>
+<p>我們的大規模研究證明沒有單一最優 TTS 策略可增強 LLM 推理。最有效的方法取決於模型訓練方法、問題難度與可用計算預算之間的關鍵交互。不同模型家族展現不同行為：short-horizon 模型一致偏好簡短 trace、long-horizon 模型對難題受益於更長更慎重的推理（而簡單題偏好簡潔）。關鍵的是，beam search 對複雜推理一致證明為次優。我們的工作為從業者提供了實用框架，強調最大化效能需要對推論進行細緻的、模型感知的方法，而非通用策略。</p>
+<h2 id="參考文獻">參考文獻</h2>
+<p>（略，見原文 9–11 頁）</p>
+<h2 id="附錄-a超參數">附錄 A：超參數</h2>
+<p>所有模型共用參數：Beam width=8、Samples (n, MV/LFS/FFS)=8、Answer-reserve for BF=3K。各模型的 max tokens 與 top-p/temperature 詳見 Table 3。</p>
+<h2 id="附錄-b完整結果">附錄 B：完整結果</h2>
+<p>八個模型×四策略×四資料集的完整正確率與 token 成本矩陣（Table 4）。核心總結：<strong>MV 是正確率最穩定的選擇但 token 成本最高</strong>、<strong>FFS 提供最多 token 節省（最高 ~90%）但正確率影響模型相依</strong>、<strong>LFS 偶爾在符號推理上匹配或超越 MV 但可靠性不均</strong>、<strong>BS 偶爾特定行列達最優但通常昂貴</strong>。</p>
+<h2 id="附錄-c模型級繪圖">附錄 C：模型級繪圖</h2>
+<p>各模型獨立的 FFS（Figure 6）與 LFS（Figure 7）曲線。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

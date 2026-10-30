@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>ACT：代理式分類樹（4/4） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2509.26433_ACT.zh-TW.html">回 2509.26433_ACT.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95%E8%AB%96.html">← 上一節</a>　<a href="04_%E9%99%84%E9%8C%84%E8%A6%81%E9%BB%9E.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-設定資料集模型與-baseline">4.1 設定：資料集、模型與 Baseline</h3>
+<p><strong>資料集</strong>（五個二元文字分類任務）：</p>
+<ul>
+<li><strong>DIAGNO</strong>：結核病（TB）vs. 過敏性鼻竇炎的臨床描述，平衡分割</li>
+<li><strong>SPAM</strong>：垃圾郵件 vs. 正常郵件分類，平衡分割</li>
+<li><strong>JAILBREAK</strong>：越獄 prompt 檢測，原始輕度不平衡形式</li>
+<li><strong>BANKCHURN</strong>：客戶流失預測，表格屬性序列化為文字檔案</li>
+<li><strong>IMDB</strong>：電影評論情感分類（正面/負面），平衡子集</li>
+</ul>
+<p><strong>模型</strong>：Gemma3-4B、GPT-4.1 Nano、GPT-4.1 Mini、Qwen3-4B（優先選用計算高效的小模型）。額外報告 GPT-4.1 完整版的規模擴展結果。</p>
+<p><strong>Baseline</strong>：</p>
+<ul>
+<li><strong>CoT（0-shot）</strong>：鏈式思考零樣本提示</li>
+<li><strong>DSPy（BFSR, 8 demos）</strong>：Bootstrap Few-Shot Random Search，生成推理軌跡與答案，篩選正確答案，用最多 8 個正確示範構建候選 prompt，選訓練集上最佳者</li>
+<li><strong>TextGrad</strong>：精煉任務特定 prompt，batch size=50，12 epochs × 3 步 = 36 次精煉迭代，在驗證集上評估並保留最佳</li>
+<li><strong>TF-IDF + CART</strong>：在 TF-IDF 文字表示上訓練 CART（深 3–5），窮舉搜尋最佳分裂，提供結構透明性但語義可解釋性有限</li>
+<li><strong>LLM Concept Bottleneck + CART（Con. tag.）</strong>：LLM 提取領域概念，將文字編碼為二元概念向量，在其上訓練淺層 CART</li>
+<li><strong>RuleFit（TF-IDF rules）</strong>：規則集成方法，學習稀疏、人類可讀的 if-then 規則（基於 TF-IDF 特徵）</li>
+</ul>
+<p><strong>配置說明</strong>：三種 prompt baseline（CoT、DSPy、TextGrad）以任務特定 prompt 初始化（顯式陳述分類目標與目標類別）。ACT 則從通用、任務無關的查詢開始，不接觸任務描述或類別名稱——ACT 必須透過連續節點的問題精煉迭代來發現任務。這使比較對 ACT 保守。</p>
+<p>ACT 超參數：樹深 d、每節點精煉步數 k。f_purity 每組最多使用 m=50 個隨機選取的正確分類與誤分類實例以控制輸入長度與計算成本。</p>
+<h3 id="42-實驗結果與討論">4.2 實驗結果與討論</h3>
+<p><strong>測試集準確率</strong>（Table 2）：適當配置的 ACT 在資料集與 LLM 間一致地匹配或超越四種 LLM baseline。平均而言（所有資料集與 LLM），最佳 ACT 配置的測試準確率比 DSPy 高 4.7pp、比 TextGrad 高 5.1pp，同時提供可解釋決策路徑。F1-score 方面，ACT 在 20 個 dataset-model 組合中的 15 個超越所有 LLM baseline。</p>
+<p><strong>與 TF-IDF + CART 對比</strong>：ACT 在多數任務上持續達到相似或更高準確率。然而 TF-IDF + CART 根本上缺乏語義可解釋性——其決策樹節點選擇單詞或 n-gram 作為決策標準（如「nose ≤ 0.238」），不考慮上下文或語義，導致模型難以處理否定、諷刺、改寫與對抗性文字——這些特徵在 SPAM、JAILBREAK 與 IMDB 中尤其普遍。ACT 則提供人類可讀的 yes/no 問題（如「Does the example mention coughing up blood or fever?」）。與 RuleFit 對比，ACT（GPT-4.1-mini）在所有任務上一致超越，但 RuleFit 在 DIAGNO 和 JAILBREAK 的平均表現優於 ACT 的其他模型配置。附錄 E 顯示 ACT 與強大的不可解釋 baseline（XGBoost、BERT、RoBERTa）相比仍具競爭力，同時提供可解釋且人類可讀的決策路徑。</p>
+<p><strong>可解釋性量化</strong>（Table 3）：推論時的平均路徑長度約 2–3 個節點（即使 d=4），問題長度 ≤ 155 字元，證明問題複雜度的軟約束（特別是 L 邏輯算子限制）有效。結合手動檢查生成樹（Figure 1、5、6），確認 ACT 的分治方法——將複雜分類任務分解為更簡單的子問題——在提升準確率的同時產出可解釋的決策路徑。</p>
+<p><strong>醫學有效性</strong>（Table 4）：ACT 識別的結核病症狀與 WHO 等醫學來源高度對齊。共同症狀 5 項：咳血、發燒、體重減輕、淋巴腫大、疲勞。ACT 獨有 2 項：呼吸急促、劇烈疼痛。醫學來源獨有 4 項：胸痛、頭痛、盜汗、食慾不振（可能因二元分類設定中對抗過敏病例而未在資料集中充分代表）。</p>
+<p><strong>消融研究</strong>（Figure 2）：</p>
+<ul>
+<li>樹深 d：如樹狀方法預期，超過一定深度導致過擬合（DIAGNO 上 d=6 時測試準確率下降）</li>
+<li>優化步數 k：持續增加 k 提升效能，但增益在 10–20 步後趨於平穩</li>
+</ul>
+<p><strong>規模擴展分析</strong>（Figure 3）：ACT 的測試準確率隨模型容量增加（GPT-4.1 Nano→Mini→full）持續提升，而 DSPy 與 TextGrad 未表現出一致的縮放行為。這表明 ACT 更能有效利用更強 LLM 的推理能力，且因 ACT 可使用任何 API 可存取的 LLM 實例化，其效能直接受益於語言模型開發的進步。</p>
+<p><strong>計算成本分析</strong>（§A）：訓練階段 TextGrad 處理少量但非常長的 prompt；DSPy 評估 13 個中等大小的候選程式（源自 few-shot 推理軌跡）；ACT 發送大量短 prompt（估計 Gini）加上少量長 prompt（語義回饋與節點優化）。最低配置（d=3, k=10）下 ACT 與兩者成本可比。增加樹深會提高訓練成本但換取更高準確率與可解釋性。推論階段 TextGrad 最經濟，ACT 在同一數量級內但提供更高準確率與可解釋決策路徑。DSPy 的 wall-clock time 與 ACT 相似但 token 使用量更高（因 few-shot prompt 體積大）。</p>
+<h1 id="act代理式分類樹44">ACT：代理式分類樹（4/4）</h1>
+<h2 id="5-結論">5. 結論</h2>
+<p>我們提出了<strong>代理式分類樹（ACT）</strong>，一個結合傳統決策樹可解釋性與 LLM 語義推理能力的新穎框架。與依賴僵化特徵分裂的傳統決策樹不同，ACT 在每個節點動態優化自然語言 prompt，利用 LLM 回應執行語義有意義的二元分裂。在文字二元分類任務上的實驗表明，ACT 達到具競爭力的準確率，同時提供可解釋、基於語言的決策邏輯。此方法突顯了結合經典機器學習結構與現代語言模型推理的潛力，為複雜文字密集領域的可解釋與有效決策開闢新途徑。</p>
+<p>未來工作包括：將 ACT 擴展到<strong>多類分類與回歸任務</strong>、透過針對性 prompt 優化策略改善<strong>計算效率</strong>，以及探索文字分類以外的應用至其他結構化與非結構化資料模態。</p>
+<h2 id="影響聲明">影響聲明</h2>
+<p>演算法決策具有廣泛的倫理意涵，如分配性傷害與代表性傷害。演算法決策中的偏見尤其常傷害少數群體。為減少這些傷害及其他原因，歐盟 AI 法案、OECD AI 原則與 NIST AI 風險管理框架等近期治理框架強調，高風險場景中的 AI 決策必須可解釋且受人為監督。ACT 透過提供不僅技術專家可理解，利害關係人、審計者與監管者也能理解的顯式、可解釋決策路徑，提供了一個結合競爭力準確率與透明性、可爭議性的演算法決策框架。</p>
+<p>儘管如此，兩項重要限制必須考慮：</p>
+<ol>
+<li>ACT 雖然減少推理錯誤，但仍基於 LLM，因此仍可能展現幻覺、不一致或不可靠性</li>
+<li>如 O&#x27;Neil（2017）所指出，透明性與可爭議性，即使由演算法保證，也僅在嵌入提供有意義救濟途徑的適當制度或法規框架中才在實務上有效</li>
+</ol>
+<p>因此我們呼籲在真實世界環境中部署 ACT 的實務者確保充分的人為監督，以及允許及時有效挑戰決策的機制。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《靈活且高效的文法約束解碼（Flexible and Efficient Grammar-Constrained Decoding）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Kanghee Park, Timothy Zhou, Loris D’Antoni（UC San Diego）</p><p>日期：2025-02</p><p>arXiv：2502.05111</p><p><a href="https://arxiv.org/abs/2502.05111" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="靈活且高效的文法約束解碼flexible-and-efficient-grammar-constrained-decoding重點摘要">《靈活且高效的文法約束解碼（Flexible and Efficient Grammar-Constrained Decoding）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>GreatGramma（文法約束解碼引擎）</strong>：透過對「LLM 子詞詞彙表 × CFG 終端符」做一次<strong>合併分析</strong>、預算出核心資料結構 <strong>token spanner table（及其逆表）</strong>——只捕捉「lexer 從某狀態讀入某 LLM token 時真正可實現（realizable）的終端符序列」，把 token 不對齊（token misalignment）問題離線攤平；相較 SynCode <strong>離線預處理平均快 17.71 倍</strong>（數十分鐘→數十秒），同時保有頂尖線上遮罩效率（每 token 5–32ms），且以僅約 900 行 Python（建於 Lark LALR 剖析器）達成，實作簡單到能揭露競品的健全性錯誤。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>GCD 要保證 LLM 輸出符合上下文無關文法（CFG），須算出「LLM 子詞 token 如何對齊剖析器所用終端符」並據此算 token 遮罩。核心痛點是 <strong>token 不對齊</strong>：LLM token 可能橫跨多個終端符、或只是片段。既有工具因此二選一：<strong>高線上開銷</strong>（每 token &gt;1 秒，如 Outlines 執行時逐 token 驗證），或<strong>高離線開銷</strong>（&gt;30 分鐘預算查表，如 SynCode／Domino）。這使 GCD 在「文法頻繁改變」的領域不實用——而<strong>程式合成</strong>（每支欲合成程式各給一個文法）與<strong>文法提示</strong>（文法由 prompt 動態預測）正是這類領域。目標：做到<strong>同時靈活</strong>（低離線成本、能吞多樣文法）<strong>與高效</strong>（低線上遮罩開銷）。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>合併分析 + token spanner table</strong>：離線吃「LLM 詞彙表 <code>V</code>」與「終端符正規式定義」兩輸入，預算依 lexer 狀態而定的映射 <code>(q, v) → {可產出的終端符序列}</code>。</li>
+<li><strong>離線三步</strong>（§3）：
+<ol>
+<li><strong>Lexer 預處理</strong>：由詞法自動機（FSA）建 <strong>lexing transducer</strong> <code>T_A</code>；與 Koo et al.(2024) 的<strong>去分詞轉換器</strong> <code>T_V</code> 組合（確定化）成 token 級的 <code>T_{A∘V}=T_A∘T_V</code>，共享前綴以 trie 重用計算。</li>
+<li><strong>可實現終端符序列 <code>Re_{A∘V}</code></strong>：只保留「某 token 轉移產出 <code>T1…Tk</code>、且 <code>T</code> 可從到達狀態產生」的序列，並建<strong>逆向 token spanner 表 <code>Tinv</code></strong>（給狀態 <code>q</code> 與序列，反查能產生它的 token 集）。因 <code>Σ*=V*</code>，可產生性只需在小的 <code>T_A</code> 上算可達性。</li>
+<li><strong>剖析器預處理</strong>：把 <code>Re_{A∘V}</code> 與剖析器 PDA 組合；用<strong>堆疊不變性（Prop 3.5）<strong>與</strong>移除堆疊的 FSA 過近似（Prop 3.6）</strong>，離線切出<strong>永遠被接受 token 表 <code>A</code></strong> 與<strong>依上下文序列表 <code>D</code></strong>。<strong>同時（in tandem）預處理 lexer + parser 是與先前工作（Domino／SynCode）的關鍵區別。</strong></li>
+</ol>
+</li>
+<li><strong>線上遮罩</strong>（§4, Alg 6）：每步看 lexer 狀態、剖析器狀態、堆疊；<strong>盡量用 <code>A</code> 避開遍歷 PDA</strong>，只對 <code>D</code> 中依上下文序列才查 PDA，再用 <code>Tinv</code> 反查合法 token。關鍵效率來源：許多轉移產出相同終端符序列，使 <code>|Re_{A∘V}| &lt; |V|</code> 或 <code>|δ|</code>。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>離線預處理</strong>：較 SynCode <strong>平均（幾何平均）快 17.71 倍</strong>（GreatGramma 約 25–261s vs SynCode 約 556–3,268s）；較 Outlines 慢 30.01 倍（Outlines 僅 2.4–4.9s）。</li>
+<li><strong>線上每 token 遮罩</strong>：扣除 SynCode 錯誤遮蔽合法 token 的資料點後，較 <strong>SynCode 快 2.73 倍、較 Outlines 快 550.57 倍</strong>；GreatGramma 每 token 5–32ms，Outlines 達秒級（3,200–15,200ms）。</li>
+<li><strong>揭露競品健全性錯誤</strong>：SynCode 在某些序列<strong>遮蔽了合法 token</strong>（疑因只展開到固定上界 <code>k</code>）；<strong>XGrammar</strong> 對所有測試文法皆失敗（無法編譯 Java；Python／Go 解碼時無窮迴圈或 segfault，故未列入表 1）。</li>
+<li><strong>設定</strong>：三分詞器（Llama 32K／Llama-3 128K／Qwen-2 151K）× 三大文法（Go／Java／Python，353–520 產生規則）；工具僅約 900 行 Python，建於 Lark。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>只在 <strong>最長匹配（maximal munch）+ 1-lookahead</strong> 詞法假設下運作；不支援需 &gt;1 lookahead 或「須依剖析上下文做不同詞法化」的語言（如 Java 巢狀泛型 <code>List&lt;List&lt;T&gt;&gt;</code> 收尾的 <code>&gt;&gt;</code> 會被誤當右移運算子）。作者給出以非確定 lexing transducer 或 k-lookahead 組合狀態的緩解方向，但後者會顯著增大轉換器。</li>
+<li>只評測<strong>執行時間</strong>、不評下游任務品質（因所有 GCD 理論上產生相同遮罩，效果已由他人驗證）；GCD 對生成品質的影響本身仍有爭議（Tam et al. 2024；Park et al. 2024），本法與緩解技術（CRANE 等）正交。</li>
+<li>無法與 LLGuidance（Rust）比較，因後者對本文文法回報 &quot;ParserTooComplex&quot;。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>歸 I 類（工程效率線）</strong>，與 <a class="paper-reference" href="2403.01632_SynCode.%E6%91%98%E8%A6%81.html">2403.01632</a> SynCode、XGrammar 同軸——都是把「準備約束層」的離線成本壓下來的引擎。本篇的獨到處：用「只算<strong>可實現</strong>終端符序列 + 逆向 token spanner 表 + lexer/parser 同時預處理」把 token 對齊的離線成本降一個量級（17.71x）。</li>
+<li>直接對應 ai_core <strong>§5「程式碼助手」的下層＝受約束填碼</strong>：GCD 保證 LLM 只吐合法語法，是把「LLM 呼叫包成可靠函數」在<strong>語法層</strong>兌現的機制。本篇的核心貢獻不是「能不能約束」（那已成熟），而是<strong>讓約束層的離線準備變得可負擔</strong>——當每個子任務（程式合成、依 prompt 動態生成的文法）都要一份<strong>不同的文法</strong>時，數十分鐘的離線預處理是致命的；壓到數十秒，才讓「每個受約束填碼點各帶一份文法」的工程模式成立。這正是 ai_core §5 受約束填碼可負擔性的<strong>工程基準線</strong>。</li>
+<li>側面呼應 §3.6「固化引擎」的精神：本篇示範了「把 LLM 反覆面對的對齊計算<strong>離線結晶成確定性查表（token spanner table）</strong>」——一次性算好、之後純確定性查表遮罩，把貴智能的重複工作剃成便宜的確定性節點。最值得記：<strong>token 不對齊是 GCD 複雜度主源</strong>、<strong>只保留可實現序列＝離線省一個量級</strong>、<strong>堆疊不變性/FSA 過近似讓 PDA 大部分判定離線化</strong>、以及<strong>簡單實作反而更健全</strong>（競品普遍有 soundness bug）。適合做 <strong>受約束解碼、程式合成、結構化輸出、code assistant 約束層</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2502.05111_FlexibleGCD.zh-TW.html"><code>../translate/2502.05111_FlexibleGCD.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

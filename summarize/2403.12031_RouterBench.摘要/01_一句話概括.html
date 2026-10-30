@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2403.12031_RouterBench.%E6%91%98%E8%A6%81.html">回 2403.12031_RouterBench.摘要 目錄</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>RouterBench</strong>：針對「LLM 路由器（router）」提出第一個標準化評測框架——用 <strong>11 個模型 × 8 個資料集（含 RAG）共 405,467 筆已產生的推論結果</strong>做成離線資料集（免重複呼叫 API 即可測任何路由策略），並用一套「非遞減凸包（non-decreasing convex hull, NDCH）＋單一標量指標 <strong>AIQ（Average Improvement in Quality）</strong>」的數學框架，把任何路由系統在<strong>美元成本 × 品質</strong>平面上的非參數化散點壓縮成可跨系統比較的一個數字，藉此揭露：多數既有路由器離「理論最佳（Oracle）」還有相當大的差距。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 路由（依 query 動態選派最合適的模型）近年已有 FrugalGPT、Tryage、meta-model 等多種方案，各自宣稱能省成本、提性能，但<strong>沒有共通的評測協定</strong>——不同論文用不同資料集、不同基線、不同「省了多少/掉了多少」的算法，彼此無法比較，也難以判斷一個路由器到底做得「好不好」（相對於什麼上界？）。RouterBench 要解決的正是這個「路由器評測標準缺失」的問題：既提供可重複使用的離線資料，也提供一套能把任意路由系統（無論是否為機率性、無論參數化與否）化約成單一數字的數學工具。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>資料集規模</strong>：405,467 筆樣本，涵蓋 <strong>11 個模型</strong>（開源：Llama-70B-chat、Mixtral-8x7B-chat、Yi-34B-chat、Code Llama-34B、Mistral-7B-chat、WizardLM-13B；閉源：GPT-4、GPT-3.5-turbo、Claude-instant-v1、Claude-v1、Claude-v2）× <strong>8 個資料集</strong>（MMLU、HellaSwag、GSM8K、ARC-Challenge、Winogrande、MBPP、MT-Bench，另加一組 800 題、含真值答案的 <strong>RAG 資料集</strong>，額外用 You.com API、sonar-small/medium-online 3 個具檢索能力模型測試），共 <strong>64 個子任務</strong>。每筆樣本記錄 prompt、模型回覆、正確性/品質分數、以及以真實 API 定價（開源模型以 Together AI 計價）算出的<strong>美元成本</strong>。</li>
+<li><strong>數學框架</strong>：把每個 （router, 參數 θ） 對應到 cost-quality (c, q) 平面上一點；用「線性內插（混合兩個路由器＝以機率 t 擲骰選其一）」與「外插（用重複生成等零收益手段把成本墊高、或內插到零成本零品質的 null router）」，讓任意一組路由系統的散點凝聚成<strong>非遞減凸包（NDCH）</strong>——即在成本域 [c_min, c_max] 上「同成本下最佳可達品質」的一條分段線性曲線。</li>
+<li><strong>AIQ 指標</strong>：AIQ(R) = 1/(c_max − c_min) · ∫ R_dc(c) dc（NDCH 曲線在共同成本區間上的<strong>歸一化曲線下面積</strong>），把「一個路由系統整體有多划算」壓成單一標量，可跨路由器、跨資料集比較。</li>
+<li><strong>兩個基準路由器</strong>：<strong>Zero router</strong>（純靠靜態 LLM 集合的凸包做機率混合，不看 query 內容，是「顯著性」下限——路由器只有優於它才算有意義）；<strong>Oracle</strong>（每題永遠選「答對且最便宜」的模型，是理論上界）。</li>
+<li><strong>評測的路由器類型</strong>：(1) <strong>預測式路由器（Predictive）</strong>——KNN、MLP，用嵌入預測各模型的 performance_score = α·P − cost（α 即「願付價格 willingness-to-pay, WTP」，決定成本-品質取捨的旋鈕），70/30 切分訓練測試；(2) <strong>非預測式路由器（Non-predictive）</strong>——級聯（cascading）路由器，依便宜到貴的模型序列逐一嘗試，用一個含誤差率參數的評分函式（judge）判斷是否達標即回傳、否則升級到下一個模型，並設有總成本上限 T；另有 overgenerate-and-rerank（生成全部候選再選最優，成本過高僅作示範）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>Oracle</strong>：以低成本逼近近乎完美的準確率；意外的是 GPT-4 極少被 Oracle 選中——多數題目只要用 WizardLM-13B、Mistral-7B 等便宜模型就能答對，凸顯「便宜模型答對時何必用貴模型」的路由潛力；同等表現的模型服務，美元成本可相差 <strong>2–5 倍</strong>。</li>
+<li><strong>預測式路由器（KNN/MLP）</strong>：能達到「最佳單一 LLM 的水準、且成本相同或更低」，但<strong>多數任務下沒有顯著超越 Zero router 基線</strong>——僅 MMLU、Winogrande 上 AIQ 較高，HellaSwag、GSM8K 打平，ARC-Challenge、MBPP 反而較差。Oracle 則穩定大幅超越所有路由器與單一模型，顯示路由演算法仍有很大進步空間。</li>
+<li><strong>級聯路由器</strong>：judge 誤差率愈低，總成本預算愈高時表現愈接近 Oracle；誤差率 ≤0.1 時明顯優於 Zero router，但<strong>誤差率超過 0.2 後性能迅速崩壞</strong>——揭示級聯路由的可用性高度依賴「評分函式/judge 的準確度」，而非只靠加大成本上限。</li>
+<li><strong>RAG 資料集</strong>：所有測試路由器都顯著優於 Zero router；分析顯示路由器能抓住查詢中的時效性線索（如「2024」）並路由到具連網檢索能力的模型（sonar-online 系列），時效不敏感問題則路由到 GPT-4/GPT-3.5，呼應「複合式 AI 系統（Compound AI Systems）」場景中路由的實用性。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>目前只涵蓋「效能 × 美元成本」兩維，未納入延遲、吞吐量等生產環境常見指標。</li>
+<li>只評測了預測式（KNN/MLP）與級聯兩類路由器，其他更進階的路由設計（如強化學習式、meta-model）未涵蓋；RAG 情境僅測「自帶檢索能力的模型」，未涉及「檢索器＋LLM」兩階段路由。</li>
+<li>現有 7 個核心資料集（不含 RAG）覆蓋常見任務，但缺少長尾／領域特定任務（如低資源語言翻譯）；模型與任務清單會隨時間過時，需持續擴充。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>本篇是主題 2（LLM 成本優化／路由）的評測與量尺端，而非新路由方法</strong>。庫中已有 <a class="paper-reference" href="../2406.18665_RouteLLM.%E6%91%98%E8%A6%81.html">2406.18665</a> RouteLLM、<a class="paper-reference" href="../2404.14618_HybridLLM.%E6%91%98%E8%A6%81.html">2404.14618</a> HybridLLM、<a class="paper-reference" href="../2407.10834_MetaLLM.%E6%91%98%E8%A6%81.html">2407.10834</a> MetaLLM（三者皆屬「進門即分流」的路由式）、<a class="paper-reference" href="../2305.05176_FrugalGPT.%E6%91%98%E8%A6%81.html">2305.05176</a> FrugalGPT、<a class="paper-reference" href="../2307.02764_CascadeDeferral.%E6%91%98%E8%A6%81.html">2307.02764</a> Cascade Deferral（貝氏最優延後規則）、<a class="paper-reference" href="../2310.12963_AutoMix.%E6%91%98%E8%A6%81.html">2310.12963</a> AutoMix（POMDP 路由＋自我驗證）、<a class="paper-reference" href="../2006.07512_FrugalML.%E6%91%98%E8%A6%81.html">2006.07512</a> FrugalML（MLaaS 加值服務路由）——這些論文各自用<strong>不同資料集、不同基線、不同「省了多少/掉了多少」的算法</strong>宣稱效果，彼此難以直接比較。RouterBench 的 NDCH + AIQ + WTP-α 框架，正是 ai_core <strong>§3.3 成本梯度</strong>若要落地成「可公平比較的量尺」所需要的協定：任何路由/級聯設計（不論 ai_core 最終挑哪一種）都能先轉成 (cost, quality) 散點、取 NDCH、算 AIQ，再跟 Zero router（靜態混合基線）與 Oracle（理論上界）對照，才知道「這個路由器到底值不值得上」。</li>
+<li><strong>對 ai_core 期望管理最關鍵的發現</strong>：Oracle 揭示的理論上界極高（多數任務便宜模型就能答對，GPT-4 罕被選中），但<strong>實際可訓練出來的預測式路由器（KNN/MLP）在多數任務上並未顯著超越最簡單的「靜態成本-品質混合」基線 Zero router</strong>，只有級聯路由在 judge 誤差率夠低（≤0.1）時才明顯逼近 Oracle。這意味著 ai_core 規劃 §3.3 成本梯度／§2 工廠-消費者的降級策略時，<strong>不該預設「訓練一個路由器就能拿到 Oracle 級的省錢效果」</strong>；真正的收益上限取決於能否做出<strong>低誤差的升級判準（judge/scorer）</strong>——這正呼應 Cascade Deferral 的「貝氏最優延後規則」與 §3.4 憑證准入（用可靠的確定性/校準訊號決定要不要升級，而非只看單一模型信心）的必要性。若判準做不好，路由器很可能只是比「不分流、固定用一顆便宜模型混一顆貴模型」聰明一點點，而非接近理論上限。</li>
+<li>歸 <strong>I 類</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../../translate/2403.12031_RouterBench.zh-TW.html"><code>../translate/2403.12031_RouterBench.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

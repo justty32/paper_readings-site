@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.23853_ClawTrace.zh-TW.html">回 2604.23853_ClawTrace.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<p>我們提出四個問題：(1) TraceCard 成本資訊對蒸餾品質是否重要？(2) prune 修補保護品質還是僅降低成本？(3) 聚合指標是否隱藏重要逐任務效應？(4) SpreadsheetBench 訓練的技能能否轉移到不同基準？所有 agent 執行使用 openai-codex/gpt-5.4，透過 OpenClaw 搭配 ClawTrace 插裝；除非另有說明，在 SpreadsheetBench held-out 集上報告兩種子（seed=0 和 seed=1）。</p>
+<h3 id="41-設定">4.1 設定</h3>
+<p>我們在 SpreadsheetBench [13]（912 任務基準，agent 必須產生試算表，確定性評分器逐格比對黃金答案）上評測。逐任務品質 Q ∈ [0,1] 是滿足的評分項比例。Q=1.0 表示每格匹配；Q=0 表示未產出可評分檔案。逐任務成本是來自 ClawTrace 的快取感知 USD 總額。</p>
+<p>實驗分四個階段。首先，我們從 200 任務專業子集中抽樣 50 任務（按難度分層），無技能執行並記錄每條軌跡。其次，將 50 任務劃分為 10 個演進集（訓練用）、30 個 held-out 集（評測用）、10 個保留用於管線開發。演進集包含 4 成功、4 部分成功、2 失敗。第三，對 10 張演進集 TraceCard 執行 CostCraft 產出一個技能。在四種消融條件（表 3）下重複此步驟，每次移除一個管線訊號以產出不同技能。第四，對全部 30 個 held-out 任務在每個技能下執行，與原始基線比較品質和成本。</p>
+<h3 id="42-主要結果">4.2 主要結果</h3>
+<p>**成本歸因與 prune 規則各自獨立作用。**從 TraceCard 剝離成本（No-cost-attribution 條件）使成功任務的中位成本增幅從 +22% 翻倍至 +49%，並使衰退數從 4 升至 6。其中五個為災難性的，agent 在 Q=0 停止而無輸出；Full CostCraft 僅出現一次此類失敗模式。獨立地，移除 prune 修補（No-prune 條件）使 seed 0 的衰退數從 4 增至 13，而中位成本保持可比（+15% vs +21%），13 個 No-prune 衰退中有 8 個完全無輸出。</p>
+<p>因此，prune 衍生的 Cost-control 章節在此消融實驗中充當品質護欄，而非純成本壓縮機制。沒有它，剩餘技能章節將 agent 推向對本已成功的任務產生錯誤行為：agent 持續發出工具呼叫但從未寫入最終答案。此保護角色與成本壓縮正交，且未被 Trace2Skill 的成功 vs 錯誤劃分所捕捉。</p>
+<p>**聚合隱藏了逐任務效應。**所有三種技能條件均顯示正向中位成本變化，但同一條件內同時包含兩次完全恢復（Q=0 → 1.0 和 Q=0 → 0.84）與災難性 No-prune 失敗。沒有逐任務分解，這些得失互相抵消，結果讀起來像雜訊。</p>
+<h3 id="43-按基線結果劃分的效應">4.3 按基線結果劃分的效應</h3>
+<p>將 30 個 held-out 任務按其基線結果劃分，揭示了聚合數字抵消的效應。在失敗基線上，repair 修補將 3 個中的 2 個恢復到接近完美品質，成本溢價是失敗任務可以承受的。在成功基線上，17 個中有 2 個包含所學 prune 規則針對的特定浪費模式。對這 2 個任務，Full CostCraft 仍然增加成本（中位 +30%），但 No-prune 消融導致其中一個完全失敗（Q=0）。</p>
+<h3 id="44-prune-覆蓋率與效率槓桿">4.4 Prune 覆蓋率與效率槓桿</h3>
+<p>所訓練的技能包含兩條 prune 規則，每條從 3 條訓練軌跡中學習：(1) 當任務自包含時跳過工作記憶檔案（MEMORY.md、SOUL.md）；(2) 每個輸入檔案只讀一次並快取其內容，而非重複讀取。</p>
+<p>在我們的 30 任務樣本中，17 個成功 held-out 任務中有 2 個匹配（11.8%）。對這 2 個任務，Full CostCraft 仍然增加成本（+38% 和 +22%），但 No-prune 消融導致其中一個完全失敗（Q=0）。在此樣本中，prune 規則防止品質崩潰而非壓縮成本；此保護角色是否在更大訓練規模外推廣仍是開放問題。</p>
+<p>**反事實閘門（No-CF）。**在 15 任務成功偏重子集上，禁用反事實准入閘門相比 Full CostCraft 產生了額外 2 個衰退，儘管分析師無論閘門設定如何都在所有 prune 修補中自願包含了反事實文字。閘門似乎塑造的是反事實品質而非其存在。樣本較小（N=15），我們將其視為提示性證據。</p>
+<h3 id="45-skillsbench-跨基準評測">4.5 SkillsBench 跨基準評測</h3>
+<p>為測試 SpreadsheetBench 訓練的技能是否能轉移到其他任務型別，我們在完整 SkillsBench [12] 基準（84 任務）上執行了兩個條件：基線（gpt-5.4 無技能）和基線加 SpreadsheetBench 訓練的 CostCraft 技能。</p>
+<p>**CostCraft 在此基準上未節省聚合成本。**許多 SkillsBench 任務在兩個系統下均失敗，因此聚合成本混合了成功與無可交付物的軌跡。我們因此將配對方向和軌跡歸因的失敗模式視為主要轉移訊號。在 79 個配對任務中，41 個成本下降（52%），中位數下降 -45%；上升處中位數 +43%。</p>
+<p>**Prune 規則轉移了；preserve 規則過擬合了。**完整基準上的五個品質變化事件，每個都可透過檢查合併後的技能歸因到單一修補路徑（表 4）。三個衰退追溯至 preserve 路徑：其 SpreadsheetBench 特定格式規則注入了 SkillsBench 驗證器不預期的慣例。三項中的兩項還展現了大幅成本下降（-63%、-50%），因為 agent 遵循了錯誤規則但執行成本低廉，從未抵達評分器評分的工作。兩個改善追溯至 prune 路徑：成本控制規則釋放了足夠的 session headroom，讓 agent 能夠抵達基線未能嘗試或僅以較低保真度嘗試的最終輸出步驟。</p>
+<p>不對稱性是核心跨基準觀察。在完整基準規模上，衰退對改善比例為 3:2，路徑歸因乾淨而非混合：每個衰退是 preserve 路徑案例，每個改善是 prune 路徑案例。在蒸餾時分離兩種修補型別對跨任務泛化很重要。</p>
+<p>追蹤開銷限制在約 0.30% 的 agent 牆上時間，10 次配對 ON/OFF 重複執行中零品質分岐。</p>
+<h2 id="5-限制">5. 限制</h2>
+<p>本文的主張範圍限定在單一 agent runtime：OpenClaw 搭配 openai-codex/gpt-5.4。摘要、§4 及 §6 中報告的所有結果均針對該組合。我們不對 Claude Code、AutoGen、MetaGPT 或任何其他 agent runtime 做出主張，也不對 Claude、Gemini 或開源權重等其他 LLM backbone 做出主張。在此範圍內，我們評測了 30 個 SpreadsheetBench held-out 任務（兩種子，每條件 60 次執行）及 84 個 SkillsBench 中的 74 個可評分品質配對。No-prune 的災難性嚴重程度是 seed-0 特定的。失敗分類由單一標註者編碼。三種啟發式 TraceCard 欄位中的兩種未被觸發。以 10 任務訓練規模產出兩條 prune 規則並匹配 17 個成功任務中的 2 個；更大的訓練集才能擴充 prune 庫。SkillsBench 評測測試了跨基準轉移，但未在 SkillsBench 上重複完整消融矩陣。ClawTrace 目前支援 OpenClaw；透過攝取 API 向其他 agent harness 的可移植性未經端到端驗證。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>蒸餾出的 agent 技能應以規則型別層級進行評估，而非作為整體指令套件，因為其組成規則型別以質性不同方式轉移。兩項證據支撐此論點。分佈內，移除 prune 修補在 SpreadsheetBench 上跨兩種子使衰退數大約三倍，而中位成本保持不變：訓練規模下的 prune 規則充當品質護欄。跨分佈，在完整的 84 任務 SkillsBench 轉移中，全部三個品質衰退追溯至 preserve 路徑，兩次品質提升追溯至 prune 路徑（表 4）；相同的路徑驅動大約一半配對任務的成本下降。不對稱性正是聚合指標所隱藏的內容。</p>
+<p>我們在 https://github.com/epsilla-cloud/clawtrace 釋出 ClawTrace、所有 TraceCard 和進化後的技能；專案頁面位於 https://www.clawtrace.ai/。此處報告的所有證據均針對 OpenClaw runtime 搭配 gpt-5.4 backbone。此模式是否泛化至其他 runtime 或 backbone 是開放問題，也是下一步的自然方向，連同更大的演進集和 SkillsBench 消融矩陣。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

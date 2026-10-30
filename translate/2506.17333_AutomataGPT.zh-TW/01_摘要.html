@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2506.17333_AutomataGPT.zh-TW.html">回 2506.17333_AutomataGPT.zh-TW 目錄</a>　<a href="02_%E7%B5%90%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>細胞自動機（CA）以最精簡的形式探討簡單局部交互如何在交通、生態、組織形態發生、晶體生長等領域生成豐富的時空行為。然而，<strong>為給定現象自動發現局部更新規則、並用之做定量預測</strong>仍具挑戰。本文提出 <strong>AutomataGPT</strong>：一個 decoder-only transformer，在約 <strong>100 萬條模擬軌跡</strong>（涵蓋環面 grid 上 <strong>100 條相異的二維二元確定性 CA 規則</strong>）上預訓練。對同族但<strong>先前未見的規則</strong>評估時，AutomataGPT 達 <strong>98.5% 完美單步預測</strong>，並能以高達 <strong>96% 的功能（套用）準確度</strong>與 <strong>82% 的規則矩陣精確匹配</strong>重建支配性更新規則。這顯示在更廣規則空間上大規模預訓練，能在<strong>正問題（狀態預測）與反問題（規則推斷）<strong>上帶來顯著泛化，且</strong>無需手工先驗</strong>。本工作為把真實動態現象抽象成<strong>資料高效的 CA 代理</strong>奠基，開啟生物、組織工程、物理與 AI 驅動科學發現的途徑。</p>
+<p><strong>關鍵詞</strong>：細胞自動機、二元自動機、二維自動機、深度學習、生成式預訓練 transformer、規則空間、預測、規則集推斷。</p>
+<hr />
+<h2 id="1-引言main">1. 引言（Main）</h2>
+<p>CA 是由「cell 陣列＋遞迴局部更新規則」構成的演算法，能從簡單規則展現複雜湧現現象；部分 1D/2D CA 已被證明圖靈完備。CA 的迷人之處——也是難以形式化之處——在於常呈**計算不可約（computationally irreducible）**行為：要預測 t 步後的狀態，至少需走 t 步離散計算，<strong>沒有無損捷徑或解析表示</strong>。Springer &amp; Kenyon (2020) 即指出，要可靠學會 Game of Life 的轉移規則，往往需要遠比理論必要值更大的 CNN，這助長了「AI 難以完美預測 CA」的普遍假設。</p>
+<p>**神經細胞自動機（NCA）**把每個 cell 編碼為向量、更新規則本身就是神經網路（CNN／注意力層），可用反傳遞迭代調參生成可調穩態的湧現圖樣；但因規則本身是神經網路，<strong>根本上限制了可解釋性</strong>（黑箱，無法「窺視」其動態成因）。</p>
+<p>transformer 因領域無關的學習能力與良好擴展性，已廣布基因體、氣象、蛋白質結構、賽局決策、NLP、語音、視覺、材料等。作者前作 <strong>LifeGPT</strong> 證明 decoder-only transformer 能在環面 grid 上學會 Game of Life 的更新規則（近完美、無拓撲先驗）。Burtsev (2024) 以 1D CA 發現：<strong>增加模型深度、納入中間未來狀態、把規則集推斷顯式加進訓練損失</strong>都能提升表現——支持「CA 規則可作為內部『世界模型』」的假說。Kumar et al. (2024) 的 ASAL 用視覺-語言基礎模型在遺傳演算法中探索/分類人工生命（含 Life-like CA），但<strong>焦點是探索與分類</strong>。</p>
+<p><strong>遺留問題</strong>：(1) Burtsev 在 1D 觀察到「顯式編碼規則改善預測」的效果，能否延伸到<strong>更高維（2D）、更複雜拓撲（環面）</strong>？(2) GPT 能多好地解<strong>反問題</strong>——給連續狀態、反推契合動態的規則？作者認為這對「以 CA 為基礎的物理模擬新技術」至關重要（如多細胞生物形態發生由局部交互的湧現動態支配）。</p>
+<p><strong>AutomataGPT</strong>：一個 decoder-only GPT，以兩種方式訓練——(1) 對帶 Moore 鄰域的 2D 二元確定性 CA <strong>套用更新規則</strong>；(2) 給 IC 與後續狀態 GS2 <strong>反推規則</strong>。每個問題各從零訓練 3 個版本（規則數 Nr = 2／10／100），探討<strong>訓練所用規則空間大小對準確度的影響</strong>，並以「測試樣本 RM 相對訓練 RM 的相異度」為軸評估泛化與歸納偏誤。</p>
+<h2 id="2-結果與討論">2. 結果與討論</h2>
+<h3 id="21-正問題forward-problem">2.1 正問題（Forward Problem）</h3>
+<p>定義：給展平的 RM 與 IC，能否準確生成下一個 grid 狀態 GS2？以 <code>a_GS2</code>（GS2 token 正確率）與其測試集平均 <code>ā_GS2</code> 衡量。</p>
+<p>發現 <code>ā_GS2</code> 隨 Nr 上升（圖 3a）：在「少數規則的大量例子」上訓練，模型會學到<strong>不能泛化的非直覺 token 關係</strong>；但在「多規則的大量例子」上訓練，模型學會「近正確」地把 RM 套到 IC 上、變得<strong>規則無關（rules-agnostic）</strong>。Nr=100 時近完美——<strong>測試集 200 個 GS2 僅 3 個不完美</strong>（即 98.5% 完美率），相當於被訓成「<strong>通用可程式化的 2D CA 計算機</strong>」，而它只見過全部規則的 &lt;0.04%、IC 配置空間（16×16 二元 grid 共 2²⁵⁶ 種）的極小比例（每條規則用 1e4 個 IC，共約 100 萬局），展現小型 GPT 無需超大訓練集即能泛化的能力。Nr=100 時大量樣本達 100% 預測準確；相對地 Nr=2、10 的準確度分佈平坦、Nr=10 僅略勝 Nr=2 → 趨勢是<strong>漸進泛化，而非存在臨界 Nr 的「相變」</strong>。仍難斷言在何種 Nr（若有）能達 100%；GPT 也可能常陷局部極小。</p>
+<h3 id="22-反問題inverse-problem">2.2 反問題（Inverse Problem）</h3>
+<p>定義：給 IC 與 GS2，能否準確反推 RM？兩指標：</p>
+<ul>
+<li><strong><code>a_RM</code>（規則矩陣推斷準確度）</strong>：反推 RM 的 token 正確率。如此定義是為了<strong>不懲罰</strong>模型找到「同樣能完美描述該 CA 系統的等效 RM」。</li>
+<li><strong><code>a_appRM</code>（反推規則套用準確度）</strong>：把反推 RM 套回 IC 算 GS2 的 token 正確率，捕捉「<strong>雖不完美卻仍合理重現系統行為</strong>」的能力。</li>
+</ul>
+<p>兩指標平均值皆隨 Nr 上升（圖 4a）；完美反推（含等效 RM）的比例也隨 Nr 穩升（圖 4b）。<strong>不合邏輯 RM（某元狀態的轉移機率不和為 1）的 error fraction</strong>：從 Nr=2 到 10 先升，但從 Nr=10 到 100 <strong>下降超過一個數量級</strong> → Nr 夠大時模型學會多半輸出合邏輯的 RM。</p>
+<p><strong>歸納偏誤檢驗</strong>：定義 <code>D</code>＝「測試樣本 RM 與訓練集最近兩條 RM」的平均資訊論相異度，並用三種度量去除度量偏誤：(1) <strong>Hamming 距離</strong>；(2) <strong>Jaccard 距離</strong>（1 − Jaccard 指數，即 Tanimoto 係數）；(3) <strong>Jensen-Shannon 散度（JSD）</strong>。隨 Nr 增大，兩指標與 <code>D</code> 的線性回歸斜率變小（圖 5，回歸排除準確度為 0 的不合邏輯解與為 1 的完美解）→ <strong>模型越來越通用，測試系統的規則對推斷準確度的影響越來越小</strong>。三種度量一致。</p>
+<p>更關鍵：所有度量下，把指標由 <code>a_RM</code> 換成 <code>a_appRM</code> 時斜率都下降；Nr=100 時斜率由 0.10 降到 0.00 → 雖然小 Nr 時模型更可能反推出「接近真值」的 RM，但<strong>這些 RM 究竟多能反映底層動態，與 <code>D</code> 不相關</strong>。本質上：<strong>測試 RM 離訓練集越遠，模型越會給出「創造性」（發散）的解，而創造性不犧牲準確度</strong>——Nr=100 時，對高 <code>D</code> 與低 <code>D</code> 系統都同樣可能反推出可靠重現動態的 RM。作者推測模型找退化解（不匹配真值卻管用）是因<strong>資訊不足以鎖定唯一真值 RM</strong>；若給更長軌跡（更多時間演化資料），退化解空間應縮小、更能逼近真值。採樣溫度對創造性/準確度的影響留待未來。</p>
+<p><strong>更廣意涵</strong>：未來在更多狀態、更高維、更大 grid 上訓練的版本，或能跨多種可粗粒化的物理系統學規則，相對既有 AI 技術有三大優勢——(1) <strong>純合成訓練資料</strong>（免昂貴實測）；(2) <strong>計算高效</strong>（CA 高度可並行，可放大）；(3) <strong>模擬可解釋</strong>（CA↔PDE 互譯，如 Omohundro (1984) 可把任意 2D 九鄰方格 CA 轉成 PDE 系統）。瓶頸可能在訓練成本與「CA 究竟多能模擬複雜系統」。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

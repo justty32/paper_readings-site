@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.17596_NeuSymMS.zh-TW.html">回 2605.17596_NeuSymMS.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>我們提出 NeuSymMS——一個自適應記憶系統，透過混合神經符號架構，讓大型語言模型（LLM）Agent 能夠跨會話學習、記憶並推理關於使用者的資訊。NeuSymMS 結合了神經端（使用 LLM 從非結構化對話中萃取事實）與 CLIPS 專家系統（根據明確的生命週期規則對事實進行分類、去重與調和）。系統以主體—關係—值（subject-relation-value）三元組表示知識，儲存於關聯式資料庫中。它支援 user/agent/flow 三層作用域，並實現了雙層（短期與長期）記憶模型，在兩層記憶上皆利用基於存取次數的晉升與基於時間的淘汰機制。NeuSymMS 維持記憶的連續性，同時避免上下文窗口膨脹與跨實體污染。我們主張此架構為生產環境中的 Agent 系統提供了一條通往可信、可審計記憶的實用路徑。</p>
+<blockquote>
+<p>索引詞：大型語言模型、神經符號 AI、Agent 記憶、專家系統、CLIPS、知識表示。</p>
+</blockquote>
+<h2 id="1-引言">1. 引言</h2>
+<p>基於 LLM 的助手正從單輪聊天機器人演進為持久型 Agent，但大多數已部署的系統仍將對話歷史視為暫時性上下文。LLM Agent 的持久記憶主要來自三個技術家族：對話日誌檢索、基於 LLM 的摘要化，以及鍵值對或知識圖譜儲存。這些方法雜訊多、成本高，且不善於處理使用者狀態中的矛盾或時序變化。因此，許多平台要麼在會話結束後丟棄上下文，要麼天真地附加歷史記錄，導致上下文窗口膨脹，並在使用者更換工作、地點、偏好時產生脆弱的行為。</p>
+<ul>
+<li><strong>對話日誌檢索</strong>：Snap Research 的 LoCoMo（ACL 2024）顯示，長上下文 LLM 與 RAG 將記憶能力提升了 12–20%，但時序推理仍落後人類 41%。</li>
+<li><strong>LLM 摘要化</strong>：Wang et al.（Neurocomputing 2025）提出遞迴摘要化以增強跨會話的長期對話記憶。</li>
+<li><strong>鍵值對或知識圖譜儲存</strong>：REMem（ICLR 2026）引入混合記憶圖譜；A-Mem（NeurIPS 2025）提出基於 Zettelkasten 的動態記憶圖譜與 Agent 索引。</li>
+</ul>
+<p>每個家族提供了部分解法，但在矛盾處理、時序變化與可審計更新方面留下了重要缺口——這些正是 NeuSymMS 直接瞄準的問題。</p>
+<p>數十年來，知識表示、基於規則的推理與真值維護系統產生了成熟的符號技術，但這些方法在現代 LLM Agent 記憶中很少被應用。我們主張：高品質的 Agent 記憶需要神經與符號兩者的結合——神經模型擅長解讀語言，而符號系統提供確定性推理、明確策略與對結構化事實的可審計性。</p>
+<p>CLIPS 是使用最廣泛的專家系統之一，最初由 NASA Johnson Space Center 開發，提供前向鏈推理規則、程序式函數，以及支援類別、訊息處理器、繼承與多型的物件導向層。</p>
+<p>貢獻：(1) 一個將神經符號記憶整合到多 Agent 平台的實用架構；(2) 受認知心理學啟發的雙層、基於存取的記憶模型；(3) 一個與 LLM provider 無關的三層作用域機制，可插入任何 Agent 系統。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>大多數 Agent「記憶」實作將對話歷史視為非結構化日誌，依賴嵌入檢索來為每一輪選擇片段。Lewis et al. (RAG) 顯示將參數化語言模型與非參數文件庫結合可顯著改善事實回憶，但有額外檢索延遲與管線複雜度。Karpukhin et al. (DPR) 證明密集雙編碼器可超越傳統稀疏檢索，但其方法對矛盾與時序漂移無感知——記錄被視為不可變文件，沒有明確的使用者信念修正概念。</p>
+<p>第二條路線透過摘要化來壓縮歷史。Zhang et al. (PEGASUS) 與 Raffel et al. (T5) 展示了高品質摘要產生能力。但應用於 Agent 記憶時，摘要化雖提供簡潔上下文，卻犧牲了原子性——難以更新或撤回個別事實。</p>
+<p>近期研究檢視了 LLM 如何使用長上下文。Liu et al. 發現「迷失在中間」現象（關鍵資訊在窗口中間時效能下降）。Beltagy et al. (Longformer) 結合局部與全域注意力。這些發現表明天真地附加歷史不會自動產生可靠的過往資訊使用，強化了对結構化、選擇性記憶的需求。</p>
+<p>在結構化知識方面，Hogan et al. 的知識圖譜綜述展示三元組結構如何支援查詢、整合與推理，Nickel et al. 回顧了知識圖譜的關聯式方法。這些工作激勵了三元組式 Agent 記憶，但未說明如何自動萃取、分類與維護三元組。</p>
+<p>古典 AI 研究提供了基於規則的推理、真值維護與專家系統工具：Forgy 的 Rete 演算法、Doyle 的真值維護系統（TMS）、De Kleer 的假設基礎 TMS、Giarratano &amp; Riley 的專家系統設計原則。儘管這些技術具有確定性推理與可解釋性優勢，卻很少被用作當代 LLM Agent 平台的一級組件。</p>
+<p>混合神經符號方法（Garcez et al.、Besold et al.、Mao et al. 的神經符號概念學習者）展示了整合神經識別與符號邏輯的潛力，可用於多租戶 Agent 平台的記憶。</p>
+<p>認知心理學也提供了啟發：Atkinson &amp; Shiffrin 的雙儲存理論、Baddeley &amp; Hitch 的工作記憶模型、Ebbinghaus 的遺忘曲線——NeuSymMS 的雙層設計與存取晉升機制在概念上與這些發現一致。</p>
+<p>數個近期 Agent 架構明確引入記憶：Park et al. 的生成式 Agent 記錄、反思並檢索記憶；Shinn et al. 的 Reflexion 儲存軌跡與語言反饋；Wang et al. 的 Voyager 在持久世界中累積技能。這些系統凸顯記憶對 Agent 的價值，但依賴非結構化日誌或任務特定儲存，而非統一的規則治理的知識庫。</p>
+<p>NeuSymMS 提供一個面向生產、混合神經符號的記憶系統：(i) 以有作用域的三元組表示使用者知識；(ii) 僅在神經事實萃取時使用 LLM;(iii) 將分類、矛盾處理與生命週期管理委託給 CLIPS 專家系統。</p>
+<h2 id="3-系統設計">3. 系統設計</h2>
+<h3 id="31-架構概述">3.1 架構概述</h3>
+<p>NeuSymMS 設計為位於使用者對話與 LLM 閘道之間的記憶層，在每個 Agent 輪次前後提供讀取與寫入路徑。在輪前讀取路徑上，系統載入使用者的相關事實，格式化為緊湊的文字上下文區塊，並透過與 provider 無關的閘道注入 LLM 的系統提示詞。在輪後寫入路徑上，系統從互動中萃取候選事實，透過 CLIPS 規則引擎處理，並將決策應用於以 PostgreSQL 為後端的 fact store。</p>
+<p>實作技術棧：Django REST Framework（後端 API）、PostgreSQL（持久儲存）、CLIPSPy（CLIPS 6.4 的 Python 綁定）、LiteLLM（跨 provider 的 LLM 閘道，涵蓋 OpenAI、Anthropic、Gemini 等）。事實以系統提示詞文字注入，使記憶層獨立於任何特定 provider 的專有工具。</p>
+<h3 id="32-三元組資料模型">3.2 三元組資料模型</h3>
+<p>所有知識以（subject, relation, value）三元組表示，受 RDF 風格知識圖譜啟發。每個三元組關聯到使用者、可選的 agent 與 flow 識別碼，以及元資料：語意類別、記憶類型（short_term 或 long_term）、信心度（0.0–1.0）、存取次數與時間戳。軟刪除透過 is_active 標記實現，支援可逆停用與歷史分析。</p>
+<p>九個語意類別：personal、preference、task、relationship、skill、context、instruction、temporal、other。這些類別支撐儲存策略、晉升規則與 UI 過濾——例如 personal 與 preference 事實自然映射到長期記憶，task 與 temporal 預設為短期。</p>
+<h3 id="33-三層作用域">3.3 三層作用域</h3>
+<p>三層隔離防止跨實體污染：</p>
+<ul>
+<li><strong>user scope</strong>：全域使用者資訊（姓名、地點、持久偏好）——<strong>僅此層注入 LLM prompt</strong>，避免用其他實體的資料污染使用者身分。</li>
+<li><strong>agent scope</strong>：特定 Agent 實例的指標或狀態。</li>
+<li><strong>flow scope</strong>：多 Agent 協同完成共享目標的工作流特定上下文（flow 是多 Agent 工作流，Agent 傳遞訊息、遵循控制流並觸發其他工作流動作以完成共享目標）。</li>
+</ul>
+<p>自動作用域分配：提供 agent_id 時，萃取的事實可被歸屬於 agent 或 flow 作用域，並有保護措施防止錯誤分類。此設計對多租戶平台尤為關鍵——許多 Agent 與 flow 為同一使用者並發運行。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

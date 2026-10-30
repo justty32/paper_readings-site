@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_較大模型在多樣多選題上校準良好 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2207.05221_LMs_Know_What_They_Know.zh-TW.html">回 2207.05221_LMs_Know_What_They_Know.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E8%A8%93%E7%B7%B4%E6%A8%A1%E5%9E%8B%E9%A0%90%E6%B8%AC%E8%87%AA%E5%B7%B1%E8%83%BD%E5%90%A6%E6%AD%A3%E7%A2%BA%E5%9B%9E%E7%AD%94%E5%95%8F%E9%A1%8C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="2-較大模型在多樣多選題上校準良好">2 較大模型在多樣多選題上校準良好</h2>
+<p>模型若其分配給結果的機率與該結果實際發生的頻率吻合，即為「校準良好」。語言模型已知在 token 層級機率上校準良好；本節顯示，當被要求從幾個明確選項中挑出正確答案時，語言模型也能產生校準良好的機率。校準本身就值得研究，但更與誠實性直接相關——一個能對「你知道 X 的答案嗎？」這類 meta-問題給出校準答案的模型，必定對自己知道什麼有些了解。一般而言，我們可以把校準當作邁向自我知識的踏腳石。</p>
+<p>我們發現，當多選題以如下格式呈現（如 [Rae et al., 2021] 所用）：</p>
+<pre><code>Question: Who was the first president of the United States?
+Choices:
+(A) Barack Obama
+(B) George Washington
+(C) Michael Jackson
+Answer:
+</code></pre>
+<p>且答案只用標籤識別（如「(B)」），我們最大的模型往往能對可用選項產生校準良好的機率分布。此格式下所有 BIG Bench 多選任務的校準圖見圖 4；即使對相對「刁鑽」的資料集如 TruthfulQA，以及 QuALITY、LogiQA，模型也校準良好（圖 6）。</p>
+<p><strong>模型必須能明確看到答案選項再作選擇才行</strong>——若無此前提，因不同措辭/特化方式間的歧義與簡併，我們不會預期得到校準的回應（例如「Washington」vs.「George Washington, 第一任美國總統」）。任務格式對取得良好校準至關重要，且校準隨 0-shot 過渡到 5-shot 評測而改善；我們認為此格式也較容易取得良好校準，因為每個答案選項對應單一 token（BIG Bench 預設格式並非如此，見附錄 A.4）。</p>
+<p>為簡化結果解讀，我們把校準曲線化約為單一數字，即<strong>期望校準誤差（ECE）</strong>：把預測分成 10 個等量 bin 後計算。圖 4 右側顯示 BIG Bench 上的校準規模趨勢：0-shot 下通常已有不錯校準，few-shot 進一步改善，且幾乎所有情況下校準都隨模型規模與能力提升；準確率也隨模型規模提升，但圖 5 顯示準確率與校準之間<strong>無明顯因果關聯</strong>。</p>
+<h2 id="3-從校準到知道自己知道什麼">3 從校準到「知道自己知道什麼」</h2>
+<p>若語言模型能以校準的方式回答多選題，我們或許能期待它把這個能力用來評估自己的輸出——即讓模型生成潛在答案，再讓模型評估其中是否有正確的。</p>
+<h3 id="31-用none-of-the-above取代選項會傷害表現與校準">3.1 用「None of the Above」取代選項會傷害表現與校準</h3>
+<p>雖然模型在格式恰當時能對多選題產生校準機率，但這只需要模型判斷幾個具體選項間的相對權重。我們更關心模型是否真的<strong>獨立</strong>知道每個答案選項的對錯，因此把多選題的最後一個選項換成「none of the above」。這可能讓原本沒有唯一正解的問題變得歧義或無解，但對多數任務（尤其 MMLU 的絕大部分問題）而言仍是良好定義的新評測。結果顯示這個替換<strong>大幅降低</strong>了 MMLU 上的準確率（見附錄圖 36），也明顯傷害校準（圖 5、7）。即使是 52B 模型也似乎對使用「none of the above」選項有偏見，未能以適當頻率選用它；5-shot 與 20-shot 皆未能改善此現象。</p>
+<h3 id="32-模型在-truefalse-任務上校準良好">3.2 模型在 True/False 任務上校準良好</h3>
+<p>改採不同角度：直接問模型某個給定答案是真是假，格式為：</p>
+<pre><code>Question: Who was the first president of the United States?
+Proposed Answer: George Washington
+Is the proposed answer:
+(A) True
+(B) False
+The proposed answer is:
+</code></pre>
+<p>若模型回應正確率高於機率水準，尤其若是校準的，則 P(True) 就能指示模型是否相信某回應有效。以既有多選任務的正確答案與隨機挑選的錯誤選項構造出兩倍題數的新評測集，圖 8 顯示 52B 模型在 BIG Bench 上此設定下校準相當良好（MMLU 結果見附錄圖 36）。</p>
+<h3 id="33-rlhf-policy-的失準可用溫度調整補救">3.3 RLHF Policy 的失準可用溫度調整補救</h3>
+<p>本文主要研究純語言模型，但也快速檢視了以相同基礎模型訓練、經 [Bai et al., 2022] 流程微調的 helpful-and-harmless RLHF policy 的校準。這些 policy 原生看起來校準很差，並不意外，因為 RL 微調傾向把語言模型的預測收攏到獲得最多獎勵的行為上。然而，簡單的溫度調整（所有評測統一用 T=2.5）就能大幅修復多項獨立評測上的校準問題（圖 9），這也與 [Bai et al., 2022] 在性別偏見評測上的發現一致（RLHF policy 的偏見分數與較低溫度下的基礎語言模型評測非常相似）。當然，更密集的 RL 訓練可能以無法這樣補救的方式扭曲校準，但這至少提供了一絲希望：良好校準能在某些形式的微調後存活。</p>
+<h2 id="4-問-ai你提出的答案是真是假">4 問 AI：你提出的答案是真是假？</h2>
+<p>我們把 §3.2 的 True/False 方法套用到模型生成、嘗試回答問題時產生的樣本，涵蓋短答任務（算術、Lambada、TriviaQA）與長答任務（Codex HumanEval、GSM8k；GSM8k 技術上要求短答，但我們評估的是透過思維鏈/scratchpad 提示 [Nye et al., 2021; Wei et al., 2022] 引出的完整書寫解答）。幾乎所有情況下，自我評估表現隨模型規模改善；對 52B 模型，被標為 P(True) &gt; 50% 的答案，其正確率遠高於一般回應。我們也發現，讓模型看過同一問題的多個 T=1 樣本後，其判斷任一樣本是否正確的能力顯著改善——這有點類似 self-consistency [Wang et al., 2022]，但這裡是讓模型看自己的樣本，而非我們外部判斷一致性。總結這些結果的一種方式是自我評估的 Brier score（圖 11）。</p>
+<h3 id="41-基礎自我評估">4.1 基礎自我評估</h3>
+<p>先前已知大型語言模型在 True/False 問題上校準良好；我們把此能力用來讓語言模型評估自己的輸出：先問一個問題並從模型取樣一個回答，再問模型自己的樣本：</p>
+<pre><code>Question: Who was the first president of the United States?
+Proposed Answer: George Washington was the first president.
+Is the proposed answer:
+(A) True
+(B) False
+The proposed answer is:
+</code></pre>
+<p>並讀出模型對「(A)」「(B)」的機率。此方法套用在 TriviaQA、Lambada、Codex HumanEval、GSM8k、基礎算術題上的模型生成答案。</p>
+<p>這種 True/False 自我評估可能比 §3.2 研究的任務難得多，因為那裡模型面對的是人類寫的選項，而這裡模型必須評估<strong>自己的</strong>樣本——這些樣本可能恰好落在模型自身有效性判斷邊界附近（或模型單純對自己的樣本過度自信），而第三方提供的選項可能較容易歸類。我們在多處觀察到此效應：zero-shot 下 P(True) 校準很差，通常對典型樣本接近 50%（見附錄圖 38）；此外附錄圖 33 顯示，對所有規模的評估模型而言，<strong>較小模型的樣本永遠比較容易被判斷對錯</strong>。</p>
+<h3 id="42-顯示多個-t1-樣本可改善自我評估">4.2 顯示多個 T=1 樣本可改善自我評估</h3>
+<p>我們可以進一步藉由讓模型參考其他 T=1 樣本來提升表現：總共生成 5 個樣本，再詢問其中一個的有效性：</p>
+<pre><code>Question: Who was the third president of the United States?
+Here are some brainstormed ideas: James Monroe / Thomas Jefferson / John Adams / Thomas Jefferson / George Washington
+Possible Answer: James Monroe
+Is the possible answer:
+(A) True
+(B) False
+The possible answer is:
+</code></pre>
+<p>此格式在所有短答任務上顯著改善表現（見圖 11 總結），但在需要長答的任務（Codex、GSM8k）上獲益較少。如前所述，P(True) 校準 zero-shot 下較差，few-shot 則改善（附錄圖 32 為 20-shot True/False 自評的完整校準曲線）。</p>
+<p>圖 11 下半部直接比較模型整體準確率，與模型選擇 P(True) &gt; 0.5 的回應子集準確率：這些條件準確率明顯高於整體準確率，且此差距隨模型規模擴大而變大——暗示隨能力提升、樣本日趨精細，模型在<strong>自我評估相對於生成能力</strong>上展現相對進步，這也符合「驗證通常比生成容易」的直覺。</p>
+<p>整體而言，若給定分布的少量範例，模型能生成樣本並自我評估以有效區分正確與錯誤樣本，且信心程度相當校準。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2506.07549_MetaKAN.zh-TW.html">回 2506.07549_MetaKAN.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<p>涵蓋低維（4.1）/高維（C.1）函數擬合、PDE 求解（C.3）、影像分類（全連接 C.2 + 卷積 4.2），並分析記憶體（4.3）、消融（C.4）。</p>
+<h3 id="41-函數擬合">4.1 函數擬合</h3>
+<ul>
+<li><strong>設置</strong>：Feynman 資料集，LBFGS（初始 lr=1，同原 KAN），元學習器隱藏層 32/64，grid 點數做對比；KAN 結構依各函數複雜度設計。</li>
+<li><strong>結果（表 2）</strong>：16 條 Feynman 方程，相同 grid 下 MetaKAN 普遍以更少參數勝 KAN。grid=5 時 <strong>11/17 條 MSE 更低</strong>、參數減 <strong>21–47%</strong>;I.12.5（含 arcsin 類）MSE 有<strong>一數量級</strong>提升（30 vs 57 參數）;grid 較大時 <strong>13/16 條更優</strong>、平均省 <strong>18%</strong>。內積相似度矩陣（圖 9）顯示 MetaKAN 學到的函數類<strong>更緊湊</strong>，KAN 則學了更大、冗餘的函數空間。</li>
+</ul>
+<h3 id="42-卷積架構">4.2 卷積架構</h3>
+<ul>
+<li><strong>設置</strong>：擴展 Drokin（2024），實作 KANConv/FastKANConv/KAGNConv/KALNConv;4 層（淺）通道 [32,64,128,512]、8 層（深）[2,64,128,512,1024×4];3×3 kernel。8 層 MetaKANConv/MetaFastKANConv 提示維設 2/4 並用多元學習器。三個 AdamW（提示、元學習器、主網路），CIFAR 做隨機翻轉/裁切、指數衰減 lr、Dropout。</li>
+<li><strong>結果（表 3）</strong>：4 層 MetaKANConv 在 CIFAR-10 達 <strong>45.86%</strong>、參數減 <strong>89%</strong>（392,887 vs 3,494,958），高 baseline 6.03 個百分點；MetaFastKANConv 在 CIFAR-100 達 <strong>34.81%</strong>（vs 28.84%）僅 <strong>12%</strong> 參數；8 層 MetaFastKANConv 在 CIFAR-10 達 <strong>81.53%</strong>、參數減 <strong>78%</strong>（9.05M vs 40.70M）。</li>
+</ul>
+<h3 id="43-記憶體效益">4.3 記憶體效益</h3>
+<p>MetaKAN 目標是降 KAN 高訓練成本（尤其峰值 GPU 記憶體）。圖 4 顯示<strong>網路越大、grid 越大，MetaKAN 記憶體節省越顯著</strong>、擴展性更佳。grid≥5 等高解析度節省尤明顯（即便元學習器用較大隱藏維）；中等 grid（約 3–5）配小到中等隱藏維（16/32）也有效；小 grid 需很小隱藏維（如 16）。<strong>實務建議：元學習器隱藏維應依 KAN grid 大小選取。</strong></p>
+<h3 id="44-學到提示的物理意義">4.4 學到提示的物理意義</h3>
+<p>圖 10 視覺化學到的任務提示 c。熱圖顯示<strong>相似激活函數對應的提示更相似</strong>（暗區），佐證可學習提示確實能識別激活函數、驗證元學習器設計的合理性，支持 MetaKAN 能學到恰當的權重學習規則、提升記憶體效率。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>提出 <strong>MetaKAN</strong>——以元學習訓練 KAN 的記憶體高效框架。用小元學習器生成 KAN 權重，大幅減少可訓練參數同時維持或提升效能。在符號迴歸、PDE、影像分類上，MetaKAN 以一小部分參數達相當或更優效能；且<strong>模型無關</strong>，可套 FastKAN/ConvKAN/WavKAN。MetaKAN 為提升 KAN 訓練效率提供有望方向，使其能應用於更大資料集與更複雜任務。未來：如何<strong>遷移權重預測規則</strong>以助新 KAN 訓練任務的記憶體效率，是有價值的方向。</p>
+<p><strong>Impact Statement 自承</strong>：MetaKAN（與 KAN）在影像分類 benchmark 仍可能弱於既有基線，成因與對策值得探究。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2506.07549_MetaKAN.%E6%91%98%E8%A6%81.html"><code>../summarize/2506.07549_MetaKAN.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

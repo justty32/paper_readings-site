@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_Distilling_step-by-step · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.02301_DistillStepByStep.zh-TW.html">回 2305.02301_DistillStepByStep.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-distilling-step-by-step">3 Distilling step-by-step</h2>
+<p>提出的新範式利用 LLM 對其預測進行推理的能力，以資料高效的方式訓練小模型。整體兩步驟：第一，給定一個 LLM 與一個無標資料集，提示 LLM 生成輸出標籤<strong>連同解釋標籤的理據</strong>（理據是支持所預測標籤的自然語言解釋）。第二，除任務標籤外，再利用這些理據去訓練較小的下游模型。直覺上，理據提供了「為何某輸入被映射到某標籤」更豐富、更細緻的資訊，且常含有僅從原始輸入難以推得的相關任務知識。</p>
+<h3 id="31-從-llm-抽取理據">3.1 從 LLM 抽取理據</h3>
+<p>利用 LLM 湧現的一項特性：生成支持其預測的理據。具體用 <strong>Chain-of-Thought（CoT）prompting</strong>（圖 3）來引出並抽取理據。給定無標資料集中的 xᵢ∈D，先精心編寫一個描述「該任務如何求解」的 prompt 模板 p。每個 prompt 是三元組 <strong>(xᵖ, rᵖ, yᵖ)</strong>：xᵖ 是範例輸入、yᵖ 是其對應標籤、rᵖ 是使用者提供、解釋「為何 xᵖ 可歸類為 yᵖ」的理據。把每個輸入 xᵢ 接到 p 之後餵給 LLM；憑 p 裡的示範，LLM 便能模仿三元組示範，為 xᵢ 生成理據 r̂ᵢ 與輸出 ŷᵢ。</p>
+<p>（圖 3：few-shot CoT prompt 同時含一個範例理據（綠色標示）與一個標籤（藍色標示），以在新輸入上引出理據。）</p>
+<h3 id="32-用理據訓練小模型">3.2 用理據訓練小模型</h3>
+<p>先描述現有的任務專用模型學習框架，再擴充以納入理據。形式上資料集 𝒟={(xᵢ, yᵢ)}，xᵢ 是輸入、yᵢ 是期望輸出標籤。實驗把 x、y 限定為自然語言，這個 text-to-text 框架涵蓋分類、自然語言推論、問答等多種 NLP 任務。</p>
+<p><strong>標準 finetuning 與任務蒸餾</strong>：最常見做法是用監督資料 finetune 預訓練模型；在無人工標籤時，任務蒸餾用 LLM 老師生成偽雜訊標籤 ŷᵢ 取代 yᵢ。兩種情形小模型 f 都被訓練去最小化<strong>標籤預測損失</strong>：</p>
+<blockquote>
+<p>ℒ_label = (1/N) Σ ℓ(f(xᵢ), ŷᵢ)　（式 1，ℓ 為預測與目標 token 間的交叉熵；ŷᵢ 依情形為人工標籤或 LLM 預測標籤）</p>
+</blockquote>
+<p><strong>用理據做多任務學習</strong>：為在 xᵢ 與 ŷᵢ 間建立更明確的連結，用抽出的理據 r̂ᵢ 當額外監督。一種直接做法是把 r̂ᵢ <strong>當額外輸入</strong>（如 PINTO/Rajani et al.）：訓練 f(xᵢ, r̂ᵢ)→ŷᵢ（式 2）。但此設計要求 LLM 先生成理據 f 才能預測——<strong>測試期仍需要 LLM，限制了可部署性</strong>。</p>
+<p>本文<strong>不把理據當額外輸入</strong>，而是把「用理據學習」框成一個<strong>多任務問題</strong>：訓練 f(xᵢ)→(ŷᵢ, r̂ᵢ)，讓模型不只預測標籤、也在給定文字輸入時生成對應理據：</p>
+<blockquote>
+<p>ℒ = ℒ_label + λ·ℒ_rationale　（式 3）
+ℒ_rationale = (1/N) Σ ℓ(f(xᵢ), r̂ᵢ)　（式 4，理據生成損失）</p>
+</blockquote>
+<p>理據生成損失使模型學會為預測生成中間推理步驟，從而引導它更好地預測最終標籤。這就是所提的 Distilling step-by-step。相較式 2，<strong>理據 r̂ᵢ 在測試期不再需要，移除了測試期對 LLM 的需求</strong>。實作上把 <strong>task prefix（[label]、[rationale]）</strong> 前置到輸入：給 [label] 時模型輸出 ŷᵢ，給 [rationale] 時輸出 r̂ᵢ。</p>
+<p>（圖 4/5 要旨：用 220M T5，在不同大小的<strong>有標</strong>（圖 4）／<strong>無標</strong>（圖 5）資料集上，Distilling step-by-step 在所有資料集上都勝過用全量資料訓練的標準 finetuning／標準蒸餾，且僅需少量子集——例如 e-SNLI 只用 12.5% 全量、ANLI 無標只用 12.5%。）</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

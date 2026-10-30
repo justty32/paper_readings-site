@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>The Hidden Cost of Structured Generation in LLMs: Draft-Conditioned Constrained Decoding 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>arXiv：2603.03305</p><p><a href="https://arxiv.org/abs/2603.03305" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="the-hidden-cost-of-structured-generation-in-llms-draft-conditioned-constrained-decoding">The Hidden Cost of Structured Generation in LLMs: Draft-Conditioned Constrained Decoding</h1>
+<p><strong>arXiv</strong>: 2603.03305 | <strong>會議</strong>: ICML 2026<br />
+<strong>作者</strong>: Avinash Reddy, Thayne T. Walker, James S. Ide, Amrit Singh Bedi (UCF + Lockheed Martin AI Center)</p>
+<hr />
+<h2 id="1-問題與動機">1. 問題與動機</h2>
+<p>LLM 逐漸被部署為軟體管線的組件，必須產生機器可解析的輸出（JSON、API 呼叫、SQL）。單一語法錯誤就使輸出不可用，因此「受約束生成（constrained decoding, CD）」透過 token 級遮罩與重正規化來強制有效性。然而，CD 並非無成本：當模型分配給合法 token 的機率質量很低（低「可行質量」），重正規化會大幅扭曲原始分佈，產生語意正確性下降——輸出格式完美但答案錯誤。</p>
+<hr />
+<h2 id="2-核心機制kl-投影稅projection-tax-對接-ai_core-33-成本梯度">2. 核心機制：KL 投影稅（Projection Tax）→ 對接 ai_core §3.3 成本梯度</h2>
+<h3 id="21-可行質量feasible-mass與每步失真">2.1 可行質量（Feasible Mass）與每步失真</h3>
+<p>對於前綴 <span class="math inline">\(h_t\)</span>，合法 token 集 <span class="math inline">\(A(h_t)\)</span>，可行質量定義為 <span class="math inline">\(\alpha(h_t) = \sum_{a \in A(h_t)} \pi_\theta(a \mid h_t)\)</span>。受約束解碼的每步分佈為：</p>
+<div class="math block">
+\[q(z_t \mid h_t) = \frac{\pi_\theta(z_t \mid h_t) \cdot \mathbb{I}[z_t \in A(h_t)]}{\alpha(h_t)}\]
+</div>
+<p>每步 KL 失真精確等於 <span class="math inline">\(\log\frac{1}{\alpha(h_t)}\)</span>。當 <span class="math inline">\(\alpha(h_t) \ll 1\)</span>，每一步都引入大幅度扭曲。</p>
+<h3 id="22-累積投影稅對接-ai_core-33-成本梯度">2.2 累積投影稅（對接 ai_core §3.3 成本梯度）</h3>
+<p>解碼到長度 <span class="math inline">\(T\)</span> 的總 KL 失真為累積和：</p>
+<div class="math block">
+\[\text{KL}(\rho_q \mid\mid \rho_\theta) = \mathbb{E}_{z \sim \rho_q}\left[\sum_{t=1}^T \log\frac{1}{\alpha(h_t)}\right]\]
+</div>
+<p>這是<strong>結構化生成的隱藏成本</strong>：當 schema 強制低熵 token（括號、引號、欄位名），模型對這些 token 的機率極低，每一步都交「投影稅」。多次累積後，解碼系統性地偏離正確語意軌跡。這就是 ai_core §3.3 所描述的成本梯度——每一步受約束推論的邊際累積成本。</p>
+<h3 id="23-軌跡偏差trajectory-bias">2.3 軌跡偏差（Trajectory Bias）</h3>
+<p>即使最終序列滿足約束，重正規化按 <span class="math inline">\(\prod_t 1/\alpha(h_t)\)</span> 重新加權序列分佈，使解碼偏好「容易投影」而非「全域正確」的路徑。</p>
+<hr />
+<h2 id="3-dccd草稿條件受約束解碼對接-ai_core-5-受約束填碼">3. DCCD：草稿條件受約束解碼（對接 ai_core §5 受約束填碼）</h2>
+<h3 id="31-核心洞察">3.1 核心洞察</h3>
+<p>可行質量 <span class="math inline">\(\alpha(h_t)\)</span> 是上下文相關的。若先提供語意規劃 <span class="math inline">\(d\)</span>（草稿），使 schema 相容的後續 token 變得高度可能，則 <span class="math inline">\(\alpha(h_t; d) \gg \alpha(h_t)\)</span>，投影稅大幅降低。</p>
+<h3 id="32-演算法兩階段免訓練推論">3.2 演算法（兩階段，免訓練推論）</h3>
+<p><strong>階段 1（草稿生成）</strong>：無約束生成 <span class="math inline">\(y \sim p_{\text{draft}}(\cdot \mid x)\)</span>，捕捉語意規劃。</p>
+<p><strong>階段 2（草稿條件受約束解碼）</strong>：以 <span class="math inline">\((x, y)\)</span> 為條件，使用 CD 產生最終結構化輸出：</p>
+<div class="math block">
+\[\tilde{q}(z_t \mid \tilde{h}_t) = \frac{p_2(z_t \mid \tilde{h}_t) \cdot \mathbb{I}[z_t \in A(x, z_{&lt;t})]}{\tilde{\alpha}(\tilde{h}_t)}\]
+</div>
+<p>其中 <span class="math inline">\(\tilde{h}_t = (x, y, z_{&lt;t})\)</span>。硬約束只施於階段 2，因此結構保證完整保留。多草稿變體（K&gt;1）使用累積 log-可行質量做延遲選擇，支援測試時擴展。</p>
+<h3 id="33-dccd-作為推理-格式化解耦">3.3 DCCD 作為「推理-格式化」解耦</h3>
+<p>DCCD 明確分離推理與格式化。兩模型可不同（草稿模型 + 投影模型），因階段 2 主要做結構實現而非開放推理，可採用更小模型，提升參數效率。這直接對接 ai_core §5 的受約束填碼策略——先解耦語意，再套用結構約束。</p>
+<hr />
+<h2 id="4-關鍵實驗結果">4. 關鍵實驗結果</h2>
+<table>
+<thead>
+<tr>
+<th>指標</th>
+<th>結果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GSM8K 嚴格正確率（1B）</td>
+<td>CD 15.2% → DCCD 39.0%（<strong>+23.8pp</strong>）</td>
+</tr>
+<tr>
+<td>平均提升（6 模型 × 4 資料集）</td>
+<td>CD 32.9% → DCCD 43.5%（<strong>+10.6pp</strong>）</td>
+</tr>
+<tr>
+<td>參數效率</td>
+<td>7B+1.5B DCCD 超越 14B CD（10.7 vs 6.1 acc/B param）</td>
+</tr>
+<tr>
+<td>測試時擴展</td>
+<td>DCCD 隨 n 增長優於 CD（GSM8K n=13: 83% vs 73%）</td>
+</tr>
+<tr>
+<td>MATH500 CD 退化分解</td>
+<td>prompt 引入 schema 僅 -5.2pp；疊加 CD 再 -10~30pp</td>
+</tr>
+<tr>
+<td>延遲成本</td>
+<td>DCCD 約 +13% wall-clock，準確率 +15.8pp（7B）</td>
+</tr>
+<tr>
+<td>Schema 嚴格度效應</td>
+<td>嚴格 schema（答案=int）使 CD 退化 3.4~18.6pp</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="5-分析要點">5. 分析要點</h2>
+<ul>
+<li><strong>草稿品質為上限</strong>：階段 1 正確時，階段 2 保留率 72.9-83.6%；錯誤草稿極少被修正（0.2-3.3%）</li>
+<li><strong>可行質量與正確性相關</strong>：Pearson r = 0.71（累積 log-可行質量 vs 結構化正確率）</li>
+<li><strong>非可驗證任務亦有效</strong>：TL;DR 摘要 DCCD win rate ~80%（品質/忠實度/覆蓋率）</li>
+<li><strong>思考型生成對比</strong>：DCCD 優於 thinking+CD at answer stage（62.6 vs 51.2），因即使在回答階段套用 CD 仍引入足夠投影稅</li>
+</ul>
+<hr />
+<h2 id="6-總結與-ai_core-對接">6. 總結與 ai_core 對接</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>DCCD</th>
+<th>ai_core 對應</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>成本模型</td>
+<td>累積投影稅 = Σ log(1/α)</td>
+<td>§3.3 成本梯度（每一步受約束推論的邊際成本）</td>
+</tr>
+<tr>
+<td>解方策略</td>
+<td>草稿條件降低可行質量缺口</td>
+<td>§5 受約束填碼（先解耦語意，再結構化）</td>
+</tr>
+<tr>
+<td>參數效率</td>
+<td>小模型組合超越大模型</td>
+<td>符合 §5 的效率論述</td>
+</tr>
+</tbody>
+</table>
+<p><strong>一句話</strong>：硬約束生成不是免費的——它按步收取「投影稅」。DCCD 先讓模型自由思考，再繳稅，使稅基（可行質量）最大化，稅率最小化。</p>
+<p><strong>程式碼</strong>: https://github.com/avinashreddydev/dccd</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《ReLAT：用「問題重建」閉合潛在推理的迴圈——測試時自監督檢查潛在狀態忠實度》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：（ReLAT 作者群；在 Qwen3 系列上評測潛在推理的測試時重建）</p><p>日期：2026-06</p><p>arXiv：2606.06252</p><p><a href="https://arxiv.org/abs/2606.06252" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="relat用問題重建閉合潛在推理迴圈重點摘要">《ReLAT：用問題重建閉合潛在推理迴圈》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>潛在推理（把中間推理從自然語言搬進潛在/快取表示以省 token、避開離散瓶頸）有個盲點：<strong>中間狀態不可檢視，沒人知道它是否還保有原問題的約束</strong>——這叫「開環」。ReLAT（Reconstruction-Guided Latent Reasoning At Test Time）用一個簡單原則閉合迴圈：<strong>若潛在狀態忠實代表了問題，就應該能從它重建出原問題</strong>；於是構造一個可微的「<strong>問題→潛在思考→問題</strong>」循環，在生答案前以「問題重建損失」做<strong>自監督測試時訓練（只更 LoRA）</strong>，把不透明的潛在計算錨定回問題規格。在 Qwen3-8B 上把 AIME 2024 從 <strong>56.7% 提到 73.3%</strong>（較最強開環潛在基線 <strong>+16.6 分</strong>）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>近期把推理搬進潛在/KV-cache 表示（LatentMAS、Cache-to-Cache、ThoughtComm 等）以提效率，但代價是<strong>失去文字推理的可檢視性</strong>：潛在狀態一旦生成就被當作可靠中間態往下傳，<strong>語意漂移無從偵測、會沿推理鏈傳播</strong>。既有測試時訓練目標（熵最小化、perplexity、一致性正則）只管信心/一致/脈絡適應，<strong>不檢查潛在思考是否還保有原問題約束</strong>。如何給出一個自監督、可微的「輸入錨定忠實度訊號」？</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>核心觀察</strong>：問題本身就是檢驗忠實度的天然參照——潛在狀態裡「有風險的資訊」正是這道問題表達的約束集。若能從潛在狀態重建問題 → 約束還在；若不能 → 已丟失任務相關資訊（無論它看起來多自信/內部一致）。</li>
+<li><strong>可微循環</strong>：構造 Question <span class="math inline">\(\to\)</span> Latent Thought <span class="math inline">\(\to\)</span> Question 循環。為讓離散 token 選擇可微，用<strong>連續鬆弛</strong>：把每個潛在思考向量表示為「模型詞彙分布下的期望 token 嵌入」（soft embedding），保持從重建損失到潛在思考生成的可微路徑。潛在思考序列長度固定 <span class="math inline">\(K=16\)</span>。</li>
+<li><strong>測試時訓練（ReLAT）</strong>：單一 backbone（凍結）+ 臨時 LoRA <span class="math inline">\(\phi\)</span>。流程：生潛在思考 <span class="math inline">\(\mathcal{E}_\phi(Q)\)</span> → 要同一模型從中重建原問題 → 算重建損失（帶 loss mask 只選原問題 token、排除模板/padding）→ 只更 LoRA（AdamW，<span class="math inline">\(N=16\)</span> 步，lr <span class="math inline">\(1\!-\!5\times10^{-5}\)</span>）。重建問題只用來定義損失、<strong>不用來生答案</strong>；每個測試實例後 LoRA 重置，保證實例級獨立。</li>
+<li><strong>定位</strong>：重建是「適應訊號」而非「解題替代」；是<strong>必要但非充分</strong>的結構錨——把開環潛在推理轉成閉環的忠實度檢查過程。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>Qwen3-8B AIME 2024</strong>：56.7% → <strong>73.3%</strong>，較最強開環潛在基線（LatentMAS）<strong>+16.6 分</strong>。</li>
+<li>跨數學推理（AIME 2024/2025）、知識 QA（GPQA-Diamond、MedQA）、程式生成（MBPP+），在 Qwen3-4B/8B/14B 與 DeepSeek-R1-Distill-Qwen-7B 上，ReLAT <strong>一致勝過</strong>：單模型推理、文字級協作（TextMAS）、開環潛在協作（LatentMAS）、以及其他測試時訓練目標。</li>
+<li>消融（附錄）：直接重建式 TTT 基線不如 ReLAT 的可微潛在循環。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>重建忠實度是<strong>必要非充分</strong>——能重建問題不保證推理正確，只過濾/校正明顯失真的潛在狀態。</li>
+<li>每個測試實例需 16 步 LoRA 更新 + 重置，增加推理時計算（雖凍結 backbone）；長生成（AIME 設 20,000 token）使開銷更顯著。</li>
+<li>連續鬆弛（soft embedding）是對真實離散潛在推理的近似；<span class="math inline">\(K=16\)</span> 等超參需調。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>點出潛在推理／latent CoT 這條熱門路線的<strong>結構性風險（開環、不可驗證）</strong>，並給出一個優雅、自監督、可微的補救——對任何在做 Coconut 式連續思考、KV-cache 通訊、latent multi-agent 的人很有啟發。</li>
+<li>與本批構成「測試時適應三路」對照：<a class="paper-reference" href="2604.19295_TEMPO_TestTime_EM.%E6%91%98%E8%A6%81.html">2604.19295</a> TEMPO 更<strong>策略權重</strong>（RL）、<a class="paper-reference" href="2509.04439_ArcMemo_Concept_Memory.%E6%91%98%E8%A6%81.html">2509.04439</a> ArcMemo 更<strong>外部記憶</strong>（不動權重）、本篇 ReLAT 更<strong>潛在狀態忠實度</strong>（LoRA + 重建）。與 <a class="paper-reference" href="2603.06590_ARC_AGI2_TTT_LongT5.%E6%91%98%E8%A6%81.html">2603.06590</a>/<a class="paper-reference" href="2411.07279_Test_Time_Training.%E6%91%98%E8%A6%81.html">2411.07279</a> 的 ARC 式逐題 LoRA TTT 同屬「測試時微調」家族但目標不同（這裡是錨定輸入而非擬合範例）。</li>
+<li>最值得記：<strong>「忠實的潛在狀態應能重建出原問題」是個可直接落地的自監督訊號</strong>；<strong>把開環潛在推理改成閉環只需一個可微的 Q→Z→Q 循環</strong>；以及「重建是必要非充分的結構錨」這個誠實的定位。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2606.06252_ReLAT_Latent_Reconstruction.zh-TW.html"><code>../translate/2606.06252_ReLAT_Latent_Reconstruction.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

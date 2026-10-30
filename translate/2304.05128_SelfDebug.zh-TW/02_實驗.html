@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2304.05128_SelfDebug.zh-TW.html">回 2304.05128_SelfDebug.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-實驗">5. 實驗</h2>
+<p>模型：code-davinci-002（Codex）、gpt-3.5-turbo、gpt-4、StarCoder（15.5B）。初始生成單程式用貪婪解碼（τ=0）、多樣本用 τ=0.7 加執行式選擇；Self-Debugging 的解釋/回饋/新程式一律貪婪解碼。最多 10 輪除錯，實際成功案例多在 3 輪內。基線兩類：任務特化訓練模型（T5-3B+N-best reranking、LEVER）與純提示重排序法（MBR-Exec、Coder-Reviewer）。</p>
+<h3 id="51-主要結果">5.1 主要結果</h3>
+<p><strong>對比先前重排序法（表 1）</strong>：Spider 開發集上 Codex Self-Debugging+Expl 達 <strong>84.1</strong>，勝過需訓練的 LEVER 81.9 與 T5-3B reranking 80.6、純提示的 MBR-Exec 75.2；MBPP 上 Codex（n=10）72.2 → UT+Expl <strong>75.6</strong>，勝過 LEVER 的 68.9（n=100）。</p>
+<p><strong>不同回饋格式 × 不同 LLM（表 2）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>任務</th>
+<th>模型</th>
+<th>基線</th>
+<th>Simple</th>
+<th>UT</th>
+<th>+Expl</th>
+<th>+Trace</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Spider</td>
+<td>Codex</td>
+<td>81.3</td>
+<td>81.3</td>
+<td>—（無測試）</td>
+<td><strong>84.1</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td>TransCoder</td>
+<td>Codex</td>
+<td>80.4</td>
+<td>89.3</td>
+<td>91.6</td>
+<td><strong>92.5</strong></td>
+<td>87.9</td>
+</tr>
+<tr>
+<td>TransCoder</td>
+<td>GPT-4</td>
+<td>77.3</td>
+<td>80.9</td>
+<td>88.8</td>
+<td><strong>90.4</strong></td>
+<td>89.5</td>
+</tr>
+<tr>
+<td>MBPP</td>
+<td>Codex</td>
+<td>61.4</td>
+<td>68.2</td>
+<td>69.4</td>
+<td>69.8</td>
+<td><strong>70.8</strong></td>
+</tr>
+<tr>
+<td>MBPP</td>
+<td>GPT-4</td>
+<td>72.8</td>
+<td>78.8</td>
+<td><strong>80.6</strong></td>
+<td>80.4</td>
+<td>80.2</td>
+</tr>
+<tr>
+<td>MBPP</td>
+<td>StarCoder</td>
+<td>47.2</td>
+<td>50.6</td>
+<td>52.2</td>
+<td>52.2</td>
+<td><strong>53.2</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Spider 上簡單回饋幾乎無效（無解釋時模型分不出對錯 SQL，也不會對初始預測做有意義的修改）；TransCoder/MBPP 上因至少有一個測試可用，簡單回饋也隱含利用執行結果判對錯，故仍有增益。整體而言<strong>回饋越豐富越好，尤其當執行資訊出現在回饋訊息中</strong>。跨模型觀察：GPT-4 在 Spider 上初始生成與除錯皆遠遜 Codex（可能因其為 zero-shot 調校、不擅跟隨 few-shot 範例；GPT-3.5/GPT-4 零樣本 SQL 比 few-shot 差 10% 以上）；GPT-4 在 MBPP 初始生成最強，而除錯增益與 Codex 相當（TransCoder +12% 以上、MBPP +8%）；StarCoder 基線雖弱，單元測試執行同樣帶來顯著增益（MBPP 用 Trace +6%）。</p>
+<h3 id="52-消融研究">5.2 消融研究</h3>
+<p><strong>5.2.1 樣本效率</strong>（圖 6a）：Spider 上，對貪婪解碼單一預測施以 Self-Debugging 即匹敵 16 樣本基線；從 8 樣本出發除錯勝過 32 樣本基線。通常<strong>一輪除錯即足</strong>，其後增益 &lt;0.1%。TransCoder 上單輪完整回饋較貪婪解碼 +12%，貪婪+除錯勝 5 樣本基線、接近 10 樣本基線（附錄 C）。</p>
+<p><strong>5.2.2 程式碼執行的重要性</strong>（表 3）：拿掉單元測試執行（模型全靠自己推斷正確性）後：Codex 仍可 +5%（TransCoder 80.4→83.9），Trace 回饋相對 Simple 一致較優；GPT-4 在 MBPP 無執行仍 +3.6%（72.8→76.0/76.4），其他 benchmark 增益僅約 1%；GPT-3.5 幾乎不動（TransCoder 89.1→89.1）。與 Codex 不同，few-shot 提示對 GPT-3.5/GPT-4 的除錯幫助不大，兩者全靠內部知識；<strong>無執行結果時兩者傾向對自己的初始預測過度自信</strong>。結論：<strong>程式碼執行在 Self-Debugging 中扮演關鍵角色</strong>；不過有時 LLM 仍能純靠自生回饋改善，其中執行軌跡回饋提供一致增益。</p>
+<p><strong>5.2.3 修復的錯誤類型</strong>：Spider 上增益集中於難題——依 benchmark 標注的難度分級，extra hard 題 <strong>+9%</strong>（63.9→72.9）。初始 SQL 通常「不是全錯」，而是複雜查詢下的小錯（漏 WHERE 條件、漏 SELECT 欄位等）；帶解釋的除錯讓 LLM 發現「問題 vs 預測 SQL」的落差。修復類型分佈（表 4a）：錯誤 WHERE 條件 25.7%、漏 DISTINCT 17.1%、錯誤 JOIN 14.3%、SELECT 欄數錯 11.4%、INTERSECT/UNION 錯 8.6% 等。TransCoder/MBPP 上（表 4b）60–70% 成功案例修「輸出不符」（初始碼已接近正確）：輸出不符 61.9%/69.2%、執行期錯誤 38.1%/30.8%；TransCoder 逾 30% 的成功修復處理<strong>跨語言實作差異</strong>（執行讓問題顯形化），MBPP 逾 10% 靠調換參數順序、對齊參數型別即修好。</p>
+<h2 id="6-相關工作">6. 相關工作</h2>
+<p><strong>Language models for code</strong>：單一預訓練 LLM 已可跨多種程式任務 SOTA，但<strong>對程式執行的理解仍有限</strong>——即使題目給了單元測試，生成的程式仍可能違反。既有工作用執行來從多候選中挑選（訓練 reranker、或以執行輸出共識做選擇）；本文則是<strong>利用並解釋執行</strong>來除錯，樣本效率優於只把執行用在初始生成。</p>
+<p><strong>Prompting techniques</strong>：程式碼解釋在精神上近似 chain-of-thought（逐行自然語言解釋利於除錯分析）；Self-Debugging 亦把除錯過程分解為多階段、對解釋與回饋觸發不同提示（近 decomposed prompting）。</p>
+<p><strong>Code repair</strong>：先前神經修復模型需專門訓練，部分利用執行軌跡、編譯/執行錯誤等額外資訊；Self-Debugging 同樣用執行結果與自生解釋輔助修復，但<strong>用預訓練 LLM + few-shot 提示、不訓練獨立修復模型</strong>。</p>
+<p><strong>Training with feedback / Prompting with feedback</strong>：RLHF、Constitutional AI、訓練 refinement 模型等皆需訓練；提示式的 Reflexion、Self-Refine、RCI、DERA 已在自然語言/推理/電腦操作領域展示自我批評的潛力。本文專注程式碼生成，同時證明<strong>自生回饋</strong>與<strong>執行取得的單元測試回饋</strong>皆有效；特色是以 rubber duck 式程式碼解釋讓模型察覺錯誤，<strong>不要求回饋明說錯在哪、怎麼修</strong>。</p>
+<h2 id="7-結論">7. 結論</h2>
+<p>Self-Debugging 讓 LLM 為自己生成的程式除錯，能執行 rubber duck debugging、無人類指示即找出並修正 bug；跨多個程式碼生成領域 SOTA 並顯著提升樣本效率（Spider 無測試：解釋帶來一致 +2–3%、最難題 +9%；TransCoder/MBPP 有測試：最多 +12%）。這顯示除了增強從零生成程式的能力，<strong>教 LLM 迭代除錯自己的預測</strong>是提升編碼能力、降低取樣成本的另一條有前景的路。未來方向：更好的程式碼解釋能力（假說：解釋力越好→除錯力越好）、在解釋中兼顧高階語義與實作細節、在回饋中加入潛在 bug 描述——初步結果顯示模型自生的「語義錯誤訊息」在逐行解釋之上<strong>沒有</strong>額外增益，如何預測更有資訊量的錯誤訊息留待未來。</p>
+<h2 id="附錄擇要">附錄擇要</h2>
+<ul>
+<li><strong>附錄 A（不同 LLM 的初始樣本）</strong>：Spider 上 GPT-3.5 遠弱於 Codex（few-shot 71.1 vs Codex 77.5+；零樣本僅 59.9），故 Spider 用 Codex 初始碼；Codex 的 few-shot 除錯表現與 GPT-3.5 相當或更好，顯示 Codex 更擅長從長上下文 few-shot 範例學習。</li>
+<li><strong>附錄 B（TransCoder 與無除錯基線）</strong>：pass@1 對比——TransCoder 模型 44.5、PaLM 51.8、PaLM-Coder 55.1，vs Codex 基線 80.4、Self-Debugging UT+Expl <strong>92.5</strong>。</li>
+<li><strong>附錄 C</strong>：MBPP 貪婪解碼 +8% 以上；MBPP 上解釋增益較小的原因——(1) 有測試時光靠 UT 回饋就很容易認出錯誤預測；(2) 上下文長度限制使加解釋後範例數從 6 降到 3；(3) 初始碼離正解太遠時模型直接重寫、不依賴初始碼片段，解釋作用小。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2304.05128_SelfDebug.%E6%91%98%E8%A6%81.html"><code>../summarize/2304.05128_SelfDebug.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

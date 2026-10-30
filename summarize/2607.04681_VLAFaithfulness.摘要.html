@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Do Vision-Language-Action Models Mean What They Say? On the Role of Faithfulness in Embodied Reasoning 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Matthew Foutter、Matteo Cercola、Lena Wild、Yunshan Wang、Michelle Li、Daniele Gammelli、Marco Pavone</p><p>日期：2026-07-06（v1，cs.RO）</p><p>arXiv：2607.04681</p><p><a href="https://arxiv.org/abs/2607.04681" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="do-vision-language-action-models-mean-what-they-say-on-the-role-of-faithfulness-in-embodied-reasoning-重點摘要">Do Vision-Language-Action Models Mean What They Say? On the Role of Faithfulness in Embodied Reasoning 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>這篇把 VLA 的「推理有用」與「推理忠實」拆成兩條軸，並以 Pinocchio critic 檢查 observation、scene description、justification、meta-action 與 waypoints 之間的逐邊一致性，再把一致性當成 RL 密集獎勵；結果顯示軌跡變準不保證理由更可信，但顯式訓練忠實度能改善長尾危險下的反應。</p>
+<h2 id="問題與方法">問題與方法</h2>
+<ul>
+<li><strong>問題</strong>：embodied CoT 可能只是替已算好的 action 補一段合理說法。現有 reasoning-action alignment 只檢查最後文字與動作是否大致一致，仍容許場景描述沒根據、推理步驟互相斷裂，或理由與實際 waypoints 無關。</li>
+<li><strong>忠實度定義</strong>：作者先定義強的 mechanistic faithfulness，要求改寫中介 reasoning variable 時，影響必須沿推理圖傳到 action，不能有繞過文字 trace 的殘餘路徑。因為這種介入保證很難直接訓練，論文改採必要但不充分的 behavioral surrogate。</li>
+<li><strong>逐邊一致性</strong>：trace 被拆為 scene description、move justification 與 longitudinal／lateral meta-action，再檢查 observation→scene、scene→justification、justification→meta-action、meta-action→waypoints，以及 justification→waypoints。最後一條非相鄰邊專門堵住「meta-action 看似合理，但原始理由其實沒有支撐軌跡」的合理化漏洞。</li>
+<li><strong>Pinocchio 與 RL</strong>：Pinocchio 是在 edge-level consistency label 上微調的 VLM critic，每條邊輸出一致機率。policy 的 reward 合併負 ADE、各邊 log consistency 與格式獎勵；critic 固定，policy gradient 用多個局部訊號更新 trace token，而不是只等終局分數。</li>
+</ul>
+<h2 id="作者報告的結果">作者報告的結果</h2>
+<p>在人類校準後，Pinocchio 在 withheld faithfulness annotations 上的 overall balanced accuracy 為 <code>0.87</code>；各邊介於 <code>0.78</code> 與 <code>0.94</code>。視覺 grounding 相關邊較弱，這個缺點也會傳進下游 reward（作者自報）。</p>
+<p>在 withheld 德國駕駛資料上，Pinocchio 訓練的 planner overall consistency 為 <code>61.4%</code>，高於 VLM-Judge 的 <code>57.5%</code> 與只最佳化 ADE 的 <code>43.4%</code>；其 ADE 為 <code>4.324 ± 0.010</code>，而 ADE baseline 為 <code>4.169 ± 0.010</code>，呈現忠實度與名目軌跡誤差間的取捨（作者自報）。</p>
+<p>在合成長尾危險測試中，該 planner 的 reasoning response、waypoint response 與 joint causal alignment 分別為 <code>18.2%</code>、<code>31.8%</code>、<code>7.6%</code>；Alpamayo-1.5-10B 的 overall 為 <code>4.6%</code>，因此作者報告約 <code>1.6×</code> 的相對提升。不過所有模型的絕對分數都低，這只能當極端 domain shift 下的方向性訊號，不是駕駛能力認證（作者自報）。</p>
+<h2 id="局限">局限</h2>
+<p>逐邊語意一致只是 mechanistic faithfulness 的必要條件，完整一致的文字仍可能由繞過推理 trace 的 latent pathway 產生。Pinocchio 依賴 Gemini 標註，judge 的錯誤與校準偏差會直接成為 reward 偏差，其中 image-to-justification 尤其難判。評估主要是 open-loop，無法觀察錯誤累積與閉迴路反應；合成危險又沒有 ground-truth trajectory，因此其 judge score 不能替代真實安全測試。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>這篇為 ai_core 的可解釋輸出劃出一條很有用的界線：文字理由與結果一致，最多是行為層的必要證據，不是內部因果忠實的證明。實務上仍值得做逐邊檢查，因為它能把一個模糊的「解釋可信嗎」拆成 observation grounding、步驟銜接與結果實現等局部憑證，並找出是哪條介面斷掉；但憑證名稱不該寫成「已證明模型照此推理」。對 ai_core 的固化管線，較穩妥的做法是把這些 consistency score 當拒絕與重測訊號，再用介入測試或確定性執行結果補上因果證據，避免把流暢 rationale 升格為可稽核因果鏈。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2607.04681_VLAFaithfulness.zh-TW.html"><code>../translate/2607.04681_VLAFaithfulness.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

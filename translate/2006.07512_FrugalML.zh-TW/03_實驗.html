@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2006.07512_FrugalML.zh-TW.html">回 2006.07512_FrugalML.zh-TW 目錄</a>　<a href="02_FrugalML%EF%BC%9A%E8%87%AA%E9%81%A9%E6%87%89%E9%81%8B%E7%94%A8_ML_%E6%9C%8D%E5%8B%99%E7%9A%84%E7%AF%80%E5%84%89%E6%96%B9%E6%B3%95.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<p>目標四重：(i) 理解 FrugalML 何時、為何能降本不損準；(ii) 評估省本幅度；(iii) 探究準確率與成本的取捨；(iv) 衡量訓練樣本量的影響。</p>
+<p><strong>任務、服務與資料集</strong>：三個不同領域的常見任務——臉部情緒辨識（FER，電腦視覺）、情感分析（SA，NLP）、語音轉文字（STT，語音辨識）。各任務所用商用 API 與價格（單位：USD／萬次查詢）見表 1；每任務另配一個免費的 GitHub 開源小模型（比商用 API 每點便宜得多）作為可選基服務。</p>
+<p><strong>表 1（服務與價格摘要）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>任務</th>
+<th>服務（價格／萬次）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FER</td>
+<td>Google Vision 15、MS Face 10、Face++ 5；另 GitHub CNN（FER2013 預訓練，免費）</td>
+</tr>
+<tr>
+<td>SA</td>
+<td>Google NLP 2.5、AMZN Comprehend 0.75、Baidu NLP 3.5；另規則式工具（中文 Bixin／英文 Vader，免費）</td>
+</tr>
+<tr>
+<td>STT</td>
+<td>Google Speech 60、MS Speech 41、IBM Speech 25；另 DeepSpeech RNN（Librispeech 預訓練，免費）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>表 2（資料集）</strong>：FER 用 FER+（6358,7類）、RAFDB（15339,7）、EXPW（31510,7）、AFFECTNET（287401,7）；SA 用 YELP（20000,2）、SHOP（62774,2）、IMDB（25000,2）、WAIMAI（11987,2）；STT 用 DIGIT（2000,10）、AUDIOMNIST（30000,10）、FLUENT（30043,31）、COMMAND（64727,31）。聚焦「基＋加值」兩層級聯。</p>
+<p><strong>案例研究（FER+，圖 3）</strong>：預算設 b=$5（= 最便宜商用 API Face++ 的價格），用一半 FER+ 訓練。學到的策略中，<strong>55% 的資料只需呼叫免費的 GitHub CNN 基服務</strong>即足夠，故 FrugalML 成本不到最準 API（Microsoft，$10）的一半，<strong>準確率卻更高</strong>——因為基服務的品質分數，是比原始圖像更好的「該預測是否可信」訊號。且<strong>閾值隨基服務預測的標籤而變</strong>：對 surprise 標籤用 0.86 決定是否叫 Microsoft，對 happy 標籤學到的閾值是 0.93。這種<strong>按標籤的獨特閾值</strong>對增準與降本都關鍵：若全域用 0.86 會在某案例誤分類，全域用 0.93 又會在另一案例多花冤枉的加值呼叫。</p>
+<ul>
+<li>對照：帶 softmax gating 的 <strong>mixture of experts</strong> 學到「永遠用 Microsoft API」，準確率 81%、成本 $10；<strong>多數決 ensemble</strong> 準確率略高（82%）但需蒐集所有服務的預測、成本 $30（FrugalML 的 6 倍），且 MoE 與 ensemble 皆固定成本，而 FrugalML 給使用者選預算的彈性。</li>
+</ul>
+<p><strong>省本分析（表 3）</strong>：FrugalML 匹配「最佳單一商用 API」準確率時的省幅通常 &gt;50%，最高在 AUDIOMNIST 達 <strong>90%</strong>。原因是基服務的品質分數與其預測準確率高度相關，FrugalML 只需對少數困難資料點呼叫昂貴服務。SA 任務（如 IMDB）省幅較小（約 24%），可能因規則式 SA 工具的品質分數不夠可靠，且該任務只有兩個標籤、限制了 FrugalML 按標籤分流的威力。部分數字：FER+ 省 67%、RAFDB 57%、EXPW 50%、AFFECTNET 53%、SHOP 46%、WAIMAI 60%、DIGIT 44%、COMMAND 63%、FLUENT 37%。</p>
+<p><strong>準確率—成本取捨（圖 4）</strong>：與兩個消融比較——「Base=GH」強制以 GitHub 模型為基服務，「QS only」再進一步對所有標籤用<strong>單一</strong>品質分數閾值。</p>
+<ul>
+<li>單一 ML 服務成本固定，而 FrugalML 讓使用者在取捨曲線上任選一點，彈性大。</li>
+<li>FrugalML 有時準確率<strong>高於它所呼叫的任何服務</strong>：FER+ 與 AFFECTNET 小成本即 +2% 以上，RAFDB 在大預算下 <strong>+5% 以上</strong>。</li>
+<li>每個組件都有貢獻：在 WAIMAI 上「Base=GH」與「QS only」都造成顯著準確率下降；語音資料集（如 COMMAND）因不同標籤（話語）間準確率差異不大，故下降可忽略。</li>
+<li><strong>無普遍最佳服務</strong>：SA 任務上 Baidu NLP 在 WAIMAI/SHOP 最準，Google NLP 卻在 YELP/IMDB 最準——FrugalML 能自適應學出最優策略。</li>
+</ul>
+<p><strong>訓練樣本量影響（圖 5）</strong>：類別越多需越多樣本，但整體上 <strong>3000 筆標註樣本</strong>已足以跨所有資料集學好策略。</p>
+<h2 id="5-結論與待解問題">5. 結論與待解問題</h2>
+<p>本文提出 FrugalML，一個在使用者預算下找出「最佳 ML API 呼叫策略」的形式化框架。理論分析與實證均顯示 FrugalML 帶來顯著降本與增準，且學習高效（通常在現代機器上僅需幾分鐘）。研究還刻畫了可用 ML API 間在成本與效能上的顯著異質性——這本身即有價值，也被 FrugalML 加以利用。將 FrugalML 推廣到分類以外的 ML 任務（如物件偵測、語言翻譯）是有趣的未來方向。作為推動 MLaaS 進一步研究的資源，作者將釋出用於開發 FrugalML 的資料集（612,139 筆由 API 標註的樣本）與程式碼。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2006.07512_FrugalML.%E6%91%98%E8%A6%81.html"><code>../summarize/2006.07512_FrugalML.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

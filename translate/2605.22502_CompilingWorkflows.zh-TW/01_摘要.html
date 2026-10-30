@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>把代理工作流編譯進 LLM 權重（part 2：評估方法、壁壘一：品質） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.22502_CompilingWorkflows.zh-TW.html">回 2605.22502_CompilingWorkflows.zh-TW 目錄</a>　<a href="02_%E5%A3%81%E5%A3%98%E4%B8%80%EF%BC%9A%E5%93%81%E8%B3%AA%E2%80%94%E2%80%94%E5%B0%8F%E6%A8%A1%E5%9E%8B%E8%83%BD%E5%90%A6%E5%8C%B9%E9%85%8D%E5%89%8D%E6%B2%BF%E6%A8%A1%E5%9E%8B%EF%BC%9F.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>代理編排框架遍地開花——LangGraph、CrewAI、Google ADK、OpenAI Agents SDK、Semantic Kernel、Strands、LlamaIndex——合計超過 29 萬 GitHub 星。它們全遵循同一模式：一個外部編排器坐在 LLM 上方，每回合注入指令並做路由決策。近來研究（Dennis et al., 2026a）指出：對程序性任務，直接把整份程序放進前沿模型的 system prompt 讓它自我編排，品質就能超越外部編排——但代價是佔用上下文窗口、每回對話都需要前沿模型、且把私有程序暴露給第三方 API 提供者。</p>
+<p><strong>把程序編譯進一個小規模微調模型的權重</strong>——創造出所謂的「地下代理（subterranean agent）」——應能同時解決這些問題。這個技術並非全新（SimpleTOD、FireAct、SynTOD、WorkflowLLM、Agent Lumos 都做過），但開發者採納壓倒性地偏向了編排框架。我們識別出三道感知壁壘，並在三個領域逐一實證回應：</p>
+<ul>
+<li><strong>品質（§4）</strong>：8B 編譯模型達到前沿 in-context 品質的 87–98%，與使用 ∼70 倍大前沿模型的 LangGraph 編排器競爭力相當。</li>
+<li><strong>成本（§5）</strong>：編譯模型每次對話比 in-context 基準便宜 128–462 倍；優勢隨程序複雜度而擴大。</li>
+<li><strong>靈活性（§6）</strong>：重新編譯週期僅需 30–50 分鐘（生產級硬體）——是 CI/CD 週期，不是漫漫長路的重新訓練。</li>
+</ul>
+<p>結論：持久結構歸權重，瞬態狀態歸 prompt。</p>
+<hr />
+<h2 id="1-導論">1. 導論</h2>
+<p>代理編排框架合計逾 29 萬 GitHub 星，全採同一架構：外部編排器在 LLM 上方每回合注入指令、解析輸出、做路由。Dennis et al.（2026a）證明對程序性任務，直接把程序放進 system prompt 讓模型自我編排，品質接近完美（4.53–5.00 / 5 分制），but 需前沿模型每回合調用、token 消耗膨脹、上下文窗口被佔、且私有程序暴露給第三方。</p>
+<p><strong>為何不把程序編譯進小模型權重？</strong> 此技術已由 SimpleTOD、FireAct、SynTOD、WorkflowLLM、Agent Lumos 建立，且多項達到與前沿模型競爭的品質。但開發者採納仍極度偏向編排——編譯論文合計僅約 3,000 星，約是編排框架社群參與度的百分之一。</p>
+<p>本文識別三道感知壁壘，並在三個領域以 n=200 情境/條件實證回應（以 LangGraph 編排器與 in-context 基準為對照）：旅行訂票（14 節點）、Zoom 技術支援（14 節點、含產品特定知識）、保險理賠（55 節點、6 決策樞紐）。</p>
+<hr />
+<h2 id="2-把代理工作流編譯進權重">2. 把代理工作流編譯進權重</h2>
+<p>圖 1 對比兩種架構。<strong>表面編排（surface orchestration）</strong>：編排器夾在使用者與 LLM 之間，每回合注入 prompt 並解析輸出。<strong>地下代理（subterranean）</strong>：編排器僅在訓練資料生成階段使用；運行時使用者直接對 LLM 對話，程序已編譯進權重。</p>
+<p>管線四步驟：</p>
+<ol>
+<li>將程序定義為含節點（回合）與邊（轉移）的流程圖</li>
+<li>遍歷流程圖所有有效路徑生成合成對話</li>
+<li>在這些對話上用<strong>全參數更新</strong>微調 LLM</li>
+<li>部署時無需編排——LLM 已學會自我編排</li>
+</ol>
+<p>運行時的編譯模型直接執行程序——無需直譯器（interpreter）。程序以有向圖 F = (N, E, n₀, T) 表示：節點帶有角色（agent/user）與 prompt 模板，邊附帶選用條件，起點 n₀，終端集合 T（成功／放棄／升級）。</p>
+<h3 id="三個實驗領域">三個實驗領域</h3>
+<p><strong>旅行訂票</strong>（14 節點、3 決策樞紐）：顧客聯絡 agent 訂行程。agent 收集偏好（目的地、日期、預算）、評估資訊是否足夠（不足則循環追問）、呈現選項、處理接受／拒絕／替代需求。共 86 條唯一無環路徑，4–17 回合。</p>
+<p><strong>Zoom 技術支援</strong>（14 節點、平行結構）：使用者回報 Zoom 問題（音訊、視訊凍結、連線中斷、螢幕分享失敗）。agent 分類問題至對應排錯軌道，引導診斷步驟，判斷是否解決。這是產品特定領域——agent 必須知道 Zoom 的 UI、設定選單、常見錯誤碼，因此<strong>訓練資料直接將領域知識編碼進模型權重</strong>。共 60 條唯一無環路徑，4–17 回合。</p>
+<p><strong>保險理賠</strong>（55 節點、6 決策樞紐）：保戶提出索賠（汽車、產物、健康、責任）。agent 引導受理、判定類型、收集佐證文件（不完整就循環追討）、評估承保範圍與除外條款、協商理賠金額（出價／還價）。共 2,381 條唯一無環路徑，9–39 回合——近四倍規模，包含巢狀迴圈（文件請求→審查→再請求）與跨階段依賴（承保決定約束理賠選項），測試編譯是否可規模化到大幅更複雜的工作流。</p>
+<h3 id="訓練">訓練</h3>
+<p>對於每段對話，取樣一條流程圖路徑與一組情境變數（目的地、預算、使用者人格、索賠類型等），再用 Claude Sonnet 4.5 沿路徑逐回合生成對話。生成器在每節點接收節點 prompt 模板與完整對話歷史。推理時，模型只看自然對話——沒有程序標註，結構隱含在對話流中。</p>
+<p>使用<strong>全參數更新</strong>微調。程序內化需要修改模型的隱式狀態追蹤行為——這比風格對齊更深層。Dennis et al.（2026b）系統性研究 LoRA（rank 16–128）發現：低秩方法在程序性任務上無法接近全微調的表現。推理時，地下代理僅使用最簡 system prompt（如「你是一位有幫助的旅行訂票助手」）——無程序說明、無流程圖狀態、無路由邏輯。</p>
+<h1 id="把代理工作流編譯進-llm-權重part-2評估方法壁壘一品質">把代理工作流編譯進 LLM 權重（part 2：評估方法、壁壘一：品質）</h1>
+<h2 id="3-評估方法">3. 評估方法</h2>
+<p>三個實驗共享兩個基準線：</p>
+<ul>
+<li><strong>LangGraph 編排器</strong>：用 Claude Sonnet 4.5 透過 LangGraph 編排。每個流程圖節點對應一個 LangGraph 圖節點；決策樞紐由 LLM 分類器選擇下一條邊。這比 3B 編譯模型大約 70 倍參數。</li>
+<li><strong>In-context 基準</strong>：把整份序列化流程圖放進 Claude Sonnet 4.5 的 system prompt，讓它自我編排（每回合一次 API 調用）。建立前沿模型在完整程序上下文下的品質天花板。</li>
+</ul>
+<p>使用者模擬：用 Claude Sonnet 4.5 動態生成使用者回應——模擬器不知道底層流程圖，只角色扮演有特定偏好的顧客。所有條件接收相同的情境規格與模擬器。每領域每條件 n=200，情境設計涵蓋完整路徑範圍、使用者風格（具體到模糊）、滿意度、預算真實性、團體複雜度。</p>
+<p><strong>LLM-as-judge</strong>：Claude Sonnet 4.5 在不知哪個系統產生的情況下評分。為處理法官自偏好偏差（Claude 既是資料生成者又是法官），另用 GPT-4.1 獨立重評所有對話（相同評分表）；GPT-4.1 給出品質範圍 83–99%，定性發現（編譯 &gt; 同模型編排器，in-context 領先）對法官選擇穩健（附錄 C）。</p>
+<p>每段對話在五個標準評分（1–5 分制），每級均有具體行為錨點：</p>
+<ol>
+<li><strong>任務成功</strong>：是否正確執行程序到達適當終端狀態</li>
+<li><strong>資訊準確性</strong>：是否正確使用並保留所有使用者提供的資訊</li>
+<li><strong>一致性</strong>：是否在對話全程維持連貫狀態</li>
+<li><strong>優雅處理</strong>：對變動、模糊、邊界案例的處理（使用者未提出挑戰時上限 3 分）</li>
+<li><strong>自然度</strong>：對話是否像與熟練真人 agent 交談</li>
+</ol>
+<p>統計：配對條件用 Wilcoxon signed-rank，非配對用 Mann–Whitney U，效應量 Cohen&#x27;s d，bootstrap 95% CI（10,000 次重抽樣），Holm–Bonferroni 校正（五項標準，α=0.05）。</p>
+<hr />
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

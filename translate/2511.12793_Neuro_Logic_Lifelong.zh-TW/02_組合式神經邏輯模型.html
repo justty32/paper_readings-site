@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_組合式神經邏輯模型 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2511.12793_Neuro_Logic_Lifelong.zh-TW.html">回 2511.12793_Neuro_Logic_Lifelong.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-組合式神經邏輯模型">4. 組合式神經邏輯模型</h2>
+<p>用 <strong>NLM</strong> 實現 L2ILP。NLM 串接一序列<strong>邏輯層</strong>（以謂詞為輸入輸出的神經層），每層可視為對輸入謂詞學邏輯規則。</p>
+<ul>
+<li><strong>知識庫</strong>：每個 NLM 層 = 一個規則搜尋空間 R_i；規則作用於輸入謂詞構造輸出謂詞空間。<strong>單層搜尋空間遠小於全空間 R</strong>；但<strong>串接多層</strong>可得複雜且具表達力的目標謂詞空間（遞迴定義）。我們以<strong>複雜度遞增的目標謂詞之聯集</strong>構造共享知識庫，超參 L 控「模型複雜度 vs 謂詞表達力」權衡——以不同複雜度謂詞達<strong>細粒度謂詞組合</strong>（類比電腦視覺中多尺度表示學習的成功，圖 1：知識庫由不同深度的 NLM 層構成）。</li>
+<li><strong>任務專屬模組</strong>：對任務 t，亦為一個 NLM 層，吃知識庫<strong>所有</strong>謂詞 → 組出該任務的目標謂詞。</li>
+<li><strong>訓練協定</strong>：促成知識庫<strong>跨任務轉移</strong>，同時讓任務專屬模組<strong>彼此獨立</strong>——知識庫從 p_{t} 重用到 p_{t+1}，而各任務模組<strong>隨機初始化、從頭訓練</strong>。</li>
+</ul>
+<h2 id="5-實驗">5. 實驗</h2>
+<p>規則轉移對**監督式（ILP）<strong>與</strong>強化學習（關係式 RL）**皆有益，故兩設定都做。監督式：借鑒 Dong 2019、Zimmer 2023、Glanois 2021、Li 2024，設計三領域任務序列——<strong>arithmetic、tree、graph</strong>。RL：用 <strong>PDDLGym</strong>（狀態/動作以邏輯謂詞表示），選 <strong>BlocksWorld</strong> 為測試台（複雜邏輯推理常用 benchmark）。</p>
+<h3 id="51-邏輯規則的前向轉移">5.1 邏輯規則的前向轉移</h3>
+<p><strong>ILP 實驗</strong>：核心問題是「規則轉移是否真有益」。比較終身學習 vs 各任務獨立訓練的學習曲線（架構相同）。</p>
+<ul>
+<li><strong>Graph 領域</strong>：edge（連通性）+ 節點顏色一元謂詞，完整描述圖。四個依序學的目標謂詞：① 某節點是否有至少一個紅鄰居；② 兩節點最短路是否恰為兩條邊；③ 與查詢節點距離恰為 2 的節點是否為紅；④ 是否存在多個此種距離 2 的紅節點。刻意設計使任務相關、學規則時共享共同結構。</li>
+<li><strong>Tree 領域</strong>：edge 足以描述任何樹。四目標謂詞：① 找根節點（基礎謂詞）;②③ 兩節點是否由奇/偶數條邊相連；④ 一節點是否為另一節點的祖先（依相對深度）。</li>
+<li>結果（圖 2，4 seeds 取均值±標準差）：arithmetic 任務簡單，獨立與終身都快速收斂，但<strong>終身的 loss 下降更快</strong>（小但可見的差距）;tree/graph <strong>差距更明顯、配對曲線無重疊</strong>；每領域<strong>第一個任務終身與獨立完全重合</strong>（首任務無前置知識，等同獨立學習）。→ 證實 forward transfer。</li>
+</ul>
+<p><strong>關係式 RL 實驗</strong>：BlocksWorld（表 1 列出狀態/動作謂詞：on/onTable/clear/handEmpty/holding;pickUp/putDown/stack/unstack）。動作數最高達 O(n²)（n＝方塊數）、狀態數隨方塊階乘成長。前人多用 <strong>5 方塊，本文擴到 6 方塊</strong>；稀疏獎勵（每步 -0.1、達標 +100）。因大狀態/動作空間 + 稀疏獎勵使探索極難，<strong>單獨訓練無法探索到正獎勵</strong>，故改用<strong>離線 RL</strong>：用 planner 生最優動作 + 隨機探索（探索率 0.8，每任務收 5 萬轉移）確保兩法資料品質相同。</p>
+<ul>
+<li>結果（圖 3，評估步數反映策略品質）：任務 0–2 簡單，終身無明顯優勢；<strong>難任務 3、4 出現明顯差距——終身收斂遠快，獨立訓練偶爾無法收斂到最優策略</strong>。→ forward transfer 也延伸到更複雜的 RL。</li>
+</ul>
+<h3 id="52-邏輯規則的遺忘">5.2 邏輯規則的遺忘</h3>
+<p><strong>遺忘實驗</strong>：知識庫持續更新，可能使<strong>早期任務的專屬模組失效</strong>（依賴過時的知識表示）。追蹤全程各任務 loss（圖 4 graph、圖 5 tree，每圖任務 0–3）。橙線：如預期，<strong>早期任務 loss 隨後續訓練上升 → 出現災難性遺忘</strong>。</p>
+<p><strong>回放實驗</strong>：直接對策＝訓練後續任務時回放早期任務經驗（回放<strong>所有</strong>已學任務的資料）。這在本場景特別有益（目標就是建可跨任務利用的共享知識庫）。綠線（圖 4、5）：</p>
+<ul>
+<li>回放<strong>不顯著干擾當前任務學習</strong>（有/無回放的曲線高度貼合）;</li>
+<li>更重要的是<strong>有效緩解災難性遺忘</strong>（綠線全程維持低 loss）→ 模型成功建立並保住可重用的穩健知識庫。</li>
+<li><strong>意外發現 backward transfer</strong>：圖 5 第一張（tree 任務 0）loss 在訓練任務 1 前已平台化，但<strong>一旦開始訓練任務 1，任務 0 的 loss 進一步降到零</strong>——學任務 1 增強了任務 0 表現（序列訓練中習得更好的知識庫）。</li>
+</ul>
+<h2 id="6-結論">6. 結論</h2>
+<p>NeSy AI 透過整合神經網路與符號方法開啟新範式，能形式化新問題、解決單一方法難解的挑戰。本文邁出研究此領域<strong>終身學習</strong>問題的一步，證明：利用邏輯規則的<strong>組合性與可轉移性</strong>，可直接構造出「後續任務學習效率更高、又保住早期任務表現」的模型。但問題遠未解決：關鍵挑戰是<strong>如何高效構造對領域有意義的邏輯規則、如何從演進中的知識庫系統性生成新規則</strong>。本文僅是可行性的一小步，留下許多開放機會。我們希望此研究啟發更有效的規則表示與構造方法——尤其<strong>支援規則從知識庫動態增刪</strong>者——最終實現更高效、可擴展的神經符號終身學習系統。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2511.12793_Neuro_Logic_Lifelong.%E6%91%98%E8%A6%81.html"><code>../summarize/2511.12793_Neuro_Logic_Lifelong.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

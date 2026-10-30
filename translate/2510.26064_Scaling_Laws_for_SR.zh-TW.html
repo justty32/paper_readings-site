@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>邁向符號迴歸的規模化定律（Towards Scaling Laws for Symbolic Regression） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：David Otte、Jörg K.H. Franke、Arbër Zela、Fábio Ferreira、Frank Hutter（University of Freiburg / ELLIS Institute Tübingen / Open-Sci Collective / LAION / Prior Labs）</p><p>日期：2025-10，NeurIPS MATH-AI Workshop</p><p>arXiv：2510.26064</p><p><a href="https://arxiv.org/abs/2510.26064" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="邁向符號迴歸的規模化定律">邁向符號迴歸的規模化定律</h1>
+<p>University of Freiburg / ELLIS Institute Tübingen 等（NeurIPS MATH-AI Workshop）</p>
+<h2 id="摘要">摘要</h2>
+<p>SR 旨在發現解釋觀測資料的底層數學式，這對「獲得科學洞察」與「為表格資料產生本質可解釋且可泛化的模型」皆有前景。本文聚焦 SR 的基本面。深度學習式 SR 近期已能與 GP 競爭，但<strong>規模的角色仍大致未探</strong>。受語言建模 scaling laws 啟發，我們用一條可擴展的端到端 transformer 管線 + 精心生成的訓練資料，提出<strong>首個 SR 規模化的系統性研究</strong>。跨 <strong>5 種模型大小、橫跨三個數量級的計算量</strong>，我們發現 <strong>validation loss 與 solved rate 都隨計算量呈清晰的冪律</strong>。並辨識<strong>計算最優的超參規模化</strong>：最優 batch size 與 learning rate 隨模型增大而增、<strong>token-to-parameter 比 ≈ 15</strong> 在本區間最優（隨算力略有上升趨勢）。這些結果顯示 SR 效能在很大程度上可由計算量預測，為訓練下一代 SR 模型提供重要洞察。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>SR 尋求揭示描述觀測變數間關係的底層數學式。近年預訓練 transformer SR 模型日漸流行，已開始達到與古典 GP 相當的效能。我們觀察到先前工作多在「規模大致固定」下調訓練過程；<strong>據我們所知，尚無 SR 模型訓練超過約 1 億參數</strong>。</p>
+<p>受 scaling laws 在語言建模的影響啟發，我們問：<strong>SR 是否存在類似的 scaling laws？能否對未來模型設計產生可比的影響？</strong> 為回答，我們需更受控、可擴展的訓練設定：(1) 更系統的合成資料生成（嚴格控制訓練中看到的式子）;(2) 受表格基礎模型啟發的針對性架構改良。為使範圍可控又有洞察，我們的式子只含<strong>整數常數、至多兩個變數</strong>，但仍涵蓋 SR 常見的廣泛運算子混合。基於此，我們做<strong>首個 SR 系統性規模化研究</strong>，跨 5 種模型大小、三個數量級算力。目標不是打敗既有基線，而是確立「transformer SR 遵循可預測的 scaling laws」作為未來模型的設計原則。</p>
+<p><strong>關鍵貢獻</strong>：(1) 展示 solved rate 與 loss 隨算力的冪律規模化（橫跨三個數量級）;(2) 辨識最優 learning rate、batch size、token-to-parameter 比的系統性趨勢；(3) 提出可做乾淨高效規模化分析的可擴展端到端管線。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>Biggio 等首倡在數百萬合成 SR 任務上預訓練 transformer（set-encoder + 標準解碼器自迴歸預測函數骨架、常數再以 BFGS 精修）。後續改良如以對比項銳化骨架分離、或構為多模態翻譯。E2E、SymFormer 提端到端架構直接輸出含常數的完整式，簡化管線且達到與 GP 相當的效能。本研究建於此端到端範式（最接近 E2E），但把焦點從<strong>損失工程</strong>移到<strong>規模的角色</strong>。</p>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="資料生成兩步">資料生成（兩步）</h3>
+<ul>
+<li><strong>遞迴生成</strong>：先前工作多採 Lample-Charton 取樣機制；我們改以<strong>遞迴</strong>生成完整式集——從變數出發，迭代套用一元（UOP）/二元（BOP）運算子，取到固定門檻內的所有式子作基礎式集 E。這讓我們更能控制模型看到的式子（尤其重複數），且<strong>過濾等價式、統一表示</strong>，避免偏向常見式。對每基礎式，先插入隨機常數、再依高斯混合取樣資料集（仿 Kamienny 等），嘗試取 k 個「式子–資料集對」。</li>
+<li><strong>Tokenization</strong>：對表格資料用 base-10 浮點記法（每數值拆成含符號的 mantissa 與 exponent）。目標式以 LaTeX 字串表示（較易讀），常數<strong>逐位數</strong>tokenize。</li>
+</ul>
+<h3 id="架構">架構</h3>
+<p>主採前人標準編碼器–解碼器，只做針對性改良（圖 2）：前人把每輸入點併成單一嵌入，我們改為<strong>每個資料格（cell）一個嵌入</strong>——把 mantissa 與 exponent 上投影到嵌入維後相加。此策略可借鏡近期表格基礎模型的編碼器，主要創新是<strong>每層同時做列向（不同資料點）與欄向（不同變數）注意力</strong>。解碼器follows 標準 seq-to-seq transformer，只對目標格的更新嵌入做 cross-attention；以 cross-entropy 訓練。</p>
+<h3 id="規模化分析">規模化分析</h3>
+<p>仿 LM scaling 文獻，把 Kaplan 的 FLOP 估計改編到編碼器–解碼器：FLOPs ≈ 6·(N_enc·D_in + N_dec·D_out)，N 為前饋參數數、D_in/D_out 為訓練中見過的輸入/輸出 token 數。對各模型大小，以 token-to-parameter 比 20（LM 訓練的最優值）掃不同 batch size 與 learning rate；再以每尺寸最低 validation loss 的設定重訓、變動 token-to-parameter 比。</p>
+<h2 id="4-實驗結果">4. 實驗結果</h2>
+<h3 id="41-設定">4.1 設定</h3>
+<p>5 種模型大小（6.5M–93M 參數）、token-to-parameter 比 5–80。訓練資料生成 |E|=100,000 條（至多兩變數）式子；對每式插入隨機整數常數、取樣 64 點資料集，最多取 k=3,600 個對。獨立驗證/測試各 1,000 式（新取樣常數與資料集，確保訓練對不出現在評估）。用 <strong>AdamCPR</strong> + 前 5% 線性 warmup + 後續 cosine annealing。評估時抽 128 式取最高 R² 者，看 **perfect-solved 比（Acc_solved）**與 <strong>R²&gt;0.99 比（Acc_{R²&gt;0.99}）</strong>，跨三 seed 取平均。</p>
+<h3 id="42-結果三大發現">4.2 結果（三大發現）</h3>
+<ul>
+<li>
+<p><strong>solved rate 與 loss 隨算力呈冪律</strong>：取每尺寸最優設定，仿 Hoffmann 等以 1,500 個算力區間 binning 取 Pareto 前沿，擬合冪律。<strong>Acc_solved 隨算力冪律規模化，橫跨三個數量級</strong>；大模型 + 更多資料一致提升 solved 比、降 loss，<strong>最大模型未見飽和</strong>。例：Acc_solved 從最低算力的 <strong>~0.03</strong> 升到最高的 <strong>~0.6</strong>；依 scaling law，<strong>3.8×10²¹ FLOPs 可達 0.8</strong>。且 <strong>Acc_{R²&gt;0.99} 改善比 Acc_solved 快得多</strong>——凸顯精確式匹配之難。</p>
+</li>
+<li>
+<p><strong>最優 batch size 與 learning rate 隨算力上升</strong>：依 Porian 等的兩步插值（先插最優 lr、再插最優 batch size，用 Akima 插值後擬合 scaling law），兩者皆應隨算力增。<strong>learning rate 的上升趨勢與 LLM 的發現相反</strong>，顯示訓練特性可因任務而異（並指出需更多 seed 降變異）。</p>
+</li>
+<li>
+<p><strong>模型大小與資料量的最優權衡</strong>：對每算力預算的最優參數數與式子 token 數擬合 scaling law，比值隨算力呈上升趨勢。<strong>本算力區間 token-to-parameter ≈ 15 最優</strong>，但結果指出<strong>訓練資料量應比模型略快地擴</strong>。</p>
+</li>
+</ul>
+<h2 id="5-限制與結論">5. 限制與結論</h2>
+<p><strong>限制</strong>：域受限於至多兩變數、小整數常數（真實 SR 常多變數、浮點常數），預測的 scaling law 未必直接外推；算力所限多為單一 seed（有變異）；算力範圍有限、外推未驗證；未與其他 SR 方法比較（設定客製、聚焦規模洞察）。</p>
+<p><strong>結論</strong>：transformer SR 遵循可預測的 scaling laws——效能隨算力呈冪律改善、本算力預算下最優 token-to-parameter ≈ 15、batch size 與 learning rate 應隨模型增。這些為未來工作提供實務啟發，並指出顯著提升模型效能的新途徑。未來應延伸到更複雜式，並驗證「改良資料生成 + 架構 + 規模化的端到端 SR」能否勝過所有其他方法。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2510.26064_Scaling_Laws_for_SR.%E6%91%98%E8%A6%81.html"><code>../summarize/2510.26064_Scaling_Laws_for_SR.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

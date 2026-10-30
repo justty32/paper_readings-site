@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗設定 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2308.00675_ToolDoc.zh-TW.html">回 2308.00675_ToolDoc.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E8%AD%89%E7%99%BC%E7%8F%BE.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-實驗設定">3 實驗設定</h2>
+<h3 id="31-通用工作流程">3.1 通用工作流程</h3>
+<p>沿用「Tool learning with foundation models」的通用框架（涵蓋許多近期工作）：給定自然語言指令，一個 LLM planner 生成一段可依序執行的程式，每一步可能用到從工具集選出的工具；程式生成後由環境執行、回傳結果。這裡的「程式」超越傳統寫碼、更接近自動機理論——一組自動化（即工具）的指令。因此工具集可以是特定程式語言（如 Python）的程式庫，或任何有明確定義輸入輸出的一般運算，如訓練好的模型、API 呼叫等。</p>
+<h3 id="32-工具使用的提示方法">3.2 工具使用的提示方法</h3>
+<p>提示 LLM 做工具使用計畫時考慮兩類資訊：示範（demos）與文件（docs）。示範展示工具互動如何完成特定任務；文件描述個別工具功能、不與特定任務綁定（圖 2）。實驗中探索「加/不加文件」及「加/不加示範、並變動示範數」的各種組合。</p>
+<h3 id="33-評估任務">3.3 評估任務</h3>
+<p>在多模態、多樣工具集的 <strong>6 個任務</strong>上實驗。除非特別指明，LLM planner 為 ChatGPT（gpt-3.5-turbo）。</p>
+<ul>
+<li><strong>ScienceQA 多模態問答</strong>：多模態多選科學題，需語言、視覺理解與領域知識。沿用 Chameleon 的設定與同一組 <strong>7 個工具</strong>（如搜尋引擎、影像文字偵測器）。</li>
+<li><strong>TabMWP 表格數學推理</strong>：含各式表格的數學推理資料集，需理解結構化表格再答數學題。同樣沿用 Chameleon 的 <strong>9 個工具</strong>（如程式生成器、欄位查找）。</li>
+<li><strong>NLVRv2 多模態推理</strong>：判斷一敘述在一對影像上是否為真，需文字與影像的組合式理解。沿用 Visual Programming（VisProg）的 <strong>20 個視覺模組</strong>。因 VisProg 只用少樣本示範、不用文件，作者<strong>自行為每個模組撰寫文件</strong>（含功能描述與函式簽章），完整文件見附錄。</li>
+<li><strong>未見 API 使用（新收集資料集）</strong>：既有基準工具數有限。為探索含大量工具的真實用例，作者收集新基準 <strong>LLM Cloud CLI</strong>，含 <strong>200 條命令</strong>，代表 Google Cloud Platform（GCP）命令列介面的功能。每條命令由對應 GCP 命令<strong>改名</strong>而來，保留原工具語意與邏輯、但對 LLM 而言是未見的（例如負責建虛擬機的 <code>gcloud compute create NAME</code> 改名為 <code>llmvm compute make NAME</code>）。改名慣例讓作者能用真實 GCP 範例當少樣本示範、並沿用對應 GCP 文件。基準含 <strong>50 題</strong>，每題聚焦用命令列建立與設定特定雲端服務，且每題至少需兩條命令。由於 LLM 長度限制，200 工具的文件塞不進單一提示，故用簡單的 <strong>TF-IDF 檢索</strong>以問題為查詢取最相關文件、截斷至符合長度。</li>
+<li><strong>自然語言影像編輯</strong>：作為質性評估。需模型規劃並使用不同視覺模組處理複雜指令（如「把紅色公車換成綠色腳踏車」需定位紅公車、生成其分割遮罩、再對遮罩區域做 inpaint）。用 VisProg 的工具集，但不靠示範、只看模組文件。並加入近期發布的 <strong>Segment Anything（SAM）</strong> 與 <strong>Grounding DINO</strong> 擴充工具集，以即插即用方式測試對新未見工具的零樣本能力。</li>
+<li><strong>影片追蹤</strong>：亦作質性評估。目標是取得影片每幀被追蹤物件的遮罩，需物件定位、分割與追蹤。除 SAM 與 Grounding DINO 外，再把未見的物件追蹤模組 <strong>XMem</strong> 的文件併入 VisProg 框架，展示模型無需明確示範即能在不同任務上適配並運用新工具。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

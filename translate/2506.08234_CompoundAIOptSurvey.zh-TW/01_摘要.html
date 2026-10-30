@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2506.08234_CompoundAIOptSurvey.zh-TW.html">回 2506.08234_CompoundAIOptSurvey.zh-TW 目錄</a>　<a href="02_%E8%A4%87%E5%90%88%E5%BC%8F_AI_%E7%B3%BB%E7%B5%B1%E5%84%AA%E5%8C%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）與 AI 系統的近期進展，帶來了複雜 AI 工作流程在設計與優化上的典範轉移。透過整合多個組件，<strong>複合式 AI 系統（compound AI systems）</strong> 已愈來愈擅長執行精密任務。然而隨系統複雜度上升，出現新的挑戰：不只要優化各個組件，還要優化它們之間的<strong>互動</strong>。傳統優化法如監督式微調（SFT）與強化學習（RL）仍是基礎，但<strong>自然語言回饋（natural language feedback）</strong> 的興起帶來了有前景的新途徑，尤其適用於優化<strong>不可微分（non-differentiable）</strong> 的系統。本文對複合式 AI 系統優化的近期進展做系統性回顧，涵蓋數值式與語言式技術，形式化定義此問題、沿數個關鍵維度分類既有方法，並點出開放挑戰與未來方向。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>社群見證了以 LLM 為核心的新一代 AI 系統，納入模擬器、程式碼直譯器、網路搜尋工具、檢索增強生成（RAG）等精密組件。這類系統跨領域展現卓越能力，通常勝過單獨的 LLM。例如：LLM 與符號求解器溝通可解奧林匹亞級數學題（Trinh et al. 2024）；整合搜尋引擎與程式碼直譯器可媲美人類程式員（AlphaCode）；與知識圖譜結合可驅動生物材料發現。</p>
+<p>然而即使有 LangChain、LlamaIndex 等成熟工具鏈簡化設計流程，要把這些系統為特定下游應用量身打造，仍需大量人力介入，往往是<strong>基於啟發式的試錯調校</strong> prompt 模板與系統管線。這促成了近期發展<strong>有原則、自動化</strong>的端到端 AI 系統優化方法。但這些方法的運作機制因「是否允許修改系統拓撲」與「如何傳遞學習訊號」而大相逕庭；且此領域仍缺乏標準化術語與統一概念框架，令新手難以入門。既有綜述（Lin et al. 2024；Liu et al. 2025）雖提供有用框架，卻多聚焦於自然語言驅動的優化、忽略「允許更新系統拓撲」的關鍵機制、也未涵蓋最新進展。</p>
+<p>為填補此缺口，本研究提出檢視既有方法的<strong>四個關鍵維度</strong>，並取其中兩個維度建構一個 <strong>2×2 分類法（taxonomy）</strong>（圖 1），整體涵蓋 <strong>26 篇代表性著作</strong>。為設定合理範圍，作者排除了：單一 LLM 的 prompt 優化技術、無優化的任務特定系統、以及未明確把問題框定為系統優化的論文。此分類法對未來研究具適應性，望能幫開發者在鑽研技術細節前先取得高層次概觀，也讓提出新演算法的研究者能更好地定位與比較自身貢獻。</p>
+<h2 id="2-背景與預備知識">2. 背景與預備知識</h2>
+<h3 id="21-複合式-ai-系統">2.1 複合式 AI 系統</h3>
+<p>相對於作為統計模型運作的單一 AI 模型（如做下一 token 預測的 Transformer），<strong>複合式 AI 系統</strong>定義為「使用多個互動組件來處理 AI 任務的系統」（Zaharia et al. 2024）。此術語與多個相關概念重疊、常被交替使用，包括多智能體系統（MAS）、語言模型管線（LM pipelines）、語言模型程式（LM programs）。本綜述納入任何「優化由多組件構成之 AI 系統」的方法，並採用「複合式 AI 系統」作為統一標籤。</p>
+<p>雖然單一模型（如 PyTorch 實作的神經網路）因其全可微分層連結而能靠梯度反向傳播輕鬆端到端優化，但複合式 AI 系統由<strong>不可微分組件</strong>構成，因而需要新的優化法。代表性做法包括：以啟發式 bootstrap 尋找 prompt 中最佳的 in-context 範例（DSPy）；以及借助輔助 LLM 對 prompt 更新提供文字回饋（TextGrad）或提出更佳系統拓撲（ADAS）。</p>
+<h3 id="22-形式化定義">2.2 形式化定義</h3>
+<p>因各篇論文的數學描述不一致，作者提出統一的<strong>圖式（graph-based）形式化</strong>與記號（若與原著衝突，以本文定義為準）。</p>
+<p>以 Φ=(G, F) 表示複合式 AI 系統，輸入使用者查詢 q、輸出回應 a。其中 <strong>G=(V,E) 是有向圖</strong>、<strong>F={f_i} 是操作集合</strong>（如 LLM 前向傳播、RAG 步驟、外部工具呼叫）。每個 f_i 附著於節點 v_i，產生 Y_i = f_i(X_i; Θ_i)，X_i 為輸入、Θ_i 為參數。<strong>邊矩陣 E=[c_ij] 由布林函數構成</strong>：給定情境狀態 τ，邊 (v_i→v_j) 當且僅當 c_ij(τ)=1 時啟用。因此即使 G 與 F 在優化後固定，Φ 的<strong>有效拓撲仍隨 τ 變化</strong>，反映對查詢 q 與中間輸出的依賴。</p>
+<p>節點輸入為所有啟用入邊之輸出的串接（⊕）。節點參數 <strong>Θ_i 分解為 (θ_{i,N}, θ_{i,T})</strong>：θ_{i,N} 為<strong>數值參數</strong>（LLM 權重、溫度），θ_{i,T} 為<strong>文字參數</strong>（LLM prompts）。給定訓練集 D={(q_i, m_i)}（m_i 為可選的元資料，如輸出標籤或評估提示）與效能指標 μ，優化目標為最大化平均效能：max_Φ (1/N) Σ μ(Φ(q_i), m_i)。</p>
+<p>（附錄 A 補充：輸入節點 v_in 為入口、輸出節點 v_out 附著恆等函數並終止執行；此形式化透過條件邊自然同時支援 DAG 與循環拓撲——若要強制無環，只需在狀態 τ 記錄已訪節點並禁止重入。）</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

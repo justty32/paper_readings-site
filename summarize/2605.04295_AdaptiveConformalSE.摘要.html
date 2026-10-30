@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《LLM 不確定性量化：自適應共形語意熵（ACSE）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Hamed Karimi, Vaishali Meyappan, Reza Samavi（Toronto Metropolitan University / Vector Institute）</p><p>日期：2026-05（IJCAI 2026）</p><p>arXiv：2605.04295</p><p><a href="https://arxiv.org/abs/2605.04295" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="llm-不確定性量化自適應共形語意熵acse重點摘要">《LLM 不確定性量化：自適應共形語意熵（ACSE）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>對同一提示取樣多條回應、以句子編碼器嵌入後軟聚類，用軟分配的語意熵當基礎不確定性分數，再以五項叢集脆度特徵（語意熵本身、質心距離、主叢集分散度、主叢集大小稀疏性、閾值邊界）自適應膨脹不確定性，最後以共形校準（conformal calibration）在保留集上學出決策閾值</strong>——達成<strong>有限樣本、分布無關</strong>的形式保證：接受提示的錯誤率以 ≥1−α 機率不超過 α，否則棄權。TriviaQA 上 AUROC 0.88（token entropy 的 0.65），FPR@95 從 CAP 的 0.48 降至 0.31。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>LLM 幻覺時常過度自信（高機率生成錯誤輸出），token 層級熵無法區分「表面詞彙變化」與「真正的語意歧義」。</li>
+<li>Semantic Entropy（Kuhn 2023）使用硬聚類，強制每條回應歸入單一叢集，忽略重疊語意區且易受「錯誤共識陷阱」影響（詞彙一致但事實錯誤的叢集也可能滿足共形閾值）。</li>
+<li>既有共形化方法（DDCRP-CP, CAP）把不確定性當純量訊號，對叢集脆度（brittleness）不敏感：主叢集內部不一致、支持稀疏、邊界模糊時，基礎語意熵會低估真實風險。</li>
+</ul>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>回應取樣與語意嵌入</strong>：每提示以 nucleus sampling (η=0.9) 取樣 n=10 條回應，經 all-MiniLM-L6 句子編碼器映射為 ℓ₂ 歸一化的 d 維語意向量，以 cosine 相似度衡量語意鄰近性。錯誤標籤由與參考答案的 cosine 相似度 ≥ τcos 自動判定。</li>
+<li><strong>軟聚類</strong>：對嵌入作 HAC（average linkage + cosine distance，閾值 ϵ=0.35），得 K 個叢集。以參數自由的 <code>a_ik = ½(1+cos(v_i, c_k))</code>→softmax 歸一化→軟分配 s_ik，跨 n 條回應聚合得提示層級語意分布 P(C_k)。基礎不確定性 u(x) = 歸一化語意熵 H_sem/log K ∈ [0,1]。</li>
+<li><strong>自適應不確定性膨脹（核心創新）</strong>：定義 odds O(u,x) = u/(1−u)，以膨脹因子 λ(x) ∈ [1,2] 放大 odds：O(û,x) = λ(x)·O(u,x)，得 û(x) ≥ u(x) 且值域為 [u(x),1]。λ(x) 由五項叢集脆度特徵的加權平均值 B(x) 經 λ=2/(2−B) 映射而得——特徵含：(1) u(x) 本體語意熵、(2) 主叢集代表回應到質心的距離 ã、(3) 主叢集內部 cosine 分散度 d_k*、(4) 主叢集大小稀疏懲罰 g_k*、(5) 過度自信邊界 m(x)=max(0,1−u/τ_ref)。</li>
+<li><strong>雙層共形校準</strong>：(a) 提示層級：對 D_cal 中正確回應的 û(x) 取 (1−α)-分位數 τ̂；推論時 û(x) ≤ τ̂ 才接受；(b) 回應層級：定義非一致性分數 S(x,y) = ½(û(x)+1−ϕ_i)，對正確回應組取 (1−α)-分位數 q̂，構建預測集 C_α(x) = {y_i: S ≤ q̂}。兩者皆享有限樣本覆蓋保證（Thm 1, 2）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>幻覺檢測</strong>（Mistral-7B）：TriviaQA AUROC 0.88 vs TE 0.65/CAP 0.80，MMLU AUROC 0.87，TruthfulQA AUROC 0.84；Falcon-7B 上 FPR@95 降至 0.31（CAP 0.48），相對降幅 35.4%。</li>
+<li><strong>跨架構泛化</strong>：Llama-2-7B/Chat（AUROC 0.89）、Qwen-7B（0.86）、Falcon-7B（0.84），全線優於 CAP 與 DDCRP-CP。</li>
+<li><strong>共形保證</strong>：ACSE 始終滿足響應層級覆蓋（R-Cov）與提示層級覆蓋（P-Cov）的理論保證，基線則常見下限違規；預測集平均大小（APS）1.07 遠小於 DDCRP-CP 的 1.45；SSCV（大小分層覆蓋違規）最低。</li>
+<li><strong>接受率與選擇性風險</strong>：α=0.10 時接受率達 75.8%（CAP 65.4%），選擇性風險受 α 嚴格約束；SE 基線存在過度自信與風險違規，DDCRP-CP 過保守（低風險但預測集大）。</li>
+<li><strong>剝離實驗</strong>：語意熵移除導致 AUROC 降 0.06（最重要特徵）；膨脹使 SE→ACSE 的 AUROC 升 +0.11（TriviaQA）/+0.12（CoQA）。</li>
+<li><strong>計算開銷</strong>：總延遲約 6.4× 單次解碼，主要瓶頸在多回應取樣共享開銷（4.21s），ACSE 特有後處理僅 +0.31s（vs CAP）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>需每提示取樣 n 條回應（n=10），總延遲為單次解碼 6.4×，不適合延遲敏感的線上部署。</li>
+<li>叢集閾值 ϵ、特徵權重 w 為設計選擇非學習參數；在分布偏移極大時 λ(x) 的上界 2 可能不足以充分膨脹。</li>
+<li>共形保證依賴校準集與測試提示的交換性（exchangeability），此假設比 i.i.d. 弱但仍可能被對抗性變化破壞。</li>
+<li>僅處理開放域 QA 與摘要任務；在數學推理、結構化預測等需多步一致性的場景尚未評估。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>ai_core §3.4 憑證（自適應共形語意熵 = 形式保證）的直接實現</strong>：ACSE 是一條從「語意不確定性分數」到「含證明之棄權決策」的完整管線——以叢集脆度自適應膨脹不確定性（讓幻覺更難通過）、再以共形校準給出有限樣本保證閾值（不是手調魔數），這正是 §3.4「拒絕為預設＋憑證准入」所需的機制雛形。把 û(x) ≤ τ̂ 當作憑證檢查閘：不通過→拒絕（棄權/升級/fallback），通過→以預測集 C_α 輔助使用者決策。</li>
+<li><strong>與本庫 UQ 線的對位</strong>：相對於 Selective Classification（1705.08500）的 risk-coverage 基礎框架、Learning to Defer（1711.06664）的委派判準、LGU（2607.16868）以邏輯圖取代扁平分群的語意熵升級——ACSE 補上了「叢集脆度感知的自適應不確定性校正」這一環，且所有基線皆有實證比較；適合放在「UQ 校準→選擇性棄權→共形保證」路徑上閱讀。</li>
+<li><strong>固化引擎接口</strong>（§3.6）：ACSE 的自適應不確定性分數可作為「此案例 LLM 預測是否已穩定到可結晶」的判據——û(x) 低且 C_α 小的提示可視為高信心、候選進入固化流程（抽取成確定性程式碼或快取規則），而 û(x) 高者保留在 LLM 推理管線中。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2605.04295_AdaptiveConformalSE.zh-TW.html"><code>../translate/2605.04295_AdaptiveConformalSE.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

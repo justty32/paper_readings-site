@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Adversarial Post-Training of Foundation Models for High-Frequency Trading 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Alexandre Bismuth、Kang Li、Aramis Marti-Shahandeh、Valentin Mohl、Jakob Foerster、Anisoara Calinescu</p><p>日期：2026-10-19（v1）</p><p>arXiv：2610.25604</p><p><a href="https://arxiv.org/html/2610.25604v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="高頻交易市場模擬的對抗式後訓練">高頻交易市場模擬的對抗式後訓練</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>作者在已預訓練的訂單簿生成器之後，用線上 Wasserstein critic 評估經真實撮合機制產生的序列，再以演化策略更新模型；在單一股票的留出時段，作者自報生成分布的兩項差距下降，但部分市場特徵反而惡化，收益也不等於交易獲利。（<a href="https://arxiv.org/html/2610.25604v1">摘要</a>）</p>
+<h2 id="問題與方法">問題與方法</h2>
+<p>限價訂單簿（LOB）持續接收掛單、撤單與成交。自回歸模型預測下一則訊息，卻未直接懲罰自由生成時錯誤逐步累積。作者保留不可微的撮合引擎，讓生成訊息逐步改變訂單簿；critic 對整段真實與生成訊息評分，生成器透過評分更新，不需要把梯度穿過引擎。（<a href="https://arxiv.org/html/2610.25604v1#S1">§1</a>、<a href="https://arxiv.org/html/2610.25604v1#S4">§4</a>）</p>
+<ul>
+<li><strong>資料與模型</strong>：使用 GOOG 的 2022–2025 年訊息資料；預訓練使用訓練語料約一半，後訓練使用預訓練未見的訓練期資料。封存測試是 2026 年 1–2 月 28 個交易日。生成器為 7,850 萬參數 Mamba-3，以 500 則訊息為脈絡；每則訊息編成 26 個 token。遮罩保證 token 位置語法合法，並不保證撤銷等事件在訂單簿中語意有效。（<a href="https://arxiv.org/html/2610.25604v1#S4.SS1">§4.1</a>）</li>
+<li><strong>對抗更新</strong>：從頭訓練的五個卷積 critic 組成 ensemble，讀取解碼後的訊息通道，不使用絕對價格、絕對時間與訂單 ID 等容易辨識真假的線索。生成器的 SSM 內部投影層用 rank-4 LoRA 擾動估計方向，EGGROLL 在權重空間以 critic 的保守分數估計更新，投影 kernel 本身以完整矩陣更新；KL 信賴區域限制偏離預訓練模型。每步 16 個成員、128 個共享脈絡，共 2,048 條擾動續寫；其他生成器部分凍結。（<a href="https://arxiv.org/html/2610.25604v1#S4.SS2">§4.1–4.2</a>）</li>
+<li><strong>選模與封存測試</strong>：先導實驗顯示 critic 分數可能遭利用，因此主實驗訓練 30 步，每隔兩步以訓練時間範圍內的 2,048 個視窗計算外部 LOB-Bench WS-21 選 checkpoint；選定後在互不重疊的 4,096 個測試視窗評分。比較用同一基礎模型、相同測試視窗；另有匹配選模的隨機 LoRA 擾動與計算量匹配的繼續預訓練對照。（<a href="https://arxiv.org/html/2610.25604v1#S4.SS3">§4.3</a>）</li>
+</ul>
+<h2 id="結果分布差距下降個別特徵仍可能變差">結果：分布差距下降，個別特徵仍可能變差</h2>
+<p>LOB-Bench 的 WS-21 是 21 項微觀結構統計之 Wasserstein-1 邊際分布距離的平均；Mean-L1 是相應直方圖 L1 距離的平均，兩者越低表示這些指標上生成與真實分布越接近。以下為作者自報相對預訓練基準的變化；後訓練為 10 個 seed 平均，區間為配對視窗區塊 bootstrap 的 95% 信賴區間。（<a href="https://arxiv.org/html/2610.25604v1#S5">§4.3–5，表 2</a>）</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th style="text-align:right">WS-21 變化</th>
+<th style="text-align:right">Mean-L1 變化</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>對抗後訓練</td>
+<td style="text-align:right">−17.6% [−19.7%, −15.3%]</td>
+<td style="text-align:right">−17.0% [−18.9%, −15.8%]</td>
+</tr>
+<tr>
+<td>選模匹配的隨機擾動</td>
+<td style="text-align:right">+5.3% [+2.5%, +8.1%]</td>
+<td style="text-align:right">+7.8% [+5.9%, +9.6%]</td>
+</tr>
+<tr>
+<td>計算量匹配的繼續預訓練</td>
+<td style="text-align:right">+0.5% [−2.3%, +3.4%]</td>
+<td style="text-align:right">−0.4% [−2.2%, +1.4%]</td>
+</tr>
+</tbody>
+</table>
+<p>作者自報，基準模型自由生成 500 則訊息時，最後與最初 25 訊息區間的散度比為 3.1 倍；後訓練為 2.3 倍。把各自第一區間扣除後，後訓練的累積額外散度較基準少 26%，按交易日配對 bootstrap 的 95% 區間為 −33% 至 −20%。這是該 estimator 在 500 訊息範圍的比較，不能當作所有錯誤下降 26%。（<a href="https://arxiv.org/html/2610.25604v1#S6.SS1">§5、§6.1，圖 4</a>）</p>
+<p>作者自報，平均改善不是每項都改善：買賣價差的分布誤差增加 34%。critic 直接觀察訊息而非靜態訂單簿，作者認為這可能讓由掛單與撤單共同形成的價差漂移較難被約束。21 個特徵近噪聲底的相對變化也可能很大，即使絕對誤差仍小。（<a href="https://arxiv.org/html/2610.25604v1#S6.SS2">§6.2</a>）</p>
+<h2 id="對照與設計取捨">對照與設計取捨</h2>
+<p>三 seed、50 步先導實驗中，選模視窗的真實度約在第 15–20 步達最佳，繼續訓練時 critic reward 上升卻伴隨 WS-21 惡化。外部選模降低了直接依 critic 選用被利用 checkpoint 的風險；這不是消除 reward hacking 的保證。（<a href="https://arxiv.org/html/2610.25604v1#S5.SS1">§5.1</a>）</p>
+<p>作者比較三種 critic 輸入，各三 seed、相同選模及 2,048 測試視窗：手工微結構描述子的平均 WS-21 變化為 −8.5%，原始訊息為 −17.5%；凍結生成器 backbone 的平均為 −21.4%，但作者指出它的 reward 與留出真實度可反向變動，可靠性較差。GRPO 在同一 critic 下亦得到 −16.0% WS-21 與 −17.3% Mean-L1；其訓練曲線較不平穩，且雖然散度累積較慢，初始偏移較大，500 訊息總散度相對基準僅 −1.0%，EGGROLL 則為 −11.3%。（<a href="https://arxiv.org/html/2610.25604v1#S5.SS3">§5.3，表 3</a>）</p>
+<p>後訓練每 seed 約耗不到 5,000 萬訓練 token 與 12 GPU 小時；原預訓練約 480 億 token、170 GPU 小時。作者在每步固定 2,048 條 rollout 的有限消融中比較方向數與脈絡數，結果落在各組 seed 變異範圍內；不能由此推定任何任務與預算都適合小族群。（<a href="https://arxiv.org/html/2610.25604v1#S5.SS2">§5、§5.2</a>）</p>
+<h2 id="限制與解讀">限制與解讀</h2>
+<ul>
+<li>資料限 GOOG 一檔股票，測試期未出現明顯 regime shift；跨股票、劇烈市場變動及更長 rollout 是否成立尚待驗證。作者明示所有訓練 rollout 均為 500 則訊息，更長訓練視野留待後續研究。（<a href="https://arxiv.org/html/2610.25604v1#S4.SS1">§4.1</a>、<a href="https://arxiv.org/html/2610.25604v1#S7.SS1">§7.1</a>）</li>
+<li>作者在同一 28 日測試 panel 的 2,048 視窗比較 100、250、500、1,000 訊息後的中價方向分類，四個 95% 區間均跨零。這表示未觀察到可排除零的差異，不能證明預測能力完全不變，也不是交易收益或市場衝擊實證。（<a href="https://arxiv.org/html/2610.25604v1#S6.SS3">§6.3，表 4</a>）</li>
+<li><strong>本檔補註，非作者自陳</strong>：21 個邊際統計的平均差距下降，不直接證明市場整體的聯合動態、策略收益或風險均已逼真；作者也把注入訂單後的市場衝擊保真列為未來工作。（<a href="https://arxiv.org/html/2610.25604v1#S7.SS1">§7.1</a>）</li>
+</ul>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.25604_AdversarialHFT.zh-TW.html">Adversarial HFT 譯稿</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

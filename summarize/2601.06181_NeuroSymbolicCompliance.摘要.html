@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《神經符號合規：整合 LLM 與 SMT 求解器於金融法規自動化分析》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yung-Shen Hsia, Fang Yu</p><p>日期：2026-01</p><p>arXiv：2601.06181</p><p><a href="https://arxiv.org/abs/2601.06181" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="神經符號合規整合-llm-與-smt-求解器於金融法規自動化分析重點摘要">《神經符號合規：整合 LLM 與 SMT 求解器於金融法規自動化分析》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>神經符號合規框架</strong>：LLM 將金融法規與案件事實翻譯為 Z3 SMT 形式約束，SMT 求解器進行可證明的合規檢查——以 unsat core 精準定位違法條款，以 MaxSAT 優化計算最小事實修正恢復合規——在 87 件台灣金管會真實裁罰案件中實現 <strong>100% 驗證準確度</strong>，違法條款識別快 <strong>25 倍</strong>，合規恢復計算快 <strong>300 倍</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>金融監理合規判斷依賴法條與案件事實的精確比對，但純 LLM 方法在此場景有根本缺陷：幻覺與邏輯不一致導致「看似合理但法律上錯誤」的判斷，且無法提供可審計的推理軌跡。對監理機關與金融機構而言，合規判斷必須是可證明、可追溯、可挑戰的——神經網路的機率輸出無法滿足此要求。</p>
+<p>另一方面，純符號方法（手寫 SMT/邏輯程式形式化法條）雖能提供確定性驗證，但需要領域專家逐一將自然語言法條翻譯為形式邏輯，成本極高且不具規模性。法規頻繁修訂更使手寫形式化難以維護。</p>
+<p>本論文提出的神經符號合規框架橋接兩者：LLM 負責規模化的自然語言→形式語言翻譯（將法條與事實轉為 SMT 約束），Z3 SMT 求解器負責確定性的形式驗證（合規檢查、違規定位、修正建議），形成可審計且可規模化的合規分析管線。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>混合法律 RAG 管線</strong>：BM25 詞彙檢索 + 向量檢索（text-embedding-ada-002）+ Cross-Encoder 重排序（bge-reranker-v2-m3）+ LLM 相關性過濾，從 75 部法規、3,753 條條文中自動提取支持性法律條款。</li>
+<li><strong>形式 SMT 約束合成</strong>：法規條文編碼為不可違反的 hard constraints（H_law，如保險法第 143-4、143-6 條資本適足門檻）；案件事實編碼為可調整的 soft constraints（H_case，如淨值比、改善計畫提交狀態）；未提及變數保留為自由變數供求解器探索。</li>
+<li><strong>三段驗證與合規恢復</strong>：(1) 法規一致性檢查（SAT——法條內部無矛盾）；(2) 案件違法性檢查（UNSAT——案件事實觸發法規違反）並以 unsat core 定位具體違法條款；(3) 以 Z3 Optimize() 模組的 MaxSAT 計算最小事實修正 Δ，將 UNSAT 不合規狀態轉為 SAT 合規狀態。</li>
+<li><strong>模組化多代理平台</strong>：Rewriter Agent（檢索與查詢規劃）、Execute Agent（調用 SMT 求解器）、Coding Agent（自我修復 SMT 語法或邏輯綁定錯誤）、Analysis Agent（將求解器輸出轉為人類可讀合規報告）、Instruction Rewriter 與 Modify Constraint 模組（支援人機互動修改規則）。</li>
+</ul>
+<h2 id="關鍵發現數據">關鍵發現/數據</h2>
+<ul>
+<li>SMT 代碼生成準確度：<strong>86.2%</strong>（zero/few-shot Z3 代碼合成）</li>
+<li>違法條款識別速度：<strong>0.191 秒</strong> vs 純 LLM ~5 秒（<strong>&gt;25x 加速</strong>）</li>
+<li>合規恢復速度：<strong>0.004 秒</strong> vs 純 LLM ~1.5 秒（<strong>&gt;300x 加速</strong>）</li>
+<li>合規恢復準確度：<strong>100%</strong>（純 LLM 常誤判無解，SMT 保證正確性）</li>
+<li>實證基礎：87 件台灣金融監督管理委員會（FSC）真實裁罰案件</li>
+<li>跨管轄設計：管線本身與法域無關，替換檢索語料庫與 prompt 模板即可適應普通法系及國際監理框架</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>法規形式化品質依賴 LLM 翻譯準確度——86.2% 的 SMT 生成準確度意味近 14% 案例需 Coding Agent 自我修復，極端語意歧義仍可能超出修復能力。</li>
+<li>僅在台灣金融法規環境驗證，跨法域泛化尚需實證。</li>
+<li>Z3 表達力受限於一階邏輯與線性算術，複雜非線性財務模型（如風險加權資產計算）可能超出求解器能力。</li>
+<li>SMT 只能驗證「給定形式化」的一致性——同一法條的多種合理解讀需由法學專家裁決，系統本身不解決釋法爭議。</li>
+<li>法規更新時檢索語料庫與 prompt 模板需同步維護，自動化程度有限。</li>
+</ul>
+<h2 id="對讀者的價值ai_core-接點">對讀者的價值（ai_core 接點）</h2>
+<p>本論文是 <strong>LLM→符號驗證器</strong>（deterministic verifier）模式的具體實作，在 ai_core 架構中有兩層意義。</p>
+<p><strong>第一層（§3.4 憑證准入）</strong>：SMT 求解器的 unsat core 與 MaxSAT Δ 是「可機器驗證的合規憑證」——不依賴 LLM 的自我宣稱，而是由外部確定性求解器簽署的證明。這直接對應 ai_core 的品質分數/憑證准入主題：當代理系統的輸出具法律或安全後果時，需要的不只是「LLM 說它檢查過了」，而是可被第三方獨立重現的形式證明。SMT 軌跡正是這種證明的載體。</p>
+<p><strong>第二層（§5 約束/驗證主題）</strong>：LLM 翻譯自然語言規範為形式約束、再由求解器驗證一致性與違反的管線，是「規範→約束→驗證→修正」閉環的具體模板。這可推廣至任何規範驅動領域：安全策略合規、隱私法規（GDPR）檢查、合約義務驗證、甚至程式碼對需求規格的合規。關鍵洞察是：LLM 負責「規模化的語意提取」，符號求解器負責「零容錯的邏輯驗證」——兩者各司其職，形成可審計的符號護欄。</p>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2601.06181_NeuroSymbolicCompliance.zh-TW.html"><code>../translate/2601.06181_NeuroSymbolicCompliance.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>神經符號 AI 的安全、保安與認知風險（Safety, Security, and Cognitive Risks in Neuro-Symbolic AI） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Manoj Parmar（SovereignAI Security Labs, Bengaluru, India）</p><p>日期：2026-06</p><p>arXiv：2606.17223</p><p><a href="https://arxiv.org/abs/2606.17223" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="神經符號-ai-的安全保安與認知風險">神經符號 AI 的安全、保安與認知風險</h1>
+<p>SovereignAI Security Labs（Bengaluru, India）；arXiv:2606.17223v1 [cs.CR]，2026-06-15</p>
+<h2 id="摘要">摘要</h2>
+<p>神經符號 AI（NeSy）把神經感知與符號推理配對，因其可解釋與結構化推論能力，在高風險領域極具吸引力。然而此混合架構引入了<strong>橫跨五層的擴大攻擊面</strong>：神經感知、符號知識庫、推理引擎、代理式編排、資料儲存——每層都有純神經系統不存在的可被利用之處。</p>
+<p>本文六項貢獻：(1) <strong>NeSy 攻擊面</strong>、<strong>符號完整性破壞（SIV）</strong>、<strong>跨層放大比</strong>的形式定義，後者拆解為「神經導致」與「對抗誘發的自發符號敏感度」兩成分；(2) 擴展 MITRE ATLAS 的統一威脅模型，增 11 條 NeSy 專屬戰術 + 五型攻擊者分類；(3) 符號層威脅目錄（KG 投毒、本體合併、推理引擎顛覆）;(4) 認知風險分析——自動化偏誤、權威偏誤、諂媚式強化，因 NeSy 的明確邏輯解釋而<strong>相對黑箱輸出被結構性放大</strong>;(5) 對齊 NIST AI 600-1 與 EU AI Act、附可量測驗收準則的跨學科緩解；(6) 三個實證 benchmark（E1 KG 投毒、E2 跨層放大比、E3 本體合併攻擊）。</p>
+<p><strong>關鍵詞</strong>：神經符號 AI、AI 安全、對抗式機器學習、MITRE ATLAS、OWASP LLM、知識圖譜安全、認知安全、雙系統理論、代理式 AI。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>神經網路擅長大規模異質資料的感知與模式辨識，但內部表徵難以解讀、輸出可能「自信地錯」、無原生機制強制領域約束或安全規則。符號系統（邏輯引擎、知識圖譜、本體、規則集）擅長結構化推理、可解釋與約束強制，但在分布外脆弱、難以擴展到原始感官資料。NeSy 以神經前端 + 符號後端結合兩者，常被描述為 Kahneman 雙系統理論的實例化：System 1 快速直覺（神經）、System 2 慢速審慎（符號）。</p>
+<p>此架構日益部署於安全關鍵場景（臨床決策支援、資安維運、企業自動化、心理健康輔助）。承諾很誘人：符號推理提供可審計軌跡、領域約束、合規對齊。連歐洲資料保護監督機構（EDPS）都明指 NeSy 可能促進透明、問責與資料最小化。</p>
+<p>然而 <strong>NeSy 並非天生安全</strong>。整合神經與符號同時放大資產清單與攻擊面。MITRE ATLAS 現有 16 戰術 84 技術，OWASP LLM Top 10 列舉 LLM/代理式系統最關鍵風險——但<strong>兩者皆未充分涵蓋 NeSy 的符號基底</strong>（KG 完整性、本體合併、推理引擎顛覆、規則投毒）。此外 NeSy 還引入獨特的認知／心理風險：因其產出結構化、聽起來合邏輯的辯解，會放大自動化偏誤、諂媚式強化錯誤信念、操弄情緒脆弱使用者。</p>
+<h2 id="3-背景">3. 背景</h2>
+<h3 id="31-nesy-核心概念">3.1 NeSy 核心概念</h3>
+<p>NeSy 結合神經（子符號）與符號表徵與推理。可視為雙系統的工程化：神經處理感知，符號處理審慎推理。</p>
+<h3 id="32-可信-nesy">3.2 可信 NeSy</h3>
+<p>可信性訴求（可審計、可加約束、合規）正是 NeSy 被選用的理由，但這些訴求本身亦可被攻擊。</p>
+<h2 id="4-nesy-架構與資產清單五層">4. NeSy 架構與資產清單（五層）</h2>
+<p>把 NeSy 拆成五層，各層列出資產與威脅：</p>
+<table>
+<thead>
+<tr>
+<th>層</th>
+<th>資產</th>
+<th>特有風險</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>神經感知</td>
+<td>模型權重、嵌入</td>
+<td>對抗擾動、模型萃取</td>
+</tr>
+<tr>
+<td>符號知識庫</td>
+<td>知識圖譜、本體、規則集</td>
+<td>KG 投毒、本體合併、規則竄改</td>
+</tr>
+<tr>
+<td>推理引擎</td>
+<td>邏輯求解器、ProbLog</td>
+<td>推理引擎顛覆、不一致注入</td>
+</tr>
+<tr>
+<td>代理式編排</td>
+<td>工作流、工具呼叫</td>
+<td>上下文操弄、提示注入</td>
+</tr>
+<tr>
+<td>資料儲存</td>
+<td>輸入／日誌／記憶</td>
+<td>隱私洩漏、回授投毒</td>
+</tr>
+</tbody>
+</table>
+<h2 id="5-威脅建模方法論">5. 威脅建模方法論</h2>
+<h3 id="51-形式定義">5.1 形式定義</h3>
+<ul>
+<li><strong>NeSy 攻擊面</strong>：跨五層的可攻擊點集合。</li>
+<li><strong>符號完整性破壞（SIV）</strong>：量化符號層輸出被竄改／違反完整性的程度（作為攻擊成功的偵測門檻）。</li>
+<li><strong>跨層放大比</strong>：衡量「對輸入的小擾動」如何在符號層被放大；拆成神經導致成分與對抗誘發的自發符號敏感度成分。超過 1（super-unity）代表符號層放大了攻擊效果。</li>
+</ul>
+<h3 id="5253-對齊-mitre-atlas-與-owasp-llm-top-10">5.2–5.3 對齊 MITRE ATLAS 與 OWASP LLM Top 10</h3>
+<p>擴展 ATLAS 增 11 條 NeSy 專屬戰術；對映 OWASP 以覆蓋應用層硬化。</p>
+<h3 id="55-攻擊者能力分類五型">5.5 攻擊者能力分類（五型）</h3>
+<p>依存取權限與目標（如外部、內部、隱蔽、定向等）建五型攻擊者畫像。</p>
+<h2 id="6-技術威脅類別">6. 技術威脅類別</h2>
+<p>資料與知識投毒、模型與推理利用、編排與代理式工作流威脅、隱私與機密風險。符號層威脅（KG 投毒、本體合併、推理引擎顛覆）為既有目錄所缺。</p>
+<h2 id="7-認知心理與行為風險">7. 認知、心理與行為風險</h2>
+<p>NeSy 產出<strong>結構化、邏輯腔的辯解</strong>，相對黑箱神經輸出更易誘發：</p>
+<ul>
+<li><strong>雙系統對齊與過度信任</strong>：使用者把 System 2 風格的解釋當成更可靠。</li>
+<li><strong>認知安全與敘事操弄</strong>：邏輯解釋可被武器化以強化錯誤信念。</li>
+<li><strong>代理式 AI 的認知安全</strong>：自動化偏誤、權威偏誤、諂媚式強化被結構性放大。</li>
+</ul>
+<h2 id="8-範例威脅情境">8. 範例威脅情境</h2>
+<p>醫療決策支援（被投毒知識）、資安 SOC 助手變不可靠、企業代理式工作流、心理不安全的心理健康助手。</p>
+<h2 id="9-防護機制與設計樣式">9. 防護機制與設計樣式</h2>
+<p>治理與生命週期控制、資料與符號知識硬化、安全編排與代理式控制、隱私保護的解釋與日誌、認知與心理安全控制。每項附<strong>可量測驗收準則</strong>並對齊 NIST AI 600-1 / EU AI Act。</p>
+<h2 id="11-實證驗證">11. 實證驗證</h2>
+<ul>
+<li><strong>E1 KG 投毒</strong>：205 實體／622 三元組醫療禁忌 KG。定向投毒在破壞-效益打平的低預算達 SIV 門檻；隱蔽攻擊在此 schema 下 SIV=0（隱蔽/定向取捨）。無單一偵測器覆蓋所有攻擊者畫像（溯源召回對內部定向 =0.0、canary 對隱蔽 =0.0、統計偵測僅高預算觸發）→ 建議三者並用縱深防禦。</li>
+<li><strong>E2 跨層放大比</strong>：DistilBERT 醫療宣稱 + ProbLog 流水線。PGD-10 產生超過 1 的放大比（95% CI，單側）；分解顯示 <strong>75.8% 符號翻轉在無神經翻轉下發生</strong>——自發 ProbLog 敏感度是超 1 放大的主因，非神經誤差傳播；峰值放大出現在低擾動的飽和區。</li>
+<li><strong>E3 本體合併攻擊</strong>：臨床安全 + STIX 本體。單一公理 OWL 編輯（等價/子類模板）達 <strong>93.3% SIV 成功 + 100% Pellet 一致性隱蔽 + 100% 樣本內偵測</strong>——確認標準推理器查核不足；但留出集偵測召回僅 67.9%，STIX 偵測器在 50%（等同亂猜）——開放難題。</li>
+</ul>
+<h2 id="12-結論">12. 結論</h2>
+<p>NeSy 以「資料驅動感知 + 明確可審計推理」提供通往更安全可信 AI 的路徑，但<strong>它不會魔法般解決安全或保安問題：而是移動、放大、分化攻擊面</strong>。對手可利用神經、符號、編排、認知四個維度，須以整合緩解對抗——ATLAS 對齊的技術控制、OWASP 知情的應用硬化、認知安全感知的設計與治理。三個實證確認：(1) 定向 KG 投毒在低預算即操作可行，且無單一偵測器全覆蓋；(2) 首次量測到神經-符號流水線上的超 1 放大，且主因是自發符號敏感度；(3) 單一公理本體編輯可高隱蔽地破壞完整性，標準推理器查核不足、留出偵測仍未解。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2606.17223_NeSy_Safety_Security_Cognitive_Risks.%E6%91%98%E8%A6%81.html"><code>../summarize/2606.17223_NeSy_Safety_Security_Cognitive_Risks.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

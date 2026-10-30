@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.06130_Skill1.zh-TW.html">回 2605.06130_Skill1.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>持久的技能庫讓語言模型智能體能跨任務重用成功策略。維護此庫需三項耦合能力：智能體<strong>選擇</strong>相關技能、在執行中<strong>利用</strong>它、從經驗中<strong>蒸餾</strong>新技能。既有方法將這些能力分開最佳化，或用不同 reward 來源訓練，造成部分且衝突的演化。我們提出 <strong>Skill1</strong>——訓練單一 policy 以共同演化技能選擇、利用與蒸餾，全部朝向共享的任務結果目標。policy 生成查詢搜尋技能庫、重排序候選選出一項、以此為條件解任務、再從軌跡蒸餾新技能。所有學習訊號皆來自單一任務結果。其<strong>低頻趨勢</strong>分配 credit 給選擇、<strong>高頻變異</strong>分配 credit 給蒸餾。ALFWorld 與 WebShop 實驗顯示 Skill1 超越所有既有技能型與 RL 基線。訓練動態確認三項能力共同演化，消融顯示移除任一 credit 訊號皆會劣化演化。程式碼見 https://github.com/AlphaLab-USTC/Skill1。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>RL 已是訓練 LLM 智能體與複雜環境互動的重要範式（PPO、GRPO、DeepSeek-R1、Qwen2.5 等）。標準 RL 將每任務視為孤立 episode，成功策略僅隱性吸收進參數、無法跨任務顯式重用。自然解法是為智能體配備<strong>持久技能庫</strong>來累積可重用策略，使智能體能借鑒過往成功經驗而非每次從零解題（Voyager、ExpeL、SkillRL、RetroAgent、Mem0 等）。這些技能增強智能體的工作流可組織為三階段生命週期（Jiang et al., 2026a）：<strong>技能選擇</strong>（為當前任務從庫中選出相關技能）→<strong>技能利用</strong>（以所選技能為指引執行）→<strong>技能蒸餾</strong>（從軌跡萃出新的可重用技能）。</p>
+<p>既有方法透過 RL 分別改進各階段——訓練選擇路由（Memskill、SkillOrchestra、ARISE、EvolveR）、條件式利用（SkillRL、Complementary RL、RetroAgent、SAGE）、從軌跡萃出知識（RetroAgent、SAGE、Complementary RL、EvolveR）——但兩個根本問題未解：</p>
+<ol>
+<li>**如何同時演化三項能力？**既有方法只對生命週期的子集施加策略更新，至少一項能力未最佳化，造成最佳化瓶頸。例如策略學會善用技能，但若老是路由到次優技能仍表現不佳。</li>
+<li>**如何讓三項能力朝共享目標共同演化？**先前設計從不同來源提取 reward——一項能力接收任務結果 reward、另一項依賴輔助訊號（自評品質或啟發式匹配分數）。三項能力共同決定任務成敗，以不一致訊號最佳化它們會產生衝突壓力。</li>
+</ol>
+<p><strong>Skill1</strong> 透過訓練單一 policy 共同演化三項能力來達成統一演化。給定新任務，policy 首先生成自然語言查詢從庫中檢索候選技能，然後重排序候選選出最佳匹配，以此為條件進行多輪環境互動，最後從 rollout 經驗蒸餾可重用技能。</p>
+<p>核心機制：對單一任務結果訊號 r(τ) 進行<strong>信號分解來分配 credit</strong>。結果直接衡量解題能力，作為利用 reward。為分配給選擇與蒸餾，將訊號分解為<strong>低頻趨勢</strong>（與各技能相關結果的移動平均，反映技能效用，引導 policy 趨向持續有效的技能）與<strong>高頻變異</strong>（當前結果偏離趨勢量，捕捉新蒸餾技能是否超越庫的當前邊界，reward 產出有用技能的 policy）。</p>
+<h2 id="2-預備具技能庫的-llm-智能體">2. 預備：具技能庫的 LLM 智能體</h2>
+<p><strong>任務形式化</strong>為 POMDP M = (S, A, O, T, Ω, R, γ)。狀態 S = (x, e, B) 包含任務指令 x（取自資料集 D）、環境狀態 e、持久技能庫 B = {s1, s2, ...}。每回合智能體選動作 a∈A 送環境。觀察函數 Ω 暴露部分視角 ot = (x, et, z)，其中 z 是從 B 經凍結 encoder E 選出的技能。總訓練目標：</p>
+<p>max E_{x∼D, τ∼πθ(·|x)} [r(τ)]</p>
+<p>其中 πθ 透過 GRPO 等 RL 演算法最佳化（附錄 B）。</p>
+<p><strong>技能</strong> s ∈ B 包含自然語言策略 s.strat（描述如何行動）與場景描述 s.desc（刻畫技能何時適用）。智能體持續維護 B 並在探索中擴充。重用技能時動作以技能策略為條件生成：</p>
+<p>at ∼ πθ(· | x, z.strat, o≤t)</p>
+<p>與技能庫互動涉及三階段：從 B 選擇技能、執行中利用、蒸餾新技能回 B。§3 展示如何透過單一 policy 聯合最佳化三階段，所有學習訊號皆從 r(τ) 推導。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

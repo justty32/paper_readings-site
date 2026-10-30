@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《VOYAGER：以大型語言模型驅動的開放式具身智能體》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Guanzhi Wang, Yuqi Xie, Yunfan Jiang, Ajay Mandlekar, Chaowei Xiao, Yuke Zhu, Linxi &quot;Jim&quot; Fan, Anima Anandkumar（NVIDIA / Caltech / UT Austin / Stanford / UW–Madison）</p><p>日期：2023-05</p><p>arXiv：2305.16291</p><p><a href="https://arxiv.org/abs/2305.16291" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="voyager以大型語言模型驅動的開放式具身智能體重點摘要">《VOYAGER：以大型語言模型驅動的開放式具身智能體》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>VOYAGER</strong>：第一個由 LLM（GPT-4）驅動、在 Minecraft 中無需人類介入即可<strong>持續探索、習得技能、做出新發現</strong>的具身終身學習（lifelong learning）智能體；它把 GPT-4 當作<strong>黑箱</strong>（純 prompt/in-context，不改模型參數），由三大組件組成——**自動課程（automatic curriculum）**產出愈來愈難的目標、**不斷成長的技能庫（skill library）**把驗證通過的行為存成可執行程式碼供檢索與組合、<strong>迭代提示機制（iterative prompting）<strong>用環境回饋＋執行錯誤＋自我驗證來改良程式；相較先前 SOTA 取得 3.3× 的獨特物品、走 2.3× 的距離、解鎖科技樹里程碑最高快 15.3×，且能把學到的技能庫</strong>零樣本遷移</strong>到新世界解未見任務。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>既有具身智能體研究難以做到「終身學習」——在長時間跨度中<strong>逐步習得、更新、累積並遷移知識</strong>。傳統 RL／模仿學習操作於底層原始動作，在系統性探索、可解釋性、泛化上都吃力；而近期以 LLM 為基礎的智能體（ReAct、Reflexion、AutoGPT 等）雖能生成計畫或策略，卻<strong>不是終身學習者</strong>，缺乏累積與復用知識的機制。作者以 Minecraft 為場景（無預設終局、程序生成的無限 3D 世界、要靠採集資源解鎖科技樹），主張有效的終身學習智能體應能：(1) 依當前技能與世界狀態提出合適任務；(2) 依環境回饋精煉技能並把精通的技能存入記憶供未來復用；(3) 自驅地持續探索、尋找新任務。</p>
+<h2 id="核心方法">核心方法</h2>
+<p>用<strong>程式碼作為動作空間</strong>（而非底層馬達指令），因為程式能自然表達「時間上延展、可組合」的行為，適合長時序任務。三大組件：</p>
+<ul>
+<li><strong>自動課程（§2.1）</strong>：由 GPT-4 依「盡可能發現多樣事物」的總目標，考量探索進度與智能體當前狀態（庫存、裝備、附近方塊與生物、生態圈、時間、血量飢餓、座標等），以<strong>自下而上</strong>方式源源不絕地提出下一個任務——一種 in-context 的新奇性搜尋（novelty search）；curriculum 溫度設 0.1 以鼓勵任務多樣性。</li>
+<li><strong>技能庫（§2.2）</strong>：每個技能＝一段可執行程式碼（Mineflayer JavaScript API）。驗證通過後加入以<strong>向量資料庫</strong>表示的技能庫——<strong>key = 程式描述的 embedding（由 GPT-3.5 生成），value = 程式本身</strong>。面對新任務時，先讓 GPT-3.5 產出解法建議，結合環境回饋作為查詢語境，檢索<strong>最相關的前 5 個技能</strong>餵給 GPT-4。複雜技能可由較簡單的程式<strong>組合</strong>而成，快速複利放大能力並緩解災難性遺忘。</li>
+<li><strong>迭代提示機制（§2.3）</strong>：三種回饋交織——(1)<strong>環境回饋</strong>（如「還缺 7 塊鐵錠才能造鐵胸甲」，經 <code>bot.chat()</code> 產生）；(2)<strong>執行錯誤</strong>（程式解譯器回傳的無效操作/語法錯誤）；(3)<strong>自我驗證</strong>：另實例化一個 GPT-4 當 critic，依當前狀態與任務判斷是否成功，失敗時給出如何完成的批評（比 self-reflection 更全面，兼顧「查成功」與「反思錯誤」）。每輪生成程式→執行取回饋→再改良，直到自我驗證確認完成才把新技能加入技能庫並向課程要下一目標；若 4 輪仍卡住則換題。</li>
+</ul>
+<p>實作：<code>gpt-4-0314</code> + <code>gpt-3.5-turbo-0301</code> + <code>text-embedding-ada-002</code>；除 curriculum 外溫度皆 0；環境建於 MineDojo 之上、以 Mineflayer 做底層控制。</p>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>探索更強</strong>：160 次提示迭代內發現 <strong>63 個獨特物品</strong>，為對照方法的 <strong>3.3×</strong>。</li>
+<li><strong>科技樹掌握</strong>：解鎖木器級快 <strong>15.3×</strong>、石器級快 8.5×、鐵器級快 6.4×，且是<strong>唯一</strong>能解鎖鑽石級的方法（3 次中成功 1 次、平均 102 次迭代）。</li>
+<li><strong>地圖覆蓋</strong>：橫越 <strong>2.3×</strong> 更長的距離、穿越多樣地形，而基線常困在局部區域。</li>
+<li><strong>零樣本泛化</strong>：清空庫存、重置到全新世界後，VOYAGER 在 50 次迭代內<strong>一致解出全部</strong>未見任務（鑽石鎬、金劍、熔岩桶、指南針），而基線一題都解不了。更關鍵：<strong>技能庫是即插即用的資產</strong>——把 VOYAGER 的技能庫接給 AutoGPT 也能提升其表現。</li>
+<li><strong>消融</strong>：把自動課程換成隨機課程，發現物品數暴跌 <strong>93%</strong>；移除自我驗證（回饋類型中最重要者）發現物品數掉 <strong>−73%</strong>；用 GPT-4 而非 GPT-3.5 生成程式碼可多得 <strong>5.7×</strong> 獨特物品。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>成本</strong>：GPT-4 API 比 GPT-3.5 貴 15×，但 VOYAGER 需要 GPT-4 在程式碼生成上的「質變」，GPT-3.5 與開源 LLM 無法提供。</li>
+<li><strong>不準確</strong>：迭代提示仍有卡關造不出正確技能的情形；自我驗證偶爾失誤（如未把「蜘蛛絲」認作打敗蜘蛛的成功訊號）。</li>
+<li><strong>幻覺</strong>：自動課程偶爾提出不存在的任務（如造「銅劍」「銅胸甲」）；程式生成時也會幻覺（如把圓石當燃料、呼叫不存在的 API）。</li>
+<li><strong>無視覺感知</strong>：當時 GPT-4 API 僅文字；需人類給予視覺批評/拆解才能蓋出複雜 3D 結構（如地獄門、房屋）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>對 <strong>ai_core 北極星</strong>的直接對映：VOYAGER 的 <strong>skill library</strong> 是「不斷成長的可重用資產庫」最具體的實作範型——把 LLM 反覆處理、<strong>驗證通過</strong>的行為結晶成<strong>可執行的確定性單元</strong>（程式碼技能），以 embedding 檢索、可被<strong>組合</strong>成更複雜技能。這正對應 ai_core §2「<strong>資產工廠 vs 消費者</strong>」中聰明模型一次性產出「折舊很慢的可重用資產（程序/snippet/骨架）」的想法，以及 §3.6「<strong>固化引擎</strong>」——把驗證過的行為固化成可重用單元。</li>
+<li>對 §3.6 最硬的未決題「資產庫要能<strong>成長而不爆炸</strong>」，VOYAGER 本文<strong>沒有</strong>給出上限/淘汰機制（技能庫是 ever-growing，未談 LRU 或容量維護）——這一點需與庫內 <a class="paper-reference" href="2604.26311_DreamProver.%E6%91%98%E8%A6%81.html">2604.26311</a>（wake-sleep 式庫學習談及 &lt;100+LRU 維護）對照補足；本文可視為「成長」端的範型，庫維護端仍是開放題。</li>
+<li>與庫內同主題論文互參：技能累積／自主生成程式技能可對照 <a class="paper-reference" href="2603.01145_AutoSkill_Skill_SelfEvolution.%E6%91%98%E8%A6%81.html">2603.01145</a>（AutoSkill）、<a class="paper-reference" href="2606.04815_LifeSkill_TestTime_CoEvolution.%E6%91%98%E8%A6%81.html">2606.04815</a>（LifeSkill）；「驗證通過才固化」與程式合成／證明式庫成長可對照 <a class="paper-reference" href="2604.26311_DreamProver.%E6%91%98%E8%A6%81.html">2604.26311</a>（DreamProver）。（以上僅為主題連結，各文細節未於本文出現，不做內容轉述。）</li>
+<li>最值得記：<strong>程式碼作為動作空間</strong>（時間延展＋可組合）、<strong>技能庫＝向量 DB（描述 embedding 為 key、程式為 value、top-5 檢索、可組合）</strong>、<strong>三路迭代提示（環境回饋／執行錯誤／自我驗證 critic）</strong>、<strong>自動課程＝in-context 新奇性搜尋</strong>、以及<strong>技能庫可即插即用地遷移並增益其他智能體</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2305.16291_Voyager.zh-TW.html"><code>../translate/2305.16291_Voyager.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《NeuroProlog：以雞尾酒效應實現多任務微調驅動神經符號數學推理》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Pratibha Zunjare (Virginia Tech)、Michael S. Hsiao (Virginia Tech)</p><p>日期：2026-03</p><p>arXiv：2603.02504</p><p><a href="https://arxiv.org/abs/2603.02504" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="neuroprolog以雞尾酒效應實現多任務微調驅動神經符號數學推理重點摘要">《NeuroProlog：以雞尾酒效應實現多任務微調驅動神經符號數學推理》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>NeuroProlog</strong>：一個神經符號框架，透過<strong>雞尾酒式多任務微調</strong>（公式→Prolog 知識庫 + 自然語言→Prolog 程式合成 + 執行驗證對齊），將數學文字題編譯為<strong>可執行的 Prolog 程式</strong>，搭配<strong>執行引導解碼管線</strong>與五類錯誤分類法實現零樣本自我除錯。最佳配置 GPT-OSS-20B 以 88.34% GSM8K 準確度超越 ToRA-Code-34B（80.7%）並逼近 OpenMath-70B（84.6%），參數量僅其 1/3.5。核心發現：<strong>雞尾酒訓練在 32B 尺度將不可修的型別錯誤轉化為可修（96%）的域錯誤</strong>，揭示符號推理需要 &gt;8B 參數的容量門檻。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 在數學推理上仍不可靠——產出流暢但邏輯不一致的解。既有神經符號方法（Logic-LM、Faithful CoT、LINC）僅在推理時以外部求解器做事後驗證，符號組件是「驗證工具」而非「學到的推理能力」，模型未能內化符號結構。結果：LLM 對新問題組合缺乏系統性泛化，無法在無外部干預下產出可驗證、可執行的推理軌跡。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>雞尾酒式多任務訓練</strong>（Cocktail Training）：在統一 Prolog 表徵空間內聯合監督三個互補目標：(1) KB——數學公式→Prolog 規則翻譯（200 條，涵蓋 15+ 領域，96.9% 使用 CLP(Q) 約束）；(2) SOLVE——自然語言數學題→Prolog 程式合成（310 + 7476 GSM8K-Prolog）；(3) 程式—答案對齊（透過程式執行結果驗證）。KB 中的述詞（如 <code>factorial/2</code>）在 SOLVE 中被組合重用，誘導正遷移。</li>
+<li><strong>執行引導解碼管線</strong>：推論時以 SWI-Prolog 執行產生的程式，依五類錯誤分類法（SYNTAX / TYPE / DOMAIN / INSTANTIATION / WRONG_ANSWER）產生結構化修復提示，模型以相同權重進行最多 k=3 次迭代自我修復（零樣本除錯，無需除錯專屬訓練）。</li>
+<li><strong>訓練細節</strong>：LoRA 微調（無量化），32B 用 rank=32、3B 用 rank=32、中等模型用 rank=48；3 epoch、cosine LR + 8% warmup、梯度裁剪 1.0、bf16。</li>
+<li><strong>評估</strong>：GSM8K 測試集（n=1319）、貪婪解碼（T=0）、McNemar 檢定、五項指標（準確度、可執行率、首次成功率、修正率、平均迭代次數）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>配置</th>
+<th>準確度</th>
+<th>可執行率</th>
+<th>首次成功</th>
+<th>修正率</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPT-OSS-20B</td>
+<td>Cocktail FT</td>
+<td><strong>88.34%</strong></td>
+<td>93.00%</td>
+<td>60.0%</td>
+<td>70.8%</td>
+</tr>
+<tr>
+<td>Qwen-32B</td>
+<td>Cocktail FT</td>
+<td>85.52%</td>
+<td>99.32%</td>
+<td>90.7%</td>
+<td><strong>92.7%</strong></td>
+</tr>
+<tr>
+<td>Qwen-32B</td>
+<td>Prolog FT</td>
+<td>85.14%</td>
+<td>99.24%</td>
+<td>98.7%</td>
+<td>41.2%</td>
+</tr>
+<tr>
+<td>Qwen3-8B</td>
+<td>Base</td>
+<td>66.79%</td>
+<td>72.93%</td>
+<td>7.7%</td>
+<td>70.7%</td>
+</tr>
+<tr>
+<td>Llama-3B</td>
+<td>Cocktail FT</td>
+<td>27.07%</td>
+<td>57.92%</td>
+<td>53.8%</td>
+<td>8.9%</td>
+</tr>
+<tr>
+<td>ToRA-Code-34B</td>
+<td>—</td>
+<td>80.7%</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>OpenMath-70B</td>
+<td>—</td>
+<td>84.6%</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>雞尾酒 vs. 單任務</strong>：相較 Prolog FT，Cocktail 在 3/4 模型上顯著提升（+2.22% GPT-OSS、+0.38% Qwen-32B、+5.24% Llama-3B），平均 +2.30%。</li>
+<li><strong>尺度相依的錯誤轉化</strong>（最關鍵機制發現）：32B 尺度：Base 錯誤 87.2% 為 TYPE_ERROR（僅 12% 可修）→ Cocktail 後轉為 55.6% DOMAIN_ERROR（96% 可修），總錯誤由 39→9。8B 尺度：反向——Base 錯誤 89.4% 為 SYNTAX→Cocktail 後轉為 69.5% TYPE_ERROR（僅 5% 可修）。推論：<strong>語意型別理解需要 &gt;8B 參數</strong>，8B 只能學到表面語法。</li>
+<li><strong>Qwen3-8B 的生成–修正權衡</strong>：微調將首次成功率由 7.7% 提升至 69.8%，但修正率由 70.7% 暴跌至 24.1%，整體準確度下降（−2.28%，p=0.08）——微調教會了語法卻摧毀了迭代推理深度。</li>
+<li><strong>消融</strong>：KB 組件貢獻 +2.30% 平均準確度、+4.77% 可執行率；執行引導解碼貢獻 +4.82%；KB 與解碼有協同效應——KB 將修正率懲罰由 −13.6% 降至 −5.2%。</li>
+</ul>
+<h2 id="局限與對讀者的價值">局限與對讀者的價值</h2>
+<ul>
+<li><strong>局限</strong>：200 條 KB 未涵蓋高等數學（建議擴至 1000+）；僅評估 Prolog（未比較 SMT/Lean/DSL）；模型僅 4 個（3B–32B）缺乏架構多樣性；GSM8K 僅涵蓋小學算術（未測 MATH/TheoremQA）；Prolog 的可驗證性對模糊推理引入脆弱性。</li>
+<li><strong>對 ai_core 的價值</strong>：§5 結論與 §B 訓練動態——雞尾酒多任務正遷移機制（組合重用+上下文接地+統一型別系統）可作為 ai_core 工廠模組的多任務訓練正規化；執行引導解碼管線（結構化錯誤分類→迭代自我修復）提供零樣本 self-debug 模式；尺度相依錯誤轉化揭示的「容量門檻」可指導 ai_core 何時該用端到端微調 vs. 外部符號求解器。</li>
+</ul>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

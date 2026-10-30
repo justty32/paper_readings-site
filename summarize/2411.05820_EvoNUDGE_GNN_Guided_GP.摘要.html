@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《利用圖神經網路指導遺傳編程》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Piotr Wyrwiński、Krzysztof Krawiec（Poznan University of Technology，波蘭）</p><p>日期：2024-07，GECCO &#x27;24 Companion；遺傳編程／符號迴歸／GNN</p><p>arXiv：2411.05820</p><p><a href="https://arxiv.org/abs/2411.05820" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="利用圖神經網路指導遺傳編程重點摘要">《利用圖神經網路指導遺傳編程》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>EvoNUDGE</strong>：在演化開跑前，用一個自製<strong>圖注意力網路（GAT）<strong>查詢 SR 問題實例，從輸入-輸出範例「讀出」問題特定知識，生成一份</strong>子程式庫</strong>，再用它<strong>播種初始族群</strong>並<strong>偏置搜尋運算子</strong>，使傳統 tree-based GP 在大量 SR 基準上顯著勝過純 GP 與純神經（NUDGE）兩條基線。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>演化算法的設計假設：<strong>適應度函數是搜尋方法取得問題知識的唯一管道</strong>。但適應度揭露的資訊極少（一個純量），造成資訊瓶頸、效率低落——解本身其實含有更多可被利用的資訊。GP 把候選解當「不透明整體」，無法檢視其組成部件、也無法「推理」正在解的問題，難以累積與利用知識。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>NUDGE（Neuro gUideD Graph sEarch）——神經組件</strong>：不在「完整解」層級搜尋，改在<strong>解的部件</strong>層級做前置搜尋。
+<ul>
+<li><strong>圖搜尋</strong>：自底向上（從變數/常數 + 運算子）逐層擴展一張圖，相當於漸進建構 DSL 表達式的<strong>遞移閉包</strong>；同時平行表示多棵 SR 運算式樹（比 GP 族群更緊湊整合）。用 <strong>SymPy 符號執行</strong>判定值等價、合併等價節點 → 圖在語意上極小。</li>
+<li><strong>GNN 導引（GAT）</strong>：給定當前圖，GNN 充當注意力機制，對 application 節點輸出<strong>顯著度圖（saliency）</strong>，只挑前 <em>k</em> 個最值得擴展的節點，避免廣度優先的組合爆炸。節點特徵向量 79 維（節點類型 one-hot 4 + 運算子 one-hot 11 + 值的 IEEE-754 32-bit 嵌入 + 與目標差值 32-bit 嵌入）；3 層 GAT 訊息傳遞，輸出 sigmoid 做每節點二元分類。</li>
+<li><strong>訓練 = 模仿學習</strong>：已知目標程式 → 可定出圖擴展該走的軌跡 → 每步把「在目標解中/不在」的節點分成正/負類，二元交叉熵監督。一次性訓練（DGX 8 GPU 約 24 小時），之後所有實驗共用同一個 GNN。系統性搜尋保證最終收斂、且產出語法正確。</li>
+</ul>
+</li>
+<li><strong>EvoNUDGE 混合</strong>：先跑 NUDGE 做 <em>q</em> 次圖擴展，把最終圖的所有 value 節點轉成表達式樹，組成<strong>子程式庫 L</strong>。再用兩個 library-based 運算子跑 GP：<strong>library-based 初始化</strong>（把 L 的樹放進初始族群，不足部分用 ramped half-and-half 補）、<strong>library-based 變異</strong>（子樹替換時從 L 抽子樹）。族群 1000、50 代、錦標賽 7、單點交叉 0.8、變異 0.2，基於 DEAP。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>自建 1032 題 SR 集（高度 ≤6，522 訓練／510 測試）：<strong>EvoNUDGE 對所有 <em>t</em>（子樹高度）值都系統性勝過 GP</strong>，最佳配置領先約 <strong>10 個百分點</strong>；最佳變體為單用 informed 變異的 <em>M</em>。如 <em>t</em>=6 時最佳 EvoNUDGE 達 43.42% vs GP 31.43%。</li>
+<li><strong>消融 EvoRnd</strong>（給「錯的」庫——查詢別題得到的庫）顯示：有一部分提升來自「method bias」（同分布、庫去語意重複），但 EvoNUDGE 整體明顯優於 EvoRnd → 確實傳遞了<strong>問題特定知識</strong>。</li>
+<li><strong>純神經 NUDGE 遠差於 EvoNUDGE/GP</strong>（多數題需高度 &gt; <em>q</em> 的樹），且擴展越久越貴、導引越不準 → 證明混合的必要。EvoNUDGE 總執行時間不到 GP 的兩倍。</li>
+<li><strong>跨基準（AI Feynman，97 題）</strong>：成功率整體較低（分布不同屬正常），但配置間關係不變，最佳 EvoNUDGE 仍領先 GP 近 <strong>10 個百分點</strong>。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>NUDGE 單獨<strong>難以擴展</strong>：圖變大後查詢 GNN 越貴、導引越不準，成功率停滯。</li>
+<li>目前<strong>忽略 saliency 數值</strong>（只用來挑節點，未把「子程式有多有用」的細緻資訊帶進庫）。</li>
+<li>GNN 訓練<strong>對演化算法的具體需求是 agnostic 的</strong>（未用 RL 把「GNN 選庫→GP 結果」當動作-獎勵閉環）。</li>
+<li>只在 SR（單一型別、僅 arity 約束）驗證；豐富型別 DSL 的語法正確性優勢尚未展示。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 <strong>G 類（遺傳編程／程式合成）<strong>的</strong>「神經導引 GP」代表</strong>——走<strong>神經符號（GNN + 符號執行）<strong>路線，與純生成式 SR（transformer/LLM 直接吐 token）形成對比：強調</strong>系統性搜尋保證收斂 + 語法正確 by construction</strong>。</li>
+<li>最值得記：<strong>「演化前用 GNN 從範例讀知識→生成問題特定子程式庫→播種+偏置運算子」<strong>的混合配方；<strong>e-graph 式的值等價合併 + saliency 注意力剪枝</strong>；以及</strong>模仿學習訓練 GNN</strong>。</li>
+<li>與另一篇 G 類 <a class="paper-reference" href="2501.17848_eggp_Equality_Graphs.%E6%91%98%E8%A6%81.html">2501.17848</a> eggp（用等式圖過濾已訪表達式）對照：兩者都把<strong>圖結構 + 語意等價</strong>帶進 GP，但 eggp 用 e-graph 做「避免重訪」、本篇用 GNN 做「正向導引播種」。</li>
+<li>定位：<strong>GECCO short paper + 充分實證</strong>（神經演化混合）；適合做<strong>神經導引程式合成、GP 搜尋運算子設計、神經符號 SR</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2411.05820_EvoNUDGE_GNN_Guided_GP.zh-TW.html"><code>../translate/2411.05820_EvoNUDGE_GNN_Guided_GP.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

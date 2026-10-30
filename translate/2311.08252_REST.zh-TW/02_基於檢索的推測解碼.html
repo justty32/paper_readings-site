@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_基於檢索的推測解碼 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2311.08252_REST.zh-TW.html">回 2311.08252_REST.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E6%B6%88%E8%9E%8D%E7%A0%94%E7%A9%B6.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-基於檢索的推測解碼">3. 基於檢索的推測解碼</h2>
+<h3 id="31-背景推測解碼">3.1 背景：推測解碼</h3>
+<p>在標準自回歸解碼中，給定前文 <code>s=(x_1,…,x_t)</code>，下一 token 由 <code>x_{t+1} ~ p(x | x_1,…,x_t; θ_large)</code> 生成，每步都需一次 LLM 前向，受記憶體頻寬所限而非常耗時。推測解碼藉一個小得多的模型 <code>θ_small</code> 減少 <code>θ_large</code> 的執行次數，每步迭代如下：</p>
+<ul>
+<li><strong>草稿構造（Draft construction）</strong>：小 LM <code>θ_small</code> 自回歸地生成接下來 <code>m</code> 個 token <code>x̃_{t+1},…,x̃_{t+m}</code>。仍是逐一生成，但用小模型故算力成本低。</li>
+<li><strong>草稿驗證（Draft verification）</strong>：草稿連同上下文 <code>s</code> 一起餵入 LLM，<code>θ_large</code> 以<strong>單次前向</strong>平行算出各位置的條件機率 <code>p(x|s;θ_large), p(x|s,x̃_{t+1};θ_large), …</code>。</li>
+<li><strong>草稿接受（Draft acceptance）</strong>：從草稿第一個 token 起，比較 <code>θ_small</code> 與 <code>θ_large</code> 的條件機率，用**修正拒絕採樣（modified rejection sampling）**匹配 LLM 分布：位置 <code>t+i</code> 先抽 <code>r~U(0,1)</code>，若 <code>r &lt; min(1, p_large/p_small)</code> 則接受 <code>x̃_{t+i}</code> 並繼續驗下一個；否則停止、重採 <code>x_{t+i}</code>、拒絕其後全部草稿，並從 <code>t+i+1</code> 開始新一輪推測解碼。</li>
+</ul>
+<h3 id="32-我們的方法rest">3.2 我們的方法：REST</h3>
+<p>經典推測解碼用小 LM 當 draft 模型，但找高品質 draft 模型通常困難：(1) 效率上要夠輕、不引入太多開銷；(2) 品質上要能準確預測 LLM 輸出；(3) 系統整合上要與 LLM 同詞表、且架構易於以相近配置分散部署。這些要求往往迫使人為每個新 LLM 精選甚至訓練專屬 draft 模型。</p>
+<p>本文換一種解法：發展一個<strong>免訓練</strong>的推測解碼方法，能輕易整合任何新模型來加速推論。不依賴參數化 draft 模型，<strong>REST 改用檢索來構造草稿</strong>。以下先說明建庫與其上的操作，再說明如何用於草稿構造與驗證。</p>
+<ul>
+<li>
+<p><strong>資料庫構造（Datastore construction）</strong>：REST 基於一個預建資料庫 <code>D={(c_i, t_i)}</code>，<code>c_i</code> 是一段上下文、<code>t_i</code> 是 <code>c_i</code> 的對應延續。給定文字／程式碼語料，就用每個位置的「前綴上下文 + 對應延續」建成 <code>D</code>。</p>
+</li>
+<li>
+<p><strong>從資料庫檢索（Retrieving from the datastore）</strong>：推論時給定上下文 <code>s</code>，目標是構造「很可能是 <code>s</code> 之延續」的草稿 token。不同於用小 LM 生草稿，我們直接從庫 <code>D</code> 檢索。檢索回一組延續候選 <code>S = { t_i | (c_i,t_i) ∈ Retrieve(D,s) }</code>。雖可用 dense retriever 找與 <code>s</code> 相似的 <code>c_i</code>，但那會增加推論開銷；我們改用<strong>快速精確匹配（exact-match）</strong>。</p>
+<ul>
+<li><strong>檢索演算法（Algorithm 1）</strong>：目標是找出庫中與 <code>s</code> <strong>最長後綴</strong>匹配的上下文。採貪婪策略，從預設的匹配長度上限 <code>n_max</code>（實驗設 16，因超過 16 token 的最長匹配極少）起，對每個後綴長度 <code>n</code> 取 <code>s</code> 的 <code>n</code>-token 後綴 <code>q</code>，找出所有以 <code>q</code> 為後綴的 <code>c_i</code>；只要有至少一個匹配（<code>S≠∅</code>）就回傳對應的上下文-延續對，否則把 <code>n</code> 減一、試更短後綴。用 <strong>suffix array</strong>（Manber &amp; Myers 1993）實現高效精確匹配。整個檢索開銷極小（實驗中 &lt;6%）。</li>
+</ul>
+</li>
+<li>
+<p><strong>由檢索結果構造草稿（Trie 選詞，Algorithm 2）</strong>：候選集 <code>S</code> 可能很大，無法全部餵入 LLM 驗證；隨機抽子集又因 <code>S</code> 大而有隨機性、次優。作法是用 <strong>Trie</strong>：每條 <code>t_i</code> 的前綴對應 Trie 中「某節點到根」的唯一路徑，每個節點賦一個<strong>權重＝該前綴在候選中出現的頻率</strong>。先用 <code>S</code> 全部序列建 Trie 並更新節點權重，再用最大堆（依權重）挑出<strong>權重最高的 top c 個節點</strong>——即選出 top c 個高頻前綴當草稿序列。</p>
+</li>
+<li>
+<p><strong>REST 的草稿驗證（tree attention）</strong>：從庫檢索出的多條草稿常<strong>共享前綴</strong>；若把它們當獨立序列各自送進 LLM，共享前綴會被 Transformer 層重複計算、浪費算力。為此，我們用<strong>廣度優先搜尋（BFS）<strong>把子樹壓成一條</strong>偽序列（pseudo sequence）</strong>——每條草稿都是它的子序列，任何共享前綴只出現一次。再在每個注意力層施加<strong>精心設計的注意力遮罩</strong>，確保每個 token 的計算精確反映其在原始草稿序列中的依賴關係。此策略即 <strong>tree attention</strong>（Cai 等，2023；Miao 等，2023；Spector &amp; Re，2023）。</p>
+</li>
+<li>
+<p><strong>REST 的草稿接受（更簡單的策略）</strong>：把草稿餵入 LLM 得各位置由 <code>θ_large</code> 給出的條件分布並採樣新 token，再檢查各位置採到的新 token 是否與草稿一致；<strong>從頭起所有正確草稿 token 皆接受，第一個錯誤之後全拒絕</strong>。如此，REST 產生的序列與標準自回歸生成<strong>完全相同（無損）</strong>。</p>
+</li>
+<li>
+<p><strong>與既有方法比較</strong>：現行推測解碼依賴高品質小模型生草稿，須在小體積與強預測力間權衡、還要匹配基礎模型詞表，並額外佔用 GPU 記憶體、增加推論複雜度；REST 直接從庫檢索草稿，可輕易整合<strong>任何大小、詞表、架構</strong>的語言模型。與需訓練專屬模組（Stern 等 2018、Cai 等 2023）者不同，REST <strong>免任何額外訓練</strong>，是跨模型的即插即用高效解碼方案。REST 的效果受檢索結果品質影響，故可藉<strong>更好／更大的資料庫</strong>或更先進的檢索模型進一步增強；亦可與傳統推測解碼<strong>結合</strong>（用 REST 加速小 LM 本身的生成），留待未來工作。</p>
+</li>
+</ul>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-實驗設定">4.1 實驗設定</h3>
+<ul>
+<li><strong>採樣策略</strong>：實作 greedy 與 nucleus（top-p）兩種。無論哪種，只有當草稿 token 與「從 LLM 採到的 token」一致才接受，故 REST 輸出與標準自回歸生成相同。</li>
+<li><strong>資料集與模型</strong>：HumanEval（164 題人寫 Python 程式題）與 MT-Bench（80 個多輪問題）。HumanEval 用 CodeLlama（greedy 做 1-shot、nucleus 做 10-shot），MT-Bench 用 Vicuna（皆 1-shot）；各測 7B 與 13B，最大生成長度分別 512、1024 token。單卡 NVIDIA A6000 + 96 CPU 核，結果取三次平均。</li>
+<li><strong>超參數</strong>：精確匹配起始後綴長度 <code>n_max=16</code>，逐一遞減至找到匹配；每條檢索延續候選長度 <code>m</code> 截斷為 10；依 Medusa 經驗「64 個草稿 token 為最佳算力配置」，故 Trie 中選出的草稿 token 上限 <code>c=64</code>。</li>
+<li><strong>度量</strong>：<strong>Mean Token Time</strong>（平均生成一個 token 的時間）；<strong>Mean Generated Length</strong> <code>M = L/F</code>（生成 token 長度 L 除以 LLM 前向步數 F）——<code>M</code> 是 REST 加速的<strong>上界</strong>（忽略檢索與構造草稿的開銷）。</li>
+<li><strong>資料庫</strong>：CodeLlama 用 The Stack 的約 270 萬筆 Python 碼（27GB）；Vicuna 用 UltraChat 約 77.4 萬則 ChatGPT 對話（12GB）。</li>
+<li><strong>基線</strong>：實作標準推測解碼作對照，小 draft LM 測 Llama 68M、Llama 160M（Miao 等）、TinyLlama 1.1B、TinyLlama-Chat 1.1B（Zhang 等），草稿 token 數從 1 到 15（&gt;15 反而變差）。</li>
+</ul>
+<h3 id="42-主要結果表-1">4.2 主要結果（表 1）</h3>
+<p>REST 相較標準自回歸與推測解碼皆有顯著加速：HumanEval 上 CodeLlama 達 <strong>2.12×～2.36×</strong>（如 CodeLlama 7B greedy：自回歸 27.89 ms/token → REST 11.82 ms/token，2.36×；同設定推測解碼僅 1.75×）；MT-Bench 上 Vicuna 達 <strong>1.62×～1.77×</strong>。要點：</p>
+<ul>
+<li><strong>nucleus 加速不如 greedy</strong>：推測是 nucleus 引入的隨機性所致。作者不宣稱 REST 在所有情況都勝過推測解碼（若有更強、更貼合 LLM 的 draft 模型，推測解碼可能更好），但 REST 無疑是快速推論的有力而直接的方案。</li>
+<li><strong>加速依領域而異</strong>：HumanEval（程式碼）加速明顯高於 MT-Bench（一般對話）——此現象在推測解碼與 Medusa 也曾觀察到。</li>
+<li><strong>檢索開銷可忽略</strong>：含建 Trie 在內的平均每 token 檢索時間 &lt;1 ms。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

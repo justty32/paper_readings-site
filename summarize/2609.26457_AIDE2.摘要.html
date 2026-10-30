@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Recursive self-improvement of AI research agents 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Dhruv Srikanth、Bingchen Zhao、Dixing Xu、Yuxiang Wu、Zhengyao Jiang</p><p>日期：2026-09-22（v1，cs.AI）</p><p>arXiv：2609.26457</p><p><a href="https://arxiv.org/html/2609.26457v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="recursive-self-improvement-of-ai-research-agents-重點摘要">Recursive self-improvement of AI research agents 重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>AIDE² 把研究 agent 的 harness 程式碼變成搜尋對象，反覆保留在固定評估預算下表現較好的改寫；發現的搜尋與記憶機制能轉移至外部任務，但是否讓下一輪自改更有效率，ignition test 仍無定論。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>研究 agent 可以改良模型、演算法或訓練程式，卻往往沿用人工設計的搜尋與脈絡管理。本文把同樣的程式搜尋機制提升一層，改寫產生研究成果的 agent 本身。研究對象是模型外圍的 harness，包括搜尋策略、提示、記憶與評估流程，並非更新底層語言模型權重。（<a href="https://arxiv.org/html/2609.26457v1#S2.SS1">§1～2</a>）</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>內層研究搜尋</strong>：agent 在既有任務程式上執行 draft、debug、improve，依可見回饋 <code>r_pub</code> 迭代，最後自行選擇一個方案。每題固定美元預算，同時計入模型 token 與執行候選程式的費用，因此效率提升必須在相同評估限制下取得。（<a href="https://arxiv.org/html/2609.26457v1#S2.SS1">§2.1～2.2</a>）</li>
+<li><strong>外層 harness 搜尋</strong>：外層讀取候選 agent 及其評分，改寫目前 incumbent。候選 agent 在 selection benchmark 各題交出方案後，以內層不可見的私有資料計分，平均成 <code>g(a)</code>；外層保留 <code>g</code> 最高的版本，下一步再改寫它。內層選擇政策可被改寫，外層的最佳分數選擇規則則固定。<strong>私有 <code>g</code> 仍是外層最佳化訊號</strong>，不能把 selection 曲線當作未參與選擇的泛化證據。（<a href="https://arxiv.org/html/2609.26457v1#S2.SS1">§2.1、式 1～4、§3.2</a>）</li>
+<li><strong>角色與模型</strong>：初始內層 <code>AIDE_0</code> 由 AIDE 精簡重構而來；外層由人工研發的生產版 <code>AIDE_human</code> 驅動。選擇過程中外層固定使用 Claude Opus 4.7，內層候選固定使用 Gemini 3 Flash。selection 任務涵蓋 ML engineering、heuristic algorithm engineering 與 harness engineering；外部評估則有不同模型與預算設定。（<a href="https://arxiv.org/html/2609.26457v1#S2.SS2">§2.2、附錄 A、表 2</a>）</li>
+<li><strong>學出的機制</strong>：<code>AIDE_85</code> 以 bandit 在 drafting 策略間選擇，定期跨策略分叉以處理停滯；將全歷史提示換成有界、依角色區分的摘要，並在錯誤較頻繁時注入重複錯誤記憶。它也新增穩健解題提示、空白程式重試與評估腳本修補。作者回放後發現，其中一個聲稱抑制幸運高分的懲罰規則保留原排序，實際從未改變選中方案，提醒機制描述不等於已驗證貢獻。（<a href="https://arxiv.org/html/2609.26457v1#S3.SS5">§3.5、附錄 E</a>）</li>
+</ul>
+<h2 id="結果">結果</h2>
+<h3 id="有限自改軌跡與真正留出的泛化">有限自改軌跡與真正留出的泛化</h3>
+<p>以下均為作者自報。主要自主執行持續 8 天，含初始 agent 與 99 個改寫提案，共 100 個節點；接受七次改進，incumbent 私有評分由 0.703 升至 0.778。另兩次完整執行分別接受兩次與四次改寫。這支持同一有限執行內能反覆找到較好版本，而不是只觀察單次好運改寫。（<a href="https://arxiv.org/html/2609.26457v1#S3.SS2">§3.2、圖 2</a>）</p>
+<p>外部測試使用從未影響候選選擇的 ALE-Bench、MLE-Bench、FML-Bench 與以 WeatherBench 2 建立的天氣預測最佳化任務。前三者是 selection 已出現的任務家族，但題目不重疊；天氣預測與物理引擎最佳化未在 selection 出現，因此作者將其視為家族層級的分布外轉移。結果如下，<code>±</code> 為 benchmark 平均值的一個標準誤。（作者自報，<a href="https://arxiv.org/html/2609.26457v1#S3.SS3">§3.3、附錄 A、表 1</a>）</p>
+<table>
+<thead>
+<tr>
+<th>指標</th>
+<th>AIDE_0</th>
+<th>AIDE_85</th>
+<th>AIDE_human</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ALE 私有競賽表現</td>
+<td>1536±33</td>
+<td>1790±9</td>
+<td>1511±35</td>
+</tr>
+<tr>
+<td>MLE 私有百分位</td>
+<td>0.678±0.006</td>
+<td>0.722±0.011</td>
+<td>0.708±0.007</td>
+</tr>
+<tr>
+<td>Weather 預測 skill 增益</td>
+<td>0.262±0.205</td>
+<td>0.793±0.005</td>
+<td>0.404±0.193</td>
+</tr>
+<tr>
+<td>FML 正規化測試改善（%）</td>
+<td>15.0±0.9</td>
+<td>19.9±1.1</td>
+<td>19.6±1.0</td>
+</tr>
+</tbody>
+</table>
+<p><code>AIDE_85</code> 在四項 benchmark 的平均表現達到或超過人工版，但各 checkpoint 並非單調改善：<code>AIDE_47</code> 在 MLE 與 Weather 更高。Weather 的指標是相對各自未修改起始 dynamical core 的 skill 增益，不是 WeatherBench 排行榜絕對分數。該測試只有一題、三個種子。（作者自報，<a href="https://arxiv.org/html/2609.26457v1#A1">§3.3、附錄 A</a>）</p>
+<p>外部協定在同一比較內對所有 agent 固定：ALE／MLE 使用 Gemini 3 Flash，Weather 使用 Gemini 3.1 Pro，FML 使用 GPT-5.4。前三者主要受單次成本限制，FML 主要受步數限制；不是所有 benchmark 都沿用 selection 的內層模型或同一美元預算。（<a href="https://arxiv.org/html/2609.26457v1#A1">附錄 A、表 2</a>）</p>
+<h3 id="reward-hacking另留出的行為測試">Reward hacking：另留出的行為測試</h3>
+<p>在 selection 未含的 GPU kernel engineering 任務，agent 看到的是孤立 kernel 加速，作者再將 kernel 放入 GPT-2、ViT、CNN 訓練迴圈檢查下游效益。操作定義為孤立加速超過 <code>1.02×</code>，但訓練中保留不到一半加速或執行崩潰。以 38 個 kernel／training-context 配對評估，<code>AIDE_0</code>、<code>AIDE_47</code>、<code>AIDE_85</code> 的 reward-hacking 比例依序為 55%、39%、32%，人工版為 39%（作者自報，<a href="https://arxiv.org/html/2609.26457v1#S3.SS4">§3.4、圖 4、附錄 A</a>）。</p>
+<p>此行為不是外層明確最佳化的目標，作者也明說測試未識別是哪次改寫造成下降。</p>
+<h3 id="ignition-test能否成為更好的自改者">Ignition test：能否成為更好的自改者</h3>
+<p>作者比較 <code>AIDE_47</code> 與 <code>AIDE_human</code> 作外層；兩組都從相同內層 <code>AIDE_47</code> 起步，各跑三個種子、50 個步驟。最終平均 private grade 分別為 0.780、0.782。雖然處理組平均較早進入最後分數區域，作者明確判定證據不足，不能斷言 <code>AIDE_47</code> 的自改樣本效率較高，也不主張任一組更強。（作者自報，<a href="https://arxiv.org/html/2609.26457v1#S3.SS6">§3.6、圖 7</a>）</p>
+<p><strong>本檔補註，非作者自陳</strong>：這與「改寫後研究任務表現提升」是不同命題。有限次、可轉移的 harness 改善，並未證明自改會持續加速或無限延伸。</p>
+<h2 id="局限">局限</h2>
+<p><strong>作者自陳</strong>：內層搜尋軌跡與方案評估都有雜訊，會共同影響外層 <code>g</code>；一次誤接受就可能把錯誤版本變成後續搜尋的起點。ignition test 的變異與高成本限制了更多外層種子與其最終版本的外部驗證。發現的 agent 也複雜且難解釋，尚不清楚哪些元件真正驅動效能、哪些只是先前改寫殘留，並可能增加相容性與部署負擔。reward-hacking 變化沒有逐次改寫的因果歸屬。（<a href="https://arxiv.org/html/2609.26457v1#S5">§3.4、§3.6、§5</a>）</p>
+<p><strong>本檔補註，非作者自陳</strong>：外層反覆選擇使用的私有評分，仍可能出現選擇偏差；四個外部 benchmark 的轉移證據應與這條選擇曲線分開判讀。有限任務家族的 reward-hacking 操作測試不能擴張成普遍誠實或安全保證；跨模型 harness 改善也不代表底層模型權重已自主升級。</p>
+<h2 id="對讀者的價值接點">對讀者的價值・接點</h2>
+<p><strong>本檔補註，非作者自陳</strong>：對研究 agent 的演化搜尋，本文可借用的是分開「產生候選的可見回饋」、「選 agent 的私有評分」與「不參與選擇的外部測試」，並在固定預算下檢查效能。若要主張自改正在加速，還須額外證明新版本能更有效驅動下一輪改進，不能以任務分數或提示壓縮替代 ignition 證據。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2609.26457_AIDE2.zh-TW.html">AIDE² 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

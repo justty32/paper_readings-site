@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2511.21104_BRIDGE.zh-TW.html">回 2511.21104_BRIDGE.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）被廣泛用於撰寫程式碼，但生成程式可能看起來正確卻仍包含微妙錯誤、遺漏邊界案例或假設不一致。這驅動了<strong>可驗證程式設計</strong>（verifiable coding），其產出不僅包含程式碼，還包括證明程式碼滿足規格的形式產物。在 Lean 等證明助手中，這是一個<strong>多產物預測問題</strong>：可執行程式碼、規格、定理陳述與證明嘗試必須互相一致。我們提出 <strong>BRIDGE</strong>，一個將此流程分解為<strong>程式碼、規格、定理/證明</strong>三個領域的結構化提示框架。BRIDGE 使用針對每個領域的量身推理，加上跨產物檢查，以減少語義漂移。我們的主要程式碼指標是 <strong>Lean 可執行正確性</strong>：生成的程式必須能編譯展開（elaborate）、滿足 Lean 的終止性與全函數性（totality）檢查、並通過 benchmark 測試——此指標比普通單元測試準確率更嚴格，但並非完整語義驗證的替代品。在我們 178 題 Lean benchmark 以及公開的 VERINA 與 CLEVER benchmark 上，BRIDGE 將可執行正確性提升<strong>最高 1.5×</strong>，並以<strong>約 2× 更少</strong>的 Lean 評估次數達到同級成功率。在 BRIDGE 式功能性推理軌跡上進行監督式微調（SFT）優於匹配的直接軌跡微調，顯示此表徵可被內化而非僅作為提示使用。BRIDGE 也改進了規格導向程式碼生成與下游定理/證明診斷，產出更多可編譯 Lean 的定理陳述與更多與實作對齊的完成證明嘗試。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>程式驗證追求比通過測試更強的保證：實作必須對所有有效輸入與執行滿足精確規格。在現代證明助手中，此目標要求一組耦合產物而非單一生成物件：可執行程式碼、形式規格、連接程式碼與規格的定理陳述、以及由核心（kernel）檢查的證明腳本。若將這些產物獨立處理，語義漂移極易發生——模型可能產出通過測試的程式碼、型別正確卻空洞的規格、看起來正確卻不捕捉意圖性質的定理、或僅證明弱命題而與原始意圖無關的證明腳本。</p>
+<p>當前 LLM 程式碼生成系統在此設定中舉步維艱，因為 Lean 要求的不僅是演算法草圖。遞迴呼叫必須被正當化、型別必須與意圖不變量一致、規格必須夠強以使定理有意義卻又不至於無法證明。驗證因此暴露了一個<strong>表徵問題</strong>：模型必須將非正式意圖翻譯為一組語法、型別、遞迴結構、契約與證明義務互相一致的多產物序列。</p>
+<p>BRIDGE 的核心假說是：驗證成功不僅取決於模型能力，也取決於<strong>中間推理的結構</strong>。BRIDGE 將程式合成組織為三個連結領域：程式碼、規格、定理/證明產物，但允許彈性排序與條件化。在 Lean 中，我們發現以程式碼為起點的排序特別有效：模型首先生成與 Lean 相容的程式碼（使用對齊的鷹架），然後以該實作作為<strong>語義錨點</strong>（semantic anchor）來生成規格、定理陳述與針對性證明嘗試。</p>
+<p>BRIDGE 並非從 OCaml、Haskell 或 Python 到 Lean 的驗證編譯器。中間程式是推理鷹架，而非經認證的來源產物。語義信心來自測試、編譯展開檢查、終止性檢查、非空泛性檢查、實作相關性、證明嘗試與人工審查。BRIDGE 研究的是驗證合成的前端，而非任意大規模證明完成。</p>
+<p>主要貢獻：</p>
+<ol>
+<li><strong>多產物可驗證程式設計框架</strong>：將可驗證程式設計分解為連結的程式碼、規格、定理/證明領域，以跨產物推理減少語義漂移。</li>
+<li><strong>功能性推理改進 Lean 可執行合成</strong>：在 178 題 benchmark 上，功能性中間推理比直接提示提升最高 1.5×，並以約 2× 更少的 Lean 評估次數達到同等成功。Double Lean 等長度控制組顯示增益非來自更長生成文字。</li>
+<li><strong>BRIDGE 改進規格與定理/證明產物</strong>：規格導向提示改善程式碼生成最多 17.5 pp，功能性鷹架產出更多可編譯定理陳述與更多無 sorry 證明嘗試。</li>
+<li><strong>增益可遷移且可學習</strong>：BRIDGE 改進 VERINA、CLEVER 等公開 benchmark 與 DafnyBench 求解器後端驗證。功能性 BRIDGE 軌跡上的 SFT 優於直接軌跡 SFT（VERINA 上 20.3% → 29.4%，+9.1 pp），顯示其為可學習的歸納偏誤。</li>
+</ol>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>形式驗證橫跨以求解器為後端的驗證（Dafny、Boogie、Verus 將契約翻譯為 SMT 求解器可自動處理的驗證條件）、互動式定理證明（Lean、Rocq 要求逐步建構證明腳本但提供完全表達力）與形式規格下的程式合成。程式設計範式也很重要：命令式語言倚賴突變、迴圈與狀態轉換，而函數式語言強調不可變資料、模式匹配與結構遞迴，後者更自然地與證明助手程式設計對齊。BRIDGE 以<strong>使用更匹配目標驗證系統的中間推理結構</strong>來填補此間隙。</p>
+<p>最近的 LLM 驗證系統同時展現潛力與脆弱性。VERINA 與 CLEVER 等公開 benchmark 顯示模型能生成良好結構的程式碼、規格、定理陳述與證明嘗試，但仍難以將其連結為可靠的可驗證產物。Clover 與 AutoSpec 等求解器系統在生成註解接近足夠讓自動化後端完成剩餘證明義務時展現更強結果。BRIDGE 與這些系統<strong>正交</strong>：它研究的是推理表徵與產物耦合如何影響程式碼、規格、定理與證明生成。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

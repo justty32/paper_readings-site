@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Confidence Calibration in Vision-Language-Action Models 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Thomas Zollo、Richard Zemel</p><p>日期：2025-07-23（v1，cs.RO）</p><p>arXiv：2507.17383</p><p><a href="https://arxiv.org/abs/2507.17383" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="confidence-calibration-in-vision-language-action-models-重點摘要">Confidence Calibration in Vision-Language-Action Models 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>這篇論文首次系統檢查視覺－語言－動作模型的信心是否真的對應任務成功率，並提出兩個免重訓的修正方向：用語意等價的指令改寫做 prompt ensemble，以及對不同動作維度分別做 Platt scaling。</p>
+<h2 id="問題與方法">問題與方法</h2>
+<ul>
+<li><strong>問題</strong>：VLA 會從影像與自然語言直接產生低階機器人動作，但動作 token 的機率不一定能當作可信的任務成功率。若信心失準，安全監控器便無法據此決定何時繼續、暫停或交給人類。</li>
+<li><strong>基準信心</strong>：作者把每個時間步各動作維度所選 token 的機率取平均，再以任務是否成功作為二元結果。主要分析採第一個動作前的信心，並同時用 ECE、Brier score 與 NLL 檢查可靠度、區辨力及過度自信失敗。</li>
+<li><strong>Prompt ensemble</strong>：先由輔助 LLM 產生多個語意相同、措辭不同的指令，再把 VLA 在各改寫下的信心取平均。它把措辭視為潛在隨機變數，目標是消掉語言表面差異帶來的信心方差，不改變 VLA 的訓練參數。</li>
+<li><strong>Action-wise Platt scaling</strong>：一般 Platt scaling 只學一組全域映射，但 VLA 的平移、旋轉與夾爪等維度資料頻率不同，失準方向也可能不同。作者因此對每一個動作維度各學一組仿射校準參數，再彙整成任務信心；被選中的動作 token 不變。</li>
+<li><strong>時間軸分析</strong>：論文也沿任務進度追蹤信心，並比較當下信心、近期滑動平均與歷史平均，藉此尋找比「起步前立刻判斷」更可靠的介入時點。</li>
+</ul>
+<h2 id="主要實驗與結果">主要實驗與結果</h2>
+<p>實驗以 OpenVLA 及其量化版本在 LIBERO Spatial、Object、Goal 任務組上進行。Prompt ensemble 在總計 36 組模型、資料與指標組合中全數降低校準誤差（作者自報）。ECE 的降幅最高達 40%，平均超過 20%；Brier score 與 NLL 的平均改善較小，約為 5–10%（作者自報）。這表示改寫集成主要改善「信心是否貼近群體成功率」，對信心的銳利度與區辨力幫助較有限。</p>
+<p>時間分析顯示，在全部 6 組任務組與模型設定中，校準誤差通常從任務起點到約 50% 進度快速下降，之後持平或回升（作者自報）。這支持先執行一段已認證安全的前綴、取得更多互動資訊，再決定是否介入，但歷史平均雖可改善 Brier score，ECE 反而常惡化，不能把平滑本身視為校準保證。</p>
+<p>動作維度的 ECE 最多相差 5 倍；逐維 Platt scaling 在部分設定可把 ECE 再改善超過 20%，而且不更改動作選擇（作者自報）。整體結論不是「準確率與可信度只能二選一」，而是任務表現較好的模型在這批資料上往往也較易校準，且語言、時間與動作維度各有可利用的失準結構。</p>
+<h2 id="局限">局限</h2>
+<p>全部實驗都在 LIBERO 模擬器中，以微調後的 OpenVLA 系列完成。這讓大量重置與 rollout 成為可能，卻沒有涵蓋其他 VLA 架構、真實機器人的感測雜訊、延遲、磨耗與環境擾動。中途信心較可靠的現象目前仍是經驗觀察，尚未成為可直接部署的安全保證。（本檔補註，非作者自陳）Prompt ensemble 需要一個輔助 LLM 產生改寫、並對每個改寫各跑一次推論；作者將其定位為 lightweight 且可批次並行，未把這項成本列入 Limitations。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>這篇最有用的不是某一個校準器，而是把「模型自稱有把握」改造成可驗證介面的做法。對 ai_core 而言，意圖翻譯層或 agent 不應只回傳單一 confidence；同一意圖的等價改寫、流程不同階段與輸出欄位，都可能暴露不同的失準。這可轉成三種治理訊號：以等價輸入的分歧估計語言敏感度、在安全前綴後重新評估信心，以及按欄位分開校準而非用一個總分掩蓋局部風險。</p>
+<p>更重要的是，ECE、Brier score 與 NLL 的差異提醒 ai_core：一張校準憑證必須寫明它保證哪一種性質。信心貼近平均成功率，不代表能區分個別成功與失敗；能排序風險，也不代表機率值本身可信。若把這些不同問題壓成一個「可信度」，後續的自動准入規則仍可能做錯決定。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2507.17383_VLACalibration.zh-TW.html"><code>../translate/2507.17383_VLACalibration.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

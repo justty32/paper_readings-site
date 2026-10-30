@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《解釋那個解釋者：理解 Transformer 符號迴歸模型的內部運作》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Arco van Breda、Erman Acar（阿姆斯特丹大學 等）</p><p>日期：2026-02，機制可解釋性 × 符號迴歸</p><p>arXiv：2602.03506</p><p><a href="https://arxiv.org/abs/2602.03506" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="解釋那個解釋者理解-transformer-符號迴歸模型的內部運作重點摘要">《解釋那個解釋者：理解 Transformer 符號迴歸模型的內部運作》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>首次把「機制可解釋性（MI）／電路發現」用到符號迴歸 transformer 上</strong>——SR 模型本身產出可解釋的方程，卻自己是黑箱，這很弔詭。作者提出 <strong>PATCHES</strong>（用 <strong>CMA-ES</strong> 演化最佳化一個稀疏遮罩，在「效能 vs 電路大小」間取捨）來自動發現<strong>緊湊且正確</strong>的電路，從 <strong>NeSymReS</strong> 中分離出 <strong>28 個電路</strong>（負責 sin/exp 等一元、+/× 等二元運算子的生成），是 SR transformer 的<strong>首個電路級刻畫</strong>。並以<strong>忠實性/完整性/最小性</strong>三準則做因果驗證，發現**「均值修補（mean patching）+ 效能式評估」最可靠地分離出功能正確的電路**；反之<strong>直接 logit 歸因（DLA）與探測分類器主要捕捉相關性而非因果性</strong>，不適合做電路發現。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>現代神經符號 SR 模型（產出可解釋方程）本身<strong>內部機制不明、仍是黑箱</strong>——這與「SR 因可解釋而有價值」相矛盾。MI 已在語言/視覺模型成功找到電路，卻<strong>從未用於 SR</strong>。把 MI 用到 SR 又有方法論挑戰：<strong>激活修補（activation patching）策略無共識</strong>（Mean vs Resample 常給衝突結果）、驗證標準分歧（模型式 logit vs 功能式 accuracy）、各電路發現法對因果性的處理不一（累積搜尋 vs DLA）。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>分析對象</strong>：<strong>NeSymReS</strong>（編碼器–解碼器；數值資料 (X,y) 編碼成潛表示，解碼器以前綴記法自迴歸生成式子，常數用佔位 token c、事後 BFGS 最佳化）——SR 中 transformer 範式的奠基模型，啟發 SymFormer/DGSR/TPSR。</li>
+<li><strong>PATCHES</strong>（Probabilistic Algorithm for Tuning Circuits through Heuristic Evolution and Search）：對特定符號行為（如生成 sin token），用 <strong>CMA-ES</strong> 取樣候選遮罩、依「<strong>效能與電路大小的適應度權衡</strong>」精修搜尋分佈，找出<strong>最大化效能、最小化大小</strong>的電路（注意力頭/MLP 子圖）；比傳統迭代修補產<strong>更小</strong>電路。</li>
+<li><strong>三種分佈感知修補策略</strong>（避免 zero/noise 修補造成的分佈外偏移）：<strong>Mean patching</strong>（用 1000 條訓練式算的固定均值激活，輸入無關）、<strong>Resample patching</strong>（對每式造反事實——把目標 token 換成各種替代一元/二元 token、取均值）、<strong>Resample-STR</strong>（單樣本變體，用最語意相近 token 的激活替換）。</li>
+<li><strong>三準則因果驗證</strong>：<strong>忠實性（faithfulness，電路能重現模型目標 token）、完整性（completeness，含所有必要組件）、最小性（minimality，無冗餘組件）</strong>；系統比較模型式（logit 差）vs 功能式（accuracy）評估。</li>
+<li><strong>反向用探測</strong>：把已被電路發現確認為「因果必要」的組件當 ground truth，反過來測探測準確度是否真反映功能效用。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>從 NeSymReS 分離出 <strong>28 個電路</strong>，含具語意的「<strong>Sine 均值功能電路（Sine Mean Functional Circuit）</strong>」等；為 SR transformer 的<strong>首個電路級刻畫</strong>。</li>
+<li><strong>方法論結論</strong>：<strong>Mean patching + 效能（功能式）評估</strong>最可靠地分離出<strong>功能正確</strong>的電路；<strong>CMA-ES（PATCHES）產的電路比傳統迭代修補更小</strong>。</li>
+<li><strong>負面發現</strong>：<strong>DLA 與探測分類器主要捕捉相關特徵而非因果特徵</strong>——對電路發現效用有限（多數基線在「數值擬合好但符號不對」的陷阱外，這裡是「探測準但非因果」的陷阱）。</li>
+<li>確立 <strong>SR 是 MI 的高潛力應用領域</strong>，並給出可跨域沿用的、模型無關的原則化電路發現流程。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>聚焦單一奠基模型 NeSymReS；電路數（28）與行為以一元/二元運算子生成為主。</li>
+<li>因果驗證與修補仍受「修補策略選擇」影響（雖已系統比較）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 C 類少見的**「機制可解釋性視角」代表**——不提新 SR 方法，而是<strong>打開神經 SR 的黑箱</strong>，回答「transformer 到底怎麼決定要吐 sin 還是 ×」。與 <a class="paper-reference" href="2509.19849_Pretrained_SR_Generalization.%E6%91%98%E8%A6%81.html">2509.19849</a>（預訓練 SR 泛化分析）同屬「理解神經 SR」家族，但深入到<strong>電路/組件</strong>層級。</li>
+<li>最值得記：<strong>「產可解釋方程的模型自己是黑箱」這個弔詭</strong>;<strong>PATCHES＝CMA-ES 找最小正確電路</strong>;<strong>忠實/完整/最小三準則</strong>；以及兩個方法論教訓——<strong>Mean patching + 功能式評估最可靠</strong>、<strong>DLA 與探測只給相關性別拿來當因果</strong>。</li>
+<li>與本批 <a class="paper-reference" href="2606.07915_EditSR.%E6%91%98%E8%A6%81.html">2606.07915</a> EditSR 對讀：EditSR 從外部<strong>修好</strong> NeSymReS 的結構錯誤，本文從內部<strong>解釋</strong> NeSymReS 為何那樣決策——理解與修復的兩面。</li>
+<li>定位：<strong>機制可解釋性方法 + SR 首個電路級分析</strong>；適合做 <strong>神經 SR 內部機制、MI/電路發現、activation patching 方法學、可信 AI</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2602.03506_Explaining_the_Explainer_SR_Circuits.zh-TW.html"><code>../translate/2602.03506_Explaining_the_Explainer_SR_Circuits.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

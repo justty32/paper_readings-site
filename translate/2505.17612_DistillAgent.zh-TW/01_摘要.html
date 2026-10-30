@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Part 2：實驗設置—結果—分析—結論 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2505.17612_DistillAgent.zh-TW.html">回 2505.17612_DistillAgent.zh-TW 目錄</a>　<a href="02_%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）在複雜推理任務上表現卓越，但計算成本極高，限制了實際部署。近期研究聚焦於使用 teacher LLM 的思維鏈（Chain-of-Thought, CoT）推理軌跡，將推理能力蒸餾（distill）到小語言模型（sLM）中。然而，這種進路在需要稀有事實知識或精確計算的場景下遇到瓶頸——sLM 因能力有限，經常幻覺（hallucinate）。</p>
+<p>本工作提出 <strong>Agent Distillation</strong>，一種不僅轉移推理能力、更將基於 LLM 的 agent 之完整任務解決行為<strong>轉移到配備檢索與程式碼工具的 sLM</strong> 的框架。我們沿兩個互補軸改進 agent 蒸餾：</p>
+<ol>
+<li>提出 <code>first-thought prefix</code>（FTP）提示方法，提升 teacher 生成軌跡的品質；</li>
+<li>提出 <code>self-consistent action generation</code>（SAG），改進小 agent 在測試時的穩健性。</li>
+</ol>
+<p>我們在八個推理任務上評估——涵蓋<strong>事實領域與數學領域</strong>、<strong>in-domain 與 out-of-domain 泛化</strong>——結果顯示：小至 0.5B、1.5B、3B 的 sLM 可達到與<strong>下一級（1.5B、3B、7B）使用 CoT 蒸餾微調之模型</strong>相當的效能，展示 agent 蒸餾在建構實用、能使用工具的<strong>小 agent</strong> 上的潛力。</p>
+<p>程式碼：https://github.com/Nardien/agent-distillation</p>
+<h2 id="1-導論">1. 導論</h2>
+<p>LLM 在複雜真實世界任務中已超越平均人類準確率，但推論成本日益沉重。雖然 sLM（小型語言模型）備受關注，要保留大模型能力仍極具挑戰。<strong>核心問題：如何在遠更小的模型中保留 LLM 級的問題解決能力？</strong></p>
+<p>近期推理蒸餾（reasoning distillation）讓 sLM 模仿 teacher LLM 的 CoT 推理軌跡——但蒸餾後的小模型易幻覺、常無法準確計算。例如，「2010 年投 $100 買 Apple，2020 年值多少？」——CoT 蒸餾的學生只是背下 AAPL 的 split 歷史，遇到 Nvidia（NVDA）就不會了。</p>
+<p><strong>Agent Distillation 的兩個關鍵優勢</strong>：</p>
+<ol>
+<li>sLM 專注學習<strong>如何使用工具解決問題</strong>，而非死記知識與計算；</li>
+<li>對需要<strong>前所未見事實或計算</strong>的新查詢泛化更強。</li>
+</ol>
+<p>核心挑戰：這種複雜 agent 行為能否從 &gt;30B 的 teacher 蒸餾進 0.5–3B 的 student？</p>
+<h3 id="貢獻">貢獻</h3>
+<ul>
+<li>提出 <strong>Agent Distillation</strong> 框架，訓練 sLM 模仿 LLM agent 軌跡，賦予 agentic 行為。</li>
+<li><strong>First-Thought Prefix</strong>：改善 teacher 軌跡品質（僅用於 teacher，student 推論不需要）。</li>
+<li><strong>Self-Consistent Action Generation</strong>：test-time 提升穩健性。</li>
+<li>在<strong>八個事實與數學推理基準</strong>上驗證，跨規模（0.5B–7B）一致超越 CoT 蒸餾。</li>
+<li>0.5B/1.5B/3B 蒸餾 agent 可達到下一級更大 CoT 蒸餾模型的平均效能。</li>
+</ul>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<h3 id="21-語言模型的推理蒸餾">2.1 語言模型的推理蒸餾</h3>
+<p>LLM 以 CoT 提示在複雜推理上表現強。CoT 蒸餾方法訓練 sLM 複現 teacher LLM 的逐步推理軌跡——尤其在數學推理上有效。近期工作引入外部工具（檢索、程式碼執行）來改善泛化，但<strong>大多數仍依賴靜態示範，缺乏與環境的互動</strong>。對比之下，本工作蒸餾 agentic 行為——模型在與環境互動中學習推理和工具使用。</p>
+<h3 id="22-語言-agent-與-agentic-推理">2.2 語言 Agent 與 Agentic 推理</h3>
+<p>Agent 泛指自主觀察世界、採取行動以追求目標的實體。早期工作如 ReAct 引入「語言 agent」——觀察世界、用自然語言思考、採取行動。因 LLM 原生並非為此類互動訓練，先前工作依賴精心設計的 prompt（few-shot 範例），或從更強模型生成軌跡進行微調（FireAct）。<strong>此前研究聚焦於微調 ≥7B 的 LLM——而本工作旨在將 LLM 的 agentic 能力蒸餾進 ≤3B 的 sLM。</strong></p>
+<h2 id="3-預備知識">3. 預備知識</h2>
+<h3 id="知識蒸餾knowledge-distillation">知識蒸餾（Knowledge Distillation）</h3>
+<p>知識蒸餾將大 teacher <span class="math inline">\(p_T\)</span> 的能力轉移到小 student <span class="math inline">\(p_S\)</span>：
+<div class="math inline">\[\min_\theta \mathbb{E}_{(x,y)\sim D_{train}} \frac{1}{L_y}\sum_{n=1}^{L_y} D\left(p_T(\cdot|y_{&lt;n},x) \| p_S(\cdot|y_{&lt;n},x;\theta)\right)\]</div></p>
+<h3 id="推理蒸餾reasoning-distillation">推理蒸餾（Reasoning Distillation）</h3>
+<p>在推理任務中，<span class="math inline">\(y\)</span> 可以是逐步解題的 rationale。teacher 用 CoT 提示生成 rationales，student 模仿：
+<div class="math inline">\[\min_\theta -\mathbb{E}_{x\sim D_{train},\, y\sim p_T(\cdot|x,I_{CoT})} \sum_{n=1}^{L_y} \log p_S(y_n|x,y_{&lt;n};\theta)\]</div></p>
+<p>其中 <span class="math inline">\(I_{CoT}\)</span> 是 CoT 風格提示（如「Let&#x27;s think step by step」）。</p>
+<h2 id="4-agent-distillation">4. Agent Distillation</h2>
+<p>推理蒸餾不賦予模型與外部環境互動的能力。<strong>Agent 軌跡</strong>由反覆的「思考（thought,<span class="math inline">\(r\)</span>）、行動（action,<span class="math inline">\(a\)</span>）、觀察（observation,<span class="math inline">\(o\)</span>）」循環組成：</p>
+<div class="math block">
+\[\tau = ((r_1,a_1,o_1),\ldots,(r_{L_\tau},a_{L_\tau},o_{L_\tau})) \sim p_T(\cdot|x,I_{agent})\]
+</div>
+<p><span class="math inline">\(I_{agent}\)</span> 是 agent 指令，如「你必須以一系列 Thought→Code→Observation 步驟解決任務」。每個 observation <span class="math inline">\(o\)</span> 由<strong>環境回應</strong>（非模型生成）。蒸餾目標（排除 observations）：</p>
+<div class="math block">
+\[\min_\theta -\mathbb{E}_{x\sim D_{train},\,\tau\sim\pi_T(\cdot|x,I_{agent})} \sum_{t=1}^{L_\tau} \log p_S(r_t,a_t|x,\tau_{&lt;t};\theta)\]
+</div>
+<p>蒸餾後，sLM 可作為互動式 agent 運作：思考要產生什麼程式碼、生成行動（API 呼叫、迴圈）、根據執行回饋修正——如 interpreter 報錯則修正程式碼；輸出有效但不夠（搜尋結果次優）則改寫查詢。</p>
+<h3 id="兩個關鍵挑戰">兩個關鍵挑戰</h3>
+<ol>
+<li>agentic 行為往往在 pretraining/instruction-tuning 分佈之外，蒸餾可能損害已在 CoT 風格推理上優化良好的領域。</li>
+<li>sLM 產出功能性程式碼的能力較弱，常見錯誤格式、錯誤使用函式庫。</li>
+</ol>
+<h3 id="first-thought-prefixftp">First-Thought Prefix（FTP）</h3>
+<p>觀察：instruction-tuned LLM 作為 agent 時，在 MATH500 難題上的表現不如用 CoT 提示（分佈偏移）。假設是 agent 指令覆蓋/衝突了既有 CoT 推理模式。<strong>初始推理步驟至關重要</strong>（首步偏差使整條鏈偏離）。</p>
+<p>解法：借鑒 LLM jailbreak 的 prefix-attack，<strong>先用 CoT prompt 生成第一步推理 <span class="math inline">\(y_1\)</span>，再將 <span class="math inline">\(y_1\)</span> 作為 prefix 餵入 agent prompt 繼續生成完整軌跡</strong>：</p>
+<div class="math block">
+\[y_1 \sim p_T(\cdot|x,I_{CoT})\]
+</div>
+<div class="math block">
+\[\tau \sim p_T(\cdot|x,y_1,I_{agent})\]
+</div>
+<p>**FTP 僅用於 teacher 生成軌跡，student 推論時不需要。**這使 teacher 生成的軌跡含 CoT 式初始化，兼顧 agentic 靈活性。</p>
+<h3 id="self-consistent-action-generationsag">Self-Consistent Action Generation（SAG）</h3>
+<p>小蒸餾 agent 常產出無效行動（CodeAct 中 = 無法執行或報錯的程式碼）。</p>
+<h2 id="sag-機制每步不只用-greedy-decoding而用-nucleus-sampling高溫-t04採樣-n8-條-thought-action-序列以輕量-interpreter-過濾-parseexecution-error全失敗則保留一個隨機失敗-action以其錯誤訊息作為-observation-供下一步修正進一步以多數投票在產生的-observations-上取最一致者作為最終-action若三條成功兩條輸出相同則選其一">SAG 機制：每步不只用 greedy decoding，而用 nucleus sampling（高溫 T=0.4）採樣 <span class="math inline">\(N=8\)</span> 條 thought-action 序列，以輕量 interpreter 過濾 parse/execution error。全失敗則保留一個隨機失敗 action，以其錯誤訊息作為 observation 供下一步修正。<strong>進一步以多數投票在產生的 observations 上取最一致者作為最終 action</strong>——若三條成功、兩條輸出相同，則選其一。</h2>
+<h2 id="title-part-2實驗設置結果分析結論-source-httpsarxivorgabs250517612-parent-250517612_distillagentzh-twmd">title: Part 2：實驗設置—結果—分析—結論
+source: https://arxiv.org/abs/2505.17612
+parent: 2505.17612_DistillAgent.zh-TW.md</h2>
+<h1 id="part-2實驗設置結果分析結論">Part 2：實驗設置—結果—分析—結論</h1>
+<h2 id="5-實驗設置">5. 實驗設置</h2>
+<p><strong>任務與資料集</strong>：兩類推理——事實型（in-domain: HotPotQA；out-of-domain: Bamboogle/2-hop, MuSiQue/3-hop, 2WikiMultiHopQA/2-hop）與數學型（in-domain: MATH；out-of-domain: GSM-Hard/大數運算， AIME/奧賽級， OlymMATH/奧賽級）。訓練用 HotPotQA 1000 + MATH 2000 題。每測試集上限 500 題。評估指標：數學用 exact match，事實型用 GPT-4o-mini 作 judge。</p>
+<p><strong>模型</strong>：Teacher = Qwen2.5-32B-Instruct。Student = Qwen2.5-Instruct (0.5B/1.5B/3B/7B)。</p>
+<p><strong>基準線</strong>：(1) CoT 蒸餾——模仿靜態 CoT 推理鏈；(2) CoT 蒸餾 + RAG——加入檢索增強，公平對比外部知識；(3) 本工作 Agent Distillation（基於 CodeAct/smolagents 框架，含 FTP 與 SAG）。</p>
+<p><strong>訓練細節</strong>：Wikipedia 2018 作 KB（非搜尋引擎），e5-base-v2 embedding。每題採樣 teacher 軌跡一條，過濾錯誤軌跡得約 2000 條。LoRA rank=64 全線性層，batch=8，lr=2e-4，2 epochs，4x A100 80GB。推論用 greedy decoding，agent 上限 5 steps，SAG 設 N=8、T=0.4。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《正確地引導 LLM：快速、非侵入式的約束生成（DOMINO）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Luca Beurer-Kellner, Marc Fischer, Martin Vechev（ETH Zurich, SRI Lab）</p><p>日期：2024-03</p><p>arXiv：2403.06988</p><p><a href="https://arxiv.org/abs/2403.06988" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="正確地引導-llm快速非侵入式的約束生成domino重點摘要">《正確地引導 LLM：快速、非侵入式的約束生成（DOMINO）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>DOMINO</strong>：把約束解碼拆成 <strong>parser + scanner</strong>，離線預計算一棵<strong>詞彙對齊的子終端樹（vocabulary-aligned subterminal tree）<strong>來對齊「LLM 子詞 token」與「文法終端符」，達成</strong>最小侵入式約束（minimally invasive）</strong>——凡無約束模型能生成的合法輸出、受約束模型也都能生成，因此<strong>不損準確率</strong>；再結合<strong>推測解碼</strong>與<strong>機會式遮罩</strong>把約束開銷壓到近乎零、甚至比無約束生成快近 2×。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>約束解碼（強制輸出符合 JSON／CFG／regex 等形式語言）有兩大痛點：(1) 生成時<strong>額外開銷</strong>（線上法最壞情況每步須掃整個詞彙表）；(2) 更隱蔽的是<strong>準確率被扭曲</strong>。因為 LLM 的子詞 token 與文法終端符不對齊，天真/貪婪約束會忽略<strong>橋接 token（bridge tokens，橫跨多個終端符，如「空白＋引號」）</strong>，逼模型選出高困惑度的次佳 token，使分布偏離無約束情形。實測：GSM8K 的 JSON 版，天真約束把準確率從 <strong>41.5% 打到 30.8%</strong>；模板法（guidance）因外部 tokenizer 誘發不對齊，困惑度從 4.17 爆到 24–49。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>最小侵入定義</strong>：任意提示下，無約束模型能產生的合法輸出，受約束模型也都能產生。</li>
+<li><strong>parser／scanner 分離</strong>：scanner 管終端符的 regex（低階），parser 管 CFG 規則（高階）；合法程式＝終端符序列（引理 3.1）。</li>
+<li><strong>子終端樹（離線預計算）</strong>：把字元級 NFA 提升到（子）終端層，對每個狀態、每個詞彙 token 列舉可達的子終端序列（區分 full／start／end／continuation 四型），組成前綴樹，token 掛在節點上。推理時 parser 線上剪掉非法延續。</li>
+<li><strong>前瞻參數 k</strong>：控制在前綴樹往下追蹤的深度；k=0 已保證輸出合法，<strong>k=∞ 才最小侵入</strong>（納入所有跨邊界橋接 token）。</li>
+<li><strong>機會式遮罩（opportunistic masking）</strong>：先讓 LLM 提議 token、parser 只驗這一個，合法就過、不必算整個遮罩。</li>
+<li><strong>約束式推測解碼</strong>：以計數模型 <code>P(l|α,β)</code>（α=scanner 子終端、β=parser 規則狀態）一次推測 s 個 token；結構化語言可預測性高故加速巨大，且只會預測合法 token。獨立於底層 LLM 的標準推測解碼、可並用。</li>
+</ul>
+<h2 id="結果mistral-7b--llama-2-13b">結果（Mistral 7B / Llama-2 13B）</h2>
+<ul>
+<li><strong>表 1</strong>：在 Regex、CFG、可預計算、最小侵入四維度上，DOMINO 是唯一四項全滿足者（勝 lmql／guidance／Outlines／Picard／Synchromesh／llama.cpp／gcd）。</li>
+<li><strong>準確率（表 2）</strong>：DOMINO 全任務最佳且準確率持平或略超無約束；標準 guidance 最多掉 <strong>11 個百分點</strong>（如 CoNLL2003/Llama-2：0.09→0.062）。GSM8K/Mistral：無約束 0.415 → DOMINO 0.418；CoNLL2003/Mistral：0.21→0.21。</li>
+<li><strong>吞吐</strong>：相對無約束最高 <strong>2.71×</strong>（CoNLL2003/Llama-2），schema-JSON 達 1.77×（+77%）；guidance 與 llama.cpp 的線上約束普遍降到約 0.8×。</li>
+<li><strong>前瞻 k（表 4）</strong>：k=0→0.308、k=1→0.1、k=∞→0.418（Mistral），低 k 會逼壞空白/格式甚至讓 Llama-2 無法生成長列表。</li>
+<li><strong>推測 s=10</strong> 對 schema-JSON 得 1.7× 吞吐；自由形式 JSON 改用機會式遮罩僅 4.21% 開銷；C 程式碼最難預測，機會式遮罩 0.78× 仍勝 llama.cpp 0.74×。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>明確設定為<strong>離線</strong>：所有文法須事先已知、不隨請求變化；文法預計算需 1–5 秒（C 語言離群約 20 秒），不計入吞吐。</li>
+<li>推測解碼對<strong>難預測</strong>的結構（如 C 程式碼）無益，該情境仍是唯一淨開銷（&lt;無約束）的工作負載。</li>
+<li>計數式推測模型需暖機形成先驗（實驗用 10 次暖機），先驗固定後才量測。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>直接對應 ai_core <strong>§5 第一目標「程式碼助手」的下層——受約束填碼</strong>：DOMINO 給出「約束<strong>不該拖慢也不該扭曲</strong>」的工程解。它把「格式保證」從昂貴的 LLM 反覆重試/後處理，剃成一個<strong>確定性、可預計算</strong>的解碼層——正合北極星「把 LLM 呼叫包成可靠函數、逐步剃除對 LLM 依賴」：輸出合法性由 parser 免費保證（確定性節點），LLM 只負責內容（少數智能節點）。</li>
+<li><strong>子詞對齊＝可靠性的前提</strong>：本篇證明「天真約束會偷偷降低推理準確率」，提醒 ai_core 在做結構化抽取／填碼時，約束層必須最小侵入，否則資產工廠產出的「資產」品質會被靜默腐蝕——這是可靠函數化的隱形陷阱。</li>
+<li><strong>與已入庫 [[CRANE]] 互補</strong>：CRANE 警示「過度受限的解碼會損害 LLM 推理」屬同一問題的<strong>理論/現象面</strong>；DOMINO 是同一問題的<strong>系統/工程面</strong>解方（用最小侵入＋橋接 token 保住推理準確率）。兩者一起讀，構成「約束該怎麼設才不傷智能」的完整視角。歸 <strong>I 類（推理/約束生成基礎設施）</strong>。</li>
+<li>定位：<strong>演算法/系統論文（ICML 2024）</strong>，適合做 受約束生成、JSON/schema/CFG 強制輸出、推測解碼、LLM 推理管線 的人；核心可遷移概念為「<strong>離線預計算對齊 + 推測 = 近零開銷的可靠格式保證</strong>」。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2403.06988_DOMINO.zh-TW.html"><code>../translate/2403.06988_DOMINO.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

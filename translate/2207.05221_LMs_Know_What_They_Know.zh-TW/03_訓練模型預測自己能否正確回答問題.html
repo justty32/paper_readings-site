@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_訓練模型預測自己能否正確回答問題 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2207.05221_LMs_Know_What_They_Know.zh-TW.html">回 2207.05221_LMs_Know_What_They_Know.zh-TW 目錄</a>　<a href="02_%E8%BC%83%E5%A4%A7%E6%A8%A1%E5%9E%8B%E5%9C%A8%E5%A4%9A%E6%A8%A3%E5%A4%9A%E9%81%B8%E9%A1%8C%E4%B8%8A%E6%A0%A1%E6%BA%96%E8%89%AF%E5%A5%BD.html">← 上一節</a>　<a href="04_%E8%A8%8E%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="5-訓練模型預測自己能否正確回答問題">5 訓練模型預測自己能否正確回答問題</h2>
+<p>本節訓練模型預測「自己能否正確回答任意給定的自由格式問題」，記為 P(IK)（&quot;I Know&quot;的機率）。這根本上是關於模型自身的問題，因為不同模型知道不同問題的答案。</p>
+<p>我們考慮兩種做法：</p>
+<ul>
+<li><strong>Value Head</strong>：把 P(IK) 訓練成模型附加的 value head 輸出的 logit（與語言建模 logits 獨立）。優點是可在任意 token 位置探測 P(IK)。</li>
+<li><strong>自然語言</strong>：直接問模型「你能以多少信心回答這個問題？」，讓模型輸出如 0%、10%……100% 的答案。</li>
+</ul>
+<p>作者原本希望自然語言做法能在 few-shot、分布外評測上帶來大幅收益，但早期實驗未見明顯優勢，因此後續採用 value head 做法（作者認為未來值得回頭研究自然語言做法）。</p>
+<p>對每個問題生成 30 個 T=1 樣本；若某問題 30 個樣本中 20 個正確、10 個錯誤，訓練集就包含 20 份 (Q, IK) 與 10 份 (Q, IDK)，以此近似出軟標籤形式的真實 P(IK)（作者提到這種近似有時會誤導，如「說出一個 1–100 間的合成數」這類題目，模型可能單靠隨機取樣就取得看似 0.75 的 P(IK)）。用交叉熵損失訓練這些標籤。value head 技術上存在於每個 token 位置，但訓練時只在輸入序列最後一個 token 反傳梯度；測試時也只讀最後一個 token 位置的 P(IK) 分數。</p>
+<h3 id="51-pik-訓練評估與模型規模趨勢">5.1 P(IK) 訓練評估與模型規模趨勢</h3>
+<p>由於加了一個未經訓練的新 head，語言模型 zero/few-shot 下無法良好預測 P(IK)，需要微調。TriviaQA 訓練集夠大，因此先只在 trivia 問題上微調 P(IK) 來研究泛化：用 10-shot 提示（由隨機 TriviaQA 題目與答案構成，確保輸出格式正確，因為正確性以字串比對判定）對每題採 30 個 T=1 樣本得出真實 P(IK)。訓練/評估資料集形如 (Few-Shot Prompt + Question, Ground Truth Label)；訓練時整個模型連同 value head 一起微調。在保留的 TriviaQA 測試題上評估此分類器，結果模型能良好區分答對與答錯的問題，且 P(IK) 在 TriviaQA 上校準相當良好（見圖 12、13：越小的模型校準誤差越高，最大模型域內校準非常好；OOD 校準通常較差，且多數情況下模型偏低估）。</p>
+<h3 id="52-pik-的分布外泛化">5.2 P(IK) 的分布外泛化</h3>
+<p>僅用 TriviaQA 訓練，測試對 Lambada、算術、GSM8k、Codex HumanEval、以及自建的「自然出現的」Python 函式合成題（因 Codex 評測樣本不夠多而額外新增）的泛化。GSM8k 處理略有不同：因較難，只評估 52B 模型；10-shot 提示含推理過程與最終答案，30 個樣本各自含模型生成的推理；由於 P(IK) &gt; 0.5 的問題很少，有時改用 0.25 作二值化閾值。</p>
+<p><strong>圖 14</strong> 顯示僅在 TriviaQA 上訓練的 P(IK) 分類器，其泛化能力隨模型規模改善；<strong>表 1</strong>（AUROC / Brier Score，均為 52B 分類器）：僅訓 TriviaQA 時，TriviaQA 0.864/0.151、Mixed-Arithmetic 0.928/0.194、LAMBADA 0.606/0.431、Python Func Synth 0.687/0.164、GSM8K 0.624/0.200；<strong>改成訓練除 GSM8K 外的全部任務</strong>後，各項全面提升：TriviaQA 0.873/0.145、Mixed-Arithmetic 0.987/0.042、LAMBADA 0.853/0.108、Python Func Synth 0.881/0.109、GSM8K 0.752/0.121。即使只訓 TriviaQA 也有不錯的泛化，但訓練所有任務能全面改善表現。Lambada 域內校準原本很差（P(IK) 普遍偏低），訓練全部任務後才修復。</p>
+<h3 id="53-pik-對來源材料的泛化">5.3 P(IK) 對來源材料的泛化</h3>
+<p>對一個相對冷僻的問題「哪一州的牛仔競技名人堂在 2013 年成立？」，52B 模型的 P(IK) 恰當地給出低值（18%）；但若在脈絡前面加上一段關於 Idaho Rodeo Hall of Fame 的維基百科文章，P(IK) 升至 78%——換言之，未經任何額外訓練，P(IK) 就能泛化去判斷語言模型能否在脈絡中的來源材料裡找到答案。作者用 TriviaQA（附帶相關維基文章）量化驗證此現象：比較有無附上參考文件時的 P(IK)（過長文章截斷至 7000 token）。結果顯示附上文章會提高 P(IK)，且<strong>較短的文章提升幅度更大</strong>（推測因為從短文章中找出正確答案較容易）。</p>
+<h3 id="54-pik-對-gsm8k-解題提示的泛化">5.4 P(IK) 對 GSM8k 解題提示的泛化</h3>
+<p>在 GSM8k 題目上附加不同形式的提示（含完整思維鏈推理），測試兩種變化：(1) 依固定比例截斷提示以改變透露的資訊量；(2) 比較好提示、錯誤提示、分心提示（分別來自：截斷版正確推理；52B 模型生成但導向錯誤答案的思維鏈；來自另一題、不相關的推理）對 P(IK) 的影響。結果（圖 19）：(1) 提示透露越多，P(IK) 越高；(2) 導向正確答案的好提示比壞提示帶來更高的 P(IK)（雖然模型部分被誤導）；(3) 同時在 4 個任務上訓練的 P(IK) 模型，表現更好、更穩定，尤其在部分提示情境下；提示若與該題無關（來自別的問題），P(IK) 會實際下降。這些全部都是泛化結果，因為模型從未在 GSM8k 上訓練過 P(IK)。</p>
+<h3 id="55-比較以不同預訓練分布訓練的模型">5.5 比較以不同預訓練分布訓練的模型</h3>
+<p>為釐清 P(IK) 是否真正捕捉模型的自我知識，而非僅是任務本身的內在難度，作者比較兩個架構相同的 12B 模型：A（四份重複的高品質資料集）與 B（一份高品質資料混合一份較大但品質較低的網頁資料）。兩模型都用各自在 TriviaQA 訓練集上答對的題目微調 P(IK)。聚焦於「一個模型答對、另一個答錯」的子集（測試集中分別有 650 與 826 題）：表 2 顯示每個模型對自己答對的題目給出的平均 P(IK) 略高於對方答對、自己答錯的題目（A 對「僅 A 答對」題目給 0.463，對「僅 B 答對」題目給 0.409；B 反之為 0.409 / 0.477），差距約 6%，但方向一致，顯示 P(IK) 確實編碼了一些模型特定的資訊。第二個實驗把兩模型的 ground-truth P(IK) 資料「交叉」：分別用模型 A、B 的資料去微調模型 A、B 本身。結果（表 3）好壞參半：在模型 A 的 ground-truth 資料上測試時，從 A 或從 B 起始表現相近；但在模型 B 的資料上測試時，從 B 起始略優於從 A 起始。整體而言泛化只是部分的，仍有改進空間。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

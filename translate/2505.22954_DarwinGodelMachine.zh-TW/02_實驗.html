@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2505.22954_DarwinGodelMachine.zh-TW.html">回 2505.22954_DarwinGodelMachine.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-設定">4.1 設定</h3>
+<p>DGM 以單一輕量 base agent 初始化：建於凍結 FM、配備工具使用能力，可用 <strong>Bash 工具</strong>執行命令、<strong>edit 工具</strong>檢視/編輯目錄與整檔。輸入 prompt 指明目標 repo 位置、問題敘述、測試框架。跑 <strong>80 次迭代</strong>（每輪生一個新代理），SWE-bench 平行 2 路、Polyglot 平行 4 路。自我修改階段用 <strong>Claude 3.5 Sonnet (New)</strong>；評測階段 SWE-bench 用 Claude 3.5 Sonnet (New)、Polyglot 用 <strong>o3-mini</strong>。</p>
+<h3 id="42-benchmark">4.2 Benchmark</h3>
+<ul>
+<li><strong>SWE-bench</strong>（預設指人工篩選、全可解的 <strong>Verified</strong> 子集）：僅 Python，每題可能需改多檔。</li>
+<li><strong>Polyglot</strong>：多語言（C++/Rust/Python 等），較冷門、較不可能進 FM 訓練集；每題多為單檔從零實作；Aider 是其代表性社群代理。我們報 pass@1（代理永不看到 ground-truth 測試結果），比官方 leaderboard 的 pass@2 更嚴。</li>
+<li><strong>分階段評測</strong>省算力：先 10 題驗證基本改碼功能→過關者擴到 50 題；SWE-bench 表現夠強（&gt;40% 且排名前二）再上 200 題。</li>
+</ul>
+<h3 id="43-baseline">4.3 Baseline</h3>
+<ul>
+<li><strong>DGM w/o self-improve</strong>：複製 ADAS——改碼的 meta-agent 全程固定為 base agent（評估迭代自我改進的作用）。</li>
+<li><strong>DGM w/o open-ended exploration</strong>：取消 archive，永遠在最新存版上自我修改（評估保有 archive 與開放式探索原則的作用）。</li>
+<li>另比<strong>手工開源解</strong>：SWE-bench 取已核可的 SoTA、Polyglot 取代表性代理 Aider。</li>
+</ul>
+<h3 id="44-結果">4.4 結果</h3>
+<p>80 次迭代後，SWE-bench <strong>20.0%→50.0%</strong>、Polyglot 子集 14%→38%；全 Polyglot benchmark <strong>14.2%→30.7%</strong>。最佳代理在 SWE-bench <strong>媲美已核可的開源 SoTA</strong>；Polyglot 雖起點低於 Aider，卻發現<strong>遠超 Aider</strong> 的代理。DGM 自動改良了<strong>工具與 workflow</strong>：edit 工具支援按行檢視、按字串替換（不再整檔操作）；workflow 上多次嘗試 + 用另一 FM 評選最佳解、考慮先前嘗試等。</p>
+<p>因開放式探索允許從 archive 中<strong>任一</strong>代理以非零機率分支，DGM 能<strong>跳出欺騙性的低谷或高峰</strong>：SWE-bench 第 4、56 迭代分數曾暫時低於親代，DGM 仍沿該路徑探索並造出超越所有前代者（圖 3）。它也能對「相同目標功能」嘗試不同實作，避免卡在次優實作。</p>
+<p>DGM <strong>勝過兩個 baseline</strong>：w/o self-improve 早期有改進但很快趨緩；w/o open-ended exploration 只保留最新代理，一次差勁的自我修改會讓後續更難改進。</p>
+<p><strong>遷移性</strong>（圖 4）：SWE-bench 上換 FM——o3-mini（base 23%→DGM 33%）、Claude 3.7 Sonnet（base 19%→DGM 59.5%），顯示改進跨 FM 泛化。跨 benchmark：SWE 上最佳代理在 Polyglot 達 28.9%（vs 初始 14.2%）、Polyglot 上最佳代理在 SWE 達 24.5%（vs 20.0%），皆為真正 held-out 測試。跨語言：僅以 Python 訓練的代理遷移到其他語言仍媲美全語言訓練版、遠勝 base 與 Aider → 改進<strong>非過擬合</strong>特定 FM/benchmark/語言。</p>
+<h2 id="5-安全討論">5. 安全討論</h2>
+<p>自我改進系統邁向更自主的 AI 開發，但其自主改碼能力帶來獨特安全顧慮：只為 benchmark 表現優化的修改可能無意引入漏洞或與人類意圖失準的行為；若評測未涵蓋所有期望屬性（安全、穩健），自我改進迴路可能<strong>逐代放大失準</strong>；反覆自我修改也可能導致越來越複雜、難解讀的內部邏輯，妨礙人類理解、監督與控制。</p>
+<p>現行防護：所有代理執行與自我修改皆在<strong>隔離沙箱</strong>中、嚴格時限；自我改進範圍限於「改自己 Python 程式庫以提升特定 coding benchmark」；持續監控表現與改碼，archive 提供<strong>可追溯的修改譜系</strong>。目前未發現有害/惡意行為。反過來，自我改進也可<strong>用於增進安全與可解釋性</strong>（附錄 H 初步研究用 DGM 開發對抗 FM 幻覺的對策；可考慮從一開始就織入 Constitutional AI，並設一不可修改的部分以在停機時評估其餘部分）。本文主動納入安全討論以提高對自我改進 AI 之安全意涵的警覺。</p>
+<h2 id="6-結論與局限">6. 結論與局限</h2>
+<p>DGM 是<strong>首個由 FM 驅動、具開放式探索的自我改進系統</strong>，其評測 benchmark 上的進展可直接轉化為更好的自我改進能力。透過自我改進與開放式探索，DGM 在 SWE-bench 與 Polyglot 上持續提升。</p>
+<p><strong>局限</strong>：能達開源解水準，但仍不及<strong>閉源 SoTA</strong>（後者靠專家團隊精雕，FM 尚未匹敵其推理能力）；DGM 目前需大量算力（單次 SWE-bench run 約 <strong>2 週</strong> + 可觀 API 成本）。受限於底層 FM 能力。<strong>未來</strong>：把自我修改延伸到改寫訓練腳本/重訓 FM 本身；擴展到 coding 以外領域；共演化目標任務分布（解除自我改進綁定單一目標的限制，邁向真正開放式過程）。安全須始終置於核心。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2505.22954_DarwinGodelMachine.%E6%91%98%E8%A6%81.html"><code>../summarize/2505.22954_DarwinGodelMachine.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_總覽以_running_example_說明 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2212.04596_babble.zh-TW.html">回 2212.04596_babble.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%B6%93%E7%94%B1_E-Graph_%E6%8A%BD%E5%8F%96%E7%9A%84%E5%80%99%E9%81%B8%E9%81%B8%E6%93%87Targeted_CSE.html">下一節 →</a></p>
+</blockquote>
+<h2 id="2-總覽以-running-example-說明">2. 總覽（以 running example 說明）</h2>
+<p>2d CAD DSL 的原語包括 <code>line</code>（單位線段）、<code>combine</code>（union）、<code>xform(F,τ)</code>（對圖形套變換 τ）、<code>repeat(F,n,τ)</code>（類似 fold 的重複）。變換 τ 是四元組 <code>[s,θ,tx,ty]</code>（縮放、旋轉、平移）。例如綠色六邊形＝把一段六邊形邊重複六次（每次多轉 2π/6）再整體縮放 2 倍。</p>
+<p><strong>問題浮現</strong>：Fig. 1 中兩個藍色六邊形含 <code>xform(repeat…,[1,0,0,0])</code> 這種 <strong>no-op</strong>（縮放 1 倍、不轉不移的冗餘變換）。若手寫或用 Szalinski 這類工具反編譯就不會有；但它們卻是<strong>純語法技術學到最佳抽象 f0 所必需</strong>。Fig. 3 給出去掉這些 no-op 的「更自然」版語料 C：於是純語法方法只能學到較差的 f1（抽象出未縮放的單位多邊形，縮放被推到抽象之外、得重複五次）。結果：簡化後語料 C（196 節點）雖比原始 A（208）小，其壓縮版 D（81 節點）卻比 B（72）<strong>更大</strong>——<strong>純語法函式庫學習對保語義的程式變體不魯棒</strong>。babble 則能吃簡化語料 C，仍在不到一秒內發現縮放多邊形抽象 f0、壓到 72。</p>
+<p>（本節用一個裁剪版 DSL：新增 <code>scale(F,s)</code>、<code>repRot(F,n,θ)</code>（只旋轉的 repeat 特例）、<code>side(n)</code>（單位正 n 邊形的一邊）。）</p>
+<h3 id="21-用-e-graph-表示等價項">2.1 用 E-Graph 表示等價項</h3>
+<p>babble 吃進領域等式理論。running example 假設理論只有一條式子：<strong><code>F ≡ scale(F,1)</code></strong>（任何圖形等價於自己縮放 1 倍）。有了它，就能把語料 C「改寫」回 A，再用純語法學出最佳 B。但難點是：C 可被改寫成的等價語料有無限多，怎麼挑出「最大化語法對齊、最有機會發現最佳抽象」的那個？</p>
+<p>babble 不去猜或逐一列舉，而是用 <strong>equality saturation</strong>：給一個項 t 與一組改寫規則，找出 t 在這些規則下的<strong>所有等價項空間</strong>——這靠 e-graph 高度共享來緊湊表示。e-graph 中，實線矩形是 <strong>e-node</strong>（類似 AST 節點），虛線矩形是 <strong>e-class</strong>（項的等價類）；邊由 e-node 指向 e-class，於是能緊湊表示子項有變異的程式，且因 e-graph 可含<strong>環</strong>，還能表示無限項集（如 <code>side(6)</code>、<code>scale(side(6),1)</code>、<code>scale(scale(side(6),1),1)</code>…）。因此我們要找的 library-learning 目標項也被包含在對應 e-class 中。</p>
+<h3 id="22-經由-e-graph-反統合的候選生成">2.2 經由 E-Graph 反統合的候選生成</h3>
+<p>從語料經 equality saturation 建好 e-graph 後，下一步是生成能捕捉語料間語法相似性的候選模式。挑戰：候選要<strong>夠少</strong>以可計算，又要<strong>夠多</strong>以達好壓縮。</p>
+<p>DreamCoder 的做法是隨機挑語料片段、再把任意選的子項換成模式變數；這雖把候選限制在「語料中至少有一處匹配」的模式，但選子項的方式太多，空間仍過大——在 babble 裡因 equality saturation 讓 e-graph 含指數／無限多程式而更嚴重。</p>
+<p><strong>Generality filter（通用度過濾）</strong>：可安全丟棄兩類模式——(1) <strong>太具體</strong>（如 <code>repRot(side(8),X,2π/8)</code> 只能匹配一處，抽象後反增節點）；(2) <strong>太抽象</strong>（如 <code>repRot(side(X),X,Y)</code>，凡它匹配之處、更具體的 <code>repRot(side(X),X,2π/X)</code> 也匹配，且更具體者參數更少更小、壓縮更好）。<strong>第一個關鍵洞見：把候選限制在「匹配（飽和後）語料中某對子項的最具體模式」。</strong>（理論上這可能刪掉最優模式，但實測效果佳。）</p>
+<p><strong>項的反統合（AU）</strong>：計算兩項的最具體共同模式。做法是<strong>由上而下同步遍歷兩項，遇到構造子不合就換成模式變數</strong>，並用 anti-substitution σ 記住「哪對不合項對應哪個變數」（同一對重複出現則復用同一變數）。例如反統合 <code>scale(repRot(side(6),6,2π/6),1)</code> 與 <code>scale(repRot(side(8),8,2π/8),2)</code>，得到最佳模式 <code>P0 = scale(repRot(side(X),X,2π/X),Y)</code>。</p>
+<p><strong>從項到 e-class</strong>：AU 兩個 e-class，回傳一組<strong>支配反統合子（dominant anti-unifiers）</strong>——保證涵蓋「匹配兩 e-class 所表示項對的最具體模式中的最佳抽象」。AU 仍由上而下，但要檢查兩 e-class <strong>是否有共同構造子</strong>。當共同構造子涉及<strong>環</strong>（如 scale 的第一個 child 是父 e-class 自己）時，反統合子集合會變無限；所幸可證明較小的模式**支配（dominate）**其餘（變數匹配相同 e-class 但體積更大者可剪），故仍返回有限集。</p>
+<p><strong>從 e-class 到 e-graph</strong>：要對 e-graph 中<strong>所有 e-class 對</strong>做 AU。這些計算有重疊子問題（如 AU(c1,c4) 是 AU(c0,c2) 與 AU(c0,c3) 的一部分），故 babble 用<strong>由下而上的動態規劃</strong>避免重複計算。</p>
+<h3 id="23-經由-targeted-common-subexpression-elimination-的候選選擇">2.3 經由 Targeted Common Subexpression Elimination 的候選選擇</h3>
+<p>給定候選抽象集，要挑一個子集使整體語料壓縮最好——非顯而易見（f0 匹配比 f2 多，但 f2 參數少；f1 不引入藍色六邊形的冗餘變換；若同時選 f0、f2，還能把 f2 定義成 <code>f0 6</code> 再重用）。</p>
+<p><strong>第二個關鍵洞見：選最佳抽象子集，可化約為「在有共用子式下從 e-graph 抽取最小項」。</strong> babble 把每個候選模式轉成一條「引入 local λ-abstraction 再應用」的改寫規則，套進 e-graph（於是 e-class 同時存有用 f0 或 f1 表示的替代式，甚至能在一個函式體內用到另一個函式，如 f0 的一種表示是 <code>λx y→scale(f1 x, y)</code>）。接著只需從這個 e-graph 抽取最小項——難點是<strong>重複的 λ-abstraction 只能算一次大小</strong>（直覺上可把 λ「浮」成頂層 let 綁定、只定義一次）。傳統這靠 ILP、可擴展性差；babble 自製抽取演算法，用領域知識與近似做得更快。</p>
+<h2 id="3-對項的函式庫學習形式化">3. 對「項」的函式庫學習（形式化）</h2>
+<p>（為求簡明，形式化採一階：初始語料不含 λ，學到的抽象皆一階函式；babble 實作無此限制。）</p>
+<ul>
+<li><strong>項／模式／反統合</strong>：定義簽章 Σ、項集、模式（可含變數的項）。模式偏序 ⊑（p′⊑p 表 p 較通用、能匹配 p′）。兩模式的 <strong>join（⊔）即其反統合子</strong>——匹配兩者的最不通用模式，在 Plotkin 的 subsumption 半格中唯一。</li>
+<li><strong>壓縮項與 size</strong>：壓縮項可含「多綁定 λ 的完全應用」。關鍵：<strong>同一 λ-abstraction 的多次出現只計一次 size</strong>（abstraction 節點本身不計）。β-歸約照常定義；因語言一階且無遞迴故強正規化。</li>
+<li><strong>問題陳述</strong>：給定項 t，求最小的壓縮項 t̂ 使 t̂ →β t。t̂ 可能更小，正因它可含「多次應用、但只算一次」的共同 λ。本文聚焦 <strong>global library learning</strong>（所有 λ 皆閉項）。</li>
+<li><strong>基於模式的學習與定理 3.1</strong>：定義模式 p 的<strong>壓縮規則 κ(p)</strong>：把匹配 p 之處換成「以 p 為體的函式之應用」。定理 3.1 證明函式庫學習<strong>等價於</strong>「只用出現在 t 中的模式，找 t 的最小壓縮」（健全性＋完備性）。於是問題化約為標準的<strong>項改寫</strong>：給 t 與規則集 R={κ(p)}，求最小 t̂ 使 t→R t̂。難處：(a) R 對非平凡 t 極大；(b) size 函式非局部（要計入共享）。§3.3 討論如何<strong>修剪候選模式</strong>（丟太具體／太抽象者），§5 用 equality saturation 解剩下的改寫問題。</li>
+</ul>
+<h2 id="4-帶等式理論的函式庫學習llmt">4. 帶等式理論的函式庫學習（LLMT）</h2>
+<p><strong>LLMT 問題</strong>：給定項 t 與一組誘導等價關係 ≡ 的等式，求最小壓縮項 t̂，使 <code>t̂ →β t′ ≡ t</code>（存在某 t′）。</p>
+<p><strong>頂層演算法（Fig. 9）</strong>：</p>
+<ol>
+<li><strong>EqSat 階段</strong>：<code>G = eqSat(egraph(t), R_≡)</code>——G 代表所有 ≡ t 的項。</li>
+<li><strong>候選生成階段</strong>：<code>P = AU(G)</code> 用 e-graph 反統合生成候選模式；<code>R_κ = {κ(p) | p∈P}</code>；<code>G′ = eqSat(G, R_κ)</code>——G′ 代表用候選壓縮 G 的所有方式。</li>
+<li><strong>候選選擇階段</strong>：<code>R′ = select_library(G′, N)</code> 用 beam search 選最佳 N 條規則；<code>G″ = eqSat(G, R′)</code>；<code>return extract(G″)</code> 抽取最小壓縮項。</li>
+</ol>
+<p>（本節並把 §2.2 的 e-graph 反統合形式化：AU 帶「已訪問 e-class 對」的 context 以處理環，並用支配關係修剪；動態規劃由下而上處理所有 e-class 對。）</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

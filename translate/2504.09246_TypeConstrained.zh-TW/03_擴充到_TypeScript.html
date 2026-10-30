@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_擴充到_TypeScript · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2504.09246_TypeConstrained.zh-TW.html">回 2504.09246_TypeConstrained.zh-TW 目錄</a>　<a href="02_%E6%88%91%E5%80%91%E7%9A%84%E5%9E%8B%E5%88%A5%E7%B4%84%E6%9D%9F%E6%96%B9%E6%B3%95.html">← 上一節</a>　<a href="04_%E7%B5%90%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-擴充到-typescript">4. 擴充到 TypeScript</h2>
+<p>把 §3 的 completion engine 擴充到現代 TypeScript 的一個核心子集（完整支援/不支援清單見 Appendix B）：</p>
+<ul>
+<li><strong>const 宣告</strong>：額外追蹤可變性，禁止對不可變識別子用賦值運算子。</li>
+<li><strong>陣列</strong>：支援陣列型別註記、陣列運算式（強制所有元素同型別）、讀寫欄位；因陣列引入型別巢狀新維度，調整剪枝啟發式以確保終止。</li>
+<li><strong>迴圈</strong>：for/while/do-while/for..of。<code>for..of</code> 右側限制為任意型別陣列，引入泛型陣列型別 <code>•[]</code> 匹配任何陣列型別。</li>
+<li><strong>額外運算子與型別</strong>：%、===、||、三元 <code>?:</code>，以及只能施於可變運算式的 ++/--（在型別圖加對應邊）。</li>
+<li><strong>運算子優先序</strong>：如 <code>1 + 2.toString()</code> 解析為 <code>1 + (2.toString())</code>。在兩處調整——利用已解析擴充判定隱式分組，並在 Algorithm 2 Line 5 略去違反優先序的運算子。</li>
+<li><strong>全域識別子與匯入</strong>：把 Math 等全域識別子初始化進程式自動機的型別環境；用 require 建模 crypto 匯入。</li>
+<li><strong>多型內建成員</strong>：如 <code>x.map(f)</code>——追蹤型別模式（type pattern），先搜尋能實例化型別參數的函式再從實例化型別續搜。</li>
+<li><strong>型別註記</strong>：一般支援省略推斷，但在三處<strong>強制註記</strong>以避免常見不可編譯情形：(i) 所有函式參數與回傳型別；(ii) 變數宣告須有型別註記或初始值；(iii) 用於 reduce 回呼的匿名函式首參。這是「實務正確性 vs 理論語言完整性」的取捨。</li>
+</ul>
+<h2 id="5-實驗評測">5. 實驗評測</h2>
+<h3 id="51-設定">5.1 設定</h3>
+<ul>
+<li><strong>實作</strong>：Python，約 11,249 行；約 400 個單元測試，並頻繁與官方 TypeScript 編譯器（tsc，&gt;427,105 行）比對行為。</li>
+<li><strong>三任務</strong>：<strong>合成</strong>（自然語言描述＋函式標頭→從零生成）、<strong>翻譯</strong>（Python 函式＋等價 TS 標頭→生成 TS 函式體）、<strong>修復</strong>（描述＋不可編譯解＋編譯錯誤＋標頭→修復）。基準用 MultiPL-E 內的 TypeScript 版 HumanEval（159 題）與 MBPP（384 題）；HumanEval 每題 4 種 seed 生成後彙整，MBPP 每題一次。修復任務收集所有模型在無約束合成下不可編譯的程式（HumanEval 292、MBPP 248 題）。</li>
+<li><strong>6 個開源 LLM</strong>：Gemma 2（2B/9B/27B）、DeepSeek Coder 33B、CodeLlama 34B、Qwen2.5 32B（皆指令微調版）。</li>
+<li><strong>比較方法</strong>：Vanilla（無約束）、<strong>idealized Syntax</strong>（假設所有語法錯誤實例都能在語法約束下通過編譯，為語法約束的改善上界）、<strong>Types</strong>（本法）。因 TS 特徵龐大未全覆蓋，用「無約束能編譯就照收、否則約束重取」來模擬全特徵支援；生成逾 300 秒則回報逾時前的部分程式。</li>
+<li><strong>指標</strong>：編譯錯誤數（tsc 回報任何問題即計）、<strong>pass@1</strong>（功能正確性）。</li>
+</ul>
+<h3 id="52-編譯與功能正確性結果">5.2 編譯與功能正確性結果</h3>
+<ul>
+<li><strong>編譯錯誤（Table 2）</strong>：合成/翻譯任務中，無約束下語法錯誤平均只占不可編譯實例的 9.0%（HumanEval）/4.9%（MBPP）——Qwen2.5 32B 在 HumanEval 合成與 MBPP 翻譯甚至零語法錯誤。相對地，<strong>型別約束把編譯錯誤減半以上：HumanEval 減 75.3%、MBPP 減 52.1%</strong>，跨所有尺寸與家族一致（最小減幅仍達 HumanEval 54.8%、MBPP 27.3%）。</li>
+<li><strong>修復</strong>：vanilla 下模型常難以定位並解決編譯錯誤（如 Gemma 2 2B 只修好 33.5%/25.8% 的不可編譯實例），型別約束提升到 56.4%/58.4%；平均用型別約束多解決 <strong>53.7%</strong> 的編譯錯誤。</li>
+<li><strong>功能正確性（Table 3，pass@1）</strong>：型別約束普遍提升——合成平均 +3.5%、翻譯 +5.0%、<strong>修復 +37.0%</strong>（相對）。修復增益最大（如 Gemma 2 2B 合成 pass@1 相對 +86.7%），因 vanilla 本就難產可編譯碼。有趣現象：<strong>越強的模型，約束越可能救回功能正確的碼</strong>（如 Gemma 2 27B 合成中 26 個需重取才可編譯的實例有 17 個也功能正確；Qwen2.5 32B 為 21 中 15）。</li>
+</ul>
+<h3 id="53-執行期分析">5.3 執行期分析</h3>
+<ul>
+<li>vanilla 與約束解碼<strong>都只跑一次 LLM 推論</strong>，約束無額外推論開銷。</li>
+<li><strong>開銷（Table 4）</strong>：單題中位執行時間相對增加 HumanEval 平均 39.1%、MBPP 52.1%（未優化 Python 實作，可用更系統化實作大幅改善）。</li>
+<li><strong>sample-and-check 迴圈迭代數（Figure 8）</strong>：呈長尾分佈，<strong>99.4% 情況只需 1 次迭代</strong>（越強模型越高，Gemma 2 9B/27B 為 99.6%/99.9%）——多數情況 LLM 首次取樣即產出有效 token。對比：既有方法對整個詞表逐 token 呼叫 completion engine 再遮罩，在本實驗中（5 分鐘逾時）<strong>全數逾時</strong>，佐證 sample-and-check 迴圈的效率選擇。</li>
+</ul>
+<h3 id="54-案例研究figure-9">5.4 案例研究（Figure 9）</h3>
+<ul>
+<li><strong>(a) 參數個數錯誤</strong>：Gemma 2 2B 把 Python 翻成 TS 時呼叫 <code>split()</code> 無參數（Python 可、TS 需一個 string 參數）；型別約束引導補上空白字元參數。</li>
+<li><strong>(b) 缺回傳敘述</strong>：DeepSeek Coder 33B 寫對迴圈但不保證每條路徑回傳（負輸入時回傳 undefined 違反型別）；本法偵測後<strong>強制生成另一敘述</strong>，補上正確的 fallback 回傳。</li>
+<li><strong>(c) 型別推斷錯誤</strong>：Gemma 2 9B 用 <code>reduce</code> 傳入無型別註記的匿名函式，空陣列被 TS 推斷為 <code>never[]</code> 導致 <code>push</code> 失敗（連資深開發者都常踩的 tsc 已知陷阱）；本法透過<strong>強制回呼首參型別註記</strong>解決。</li>
+</ul>
+<h2 id="6-討論">6. 討論</h2>
+<ul>
+<li><strong>實作成本</strong>：目前 completion engine 需逐語言手工開發，但多數特徵可轉移、且因對生成的巨大改善而值得。作者建議<strong>未來語言設計者直接把編譯器寫成增量式 completion engine</strong>，即可自動支援約束生成。</li>
+<li><strong>對更複雜任務與更強 LLM 的推廣</strong>：更強模型（如最新 OpenAI）在 HumanEval/MBPP 上型別錯誤或較少，且編譯錯誤隨模型變大而下降（Gemma 家族）。但即使最強 LLM 在更複雜任務、更嚴型別、低資源語言上仍常無法產出可編譯碼——文中引述：Rust 合成的編譯錯誤率 o1-mini 18%、DeepSeek R1 39%、Claude 3.5 Sonnet 27%；OCaml/Haskell 高達 40%–60%；GPT-4 程式碼翻譯 44.3% 含編譯錯誤；C→Rust 翻譯（o1）約 25%。本法對這些場景廣泛適用，是有前景的概念驗證。</li>
+<li><strong>黑箱 API 限制</strong>：約束解碼需 next-token 機率分佈，商用黑箱 API 只回傳採樣 token；可行解是<strong>由模型供應商在後端整合</strong>（如已實作的 JSON Schema 遵循保證）。</li>
+<li><strong>殘留編譯錯誤</strong>：即使約束保證終止時有效，仍有相當比例編譯錯誤源自「token/時間上限內未終止」——由生成陷入迴圈所致（被約束改寫後 LLM 無法恢復，如 Figure 10：CodeLlama 34B 被導離無效成員 <code>.sort</code> 後陷入 <code>.toString</code> 迴圈）。未來可加約束強制中止此類無建設性迴圈。</li>
+</ul>
+<h2 id="7-相關工作">7. 相關工作</h2>
+<ul>
+<li><strong>Code LLM</strong>：訓練於數十億到數兆 token、具數十億參數；即使 &gt;30B 的 SOTA 開源模型仍常在程式碼生成上出錯。</li>
+<li><strong>提升 LLM 準確性</strong>：除約束解碼外三大途徑——微調（極耗資源）、RAG（提供額外脈絡）、編譯器/執行回饋（僅生成後可得、需重取）。約束解碼與這些<strong>正交</strong>，且與 RAG 或編譯器回饋結合可進一步改善。</li>
+<li><strong>約束解碼</strong>：既有工作多限於語法特徵（context-free 語言，以及 Python 縮排、Go scope 標記等簡單 context-sensitive 特徵）；但語法錯誤平均只占 6% 編譯錯誤，改善天花板低。本法首次把約束推進到型別層、編譯錯誤減半以上。</li>
+<li><strong>型別系統用於程式合成</strong>：過往僅限特化場景（Poesia 等用已知欄名導引 SQL；Gvero 等在型別圖上搜尋函式呼叫補全；Agrawal 等用 language-server 型別註記做成員存取；Blinn 等用 language-server 型別資訊給 LLM 額外脈絡但不做硬約束），或用特化搜尋程序、與 LLM 生成不相容。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

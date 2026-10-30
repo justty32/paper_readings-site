@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_Promptbreeder · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2309.16797_Promptbreeder.zh-TW.html">回 2309.16797_Promptbreeder.zh-TW 目錄</a>　<a href="02_%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">← 上一節</a>　<a href="04_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-promptbreeder">3. Promptbreeder</h2>
+<p>Promptbreeder 是一個提示演化系統，能自動探索給定領域的提示，找出能提升 LLM 在該領域回答問題能力的 task-prompt。Promptbreeder 是通用型的——同一套系統能適應許多不同領域。</p>
+<p>Promptbreeder 利用「LLM 可用來生成輸入文字的變體」這一觀察。我們感興趣的是演化 task-prompt。task-prompt <code>P</code> 是一段字串，用來在進一步輸入 <code>Q</code> 之前設定 LLM 的脈絡，目的是確保比起沒有 <code>P</code> 時單獨呈現 <code>Q</code>，能得到更好的回應。為評估每個演化出的 task-prompt 之適應度，我們從當前領域整個訓練集中取樣 100 組 Q&amp;A 配對作為一個 batch（我們的提示策略依序套用兩個 task-prompt：第一個 task-prompt ＋ 問題產生一段續寫，該續寫 ＋ 第二個 task-prompt 產生最終答案）。</p>
+<p>Promptbreeder 依照演化演算法生成 task-prompt。該演算法的突變算子本身就是一個 LLM，並以 mutation-prompt <code>M</code> 為條件：也就是說，突變後的 task-prompt <code>P' = LLM(M+P)</code>，其中 <code>+</code> 代表字串串接。第 3.2 節會描述多種這樣的 mutation-prompt。</p>
+<p><strong>Promptbreeder 的主要自指機制，來自把演化演算法不只套用在 task-prompt 上，也套用在 mutation-prompt 上。</strong> 這個元層級演算法的突變算子同樣是一個 LLM，但這次以 hyper-mutation prompt <code>H</code> 為條件：也就是說，突變後的 mutation-prompt <code>M' = LLM(H+M)</code>。</p>
+<p>給定一組「思考風格」<code>𝒯</code>、一組初始 mutation-prompt <code>ℳ</code>，以及一個領域特定的問題描述 <code>D</code>，Promptbreeder 初始化一個突變後 task-prompt 的族群（見 3.1 節）。一個「演化單元」由一組 task-prompt、一個 mutation-prompt、以及（少樣本情境下）一組正確解題過程（即導出正確答案的逐步「思路鏈」）組成——因此 task-prompt 與 mutation-prompt 是一對一對應的。演化這個族群時，我們採用二元錦標賽遺傳演算法框架：取樣兩個個體，取適應度較高者、加以突變，並用其突變複本覆蓋掉輸家。</p>
+<h3 id="31-promptbreeder-初始化">3.1 Promptbreeder 初始化</h3>
+<p>以 GSM8K（小學數學文字題資料集）為具體例子：問題描述是「解出這道數學文字題，用阿拉伯數字給出答案」。由於 Plan-and-Solve 用兩個 task-prompt，我們每個演化單元也演化兩個 task-prompt（加一個 mutation-prompt）。為促進初始提示的多樣性，我們對每個 task-prompt，把一個隨機抽樣的 mutation-prompt（如「對這個提示做個變體」）與一個隨機抽樣的「思考風格」（如「讓我們一步一步想」）串接到問題描述後，交給 LLM 生成續寫，即為初始 task-prompt；每個單元重複兩次生成兩個初始 task-prompt。mutation-prompt 與思考風格都從初始 mutation-prompt 集合與思考風格集合中隨機抽樣（完整清單見附錄 C、D、G）。該 mutation-prompt 會加入這個演化單元，並在整個演化過程中與其對應的 task-prompt 綁定。</p>
+<p>以上例來說，交給 LLM 的完整輸入字串可能是：「對這個提示做個變體。讓我們一步一步想。INSTRUCTION：解出這道數學文字題，用阿拉伯數字給出答案。INSTRUCTION MUTANT：」。注意控制字串「INSTRUCTION」與「INSTRUCTION MUTANT」是為了引導出恰當的續寫而加入的。</p>
+<h3 id="32-突變算子">3.2 突變算子</h3>
+<p>共有九種算子，分屬五大類，驅動提示策略的探索。每次複製事件只套用九種算子中的一種（以均勻機率抽樣決定使用哪個）。使用這套多樣化算子的理由，是讓 LLM 能探索一個廣大的「語言式自我提問認知方法」空間——反覆改變問題的框架，並取用以自然語言表達、有助處理特定推理挑戰的心智模型。洞察學習（insight learning）的研究強烈顯示，多樣的表徵再描述是解決問題的關鍵——本文試圖以自然語言為基底、透過自指式自我改進重現這個原則。</p>
+<h4 id="321-直接突變">3.2.1 直接突變</h4>
+<p>最簡單的一類突變算子，直接從既有的一個 task-prompt（一階提示生成）或從鼓勵自由形式生成新 task-prompt 的通用提示（不依賴既有 parent，即零階提示生成）生成新的 task-prompt <code>P'</code>。</p>
+<p><strong>零階提示生成</strong>：把問題描述 <code>D</code>（如「解出這道數學文字題，用阿拉伯數字給出答案」）與提示「A list of 100 hints:」串接，邀請 LLM 想出一個能幫助解決該問題領域問題的新提示，取第一個生成的提示作為新 task-prompt。關鍵是這個新 task-prompt 不依賴任何先前找到的 task-prompt，而是每次都從問題描述重新生成。納入此零階算子的理由是：當提示演化發散時，此算子能生成與原始問題描述緊密相關的新 task-prompt，類似自動化課程學習中的均勻重取樣。</p>
+<p><strong>一階提示生成</strong>：把 mutation-prompt（紅色）串接到親代 task-prompt（藍色），交給 LLM 生成突變後的 task-prompt。例如：「說一次同樣的指示但用另一種方式。別用原指示中的任何字詞，拜託了。INSTRUCTION：解出這道數學文字題，用阿拉伯數字給出答案。INSTRUCTION MUTANT：」。這個程序與初始化方法相同，只是不使用隨機抽樣的思考風格字串。一階提示生成是 Promptbreeder 標準的無性突變算子，是每個遺傳演算法的核心——取一個親代基因型（task-prompt）並對其套用突變（此處受 mutation-prompt 影響）。</p>
+<h4 id="322-估計分佈突變">3.2.2 估計分佈突變</h4>
+<p>下一類突變算子不只以零個或一個親代為條件，而是以一組親代為條件，因而可能藉由考量族群中的模式而更具表現力。</p>
+<p><strong>估計分佈（EDA）突變</strong>：受 Hauschild &amp; Pelikan（2011）啟發，我們把當前 task-prompt 族群（經過篩選、編號）列成清單交給 LLM，要求它續寫出新的 task-prompt。我們依 BERT embedding 的餘弦相似度篩選族群——若某個體與清單中任何其他項目的相似度超過 0.95，就不列入清單，藉此鼓勵多樣性（呼應品質多樣性方法）。清單以隨機順序列出，且我們<strong>不</strong>讓 LLM 看到族群中個體的適應度值——初步實驗發現 LLM 無法理解這些適應度數值，只會生成清單項目的複本。</p>
+<p><strong>EDA 按等級與索引突變</strong>：上述算子的變體，此時 task-prompt 按適應度排序列出。初步實驗顯示 LLM 更傾向生成與清單<strong>較後面</strong>元素相似的項目，這與近期 LLM 的「近因效應」研究一致。因此，我們在同樣篩選後，把 task-prompt 依適應度<strong>升冪</strong>排列，並在清單頂端加上前綴：「INSTRUCTION：」＋mutation-prompt＋「\n 一份依分數降冪排列的回應清單。」＋最後索引+1＋「是最佳回應。它比起」＋最後索引＋「更像 (1)」。注意我們對 LLM『撒了謊』——實際順序是升冪，卻聲稱是降冪。這是因為若不如此，LLM 會過度偏向生成與清單最後一項過於相似的新項目；這種「升冪排列」與「聲稱降冪」之間的矛盾，似乎能提升取樣的多樣性。此算子的用意，同樣是以某種方式呈現當前分佈，讓 LLM 能提出「高適應度但仍具多樣性」的外推結果。</p>
+<h4 id="323-超突變mutation-prompt-的突變">3.2.3 超突變：mutation-prompt 的突變</h4>
+<p>以上突變算子或許已能探索多樣的 task-prompt，但一個理想的自我改進系統，也應該以自指方式<strong>改進它改進自己的方式</strong>。第三類突變算子是超突變算子，關注「可演化性的演化」（evolution of evolvability）——這類算子修改的是搜尋/探索過程本身，而非直接修改獲取任務獎勵的過程（這與 population based training 的精神類似，只是這裡套用在 mutation-prompt 而非學習率之類的超參數上）。</p>
+<p><strong>零階超突變</strong>：把原始問題描述與一個隨機抽樣的思考風格串接，交給 LLM 生成新的 mutation-prompt；生成的 mutation-prompt 再依一階提示生成的方式套用於某個 task-prompt。注意這個零階元突變算子與初始化階段所用的完全相同。此算子的理由是：以類似初始化的方式生成突變算子，同時引入思考風格集合中的知識。</p>
+<p><strong>一階超突變</strong>：把 hyper-mutation-prompt「Please summarize and improve the following instruction:」串接到既有 mutation-prompt，讓 LLM 生成新的 mutation-prompt；這個新生成的 mutation-prompt 隨即套用於該演化單元的 task-prompt（依一階提示生成方式）。如此一來，我們能透過其新生成的 mutation-prompt，一併評估超突變對下游演化出的 task-prompt 品質之影響。</p>
+<h4 id="324-拉馬克式突變">3.2.4 拉馬克式突變</h4>
+<p>這類突變算子模擬拉馬克式過程：我們想用一個<strong>成功的表現型</strong>（即由演化出的 task-prompt 誘導出、實際導出正確答案的具體解題過程）去生成新的<strong>基因型</strong>（即突變後的 task-prompt）。這類過程已見於 STaR、APO、APE 等 LLM 文獻。</p>
+<p><strong>解題過程到 Task-Prompt</strong>：這是類似 APE instruction induction 的「拉馬克式」突變算子。我們給 LLM 一段先前生成、導出正確答案的解題過程，透過以下提示：「I gave a friend an instruction and some advice. Here are the correct examples of his workings out ＋ ⟨⟨正確解題過程⟩⟩ ＋ The instruction was:」——這實際上是從一段給定的解題過程反向工程出 task-prompt。附錄 H 有一個效果良好的範例。當問題描述缺失、不足或帶有誤導性時，這種算子格外關鍵。</p>
+<h4 id="325-提示交配與情境洗牌">3.2.5 提示交配與情境洗牌</h4>
+<p>最後一類是交配算子，以及用於洗牌演化單元中少樣本情境範例的算子。</p>
+<p><strong>提示交配</strong>：套用突變算子後，有 10% 機率把某個 task-prompt 替換為族群中另一個成員的 task-prompt，該成員依適應度比例選擇法選出。交配不套用於 mutation-prompt，只套用於 task-prompt。</p>
+<p><strong>情境洗牌</strong>：Promptbreeder 能同時演化 task-prompt、mutation-prompt，以及被稱為少樣本情境的一組正確解題過程。做法是：只用導出正確答案的解題過程填滿少樣本情境；評估時，我們在 task-prompt 之前提供此情境，指引所需解題過程的形式。若情境清單已滿，在對一個新問題集合評估某單元的適應度後，會用一個隨機抽樣的新正確解題過程替換清單中既有的一項。此外，有 10% 機率我們會以反比於情境清單最大長度的機率，重新取樣整份情境清單。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

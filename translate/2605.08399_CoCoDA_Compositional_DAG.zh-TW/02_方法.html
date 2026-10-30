@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.08399_CoCoDA_Compositional_DAG.zh-TW.html">回 2605.08399_CoCoDA_Compositional_DAG.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="31-問題建模">3.1 問題建模</h3>
+<p>DAG 由 primitive 節點（原子可執行函式，depth d(v)=0、flat(v)=1）與 composite 節點構成；composite 的 flat 值 = 其展開後的 primitive 呼叫總數；Φ(v) 在 primitive 上為 0、在展開到 ≥2 primitive 呼叫的 composite 上 ≥1。聯合優化 <code>J(π, L)</code> 含答案正確性與檢索成本/上下文約束。</p>
+<h3 id="32-typed-dag-retrieval逼近檢索成本區塊">3.2 Typed DAG Retrieval：逼近檢索成本區塊</h3>
+<p>級聯：L1 符號簽章剪枝（倒排索引，τ₁≪其他）→ L2 描述語意排序 → L3 規格過濾 → L4 範例重排。共演化收緊級聯：一個涵蓋 m 步 primitive 子軌跡的 composite 在提示中以單一 token 替換 m 個 primitive 子樹，使上下文成本可證次線性。</p>
+<h3 id="33-共演化作為聯合目標上的耦合更新">3.3 共演化作為聯合目標上的耦合更新</h3>
+<ul>
+<li><strong>代理獎勵</strong>：<code>R = R_res + λ·R_comp</code>；<code>-T(τ) = Σ(Φ(tᵢ) − flat(tᵢ)) = (i) saved-call 信用 − (ii) primitive 工作量</code>；term (ii) 只依賴 τ 實現的子計算（非 composite-vs-primitive 選擇），故獎勵塑形不改最優行為、只偏好深 composite。庫寫入僅由 R_res 把關（R_comp 不能注入未解軌跡進 L、只作用於 planner）。</li>
+<li><strong>耦合更新規則</strong>：迭代 k，給 gap 訊號為正的 rollout <code>T⁺_q = {τ: R_res(τ)≥ρ}</code>，同步更新 <code>π_{k+1} = GRPO(π_k; {(τ, R(τ))})</code>、<code>L_{k+1} = Fold(InsertTool, M_T(T⁺_q), L_k)</code>（對每候選做 Add/Merge/Reject、經規格與 acyclicity 驗證）。兩更新共攻：每次寫入提高 composite 平均深度（讓固定 planner 用更少呼叫解 query），每 GRPO step 推 π 朝更深 composite、偏置抽象器朝可重用抽象、加速下次提交。</li>
+<li><strong>為何兩者皆需</strong>：只更新 π 則 composite 平均深度不變、planner 過擬合固定檢索面；只更新 L 則 planner 無法調用新 composite。因兩者在同一 gap 訊號共演化、且 (π_k, L_k) 永為可行 fallback（clipped GRPO 與 Reject 在失敗提案上預設恆等），<code>{J(π_k, L_k)}</code> 在夠小步長下單調非減（Theorem 4）。</li>
+</ul>
+<h3 id="34-理論分析">3.4 理論分析</h3>
+<ul>
+<li><strong>Theorem 1（檢索成本下降）</strong>：<code>C_hier ≤ α₁α₂·C_flat + o(C_flat) = o(C_flat)</code>（n→∞）。</li>
+<li><strong>Corollary 2（次線性檢索時間）</strong>：<code>T_hier = O(τ₁ log n + (τ₂+τ₃+τ₄)k₂)</code>。</li>
+<li>另有組合優勢、單調共演化、DAG 良構諸定理（證明見 Appendix L）。獎勵繼承 DAG 保證，因 flat 是遞迴展開的結構不變量、非 teacher 標註；無 DAG 則 flat 不可驗、R_comp 可被瑣碎利用。</li>
+</ul>
+<h2 id="4-實驗">4. 實驗</h2>
+<ul>
+<li><strong>設定</strong>：Qwen3-32B 作 teacher（工具抽取與解生成），小學生經 GRPO 訓；4×NVIDIA H200。</li>
+<li><strong>資料</strong>：六基準三類（數學/邏輯 GSM8K、MATH；表格 WikiTableQuestions、FinQA；程式 EvalPlus、MBPP），皆有確定性碼式驗證。</li>
+<li><strong>比較</strong>：兩 no-tool CoT（Qwen3 學生、32B 教師）、三固定庫工具法（ReAct、ToRL、ReTool）、兩庫學習法（CREATOR、TroVE）；共享學生 backbone 與任務提示。</li>
+<li><strong>主結果（Table 1）</strong>：四種學生規模（0.6B–8B）+ 32B 教師上界。CoCoDA 贏每個 (size, benchmark) 格、比最強基線 ReTool 高達 +2 分；對 vanilla CoT 增益在最小規模最大（0.6B 時 GSM8K +10.7、MBPP +10.8），顯示共演化庫在學生容量稀缺時最能轉移教師能力。teacher gap 隨規模縮小：8B 時 CoCoDA 在數學/邏輯匹敵/超越 32B 教師（GSM8K 93.67 vs 93.40、MATH 63.18 vs 61.62），約 1/4 參數恢復教師級績效。符號（GSM8K、MATH）與檢索重（WTQ、FinQA）任務上相當邊際，顯示庫跨推理風格泛化而非過擬合單一技能。無緊密師生迴圈的庫建構基線（CREATOR、TroVE）在數學/程式上反輸純 CoT，證實工具創建只在庫與學習者共演化時才有用。</li>
+</ul>
+<h2 id="結論">結論</h2>
+<p>CoCoDA 用單一組合式程式碼 DAG 同時解「庫成長」與「上下文受限檢索」，以 Typed DAG Retrieval 達次線性檢索、以 DAG 誘導 saved-call 獎勵訓 planner 共演化，讓小模型在約 1/4 參數下恢復教師級績效，並一致優於工具使用與庫學習基線。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2605.08399_CoCoDA_Compositional_DAG.%E6%91%98%E8%A6%81.html"><code>../summarize/2605.08399_CoCoDA_Compositional_DAG.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

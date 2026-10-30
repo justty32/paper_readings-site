@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Tool-R0：零資料自演化 LLM 代理的工具學習（4/4） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2602.21320_ToolR0.zh-TW.html">回 2602.21320_ToolR0.zh-TW 目錄</a>　<a href="02_Generator_%E8%A8%93%E7%B7%B4.html">← 上一節</a>　<a href="04_%E8%A8%8E%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="模型與訓練設定">模型與訓練設定</h3>
+<p>使用 Qwen-2.5-1.5B-Instruct 為主要模型，另在 0.5B 與 3B 變體上實驗以分析同架構家族內的規模化，並納入 Llama-3.2-3B-Instruct 測試跨家族泛化。Generator 與 Solver 皆以 GRPO 優化。基礎實驗進行 K=3 次自我對弈迭代，每次 50 步。每次迭代中 Generator 在 2,000 自生成樣本上訓練，然後凍結合成 10,000 候選任務，經過結構驗證、去重與課程選擇過濾至 2,000 樣本後訓練 Solver。Generator 獎勵權重 (λMenu,λGold,λValue)=(0.4,0.4,0.2)，難度參數 K=8, [Plow,Phigh]=[0.25,0.75], σ=0.12。Solver 準確度權重 (λname,λkey,λval)=(0.2,0.3,0.5)，多餘呼叫懲罰 α=0.25。使用 HuggingFace Accelerate + DeepSpeed ZeRO-3，bfloat16，三 GPU。</p>
+<h3 id="評估基準">評估基準</h3>
+<p>五基準涵蓋多樣工具呼叫情境：ToolAlpaca（跨異質工具類別泛化）、Seal-Tools（大規模 API 跨領域）、NexusRaven（企業與網路安全領域高保真函數執行）、API-Bank（對話情境中多輪 API 選擇）、SNIPS（口語理解改編為函數呼叫格式，引入合成基準缺乏的自然語言變異）。全部基準以 Abstract Syntax Tree 匹配指標評估（函數名、參數、類型的結構正確性）。</p>
+<h3 id="41-主要結果">4.1 主要結果</h3>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>五基準平均</th>
+<th>Δ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen2.5-0.5B</td>
+<td>15.47→<strong>30.57</strong></td>
+<td>+15.62 (+101.0%)</td>
+</tr>
+<tr>
+<td>Qwen2.5-1.5B</td>
+<td>24.85→<strong>47.84</strong></td>
+<td>+22.99 (+92.5%)</td>
+</tr>
+<tr>
+<td>Qwen2.5-3B</td>
+<td>43.97→<strong>48.50</strong></td>
+<td>+4.53 (+10.3%)</td>
+</tr>
+<tr>
+<td>Llama-3.2-3B</td>
+<td>36.12→<strong>40.47</strong></td>
+<td>+4.35 (+12.0%)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>RQ1：基礎 LLM 能否從頭透過自我對弈學習複雜工具呼叫？</strong> Qwen2.5-1.5B 在五基準平均改善 +22.99 點（92.52% 相對增益）。增益跨越多樣評估設定——單輪 API 選擇、多步驟工具組合、對話工具使用、使用者意圖追蹤——顯示所學能力泛化而非過擬合。</p>
+<p><strong>RQ2：模型規模如何影響效能？</strong> 最引人注目效果是縮小小模型與大模型間的能力差距。經 Tool-R0 訓練後，0.5B 達 30.57（超越 1.5B 基礎模型 24.85），1.5B 達 47.84（超越 3B 基礎模型 43.97）。小模型增益更明顯——在自我對弈中小模型更快收斂至效能上限。</p>
+<p><strong>RQ3：跨基礎模型家族穩健性？</strong> Qwen2.5-3B（+10.30%）與 Llama-3.2-3B（+12.04%）皆受益。Tool-R0 是模型無關的——增益由初始模型能力而非架構選擇驅動。</p>
+<p><strong>RQ4：與人類專家資料訓練的監督模型比較？</strong> Tool-R0 以零策劃資料達 47.84%，超越訓練於 4k–210k 人類標註範例的方法：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>訓練資料量</th>
+<th>平均準確度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen2.5-1.5B 基礎</td>
+<td>—</td>
+<td>24.85</td>
+</tr>
+<tr>
+<td>xLAM（SFT）</td>
+<td>60k</td>
+<td>43.60</td>
+</tr>
+<tr>
+<td>Hammer（SFT）</td>
+<td>210k</td>
+<td>43.74</td>
+</tr>
+<tr>
+<td>ToolACE（SFT）</td>
+<td>12k</td>
+<td>44.71</td>
+</tr>
+<tr>
+<td>ToolRL（GRPO）</td>
+<td>4k</td>
+<td>46.06</td>
+</tr>
+<tr>
+<td><strong>Tool-R0（Ours）</strong></td>
+<td><strong>0</strong></td>
+<td><strong>47.84</strong></td>
+</tr>
+</tbody>
+</table>
+<h2 id="為何自我對弈超越策劃監督-pairwise-cosine-相似度分析fig-4清楚顯示策劃資料集本質上有偏且受限於其監督導致靜態訓練分佈無法反映代理在訓練期間的演化需求tool-r0-自生成課程達成五基準間最高平均相似度與最均勻覆蓋模型自己最知道需要什麼資料針對性自我對弈產生更廣泛平衡的工具使用分佈覆蓋緩解分佈偏移"><strong>為何自我對弈超越策劃監督？</strong> pairwise cosine 相似度分析（Fig. 4）清楚顯示：策劃資料集本質上有偏且受限於其監督，導致靜態訓練分佈無法反映代理在訓練期間的演化需求。Tool-R0 自生成課程達成五基準間最高平均相似度與最均勻覆蓋——模型自己最知道需要什麼資料，針對性自我對弈產生更廣泛平衡的工具使用分佈覆蓋，緩解分佈偏移。</h2>
+<h2 id="title-tool-r0零資料自演化-llm-代理的工具學習part-44消融研究討論-source-httpsarxivorgabs260221320-arxiv_id-260221320-date-2026-02">title: Tool-R0：零資料自演化 LLM 代理的工具學習（part 4/4：消融研究、討論）
+source: https://arxiv.org/abs/2602.21320
+arxiv_id: 2602.21320
+date: 2026-02</h2>
+<h1 id="tool-r0零資料自演化-llm-代理的工具學習44">Tool-R0：零資料自演化 LLM 代理的工具學習（4/4）</h1>
+<h2 id="42-消融研究與分析">4.2 消融研究與分析</h2>
+<table>
+<thead>
+<tr>
+<th>變體</th>
+<th>平均準確度</th>
+<th>Δ (pp)</th>
+<th>相對下降</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tool-R0（完整）</td>
+<td>47.84</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>共享權重</td>
+<td>30.42</td>
+<td>-17.42</td>
+<td>↓36.41%</td>
+</tr>
+<tr>
+<td>凍結 Generator</td>
+<td>41.65</td>
+<td>-6.19</td>
+<td>↓12.94%</td>
+</tr>
+<tr>
+<td>移除 rdiff</td>
+<td>43.54</td>
+<td>-4.30</td>
+<td>↓8.99%</td>
+</tr>
+<tr>
+<td>硬截斷取代 Gaussian</td>
+<td>44.10</td>
+<td>-3.74</td>
+<td>↓7.82%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>RQ5：共享 vs 分離參數？</strong> 共享參數導致 -17.42pp（↓36.41%）。原因：（1）工具呼叫運作於高熵開放動作空間，需要本質不對稱角色——Generator 探索無界任務分佈，Solver 在固定 API 語意下精確執行；（2）異質獎勵在共享參數下引發梯度干擾——探索驅動梯度與執行驅動梯度衝突，導致災難性遺忘。對缺乏賽局理論對稱性的真實世界代理任務，參數分離不僅有益，更是防止共演化崩潰的必要條件。</p>
+<p><strong>RQ6：Generator 的學習是否必要？</strong> 凍結 Generator（僅以提示產生任務）導致 -6.19pp 下降。Generator 訓練動態（Fig. 7）：課程獎勵從 0.1 升至 0.4（Iter 1→2）後趨穩，語意連貫穩定在 0.5——Generator 學會產生更難任務而不犧牲任務有效性。質性演化：早期迭代僅產單句請求＋單工具＋雙參數；Iter 3 產含五個顯式約束（日期、人數、艙等、地點）的請求＋雙工具十一參數＋雙協調呼叫（航班抵達日期先於飯店入住），證明從表面級到組合式多步驟規劃的學習課程生成。</p>
+<p><strong>RQ7：難度獎勵貢獻？</strong> 移除 rdiff 導致 -4.30pp（↓8.99%）。硬截斷取代 Gaussian 衰減導致 -3.74pp（↓7.82%）。證明：僅有可解任務生成不足——必須校準難度；平滑轉換比硬截斷更穩定，保留能力邊界附近的資訊性回饋。訓練動態確認：難度與語意連貫皆跨迭代穩步上升，Generator 學會佔據目標難度區間而非崩潰至退化模式。</p>
+<p><strong>RQ8：自我對弈何時飽和？</strong> 小模型約 3 迭代達 Nash 式均衡與知識邊界後飽和或輕微退化；3B 模型持續改善無飽和（Fig. 5）——較高模型容量延遲收斂，具從額外自我對弈迭代累積進一步增益的潛力。</p>
+<p><strong>RQ9：Tool-R0 能否作為有效 mid-training？</strong> 每次 Tool-R0 迭代後進行監督後期訓練（ToolACE 資料集），從第一迭代即超越 SFT 基線並持續規模化（Fig. 6）。迭代三後超越後期訓練單獨使用與獨立 Tool-R0——自我對弈作為持續預訓練可強化監督對齊的基礎，使模型從相同人類策劃資料探索與提取更多。</p>
+<p><strong>RQ10：獎勵動態揭示何種學習行為？</strong> Generator 收斂快於 Solver（回合 2 即達 ∼0.98 vs Solver ∼0.90）——合成有效任務比解決它們容易。獎勵成分呈階層式學習：格式合規首迭代飽和→有效性獎勵穩步改善→課程獎勵最陡增長。課程獎勵分解（Fig. 7 右下）：難度從 Iter 1 至 Iter 2 由 0.1 急升至 0.5，語意連貫逐步上升而非崩潰——Generator 產生逐步更難任務而不犧牲有效性。兩代理向高總獎勵收斂且間隙縮小，表明逼近穩定均衡。</p>
+<p><strong>RQ11：基礎模型常見工具使用失敗及 Tool-R0 如何處理？</strong> 基礎模型以結構錯誤為主（選錯工具、呼叫數錯誤、幻覺額外參數）——這些是最關鍵的失敗模式（Fig. 8）。Tool-R0 將結構錯誤減半；語意錯誤亦減少但仍為主要瓶頸；格式錯誤（基礎模型已較強）趨近消除。確認迭代自我對弈建構更強的 TIR 能力，遷移至工具選擇、多步驟規劃與 schema 遵循。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

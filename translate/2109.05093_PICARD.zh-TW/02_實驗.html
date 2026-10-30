@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2109.05093_PICARD.zh-TW.html">回 2109.05093_PICARD.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="3-實驗">3. 實驗</h2>
+<p>實驗聚焦 <strong>Spider</strong>（Yu et al. 2018）——大型多領域、跨資料庫的 text-to-SQL 解析資料集：以其訓練集 7,000 例訓練，在開發集與隱藏測試集上評估。另在 <strong>CoSQL</strong>（Yu et al. 2019）的 SQL-grounded 對話狀態追蹤任務上報告結果（給定互動中的先前問題，為每個問題預測 SQL；訓練同時用 Spider 與 CoSQL 訓練資料）。兩者皆為 <strong>zero-shot 設定</strong>：訓練/開發/測試集之間的問題與資料庫互無重疊。</p>
+<p><strong>指標</strong>：Spider 用 exact-set-match 準確率（EM，將預測與真值 SQL 解析成正規化結構後比較；不看字面值、可能因語義保持的改寫而低估）、execution 準確率（EX，比較在資料庫上執行的結果；有較高偽陽性率）、test-suite execution 準確率（對每 schema 用多個內容最佳化的資料庫實例執行，最貼近語義準確率）。CoSQL 用 question match（QM）與 interaction match（IM，整段互動所有問題的聯合準確率）。</p>
+<p><strong>設定</strong>：受 Shaw et al.（2021）鼓舞——預訓練 T5 不需任何修改即能學會 text-to-SQL 並泛化到未見資料庫、T5-3B 甚至可與當時 SOTA 競爭——故以 T5 為所有實驗的基線。為泛化到未見資料庫，把 schema 與問題一起編碼（沿用 Shaw et al. 的序列化方案）；使用資料庫內容的實驗中，仿 BRIDGE（Lin et al. 2020）偵測資料庫值並附加到欄名；CoSQL 微調時把互動中的先前問題以逆時序附加到輸入；超過 T5 512-token 上限則截斷。目標為原始 SQL（僅把關鍵字與識別子轉小寫）。以 Adafactor、batch size 2048、學習率 1e-4 微調最多 3072 epochs。</p>
+<h3 id="結果">結果</h3>
+<p><strong>Spider（表 1，beam size 4、PICARD 對 top-2 token 做有守衛解析；† 表使用資料庫內容，否則僅 schema）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>系統</th>
+<th>Dev EM%</th>
+<th>Dev EX%</th>
+<th>Test EM%</th>
+<th>Test EX%</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LGESQL + ELECTRA†（先前最佳）</td>
+<td>75.1</td>
+<td>–</td>
+<td>72.0</td>
+<td>–</td>
+</tr>
+<tr>
+<td>T5-Base（本文重現）</td>
+<td>57.2</td>
+<td>57.9</td>
+<td>–</td>
+<td>–</td>
+</tr>
+<tr>
+<td>T5-Base + PICARD</td>
+<td><strong>65.8</strong></td>
+<td><strong>68.4</strong></td>
+<td>–</td>
+<td>–</td>
+</tr>
+<tr>
+<td>T5-Large</td>
+<td>65.3</td>
+<td>67.2</td>
+<td>–</td>
+<td>–</td>
+</tr>
+<tr>
+<td>T5-Large + PICARD</td>
+<td><strong>69.1</strong></td>
+<td><strong>72.9</strong></td>
+<td>–</td>
+<td>–</td>
+</tr>
+<tr>
+<td>T5-3B（本文重現）</td>
+<td>69.9</td>
+<td>71.4</td>
+<td>–</td>
+<td>–</td>
+</tr>
+<tr>
+<td>T5-3B + PICARD</td>
+<td><strong>74.1</strong></td>
+<td><strong>76.3</strong></td>
+<td>–</td>
+<td>–</td>
+</tr>
+<tr>
+<td>T5-3B†</td>
+<td>71.5</td>
+<td>74.4</td>
+<td>68.0</td>
+<td>70.1</td>
+</tr>
+<tr>
+<td>T5-3B + PICARD†</td>
+<td><strong>75.5</strong></td>
+<td><strong>79.3</strong></td>
+<td><strong>71.9</strong></td>
+<td><strong>75.1</strong></td>
+</tr>
+</tbody>
+</table>
+<p>重現 Shaw et al. 的 T5 無法與 Spider 當時 SOTA 競爭，癥結是<strong>模型預測大量無效 SQL</strong>：T5-3B 在 Spider 開發集上有 <strong>12%</strong> 的生成 SQL 執行出錯。加上 PICARD 後：其一，無效 SQL 變得罕見——T5-3B+PICARD 只有 <strong>2%</strong> 的預測不可用（這些是 beam search 結束仍找不到合法 SQL 的情形）；其二（最重要），T5-3B 被推升到 SOTA——開發集 EM 75.5%、測試集 71.9%，EX 分別為 79.3% 與 75.1%，持平或高於最接近的競爭者 LGESQL+ELECTRA；另在開發集達 test-suite execution 準確率 71.9%。</p>
+<p><strong>CoSQL（表 2）</strong>：發現與 Spider 一致。T5-3B 的 QM/IM 由開發集 53.8/21.8 升至 <strong>56.9/24.2</strong>、測試集由 51.4/21.7 升至 <strong>54.6/23.7</strong>，達 SOTA（先前最佳 RATSQL+SCoRe 測試集 QM 51.6/IM 21.2）。</p>
+<p><strong>速度</strong>：PICARD 不僅提升表現且<strong>快</strong>——T5-3B 於 Spider 評估、beam size 4、NVIDIA A100-SXM4-40GB 上，無 PICARD 平均每例 2.5 秒、有 PICARD 3.1 秒。</p>
+<p><strong>Beam size 的影響（圖 1）</strong>：各模型尺寸下 PICARD 的增益隨 beam size 增大——1→2 最陡、2→4 趨緩、4 以上飽和；即使 greedy search（beam size 1）PICARD 也有小幅改善。<strong>沒有 PICARD 時這些模型無法從 beam search 獲益</strong>。每步交給 PICARD 檢查的 top-k 大小（2/4/8）影響輕微：T5-Base 最明顯、T5-Large 較小、T5-3B 幾乎無感。不研究 k=1（那會把 beam search 退化為受約束的 greedy search）。</p>
+<h3 id="消融分析圖-3">消融分析（圖 3）</h3>
+<p>以 T5-Large（僅 schema）在 Spider 開發集比較四種模式 × 四種 beam size：</p>
+<ul>
+<li><strong>增量逐步檢查</strong>時：lexing 相對無約束 T5 有小幅改善，且與 beam size 幾乎無關；切到解析模式後，增益隨 beam size 快速上升，<strong>有守衛解析明顯領先無守衛解析</strong>。</li>
+<li><strong>只在假設完成（EOS）時才檢查</strong>（近似 Suhr et al. 2020 與 Lin et al. 2020 的「事後按合法性過濾」；不完全等價，因被拒假設從不進入 beam、不佔空間）：PICARD 仍有效，但<strong>遠不如正常的增量模式</strong>；兩種模式的差距只在很大的 beam size 才開始縮小——這可以理解，因為 Lin et al. 需要 16 至 64 的 beam、Suhr et al. 需要 100 的 beam 才達到過濾法的最佳結果。</li>
+</ul>
+<h2 id="4-結論">4. 結論</h2>
+<p>我們提出並評估了 PICARD——一種簡單而有效的、用於大型預訓練語言模型的受約束解碼新方法。在 Spider 跨領域跨資料庫 text-to-SQL 資料集與 CoSQL SQL-grounded 對話狀態追蹤資料集上，PICARD 解碼不僅顯著提升「微調過但未經任何改動」的 T5 模型的表現，還把 T5-3B 推升到既有 exact-match 與 execution 準確率指標上的 state-of-the-art。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2109.05093_PICARD.%E6%91%98%E8%A6%81.html"><code>../summarize/2109.05093_PICARD.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

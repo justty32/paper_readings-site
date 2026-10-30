@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2312.06585_ReST_EM.zh-TW.html">回 2312.06585_ReST_EM.zh-TW 目錄</a>　<a href="02_%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>在人類生成的資料上微調語言模型（LM）仍是常見做法，但這類模型的表現常受限於高品質人類資料的數量與多樣性。本文探討：在能取得純量回饋的任務上（例如可核對正確性的數學題），能否超越人類資料。為此，我們研究一種基於期望最大化（expectation-maximization）的簡單自我訓練法，稱為 <strong>ReST^EM</strong>：(1) 從模型抽樣，用二元回饋過濾；(2) 在這些樣本上微調模型；(3) 重複此過程數次。在進階 MATH 推理與 APPS 程式撰寫基準上以 PaLM-2 模型測試，我們發現 ReST^EM 隨模型規模擴增效益良好，且顯著超越僅在人類資料上微調的模型。整體而言，我們的發現顯示帶回饋的自我訓練可大幅降低對人類生成資料的依賴。</p>
+<p><strong>關鍵詞</strong>：來自外部回饋的 RL、RL 的 EM 方法、語言、LLM、推理、程式撰寫、自我改進。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>大型語言模型（LLM）正在革新深度學習版圖，展現生成擬人文本、處理多樣語言任務的卓越能力。雖然在人工蒐集資料上做監督微調（SFT）能進一步提升目標任務表現，但取得高品質人類資料是重大瓶頸，對需要大量資源與專業知識的複雜問題解決任務尤其如此。為突破此瓶頸，模型生成的合成資料成為可規模化、具成本效益的替代方案——前提是能確保其品質。雖然 LLM 具備自我評估生成資料的潛力，本文探討一個更簡單的設定：由<strong>外部、純量回饋訊號</strong>充當每筆生成樣本的品質指標。</p>
+<p>我們考慮一種只需兩項能力的簡單而強大的語言模型自我訓練法：(1) 從模型抽樣、(2) 用評分機制評估這些樣本。為求術語一致，我們沿用 Reinforced Self-Training（ReST，Gulcehre et al., 2023）的用語，稱本法為 <strong>ReST^EM</strong>，並證明它可視為把「用於 RL 的期望最大化」（Dayan and Hinton, 1997; Peters and Schaal, 2007）應用在語言模型上。具體而言，ReST^EM 在 E-step 與 M-step 之間交替：</p>
+<ol>
+<li><strong>Generate（E-step）</strong>：語言模型為每個輸入脈絡生成多個輸出樣本，再用二元回報過濾這些樣本，收集訓練資料集。</li>
+<li><strong>Improve（M-step）</strong>：在前一 Generate step 產出的訓練資料集上，對<strong>原始語言模型</strong>做監督微調；微調後的模型再用於下一個 Generate step。</li>
+</ol>
+<p>ReST^EM 及其各種變體，已在機器翻譯、語意剖析、偏好對齊、基礎推理等領域證實有效，但先前工作主要應用於相對較小的語言模型（至多 7B 參數），且在更大模型上觀察到有限的可擴展性（Yuan et al., 2023）。本文則聚焦於兩個較少被探討、更具挑戰性的領域：競賽級數學問題解決（MATH）與程式碼生成（APPS），檢驗模型生成合成資料相對於人工資料的有效性與可擴展性。</p>
+<p>實證結果顯示，把 ReST^EM 用於不同規模的 PaLM 2 模型時，數學推理與程式碼生成能力均顯著提升。值得注意的是，在模型自產合成資料上微調的模型，增益明顯大於在人工撰寫資料上微調的模型（尤其 PaLM 2-L）。有趣的是，ReST^EM 超過幾輪迭代後改進會遞減，暗示在少量訓練問題上可能出現過擬合。此外，ReST^EM 微調後的模型同時提升了 pass@k 與多數投票表現，並在相關但未參與訓練的基準（GSM8K、匈牙利高中畢業考、HumanEval、Big-Bench Hard）上展現增強表現。我們也做了消融研究，檢視模型生成解答數量、訓練問題數與迭代次數對 ReST^EM 微調的影響。整體而言，本文結果顯示「帶回饋的自我訓練」是降低對人類資料依賴的一條有前景路徑。</p>
+<h2 id="2-準備工作">2 準備工作</h2>
+<p>自迴歸語言模型在給定脈絡（輸入）x 的情況下，逐一預測 token 生成輸出序列 y。給定人類生成的資料集 D，監督微調（SFT）以最小化負對數概似為目標（式 1）。假設可取得確定性的序列級（終端）獎勵 r(x, y)，則標準 RL 目標為最大化 E_x~D[E_y~pθ(y|x)[r(x, y)]]（式 2）。直接以線上 RL（如 policy gradient）最佳化此目標，需在訓練過程中反覆更新並重新從策略抽樣，在模型規模達數百億參數時，持續對新樣本微調的計算成本成為主要限制。下一節討論一種替代做法。</p>
+<h2 id="3-用於-reinforced-self-training-的期望最大化">3 用於 Reinforced Self-Training 的期望最大化</h2>
+<h3 id="rl-的-em-框架">RL 的 EM 框架</h3>
+<p>延續 Dayan and Hinton (1997) 的工作，定義二元最優性變數 O，使得 p(O=1|x,y) ∝ f(r(x,y))，其中 f 為某個非遞減函式。我們希望最大化觀察到 O=1（獲得高回報）的對數概似 log p(O=1|x)。由於對所有可能序列 y 求和通常不可行，改為對其 ELBO（記為 L(pθ, q)，含變分分布 q）最大化：透過 Jensen 不等式，得到 L(pθ, q) = E_q(y|x)[log p(O=1|x,y)] − KL[q(y|x) || pθ(y|x)]（式 2）。</p>
+<p>EM 演算法交替執行：</p>
+<ul>
+<li><strong>E-step</strong>：q^(t+1) = argmax_q L(pθ^t, q)。由於 L(pθ^t, q) 可寫成 q(y|x) 與 q*(y|x) := p(O=1|x,y)pθ^t(y|x) 之間的 KL 散度，故 q^(t+1)(y|x) ∝ q*(y|x)——即依「取得高回報的概似」對當前策略抽樣輸出加權。</li>
+<li><strong>M-step</strong>：θ^(t+1) = argmax_θ Σ_y q^(t+1)(y|x) log pθ(y|x)，對應最大化一個「回報加權」的負對數概似損失。</li>
+</ul>
+<p>兩步交替可保證 ELBO 單調不減：L(pθ^(t+1), q^(t+1)) ≥ L(pθ^t, q^(t+1)) ≥ L(pθ^t, q^t)。</p>
+<p><strong>非負獎勵下的 EM</strong>：若獎勵非負且 f 取恆等函式，則 p(O=1|x,y) ∝ r(x,y)，此時 q^(t+1)(y|x) ∝ r(x,y)pθ^t(y|x)，M-step 更新變為最大化 E_x~D[E_y~pθ^t(y|x)[r(x,y) log pθ(y|x)]]（式 3）。與 L_RL 目標相比，關鍵差異在於資料如何被抽樣：標準 RL 持續更新策略並用最新策略收集資料；EM-based RL 則用<strong>上一輪迭代的固定抽樣策略</strong>，把資料收集與策略最佳化解耦，因而更容易擴展到大規模策略模型。</p>
+<p><strong>演算法 1（ReST，EM 版本）</strong>：輸入訓練集 D、驗證集 D_val、損失函式、非負獎勵函式 r、迭代數 I、每脈絡樣本數 N。對 i=1 到 I：先做 Generate（E-step）——用當前策略對 D 抽樣得到資料集 D_i = {(x^j, y^j)}，並以 r(x, y) 為 D_i 標註；再做 Improve（M-step）——只要在 D_val 上獎勵持續提升，就持續以 J(θ) = E_(x,y)~D_i[r(x,y) log pθ(y|x)] 為目標最佳化 θ。輸出最終策略 pθ。</p>
+<h3 id="restem">ReST^EM</h3>
+<p>以 EM 框架為動機，本文討論 Gulcehre et al. (2023) ReST 方法的簡化版，稱為 <strong>ReST^EM</strong>，把典型 RL 管線中的資料收集（E-step）與策略最佳化（M-step）解耦。</p>
+<ul>
+<li><strong>Generate（E-step）</strong>：從當前策略 pθ 對重新抽樣自 D 的輸入 x^j，抽樣多個輸出序列，組成 D_i = {(x^j, y^j)}；再用二元回報函式 r(x, y) 為輸出打分。<strong>與 Gulcehre et al. (2023) 不同</strong>：我們不把人類生成的輸出混入 D_i，因為這類資料未必對學習最優，或未必容易取得。實驗中以少樣本提示（few-shot prompt）條件化語言模型——程式生成用程式範例、數學題用逐步解題範例。</li>
+<li><strong>Improve（M-step）</strong>：第 i 輪用 Generate step 得到的新資料集 D_i 微調策略 pθ。<strong>與 Gulcehre et al. (2023) 不同</strong>：我們每次都對<strong>基座預訓練語言模型</strong>微調，以最小化任務特定過擬合、減少與基座模型的漂移。微調時最小化回報加權的負對數概似損失 J(θ)。策略改進後，即可再次生成品質更好的新資料集。</li>
+</ul>
+<p><strong>備註</strong>：本文實驗聚焦於<strong>二元回報</strong>（0 或 1）的問題解決情境，不同於 Gulcehre et al. (2023) 假設的有界實值回報。具體而言，Gulcehre et al. 對每個 Generate step 執行多個 Improve step，各對應 f(r(x,y)) = r(x,y) &gt; τ 的一個 M-step，τ 在連續 Improve step 中遞增；但在二元回報下，任何 τ ∈ (0,1) 都對應相同的 Improve step，因此退化為單一 Improve step。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

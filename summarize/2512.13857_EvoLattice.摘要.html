@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《EvoLattice：以多選項品質-多樣性圖表徵驅動 LLM 程式探索的內部族群演化》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Kamer Ali Yuksel</p><p>日期：2025-12，LLM 引導程式合成／演化計算（ICML 投稿）</p><p>arXiv：2512.13857</p><p><a href="https://arxiv.org/abs/2512.13857" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="evolattice重點摘要">《EvoLattice》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>EvoLattice</strong> 把「LLM 引導的程式/智能體演化」從<strong>單候選、覆寫式突變</strong>（FunSearch / AlphaEvolve 那種，每次只留一個候選、改動具破壞性）改造成<strong>單一有向無環圖（DAG）內含整個族群</strong>：每個節點存<strong>多個並存替代方案（alternatives）</strong>，圖中每條合法路徑就是一個可執行候選，於是用<strong>不複製結構</strong>換得指數級組合搜尋空間。它對「每個替代方案出現的所有路徑」逐一評分，產生<strong>替代方案層級的統計（均值/變異/最佳貢獻）<strong>作為密集回饋餵給 LLM 做突變/重組/剪枝；再用</strong>確定性自我修復</strong>保證無環與依賴一致（不靠 LLM 守規則）。在零訓練 NAS 代理發現任務上，Spearman ρ 達 <strong>0.15–0.16</strong>，勝過所有固定零樣本代理與 LLM 單路徑演化法（次佳 ShinkaEvolve-style ≈0.12），且<strong>變異更低、收斂更快</strong>；動態自然呈現 MAP-Elites 式品質-多樣性。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>現有 LLM 驅動演化（FunSearch、AlphaEvolve、ShinkaEvolve、Darwin Gödel Machine）共享<strong>同一表徵瓶頸</strong>：演化物件是<strong>單一龐然候選</strong>，突變即覆寫——丟棄有用變體、易破壞結構、無法保留多個競爭策略、無法把不同個體的部分成功融合、無法累積可重用微算子庫。LLM 只看到「整個候選的純量分數」，缺乏對可重用子組件的<strong>信用分配（credit assignment）</strong>。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>EvoLattice 表徵</strong>：DAG，節點＝功能組件（數值算子/符號子程式/智能體子策略），每節點存<strong>一組 alternatives</strong>（程式演化時是 lambda，智能體演化時是 prompt 片段/工具描述）；邊＝資料依賴；指定 <code>output</code> 為根。每條從依賴到 output 的合法路徑＝一個可執行候選，全部路徑構成<strong>隱式編碼於單一結構</strong>的候選家族。</li>
+<li><strong>組合式評估 + memoization</strong>：枚舉（或抽樣）所有路徑執行；用<strong>含 lambda 原始碼的防碰撞簽章</strong>做全域子路徑快取，重用重疊上游子圖 → 運行時與單路徑法相當卻擷取更多資訊。</li>
+<li><strong>替代方案層級統計</strong>：對每個 alternative，蒐集所有含它的路徑分數 → 算<strong>均值效應、變異、最佳貢獻</strong>；另對當前最佳路徑注入小高斯擾動量測<strong>節點重要性</strong>。這些統計直接呈給 LLM。</li>
+<li><strong>LLM 突變</strong>（用 gpt-oss-120b，假設生成 temp=0.5、突變 temp=0.0）：先自動生成「任務感知假設」嵌入 prompt，附<strong>結構 diff</strong>；LLM 做<strong>局部組合式編輯</strong>（刪弱替代/在既有節點增替代/增節點/調依賴），<strong>不重寫整個程式</strong>。</li>
+<li><strong>確定性自我修復</strong>：每次突變後強制無環、移除懸空依賴、剪空節點、保證可達性 → 把結構正確性的責任移離 LLM。</li>
+<li><strong>單調擴張</strong>：候選空間只在效能支持下才縮（targeted 刪除），壞突變只影響局部，強路徑恆存。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>NAS-Bench-Suite-Zero（Medium）</strong>：EvoLattice Spearman <strong>ρ=0.15–0.16（CI ±0.04）</strong>，勝固定代理（Spectral 0.06、ZeroLM 0.09、LPZero 0.10）與 LLM 單路徑演化（FunSearch 0.09、AlphaEvolve-diff 0.11、ShinkaEvolve 0.12）。</li>
+<li><strong>更低變異、更快穩定</strong>：best-so-far 單調上升且呈離散跳躍（非破壞性突變保留強路徑、不回退）；改善稀疏而爆發式；可執行路徑數快速成長但 memoization 使運行時不爆。</li>
+<li><strong>不只重發現</strong>：發現的最佳代理結構近似 ZeroLM，但加入<strong>穩定化變換</strong>（層級向量化、top-k 聚合、變異係數可靠度建模、非線性閘控、低權重熵 tie-breaker），在 FP16/取樣損失/異質架構等真實噪聲下修復脆弱代理；移除這些穩定化組件則效能崩回 naïve ZeroLM。</li>
+<li>額外在「零訓練優化器更新規則發現」上驗證泛化（附錄 D）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>可擴展壓力</strong>：路徑數組合爆炸，即便 memoization，節點/替代增多後評估成本仍高；最優路徑抽樣/重要度抽樣/代理建模理論待補。</li>
+<li><strong>結構膨脹</strong>：長期運行累積過多替代方案；剪枝又與探索拉扯，需自適應圖正則化/稀疏化策略。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 G 類**「LLM × 演化式程式發現」的代表性新表徵**——與 <a class="paper-reference" href="2505.22954_DarwinGodelMachine.%E6%91%98%E8%A6%81.html">2505.22954</a>（Darwin Gödel Machine 自改寫智能體）、<a class="paper-reference" href="2506.23408_LLMsDreamDiscreteAlgorithms.%E6%91%98%E8%A6%81.html">2506.23408</a>（LLM 夢見離散演算法）同屬「LLM 當演化算子」陣營，但 EvoLattice 的賣點是<strong>把品質-多樣性（MAP-Elites）內建進單一 DAG 表徵</strong>，而非外部 archive。</li>
+<li>最值得記：<strong>「一個節點存多個並存替代方案、每條路徑＝一個候選、用 memoization 撐住組合爆炸、用替代層級統計做信用分配、用確定性修復卸下 LLM 守規則負擔」</strong> 這套組合拳；以及它讓<strong>程式演化與智能體（多智能體）演化統一在同一框架</strong>。</li>
+<li>與經典 GP（<a class="paper-reference" href="2501.17168_EvoGP.%E6%91%98%E8%A6%81.html">2501.17168</a> EvoGP、<a class="paper-reference" href="2504.10253_TinyverseGP.%E6%91%98%E8%A6%81.html">2504.10253</a> TinyverseGP）對照：EvoLattice 把「族群」從個體間挪到<strong>單一個體的內部結構</strong>，是對 modular GP / QD 的有趣重構。</li>
+<li>適合做 <strong>LLM 程式合成、神經架構搜尋零樣本代理、品質-多樣性、多智能體系統演化</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2512.13857_EvoLattice.zh-TW.html"><code>../translate/2512.13857_EvoLattice.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

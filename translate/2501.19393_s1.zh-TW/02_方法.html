@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>s1：簡單的測試時推論擴展（3/4） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2501.19393_s1.zh-TW.html">回 2501.19393_s1.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="2-方法">2. 方法</h2>
+<h3 id="21-s1k高品質推理軌跡資料集">2.1 s1K：高品質推理軌跡資料集</h3>
+<p>s1K 的建構遵循「品質勝於數量」的原則，從 59K 候選樣本池中經三階段過濾篩選至 1,000 條。</p>
+<p><strong>候選池來源</strong>：59K 樣本來自多個公開高難度推理資料集，涵蓋數學（AIME、MATH、AMC、Omni-MATH）、程式碼（LiveCodeBench、CodeContests）、科學推理（GPQA）等領域。每個樣本包含問題與一條由強模型（Gemini 1.5 Pro 或 Claude 3.5 Sonnet）生成的完整推理軌跡。</p>
+<p><strong>三維度篩選準則</strong>：</p>
+<ol>
+<li>
+<p><strong>難度（Difficulty）</strong>：僅保留基礎 Qwen2.5-32B-Instruct（不做微調、不做測試時干預）無法正確解答的題目。此步驟確保訓練資料聚焦於模型真正需要「更深入思考」才能解決的瓶頸問題，而非已掌握的概念。實際操作為對候選池每題以基礎模型跑一次推理，排除正確率 &gt;50% 的題目。</p>
+</li>
+<li>
+<p><strong>多樣性（Diversity）</strong>：為避免模型在特定數學子領域過擬合，採用分類系統將問題依知識領域分層——數學領域細分為代數（方程式、不等式、多項式）、幾何（平面、立體、解析）、數論（整除性、模運算、質數）、組合數學（排列組合、圖論、鴿巢原理）、機率（條件機率、期望值）；程式碼領域細分為演算法設計、程式除錯與複雜度分析；科學領域則為物理與化學推理。從每個子領域按比例抽樣，確保訓練覆蓋的廣度。</p>
+</li>
+<li>
+<p><strong>品質（Quality）</strong>：僅保留推理軌跡品質最高的樣本。品質定義為：(a) 明確的逐步推理（每一步邏輯可獨立驗證）；(b) 自我修正行為（出現「let me double check」「wait, that&#x27;s wrong because...」「actually...」等回溯修正模式）；(c) 驗證步驟（向後代入檢查、約束條件測試、邊界案例驗證）；(d) 最終答案正確（確保訓練信號一致性）。品質評分由自動化啟發式規則（檢查是否有回溯標記、驗證語句比例、推理步驟完整性）輔助，並經人工抽樣確認。</p>
+</li>
+</ol>
+<p><strong>教師模型選擇</strong>：Gemini 1.5 Pro 與 Claude 3.5 Sonnet 被選為推理軌跡生成器——兩者在推理基準上表現優異、且生成的軌跡具備豐富的自我修正與驗證模式。作者未使用單一教師來確保軌跡風格的多樣性。</p>
+<p><strong>最終訓練</strong>：以 s1K 對 Qwen2.5-32B-Instruct 做標準監督微調（SFT）——對每個樣本的「問題 + 推理軌跡」序列做 next-token prediction。超參數：學習率 1e-5、batch size 16、訓練 1 epoch、序列長度上限 8192 token。訓練在單節點 8×NVIDIA H100-80GB GPU 上耗時約 26 分鐘。</p>
+<h3 id="22-budget-forcing測試時推論控制">2.2 Budget Forcing：測試時推論控制</h3>
+<p>Budget Forcing 是本文的核心推論技術，使模型在推論時的「思考長度」可被外部精確控制——無需修改模型權重、無需梯度更新。</p>
+<p><strong>技術機制</strong>：</p>
+<ul>
+<li>
+<p><strong>延長思考（Append <code>Wait</code>）</strong>：模型在推論時生成一串推理 token（思考階段），最終企圖輸出答案。若此時追加 <code>Wait</code>（精確地說是在當前生成後 append 該 token），模型被強制回到推理模式——其分佈在 <code>Wait</code> 之後通常產出「重新評估」、「檢查邊界案例」、「修正錯誤」或「從不同角度嘗試」等內容。<code>Wait</code> 的關鍵特性在於它是<strong>語意中性</strong>的——它不指定「該檢查什麼」，僅指示「不要現在停止」，因此保留了模型決定如何繼續推理的自主性。</p>
+</li>
+<li>
+<p><strong>截斷思考（Inject <code>&lt;/thought&gt;</code>）</strong>：模型推理過程可能過度冗長——循環推理、重複論點、無效的細枝末節展開。當累積思考 token 數達到預設上限時，系統在生成末尾注入 <code>&lt;/thought&gt;</code> 作為思考結束標記，強制模型立即切換為給出最終答案。此操作對應實際部署中的延遲/成本約束。</p>
+</li>
+<li>
+<p><strong>格式約定</strong>：s1 的提示格式約定——思考部分以 <code>&lt;thought&gt;</code> 開始、以 <code>&lt;/thought&gt;</code> 結束，答案部分跟隨在後。訓練資料（s1K）本身就採用此格式，因此 Budget Forcing 的 <code>&lt;/thought&gt;</code> 注入符合模型已在訓練中習得的結構。</p>
+</li>
+</ul>
+<p><strong>三種推論控制策略對比</strong>：</p>
+<p>作者比較了三種控制「思考長度」的策略：(1) <strong>條件式長度控制（Prompt-based）</strong>：在提示中指定「請在 200–500 token 內完成思考」。效果有限——模型未必精確遵循長度指令，且在部分案例中犧牲答案品質以符合長度要求。(2) <strong>訓練資料長度過濾（Length Filtering）</strong>：僅使用推理軌跡長度在特定區間（如 &gt;500 token）的樣本做微調。效果：移除了短推理樣本使模型偏向「深度思考」，但對簡單問題（無需長推理）的遵循能力下降，模型傾向過度複雜化一切問題。(3) <strong>Budget Forcing</strong>：推論時動態控制——不對訓練做任何修改，保留了模型的通用遵循能力，同時提供靈活的運算預算 knob。作者結論：Budget Forcing 是唯一能在不犧牲任何能力維度的前提下實現測試時控制的方法。</p>
+<p><strong>實際操作</strong>：推論時，系統追蹤當前已生成了多少思考 token（以 <code>&lt;thought&gt;</code> 與 <code>&lt;/thought&gt;</code> 之間的 token 數計）。若模型在思考 token 數低於下限時企圖結束（產出 <code>&lt;/thought&gt;</code>），改為追加 <code>Wait</code>；若思考 token 數達到上限且模型尚未自行結束，則強制注入 <code>&lt;/thought&gt;</code>。上限/下限作為推論時超參數，可依部署場景（高準確度 vs 低延遲）調整。預設配置：下限 256 token、上限 2048 token（AIME 等困難基準）；對 MATH500 等較簡單基準可調低。</p>
+<h3 id="23-基準模型與對照組">2.3 基準模型與對照組</h3>
+<ul>
+<li><strong>Qwen2.5-32B-Instruct</strong>：未經任何測試時擴展訓練的基礎指令微調模型，作為 zero-shot 基線。</li>
+<li><strong>s1-32B（標準）</strong>：以 s1K 做 SFT 微調後，不做任何 Budget Forcing 干預，讓模型自由生成完整推理與答案。</li>
+<li><strong>s1-32B + Budget Forcing</strong>：微調後模型配合 Budget Forcing 推論（動態追加 <code>Wait</code> 延長推理）。</li>
+<li><strong>o1-preview</strong>：OpenAI 的專有推理模型，作為外部對照組。</li>
+<li><strong>DeepSeek-R1-Distill-Qwen-32B</strong>：從 DeepSeek-R1（800K RL 樣本 + 多階段管線）蒸餾至 Qwen-32B，與 s1-32B 相同基礎模型規模、不同訓練方法。</li>
+</ul>
+<hr />
+<h2 id="title-s1簡單的測試時推論擴展part-34實驗結果與分析-source-httpsarxivorgabs250119393-arxiv_id-250119393-date-2025-01">title: s1：簡單的測試時推論擴展（part 3/4：實驗結果與分析）
+source: https://arxiv.org/abs/2501.19393
+arxiv_id: 2501.19393
+date: 2025-01</h2>
+<h1 id="s1簡單的測試時推論擴展34">s1：簡單的測試時推論擴展（3/4）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

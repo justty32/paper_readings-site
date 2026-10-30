@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《用 SMT 求解器把關工具增強 LLM agent 的政策合規》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Cailin Winston、Claris Winston、René Just（附屬未列；cs.SE / cs.AI）</p><p>日期：2026-03，神經符號（主題 B：工具增強推理 / LLM＋求解器執行期把關）</p><p>arXiv：2603.20449</p><p><a href="https://arxiv.org/abs/2603.20449" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="用-smt-求解器把關工具增強-llm-agent-的政策合規重點摘要">《用 SMT 求解器把關工具增強 LLM agent 的政策合規》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Solver-Aided Policy Compliance</strong>：把「工具使用政策」用 LLM 輔助、人類引導地翻成 <strong>SMT-LIB-2.0 約束</strong>（針對 agent 可觀察狀態與工具引數），在執行期<strong>攔截每個計畫中的工具呼叫、用 Z3 當前置條件檢查</strong>，違反政策的呼叫直接擋下並回饋「最小不可滿足核（unsat core）」當解釋——在 τ²-bench 航空域上把無效寫入工具呼叫降到全部寫入呼叫的 29%，同時維持任務正確率、顯著提升跨多次執行的一致性。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>工具增強 LLM（TaLLM）能呼叫外部工具與真實環境互動，但要部署到客服、業務流程自動化等敏感場景，<strong>缺乏對「領域特定操作政策」的可靠遵循</strong>。現行做法只是把政策描述塞進 LLM 上下文「勸導」它遵守，<strong>無任何保證</strong>不會違規。本文把政策合規當成「在工具呼叫執行前的約束滿足問題」，引入形式推理做硬性把關。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>政策→SMT 翻譯（離線、半自動）</strong>：作者實測四條漸進路線——(1) Proof-of-Thought 直接 LLM→SMT-LIB（語法錯誤頻發）；(2) 迭代修復迴圈（語法對但約束不足，50–60 行）；(3) AWS Bedrock 自動推理（~600 行、~95% 覆蓋但仍欠約束）；(4) <strong>Bedrock＋客製 prompt＋人工微調</strong>（最終採用）。核心挑戰：語法正確、語意完整、約束緊度。結論：政策編碼應當成「<strong>顯式、可審查的工件</strong>」，需專家審閱，完全自動化仍是 open problem。</li>
+<li><strong>執行期攔截架構</strong>：agent 提議工具呼叫時，相容性檢查器取出該工具的驗證 schema，用 LLM 從對話歷史抽出所需政策變數、轉成邏輯斷言、附到靜態政策編碼上；Z3 判 SAT（放行）／UNSAT（擋下）。被擋時把<strong>最小 unsat core</strong> 回饋 agent 解釋，最多 3 次重規劃後交還使用者。</li>
+</ul>
+<h2 id="結果含數字">結果（含數字）</h2>
+<ul>
+<li><strong>基準</strong>：τ²-bench 航空域（50 任務、13 工具、1242 字政策文件）；GPT-4.1 做 agent 規劃、GPT-4o 做工具呼叫驗證；指標 pass∧k（k=4，所有 k 次 i.i.d. 試驗皆成功的機率）。</li>
+<li><strong>RQ2 違規</strong>：基線有效/無效寫入呼叫約各半；加上政策檢查器後，<strong>無效寫入呼叫降到全部寫入呼叫的 29%</strong>（正確寫入呼叫也略降——精度/召回取捨）。</li>
+<li><strong>RQ3 正確率與一致性</strong>：兩系統整體成功率相近（檢查器略升）；關鍵是<strong>一致性</strong>——隨 k 增大成功率僅下降 26%（基線下降 40%），顯示跨多次執行更可靠。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>政策翻譯無法全自動</strong>：作者坦言「手動或半結構化的政策編碼仍屬必要」以驗證正確性與約束緊度。</li>
+<li>加把關會<strong>略降正確寫入呼叫</strong>（精度/召回取捨）。</li>
+<li>評估僅單一域（航空，τ²-bench）、用 GPT-4.1/GPT-4o 特定組合。</li>
+<li>把關只能擋「可被形式化的政策片段」，語意完整性依賴人工審閱。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本主題 B 中**「LLM＝翻譯器、求解器＝執行期硬把關」這條 agent 安全路線的代表**——與 <a class="paper-reference" href="2602.18095_Logitext_NeSy_SMT.%E6%91%98%E8%A6%81.html">2602.18095</a>（Logitext 把 LLM 當 SMT theory）、<a class="paper-reference" href="2606.27243_NOVA_Verification_Aware_Agent_Harness.%E6%91%98%E8%A6%81.html">2606.27243</a>（NOVA 驗證感知 agent harness）、<a class="paper-reference" href="2606.17223_NeSy_Safety_Security_Cognitive_Risks.%E6%91%98%E8%A6%81.html">2606.17223</a>（NeSy 安全/資安/認知風險）對讀，可見「事前形式化」vs「事後/執行期攔截」的設計分野。</li>
+<li>與 <a class="paper-reference" href="2502.09100_LLM_Logical_Reasoning_Survey.%E6%91%98%E8%A6%81.html">2502.09100</a>（LLM 邏輯推理綜述）互補：示範把抽象「合規」變成 Z3 前置條件、用 unsat core 給 agent 可操作回饋。</li>
+<li>最值得記：<strong>「政策編碼是可審查工件、完全自動化是 open problem」這個誠實定位</strong>；以及那組數字——無效寫入降到 29%、一致性下降率 26% vs 40%（把關提升的主要是穩定性而非峰值準確率）。</li>
+<li>定位：<strong>方法/系統論文（聚焦 agent 工具呼叫合規）</strong>；適合做 LLM agent guardrail、業務流程自動化、SMT 政策即程式碼的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2603.20449_SolverAided_Policy_Compliance.zh-TW.html"><code>../translate/2603.20449_SolverAided_Policy_Compliance.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

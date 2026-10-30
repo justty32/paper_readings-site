@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2607.02949_BeSpec.zh-TW.html">回 2607.02949_BeSpec.zh-TW 目錄</a>　<a href="02_%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）在從自然語言描述生成程式碼方面取得重大進展。既有方法多透過<strong>執行引導的程式碼精煉</strong>改善生成品質：生成候選解、執行、用回饋修補實作——但<strong>不改變底層規格</strong>。此工作流隱含假設 LLM 對意圖的理解已正確且完整。實務上程式題目描述常模糊或欠規格，導致模型可能為錯誤的意圖生成正確的實作，使<strong>規格不匹配</strong>成為核心瓶頸。</p>
+<p>本文提出 <strong>BeSpec</strong>，一種基於行為模型的規格對齊方法。BeSpec 將意圖視為正確程式預期行為的部分證據，先建立明確行為模型：從現有意圖萃取並預測可執行行為（正確程式的可檢查性質），這些行為描述程式<strong>應該做什麼</strong>但不需要精確的測試 oracle。接著生成候選程式、在 probe 輸入上執行，並比對觀察行為與預測行為。當觀察行為不匹配時，BeSpec 據此<strong>修補規格</strong>或拒絕該候選程式。在三個 LLM、四個基準（CodeContests、xCodeEval、APPS、無汙染 LiveCodeBench）上對九個基線，BeSpec 在所有設定中取得最高 Pass@1 與平均通過率，相對最強基線提升 Pass@1 達 8.1%–25.3%。失敗分析顯示對齊後多數剩餘錯誤源自演算法難度而非弱規格，消融實驗確認每個主要組件均正向貢獻。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 在程式生成上進步顯著，但當需求複雜、隱含或僅部分指定時仍常失敗。既有方法多將生成過程解構為四階段：<strong>解讀意圖 → 規劃解法 → 實作計劃 → 用測試回饋修復程式碼</strong>。近期 prompt/agent 方法主要強化後三階段，但若第一階段（意圖解讀）本身錯誤，改善規劃、實作與修復只幫模型把錯誤解讀做得更好。</p>
+<p>例如要求物件的「複製」可能意指保留巢狀欄位相依關係的深拷貝，LLM 卻實作只複製頂層容器的淺拷貝——代碼邏輯連貫、實作良好，但解了錯的問題。</p>
+<p>**需要的不是在程式碼層精煉，而是在程式碼生成前釐清規格。**這稱為規格對齊（specification alignment）。現有規格對齊方法（Specine、SpecFix）仍主要在測試層運作：生成候選程式、跑公開/生成測資、從最終輸出推斷對齊。這可揭示候選程式不一致，但無法直接指出規格的哪個部分導致分歧——一筆失敗測資無法告知問題點是輸出格式、可行性條件、索引慣例、邊界案例還是重複值處理。<strong>測試層證據太粗糙。</strong></p>
+<p>更關鍵限制：測試依賴完整測資（input + 正確 expected output），生成正確 oracle 本身近乎解題。<strong>BeSpec 從測試層移到行為層</strong>：把預期解分解為可檢查的行為期望——輸出約束、可行性條件、重索引慣例、重複值處理等。這些不需解整題即可預測與檢查，使規格修補更具針對性。</p>
+<p>具體做法：BeSpec 從意圖預測可檢查行為性質，比對候選程式的觀察行為（在 probe 輸入上執行獲得，probe 無對應 oracle），以預測-觀察差距定位規格中的模糊/遺漏/誤讀，針對性修補規格。</p>
+<p><strong>貢獻</strong>：(1) 行為層規格對齊——從測試層提升到行為層；(2) BeSpec 方法——預測行為→比對執行→修補規格→選擇最佳對齊程式；(3) 全面評測——三 LLM×六設定×四基準勝九基線；(4) 失敗分析——LLM-as-judge 分類，證實對齊後弱規格極少。</p>
+<h2 id="2-動機範例erase-game">2. 動機範例：Erase Game</h2>
+<p>CodeContests 題目：給定整數序列 <span class="math inline">\(a_1, ..., a_n\)</span>，反覆選擇不被 <span class="math inline">\(i+1\)</span> 整除的 <span class="math inline">\(a_i\)</span> 並刪除，判斷能否刪除整列（輸出 YES/NO）。關鍵模糊點：**索引是否每次刪除後重算？**預期解讀是動態索引。序列 [1, 3] 中，動態索引→YES（1 先刪→3 變索引 1→可刪），原始索引→NO（3 保持索引 2→3 可被 3 整除）。同一敘述誘發兩種合理執行。</p>
+<p>程式碼精煉迴圈可能持續改善候選卻從未發現索引慣例錯誤。BeSpec 從題目預測「每次刪除後應重索引」，執行候選並檢查觀察行為，若不匹配則修補規格明確寫入重索引規則。此範例說明行為層訊號比測試層回饋更具診斷力。</p>
+<h2 id="3-bespec-方法">3. BeSpec 方法</h2>
+<p>BeSpec 將每個題目視為獨立規格對齊任務，核心流程：規格萃取 → 兩條行為管線 → 不對齊識別 → 規格修補 → 行為接地選擇。</p>
+<h3 id="31-規格萃取">3.1 規格萃取</h3>
+<p>LLM 將原始意圖重新表達為結構化規格，五個欄位：輸入/輸出格式、輸入約束、正確性規則（以「應檢查的性質」非「執行的演算法」表述）、邊界案例、<strong>解釋欄位</strong>（記錄已確認模糊點解讀，初始空）。此文件是 BeSpec 維護與修補的中心。</p>
+<h3 id="32-預測行為管線">3.2 預測行為管線</h3>
+<p>從結構化規格預測 m 個行為 <span class="math inline">\(B = \{b_1, ..., b_m\}\)</span>，分四類：</p>
+<ul>
+<li><strong>金標行為</strong>：公開範例的輸入-輸出對。</li>
+<li><strong>輸出行為</strong>：輸出語法/格式/不變量（如每行必為 YES 或 NO）。</li>
+<li><strong>輸入行為</strong>：行為適用的輸入端條件（邊界、觸發場景）。</li>
+<li><strong>語意行為</strong>：規則推論的輸出性質（如單元素 [x] 輸出 YES iff x 不被 2 整除）。</li>
+</ul>
+<p>每行為實作為 <code>check(input, output)</code> Python 函數。</p>
+<h3 id="33-觀察行為管線">3.3 觀察行為管線</h3>
+<p>平行執行：(a) <strong>Probe 輸入場景生成</strong>——產生一組 probe <span class="math inline">\(X = \{x_1, ..., x_k\}\)</span> 演練四類行為；(b) <strong>候選程式生成</strong>——從結構化規格產生池 <span class="math inline">\(S = \{s_1, ..., s_n\}\)</span>，去重；(c) <strong>行為觀察</strong>——對每對 <span class="math inline">\((s_j, x_\ell)\)</span> 執行並記錄輸出。</p>
+<h3 id="34-不對齊識別">3.4 不對齊識別</h3>
+<p>建立<strong>行為比對矩陣</strong>（候選×行為）。若某行為所有候選匹配預測→已對齊；若有候選不一致或候選間產生不同觀察→不對齊→標記為規格模糊證據，觸發修補。金標行為例外：違反公開範例者僅排除，不觸發修補。</p>
+<h3 id="35-規格修補">3.5 規格修補</h3>
+<p>LLM 根據不對齊行為與觸發場景<strong>修補規格而非程式碼</strong>：更新規則欄位（補遺漏）、解釋欄位（記錄已確認解讀）、邊界案例（加入觸發案例）。從修補後規格重生成候選，下一輪重複檢查。至多 N 輪，無不對齊或預算耗盡停止。</p>
+<p>Erase Game 例：BeSpec 將「每次刪除後重索引」加入規則欄位，重生成候選全數在 [1, 3] 上一致輸出 YES。</p>
+<h3 id="36-行為接地選擇">3.6 行為接地選擇</h3>
+<p>終止時回傳精煉規格+選定程式：排除違反公開範例者，依滿足行為數排名，以崩潰/缺輸出為最終 tie-breaker。</p>
+<h2 id="4-實驗設計">4. 實驗設計</h2>
+<p><strong>RQ1</strong>：效果與效率。<strong>RQ2</strong>：對齊後什麼仍難、為何失敗。<strong>RQ3</strong>：消融（行為模型貢獻 vs pool size）。</p>
+<p><strong>資料集</strong>：CodeContests（165 題，含 CC-Raw + 擴展測資）、xCodeEval（300 題抽樣）、APPS（300 題抽樣，含 APPS-Eval 擴展）、LiveCodeBench（112 題，2025+ 無汙染）。共六設定。</p>
+<p><strong>指標</strong>：Pass@1（全私測通過）、APR（平均通過率）。效率：token 開銷 + 牆鐘時間。</p>
+<p><strong>基線（九個）</strong>：Zero-shot、SCoT、Self-Repair、Self-Collaboration、AgentCoder、PairCoder、μFiX、Specine、SpecFix。</p>
+<p><strong>實作</strong>：三 LLM（qwen3-coder-30b、glm-4.7-flash、gpt-5-mini），溫度 0.8，N=10，pool=20。OpenRouter API，2x RTX 6000 Ada。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

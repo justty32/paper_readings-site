@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_如何負擔得起又準確地使用_LLM · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.05176_FrugalGPT.zh-TW.html">回 2305.05176_FrugalGPT.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E8%A8%8E%E8%AB%96%E3%80%81%E5%B1%80%E9%99%90%E8%88%87%E6%9C%AA%E4%BE%86%E5%B1%95%E6%9C%9B.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-如何負擔得起又準確地使用-llm">3. 如何負擔得起又準確地使用 LLM</h2>
+<p>我們提出三種降本策略（圖 1(b)）：prompt adaptation、LLM approximation、LLM cascade。圖 2 以圖示說明五種省本手法。</p>
+<h3 id="策略一prompt-adaptation提示調適">策略一：Prompt adaptation（提示調適）</h3>
+<p>LLM 查詢成本隨提示大小線性增加，故縮小提示即可降本。</p>
+<ul>
+<li><strong>Prompt selection（提示選擇，圖 2a）</strong>：不用含大量示範範例的提示，而是只保留一小部分範例。挑戰在於「針對不同查詢該保留哪些範例而不損表現」。</li>
+<li><strong>Query concatenation（查詢串接，圖 2b）</strong>：逐一處理查詢會重複送出相同提示；串接的核心是<strong>只送一次提示、讓 LLM 一次處理多個查詢</strong>，避免重複處理提示。作法是把數個查詢串接成一個、並在提示中明確要求 LLM 處理多個查詢。</li>
+</ul>
+<h3 id="策略二llm-approximationllm-近似">策略二：LLM approximation（LLM 近似）</h3>
+<p>若某 API 太貴，就用更便宜的模型或基礎設施近似它。</p>
+<ul>
+<li><strong>Completion cache（回應快取，圖 2c）</strong>：向 API 送出 query 時把回應存進本地快取（如資料庫）；處理新 query 時先查是否有相似 query 已回答過，有則直接取用，只有找不到相似 query 時才呼叫 API。當相似查詢頻繁出現（如 LLM 驅動的搜尋引擎有大量相同關鍵字）時省本可觀。</li>
+<li><strong>Model fine-tuning（模型微調，圖 2d）</strong>：三步——先蒐集昂貴 LLM API 對少量查詢的回應；再用這些回應微調一個更小更便宜的模型；最後用微調後模型回答新查詢。除省本外，微調後模型通常不需長提示，附帶改善延遲。</li>
+</ul>
+<h3 id="策略三llm-cascadellm-級聯">策略三：LLM cascade（LLM 級聯）</h3>
+<p>異質效能與成本的 LLM API 提供了「資料自適應選模型」的獨特機會——不同 API 對不同查詢各有強弱，適當選擇既能降本也能增效。**LLM cascade（圖 2e）**把 query 依序送給一串 API：若某 API 的回應可靠就回傳、不再往下；只有前面 API 的生成被判定不夠可靠時才查詢後面的 API。若前幾個 API 便宜且產出可靠，查詢成本便大幅降低。</p>
+<p><strong>兩個關鍵元件</strong>：</p>
+<ol>
+<li><strong>Generation scoring function（生成評分函式）</strong> <code>g(·,·): Q×A → [0,1]</code>：給定 query 與某 API 產生的答案，輸出可靠度分數。可用一個簡單的迴歸模型訓練得到，讓它從 query 與生成答案學習「該生成是否正確」。</li>
+<li><strong>LLM router（路由器）</strong>：選出要放進級聯的 m 個 API，記其索引為 <code>L ∈ [K]^m</code>。對新 query，依序呼叫第 i 個 API 得答案 <code>f_{L_i}(q)</code>，用評分函式算出分數 <code>g(q, f_{L_i}(q))</code>；若分數高於閾值 <code>τ_i</code> 就回傳該生成，否則查詢下一個服務。</li>
+</ol>
+<p><strong>學習 L 與閾值向量 τ</strong> 可建模為受約束最佳化問題：在「平均成本受預算 b 約束」下，最大化級聯停止處生成 <code>f_{L_z}(q)</code> 相對正解的品質（z 為 router 停下並回傳答案的 API 索引）。此問題本質是<strong>混合整數最佳化</strong>、計算昂貴，作者設計專用最佳化器：(i) 剪枝——忽略「答案分歧小」的 LLM 組合以縮小 L 的搜尋空間；(ii) 用少量樣本內插逼近目標函式；由此得到高效且表現令人滿意的實作。</p>
+<p><strong>Compositions（組合）</strong>：策略內與跨策略組合可進一步降本增效。例如 <strong>joint prompt and LLM selection</strong>（提示選擇 + LLM 級聯的組合）：為給定 query 尋找「能達到滿意表現的最小提示與最便宜 LLM」；又如同時在既有 API 與微調模型間搜尋。但組合也增加訓練的計算成本，因而開啟「查詢成本 / 任務表現 / 計算成本」三者取捨的研究空間。</p>
+<h2 id="4-llm-cascade-降低成本並提升準確率">4. LLM Cascade 降低成本並提升準確率</h2>
+<p>本節對 FrugalGPT 的 LLM cascade 做實證研究，目標有三：(i) 理解簡版級聯學到了什麼；(ii) 量化在匹配最佳單一 API 表現時省下的成本；(iii) 衡量表現與成本的取捨。</p>
+<p><strong>設定：API、任務、資料集、FrugalGPT 實例</strong>：從 OpenAI、AI21、CoHere、Textsynth、ForeFrontAI 共 5 家主流供應商選 <strong>12 個 LLM API</strong>（詳見表 1，成本於 2023-03 取得，可差達兩個數量級）。在三個不同任務的資料集上評估（表 2）：</p>
+<ul>
+<li><strong>HEADLINES</strong>（金融，10000 筆，提示 8 範例）：讀金融新聞標題判斷金價趨勢（漲／跌／中性／無）。</li>
+<li><strong>OVERRULING</strong>（法律，2400 筆，提示 5 範例）：判斷一句話是否為 overruling（推翻先前判例）。</li>
+<li><strong>COQA</strong>（段落閱讀，7982 筆，提示 2 範例）：對話式閱讀理解，改編為直接查詢回答任務。</li>
+</ul>
+<p>聚焦<strong>級聯長度為 3</strong> 的 LLM cascade（簡化最佳化空間且已有好結果）。各資料集隨機切成訓練集（學級聯）與測試集（評估）。</p>
+<p><strong>案例研究（HEADLINES）</strong>：預算設 <strong>6.5 美元</strong>（GPT-4 成本的五分之一），用專為迴歸調整的 <strong>DistilBERT</strong> 當評分函式（比此處所有 LLM 都小、都便宜）。學到的 FrugalGPT 依序呼叫 <strong>GPT-J → J1-L → GPT-4</strong>：對任一 query 先取 GPT-J 的答案，若分數 &gt; 0.96 即接受為最終回應；否則問 J1-L，其分數 &gt; 0.37 即接受；否則才呼叫 GPT-4。有趣的是此法在許多查詢上勝過 GPT-4——例如標題「Gold off the lows after dismal U.S. GDP data」，FrugalGPT 正確預測金價下跌而 GPT-4 答錯。整體上（圖 3c）<strong>成本降 80%、準確率反高 1.5%</strong>（GPT-4：準確率 0.857、成本 33.1；FrugalGPT：0.872、6.5）。</p>
+<p><strong>LLM diversity（多樣性）</strong>：為何多個 API 可能勝過最佳單一 LLM？本質在<strong>生成多樣性</strong>——便宜 LLM 有時能答對昂貴 LLM 答錯的 query。以 **MPI（maximum performance improvement，最大表現提升）**衡量：LLM A 相對 B 的 MPI，是「A 答對而 B 答錯」的機率，代表在 B 之外再叫 A 可獲得的最大增益上限。圖 4 顯示市場內潛力可觀：在 HEADLINES 上 GPT-C、GPT-J、J1-L 各能把 GPT-4 表現最多再提升 <strong>6%</strong>；在 COQA 上有 <strong>13%</strong> 的資料點 GPT-4 錯而 GPT-3 對。這些上界雖不總能達到，卻證明用更便宜服務取得更好表現的可能。</p>
+<p><strong>成本節省（表 3）</strong>：FrugalGPT 匹配最佳單一 LLM 表現時的省幅介於 <strong>50%～98%</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>資料集</th>
+<th>最佳單一 LLM</th>
+<th>該 LLM 成本</th>
+<th>FrugalGPT 成本</th>
+<th>省幅</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HEADLINES</td>
+<td>GPT-4</td>
+<td>33.1</td>
+<td>0.6</td>
+<td><strong>98.3%</strong></td>
+</tr>
+<tr>
+<td>OVERRULING</td>
+<td>GPT-4</td>
+<td>9.7</td>
+<td>2.6</td>
+<td>73.3%</td>
+</tr>
+<tr>
+<td>COQA</td>
+<td>GPT-3</td>
+<td>72.5</td>
+<td>29.6</td>
+<td>59.2%</td>
+</tr>
+</tbody>
+</table>
+<p>之所以可行，是因 FrugalGPT 能辨識「小 LLM 就能準確回答的查詢」而只呼叫便宜模型，只把 GPT-4 這類昂貴模型留給它偵測到的困難查詢。</p>
+<p><strong>表現與成本取捨（圖 5）</strong>：</p>
+<ul>
+<li><strong>成本排序不固定</strong>：如 J1 在 HEADLINES 是第二貴，而 GPT-3 在 OVERRULING／COQA 佔此位——源於異質定價（J1 每生成 token 貴但 input 不收費，GPT-3 則 input／output 都收費）。</li>
+<li><strong>更貴不一定更準</strong>：如 HEADLINES 上 J1 比 GPT-3 貴但表現更差——凸顯即使無預算約束也該妥善選 API。</li>
+<li><strong>平滑的表現—成本取捨</strong>：FrugalGPT 在所有資料集上提供平滑取捨，且可同時降本增準。例如 OVERRULING 上較最佳 API（GPT-4）<strong>準確率增 1%、成本降 73%</strong>（因整合了多個 LLM 的知識）；在相同成本下最多可提升準確率約 5%。</li>
+<li>例子也顯示：GPT-4 有時答錯而低成本 API 答對，FrugalGPT 能識別並只依賴便宜 API；單一 API 不總是對，級聯用一串 API 克服之。但 FrugalGPT 不完美——仍有「鏈中所有 API 給同一答案，但它不確定前面是否正確、被迫查完整條鏈」的浪費案例，如何避免屬未解問題。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

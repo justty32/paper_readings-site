@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>將軌跡提升為邏輯——§4.2–§5 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.01293_LiftingTraces.zh-TW.html">回 2605.01293_LiftingTraces.zh-TW 目錄</a>　<a href="02_%E9%80%8F%E9%81%8E%E7%AF%80%E9%BB%9E%E7%99%BC%E6%98%8E%E8%AA%98%E5%B0%8E%E5%9F%B7%E8%A1%8C%E9%82%8F%E8%BC%AF.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>基礎模型驅動的智能體常因純提示推理的瞬態性質而在長時程規劃上掙扎。既有的技能誘導方法雖透過將經驗蒸餾為狀態盲目的參數化腳本來緩解此問題，卻未能捕捉動態環境中穩健執行所需的條件邏輯。本文提出<strong>神經符號技能誘導（Neuro-Symbolic Skill Induction, NSI）</strong>——一個將互動軌跡提升為模組化、邏輯接地的程式的框架。透過合成顯式控制流與動態變數綁定，NSI 賦予智能體發現「何時」與「為何」行動的能力。此範式實現高效泛化，使智能體能從少數示例誘導技能並靈活適應未見目標。在系列智能體任務上的實驗表明，NSI 持續超越最先進基線，賦予智能體自我演化為邏輯接地技能之架構師的能力。</p>
+<h2 id="1-導論">1. 導論</h2>
+<p>LLM 的進展賦予智能體感知、推理、行動的能力（Yao et al., 2022b; Shinn et al., 2023）。然而通用基礎模型缺乏特定領域的接地知識，表現出推理缺口，導致不可靠的工具使用與長時程規劃失敗（Zhang et al., 2025c; Jiang et al., 2025）。智能體系統必須透過環境互動自我演化，橋接一般能力與任務需求之間的鴻溝。</p>
+<p>此類演化的代表性範式為<strong>技能誘導</strong>（skill induction）（Wang et al., 2025c;b）。不同於依賴文本檢索進行費力的重推理的逐幕記憶式演化（Shinn et al., 2023; Wang et al., 2024b），技能誘導利用智能體任務的互動本質來提取可重用、可執行的程序。所學技能以高層技能擴展動作空間，可直接調用而無需重新規劃（Wang et al., 2025b; Zheng et al., 2025a; Yu et al., 2025）。此過程鏡像了從 System-2 到 System-1 的認知轉換：將審慎推理鏈鞏固為快速、反射式的「肌肉記憶」（技能），智能體有效地將經驗內化為可執行的能力（Anderson, 1982; Singley &amp; Anderson, 1989）。</p>
+<p>然而，當前方法通常將技能誘導為參數化腳本（如 <code>Open(Receptacle) → Pick(Object)</code>）。這些誘導出的技能以<strong>狀態盲目</strong>的方式產生動作，因此難以忠實表達底層執行邏輯。如圖 1 所示，在 <code>Open(Fridge)</code> 之後，理想的執行邏輯應檢查所需物件「蘋果」是否存在——若存在則動態綁定到 <code>Pick(Object)</code>，若不存在則分支到其他地方搜尋。</p>
+<p>本文提出 <strong>NSI</strong>，一個神經符號技能誘導框架，透過將技能重新定義為模組化、邏輯接地的程式來橋接此鴻溝。NSI 採用<strong>軌跡到邏輯的提升機制</strong>，將原始互動歷史抽象為控制工作流，其中動作由顯式符號謂詞產生。透過程式化執行邏輯並啟用動態變數綁定，NSI 使智能體超越僵化的腳本記憶。此範式轉移使自我演化能穩健適應具不同拓撲與遞迴複雜度的環境。</p>
+<p>三大貢獻：(1) <strong>邏輯接地模組化表徵</strong>——解耦神經知覺與符號執行，技能以 FOL 驅動的顯式控制流與動態變數綁定取代狀態盲目腳本；(2) <strong>軌跡到邏輯誘導框架</strong>——以經驗一致性目標迭代精煉局部專家為全局技能；(3) <strong>反思式規劃</strong>——將運行時失敗轉為技能圖的局部嫁接增長，持續自我演化。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<h3 id="21-傳統-rl-中的技能發現">2.1 傳統 RL 中的技能發現</h3>
+<p>學習專門技能以進行序列決策在傳統強化學習（RL）中已有長期發展。Sutton et al. (1999) 引入技能/選項來實現時間抽象，將原始動作封裝為可重用的時間延展行為並增強策略泛化（Pertsch et al., 2021; Nam et al., 2022; Shi et al., 2023）。然而這些方法在應用於基礎模型驅動智能體時面臨挑戰：所學技能為黑箱神經策略，與 LLM 可解釋的文本推理不相容；且依賴大量參數最佳化，因樣本低效和高計算成本對大規模基礎模型不切實際。</p>
+<h3 id="22-llm-時代的程式化技能誘導">2.2 LLM 時代的程式化技能誘導</h3>
+<p>程式化技能誘導已成為基礎模型驅動智能體演化的新範式。不同於不透明且更新昂貴的神經參數，它從經驗中抽象可重用的產物（Wang et al., 2025c）並將序列動作組織為可執行技能（Wang et al., 2025b; Zheng et al., 2025a; Yu et al., 2025）。程式（代碼）作為既可被基礎模型合成又可理解的自然表徵，與 LLM 生成能力的無縫對齊將程式轉化為技能誘導與執行的功能性媒介。然而，缺乏顯式邏輯接地，參數化腳本可能淪為脆弱「捷徑」，在環境變化時失效，突顯對邏輯感知誘導的需求。</p>
+<h3 id="23-自動化智能體工作流生成">2.3 自動化智能體工作流生成</h3>
+<p>與自動化智能體工作流生成（Zhang et al., 2025b; Qiao et al., 2025; Wang et al., 2025a）密切相關。既有方法組織預定義推理節點並專注於提示或拓撲最佳化；本文引入根本轉向——<strong>發明控制節點與變數綁定節點</strong>來組織原始動作節點，基於狀態接地決定「何時」與「為何」行動，將經驗編譯為可執行技能。</p>
+<h2 id="3-預備知識">3. 預備知識</h2>
+<p><strong>問題形式化</strong>：遵循 Wang et al. (2025b) 等，定義目標條件 POMDP 規劃問題 M = (S, S⁺, A, T, G)，包含原始狀態空間 S⁺、觀察空間 S、動作 A、轉移函數 T、目標 G。採用物件中心建模（Xu et al., 2019; Garrett et al., 2021; Mao et al., 2025）：狀態以環境中實體間的關聯特徵描述，即任務相關物件集合 O；動作是接受實體名稱作為輸入並可在環境中執行的函數。P 是任務相關謂詞符號集合，一個接地原子 p 包含具體引數，如 Contains(fridge, apple)。若狀態 s 滿足 s |= p，表示 s 語義上蘊含 p 的解釋。任務是生成終止於滿足整體任務目標 g 的狀態的執行軌跡 τ。</p>
+<p><strong>LLM 驅動的技能誘導</strong>：社群引入程式化技能的概念，定義為組合一系列原始動作以達成參數化子目標 ω(θ) 的可執行程式（Wang et al., 2024a; 2025b）。這些技能以代碼構件表達，允許 LLM 直接讀、寫、執行。目標是誘導最大化執行成功率的技能 πω。</p>
+<h2 id="4-神經符號技能表徵">4. 神經符號技能表徵</h2>
+<h3 id="41-具神經符號接地的技能工作流">4.1 具神經符號接地的技能工作流</h3>
+<p>智能體技能學習的根本挑戰在於橋接非結構化、模糊的觀察與穩健技能執行所需的精確、狀態依賴邏輯。本文提出<strong>神經符號技能表徵</strong>，顯式解耦知覺接地與執行工作流。技能以三元組 πω = (θω, ϕω, Gω) 形式化——調用參數 θω、神經接地模組 ϕω、符號執行圖 Gω。</p>
+<p><strong>神經回饋知覺（ϕω）</strong>：以 LLM 作為語義接地感知器。每步處理原始非結構化環境觀察 st 以更新結構化符號狀態 Zt。既然程式的執行邏輯依賴符號謂詞，此轉換為程式提供必要的符號基礎，使其能解譯多樣的環境回饋並精確決定後續動作。</p>
+<h2 id="符號執行邏輯gω核心行為邏輯被封裝為工作流圖-gω由符號解譯器執行一旦合成此圖以條件式決定論支配控制流透過操作-zt-中的接地符號謂詞採用顯式分支來嚴格映射多樣狀態配置到特定動作不同於遵循僵化序列的先前狀態盲目腳本邏輯接地圖自然地將環境回饋納入控制結構使技能能自主適應多樣的狀態配置"><strong>符號執行邏輯（Gω）</strong>：核心行為邏輯被封裝為工作流圖 Gω，由符號解譯器執行。一旦合成，此圖以條件式決定論支配控制流。透過操作 Zt 中的接地符號謂詞，採用顯式分支來嚴格映射多樣狀態配置到特定動作。不同於遵循僵化序列的先前狀態盲目腳本，邏輯接地圖自然地將環境回饋納入控制結構，使技能能自主適應多樣的狀態配置。</h2>
+<h2 id="title-將軌跡提升為邏輯lifting-traces-to-logic-425-節點發明技能誘導反思規劃-source-httpsarxivorgabs260501293-arxiv_id-260501293">title: 將軌跡提升為邏輯（Lifting Traces to Logic）— §4.2–§5 節點發明、技能誘導、反思規劃
+source: https://arxiv.org/abs/2605.01293
+arxiv_id: 2605.01293</h2>
+<h1 id="將軌跡提升為邏輯425">將軌跡提升為邏輯——§4.2–§5</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

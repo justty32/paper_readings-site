@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《XSkill：多模態代理從經驗與技能中的持續學習》重點摘要（續 實驗設計） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.12056_XSkill.%E6%91%98%E8%A6%81.html">回 2603.12056_XSkill.摘要 目錄</a>　<a href="02_%E5%B0%8D_ai_core_%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Jiang, Su, Qu, Fung（HKUST）提出 XSkill</strong>：免訓練雙流記憶框架，讓多模態 agent 同時從<strong>經驗流（Experience stream）<strong>與</strong>技能流（Skill stream）<strong>中持續學習——經驗提供動作級戰術指引，技能提供任務級結構化工作流。兩流皆以</strong>視覺觀察為基礎進行知識提取與檢索</strong>，並透過<strong>階層式固化機制</strong>（語意覆蓋合併＋長度觸發修剪）自動維護知識庫品質。在五個 benchmark、四個 backbone 模型上，Average@4 較工具基線提升 2.58–6.71 分，雙流貢獻互補：技能消除工具執行錯誤（語法錯誤從 20.3% → 11.4%），經驗則引導適應性工具選擇（如視覺推理時偏向程式碼、多模態搜尋時偏向影像搜尋）。零樣本跨任務轉移一致優於所有基線，顯示固化保留了可泛化原則而非簡單啟發式。對 ai_core 而言，這篇的<strong>階層式合併修剪架構</strong>與**§3.6 固化引擎的生命週期管理**直接對應——它示範了如何在免訓練條件下，讓知識庫同時處理「新增合併」與「容量觸發修剪」。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>多模態 agent（MLLM 驅動，配備程式碼執行、網頁搜尋、影像搜尋等工具）目前在開放式任務中面臨兩個瓶頸：</p>
+<ol>
+<li><strong>工具使用低效</strong>：agent 常在簡單問題上耗費過多步驟，卻在複雜查詢時無法進行足夠深度的多輪探索。</li>
+<li><strong>工具編排僵化</strong>：多數系統受限於單一路徑執行，無法跨任務泛化地組合工具。</li>
+</ol>
+<p>根本挑戰是：如何在<strong>不更新模型參數</strong>的前提下，讓 agent 從過去軌跡中持續改進工具使用效率與組合彈性。現有文本型軌跡提取方法在視覺場景中不足——關鍵決策訊號常嵌於視覺觀察中，僅靠文本日誌無法可靠檢索或適配先驗知識。</p>
+<h2 id="核心貢獻">核心貢獻</h2>
+<h3 id="1-雙流知識表徵skill-libraryexperience-bank">1. 雙流知識表徵：Skill Library＋Experience Bank</h3>
+<p><strong>技能（Skill）</strong> k = ⟨M, W, P⟩：任務級結構化指引，以 Markdown 文件儲存。M＝名稱/描述/版本號，W＝工作流序列，P＝可重用工具模板（含佔位符而非具體值）。</p>
+<p><strong>經驗（Experience）</strong> e = ⟨c, a, v_e⟩：動作級戰術提示。c＝觸發條件，a＝建議行動，v_e＝語意嵌入向量（用 text-embedding-3-small 編碼）。總長度限制 l_e ≤ 64 詞。</p>
+<p>雙流互補：技能確保穩健工具執行、經驗引導適應性選擇。</p>
+<h3 id="2-階段一知識累積accumulation">2. 階段一：知識累積（Accumulation）</h3>
+<p><strong>A. Rollout Summary（多輪軌跡總結）</strong>：每道訓練題目執行 N=4 條 rollout。MLLM_kb 接收交錯影像觀察＋軌跡文本，分析每張影像與其局部生成上下文（工具呼叫、中間輸出、任務需求），產生軌跡摘要 SR_i 與技能片段 ΔK_i。關鍵：摘要不只是記錄&quot;做了什麼&quot;，還記錄&quot;什麼視覺證據驅動了該行動&quot;及該證據如何影響後續決策。</p>
+<p><strong>B. Cross-Rollout Critique（跨軌跡對比批判）</strong>：MLLM_kb 對比成功與失敗軌跡，輸出結構化經驗更新 ΔE_i：{add e, modify ⟨eid, e&#x27;⟩}，每題最多 4 個操作。經驗須泛化至同類問題，長度 ≤64 詞。</p>
+<p><strong>C. 階層式固化（Hierarchical Consolidation）</strong>：</p>
+<ul>
+<li>經驗固化：新經驗 e 先檢查是否與庫中任一現有條目語意相似度（cos &gt; θ_sim=0.70）——若相似，則將 e 與所有相似條目一併交給 MLLM_kb 產出單一合併條目（保留核心洞察、刪除冗餘）；否則直接新增。庫容量超過 N_max^E=120 時，MLLM_kb 依泛化性與可操作性評分修剪低品質條目。</li>
+<li>技能固化：技能片段 ΔK_i 與全域技能文件 K 一併交給 MLLM_kb，後者逐段決策更新/合併/移除。文件長度超過 L_max^K=1000 詞時觸發精煉：MLLM_kb 自評每個元件的泛化性、工作流正確性、精簡度，移除過度具體細節、替換具體實例為可重用佔位符。</li>
+</ul>
+<h3 id="3-階段二推論inference">3. 階段二：推論（Inference）</h3>
+<p><strong>任務分解檢索</strong>：MLLM_kb 將任務文字 q 與影像 I 分解為 n_g 個抽象子任務 G = {g_1, ..., g_ng}（如「影像偏暗」、「幾何比較」、「錯誤恢復」），每個子任務以語意嵌入搜尋 top-k=3 條經驗。分解式檢索較單一檢索覆蓋面更廣。</p>
+<p><strong>視覺適應</strong>：</p>
+<ul>
+<li>經驗改寫：MLLM_kb 接收檢索經驗＋當前任務描述＋當前影像，將每個經驗的條件重寫至匹配當前任務與視覺狀態、用任務相關細節實例化行動、丟棄顯然不適用的經驗。</li>
+<li>技能適配：MLLM_kb 修剪不相關段落、將改寫後的經驗整合進工作流步驟、調整程式碼模板至當前任務相關。</li>
+</ul>
+<p><strong>非規範注入</strong>：適配後的技能以非規範參考的形式注入 system prompt，允許 agent 保留彈性。</p>
+<h3 id="4-持續學習閉環">4. 持續學習閉環</h3>
+<p>使用歷史 H_usage = ⟨K_adapted, E_ret⟩ 回饋至累積階段，逐步精煉知識庫。</p>
+<h1 id="xskill多模態代理從經驗與技能中的持續學習重點摘要續-實驗設計">《XSkill：多模態代理從經驗與技能中的持續學習》重點摘要（續 實驗設計）</h1>
+<h2 id="實驗設計3">實驗設計（§3）</h2>
+<p><strong>五個 benchmark 三領域</strong>：(1) 視覺工具使用——VisualToolBench、TIR-Bench（過濾至 5 類相容任務）；(2) 多模態搜尋——MMSearch-Plus、MMBrowseComp（純測試，用於 OOD 轉移）；(3) 全方位——AgentVista。每 benchmark 抽 100 題訓練、其餘測試。工具集：程式碼解釋器＋網頁搜尋＋影像搜尋＋網頁瀏覽。</p>
+<p><strong>四個 backbone</strong>：Gemini-2.5-Pro、Gemini-3-Flash、GPT-5-mini（用 Gemini-3-Flash 累積的知識）、o4-mini（同）。採 text-embedding-3-small 嵌入，T=0.6，top-p=1.0，max turns=20。</p>
+<p><strong>指標</strong>：Average@4（4 次 rollout 平均成功率，反映可靠性）、Pass@4（至少一次成功比例，反映上限能力）。</p>
+<p><strong>基線</strong>：AWM（Agent Workflow Memory）、Dynamic CheatSheet、Agent-KB。所有方法在相同訓練集上收集經驗、推論時檢索。</p>
+<h2 id="主要結果3234">主要結果（§3.2–§3.4）</h2>
+<p><strong>Overall</strong>：XSkill 在所有 benchmark 與模型組合上一致優於工具基線（Average@4 +2.58–6.71 分）、也優於所有學習型基線。最顯著差距：TIR-Bench 上 Gemini-3-Flash 的 Average@4 達到 47.75%，較最強基線 Agent-KB 高出 11.13 分。</p>
+<p><strong>消融</strong>（VisualToolBench, Gemini-2.5-Pro）：</p>
+<ul>
+<li>移除經驗流：-3.04 分</li>
+<li>移除技能流：-3.85 分</li>
+<li>兩階段貢獻：Phase 1（經驗管理/技能管理）移除各 -4.09/-3.62 分 &gt; Phase 2（任務分解/適配）-1.28/-1.52 分 → 知識品質比檢索機制更關鍵</li>
+</ul>
+<p><strong>技能消除執行錯誤</strong>：Experience Only→Skill Only 設定轉換使總錯誤數從 168（29.9%）降至 95（15.3%）；語法錯誤從 114（20.3%）降至 71（11.4%）；工具名稱錯誤接近清零（16→2）。</p>
+<p><strong>經驗驅動彈性編排</strong>：經驗顯著改變工具使用分佈——VisualToolBench 上程式碼使用從 66.63% → 76.97%（全管線）；MMSearch-Plus 上程式碼從 6.18% → 14.37%，影像搜尋從 15.43% → 23.89%。</p>
+<p><strong>Rollout 數量影響</strong>：N ∈ {1,2,3,4} 時 Average@4 與 Pass@4 持續改善，來自更豐富的軌跡多樣性。</p>
+<p><strong>零樣本跨任務轉移</strong>：VisualToolBench→TIR-Bench、MMSearch-Plus→MMBrowseComp，平均較 Agent-KB 高出 2–3 分。原因：階層式固化移除案例特定細節、保留泛化洞察；適配過程使經驗與技能貼合當前任務。</p>
+<h2 id="關鍵數字">關鍵數字</h2>
+<ul>
+<li>相似度合併閾值 θ_sim = 0.70</li>
+<li>經驗庫容量上限 N_max^E = 120 條</li>
+<li>每條經驗 ≤ 64 詞</li>
+<li>技能文件長度觸發精煉閾值 L_max^K = 1000 詞</li>
+<li>檢索 top-k = 3 條經驗</li>
+<li>MLLM_kb 萃取溫度 0.6，推論溫度 0.3</li>
+<li>每任務最多產生 4 個經驗更新操作</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《從工具呼叫到符號思考：置身持久 Lisp 元編程迴圈中的 LLM》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jordi de la Torre（獨立研究者，資安計算機科學與數學博士，Barcelona, ES）</p><p>日期：2025-06</p><p>arXiv：2506.10021</p><p><a href="https://arxiv.org/abs/2506.10021" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="從工具呼叫到符號思考置身持久-lisp-元編程迴圈中的-llm重點摘要">《從工具呼叫到符號思考：置身持久 Lisp 元編程迴圈中的 LLM》重點摘要</h1>
+<blockquote>
+<p>⚠️ <strong>本文為概念性框架（conceptual framework）</strong>，作者於首頁腳註明言：旨在<strong>指引未來實作</strong>，而非報告實驗結果。全篇無實作、無 benchmark、無實證數據，只有架構設計與原則。</p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p>把 LLM 接上一個<strong>持久、互動的 Common Lisp REPL</strong>（SBCL）：模型在生成串流中直接吐出 <code>&lt;lisp&gt;...&lt;/lisp&gt;</code> 程式碼區塊，由一層<strong>串流感知中介層（middleware）<strong>攔截、送進 REPL 求值、再把結果</strong>回注</strong>生成串流；因為 REPL 狀態跨對話回合持久保存，模型能<strong>定義、呼叫並演化自己的工具</strong>（函式／巨集／DSL），從「呼叫固定 API 的工具使用者」升級為「在活體符號環境裡自建工具、自省、自我延伸的元編程者」——把工具呼叫（tool calling）轉化為<strong>符號思考（symbolic thinking）</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>當前 LLM 的工具使用建立在<strong>預定義、靜態</strong>的 API／工具集／檢索管線之上：工具由人類事先寫好、彼此孤立、呼叫完即消失（ephemeral），模型無法<strong>建構或演化自己的工具環境</strong>。作者主張把 Lisp REPL 當成模型的<strong>持久編程與推理環境</strong>，讓工具能累積成長、狀態能跨回合保存，突破固定工具箱的天花板。</p>
+<h2 id="核心架構三組件">核心架構（三組件）</h2>
+<ul>
+<li><strong>① 語言模型後端（LM Backend）</strong>：處理輸入、生成回應；可在自然語言輸出中<strong>內嵌</strong> <code>&lt;lisp&gt;...&lt;/lisp&gt;</code> 標籤包住的 Lisp 程式碼。支援本地（Ollama）或遠端（OpenAI GPT）。</li>
+<li><strong>② 中介層（Middleware Layer）</strong>：一個<strong>串流感知代理（stream-aware proxy）</strong>，攔截模型逐 token 的輸出。流程＝偵測到 <code>&lt;lisp&gt;</code> 區塊 → <strong>暫停生成</strong> → 抽出程式碼送 REPL → 捕捉求值結果 → 把結果<strong>回注</strong>串流 → 恢復生成，讓結果「彷彿本來就是模型輸出的一部分」無縫接續。</li>
+<li><strong>③ 持久 Lisp REPL</strong>：通常用 <strong>SBCL（Steel Bank Common Lisp）</strong>，跨對話回合保存長期程式狀態——函式／變數／巨集定義持續存活，並支援內省（introspection）與動態重定義。</li>
+</ul>
+<h2 id="核心機制">核心機制</h2>
+<ol>
+<li><strong>動態工具創建＋狀態持久</strong>：Lisp 定義在同一 REPL session 內<strong>跨呼叫持久</strong>（不像一般 function call 用完即棄），可累積出一個「<strong>不斷成長的函式／巨集／工具庫</strong>」，隨對話推進支援越來越複雜的行為。</li>
+<li><strong>反射式編程（reflective programming）</strong>：靠 Lisp 的內省設計，模型能動態檢視當前環境——查詢可用函式、檢查原始碼、即時重定義程序——形成「<strong>自我覺察的生成流</strong>」：不只寫程式，還能推理自己所寫程式的結構與行為。</li>
+<li><strong>巨集元編程（metaprogramming via macros）</strong>：善用 Lisp 強大的巨集系統與高階函式，模型可<strong>自定義 DSL 或控制結構</strong>來貼合任務。</li>
+<li><strong>生成式自我延伸（generative self-extension）</strong>（推測性）：模型或可利用 Lisp「修改自身結構與行為」的能力，建構生成管線、可重用常式或包裝器，來<strong>為自己的推理搭鷹架</strong>。</li>
+</ol>
+<h2 id="為何選-lisp尤其-common-lisp">為何選 Lisp（尤其 Common Lisp）</h2>
+<ul>
+<li><strong>同像性（homoiconicity）</strong>：程式碼與資料統一表示，天然契合 LLM 生成與操作程式的能力，是元編程的根基。</li>
+<li><strong>極簡一致語法</strong>：降低 token 預測的計算負擔。</li>
+<li><strong>符號 AI 血統</strong>：長年是符號 AI 核心，累積大量系統、慣用法與文獻。</li>
+<li><strong>可延展性</strong>：巨集、一等符號、動態重定義讓模型能<strong>演化語言本身</strong>。</li>
+<li><strong>選 Common Lisp 而非 Scheme</strong>：因其豐富標準庫、強大物件系統（CLOS）、進階錯誤處理（condition system）、能做<strong>完整語言擴充</strong>的巨集，以及支援增量與持續互動的 REPL、支撐「持久、可適應代理」的執行期修改能力。</li>
+</ul>
+<h2 id="與既有做法的對照">與既有做法的對照</h2>
+<ul>
+<li><strong>vs 標準 function calling</strong>：傳統是孤立、不持久的函式呼叫；本架構維持<strong>有狀態工具</strong>與<strong>環境累積演化</strong>。</li>
+<li><strong>vs ReAct／代理框架</strong>：可作為代理框架內的一層，支援把複雜任務<strong>委派給 Lisp 子程序</strong>、或協調多代理。</li>
+<li>⚠️ 本文<strong>未明確引用或對照 MCP（Model Context Protocol）</strong>，也未對 ReAct 做細部 benchmark（因為根本沒有實驗）。</li>
+</ul>
+<h2 id="應用場景">應用場景</h2>
+<p>科學計算（符號代數／解方程）、互動式編程助手（session 中增量建工具箱）、代理框架（任務委派與多代理協調）、自然語言到邏輯的翻譯（動態建構把 NL 指令轉可執行碼的直譯器）；以及作為 RL 的<strong>符號接地環境</strong>——活體可編程環境讓模型能測試假設、除錯邏輯、迭代精煉策略。</p>
+<h2 id="局限與安全">局限與安全</h2>
+<ul>
+<li><strong>最大限制＝純概念、零實證</strong>：無 POC、無實作細節、無評測。</li>
+<li><strong>安全風險</strong>：讓 LLM 在活體環境執行<strong>任意程式碼</strong>，有不安全操作（系統存取、敏感資源操縱）之虞。</li>
+<li><strong>緩解建議</strong>：隔離執行環境（sandbox 容器）、精挑執行期可用函式、監控與存取控制；並坦承未來須處理對抗性穩健、逃逸嘗試、資源耗盡等問題。</li>
+<li><strong>未來工作</strong>：先做三組件 POC（串流中介＋持久 SBCL＋sandbox）評估工具跨回合的持久性與可靠度；再優化低延遲、建混合符號-神經推理 benchmark、研究自我修改／遞迴生成碼的湧現行為、擴展到 Lisp 以外語言、多代理共享符號工作區、工具生成與重用的元學習。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>定位</strong>：<strong>願景／架構設計論文（cs.PL）</strong>，單一作者、非同儕評審的概念稿。與 I 類 <a class="paper-reference" href="2508.00604_Composable_OS_Kernel.%E6%91%98%E8%A6%81.html">2508.00604</a>（自主智能可組合 OS 核心架構）同屬「為 agent 打底層執行環境」的設計論文，但本文更聚焦「<strong>以持久 Lisp REPL 當 agent 的可演化工具環境</strong>」這一具體提案。</li>
+<li><strong>最值得記</strong>：<code>&lt;lisp&gt;...&lt;/lisp&gt;</code> <strong>內嵌＋串流攔截＋結果回注</strong>的中介層協定、<strong>REPL 狀態跨回合持久</strong>帶來的「工具庫累積演化」、以及以<strong>同像性／巨集</strong>把工具呼叫升級為<strong>元編程式符號思考</strong>的核心論點。</li>
+<li><strong>務實提醒</strong>：這是一份「該怎麼蓋」的藍圖而非「蓋好了」的報告——若要落地，價值在其<strong>協定設計與 Lisp 選型論證</strong>，工程與安全細節得自己補。適合對 <strong>LLM＋符號環境、自建/自省工具、agent 執行期架構、元編程式推理</strong> 有興趣者取其設計思路。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2506.10021_Persistent_Lisp_Metaprogramming_Loop.zh-TW.html"><code>../translate/2506.10021_Persistent_Lisp_Metaprogramming_Loop.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

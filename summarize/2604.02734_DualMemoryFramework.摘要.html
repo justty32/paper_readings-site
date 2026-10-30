@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《對齊進展與可行性：長時程 LLM 代理的神經符號雙記憶框架》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Bin Wen, Ruoxuan Zhang, Yang Chen, Hongxia Xie, Lan-Zhe Guo（南京大學 / 吉林大學）</p><p>日期：2026-04，LLM Agent × 神經符號雙記憶架構（進展記憶+可行性記憶分離）</p><p>arXiv：2604.02734</p><p><a href="https://arxiv.org/abs/2604.02734" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="對齊進展與可行性長時程-llm-代理的神經符號雙記憶框架重點摘要">《對齊進展與可行性：長時程 LLM 代理的神經符號雙記憶框架》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>將長時程代理的失敗拆成兩種本質不同的錯誤——全域進展漂移（Progress Drift，需模糊語意匹配）與局部可行性違規（Feasibility Violation，需嚴格邏輯邊界）——並以分離的神經+符號雙記憶來個別處理</strong>：神經 Progress Memory 從成功軌跡提取階段化語意藍圖引導全局推進，符號 Feasibility Memory 從失敗轉換誘導出可執行 Python 驗證函數攔截無效動作。兩者在推論迴圈中同步運作，在 ALFWorld/WebShop/TextCraft 三個長時程基準上大幅超越所有對比方法，且消融實驗證實兩記憶模組互補：進展記憶改善階段推進效率（ATL↓），可行性記憶壓低無效動作率（IAR↓）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>既有方法（Reflexion、ExpeL、AWM 等）試圖以<strong>單一架構</strong>同時處理進展引導與可行性限制，但這兩者本質矛盾：前者依賴模糊語意概括（適合神經網路），後者需要嚴格邏輯邊界與狀態驗證（適合符號系統）。</li>
+<li>強行合併導致神經幻覺在硬限制上失準，或符號規則僵化到無法處理複雜語意。</li>
+<li>本文提出「雙對齊危機」觀點：全域進展漂移（global Progress Drift）與局部可行性違規（local Feasibility Violation）是兩種耦合但本質不同的失敗模式，應由不同架構對應。</li>
+</ul>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>雙記憶建構（離線階段）</strong>：以 ReAct 代理在不相交的 50 題訓練集上收集軌跡 D。失敗轉換→Inductor Agent 對比正/負例，推斷自然語言約束並<strong>編譯成可執行 Python 驗證函數 f_r</strong>（輸出 cr∈{0,1} + 錯誤訊息 + 修正建議），經假陽性篩除與貪婪覆蓋選擇後構成 <strong>Feasibility Memory M^f</strong>。成功軌跡→Distiller Agent 沿時間軸解耦成有序進展錨點 p_1→…→p_L + 對應動作塊（action chunk），以兩層神經索引（任務級 + 錨點級，cosine/all-mpnet-base-v2）構成 <strong>Progress Memory M^p</strong>。</li>
+<li><strong>雙對齊推論（線上階段）</strong>：Blueprint Planner 用檢索到的歷史藍圖產生當前任務的結構化藍圖 P̂。每步：神經 Actor 根據當前錨點 + 參考動作塊生成候選動作 → 符號 Feasibility Memory 重建場景圖並執行 Python 驗證，攔截後迭代修正（最多 5 次）→ 執行後 Progress Monitor 判斷錨點是否完成，自動推進至下一階段。</li>
+<li><strong>關鍵設計決策</strong>：場景圖僅由 POMDP 軌跡可觀測資訊重建（無特權 oracle）；驗證協定保守（零假陽性篩選）；錨點級檢索優於任務級檢索（錨點級 SR=94 vs RAG=84）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>ALFWorld</strong>（134 題看不見分集）：SR 94.78%（AWM 88.81%），IAR 11.81%，ATL 14.60。</li>
+<li><strong>WebShop</strong>（100 題）：SR 51%（Reflexion 35%），Score 0.7132（WALL-E 2.0 0.5998）。</li>
+<li><strong>TextCraft</strong>（100 題）：SR 94%（ExpeL 88%）。</li>
+<li><strong>消融實驗（ALFWorld）</strong>：移除 Feasibility Memory → IAR 26.33%（+14.52pp），SR 85.82%；移除 Progress Memory → ATL 20.30（+5.70），SR 90.30%；驗證器規則（Verifier Rules）勝過純提示規則（Prompt Rules），後者反而因過度保守降低 SR。</li>
+<li><strong>設計消融</strong>：標準 RAG（任務級全軌跡檢索）SR=84，不如無記憶（SR=90）——未對齊當前階段的檢索會分散注意力；藍圖+錨點檢索 SR=94、ATL=16.18 最優。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>需離線軌跡資料建構記憶（50 題訓練集），極稀疏獎勵或難以詮釋的失敗訊號下難以滿足。</li>
+<li>場景圖建構與有效性訊號定義為環境特定（需薄層適配器），ALFWorld/WebShop/TextCraft 各有專屬 parser。</li>
+<li>符號規則僅攔截明確的環境拒絕（&quot;Nothing happens.&quot;/&quot;Invalid action!&quot;/&quot;Could not&quot;），不處理語意上不對但環境仍接受的動作。</li>
+</ul>
+<h2 id="對讀者的價值ai_core-接點">對讀者的價值（ai_core 接點）</h2>
+<ul>
+<li><strong>ai_core §3.6 固化引擎（雙記憶框架＝經驗+技能分離固化）</strong>：本文明確示範了「神經記憶固化語意經驗 vs 符號記憶固化成執行期驗證規則」的分工——Progress Memory 把成功軌跡結晶成階段化藍圖（=「經驗固化」），Feasibility Memory 把失敗轉換編譯成可執行 Python 驗證函數（=「技能固化為確定性程式碼」）。這正是固化引擎的核心命題：<strong>何時該以神經表徵固化經驗（模糊但適應性強），何時該以符號程式固化技能（嚴格且可獨立於 LLM 驗證）</strong>。兩個記憶在推理時同步運作的架構，為固化引擎的「雙軌固化策略」提供了可直接借鏡的設計藍本——經驗庫負責提案，技能庫負責驗證。</li>
+<li>與本庫相關論文的脈絡：<a class="paper-reference" href="2605.17596_NeuSymMS.%E6%91%98%E8%A6%81.html">2605.17596</a> NeuSymMS（神經符號記憶系統＝§3.6 固化記憶+自我策展）與<a class="paper-reference" href="2605.01293_LiftingTraces.%E6%91%98%E8%A6%81.html">2605.01293</a> Lifting Traces to Logic（軌跡→邏輯程式技能固化）在各自方向上是記憶固化與技能固化的深化，而本文的貢獻在於<strong>同時闡明兩者為何必須分離</strong>——進展校準與可行性校準的推理需求根本不同——並給出統一的雙記憶推理迴圈設計。</li>
+<li>一個可操作的啟發：固化引擎不該只有一種固化形式——「把 LLM 反覆處理的案例結晶成確定性程式碼」應同時產出<strong>語意導航資產</strong>（neural embedding + 結構化藍圖）與<strong>邏輯驗證資產</strong>（executable Python verifier），兩者在推理時分工協作而非互相取代。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2604.02734_DualMemoryFramework.zh-TW.html"><code>../translate/2604.02734_DualMemoryFramework.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

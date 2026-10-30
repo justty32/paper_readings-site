@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Vera：從風險發現到證據接地驗證的大規模 LLM Agent 安全測試》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yunhao Feng, Ruixiao Lin, Ming Wen, Qinqin He, Yanming Guo, Yifan Ding, Yutao Wu, Jialuo Chen, Zhuoer Xu, Xiaohu Du, Jianan Ma, Zixing Chen, Xingjun Ma, Yunhao Chen, Xinhao Deng</p><p>日期：2026-07</p><p>arXiv：2607.01793</p><p><a href="https://arxiv.org/abs/2607.01793" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="vera從風險發現到證據接地驗證的大規模-llm-agent-安全測試重點摘要">《Vera：從風險發現到證據接地驗證的大規模 LLM Agent 安全測試》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>Vera 把 agent 安全評估改寫成可執行軟體測試：每個案例都有 safety goal、可重播初始狀態與 deterministic verifier，agent 在隔離 sandbox 中受自適應控制器測試，結果以環境狀態和工具證據判定；Vera-Bench 收錄 1,600 個 base scenarios、124 類風險，四套 production agent 在多通道攻擊下平均 ASR 達 93.9%。</p>
+<h2 id="核心問題">核心問題</h2>
+<p>現有測試容易把危險請求、危險意圖文字或嘗試呼叫工具當成已發生傷害。可是 agent 可能口頭拒絕後已完成副作用，也可能聲稱成功卻沒改變環境。另一問題是風險 taxonomy、測試環境、agent adapter 與 verifier 綁在一起，新增一種工具或風險就得整套重寫。</p>
+<p>Vera 的答案是三段自我強化管線：持續探索風險、把 taxonomy 編譯成 executable case、在 sandbox 內自適應執行並由證據 verifier 驗收。</p>
+<h2 id="方法">方法</h2>
+<h3 id="1-持續風險探索">1. 持續風險探索</h3>
+<p>把風險拆成三個正交維度：造成什麼傷害、如何誘發、在哪種工具環境發生。Summary Agent 從文獻建三棵階層 taxonomy，對概念執行 create／update／merge／delete；新 leaf 至少要有五篇論文或攻擊場景支持。範圍限於可從 deployed agent runtime 測試的風險。</p>
+<h3 id="2-可執行案例">2. 可執行案例</h3>
+<p>每個 case 是 <code>(safety goal, initial state, verifier)</code>。LLM 組合三棵 taxonomy 的 leaf，過濾不相容組合並去重；initializer 透過工具 API 建出場景，再把初始化 calls 固化成可重播 script。Verifier 也由 LLM 產生，但最後保存為 deterministic Python predicate。每個 base case 派生 benign、single-channel、multi-channel 三種條件。</p>
+<h3 id="3-執行與驗證">3. 執行與驗證</h3>
+<p>Agent adapter 把不同框架事件轉成共通 trajectory。MCP gateway 保存工具 arguments、原始回傳與實際餵給 agent 的觀察；多通道模式可 append、prefix 或 override 回傳內容。Control Agent 依 runtime observation 改寫請求、拆解任務或更換注入點，最多十輪。</p>
+<p>驗證證據有優先序：環境狀態 &gt; tool-call record &gt; agent response。工具呼叫只代表意圖，不保證 effect；文字只在文字本身就是違規時使用。Control Agent 報成功仍須 verifier 確認。</p>
+<h2 id="實驗">實驗</h2>
+<ul>
+<li>測試 OpenClaw、Hermes、Codex、Claude Code；每次以 12-container Docker Compose stack 隔離，提供 72 個 MCP tool functions 與五套自架服務。</li>
+<li>Vera-Bench 有 1,600 個 base scenarios，每個跑三種條件；taxonomy 含 124 個 leaf-level risks、77 個 attack methods、30 個 environments。</li>
+<li>single-channel 平均 ASR 90.6%；multi-channel 93.9%；benign 任務完成率 70.5%。多通道相對單通道只多 3.3pp，主攻擊力來自會依反應調整的 user-message controller。</li>
+<li>多通道 ASR：Claude Code 93.1%、Codex 95.8%、OpenClaw 89.1%、Hermes 97.8%。這些數字是受控測試中的可實現違規率，不等於自然部署事故率。</li>
+<li>所有 Table I 的 80 格與 Table II 的 110 格 ESR 都高於 40%，作為組合後案例並非大批不相容 tuple 的間接證據。</li>
+<li>每次 execution 的中位數為 155k input tokens、3k output tokens、11 次工具呼叫；95 百分位為 789k、11k、38 次。</li>
+<li>以 Vera 資料微調 Qwen3Guard 後，在 Vera 安全分類達 accuracy 0.930、recall 0.903、F1 0.941；外部 R-Judge 上 accuracy 61.7%，只提供初步跨分布證據。</li>
+</ul>
+<h2 id="局限與閱讀警告">局限與閱讀警告</h2>
+<ul>
+<li>論文沒有獨立 limitations 節；以下界線來自方法與實驗設計。</li>
+<li>taxonomy、goal、initializer、verifier 與 Control Agent 都依賴 LLM。最後 predicate 雖確定，但 predicate 是否代表正確 safety semantics 仍需人工／測試治理。</li>
+<li>「adaptive driver 提升 20.1pp」以 benign 對 single-channel 比較；兩者不只是否有適應性，也分別是合法完成率與攻擊成功率，不能當成乾淨的 controller ablation。</li>
+<li>四個 agent 的模型、預設 policy 與 orchestration 能力不同，跨 agent 排名混合能力、基礎設施失敗與安全性；OpenClaw benign 僅 58.0% 就是明顯混雜。</li>
+<li>案例在自架服務與 MCP gateway 中執行，仍不是不可逆的真實外部世界。</li>
+</ul>
+<h2 id="對-freepy-的價值">對 FreePy 的價值</h2>
+<p>Vera 最適合成為 Agent Machine 的驗收框架，而非 runtime 本身：</p>
+<ul>
+<li><code>Goal = postcondition</code> 可直接落成 Vera 的 goal、initial state、deterministic verifier 三元組。</li>
+<li><code>ToolRun</code> 應同時保存 intent、原始 tool result、delivered observation 與 terminal environment evidence。</li>
+<li>verifier 的證據優先序支持 FreePy 區分「attempted」「returned」「effect committed」「goal achieved」。</li>
+<li>每次執行保存完整 artifact，可用來測 reducer replay、effect unknown、stale activation、capability denial 與 crash matrix。</li>
+</ul>
+<p>真正值得複製的原則是：模型可以生成測試，但不能自行宣布測試通過。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

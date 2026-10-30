@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>透過 Lean 進行流程驗證的定理證明強化學習 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Minsu Kim, Se-Young Yun（KAIST）</p><p>日期：2026-06</p><p>arXiv：2606.20068</p><p><a href="https://arxiv.org/abs/2606.20068" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="透過-lean-進行流程驗證的定理證明強化學習">透過 Lean 進行流程驗證的定理證明強化學習</h1>
+<h2 id="摘要">摘要</h2>
+<p>可驗證獎勵強化學習（RLVR）通常仰賴<strong>單一二元驗證信號</strong>，但形式推理中的符號證明助手能提供豐富、細粒度的結構化回饋。這個「結構化流程」與「非結構化獎勵」之間的落差，凸顯了<strong>又密集又健全</strong>的回饋之重要性。本文證明：<strong>Lean 證明助手本身可作為符號流程預言機</strong>，在訓練期間同時供給 outcome 級與細粒度戰術級的已驗證回饋。證明嘗試被解析為戰術序列，Lean 的 elaboration 標出<strong>局部健全的步驟</strong>與<strong>最早失敗的步驟</strong>，產生根植於型別論、由驗證器接地的密集信用信號。我們把這些結構化獎勵以 <strong>first-error propagation</strong> 與 <strong>first-token credit</strong> 方法納入 GRPO 式的 RL 目標，平衡 outcome 與 process 級優勢。在 STP-Lean 與 DeepSeek-Prover-V1.5 上的實驗顯示，戰術級監督在多數設定優於 outcome-only 基線，於 MiniF2F、ProofNet 等取得提升。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>自動定理證明通常分兩階段：<strong>自動形式化</strong>（把自然語言陳述譯成形式陳述）與<strong>證明生成</strong>（逐步樹搜或一次性整證）。既有方法（Lean-STaR、RMaxTS）只在<strong>推論時</strong>把 Lean 當步驟檢查器；近期工作把 Lean 當<strong>整證驗證器</strong>用於訓練。本文更進一步：<strong>用 Lean 的細粒度戰術級回饋作為線上 RL 的過程獎勵</strong>。</p>
+<p>不同於依賴 PRM（過程獎勵模型）或長自然語言 CoT 的近期做法，我們直接把 Lean 證明助手當訓練期的符號流程預言機，<strong>無需任何自然語言引導</strong>。對每個生成的證明，Lean 提供：(i) 全域 outcome 信號；(ii) 經由 info tree 與 error log 的細粒度戰術級回饋。</p>
+<p><strong>挑戰</strong>：Lean 輸出的是符號、樹狀結構的語言回饋（證明狀態、錯誤位置），而 LLM 在自回歸 token 序列上運作、從 scalar 獎勵學習。這個表徵不匹配造成信用分配難題——符號驗證器回饋必須轉成結構化的 token 級訓練信號。為此我們提出結構化信用分配框架，含三元件：(i) 納入細粒度信號的形式化、(ii) 把 Lean 符號回饋化約為逐戰術分數的原則規則、(iii) 從逐戰術分數到 token 級優勢的映射。我們以<strong>戰術級 MDP</strong>、根植 Lean 語意的<strong>first-error propagation 規則</strong>、<strong>first-token credit 策略</strong>實例化此管線。</p>
+<p><strong>貢獻</strong>：(1) 形式化 Lean 的符號戰術級回饋並化約為可賦信的 scalar；(2) 把 Lean 導出的 outcome＋戰術級獎勵整合進 RL，提供密集、可驗證的信用分配；(3) 在 MiniF2F、ProofNet 上穩定優於 outcome-only RL 與 vanilla 基線，<strong>不用自然語言記號、不用外部 PRM</strong>。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>自動定理證明分自動形式化與證明生成兩階段。既有做法（Lean-STaR、RMaxTS）只把 Lean 當推論時步驟檢查器；近期工作把 Lean 當訓練時整證驗證器。本文則用 Lean 的<strong>細粒度戰術級回饋作為線上 RL 過程獎勵</strong>，超越單純步驟檢查或整證驗證。</p>
+<h2 id="3-方法前段">3. 方法（前段）</h2>
+<h3 id="31-形式化-lean-的符號回饋">3.1 形式化 Lean 的符號回饋</h3>
+<p>把 Lean 的符號戰術級回饋形式化，化約為可賦能 token 級信用的 scalar 訓練信號。<strong>Lean 確保戰術級健全性，而證明級完整性取決於整條序列是否解掉所有目標。</strong></p>
+<h3 id="32-戰術級-mdp">3.2 戰術級 MDP</h3>
+<p>定義以戰術為動作的 Markov 決策過程；獎勵函數對每個 （狀態， 戰術） 賦一戰術級獎勵。第 4 節以 Lean 導出的 outcome 與戰術級獎勵擴充此式得最終訓練信號。把 Lean 導出的戰術優勢注入 GRPO：outcome 信號留在回應層級，戰術級信號映射到<strong>每個戰術的第一個 token</strong>，保留 GRPO 簡潔性同時解決稀疏信用。</p>
+<h2 id="4-結構化獎勵">4. 結構化獎勵</h2>
+<h3 id="41-定義戰術級獎勵">4.1 定義戰術級獎勵</h3>
+<p>除二元 outcome 驗證信號外，進一步根據 Lean parser 的 AST 回饋設計獎勵，區分不同戰術：某戰術是否成功 elaborate（型別正確、局部健全，但可能留未解子目標），或有型別錯誤／parser 不匹配。據此賦更細粒度的過程獎勵。</p>
+<p><strong>First Error Propagation（首錯傳播）</strong>：按證明狀態樹節點遞增排序，給定戰術序列 (T₁…T_N)，一旦在 T_j 觀察到錯誤，就把該失敗傳播給其後所有 T_k(k≥j)，皆視為錯誤以賦獎。理由：LLM 自回歸生成下，首個錯誤戰術之後的續寫都條件於無效前綴，無法構成有效推理；首錯傳播確保因果與型別論一致的信用分配。</p>
+<h3 id="42-不算-return">4.2 不算 return</h3>
+<p>不跨整條證明軌跡傳播累積獎勵，而把信用分配收斂到 Lean 驗證的戰術級信號。一般 RL 裡次優步可因後續高獎勵仍得正回報，但在數學證明中這不健全——首錯傳播下，戰術一旦失敗其後皆無效。實測 return-based 信用優化不穩（需 value function 或輔助估計器正規化尺度、降變異）。故採更簡公式：結合正規化 outcome 信號與戰術級獎勵，不計 return。</p>
+<h2 id="5-實驗">5. 實驗</h2>
+<p>在 <strong>STP-Lean(7B)</strong> 與 <strong>DeepSeek-Prover-V1.5+STP(7B)</strong> 上，以 pass@32／64 評估 MiniF2F 與 ProofNet。加入戰術級監督後：STP-Lean 的 ProofNet 由 ~17.2% 升至 <strong>18.6–19.1%</strong>、MiniF2F pass@64 由 ~56.7% 升至 <strong>59.2%</strong>；DeepSeek-Prover-V1.5+STP 亦同步提升。戰術級監督在多數設定優於 outcome-only 基線，且更穩定、更 robust。</p>
+<h2 id="結論">結論</h2>
+<p>我們證明符號證明助手不只是評測時的驗證器，更能在訓練時擔任<strong>過程級獎勵預言機</strong>。這開啟一條把語言模型的可擴展性與符號驗證的可靠性結合於形式推理的 RL 道路。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2606.20068_Process_Verified_RL_Lean.%E6%91%98%E8%A6%81.html"><code>../summarize/2606.20068_Process_Verified_RL_Lean.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

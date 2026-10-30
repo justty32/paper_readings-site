@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《用 Jumpy 世界模型做組合式規劃（CompPlan）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jesse Farebrother、Matteo Pirotta、Andrea Tirinzoni、Marc G. Bellemare、Alessandro Lazaric、Ahmed Touati（FAIR at Meta／Mila／McGill）</p><p>日期：2026-02，Model-based RL／時間抽象規劃／多步（jumpy）世界模型</p><p>arXiv：2602.19634</p><p><a href="https://arxiv.org/abs/2602.19634" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="用-jumpy-世界模型做組合式規劃compplan重點摘要">《用 Jumpy 世界模型做組合式規劃（CompPlan）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>CompPlan</strong>：與其在「原始動作」上規劃（一步世界模型，長視界複利誤差大），不如把一組<strong>預訓策略當成時間抽象的「動作」<strong>來組合；本文學一個</strong>策略與視界雙條件的「jumpy（多步）世界模型」</strong>——即 Geometric Horizon Model（GHM，預測在某策略下未來狀態占用分布的生成模型），用它估計「隨機在多個策略間切換的組合策略」之價值，無須再與環境互動或微調；在 OGBench 導航（antmaze）與操作（cube）長視界任務上，組合式規劃對各種 base policy 的 zero-shot 表現平均提升約 <strong>200%</strong>（相對一步動作規劃），且勝過 SOTA 階層式法（HIQL、SHARSA）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>大規模 foundation policy 能 zero-shot 處理許多任務，但面對需要「跨長序列決策」的複雜長視界問題常失敗——單一策略的規劃視界不足，必須<strong>組合策略</strong>。傳統階層式 RL（options 框架）靠訓練任務專屬的高階策略來達成組合性（手工或自動的任務分解）。本文走根本不同的路：不學任務專屬階層，而在<strong>參數化策略上直接做組合式規劃</strong>，無須任務專屬訓練。核心障礙：要估「依序執行多個策略所誘導的狀態訪問分布」，但長視界預測的複利誤差讓這件事很難。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>jumpy world model = GHM（Geometric Horizon Model）</strong>：不預測一步轉移，而是預測某策略 π 在「幾何衰減視界」下的後繼測度（successor measure，未來狀態占用分布）的生成模型。學一個<strong>策略 z 與折扣 γ 雙條件</strong>的統一模型，涵蓋多策略 × 多時間尺度。</li>
+<li><strong>Geometric Switching Policy（GSP）價值的可組合估計</strong>：把「以幾何分布時長在 π_{z1}→π_{z2}→…→π_{zn} 間切換」的組合策略，其後繼測度寫成 <strong>n 個成分的混合分布</strong>（每成分權重 w_k 反映「撐過前 k-1 段未中止、且仍在第 k 段」）；據此可序列式 rollout 取樣（從 (s,a) 依序跳到 S_1^+、S_2^+…），用加權和 <code>Σ_k w_k r(S_k^+)</code> 得 Q 的<strong>無偏單樣本估計</strong>（推廣 Thakoor 2022、Janner 2020 到「策略與切換機率皆可變」）。</li>
+<li><strong>跨視界一致性目標（td-hc）</strong>：直接學每個視界變異大、訓練不穩；在 Temporal Difference Flows（td-flow）上加一條<strong>Bellman 式跨折扣（β≤γ）一致性</strong>約束，用短視界 bootstrap 長視界，提升長視界準確度。</li>
+<li><strong>完整 CompPlan 流程</strong>：以目標條件策略（z=subgoal）為例；規劃時對候選 subgoal 序列用 GHM 取樣評估、選最佳組合，全在測試時 off-policy 完成，不再與環境互動或微調。</li>
+</ul>
+<h2 id="結果ogbenchantmaze-mediumlargegiant--cube-multi-cube3-seed成功率">結果（OGBench：antmaze medium/large/giant + cube multi-cube，3 seed，成功率）</h2>
+<ul>
+<li><strong>組合式規劃一致勝 zero-shot</strong>：跨 5 種 base policy（GC-TD3、GC-1S、CRL、GC-BC、HFBC），長視界任務增益尤大（antmaze-giant、cube-{3,4} 最極端可從 <strong>10% → 90%</strong>）。</li>
+<li><strong>平均約 200% 相對提升</strong>（相對一步動作規劃 ActionPlan，長視界域）；相對 GPI（policy 選擇）約 <strong>89%</strong> 提升 → 證明「組合策略序列」勝過「只在策略間選一個」與「動作層級規劃」。</li>
+<li><strong>勝階層式 SOTA</strong>：用 HFBC base policy 時勝 HIQL 與 SHARSA;cube-4 上 CompPlan <strong>67%</strong> vs SHARSA 9%、HIQL 0%，且<strong>無須任務專屬訓練</strong>。</li>
+<li><strong>一致性目標有效</strong>（Table 3，γ=0.995，EMD↓）：td-hc 系統性改善長視界準確度，antmaze-giant + GC-1S 的 EMD 降 <strong>28%</strong>，定性上更少樣本穿牆。</li>
+<li>一個觀察：<strong>zero-shot 指標幾乎預測不了策略的「可組合性」</strong>——某些 zero-shot 弱的策略一旦被編排組合就大放異彩。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>聚焦目標條件策略（z=subgoal）;subgoal 提議分布需依域客製（antmaze 用 goal-conditioned GHM 採 256 序列、cube 用 unconditional GHM 採 1024）。</li>
+<li>本文是純數學等價的占用測度保持（不保軌跡級統計）；僅在 OGBench 模擬域驗證，未涉真機。</li>
+<li>仰賴一批已預訓好、品質夠的 base policy；組合效益隨 base policy 的歸納偏置而異（如 CRL 在 antmaze 強、cube 弱）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 D 類**「規劃 + 世界模型」<strong>的另一落點：與 <a class="paper-reference" href="2606.16489_BRICKS_WM_Modular_World_Model.%E6%91%98%E8%A6%81.html">2606.16489</a> BRICKS-WM、<a class="paper-reference" href="2606.14418_COMET_Object_Centric_MCTS.%E6%91%98%E8%A6%81.html">2606.14418</a> COMET 的「結構化單步動力學」正交——CompPlan 的世界模型是</strong>多步、jumpy 的占用分布**，把組合性放在<strong>策略／時間抽象層</strong>而非狀態表徵層。</li>
+<li>最值得記：<strong>「把預訓策略當時間抽象動作來組合，規劃在 GHM 占用分布上跳著做」</strong>；以及 <strong>「跨視界一致性（td-hc）治長視界複利誤差」</strong> 與 <strong>「組合後繼測度 = 混合分布、可序列 rollout 無偏估 Q」</strong> 兩個關鍵工具。對 [[ai_core 戰略主文件/roadmap]] 式「組合既有能力解新任務、不重訓」的人特別契合。</li>
+<li>重要洞見：<strong>zero-shot 表現 ≠ 可組合性</strong>——評估一個策略庫該看「編排後」的效用，而非單獨 zero-shot 分數。</li>
+<li>定位：理論 + OGBench 實證論文（FAIR/Mila），適合做 hierarchical RL、successor measure / GHM、test-time 組合規劃、foundation policy 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2602.19634_CompPlan_Jumpy_World_Models.zh-TW.html"><code>../translate/2602.19634_CompPlan_Jumpy_World_Models.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

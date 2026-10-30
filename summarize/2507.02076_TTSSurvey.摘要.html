@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《在預算內推理：LLM 自適應與可控測試時計算綜述（Reasoning on a Budget: A Survey of Adaptive and Controllable Test-Time Compute in LLMs）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Mohammad Ali Alomrani, Yingxue Zhang, Derek Li, Qianyi Sun, Soumyasundar Pal, Zhanguang Zhang, Yaochen Hu, Rohan Deepak Ajwani, Antonios Valkanas, Raika Karimi, Peng Cheng 等（華為 Noah&#x27;s Ark Lab, McGill, Mila）</p><p>日期：2025-07-02</p><p>arXiv：2507.02076</p><p><a href="https://arxiv.org/abs/2507.02076" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="在預算內推理llm-自適應與可控測試時計算綜述重點摘要">《在預算內推理：LLM 自適應與可控測試時計算綜述》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Alomrani 等人提出二層效率分類學</strong>：**L1（可控）**方法在固定推理預算（token 數／取樣數）下最大化準確率；**L2（自適應）**方法根據題目難度或模型信心動態分配計算量，無需使用者預設預算。論文同時對 Claude/o1/DeepSeek-R1/Gemini 等主流推理模型進行基準測試，揭示當前模型在簡單題上 overthinking、難題上 underthinking 的系統性低效。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>推理階段擴展（test-time scaling）讓 LLM 在數學等推理任務上取得大幅提升，但代價極高——經常消耗常規前向傳播 <strong>10 倍以上</strong>的計算。更關鍵的是：當前推理模型對簡單題（如 &quot;1+1=?&quot;）也生成冗長推理——這是 <strong>overthinking</strong>；而對難題又常欠推理——<strong>underthinking</strong>。這種「一刀切」的推理強度調度在大規模部署中造成巨大浪費，特別是在自駕、機器人、語音助理等對延遲敏感的應用場景中尤為突出。本綜述將效率方法系統化為 L1/L2 框架，涵蓋 prompting/SFT/RL 三條技術路線，並以實證基準揭示當前落差。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>二層效率分類學</strong>：L1=可控（controllable），滿足 max P(r,x) s.t. E(r,x)&gt;=1/C 的約束最佳化形式（使用者指定 C=token 數或取樣數）；L2=自適應（adaptive），最大化 P(r,x)+αE(r,x) 的無約束懲罰形式，無需預設 C。</li>
+<li><strong>L1-順序（token 級控制）</strong>：prompting 法中 s1 用「預算強制」（截斷+Wait 提示延長）、CoD（每步 ≤5 字）壓縮 token 但不限步數；SFT 法中 CoT-Valve 以 LoRA 適配器調控 CoT 長度、TokenSkip 按語義重要性壓縮、System-1.x 以 hybrid factor 動態切換快慢規劃；RL 法中 LCPO（L1-Exact/L1-Max）透過長度懲罰獎勵讓模型遵守 token 預算、Elastic Reasoning 將預算分為思考階段 t+解答階段 s、預算到達時強制插入 <code>&lt;/think&gt;</code>。</li>
+<li><strong>L1-並行（取樣數控制）</strong>：Self-Consistency（固定 N 次取樣+多數投票）、BoN（獎勵模型選最佳）、BoN-aware finetuning（訓練時就考慮推論階段的 BoN 過程來改善 exploration-exploitation）。</li>
+<li><strong>L2-順序（動態難度感知）</strong>：prompting 法中 CCoT 簡單地要求「簡潔」、SoT 用認知啟發式（概念鏈／區塊符號／專家詞彙）壓縮推理、MetaReasoner 以 contextual bandit 動態選擇提示策略；SFT 法中 TALE 讓模型預估題目所需 token 預算、C3oT/Pangu Embedded 訓練長短 CoT 混合並以特殊標記觸發、COCONUT/CODI/SoftCoT/LightThinker 將推理從離散 token 搬到連續潛在空間以跳過語言通順的冗餘 token；RL 法中長度懲罰獎勵（Kimi k1.5、O1-Pruner、DAST、IBPO、MRT、Dr.GRPO 等）是主流，區別在獎勵函數設計。</li>
+<li><strong>L2-並行（動態取樣停止）</strong>：Adaptive-Consistency 以 Beta 信心分數做停止準則、ESC 對當前多數答案做假設檢定、Path-Consistency 用已生成的推理前綴引導下一批取樣、ST-BoN 在早期分歧點就截斷劣勢路徑、Certaindex 語義熵指標動態分配集群資源。</li>
+<li><strong>基準測試發現</strong>：（a）Claude 3.7 的 thinking budget 參數在難題（AIME）上會大幅超支；（b）推理模型（o1/DeepSeek-R1）產出長達基線模型的 5 倍，但精簡的蒸餾模型（DeepSeek-Qwen 7B）反而最冗長且精度不佳——蒸餾可能導致死記推理軌跡而非泛化；（c）overthinking 不限於 STEM，在 MMLU Pro Non-STEM 同樣存在。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>全面的 L1/L2 技術路線圖（含 Table 1 的 RL 長度懲罰方法比較表）</li>
+<li>對 Claude/Gemini/o1/DeepSeek 等主流推理模型的效率基準</li>
+<li>識別出「蒸餾推理模型的逆效率現象」：蒸餾後模型輸出更長卻更不準</li>
+<li>整理出 prompting vs finetuning 的取捨決策架構（Section 6）</li>
+<li>指出未來方向：混合快慢 LLM、多模態 TTS 效率、擴散模型架構</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>未涵蓋推論階段系統級優化（量化、KV cache、模型壓縮），僅聚焦推理過程本身的效率</li>
+<li>RL 方法雖然泛化優於 SFT，但在過度欠擬合或過擬合的 checkpoint 上效果有限且訓練成本高</li>
+<li>連續潛在空間方法雖然省 token，但容易災難性遺忘且缺乏可解釋性</li>
+<li>多模態 TTS 效率研究仍十分稀少</li>
+</ul>
+<h2 id="對-ai_core-的關鍵連接">對 ai_core 的關鍵連接</h2>
+<ul>
+<li><strong>§3.3 成本梯度（TTS=測試時計算預算分配）</strong>：本文的 L1/L2 框架是成本梯度的直接技術骨架——L1 對應「在固定預算 C 下最優配置」的策略規劃，L2 對應「根據難度自適應升級/降級」的動態路由。具體而言：（a）級聯路由（如 TALE 的 token 預算估計器 → budget-aware prompt → 生成）本身就是一條成本梯度流水線；（b）BoN-SFT/BoN-RL 的「inference-aware training」概念——訓練時就把推理成本的取捨內化到模型權重——是成本梯度從「事後控制」走向「預先模型級固化」的核心路徑；（c）Parallel→Sequential 混合（MCTS/beam search）的成本分配問題（多少取樣？多少步？）直接對應 §3.3 的並行-順序混合預算分配決策。</li>
+<li><strong>§3.4 治理（拒絕為預設＋憑證准入）</strong>：L2 方法中的「停止準則」（Adaptive-Consistency 的 Beta 信心、ESC 的假設檢定、Certaindex 的語義熵）就是治理的「品質憑證」——模型自評信心不足時自動終止或升級，這是把 §3.4 的靜態拒絕改造成「生成過程中的動態准入控制」。</li>
+<li><strong>§2 資產工廠 vs 資產消費者</strong>：連續潛在空間推理（COCONUT/CODI）是把「貴稀有推理（token-by-token CoT）」的產出壓縮為便宜潛在表徵——這是資產工廠的另一種型態：用一次性編碼訓練換取推理時永久省 token。</li>
+</ul>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

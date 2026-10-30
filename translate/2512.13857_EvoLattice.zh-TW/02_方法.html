@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2512.13857_EvoLattice.zh-TW.html">回 2512.13857_EvoLattice.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="3-方法">3. 方法</h2>
+<p>EvoLattice 把程式/智能體當作<strong>含多個內部替代方案的模組化超結構</strong>。EvoLattice 是 DAG，節點對應功能組件，每節點維護一組替代方案（程式演化＝lambda，智能體演化＝prompt 片段/工具描述），邊編碼資料依賴，須保持無環，<code>output</code> 為計算根。每條從依賴到 output 的路徑決定一個合法可執行詮釋，全部路徑構成隱式編碼於單一結構的候選家族。</p>
+<p><strong>評估</strong>：對固定的「每節點選一替代方案」沿合法路徑實例化可執行函數；枚舉所有路徑（或抽樣子集）執行並依任務目標評分。因替代方案會在多路徑重現，用<strong>局部與全域 memoization</strong>（含 lambda 原始碼的防碰撞簽章識別相同上游子圖）消除冗餘計算 → 可擴展、也直接適用智能體演化。</p>
+<p><strong>per-alternative 統計</strong>：對每個替代方案蒐集所有含它路徑的分數，算均值效應、變異、最佳貢獻；另對當前最佳路徑某節點注入小對稱高斯擾動量測<strong>節點重要性</strong>。這些統計直接呈給 LLM（每步 prompt 含結構圖、所有替代方案、效能摘要、節點重要性訊號）。</p>
+<p><strong>突變</strong>：用 gpt-oss-120b（假設生成 temp=0.5、突變 temp=0.0、輸出上限 65,536 tokens）。突變前自動生成結構化假設嵌入 prompt，並附「前後 EvoLattice 的 unified diff」作為行為軌跡。LLM 可刪弱替代、在既有節點建新替代、建新節點、調依賴——做<strong>局部組合式編輯</strong>而非重寫整個程式。採兩層 prompting（全域系統 prompt 編碼結構規則 + 每次迭代突變 prompt）。突變後跑<strong>確定性自我修復</strong>（強制無環、移除無效/不可達結構、剪空節點、禁止替代依賴 output 節點）。</p>
+<p><strong>完整演化步驟</strong>：(i) memoized 執行評估所有（或子集）路徑；(ii) 算替代層級統計；(iii) 把整個 EvoLattice 與統計呈給 LLM；(iv) 依 LLM 提案突變；(v) 修復圖以強制結構不變量；(vi) 依效能改善接受/拒絕突變。每步兼具探索（新替代擴張空間）與利用（統計凸顯強組件），自然支持 QD 而不需外部 archive 或 novelty 壓力。對智能體生態：節點＝角色/工具策略/prompt 片段，替代＝行為的不同表述，執行一條路徑＝跑一個完整多智能體系統。</p>
+<p>EvoLattice 表達容量隨修改次數<strong>乘法（非線性）成長</strong>：傳統突變具破壞性，EvoLattice 則做<strong>搜尋空間的單調擴張</strong>（增替代而保留既有），刪除只在統計支持下發生且為 targeted。修復確保結果落在合法子空間（diff-based 法靠 LLM 留在此空間卻失敗）。壞突變只影響局部、強路徑恆存、搜尋可回退到先前成功替代。</p>
+<h2 id="4-實驗">4. 實驗</h2>
+<p>在 <strong>NAS-Bench-Suite-Zero（Medium）</strong> 合成 Transformer LM benchmark 上做免訓練架構排序，與兩類 SOTA 比較：<strong>零樣本 NAS 代理</strong>（spectral energy、covariance trace、ZeroLM/LPZero 式固定非線性組合）與 <strong>LLM 單路徑演化</strong>（FunSearch 重生、AlphaEvolve diff 演化、ShinkaEvolve parent sampling）。代理品質以 proxy 分數與 teacher 分數的 <strong>Spearman ρ</strong> 衡量，採兩階段協定（Phase A 快篩、Phase B 全評，384 架構）。</p>
+<p><strong>Table 1（Spearman ρ↑）</strong>：Spectral Energy 0.06、Covariance Trace 0.07、Spectral+Cov 0.08、ZeroLM 0.09、LPZero 0.10、FunSearch-style 0.09、AlphaEvolve-diff 0.11、ShinkaEvolve-like 0.12、<strong>EvoLattice 0.15–0.16（CI ±0.04，最窄）</strong>。EvoLattice 取得最高 ρ、最低變異、最快收斂。其優勢不來自更強啟發式或更多算力，而是<strong>表徵轉變</strong>——演化一個持久的微算子族群於單一結構內。</p>
+<p><strong>4.1 演化動態</strong>：best-so-far 單調上升並呈離散跳躍（非破壞性突變保留強路徑、探索後不回退）；改善稀疏而爆發式；均值/中位數近零、與 best 的差距隨時間擴大（刻意保留弱探索性替代）；變異有界、僅溫和增加（剪枝與修復防病態擴張）；可執行路徑數快速成長但 memoization 使運行時不爆。系統「不像在程式上爬山，而像一個可重用組件不斷演化的生態系」。</p>
+<p><strong>4.2 結果詮釋</strong>：EvoLattice 最佳代理結構近似 ZeroLM，卻大幅勝過 naïve ZeroLM 手工實作。canonical ZeroLM 假設乾淨頻譜訊號與穩定激活統計；本文評估刻意反映真實大規模情境（FP16 推論、融合注意力核、取樣交叉熵損失、異質架構、動態 batching），使原始頻譜量值噪聲化、尺度敏感、易 rank degeneracy。EvoLattice <strong>自主修復</strong>這些失效模式：保留 ZeroLM 核心訊號但引入穩定化變換——(i) 頻譜訊號層級向量化以利離散度推理；(ii) 正規化與 top-k 聚合緩解尺度偏差與尾部噪聲；(iii) 用變異係數的頻譜穩定度項顯式建模可靠度；(iv) 用穩定度與共變數<strong>非線性閘控</strong>頻譜量值而非線性相加；(v) 低權重熵正則僅作 tie-breaker 解決 rank degeneracy。這些<strong>非手工設計，而從內部選擇動態自然湧現</strong>；移除它們則效能崩回 naïve ZeroLM。EvoLattice 因此可視為<strong>自主代理修復系統</strong>。</p>
+<h2 id="5-討論">5. 討論</h2>
+<p>EvoLattice 把 LLM 引導發現重新框定為「演化一個嵌入單一表徵內的結構化族群」。傳統框架（diff-based 或 prompt-based）做<strong>序列覆寫</strong>，歷史成為惰性歸檔；EvoLattice 換成<strong>持久、組合式記憶</strong>——替代方案不因新者出現而消失，而是共存、累積、繼續參與新組合，使 EvoLattice 成為「微算子的演化生態系」而非單一有機體。關鍵洞見是<strong>替代方案層級統計的威力</strong>——形成一種「演化分析學」：量化哪些微算子一致提升效能、哪些情境相依、哪些低效。不同於 SHAP 等事後歸因（在訓練後解釋固定模型），EvoLattice 在<strong>演化過程中</strong>計算貢獻統計並直接用以引導結構修改與重用。</p>
+<p>從理論視角，所觀察動態具 <strong>QD（尤其 MAP-Elites）特徵</strong>：進展反映在「最佳個體單調改善 + 高效分位上漂 + 精英與族群均值差距擴大」，而非族群均值。EvoLattice 正是如此，且<strong>不需顯式行為描述子空間或外部 archive</strong>——多樣性沿表徵內部結構因式分解：每節點替代方案誘導隱式高維行為空間，跨組合路徑評估產生隱式 niche 統計（類比 MAP-Elites cell 內的 fitness）。相較「以學習嵌入定義 niche」的近期 MAP-Elites 變體，EvoLattice <strong>不把整個程式/智能體嵌入描述子空間</strong>，而是組合式地表徵多樣性，用<strong>結構因式分解取代描述子學習</strong>。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>EvoLattice 是 LLM 引導程式與智能體合成的新範式：以<strong>持久、組合式、統計知情</strong>的表徵取代序列覆寫式演化。把候選結構化為「節點（各含多替代方案）的 DAG」，將整個族群編碼於單一連貫物件；搜尋空間遠比傳統法豐富，又靠 memoized 評估與確定性自我修復保持可控。核心進展是<strong>替代方案層級效能統計</strong>——量化每個微算子跨所有路徑的貢獻，給 LLM 獨特詳盡且可行動的演化地景視圖。框架從數值程式合成無縫泛化到多智能體系統演化。其單一表徵原則為：<strong>在結構內維持多樣性、組合式地評估它、用細粒度統計訊號告知模型、自動修復結構。</strong></p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2512.13857_EvoLattice.%E6%91%98%E8%A6%81.html"><code>../summarize/2512.13857_EvoLattice.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Toolformer：語言模型能自己教會自己使用工具（Toolformer: Language Models Can Teach Themselves to Use Tools）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Timo Schick, Jane Dwivedi-Yu, Roberto Dessì, Maria Lomeli, Luke Zettlemoyer, Nicola Cancedda, Roberta Raileanu, Thomas Scialom（Meta AI Research）</p><p>日期：2023-02</p><p>arXiv：2302.04761</p><p><a href="https://arxiv.org/abs/2302.04761" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="toolformer語言模型能自己教會自己使用工具重點摘要">《Toolformer：語言模型能自己教會自己使用工具》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Toolformer</strong>：以<strong>自監督</strong>方式讓語言模型自己學會「呼叫哪個 API、何時呼叫、傳什麼參數、如何把結果併入後續生成」——做法是讓模型在純文字語料裡自動插入大量 API 呼叫候選、實際執行它們，再<strong>以『該 API 回傳結果是否降低後續 token 的語言模型損失』作為過濾條件</strong>，只留下真正有用的呼叫來微調自身；使 6.7B 參數的 GPT-J 在多項下游任務的 zero-shot 表現大幅提升，甚至勝過大它約 25 倍的 GPT-3（175B），且不損及原本的語言模型能力。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>大型語言模型雖有亮眼的 zero/few-shot 能力，卻在一些「更小的模型都做得好」的基本功上反常地吃力：無法取用近期事件的最新資訊、傾向幻覺捏造事實、算術等精確計算能力差、對低資源語言理解弱、缺乏時間推進的感知。給模型接上搜尋引擎、計算器、日曆等外部工具是明顯解方，但既有做法<strong>不是依賴大量人工標註，就是把工具用途綁死在特定任務上</strong>，阻礙了工具使用被廣泛採用。作者要的是：工具使用能<strong>自監督地學會、不需大量人工標註</strong>，且模型<strong>不喪失通用性、能自行決定何時、如何、用哪個工具</strong>。</p>
+<h2 id="核心方法">核心方法</h2>
+<p>把每個 API 呼叫表示成插在文本中的特殊 token 序列（<code>&lt;API&gt; 名稱(輸入) → 結果 &lt;/API&gt;</code>），三步把純文字資料集 C 轉成帶 API 呼叫的資料集 C*：</p>
+<ol>
+<li><strong>取樣 API 呼叫候選</strong>：為每個 API 寫一段含少量示範的 prompt，利用模型的 in-context learning 能力，在文本各位置取樣「該不該起一個 API 呼叫」及其具體呼叫候選（用取樣門檻 τs 挑位置、每位置取多個候選）。</li>
+<li><strong>執行 API 呼叫</strong>：實際呼叫工具（可能是另一個神經網路、Python 腳本或檢索系統），取回文字結果 r。</li>
+<li><strong>過濾（核心）</strong>：比較「把呼叫與其結果 e(c,r) 當前綴」對後續 token 的加權交叉熵損失 L⁺，與「完全不呼叫」或「呼叫但不給結果」兩者取最小的損失 L⁻。<strong>只有當 L⁻ − L⁺ ≥ 門檻 τf（即加入該呼叫與結果能讓後續 token 的損失至少下降 τf）時，才保留這個呼叫</strong>。直覺是：唯有這次呼叫「真的幫模型更好地預測接下來的文字」才算有用。</li>
+</ol>
+<p>留下的有用呼叫被就地插回原文，得到 C*，再用標準語言模型目標微調模型自身。由於 C* 除了插入的 API 呼叫外與原資料 C 內容完全相同，微調不損通用性。推論時正常解碼，一旦模型生成「→」就中斷、實際呼叫 API、把結果與 <code>&lt;/API&gt;</code> 插回再繼續。</p>
+<ul>
+<li><strong>底層模型</strong>：GPT-J（6.7B），語料用 CCNet 子集。</li>
+<li><strong>五種工具</strong>：問答系統（用檢索增強的 Atlas）、Wikipedia 搜尋（BM25 檢索 KILT 的維基 dump）、計算器（四則運算、四捨五入到兩位）、機器翻譯（600M 的 NLLB，支援 200 語言、目標語固定英文）、日曆（回傳當前日期、無輸入）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>LAMA</strong>（事實填空，禁用維基搜尋以免不公平）：Toolformer 在 SQuAD/Google-RE/T-REx 上分別比最佳同級 baseline 高 11.7 / 5.2 / 18.6 分，並勝過 OPT(66B) 與 GPT-3(175B)；幾乎全靠問答工具（98.1% 的例子自行選它）。</li>
+<li><strong>數學推理</strong>（ASDiv/SVAMP/MAWPS）：開啟 API 呼叫使各任務表現<strong>翻倍以上</strong>，明顯勝過大得多的 OPT 與 GPT-3；97.9% 的例子自行找計算器。</li>
+<li><strong>問答</strong>（WebQS/NQ/TriviaQA）：靠維基搜尋（99.3%）勝過同級 GPT-J baseline，但仍不及 GPT-3(175B)（作者歸因於搜尋引擎過於簡單、且無法重寫查詢或瀏覽多筆結果）。</li>
+<li><strong>多語問答</strong>（MLQA）：翻譯工具在各語言都有幫助（依語言使用率 63.8%–94.9%，印地語例外僅 7.3%），但因在 CCNet 上繼續微調對某些語言反而掉分，故未能一致勝過原始 GPT-J。</li>
+<li><strong>時序</strong>（TEMPLAMA / 自建 DATESET）：整體勝過所有 baseline；但 TEMPLAMA 的提升幾乎不來自日曆（僅 0.2% 用它），DATESET 的提升則可完全歸功日曆（54.8% 使用）。</li>
+<li><strong>語言模型能力</strong>：關閉 API 呼叫時，在 WikiText 與 CCNet 上的困惑度相較未加工具幾乎無損。</li>
+<li><strong>規模效應</strong>：善用工具的能力約在 775M 參數才「湧現」；更大的模型即使自身變強，用不用工具之間仍有明顯落差。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>無法串接工具</strong>：各工具的 API 呼叫是獨立取樣的，訓練資料裡沒有「一個工具的輸出當另一個工具的輸入」的鏈式範例。</li>
+<li><strong>無法互動式使用工具</strong>：例如搜尋引擎不能重寫查詢或逐筆瀏覽多個結果。</li>
+<li><strong>對輸入措辭敏感</strong>：是否要呼叫 API 常受 prompt 精確用字影響。</li>
+<li><strong>樣本效率低</strong>：處理超過百萬份文件，才得到區區數千個對計算器有用的呼叫（可考慮迭代式套用本方法改善）。</li>
+<li><strong>未計入呼叫成本</strong>：決定要不要呼叫時，未把該工具的計算開銷納入考量。</li>
+<li>每個輸入最多只允許一次 API 呼叫（避免無限呼叫），也限制了如「先問日曆得日期、再拿日期去問答」這類最佳策略。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>ai_core 接點（§5／§3.1「意圖→工具、決定何時呼叫哪個工具」）</strong>：Toolformer 把「何時、如何、用哪個工具」從人工設計變成<strong>自監督學到的能力</strong>——正對應 ai_core §5/§3.1 從意圖映射到工具、以及「決定何時呼叫哪個工具」這一問題。</li>
+<li><strong>與 ai_core §3.4「必要性閘」的呼應</strong>：ai_core §3.4 主張「只有證明非它不可，才准某個 LLM/某環節進來」。Toolformer 的<strong>以損失下降（L⁻ − L⁺ ≥ τf）篩選 API 呼叫</strong>，正是這種「必要性」判準的一種<strong>自動化雛形</strong>：一個工具呼叫唯有被證明「真的降低了後續 token 的損失、非它不可」才被保留，等於用可量化的自監督訊號自動執行「必要性閘」，而非靠人工規則。這把「必要性」從設計時的人為判斷，變成訓練資料層面可自動篩選的客觀量。</li>
+<li><strong>與 <a class="paper-reference" href="2305.17126_LATM.%E6%91%98%E8%A6%81.html">2305.17126</a> LATM 對照（工廠端 vs 使用端）</strong>：LATM 走的是**「造工具」<strong>（讓 LLM 生成可重用的工具/函式）；Toolformer 走的是</strong>「學何時用工具」**（在既有的一組工具上，自監督地學會該不該呼叫、呼叫哪個）。兩者恰好是工具生命週期的兩端——<strong>LATM 是工廠端（製造工具），Toolformer 是使用端（決定調用）</strong>，可互補構成「先造工具、再學調用」的完整鏈條。</li>
+<li>最值得記：<strong>「API 回傳是否降低後續 token 損失」＝有用性/必要性的自動篩選判準</strong>、<strong>自監督不需人工標註即可學會工具使用</strong>、<strong>不損通用語言模型能力</strong>、以及 <strong>6.7B 的 GPT-J 靠工具在多任務上反超 175B 的 GPT-3</strong>。</li>
+<li>定位：<strong>方法論文 + 大量 zero-shot 實證</strong>；適合做 <strong>工具使用（tool use）、自監督資料增強、agent 的工具調用決策、以量化訊號做「必要性」篩選</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2302.04761_Toolformer.zh-TW.html"><code>../translate/2302.04761_Toolformer.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>GEPA-Curator: Curated Learning for Self Improving Agents 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zack Yu、Nicholas Lee、Minjae Lee、Lakshya Agarwal、Luca Manolache、Wonjun Kang、Matei Zaharia、Michael W. Mahoney、Kurt Keutzer、Sehoon Kim、Amir Gholami</p><p>日期：2026-10-27（v1）</p><p>arXiv：2610.37651</p><p><a href="https://arxiv.org/html/2610.37651v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="gepa-curator篩選哪些代理經驗用於自我改進">GEPA-Curator：篩選哪些代理經驗用於自我改進</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>反思式提示最佳化會根據代理執行軌跡修改提示；若失敗來自環境、工具或評分噪聲，反思者可能把錯誤原因歸咎於提示。GEPA-Curator 在既有最佳化器外加入任務篩選與同題過往成功案例，作者自報多個代理基準的留出測試平均表現改善；效果與成本依基準、最佳化模型及執行設定而異。（<a href="https://arxiv.org/html/2610.37651v1#S1">§1</a>）</p>
+<h2 id="方法篩任務再提供可靠參考">方法：篩任務，再提供可靠參考</h2>
+<p>Curator 保存每個訓練任務的歷史執行軌跡與評分，逐步挑選下一批交給最佳化器的任務。歷史不足的任務先被優先探索；反覆穩定成功、失敗主要受提示以外因素造成，或類似結果被評分不一致的任務，可能暫時跳過。每個訓練 epoch 重新考慮被跳過的任務，因為提示改動可能使原先已解題退步，或讓此前難題變得可解。（<a href="https://arxiv.org/html/2610.37651v1#S3.SS1">§3.1</a>）</p>
+<p>Curator 同時檢查歷史，替目前任務選一條評分證據較可信的同題成功軌跡，提供反思者與本次失敗對照；沒有合適成功例時棄權。任務篩選與成功例選擇在同一 Curator 呼叫完成，歷史只作額外中繼資料，底層提示最佳化器不需因此改寫。（<a href="https://arxiv.org/html/2610.37651v1#S3.SS2">§3.2</a>）</p>
+<p>主要實驗使用簡化的貪婪 GEPA 變體：取消 Pareto 候選池選擇，沿單一 lineage 更新；每隔 16 次迭代在留出驗證集評估，最後選驗證分數最高的提示。actor 為 gpt-oss-120B；每次實驗的 Reflector 和 Curator 使用相同的 Gemini 3.1 Pro Preview 或 Claude Opus 5，minibatch 為 16。所報數字平均五次執行。（<a href="https://arxiv.org/html/2610.37651v1#S4.SS1">§4.1</a>）</p>
+<h2 id="留出測試結果">留出測試結果</h2>
+<p>WebArena 的 GoBrowse 四網站各自以 3:1:1 分為訓練／驗證／測試，所有方法共用初始提示、評分器、動作限制和環境，每網站每方法 5,000 條 rollout。下表為作者自報四網站整體測試成功率（%，± 為五次執行的標準差）；差距是<strong>百分點</strong>。（<a href="https://arxiv.org/html/2610.37651v1#S4.SS2">§4.1–4.2，表 1</a>）</p>
+<table>
+<thead>
+<tr>
+<th>最佳化模型</th>
+<th style="text-align:right">初始提示</th>
+<th style="text-align:right">GEPA</th>
+<th style="text-align:right">GEPA-Curator</th>
+<th style="text-align:right">相對 GEPA 的點數差</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Gemini 3.1 Pro</td>
+<td style="text-align:right">72.4 ± 2.4</td>
+<td style="text-align:right">78.7 ± 0.6</td>
+<td style="text-align:right">82.1 ± 1.7</td>
+<td style="text-align:right">+3.4</td>
+</tr>
+<tr>
+<td>Claude Opus 5</td>
+<td style="text-align:right">73.1 ± 1.8</td>
+<td style="text-align:right">79.5 ± 1.2</td>
+<td style="text-align:right">84.5 ± 1.0</td>
+<td style="text-align:right">+5.0</td>
+</tr>
+</tbody>
+</table>
+<p>作者另測 ALFWorld、AppWorld 的 Test-N／Test-C 及 τ-bench。以 Gemini 最佳化時，GEPA-Curator 四項分別為 91.8%、58.7%、46.2%、84.0%，均高於表列 GEPA 與 ACE 均值；以 Opus 最佳化時，四項為 98.4%、68.8%、46.4%、82.9%，其中 τ-bench 與 GEPA 的 82.9% 均值相同。τ-bench 原互動場景被攤平成單次請求，測試集只有 35 題；各資料集訓練 rollout 預算不同。（<a href="https://arxiv.org/html/2610.37651v1#S4.SS2">§4.1–4.2，表 2</a>）</p>
+<p>GitLab 元件消融中，作者將 720 題拆為 520 訓練與 200 驗證，<strong>在驗證集而非獨立測試集</strong>比較：GEPA 為 82.8%，僅任務篩選為 84.2%，僅成功軌跡選擇為 84.7%，完整 Curator 為 88.6%。五次執行均值支持在此設定兩元件有互補性，但不是獨立測試的效果估計。（<a href="https://arxiv.org/html/2610.37651v1#S4.SS3">§4.3，表 3</a>）</p>
+<h2 id="延伸到-harness-程式與成本">延伸到 harness 程式與成本</h2>
+<p>作者將相同篩選想法用於 Meta-Harness：Curator 選父 harness、訓練任務與可能的歷史成功參考；子程式在相同訓練任務及完整開發集評估，再由開發分數選最終測試版本。Math-RAG 總測試準確率由 45.33% 升至 46.33%；三資料集等權文字分類總準確率由 48.06% 升至 51.04%，但 ProofBench 準確率及 USPTO 分項均略降。每個方法與設定只跑<strong>一次最佳化實驗</strong>，各測試題採樣三次；文字分類建構記憶所用資料與優化任務分開，記憶建構成本不在預算內。（<a href="https://arxiv.org/html/2610.37651v1#S5.SS3">§5.3，表 5–6</a>）</p>
+<p>效率版允許 Curator 決定跳過多個 epoch、壓縮較舊歷史，並保留可用的完整成功軌跡；有留存成功例時，每次失敗均提供給 Reflector，原版則依情況選擇可信案例或棄權。作者自報效率版在各基準與原版表現相近，但不表示逐項完全相同。（<a href="https://arxiv.org/html/2610.37651v1#S5.SS4">§5.4，表 7</a>）</p>
+<p>依作者 2026-10-18 的指定 API 費率估算，四個 WebArena 網站各跑一次的訓練與驗證總費用，GEPA 為 594.05 美元、<strong>效率版</strong> Curator 為 776.88 美元；其他三個 benchmark 合計分別為 132.65／173.98 美元。兩組各約 1.31 倍；AppWorld 的兩測試集共享一次最佳化，費用只計一次。這些數字排除最終測試與 WebArena 託管費，屬特定模型與當時費率的估計，不是一般部署價格。（<a href="https://arxiv.org/html/2610.37651v1#S5.SS4">§5.4，表 8</a>、<a href="https://arxiv.org/html/2610.37651v1#A4">附錄 D</a>）</p>
+<h2 id="限制與解讀">限制與解讀</h2>
+<ul>
+<li>Curator 本身也依賴 LLM 讀歷史並判斷錯誤來源，評估器不穩、環境變化或歷史不足仍可能誤判；作者以暫時跳過和重新考慮降低此風險，沒有提供分類正確性保證。（<a href="https://arxiv.org/html/2610.37651v1#S3">§3</a>）</li>
+<li>在較乾淨的簡答 QA 附錄實驗中，僅用任務篩選而不提供成功軌跡；Curator 在四個基準中三個不低於 GEPA，HotpotQA 為 65.0%，低於 GEPA 的 66.3%。因此代理型基準的收益不能概括成所有任務均提升。（<a href="https://arxiv.org/html/2610.37651v1#A5">附錄 E，表 16</a>）</li>
+<li><strong>本檔補註，非作者自陳</strong>：有限次提示或 harness 更新與選定測試集的改善，不能證明持續自我改進、對未知環境的安全性或長期泛化。相同 rollout 數也不代表相同總計算或金錢成本。</li>
+</ul>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.37651_GEPACurator.zh-TW.html">GEPA-Curator 譯稿</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

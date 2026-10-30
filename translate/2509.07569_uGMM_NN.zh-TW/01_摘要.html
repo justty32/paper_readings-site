@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2509.07569_uGMM_NN.zh-TW.html">回 2509.07569_uGMM_NN.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>本文提出 <strong>單變量高斯混合模型神經網絡（uGMM-NN）</strong>，一種把機率推理直接嵌入深度網路的新架構。不同於傳統神經元（加權和接固定非線性），uGMM-NN 的每個節點由一個<strong>單變量高斯混合</strong>參數化，具<strong>可學習的均值、變異數、混合係數</strong>。此設計在<strong>個別神經元層級</strong>捕捉多模態與不確定性，產生更豐富的表徵，同時保留標準前饋網路的可擴展性。實驗顯示 uGMM-NN 的判別性能可與傳統多層感知機（MLP）競爭，並額外提供激活的機率詮釋。本框架為「把不確定性感知元件整合進現代神經架構」奠基，為判別與生成建模開啟新方向。</p>
+<p><strong>關鍵詞</strong>：機率神經元、深度學習、機率電路、高斯混合、uGMM 層、uGMM、uGMM-NN。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>深度網路靠階層特徵學習在影像分類、NLP 等表現卓越，但傳統神經元（確定性加權和 + 非線性如 ReLU/sigmoid）難以建模真實資料普遍的不確定性與多模態分佈。此限制歷來由機率圖模型（貝氏網路、馬可夫隨機場）處理——長於不確定性量化與複雜依賴建模，卻欠缺現代神經網路的深度階層特徵學習。</p>
+<p>關鍵研究方向因此是<strong>橋接兩種範式</strong>：如貝氏神經網路（BNN）把不確定性嵌入權重；機率電路（PC）含和積網路（SPN）是建於形式機率結構的深度機率模型。本文則提出新途徑——把<strong>單變量高斯混合（uGMM）直接嵌入網路的計算單元</strong>，使每個神經元代表一個多模態單變量高斯分佈。雖主攻判別應用（預測類別標籤），其機率骨幹與機率電路有概念相似性。在兩資料集、兩架構範式上評估：(1) MNIST 上直接比較 uGMM-NN 與標準 MLP，並把 CNN 的全連接層換成 uGMM 神經元（CNN-uGMM vs CNN-MLP）；(2) Iris 上初步示範對聯合分佈的生成建模。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>貝氏神經網路（BNN）</strong>：對權重建模不確定性，給出校準預測，但推論成本較重。</li>
+<li><strong>機率電路 / 和積網路（SPN）</strong>：對複雜分佈做可解推論（tractable inference），明確表示機率分佈並有可解性保證——uGMM-NN 從中取靈感，在<strong>每個神經元內</strong>嵌入一個可解機率模型。</li>
+<li><strong>Kolmogorov–Arnold 網路（KAN）</strong>：把 MLP 的線性仿射映射換成邊上的可學習單變量函數（樣條式），得到比不透明權重矩陣更透明的函數依賴。uGMM-NN 在<strong>單元層級</strong>做類比替換：不是「線性神經元 + 逐點非線性」，而是每個計算單元都是一個輸出責任值與混合統計量的 uGMM。混合成分如同<strong>局部、語意有意義的「子模態」</strong>，揭露單元如何切分其輸入空間（類似 KAN 可讀的單變量映射，但以明確機率語彙）；混合在<strong>每個單元內</strong>捕捉多模態與不確定性，而非把不確定性推給權重空間（BNN）或全域電路結構（SPN）。</li>
+<li><strong>徑向基函數（RBF）網路</strong>：雖在單元層級也用高斯形響應，但<strong>非機率模型</strong>——其激活是中心固定的未歸一化基函數，無和為 1 的混合權重、無似然解釋。uGMM 神經元則是<strong>歸一化</strong>高斯混合（可訓練 μ/σ²/π）並輸出對數密度，故概念上更接近機率電路而非 RBF。</li>
+</ul>
+<h2 id="3-ugmm-nn">3. uGMM-NN</h2>
+<p>uGMM-NN 以機率單元取代標準 MLP 神經元，每個單元對其輸入建模一個單變量高斯混合，在保持完全可微、可用標準監督損失訓練的同時，於個別神經元層級捕捉多模態與輸入不確定性。</p>
+<h3 id="31-單變量-gmm-節點">3.1 單變量 GMM 節點</h3>
+<p>傳統 MLP 神經元計算加權和接非線性，輸出純量；uGMM-NN 的每個神經元計算一個 <strong>uGMM 的對數密度</strong>，使輸出是機率量而非確定性純量。神經元對一個潛變量定義單變量高斯混合，以可學習的 μ、σ²、混合權重參數化，<strong>每個輸入貢獻一個成分</strong>——故<strong>混合成分數由前一層寬度決定</strong>，非另設超參。神經元輸出為<strong>對數密度</strong>（用 log-sum-exp 技巧數值穩定），稱為該神經元的「激活」；這些對數密度傳向下一層、參與梯度流，扮演傳統激活的架構角色。後續層的輸入即為前一層產生的對數密度激活，全網維持一致的機率表徵。</p>
+<h3 id="32-神經元的機率可解釋性">3.2 神經元的機率可解釋性</h3>
+<p>uGMM 神經元輸出單變量高斯混合的對數密度，這個機率量不只前傳，還在單元層級編碼可解釋結構。以三成分為例：各成分由 μ、σ、π 定義，合起來是神經元的機率密度 p(x)。高混合權重表示神經元對該輸入空間區域賦予顯著機率質量；σ 的大小反映賦予該區域的信心程度。由此每個神經元定義其輸入域上的<strong>機率切分</strong>，混合成分對應可解釋的響應子模態——這與通常缺乏局部語意的傳統激活形成對比。故 uGMM-NN 具<strong>內建可解釋性</strong>，每層內部表徵不只是純量，而是結構化的機率地景。此特性在醫療、自主系統等強調可解釋與不確定性量化的應用尤其有利。</p>
+<h3 id="33-網路結構與訓練">3.3 網路結構與訓練</h3>
+<p>以標準前饋方式組織（輸入/隱藏/輸出層）；每個隱藏層可視為一個高斯混合層。堆疊多個 uGMM 層可建構<strong>階層機率表徵</strong>，捕捉日益複雜的多模態模式。uGMM 神經元對單變量輸入操作、輸出學得高斯混合下的對數機率，可視為 1D 機率運算（在形狀與維度上對應 MLP）。聚焦於每神經元的單變量 GMM，可<strong>避免多變量混合的指數複雜度</strong>，高效擴展至深層架構。判別任務時，輸出（根）層對數密度經 softmax 轉類別機率，最小化交叉熵。梯度經對數密度計算以自動微分反傳，用 Adam/SGD 訓練；log-sum-exp 防止深層溢位/下溢。每神經元的責任與對數密度貢獻以 PyTorch 全批次向量化（跨批次/神經元/成分），dropout 直接作用於混合成分；因此訓練/推論速度與標準 MLP 相當。</p>
+<h3 id="34-ugmm-nn-中的-dropout">3.4 uGMM-NN 中的 Dropout</h3>
+<p>對每個神經元的各混合成分獨立施加 Bernoulli 遮罩（機率為 dropout 率）。被「丟棄」的成分把其對數密度貢獻設為 −∞，等效移出混合。僅訓練時施加、推論時停用（讓完整混合貢獻輸出）。</p>
+<h3 id="35-通用近似觀點">3.5 通用近似觀點</h3>
+<p>每個 uGMM 神經元輸出由單變量高斯混合定義的對數密度。由於高斯混合可在緊緻域上任意精度逼近任意平滑單變量機率密度，uGMM 神經元原則上是<strong>單變量密度的通用近似器</strong>。堆疊成前饋網路後可逼近輸入上的複雜多變量分佈；判別任務上，給定足夠寬度與深度即可表示任意條件分佈。相較 MLP 與 KAN 對<strong>確定性函數</strong>的通用近似保證，uGMM-NN 把此概念擴展到<strong>機率、多模態</strong>表徵，結合表達力與經混合參數體現的可解釋不確定性。架構與全部實驗以 PyTorch 實作，程式碼經 Zenodo（2025-07-20 首發）與 GitHub 釋出。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

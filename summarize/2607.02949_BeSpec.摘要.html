@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《BeSpec：行為層規格對齊以修補需求再生成程式碼》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Qinghua Xu, Guancheng Wang, Boxi Yu, Lionel Briand（University of Limerick / University of Ottawa）</p><p>日期：2026-07（v1）</p><p>arXiv：2607.02949</p><p><a href="https://arxiv.org/abs/2607.02949" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="bespec行為層規格對齊以修補需求再生成程式碼重點摘要">《BeSpec：行為層規格對齊以修補需求再生成程式碼》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>現有規格對齊方法依賴測試層級的反饋（跑測資→看輸出→修規格），但測試反饋太粗糙：通不過測資無法指出規格中哪個具體行為是含糊的，且生成正確預期輸出（oracle）本身近乎解題。<strong>BeSpec 把對齊從測試層提升到行為層</strong>：從題目意圖預測可檢查的行為義務（輸出格式、可行性條件、邊界語意），生成候選程式並在共享的 probe 輸入上執行，再<strong>比對預測行為 vs 觀察行為</strong>，以差距定位規格中的模糊/遺漏點並自動修補規格。三個 LLM、四個基準（含無汙染 LiveCodeBench）、九個基線：BeSpec 平均 Pass@1 相對最強基線提升 8.1–25.3%，且失敗分析顯示對齊後僅 52/1175 剩餘錯誤源自弱規格。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>程式題目描述常模糊或欠規格（ambiguous/underspecified），LLM 可能生成「邏輯正確但解了錯的問題」的程式碼。既有 generate-then-refine 方法（Self-Repair、Self-Collaboration、AgentCoder）改善規劃/實作/修復階段，但若第一步<strong>意圖解讀已錯</strong>則後續優化只把錯誤解讀實作得更精緻。現有規格對齊方法（Specine、SpecFix）開始把規格本身當改善目標，但仍依賴測試層級證據——需要完整測資（含正確預期輸出），而產出正確 oracle 本身接近解題難度；且測試反饋是整體 pass/fail，無法指出規格哪個部分含糊。</p>
+<h2 id="核心方法">核心方法</h2>
+<p>BeSpec 把每個題目視為獨立的規格對齊任務，包含兩條管線與一個修補迴圈：</p>
+<ol>
+<li><strong>規格萃取</strong>：LLM 將原始意圖重新表達為結構化規格（輸入/輸出格式、約束、正確性規則、邊界案例、明確解釋欄位），作為後續所有步驟的中心文件。</li>
+<li><strong>預測行為管線</strong>：從結構化規格預測一組可執行的行為義務 <span class="math inline">\(B = \{b_1, ..., b_m\}\)</span>，分四類：金標行為（公開範例）、輸出行為（語法/格式/不變量）、輸入行為（邊界條件/觸發場景）、語意行為（規則推論的輸出性質）。每個行為以 <code>check(input, output)</code> Python 函數實作。</li>
+<li><strong>觀察行為管線</strong>：生成 probe 輸入場景 → 生成候選程式池 → 在 probe 上執行所有候選並記錄輸出行為。</li>
+<li><strong>不對齊識別</strong>：建立行為比對矩陣（候選為列、行為為欄），若某行為在所有候選上與預測一致則「已對齊」；若有候選不一致則標記為「不對齊」→ 觸發規格修補。</li>
+<li><strong>規格修補</strong>：LLM 根據不對齊行為與觸發場景修補結構化規格（更新規則欄位、記錄解釋決定、添加邊界案例），重新生成候選後再比對。最多 N 輪迭代，無不對齊或預算耗盡時停止。</li>
+<li><strong>行為接地選擇</strong>：排除違反公開範例者，依滿足行為數排名，以崩潰/缺輸出為最終 tie-breaker。</li>
+</ol>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>RQ1 效果</strong>：三個 LLM（qwen3-coder-30b、glm-4.7-flash、gpt-5-mini）六個評測設定（CodeContests 含 CC-Raw、xCodeEval、APPS 含 APPS-Eval、LiveCodeBench），BeSpec 平均 Pass@1 相對最強基線分別提升 <strong>25.3% / 17.9% / 8.1%</strong>；在 LiveCodeBench 上相對提升 15.8–17.7%（證實增益不來自記憶考題）。</li>
+<li><strong>效率</strong>：BeSpec 平均每題花 60.3k–122.1k tokens、364–1132 秒，比 SpecFix 省 token（SpecFix 用 225.5k–292.7k）、比 Specine 略貴（因需執行候選池），但成本仍在可接受範圍。</li>
+<li><strong>RQ2 失敗分析</strong>：BeSpec 剩餘 1175 個失敗中僅 52 個（4.4%）歸因弱規格；Specine 為 179/1362（13.1%）、SpecFix 為 127/1432（8.9%）。BeSpec 多數剩餘失敗屬 adherence（演算法/邏輯錯誤、執行期崩潰、逾時）——規格已正確但實作不夠好。</li>
+<li><strong>RQ3 消融</strong>：移除行為模型使 Pass@1 在 CC 上從 33.9→15.2（-55.2%）、在所有設定皆顯著下降；pool size 從 2 擴大到 20 持續改善，多數增益在 pool=10 前達成，pool size 與修補迭代可權衡（大 pool + 少迭代 vs 小 pool + 多迭代）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>仍需要 LLM 預測行為——若模型對某類行為本身就弱，行為層訊號品質受限。</li>
+<li>行為檢查函數由 LLM 生成，可能本身有 bug（錯判行為對齊狀態）。</li>
+<li>依賴結構化規格萃取品質；若初始規格嚴重偏差，修補迴圈可能收斂到錯誤規格。</li>
+<li>成本高於輕量基線（Zero-shot、SCoT），不適合極低成本場景。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>直接對應 ai_core §8.1 方向三**「約束器與規格的對齊度量測與自動補完」**：2606.21619 揭露約束器不完整會讓功能正確性倒退 97%，但只提出問題未給系統性解法；<strong>BeSpec 正是解法雛形——行為層預測-觀察比對→定位規格缺口→自動修補→重新生成</strong>，把「規格對齊」從被動診斷升級為主動修復流程。</li>
+<li>行為層抽象在 ai_core 語言中極有價值：若把「功能正確性」視為治理憑證（§3.4），則 BeSpec 的行為義務 <code>check(input, output)</code> 就是<strong>可組合的微型憑證</strong>——每個行為一個獨立 check，候選程式必須全部通過才算「已對齊」。這比單一 pass/fail 測試更適合做治理決策（哪些行為被滿足、哪些仍在對齊中）。</li>
+<li>方法論啟示：<strong>在寫程式之前先建立行為模型</strong>（預測 gold program 應該怎樣行為）這條思路，與 ai_core「固化引擎把 LLM 反覆處理的案例結晶成確定性程式碼」同源——BeSpec 做的是把 LLM 對「題目應該怎樣」的理解<strong>結晶成可執行的行為規範</strong>，再用執行驗證關閉 gap。</li>
+<li>失敗模式診斷的價值：BeSpec 證明對齊後主要瓶頸從「規格模糊」轉移到「演算法難度」，這為 ai_core 治理決策提供清晰邊界：<strong>什麼問題適合用規格對齊解決、什麼問題需要更強的實作能力</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2607.02949_BeSpec.zh-TW.html"><code>../translate/2607.02949_BeSpec.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

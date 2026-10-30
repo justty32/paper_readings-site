@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_問題陳述與方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2506.09669_QueryLevelUncertainty.zh-TW.html">回 2506.09669_QueryLevelUncertainty.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-問題陳述與方法">3. 問題陳述與方法</h2>
+<h3 id="31-問題陳述">3.1 問題陳述</h3>
+<p>給定查詢 x = (x₁,…,x_N)，目標是量化<strong>查詢層級不確定性 U(x)</strong>（而非估計某具體答案 y 的 answer-level 不確定性 U(x,y)）。定義：若 LLM 在 <strong>greedy decoding（貪婪解碼，每步取最高機率 token、不採樣）<strong>下能產出正確答案，則該查詢</strong>落在模型知識邊界內</strong>；反之則超出邊界、模型知識不足以回答。之所以用 greedy decoding：(1) <strong>效率</strong>——把「一次成功的 greedy 解碼」當作「模型知道怎麼答」的快速代理，而 beam search 等非貪婪解碼需配置 beam 數、機率門檻、採樣數，使邊界定義與評估成本複雜化；(2) <strong>可重現性</strong>——貪婪解碼對同一輸入給單一確定輸出，提供穩定可重現的基準。</p>
+<p>因此這是一個<strong>啟發式的內部知識指標</strong>，而非絕對量測；用來評估估出的查詢層級不確定性（不確定性愈低 → 模型愈可能給出正解）。問題主要針對模型的<strong>認知不確定性（epistemic uncertainty）</strong>，知識邊界的定義對齊<strong>參數知識邊界</strong>（模型參數所編碼、可由至少一組輸入–輸出對驗證的全部知識）。研究聚焦有<strong>明確答案</strong>的查詢（事實 QA、數學推理），開放/主觀查詢不在範圍。</p>
+<h3 id="32-方法從-pyes-到-internal-confidence">3.2 方法：從 P(Yes) 到 Internal Confidence</h3>
+<p>研究已顯示 LLM 能在回應中表達<strong>口語化不確定性</strong>，也能在不參照任何具體提案答案的情況下自評「是否知道答案」，顯示 LLM 具備評估自身輸出正確性的內部機制；且近期工作指出「可答 vs 不可答」問題在隱狀態中是<strong>線性可分</strong>的。據此，可用 yes–no 二元格式明確提示 LLM 自評對某查詢的信心：</p>
+<blockquote>
+<p>「Respond only with &#x27;Yes&#x27; or &#x27;No&#x27; to indicate whether you are capable of answering the {Query} accurately. Answer Yes or No:」（只回 Yes 或 No，表示你能否準確回答此查詢）</p>
+</blockquote>
+<p>接著取<strong>最後一個 token（x_N）<strong>處賦予 token YES 的機率（式 1）：把最後一層隱狀態 h_N^(L) 經 unembedding 矩陣 W_unemb 映射到詞表 logits，再對 [Yes, No] 做 softmax 取 Yes 的機率。<strong>P(Yes)</strong> 即可當查詢層級信心分數——類似線性探測（linear probing）但</strong>無需任何訓練步驟</strong>，且只需對查詢做<strong>一次 forward pass、不生成任何答案 token</strong>。</p>
+<p>然而 <strong>P(Yes) 只用了最後一層隱狀態</strong>，而 LLM 的<strong>中間內部狀態保有豐富的潛在知識</strong>，且「跨層邏輯一致性可改善輸出」。因此提出 <strong>Internal Confidence（IC）</strong>：對輸入查詢的 token x_n、層 l，其隱狀態 h_n^(l) 共 <strong>N×L</strong> 個潛在表徵，都用式 1 算出各自的 P(Yes)。</p>
+<ul>
+<li><strong>觀察（圖 3）</strong>：以 Llama-8B 在 GSM8K 驗證集上，平均 P(Yes) 大致<strong>從低層到高層、從左到右遞增</strong>。若把每個 P(Yes|h_n^(l)) 當信心分數畫出 AUROC 熱圖，最高分<strong>未必在右上角</strong>；實驗中是第 27 層、第 5 個 token 位置（h₅^(27)）AUROC 最佳、稱為「<strong>decision center（決策中心）</strong>」，愈遠離愈差。</li>
+<li><strong>IC 定義（式 3）</strong>：對 N×L 個 P(Yes) 做<strong>兩階段加權彙整</strong>——先對每個 token 跨層加權求和，再把各 token 分數做另一次加權平均，得單一精煉信心分數 IC(h)。以層權重向量 w_layer 與 token 權重向量 w_token 參數化。</li>
+<li><strong>固定決策中心 + 衰減編碼</strong>：要找真正最佳的決策中心需 hold-out 訓練集，與「免訓練」目標衝突。故<strong>固定取右上角（最後 token、最後層）當中心</strong>（因觀察到決策中心多落在後段層與末端 token 附近），再用 Chen et al. (2023) 的<strong>衰減編碼（Attenuated Encoding，式 4）<strong>依「與中心的相對距離 |i−j|」給遞減權重，並以純量 α 控制 <strong>locality（局部性，式 5）</strong>：locality=1 表權重極度集中於中心，值低則權重較均勻攤給鄰域。如此</strong>在不訓練的前提下</strong>，納入決策中心鄰域資訊、兼顧最佳中心的潛在好處與通用性。</li>
+</ul>
+<p>方法<strong>免訓練、算力高效</strong>，一個查詢只需一次 forward pass。由於模型回應常比輸入 prompt 長、且 RAG/深度思考等外部服務開銷大，此<strong>生成前不確定性</strong>很適合支撐自適應推理。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

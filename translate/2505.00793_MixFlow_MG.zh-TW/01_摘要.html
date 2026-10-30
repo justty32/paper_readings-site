@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2505.00793_MixFlow_MG.zh-TW.html">回 2505.00793_MixFlow_MG.zh-TW 目錄</a>　<a href="02_%E8%AA%9E%E8%A8%80%E5%BB%BA%E6%A8%A1%E4%BB%BB%E5%8B%99%E5%9F%BA%E6%BA%96%E6%B8%AC%E8%A9%A6.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>基於梯度的雙層優化（bilevel optimisation, BLO）是強大技術，應用於超參優化、任務適應、演算法發現、廣義元學習等。它常需<strong>微分穿過基於梯度的優化本身</strong>，導致「梯度的梯度」運算，涉及昂貴的二階與混合導數。現代自動微分庫雖方便撰寫這類程式，卻常<strong>無法開箱即用地利用問題的特定結構</strong>，導致次優效能。本文分析這些情形，提出 <strong>Mixed-Flow Meta-Gradients（MixFlow-MG）</strong>——一個用<strong>混合模式微分</strong>建構更高效、可擴展計算圖的實用演算法，相較標準實作可在現代元學習設定中帶來<strong>超過 10× 記憶體</strong>與<strong>最高 25% wall-clock 時間</strong>的改善。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>雙層優化在元學習與深度學習中常用。內層迴圈遞增搜尋最優參數，過程依賴（固定的）元參數；外層元優化則搜尋最優元參數。元參數可以是內層更新的超參、甚至其逐權重版本。應用橫跨超參優化、資料加權、快速任務適應（MAML）、神經架構搜尋、自適應 RL、演算法發現等。</p>
+<p>問題在於：元參數更新需反向傳播穿過內層迴圈，產生二階導數——記憶體與 FLOPs 都極貴。即使每 T 步更新一次（截斷式 BPTT），成本仍隨 T 線性成長，因此常被限制在<strong>小模型、短 horizon</strong>。隨模型規模持續放大（Chinchilla/Gemini/GPT-4），更需高效 BLO 演算法。</p>
+<p>本文先分析現代框架中截斷式 BPTT 雙層梯度的標準實作，指出其固有低效；再提出 MixFlow-MG——一個<strong>簡單的內層學習動力學重參數化</strong>，暴露問題的底層對稱性，用混合模式自動微分無縫利用之。代表性設定下，MixFlow-MG 把<strong>活躍記憶體最多降 95%、wall-clock 降 25%</strong>，讓雙層梯度設定可高效擴展一個數量級以上。本文聚焦<strong>精確梯度</strong>以隔離核心計算瓶頸；所提想法亦可融入隱式/前向等近似法。</p>
+<h2 id="2-背景">2. 背景</h2>
+<h3 id="21-雙層優化">2.1 雙層優化</h3>
+<p>一般形式（式 1、2）：外層元參數最小化驗證損失，受內層參數最小化訓練損失的約束。標準網路訓練是其特例（驗證損失靠手調元參數）。內層通常用 T 步基於梯度的方法近似（式 3），其中更新涉及計算梯度且對元參數可微，從而元參數也可用梯度法優化——這就產生損失函數的二階導數，需計算二階導數與任意向量的左／右乘積。</p>
+<h3 id="22-自動微分入門">2.2 自動微分入門</h3>
+<p>對函數 F 及其 Jacobian，自動微分提供兩種模式：</p>
+<ul>
+<li><strong>前向模式（forward）</strong>：算 Jacobian-by-vector（JVP），成本約一次前向傳播；逐欄回復整個 Jacobian 需 n 次前向。</li>
+<li><strong>反向模式（reverse）</strong>：算 vector-by-Jacobian（VJP），逐列回復；需兩趟（前向＋反向）並<strong>儲存所有中間 activation</strong>，記憶體需求顯著較高。</li>
+</ul>
+<p>對輸出純量的損失函數，反向模式是預設選擇。涉及二階導數時需 Hessian-by-vector（HVP），可用重複 VJP/JVP 廉價求得，實務有三種可行組合：reverse-over-reverse、<strong>forward-over-reverse</strong>、reverse-over-forward（forward-over-forward 因成本過高排除）。</p>
+<p><strong>關鍵觀察</strong>：<strong>forward-over-reverse 模式避免儲存內層 backward 的 activation</strong>，常是實務上最省記憶體的選擇；I/O 開銷也較低（不需讀寫 activation），可能降低 wall-clock。當計算依賴 gradient checkpointing 時更明顯——對前向模式微分而言 checkpointing 幾乎是 no-op。這構成本文高效演算法的核心。</p>
+<h3 id="23-blo-中的自動微分">2.3 BLO 中的自動微分</h3>
+<p>既有工作探討 BLO 中前向 vs 反向模式的權衡。反向模式對元參數的計算成本與損失計算相當，但需存所有中間 activation；前向模式省記憶體但計算成本升高。共識：<strong>元參數少時用前向</strong>避免額外記憶體。但現代應用（MAML 等）中元參數可能很大、甚至與模型參數同數量級（如 MAML 元參數就是網路參數），使前向模式過貴。此時標準做法是<strong>兩層都用反向模式</strong>（Algorithm 1）——所驗證的開源元優化庫全用此實作，本文稱之「預設」實作。</p>
+<p>自動微分庫會在執行前編譯計算圖，理論上可使三種模式在許多情形等價；但<strong>隱藏常數實務差異巨大</strong>，取決於模型結構、輸入大小、框架與硬體後端、編譯器配置等。且框架對問題本質的上下文有限，<strong>常無法捕捉並利用固有對稱性與結構瓶頸</strong>，導致次優低階程式。</p>
+<h2 id="3-mixflow-mg雙層梯度的混合模式微分">3. MixFlow-MG：雙層梯度的混合模式微分</h2>
+<p>把式 3 分解以暴露 Hessian 矩陣，從而對外層梯度採用更省記憶體的演算法。</p>
+<ul>
+<li><strong>重參數化（式 4）</strong>：把梯度作為合併更新函數的獨立引數。</li>
+<li>對驗證損失關於元參數套用連鎖律，並利用驗證損失不依賴最後一步狀態，得到向量記法（式 5）。</li>
+<li>攤開一步後得到全導數的<strong>遞迴關係（式 6）</strong>，允許從 t=T 到 0「反向」攤開迴圈。式 6 含顯式的 vector-by-Hessian（VHP）與 vector-by-mixed-derivatives（VMP）乘積；預設實作會以 <strong>reverse-over-reverse</strong> 處理，實務上次優。</li>
+<li><strong>轉換（Schwarz 定理）</strong>：函數近似器與損失有連續二階導數時，Hessian 與混合導數矩陣對稱，故可把 VHP/VMP 改寫成轉置的 <strong>HVP/MVP</strong>（式 7、8）。</li>
+</ul>
+<blockquote>
+<p><strong>命題 3.1</strong>：重參數化（4）與恆等式（7）(8) 允許把遞迴關係（6）的預設 reverse-over-reverse 微分，換成更高效的 <strong>forward-over-reverse 或 reverse-over-forward</strong>。</p>
+</blockquote>
+<p>因混合模式微分是核心改進，故名 <strong>Mixed-Flow Meta-Gradients（MixFlow-MG）</strong>。一般建議三種模式都試、取最佳；重參數化使這種探測變得直接。第 5 節展示 forward-over-reverse 的顯著實務增益。</p>
+<h3 id="31-jax-實作">3.1 JAX 實作</h3>
+<p>JAX 採函數式範式，關鍵 transformation 是 <code>grad</code>（接收純量函數、回傳其梯度函數）。預設實作用此便捷記法算二階導數（Algorithm 1），但無法利用對稱性。本文重參數化（Algorithm 2）透過自訂 <code>fwdrev_grad</code> transformation（為 HVP 定義 forward-over-reverse 的 VJP rule）——只需改幾行代碼（代碼見附錄 A.3）。</p>
+<h3 id="32-啟發性範例">3.2 啟發性範例</h3>
+<p>考慮一個類似 MAML 的簡單 BLO：元參數定義內層優化的初始點，內層損失為標準 L2、與元參數無關，更新為標準無狀態梯度步。內層是 M 步遞迴映射（式 9）。隨每步 transformation 數 M 增加，計算圖變長，可研究對記憶體與執行時間的影響。Figure 1 顯示：混合模式微分下 <strong>HBM 與步時縮放好得多</strong>，記憶體與 wall-clock 隨 M 增加最多降約 10×。</p>
+<h2 id="4-擴展到大模型">4. 擴展到大模型</h2>
+<p>標準截斷式 BPTT（Algorithm 1）對 T 步內層迴圈儲存中間 activation 與輸出，<strong>峰值記憶體 ∝ T</strong>；現實大模型常一步內層就用掉全部加速器記憶體。</p>
+<ul>
+<li><strong>Gradient checkpointing</strong>：對內層步做 checkpointing 可把記憶體降到 O(1)（任一時刻只留當前步 activation），故全程啟用。activation 與偏導數通常遠大於參數與優化器狀態。</li>
+<li><strong>靜態 vs 動態記憶體</strong>：checkpoints/inputs/參數/狀態在程式開頭分配、整個生命週期只寫一次，稱<strong>靜態</strong>；外層反向傳播期間分配、每步重新利用的 activation 稱<strong>動態</strong>。MixFlow-MG 作用於<strong>動態記憶體</strong>。</li>
+</ul>
+<p>兩個放大增益的優化：</p>
+<ol>
+<li><strong>Block rematerialisation</strong>：對殘差塊（ResNet/Transformer）做 checkpointing，以一次前向的理論成本大幅降記憶體；baseline 與本法都開以避免 OOM。</li>
+<li><strong>Saving inner gradients</strong>：把內層梯度連同每步輸入/參數一併存進 checkpoint，避免外層梯度傳播時多一次 backward——<strong>本文新貢獻，只對 MixFlow-MG 開</strong>。</li>
+</ol>
+<p>三者互補。在 forward-over-reverse 下做 block remat <strong>不需存逐塊 checkpoint</strong>（外層為前向模式），幾乎完全移除某塊記憶體。前向模式仍需即時算 activation 與 JVP，故約需基本前向 3 倍記憶體。觀察：saving inner gradients 在 GPU 對記憶體與步時都關鍵，在 TPU 只對步時重要——反映兩後端編譯器效率差異。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

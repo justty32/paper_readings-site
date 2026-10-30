@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《SAGE-Fit：以更好的參數最佳化挽救「好結構卻得壞分數」的符號迴歸》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Boxiao Wang、Kai Li、Zhiwei Chen、Yang Huang、Runxiang Wang、Ziwen Zhang、Yifan Zhang、Jian Cheng（通訊）</p><p>日期：2026-05，符號迴歸 + 內層參數擬合</p><p>arXiv：2605.23272</p><p><a href="https://arxiv.org/abs/2605.23272" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="sage-fit當好式子得到壞分數以更好的參數最佳化強化符號迴歸重點摘要">《SAGE-Fit：當好式子得到壞分數——以更好的參數最佳化強化符號迴歸》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>SAGE-Fit</strong>（Structure-Aware and Semantics-Guided Evaluator）指出 SR 的隱形痛點不在「結構搜尋（外層）」而在「<strong>參數擬合（內層）</strong>」：SR 是雙層最佳化，外層搜離散式結構、內層調連續常數；<strong>結構正確的式子常因 BFGS/Nelder-Mead 在非凸地景（「盆中針 needle-in-a-basin」）卡在局部極小而拿到壞分數，被外層誤丟</strong>（「Good Structure, Bad Score」）。SAGE-Fit 是<strong>即插即用的評估器</strong>，靠三模組——(1) <strong>結構感知降維</strong>（Variable Projection 把仿射線性參數解析消去、縮小到不可約非線性流形）、(2) <strong>語意導引初始化</strong>（函數空間最遠點採樣 FS-FPS，讓起點在「行為」而非「參數座標」上多樣）、(3) <strong>SR 專用局部吸引</strong>（投影 Gauss–Newton／LM）。在 <strong>LSR-Synth（128 題）</strong> 上把 PySR 符號準確率 <strong>2.78%→8.33%（3 倍）</strong>、LLM-SR 容差準確率 <strong>33.33%→60.61%</strong>，候選級「丟失率」從 51.5%（BFGS-multi）降到 <strong>8.0%</strong>，且僅 <strong>0.73 秒/候選</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>SR 雙層架構中，外層探索結構、內層用局部最佳化器（BFGS、Nelder-Mead）擬合常數。<strong>巢狀非線性運算子造出高度非凸、佈滿局部極小的「盆中針」地景</strong>，通用最佳化器找不到全域參數，於是<strong>結構正確的候選得到壞 fitness、被外層當垃圾丟棄</strong>，拖垮搜尋效率、阻止收斂到真實物理律。核心洞見：瓶頸已從「結構發現」移到「結構評估」。</p>
+<h2 id="核心方法三模組">核心方法（三模組）</h2>
+<ul>
+<li><strong>觀察</strong>：參數空間 θ 的距離常具誤導性（例 a·sin(bx+c) = (−a)·sin(bx+c+π)）→ 應在<strong>函數空間</strong>衡量。</li>
+<li><strong>模組 1 — 結構感知降維</strong>：用 <strong>Variable Projection (VarPro)</strong> 解析 AST，找出條件線性參數（仿射進入式子者），以線性最小二乘<strong>確定性消去</strong>（如 a·sin(bx+c) 中振幅 a 消去、只留頻率/相位），把 d 維壓到較低維非線性流形（dβ&lt;d）；α⋆(β) 有閉式解（Eq.9）。</li>
+<li><strong>模組 2 — 語意導引初始化（FS-FPS）</strong>：解決「盆地塌縮」——隨機在參數空間採樣浪費預算在冗餘起點上。生成 <strong>M=100</strong> 候選參數向量，在訓練資料上算其預測輸出，以函數空間正規化歐氏距離<strong>貪婪選 K=8</strong> 個最遠分離的點（Eq.11）→ 起點具行為多樣性而非座標多樣性。</li>
+<li><strong>模組 3 — SR 專用局部吸引</strong>：在投影流形上施 <strong>Levenberg–Marquardt / 投影 Gauss–Newton</strong>（Eq.12），靠 J̃ᵀJ̃ 帶曲率資訊 + 座標縮放，從高品質起點快速收斂。</li>
+<li><strong>定位</strong>：純強化內層評估器，<strong>不改外層搜尋邏輯</strong>，可套到 GP / RL / LLM 各式 SR。</li>
+</ul>
+<h2 id="結果基準-lsr-synthllm-srbench128-題跨化學生物物理材料">結果（基準 LSR-Synth／LLM-SRBench，128 題，跨化學/生物/物理/材料）</h2>
+<ul>
+<li><strong>符號準確率 SA</strong>：PySR <strong>2.78%→8.33%（3 倍）</strong>；uDSR+ <strong>13.89%</strong>（LSR-Synth 最高）；LLM-SR+ <strong>11.11%</strong>（基線 8.33%）。</li>
+<li><strong>容差準確率 Acc₀.₁</strong>：PySR+ <strong>43.33%</strong>（基線 37.14%）；uDSR+ <strong>64.89%</strong>（基線 54.29%）；LLM-SR+ <strong>60.61%</strong>（基線 33.33%，提升 +82%）。</li>
+<li><strong>NMSE</strong>：普遍大降，PySR+ 達 3.88e-4（基線 5.30e-4）。</li>
+<li><strong>軌跡級評估器保真度</strong>（LLM-SR）：被基線丟棄但 SAGE-Fit 下具競爭力的「refit 丟失率」——材料科學平均 <strong>47.81%</strong>、化學 22.35%、生物 24.06%、物理 6.39%；NMSE 改善的 log-ratio 中位數材料科學 <strong>5.67（&gt;10 萬倍）</strong>。</li>
+<li><strong>候選級 Structure-Progress Bank（200 候選）</strong>：SAGE-Fit 丟失率 <strong>8.0%</strong> vs BFGS-multi 51.5%（相對降 84.5%）；對更強基線 lm_trf_multi（9.5%）亦勝；平均 log NMSE −3.794；<strong>0.73 秒/候選</strong>。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>函數空間過採樣（M=100 次評估）增些微成本（被更快收斂抵銷）。</li>
+<li>SPB 分析顯示 SAGE-Fit 與 TRF 基線在<strong>參數 &gt;6 維</strong>時皆吃力。</li>
+<li>物理任務改善中位數較小（log-ratio 0.69），暗示高震盪問題另有瓶頸。</li>
+<li>仍需投影 β 空間內合理的 warm 初始化。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 C 類的**「把焦點從結構搜尋移到參數擬合」代表**——多數 SR 工作（<a class="paper-reference" href="2606.07915_EditSR.%E6%91%98%E8%A6%81.html">2606.07915</a> EditSR 修結構、<a class="paper-reference" href="2509.15929_Improved_MCTS_SR.%E6%91%98%E8%A6%81.html">2509.15929</a> MCTS 搜結構）攻外層，本篇獨家攻<strong>內層常數最佳化這個被忽視的瓶頸</strong>，且可與它們正交疊加。</li>
+<li>最值得記：<strong>「Good Structure, Bad Score」失敗模式</strong>；<strong>參數空間距離誤導 → 改用函數空間（FS-FPS）</strong>；<strong>VarPro 消去線性參數降維</strong>；以及「即插即用評估器、不動外層」這個工程定位。</li>
+<li>與 <a class="paper-reference" href="2604.23256_Architecture_Recoverability_Bias_DSR.%E6%91%98%E8%A6%81.html">2604.23256</a>（可回復性受架構影響）對讀：兩篇都在說「結構對了不代表能回復」，一個歸因於可微 SR 的架構/梯度、一個歸因於內層擬合器找不到全域常數，互補。亦與 <a class="paper-reference" href="2606.09276_ERBench_Equation_Recovery_Benchmark.%E6%91%98%E8%A6%81.html">2606.09276</a> ERBench（方程式回復基準）相關——SAGE-Fit 正是提升符號回復率的具體手段。</li>
+<li>定位：<strong>方法論文 + 多基準實證</strong>；適合做 SR 內層最佳化、LLM-SR、bi-level 最佳化、評估器設計的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2605.23272_SAGE_Fit_Parameter_Optimization.zh-TW.html"><code>../translate/2605.23272_SAGE_Fit_Parameter_Optimization.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

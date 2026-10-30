@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_混合_LLM_推論 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2404.14618_HybridLLM.zh-TW.html">回 2404.14618_HybridLLM.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E8%A8%8E%E8%AB%96%E8%88%87%E7%B5%90%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-混合-llm-推論">3. 混合 LLM 推論</h2>
+<p><strong>easy 查詢</strong>：小模型回應品質接近大模型回應品質的查詢。框架目標是辨識 easy 查詢並送小模型，達成大幅降本而品質幾乎不掉。注意：easy 不代表「本身容易回答」，只代表「小模型追得上大模型」。</p>
+<p><strong>品質差（quality gap）</strong>：<code>H(x) := q(S(x)) − q(L(x))</code>。因 LLM 回應非確定性，H(x) 是隨機變數（圖 3：同一查詢 FLAN-t5 與 Llama-2 的回應品質分佈）。</p>
+<p><strong>編排框架</strong>：用 BERT 式編碼器（如 DeBERTa）在代表性查詢資料集上訓練來預測分數。因是編碼器，單次前向傳播即得分數，成本相對於大模型自回歸解碼可忽略，不會侵蝕成本優勢。</p>
+<p><strong>路由器分數</strong>：設計成對 easy 查詢輸出大值。直覺上估計 <code>Pr[H(x)≥0] = Pr[q(S(x))≥q(L(x))]</code>（小模型不輸大模型的機率）即為好候選。但當大模型遠強於小模型時，可把 easy 定義鬆弛為 <code>Pr[H(x)≥−t]</code>（t&gt;0）以訓出更有效的路由器。測試時在分數上調門檻，分數高於門檻者送小模型，即達成期望的品質-成本取捨。路由器參數 w、分數記 <code>p_w(x)∈[0,1]</code>。</p>
+<h3 id="31-確定性路由器r_det">3.1 確定性路由器（r_det）</h3>
+<p>沿用 hybrid ML 的「神經模型是確定性函數」假設：每模型每查詢各抽一個回應，指派硬標籤 <code>y_i^det = 1[q(S(x_i))≥q(L(x_i))]</code>，以二元交叉熵損失（式 1）訓練。硬標籤可視為單樣本下對 <code>Pr[H(x_i)≥0]</code> 的估計，最小化損失使 <code>p_w(x)</code> 逼近 <code>Pr[H(x)≥0]</code>。</p>
+<h3 id="32-機率式路由器r_prob">3.2 機率式路由器（r_prob）</h3>
+<p>確定性假設適用於標籤唯一明確的任務（影像分類、影片分割），但 NLP 因語言的內在模糊/複雜通常沒有單一最佳答案。LLM 常被當非確定性生成器來捕捉此不確定性（隨機性主要來自解碼階段，使用者用 nucleus sampling、temperature 等控制；即便黑箱 API 如 GPT-4 把 temperature 設 0 也仍可能對同一查詢給不同回應，機制未明、近期研究暗示與 MoE 骨幹的不穩定有關）。</p>
+<p>因此把硬標籤鬆弛為軟標籤 <code>y_i^prob := Pr[H(x_i)≥0] = E[1[q(S(x_i))≥q(L(x_i))]]</code>。實作上每模型抽 <strong>10 個回應</strong>、以指標函數的樣本平均估計期望。硬標籤是此期望的高變異（單樣本）估計，故用軟標籤（式 2）可望改善表現。</p>
+<h3 id="33-機率式路由器資料轉換r_trans">3.3 機率式路由器＋資料轉換（r_trans）</h3>
+<p>當大模型遠強於小模型時，<code>Pr[H(x)≥0]</code> 的經驗估計極小（圖 4(a)：FLAN-t5 800m 對 Llama-2 13b，近 90% 查詢為 0），提供給式 2 的訓練訊號極弱，r_det 與 r_prob 幾乎不勝隨機路由。</p>
+<p>傳統不平衡資料學習法各有缺點。由於目標只是「降本同時盡量維持品質」、不綁定特定類別標籤定義，作者引入新標籤 <code>y_i^trans(t) := Pr[H(x_i)≥−t] = Pr[q(S(x_i))&gt;q(L(x_i))−t]</code>（t&gt;0）。因 −t&lt;0，<code>Pr[H(x)≥−t] ≥ Pr[H(x)≥0]</code>，此鬆弛提供更強訓練訊號、同時仍能辨識 easy 查詢（<code>q(S(x))</code> 有高機率接近 <code>q(L(x))</code>）。視覺上相當於把大模型回應分佈<strong>平移</strong>後再與小模型分佈比較（圖 3 虛線）。</p>
+<p><strong>如何選最佳 t</strong>：因 <code>Pr[H(x)≥−t]∈[0,1]</code>，選讓轉換後標籤兩兩平均差距最大的 <code>t*</code>（式 3），把標籤推得越開越好、提供強訓練訊號。目前用 grid search 解（圖 4(b)），轉換後標籤分佈顯著更平衡（圖 4(c)），路由器更有效。再以式 4 訓練，得 r_trans。</p>
+<h2 id="4-評估">4. 評估</h2>
+<h3 id="41-設定">4.1 設定</h3>
+<ul>
+<li><strong>資料集</strong>：MixInstruct（Jiang et al. 2023），彙整四個公開資料集的真實指令（QA、摘要、資訊抽取等），任務多元以訓練通用路由器。均勻抽 10k 訓練樣本、每樣本從各 LLM 生成 10 個回應；驗證/測試各 5k。</li>
+<li><strong>路由器模型</strong>：DeBERTa-v3-large（300M）為骨幹，各損失訓 5 epoch、以驗證集選最佳 checkpoint，單張 A100 80GB。原始碼開源：github.com/m365-core/hybrid_llm_routing。</li>
+<li><strong>指標</strong>：BART score（品質）、成本優勢（送小模型的查詢比例）。</li>
+<li><strong>基線</strong>：all-at-large（全送大）、all-at-small（全送小）、random（隨機）。目前無專門的 LLM 間路由前作。</li>
+<li><strong>模型對</strong>：從 FLAN-T5 (800m/11b)、Llama-2 (7b/13b)、GPT-3.5-turbo 中選對。測試時路由器吃一個門檻，分數高於門檻者送小模型。</li>
+</ul>
+<h3 id="42-路由器表現表-1圖-5">4.2 路由器表現（表 1、圖 5）</h3>
+<p>以「成本優勢 vs 相對 all-at-large 的品質掉幅」呈現，依大小模型的品質差分三類：</p>
+<ul>
+<li><strong>小品質差（Llama-2 7b vs 13b，圖 5(a)）</strong>：r_det 送 20%（40%）查詢到小模型僅掉 0.1%（0.2%）；r_prob 與 r_trans 在 20% 成本優勢下<strong>零品質掉幅</strong>（捕捉了 LLM 的非確定性）。</li>
+<li><strong>中品質差（Llama-2 13b vs GPT-3.5-turbo，圖 5(b)）</strong>：所有路由器 20%（40%）成本優勢下品質掉 ≤1%（≤4%）；40% 區間 r_prob 略勝 r_det、r_trans 再改善 r_prob 約 0.5%。</li>
+<li><strong>大品質差（FLAN-t5 800m vs Llama-2 13b，圖 5(c)）</strong>：大模型主導多數例子、路由困難。r_det/r_prob 僅略勝隨機；<strong>r_trans</strong> 仍能區分難易，40% 成本優勢下掉 10.3%，較 r_det/r_prob 少掉 3.5%/2.8%。</li>
+</ul>
+<p>兩個觀察：(1) 成本優勢小（如 10%）且品質差不大時，r_prob 可勝過 all-at-large（表 1 出現「負品質掉幅」）——因部分查詢小模型本就更好。(2) 成本優勢低（≤10%）且品質差小/中時，r_trans 可能因 t 的估計雜訊略遜 r_det/r_prob；但在高成本優勢或大品質差的困難情境，r_trans 因資料轉換而明顯勝出。</p>
+<h3 id="43-路由器驗證圖-6">4.3 路由器驗證（圖 6）</h3>
+<p>畫「送小模型查詢的平均品質差」減「送大模型查詢的平均品質差」對成本優勢的關係。隨機基線幾乎恆為 0；本路由器則把品質差大（easy）的查詢送小模型、品質差小的送大模型，故此差值恆為顯著正值——證實路由器確如預期把 easy 查詢送小模型。</p>
+<h3 id="44-路由器延遲表-2">4.4 路由器延遲（表 2）</h3>
+<p>每查詢平均延遲（200 條查詢）：路由器 0.036s、FLAN-t5 800m 0.46s、Llama-2 7b 7.99s、Llama-2 13b 14.61s。路由器比最快的 LLM 還快近 <strong>10 倍</strong>（因體積小且僅單次前向傳播，而 LLM 逐 token 自回歸生成、延遲正比於回應長度）。GPT-3.5-turbo 因走 API、無法分離網路/排隊延遲故不測，但預期同樣遠慢於路由器。故路由器對推論成本的額外開銷極小。</p>
+<h3 id="45-門檻的經驗選定表-3">4.5 門檻的經驗選定（表 3）</h3>
+<p>測試時模型擁有者須在路由器分數上設門檻分隔難易查詢，此為使用者可調的效率-表現取捨參數。作法：用小校準集（500 驗證樣本）grid search，選在「品質掉幅 ≤1%」下成本優勢最大的門檻（掉幅上限可依需求調整），再報告測試集結果。結果顯示驗證集選的門檻能良好遷移到測試集。Llama-2 7b/13b 對（小品質差）測試掉幅略升，但此對成本優勢最高（各路由器 &gt;96%），可用更保守的掉幅上限解決而仍有巨大省本。</p>
+<h3 id="46-其他評估指標圖-7">4.6 其他評估指標（圖 7）</h3>
+<p>用 GPT-4 評分器（LangChain scoring，1–10 整數）補充驗證。路由器雖以 BART score 訓練，但只要 BART score 與 GPT-4 score 的品質差高相關，路由器在 GPT-4 score 下仍有效（高相關時 20%/40% 成本優勢僅掉 1%/2.1%）；相關性變弱則表現漸降。實用策略：先用小樣本算 BART score 與目標指標（如人類評估）的相關性，強正相關時就用便宜的 BART score 當訓練標籤以省標註成本。</p>
+<h3 id="47-泛化到不同模型對圖-8">4.7 泛化到不同模型對（圖 8）</h3>
+<p>在與訓練不同的 LLM 對上測路由器。若測試對的品質差與訓練對的品質差強正相關（圖 8(a)：pearson/spearman 均 &gt;0.7），三種路由器 20%/40% 成本優勢下品質掉 ≤1.6%/≤4.1%；相關性弱則泛化受限。啟示：可用「品質差相關性」作為指標，事先判斷路由器能否套用到新模型對。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

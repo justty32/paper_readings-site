@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.00718_SkillCraft.zh-TW.html">回 2603.00718_SkillCraft.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-設定">4.1 設定</h3>
+<p><strong>模型</strong>：Kimi-K2-Thinking、DeepSeek-V3.2-EXP、DeepSeek-R1、GLM-4.7、Minimax-M2.1、GPT-5.2、Gemini 3 Pro、Claude 4.5 Sonnet。所有 agent 使用統一任務提示、工具端點、環境約束。</p>
+<p><strong>指標</strong>：成功率 = score ≥90%（依 Toolathlon 模式，每任務由人類專家定義 handcrafted evaluation rule）；技能執行率 = 成功技能執行佔全部技能執行嘗試的比例；重用率 = 每技能平均被調用次數。效率指標為 token 總數（InTok/OutTok）、成本、對話回合數、工具呼叫數，均計算 Diff = (mskill − mbase)/mbase（負值 = 節省），僅在兩種模式均成功的任務子集中平均以確保公平比較。</p>
+<h3 id="42-主要結果">4.2 主要結果</h3>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>Base SR</th>
+<th>Skill SR</th>
+<th>Token 節省</th>
+<th>Cost 節省</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPT-5.2</td>
+<td>109/126 (87%)</td>
+<td>114/126 (90%)</td>
+<td>-79%</td>
+<td>-75%</td>
+</tr>
+<tr>
+<td>Claude 4.5 Sonnet</td>
+<td>119/126 (94%)</td>
+<td>121/126 (96%)</td>
+<td>-71%</td>
+<td>-74%</td>
+</tr>
+<tr>
+<td>Gemini 3 Pro</td>
+<td>108/126 (86%)</td>
+<td>116/126 (92%)</td>
+<td>-54%</td>
+<td>-49%</td>
+</tr>
+<tr>
+<td>DeepSeek-V3.2</td>
+<td>76/126 (60%)</td>
+<td>87/126 (69%)</td>
+<td>-49%</td>
+<td>-51%</td>
+</tr>
+<tr>
+<td>GLM-4.7</td>
+<td>91/126 (72%)</td>
+<td>108/126 (86%)</td>
+<td>-39%</td>
+<td>-41%</td>
+</tr>
+<tr>
+<td>Minimax-M2.1</td>
+<td>117/126 (93%)</td>
+<td>119/126 (94%)</td>
+<td>-11%</td>
+<td>-8%</td>
+</tr>
+<tr>
+<td>Kimi-K2-Thinking</td>
+<td>55/126 (44%)</td>
+<td>56/126 (44%)</td>
+<td>+24%</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>關鍵觀察：</p>
+<p><strong>(1) Skill Mode 為所有模型顯著降低 token 與成本</strong>。例如 GPT-5.2 token 從 1.23M 降至 0.26M（-79%）、成本從 $1.77 降至 $0.43（-75%）。Claude 4.5 Sonnet token 從 1.36M 降至 0.40M（-71%）、成本從 $1.08 降至 $0.28（-74%）。當技能被發現並快取後，長時程工具鏈規劃可通過重複重用同時更有效且更有效率地解決。</p>
+<p><strong>(2) 效率增益幅度與模型基礎能力正相關</strong>（SR 與 Turns Saved 相關 r=0.53）。閉源強模型從技能重用獲益最大；開源弱模型獲益有限甚至為負——Skill Mode 是<strong>能力放大器</strong>。</p>
+<p><strong>(3) 強模型與弱模型的行為差異</strong>：強模型靈活組合工具、僅在有益時重用；弱模型傾向僵化遵循提示、過度套用組合。這支持「工具組合能力是智慧的核心度量」的觀點。</p>
+<p><strong>(4) 對話回合數可能增加</strong>（部分模型 Avg Turns 上升），因為 Skill Mode 在選擇與執行快取技能時增加了額外的決策與驗證步驟。但這些額外回合通常輕量，總體 token 與成本仍下降。</p>
+<h3 id="43-相關性分析">4.3 相關性分析</h3>
+<p>跨指標相關性熱力圖顯示兩個關鍵模式：</p>
+<ul>
+<li><strong>技能執行率與任務成功率相關 r=0.65</strong>：表示高品質代碼生成能力直接轉化為可靠的工具組合</li>
+<li><strong>效率節省與基礎成功率相關 r=0.53</strong>：確認越強的模型從技能重用的獲益越大</li>
+</ul>
+<h2 id="5-什麼是好的工具組合">5. 什麼是好的工具組合？</h2>
+<p>沿兩個維度研究工具組合品質：composition depth 與 generalization ability。</p>
+<h3 id="51-深層組合一定更好嗎">5.1 深層組合一定更好嗎？</h3>
+<p><strong>Hierarchical Mode</strong> 允許技能在執行期間呼叫其他技能（max nesting depth=10），理論上可實現乘法級效率增益。但實驗揭示反面結論：</p>
+<p>三個微觀失敗機制：(1) <strong>組合性失敗</strong>：深度 d 的技能依賴整個依賴子樹，成功率隨嵌套急劇退化；(2) <strong>潛伏 bug</strong>：早期建立的技能可能在邊界情況下含錯，僅在重用時觸發，污染所有基於它的高層技能；(3) <strong>除錯開銷</strong>：診斷嵌套失敗需追蹤整個依賴鏈，成本常超過簡單以平面工具呼叫重新執行。</p>
+<p>實證結果（Table 3）：</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>Mode</th>
+<th>成功率</th>
+<th>Token</th>
+<th>Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPT-5.2</td>
+<td>Base</td>
+<td>87%</td>
+<td>1.23M</td>
+<td>$1.77</td>
+</tr>
+<tr>
+<td>GPT-5.2</td>
+<td>Skill</td>
+<td>90%</td>
+<td>0.26M</td>
+<td>$0.43</td>
+</tr>
+<tr>
+<td>GPT-5.2</td>
+<td>Hier</td>
+<td>79%</td>
+<td>0.60M</td>
+<td>$0.81</td>
+</tr>
+<tr>
+<td>Claude 4.5</td>
+<td>Skill</td>
+<td>96%</td>
+<td>0.40M</td>
+<td>$0.28</td>
+</tr>
+<tr>
+<td>Claude 4.5</td>
+<td>Hier</td>
+<td>96%</td>
+<td>0.63M</td>
+<td>$0.44</td>
+</tr>
+</tbody>
+</table>
+<p>GPT-5.2 從 flat Skill 移至 Hierarchy 後成功率從 90% 降至 79%、token 從 0.26M 回升至 0.60M。Claude 成功率未變，但 Hierarchy 效率仍較差（0.40M vs 0.63M）。值得注意的是 Hierarchy 執行率可達 95–99% 但這並未轉化為更高的任務成功率。</p>
+<p><strong>結論：shallow、充分測試的技能庫當前比深層自動生成的層級更可靠且更具成本效益</strong>。</p>
+<h3 id="52-跨任務泛化">5.2 跨任務泛化</h3>
+<p>兩階段靜態轉移實驗：Phase 1（技能創造）在來源難度層以 Skill Mode 解決任務、創建並快取技能；Phase 2（技能轉移）將預計算的快取複製到目標難度層工作區、注入結構化技能摘要至系統提示、agent 僅可重用不可新建。</p>
+<p>三種轉移方向結果（Table 4）：</p>
+<ul>
+<li><strong>Claude Easy→Hard</strong>：成功率 95%→100%、token 1.92M→1.56M（-19%）</li>
+<li><strong>Claude Hard→Easy</strong>：成功率 95%→95%、token 1.06M→0.69M（-35%）</li>
+<li><strong>Claude Hard→Hard</strong>：成功率 95%→95%、token 1.96M→0.47M（-76%）</li>
+<li><strong>Gemini Easy→Hard</strong>：成功率 76%→90%、token 1.33M→0.78M（-41%）</li>
+<li><strong>Gemini Hard→Hard</strong>：成功率 76%→100%、token 1.30M→0.75M（-42%）</li>
+</ul>
+<p>轉移技能的執行率始終 97–100%，證明預計算技能緩存可跨難度層穩定重用。</p>
+<h3 id="53-跨模型技能泛化">5.3 跨模型技能泛化</h3>
+<p>四個模型（Claude、Gemini、GLM、Minimax）各在 8 個 hard 任務上建立技能後，以靜態重用模式提供給全部四個模型執行（16 個組合含 4 個自重用基線）。agent 可透過 execute_skill 調用預載技能但不能創建新技能。</p>
+<p>兩個關鍵發現（Figure 7）：</p>
+<p><strong>(1) 高品質技能達成普遍成功</strong>：Claude 創建的技能在所有四個執行模型上（含 Gemini、GLM、Minimax）均達 <strong>100% 成功率</strong>——良好抽象的、含清晰參數介面的技能可跨不同架構的執行模型有效轉移。</p>
+<p><strong>(2) 技能品質決定效率增益或損失</strong>：Claude 創建的技能跨所有執行者產生 54–81% token 節省；Minimax 創建的技能部分反而增加了成本（+13% 到 -48%）——設計不佳的技能無論何模型執行都會傷害效能。</p>
+<p><strong>(3) 執行者能力可補償中等技能品質</strong>：Claude 使用 Gemini 的技能節省 69.2%，遠超 Gemini 自用的 14.8% 自重用——但不能挽救根本設計錯誤的技能。</p>
+<p><strong>啟示</strong>：多代理系統應從高能力模型策劃技能庫，而非允許所有參與者任意貢獻。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>SkillCraft（126 個含重複子結構的任務）與 Skill Mode protocol 使 agent 能自動組合、快取、重用工具序列。頂尖模型評估發現：(1) 技能重用降 token 用量最高 <strong>80%</strong> 同時維持/提升成功率；(2) 效率增益與模型智能強相關；(3) 技能跨任務、跨模型泛化良好（&gt;95% 執行率）；(4) 層級組合因嵌套錯誤累積而不如 shallow 技能庫可靠。本文將<strong>組合性技能獲取</strong>確立為長期穩健工具使用的核心能力。</p>
+<p>程式碼公開於 github.com/shiqichen17/SkillCraft。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

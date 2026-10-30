@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2309.17428_CRAFT.zh-TW.html">回 2309.17428_CRAFT.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）常以工具增強來解決複雜任務：透過生成程式碼片段並經任務專用 API 執行，可把影像編碼、數值計算等功能卸載給專門的外部模組。然而多數既有的工具增強法受限於<strong>通用 API（general-purpose APIs）</strong>，缺乏為特定任務量身裁製的彈性。本文提出 <strong>CRAFT</strong>——一個通用的 LLM <strong>工具創建與檢索（tool creation and retrieval）<strong>框架。它為每個任務造出</strong>專門策畫的工具集</strong>，並為 LLM 配上一個檢索組件，從工具集中取出工具以增強解題能力。對每個任務，先令 GPT-4 求解訓練樣例以蒐集具體程式解，經<strong>驗證</strong>確保正確後，將解<strong>抽象化（abstracted）<strong>成可重用的程式片段，再</strong>去重</strong>以提高品質。推論時，模型從工具集<strong>檢索</strong>片段，然後執行、或在檢索到的片段條件下生成輸出。此法免微調、隨插即用，能把現成 LLM 適配到未見的領域與模態。在視覺語言、表格處理、數學推理任務上，CRAFT 較強基線有顯著提升；深入分析顯示：(1) 擴大工具數與增強 backbone 能力都能持續提升表現；(2) 各組件皆有貢獻；(3) 造出的工具結構良好、可靠、複雜度低且具原子性。程式碼見 github.com/lifan-yuan/CRAFT。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 已能透過外部工具與環境動態互動，取得超出其預訓練參數的資訊，例如生成程式碼並呼叫影像編碼模型等視覺工具的 API 來處理影像/影片問題。過往成功多來自整合<strong>大規模通用工具集</strong>；但把 LLM 適配到眾多領域與演進中的應用，需要更專門、針對特定挑戰的 API，而這些往往在通用工具集中表達不足。本文因此主張：把 LLM 與<strong>為特定問題策畫的高度可客製化工具集</strong>整合。</p>
+<p>CRAFT 為給定任務建構專屬工具集（圖 1）。相較於前人只納入<strong>單一類型工具</strong>（LATM）或造出<strong>未驗證、不可重用</strong>工具（CREATOR），CRAFT 的工具集含<strong>多樣、可重用、正確</strong>的 API。這透過一條自動化流程達成：令 LLM 對任務（或相關）訓練問題生成具體程式解，再抽象成日後可實例化的片段，並以專門的<strong>驗證與去重</strong>步驟保正確、降冗餘。</p>
+<p>推論時，從龐大工具集精準檢索相關工具很困難。既有方案多靠預選工具、啟發式選擇或簡單相似度，面對大工具庫常不足。CRAFT 以一個**多視角匹配（multi-view matching）**函數，同時考量目標問題、工具名稱（API）與其 docstring 來檢索；取回的片段加進 prompt，便可在生成的程式解中被呼叫。</p>
+<p><strong>貢獻兩點</strong>：(1) 提出 CRAFT，一個以工具創建與檢索客製 LLM 的廣泛適用框架；(2) 釋出所造出的工具集（多樣、可重用、正確），對多種下游任務有用。工具集建置估計總花費約 <strong>2,500 美元</strong>。</p>
+<h2 id="2-craft">2. CRAFT</h2>
+<p>CRAFT 針對前人兩處不足：(1) <strong>工具創建</strong>——建立多樣、可重用、正確工具的大型工具集，而非依賴有限樣例；(2) <strong>工具檢索</strong>——從大工具集中針對特定問題有效取出相關工具，擺脫僅靠簡單相似度匹配的作法。把取回的程式實例化並加進 prompt 後，LLM 便能以呼叫函數的方式使用工具完成複雜操作，而非事事從零實作。</p>
+<h3 id="21-工具創建tool-creation">2.1 工具創建（Tool Creation）</h3>
+<p>基於一個來源資料集（通用指令資料集，或含「問題—答案」對的訓練集），CRAFT 以四步建構工具集（圖 2）：</p>
+<ul>
+<li><strong>Generation（生成）</strong>：迭代地從來源資料集採樣「問題—答案」對。以集合 Q 記已採樣問題、Rᵢ 記第 i 輪後的剩餘問題；Q 先隨機取 n 筆初始化。每輪用 <strong>min-max 採樣策略</strong>增進多樣性——把「與 Q 中最相似者之相似度」最小的 k 個問題加入 Q（相似度用對比學習句表示法 <strong>SimCSE</strong> 的餘弦相似度，k 設為 100）。對每個問題令 <strong>GPT-4</strong> 生成可由直譯器執行得答案的 Python 具體解，<strong>只保留無 bug 且輸出正確者</strong>，其餘丟棄以確保工具正確性。</li>
+<li><strong>Abstraction（抽象化）</strong>：具體解只適用原題，難以重用。抽象化令 GPT-4 把所有具體變數名換成通用名（如 cat→animal、desk→object）、把內部函數呼叫的文字輸入外提為工具參數（如 <code>date = df[&quot;date&quot;]</code>→<code>date = df[column_name]</code>，<code>column_name</code> 由呼叫者傳入），並指派恰當的通用函數名、撰寫對應 docstring 說明功能 → 提升可重用性。</li>
+<li><strong>Validation（驗證）</strong>：檢查抽象工具函數能否解回原題——給 GPT-4 存取該抽象工具、期望它以適當參數解出原題；<strong>無法得正解者丟棄</strong>。</li>
+<li><strong>Deduplication（去重）</strong>：依「函數名＋輸入參數數」把工具分組；對含多個工具的組，令 GPT-4 選出最全面、應用最廣者，以降冗餘、避免同名工具造成混淆。</li>
+</ul>
+<h3 id="22-工具檢索tool-retrieval">2.2 工具檢索（Tool Retrieval）</h3>
+<p>從龐大工具集取相關工具很難。為此先令 LLM「描述自己需要什麼」：推論時，受評 LLM 依目標問題 q_t 生成所需的函數名 f_t 與 docstring d_t。CRAFT 對每個造出的工具 tᵢ 考量三面向，構成三元組 <strong>(qᵢ, fᵢ, dᵢ)</strong>——(1) 創建該工具的原始問題 qᵢ；(2) 函數名 fᵢ；(3) docstring dᵢ。進行<strong>多視角匹配</strong>：分別以 q_t、f_t、d_t 在工具集 T 中用 SimCSE 相似度檢索出 top-k（實作中 q 取 10、f 取 5、d 取 10），得三份工具清單。將三份清單彙整、按<strong>出現頻率排序</strong>，以<strong>多數決取最常出現的 3 個</strong>工具，並濾除只出現一次者；極端情況下若全部只出現一次（檢索集為空），LLM 便不呼叫任務專用工具、直接生碼求解。</p>
+<p>檢索後，工具的程式片段加進 LLM 的 prompt 供生碼；LLM 可呼叫其中嵌入的工具（API）。最後把取回的工具函數與 LLM 生成的程式解實例化為可執行程式並執行，得最終預測。</p>
+<h3 id="小結與討論">小結與討論</h3>
+<p>CRAFT <strong>離線</strong>造出專用工具集、<strong>推論時</strong>檢索有用工具。造集階段以相似度做迭代採樣求多樣、GPT-4 生碼、抽象成高階工具求可重用、以「解回原題」驗證求正確、去重降冗餘。推論階段以「問題／函數名／docstring」三視角匹配取相關工具。</p>
+<p>作者強調 CRAFT 的優點：藉工具創建範式，能有效利用<strong>領域專屬資料</strong>客製 LLM 而<strong>無需大量微調</strong>，是免訓練、隨插即用之法；因彈性高而廣泛適用於各類問題。每個工具實例化為可執行程式片段、瞄準小的原子問題（如辨識物件顏色），確保<strong>可解釋性</strong>、便於人工檢查與修錯，並支援把複雜問題<strong>分解</strong>為多個可管理步驟，利於工具在推論時的<strong>可組合性</strong>。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

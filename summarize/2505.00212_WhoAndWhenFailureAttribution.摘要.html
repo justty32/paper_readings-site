@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《哪個 Agent 在何時造成任務失敗？LLM 多 Agent 系統的自動錯誤歸因》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Shaokun Zhang, Ming Yin, Jieyu Zhang, Jiale Liu, Zhiguang Han, Jingyang Zhang, Beibin Li, Chi Wang, Huazheng Wang, Yiran Chen, Qingyun Wu</p><p>日期：2025-05，LLM 多 Agent 系統 × 自動失敗歸因（ICML 2025）</p><p>arXiv：2505.00212</p><p><a href="https://arxiv.org/abs/2505.00212" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="哪個-agent-在何時造成任務失敗llm-多-agent-系統的自動錯誤歸因重點摘要">《哪個 Agent 在何時造成任務失敗？LLM 多 Agent 系統的自動錯誤歸因》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>Who&amp;When 把多 agent 除錯正式化為 <code>(agent, step)</code> 歸因：若修正某一步並讓後續軌跡相應調整後，整體由失敗變成功，該步就是 decisive error；資料集收錄 127 種 agent 系統、184 個帶人工解釋的失敗歸因任務。現有 LLM 最好只能認出 53.5% 的責任 agent、精確定位 14.2% 的錯誤步，顯示「知道最後錯了」與「知道哪裡導致錯」是兩個難度差很多的問題。</p>
+<h2 id="問題定義">問題定義</h2>
+<ul>
+<li>系統採輪流行動協定，每個時間點只有一個 agent 採取動作。</li>
+<li>一條失敗軌跡可能有多個錯誤，但錯誤不一定是失敗原因。</li>
+<li>若把 agent <code>i</code> 在時間 <code>t</code> 的錯誤動作換成正確動作，保留此前前綴並相應調整之後的行為，結果由失敗轉成功，<code>(i,t)</code> 才是 <strong>decisive error</strong>。</li>
+<li>若有多個 decisive errors，資料集選時間最早者作主要失敗原因。</li>
+</ul>
+<p>這個定義帶有反事實因果意味，但資料標註實際上依賴專家閱讀與共識，沒有真的為每個候選步驟執行可控重播。因此 benchmark 的標籤是專家對反事實的判斷，不是實驗驗證的因果效果。</p>
+<h2 id="whowhen-資料集">Who&amp;When 資料集</h2>
+<ul>
+<li>共 127 種 LLM 多 agent 系統、184 個失敗標註任務，來源為 GAIA 與 AssistantBench。</li>
+<li>其中一類由 CaptainAgent／GPT-4o 自動為每個 query 建立團隊、角色、prompt 與工具，保留最佳配置仍失敗的執行紀錄；另一類是成熟的五 agent 系統 Magnetic-One。</li>
+<li>每筆資料包含 query、完整失敗 log、系統資訊、責任 agent、決定性錯誤步與自然語言原因。</li>
+<li>三名 AI agent 專家分三輪標註：獨立標註並標示不確定、針對不確定案例討論至全員共識、交叉檢查彼此標註並再協商。</li>
+<li>三人分別花 30.9、30.2、23.2 小時；初輪自報不確定比例約 15%–30%，說明人類也很難歸因。</li>
+</ul>
+<h2 id="三種自動歸因法">三種自動歸因法</h2>
+<ul>
+<li><strong>All-at-once</strong>：一次提供完整 query 與 log，直接預測 agent 和 step。全域資訊最完整，較會找對 agent，但難在長脈絡中精確找一步。</li>
+<li><strong>Step-by-step</strong>：逐步加入 log，每步問是否已出錯，首次判錯即停止。局部定位較準，但可能因太早決定而錯過後續證據。</li>
+<li><strong>Binary search</strong>：每次判斷錯誤在 log 前半或後半，反覆縮小到一步。效能與成本通常介於前兩者。</li>
+</ul>
+<h2 id="主要結果">主要結果</h2>
+<ul>
+<li>摘要報告的總體最佳值為 agent-level 53.5%、step-level 14.2%，尚無實用性。</li>
+<li>GPT-4o 的細分結果顯示，all-at-once 在 agent-level 最好：依系統類型與是否有答案標籤，約 51.12%–55.17%。</li>
+<li>step-by-step 在精確 step 定位通常最好，但幅度仍低：演算法生成系統、有正確答案時為 25.51%；手工系統、無正確答案時只有 8.77%。</li>
+<li>all-at-once 的 step-level 平均甚至可能低於隨機，呈現長脈絡中的「needle in the space」問題。</li>
+<li>Magnetic-One log 由 5–17 steps 增到 93–130 steps 時，三種方法皆退化；最長區間的 step-level 幾乎降到 0%。</li>
+<li>容許 ±5 steps 後，手工系統上 all-at-once 可到 43.10%，但這只表示大概區域，不是找到決定性動作。</li>
+<li>先用 all-at-once 找 agent，再只對該 agent 的動作做 step-by-step，手工系統上 agent-level 57.02%、step-level 12.28%；代價為 149,177 tokens，高於任一單法。</li>
+<li>OpenAI o1 與 DeepSeek R1 沒有一致勝過 GPT-4o。DeepSeek R1 在四個比較中三個較差；換強模型不等於會做因果歸因。</li>
+<li>單筆結果雖差，聚合統計仍能找出最常造成 decisive error 的 agent，適合先作系統熱點排序。</li>
+</ul>
+<h2 id="對-agent-錯誤管理的啟發">對 Agent 錯誤管理的啟發</h2>
+<p>錯誤管理不能只放一個 LLM auditor 看完整 log。找「誰」需要跨 agent 的全域脈絡；找「何時」需要局部、高解析度檢查；兩者應分階段處理。實務上可先以全域方法縮小責任 agent／子圖，再對候選動作做局部審核，最後以重播或測試驗證，而不是直接相信 auditor 的文字理由。</p>
+<p>這篇還揭示 observability 的最低要求：每步必須保留 active agent、輸入狀態、動作、工具結果、後續狀態與終局評分，否則連 Who/When 任務都無從定義。對千萬級 agent，應先做聚合熱點與故障域統計，再把昂貴的精確歸因限制在少數候選軌跡。</p>
+<h2 id="局限">局限</h2>
+<ul>
+<li>只處理輪流行動、單一 agent 每步的系統，不涵蓋真正並行、共享狀態競爭或多 agent 聯合錯誤。</li>
+<li>每條軌跡只選最早 decisive error，會壓平多因一果、共同責任與後續放大錯誤。</li>
+<li>標註沒有逐候選反事實重播；「修正後會成功」主要靠專家判斷，可能受主觀因果故事影響。</li>
+<li>184 個任務仍小，且集中在 GAIA、AssistantBench 與兩種系統建構方式；對程式開發、長期自治與不可逆工具操作的泛化未知。</li>
+<li>step 編號不是時間或語意距離。容許 ±5 在短 log 中佔很大比例，不能直接解讀成可操作的精準除錯。</li>
+<li>有 ground truth 的開發情境較容易；線上真實故障往往沒有正確答案，效能會更差。</li>
+</ul>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2505.00212_WhoAndWhenFailureAttribution.zh-TW.html"><code>../translate/2505.00212_WhoAndWhenFailureAttribution.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

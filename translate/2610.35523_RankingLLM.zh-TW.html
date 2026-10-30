@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Ranking Function Generation with LLMs for Termination 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Rongkang Li、Jiaxin Hu、Taolue Chen、Yong Li、Fu Song、Zhilin Wu</p><p>日期：2026-10-26（v1，cs.SE）</p><p>arXiv：2610.35523</p><p><a href="https://arxiv.org/html/2610.35523v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="以大型語言模型產生排序函式以證明終止">以大型語言模型產生排序函式以證明終止</h1>
+<h2 id="摘要與第-1-節研究問題">摘要與第 1 節：研究問題</h2>
+<p>證明迴圈終止的一種方法是找出排序函式：它將程式狀態映射到良基集合，沿迴圈執行下降，因此不能無限下降。自行構造此證明需專業知識，而既有自動合成方法受可用模板影響。作者提出 RAINFALL，讓大型語言模型填入帶斷言的程式片段，再以符號方法驗證，失敗時回饋診斷並重試。（<a href="https://arxiv.org/html/2610.35523v1#S1">摘要與 §1</a>）</p>
+<p>成功時系統輸出經檢查的插樁程式作為終止證書；未在資源限制內找到證書時回傳 Unknown。這處理的是終止證明，Unknown 不代表程式不終止。（<a href="https://arxiv.org/html/2610.35523v1#S4">§4</a>）</p>
+<h2 id="第-2-節排序函式">第 2 節：排序函式</h2>
+<p>作者將單一 while 迴圈表示為初始狀態與狀態轉移關係，並介紹三類證書：單一排序函式、按順序逐階段下降的多階段排序函式，以及依字典序下降的向量排序函式。證書須具備對應的下降、下界及與迴圈終止條件之間的關係，才能推出迴圈不會無限執行。多重或巢狀迴圈的討論依賴將其化約為單迴圈問題。（<a href="https://arxiv.org/html/2610.35523v1#S2">§2–2.1</a>）</p>
+<p><strong>本檔補註，非作者自陳</strong>：原文 §2 把有理數上的 <code>&lt;</code> 列為良基，這個敘述一般不成立，例如正有理數 <code>1, 1/2, 1/3, …</code> 無限下降。文中單一排序函式另外要求每步至少下降固定 <code>ε &gt; 0</code> 且有下界；在有下界時足以排除無窮下降；不能單憑「有理數嚴格下降」推得終止。但 §4.2.2 單一函式的斷言形式僅寫嚴格下降 <code>&gt;</code>；若排序值為稠密數值而無固定下降幅度，仍須另證良基性，不能無條件推得健全。（<a href="https://arxiv.org/html/2610.35523v1#S2">§2</a>、<a href="https://arxiv.org/html/2610.35523v1#S2.SS1">§2.1</a>、<a href="https://arxiv.org/html/2610.35523v1#S4.SS2.SSS2">§4.2.2</a>）</p>
+<h2 id="第-3-節相關研究">第 3 節：相關研究</h2>
+<p>作者比較模板式符號合成、由軌跡或反例引導的神經方法、微調模型產生候選的 PROTON，以及讓 LLM 生成不變式與排序函式、交由工具驗證的 LOOPY。RAINFALL 的重點在受限的程式與斷言填空，以及將檢查器診斷加入後續修正提示。（<a href="https://arxiv.org/html/2610.35523v1#S3">§3</a>）</p>
+<h2 id="第-4-節生成驗證與修正">第 4 節：生成、驗證與修正</h2>
+<p>預處理將 <code>for</code> 轉成 <code>while</code>，並對每個迴圈插入四個槽位：迴圈前宣告輔助變數、迴圈開頭保存舊排序值、迴圈末尾更新新排序值、插入證明條件斷言。提示提供槽位規則、排序函式語意及 few-shot 範例。LLM 只應填槽，不應修改原程式。（<a href="https://arxiv.org/html/2610.35523v1#S4.SS1">§4.1</a>）</p>
+<p>每次生成後依序檢查：（<a href="https://arxiv.org/html/2610.35523v1#S4.SS2">§4.2</a>）</p>
+<ol>
+<li><strong>語法等價檢查</strong>：移除生成的插入內容後，比較原程式與候選的抽象語法樹，以偵測原邏輯被改動。作者採語法而非完整語意等價檢查。</li>
+<li><strong>斷言完整性檢查</strong>：核對生成內容是否符合單一、多階段或字典序排序函式所需的下降、非負與終止條件形式，防止無用的弱斷言通過。</li>
+<li><strong>斷言安全檢查</strong>：以安全驗證器檢查插樁程式的斷言是否成立。前兩項是語法檢查，不能代替此步的語意驗證。</li>
+</ol>
+<p>三項均通過才接受候選；失敗時將原程式不一致、缺少條件或驗證器反例回饋模型。若驗證器回 Unknown 或逾時，則回饋其狀態。作者以 Clang 建立及處理語法樹，以 UAutomizer 做安全驗證；論文所述健全性依賴這些檢查與底層驗證器的正確性。（<a href="https://arxiv.org/html/2610.35523v1#S4.SS2">§4.2.1–4.2.4</a>、<a href="https://arxiv.org/html/2610.35523v1#S5">§5</a>）</p>
+<h2 id="第-5-節評估設定">第 5 節：評估設定</h2>
+<p>作者使用兩組公開終止 C 程式：BS-L 去除 93 個抽象語法樹重複項後有 188 個，BS-F 移除一個不終止案例後有 170 個，合計 358 個。非 LLM 工具每個程式限時 1,800 秒；LLM 工具每次安全驗證限 60 秒、最多 12 次模型查詢。RAINFALL 為兩次嘗試、每次六次查詢；LOOPY 為六次嘗試、每次兩次；PROTON 為十二次嘗試、每次一次。兩類工具的預算衡量方式並不相同。（<a href="https://arxiv.org/html/2610.35523v1#S5">§5</a>）</p>
+<h2 id="第-51-節有效性">第 5.1 節：有效性</h2>
+<p>作者以 MiniMax V2.7 執行 RAINFALL，報告成功證明的程式數如下。表中時間是已解程式的平均總執行時間，包含 LLM 等待及多次驗證，不是所有程式的平均值。（<a href="https://arxiv.org/html/2610.35523v1#S5.SS1">§5.1，表 1</a>）</p>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th style="text-align:right">BS-F／170</th>
+<th style="text-align:right">BS-L／188</th>
+<th style="text-align:right">合計／358</th>
+<th style="text-align:right">已解平均秒數</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RAINFALL</td>
+<td style="text-align:right">156</td>
+<td style="text-align:right">167</td>
+<td style="text-align:right">323</td>
+<td style="text-align:right">482.35</td>
+</tr>
+<tr>
+<td>PROTON</td>
+<td style="text-align:right">148</td>
+<td style="text-align:right">163</td>
+<td style="text-align:right">311</td>
+<td style="text-align:right">139.12</td>
+</tr>
+<tr>
+<td>UAutomizer</td>
+<td style="text-align:right">116</td>
+<td style="text-align:right">167</td>
+<td style="text-align:right">283</td>
+<td style="text-align:right">7.82</td>
+</tr>
+<tr>
+<td>AProVE</td>
+<td style="text-align:right">123</td>
+<td style="text-align:right">159</td>
+<td style="text-align:right">282</td>
+<td style="text-align:right">20.59</td>
+</tr>
+<tr>
+<td>LOOPY</td>
+<td style="text-align:right">124</td>
+<td style="text-align:right">140</td>
+<td style="text-align:right">264</td>
+<td style="text-align:right">875.27</td>
+</tr>
+</tbody>
+</table>
+<p>RAINFALL 成功 323／358（90.22%），比 PROTON 多 12 題。兩工具結果取聯集為 346／358（96.65%），不表示單一工具或一次執行解出全部。ddlTerm 未在 BS-L 評估；FreqTerm 因版本相容問題只使用 FreqHorn。（<a href="https://arxiv.org/html/2610.35523v1#S5.SS1">§5、§5.1</a>）</p>
+<p>作者分析 BS-F 的 14 個未解案例：三個生成了有效迴圈界但非本文處理的排序函式、四個初始回覆為 none、五個驗證逾時、兩個耗盡 12 次查詢。這些是作者對指定設定的分類，並不代表各程式無法終止或無證書。（<a href="https://arxiv.org/html/2610.35523v1#S5.SS1">§5.1</a>）</p>
+<h2 id="第-5253-節消融與模型差異">第 5.2–5.3 節：消融與模型差異</h2>
+<p>在 BS-F、單次 MiniMax 查詢下，使用 few-shot 範例證明 110 題，不使用為 70 題。完整設定下，RAINFALL 六次查詢證明 129 題、十二次證明 156 題；同設定中的 LOOPY 分別為 107 與 124 題。作者觀察到重啟一次生成嘗試後，解出數再次上升。（<a href="https://arxiv.org/html/2610.35523v1#S5.SS2">§5.2</a>）</p>
+<p>作者另在 BS-F 測多個模型：GPT V5.5、Claude Opus V4.7、MiniMax V2.7 和 Qwen-Plus V3.6 分別證明 163、160、156 和 138 題。表 2 的平均時間涵蓋成功與未成功的全部 170 個程式，與表 1 只平均已解程式的時間不可直接對比。Qwen-Plus 的結果低於 ddlTerm 與 PROTON，顯示選用模型會影響效果。（<a href="https://arxiv.org/html/2610.35523v1#S5.SS3">§5.3，表 2</a>）</p>
+<h2 id="第-546-節限制與結論">第 5.4–6 節：限制與結論</h2>
+<p>作者指出結果受第三方安全驗證器與 LLM 影響；只評估兩組公開基準，未涵蓋完整 SV-COMP 終止集合或充分驗證真實程式。公開程式可能出現在 LLM 預訓練資料中；作者認為生成插樁斷言而非直接生成排序函式有助緩和此疑慮，但無法排除污染。本文只處理無條件終止及三類排序函式；擴展到其他活性證書或條件終止屬未來方向。（<a href="https://arxiv.org/html/2610.35523v1#S5.SS4">§5.4</a>、<a href="https://arxiv.org/html/2610.35523v1#S6">§6</a>）</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2610.35523_RankingLLM.%E6%91%98%E8%A6%81.html">RAINFALL 摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

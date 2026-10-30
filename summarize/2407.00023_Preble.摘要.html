@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Preble：高效率的分散式 LLM Prompt 排程》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Vikranth Srivatsa, Zijian He, Reyna Abhyankar, Dongming Li, Yiying Zhang（University of California, San Diego）</p><p>日期：2024-05（arXiv 編號 2407，v2: 2024-10），LLM serving × 分散式排程 × prefix/KV cache</p><p>arXiv：2407.00023</p><p><a href="https://arxiv.org/abs/2407.00023" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="preble高效率的分散式-llm-prompt-排程重點摘要">《Preble：高效率的分散式 LLM Prompt 排程》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>Preble 解決分散式 prefix cache 的根本張力：把相同 prompt 都送到同一 GPU，KV reuse 高卻會形成熱點；均勻 round-robin，負載平衡卻重算同一 prefix。其 E2 scheduler 依「共享 prefix 是否長過剩餘 prompt」選 exploitation 或 exploration，再用包含近期負載、KV eviction 與新 request 計算量的成本挑 GPU；相較 SGLang，average latency 改善 <strong>1.5–14.5×</strong>、p99 改善 <strong>2–10×</strong>。</p>
+<h2 id="問題證據">問題證據</h2>
+<p>作者研究 tool calling、embodied agent、code generation、video QA、long-document QA 五種 workload，加 Azure inference trace：</p>
+<ul>
+<li>五種 workload 的 prompt 比 output 長 <strong>37–2,494×</strong>；含 Azure chat 後範圍低至 4×。</li>
+<li>每個 prompt 有 <strong>85%–97% tokens</strong> 與其他 request 共享。</li>
+<li>一段 common sequence 平均被 <strong>8.6–126 requests</strong> 共用。</li>
+<li>Azure trace 的 inter-arrival time 從 <strong>2 μs 到 217 s</strong>，負載會劇烈改變。</li>
+</ul>
+<p>Single-GPU radix-tree cache 已可重用 prefix，但 production serving 是多 GPU。若 distributed load balancer 不看 prompt，shared requests 落在不同 GPU、每張卡都重算；若永遠黏到已有 cache 的 GPU，popular prefix 又會把該卡壓垮。</p>
+<h2 id="e2-與兩層排程">E2 與兩層排程</h2>
+<p>Global scheduler 維護 global radix trees；node 記 token count、哪些 GPU 有其 KV、各 GPU 在 history window 中有多少 requests 使用。對新 request：</p>
+<ul>
+<li>matched prefix tokens 大於 unmatched tokens 時，<strong>exploit</strong>，送往擁有 longest matched prefix 的 GPU。</li>
+<li>matched prefix 較短時，<strong>explore</strong>，允許新 prefix 在其他 GPU 落地。</li>
+<li>Explore cost 為三項 GPU compute time 的和：近期 prefill+decode load、為新 request 騰空而 eviction 後未來需重算的成本、新 request 在該 GPU 的實際 miss 計算成本。預設 history window 為 3 分鐘。</li>
+</ul>
+<p>Local scheduler 每 GPU 一個，維護 local radix tree 與 wait queue，iteration-level 組 batch、chunk long prefill，memory 不足時依 node LRU eviction。Wait queue 不是單純 FCFS 或最高 cache hit 先行，而是依 cached-token percentage 分 priority groups，再按配額比例取樣；高命中率取得較多 slots，低命中 request 仍會前進。</p>
+<p>Preble 還會：</p>
+<ul>
+<li>偵測 heavy/light GPU 差距，將未來流量導向輕載卡。</li>
+<li>熱 prefix 在 queueing time 持續上升時複製到多 GPU並拆分 subtree load。</li>
+<li>把 fully cached prompt 視為 decode-like work、cache miss 長 prompt 視為 prefill-like work，混合兩者改善 compute/memory balance。</li>
+</ul>
+<h2 id="實驗結果">實驗結果</h2>
+<p>系統是可放在 vLLM 或 SGLang 前的 standalone layer。測 Mistral 7B 與 Llama 3 70B，環境為 4×A6000 cluster 與 8×H100 server；後者以 4-GPU tensor parallel 加 data parallel。</p>
+<ul>
+<li>五 workload、兩模型與多種 GPU 設定下，相較 distributed round-robin SGLang，average latency 改善 <strong>1.5–14.5×</strong>，p99 <strong>2–10×</strong>。</li>
+<li>Code generation 的 decode 最長，因此改善較小，仍有 average <strong>1.56–1.8×</strong>、p99 <strong>3–4×</strong>。</li>
+<li>從 2 張增加到 4 張 A6000，RPS 加倍仍維持近似 latency。</li>
+<li>Global scheduler 在 50,000 requests burst 下處理 ToolBench <strong>245 req/s</strong>、VideoQA <strong>2,931 req/s</strong>；作者依 workload 與 A100 token rate 推估單一 scheduler 至少支撐 <strong>70–391 GPUs</strong>。</li>
+<li>Ablation 顯示 E2 placement、post-assignment rebalance/autoscale、prefill-decode-aware mixing 依次改善 average 與 p99；local priority quota 主要改善 p99，符合其 fairness 目的。</li>
+</ul>
+<h2 id="局限與閱讀提醒">局限與閱讀提醒</h2>
+<ul>
+<li>優勢依賴長且高度共享的 prefix。論文明說若 prompt 完全不共享，行為與 vLLM 等 SOTA serving 相同，不應外推為一般 workload 都有 14.5×。</li>
+<li>Prefix cache 是 exact-prefix reuse；不處理語意相似 context、agent memory correctness 或跨 request 權限隔離。</li>
+<li>Global scheduler 是單 cluster 中心化視圖；論文對更大規模的答案是部署多個 Preble clusters，而非證明單一全域 scheduler 可到資料中心級。</li>
+<li>「至少 70–391 GPUs」是依 scheduler throughput、GPU token rate 與 workload output length推算，不是實際用 391 GPUs 驗證。</li>
+<li>Local fairness 是按 cache-hit priority groups 配額，不是 formal tenant-level SLO、deadline 或 weighted-fair proof。</li>
+<li>原始 arXiv API 顯示此文首發日為 <strong>2024-05-08</strong>，雖編號是 2407.00023；日期欄保留兩者，避免只憑 ID 月份誤記。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<p>Preble 對 Agent Machine 最有用的是「cache locality 只能作 bounded scheduling signal，不能壓過公平與負載」。Agent runtime 可把 model/prefix residency 當 tie-breaker，卻必須保有 quota、aging、resource accounting 與 starvation protection。它也證明全域 request placement 與本地 iteration admission 應分層，正好對應 control plane scheduler 與 endpoint-local executor 的責任切割。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2407.00023_Preble.zh-TW.html"><code>../translate/2407.00023_Preble.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

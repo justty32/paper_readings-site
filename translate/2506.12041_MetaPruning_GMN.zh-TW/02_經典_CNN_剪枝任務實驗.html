@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_經典_CNN_剪枝任務實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2506.12041_MetaPruning_GMN.zh-TW.html">回 2506.12041_MetaPruning_GMN.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-經典-cnn-剪枝任務實驗">5. 經典 CNN 剪枝任務實驗</h2>
+<ul>
+<li><strong>管線</strong>（式 9，詳見附錄 C.2）：不同於 learning-to-prune 每次剪枝要專門訓練，本管線只需「過元網路前饋 + 標準微調」，簡單通用有效；一個元網路可剪無數網路，剪枝模型皆與訓練 data model 完全不同。</li>
+<li><strong>三任務（表 1）</strong>：
+<ul>
+<li><strong>ResNet56/CIFAR10</strong>：93.51%→93.64%（+0.13%），剪 65.6% FLOPs。</li>
+<li><strong>VGG19/CIFAR100</strong>：73.65%→69.75%（-3.90%），剪 88.83% FLOPs。</li>
+<li><strong>ResNet50/ImageNet</strong>：Top-1 76.14%→76.13%（-0.01%）、Top-5 93.11%→92.78%（-0.33%），剪 57.2% FLOPs。</li>
+</ul>
+</li>
+<li><strong>§5.3 行為傾向消融</strong>：過元網路＋微調後，「Acc vs. Speed Up」曲線下降明顯變慢（圖 5）；元訓練 epoch 越多，使網路更好剪但保準確率能力變弱，可據需求自適應選擇（圖 6）。</li>
+<li><strong>§5.4 統計消融</strong>（圖 7）：比較原網路 vs 過元網路後的 norm 與 Taylor 敏感度分佈。觀察：兩者平均都下降（尤其後段冗餘多處）;norm 分佈大改（大 norm 仍在但更多趨近極小）；更多參數在 Taylor 敏感度下變不重要。</li>
+</ul>
+<h2 id="6-遷移性與彈性實驗">6. 遷移性與彈性實驗</h2>
+<ul>
+<li><strong>§6.1 彈性準則</strong>（表 2）：固定其他，換不同 NORMALIZE／alpha，甚至 naive（無 NORMALIZE、alpha=0）都穩健（皆約 93%、Speed Up ~2.9）。</li>
+<li><strong>§6.2 非結構化與 N:M 稀疏</strong>（表 3）：框架也適用；非結構化因更彈性而勝結構化（如非結構化留 20.40% 參數達 94.14%）。</li>
+<li><strong>§6.3 跨資料集／架構遷移</strong>：CIFAR10/100/SVHN 互traverse（表 4）、ResNet56↔ResNet110（表 5），用元網路皆明顯優於不用（唯一例外是被剪網路訓練集為 SVHN，推測因 SVHN 本身太簡單）。未來可在小架構／相關資料集上預訓練元網路供大規模網路用。</li>
+</ul>
+<h2 id="7-transformer-實驗">7. Transformer 實驗</h2>
+<p>框架理論上適用各種網路；此處擴展到 ViT（在 ImageNet 上訓練）。如何把 transformer（含 MHSA）轉圖、元訓練與剪枝詳見附錄 G。</p>
+<h2 id="8-結論">8. 結論</h2>
+<p>提出全新剪枝元學習框架：對一準則，用元網路把難剪網路轉易剪網路。通用、理論上適用幾乎所有網路與各種剪枝。給出實作達出色結果，並展現自然的通用性、彈性與遷移性。</p>
+<hr />
+<h2 id="附錄重點節選">附錄重點（節選）</h2>
+<ul>
+<li><strong>A 與先前作品比較</strong>：本法屬 learning to prune 但學法完全不同。三類對比（表 6）：固定剪枝（成本低但性能差）、learning to prune（性能好但每次剪枝要專門訓練、缺通用性）、<strong>本法</strong>（剪枝前需專門訓練一次，但訓練好後可剪無數網路、無需再專門訓練）。
+<ul>
+<li><strong>A.2 計算與記憶體成本</strong>：元網路<strong>不隨被剪網路規模擴張</strong>（只學基於固定局部範圍的權重改寫）；漸近成本同為 O（邊數），但常數因子不同。元剪枝＝中等訓練成本（初訓+3 微調）+中等剪枝成本（2 剪枝步）+小額元網路前饋與攤提的元訓練成本（A≈5–20，攤提到 N 個網路）。記憶體：前饋過元網路瞬間峰值高但時間極短，其餘時間小；A100 80G 足以元訓練 ResNet50／ViT-B-16。</li>
+<li><strong>A.3 通用性四階段</strong>：（1）學一次剪一特定網路 （2）剪一類網路（同架構同資料集） （3）剪一群網路（相似架構／資料集） （4）剪任意網路。先前 learning-to-prune 只到階段（1），本法達<strong>階段（3）</strong>；預訓練於多樣網路／資料集或可達（4）。</li>
+<li><strong>A.4 具體例</strong>（vs DepGraph，ResNet56/CIFAR10，RTX 4090，目標 2.5x）：元訓練 357 分鐘（192 生成 100-epoch 元網路 + 165 視覺化選網路），剪枝+微調 ours(efficient) 43 分 vs DepGraph 84 分；攤提後若多剪幾個網路更省。</li>
+</ul>
+</li>
+<li><strong>B.1 元網路架構公式</strong>：編碼器→訊息生成（含 EdgeInvertor，式 16）→PNA 聚合更新節點→更新邊→解碼器→小殘差係數加回（學 delta）。</li>
+<li><strong>B.2 剪枝準則</strong>：基於 DepGraph 與 Torch-Pruning；結構化剪枝以「群組」為單位（一通道被剪則 BN、後續卷積、殘差對應通道須一起剪）。重要性分數＝先 <strong>REDUCE</strong>（MEAN／FIRST）再 <strong>NORMALIZE</strong>（NONE／MEAN／MAX）；稀疏損失含 shrinkage strength（預設 alpha=4）。預設準則＝group norm max normalizer（MEAN REDUCE, MAX NORMALIZE, alpha=4）。注：DepGraph 論文與其程式碼略有不一致，本文嚴格依其程式碼（Torch-Pruning）描述。</li>
+<li><strong>C.2 剪枝管線</strong>：<strong>初始剪枝</strong>（元網路在難剪網路上表現較佳，但許多網路初始易剪，故先用固定 speed up 輕剪使其變難剪、去掉低品質參數，類比資料集去低品質樣本）→ 過元網路 → 剪枝 → 微調。</li>
+<li><strong>G Transformer</strong>：MHSA 轉圖、等價轉換、元訓練、GPU 用量與完整結果。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2506.12041_MetaPruning_GMN.%E6%91%98%E8%A6%81.html"><code>../summarize/2506.12041_MetaPruning_GMN.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

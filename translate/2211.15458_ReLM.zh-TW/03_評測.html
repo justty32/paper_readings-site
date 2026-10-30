@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_評測 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2211.15458_ReLM.zh-TW.html">回 2211.15458_ReLM.zh-TW 目錄</a>　<a href="02_ReLM.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-評測">4. 評測</h2>
+<p>環境：GTX-3080 GPU、AMD Ryzen 5800X、PyTorch；除非另述，用 GPT-2 XL（1.5B）。記憶化/毒性用 top-k=40（比照原始 GPT-2 論文），偏見不用 top-k（以免使某些模板配置失效），語言理解保守設 k=1000，不用 top-p 與溫度縮放。三個研究問題：① 哪類驗證問題受益於正則程式化？② 查詢變動（如考慮的切分）如何影響任務表現？③ ReLM 能在工作流中提供哪些定性洞見？</p>
+<h3 id="41-測試資料集記憶化">4.1 測試資料集記憶化</h3>
+<p>記憶化＝推理時回收訓練資料，具安全風險。以 <strong>URL 抽取</strong>衡量（最少侵入即可驗證：請求網頁、看 HTTPS 回應碼 &lt; 300 避開重導）。查詢用簡單 URL 模式，走 ReLM 最短路徑後端，前綴 <code>https://www.</code>；基線為官方 Transformers 隨機取樣範例，用 2 的冪次停止長度 n∈{1,2,…,64}，從 GPT-2 XL 取 1 萬樣本（可視為前綴攻擊）。</p>
+<p><strong>量化（圖 5、6）</strong>：ReLM 首結果延遲僅 5 秒、以吞吐取勝；nvidia-smi GPU 使用率 ReLM 平均 67%（基線 65–72%），27% 查詢命中有效 URL 且用 token 數低而穩。基線 n≤8 幾乎抓不到唯一有效 URL（成功率 ≤3%），n=64 達 25% 完成率但每次嘗試慢 48×。最佳基線 n=16 仍比 ReLM <strong>慢 15×</strong>。<strong>定性</strong>：基線 URL 常太短、被縮寫或看似真實卻虛構；重複率從 n≤8 的 90%+ 到 n=64 的 25%，ReLM 則按構造避免重複。相較前人「60 萬次嘗試僅抽出 50 條 URL」的無目標抽取，結構化查詢＋確定性走訪更有效。</p>
+<blockquote>
+<p><strong>觀察 1</strong>：ReLM 藉繞過停止長度選擇、聚焦最可能候選，抽取記憶內容比隨機取樣<strong>快 15×</strong>。</p>
+</blockquote>
+<h3 id="42-測試性別偏見">4.2 測試性別偏見</h3>
+<p>偏見＝模型以受保護屬性（種族、性別）為條件而偏袒某子群。查詢關聯模板中兩槽位：受保護屬性為二元性別 x∈{man, woman}，關注職業分佈 P(y|x)（y∈{art, science, …, math}）。查詢用 <code>The ((man)|(woman)) was trained in ((art)|…|(math))</code>，前綴 <code>The ((man)|(woman)) was trained in</code>；用 Levenshtein 距離 1 前處理器（量測偏見對輸入擾動的穩健度）。用隨機取樣估分佈，每性別 5000 例，跨編碼與有無前綴量測。</p>
+<p><strong>定性（圖 7）</strong>：規範編碼（7b，有前綴）呈現刻板關聯——medicine/social sciences/art 偏女性，computer science/information systems/engineering 偏男性（與前人一致）。但**全編碼（7a，無前綴）**下多數職業變成 art（不分性別）：因非規範的 <code>trained</code> 編碼比規範版更常被取樣 10×，導致補全偏向與 art 共享字元的詞（如 <code>art</code>ificial）。加編輯（7c）會在 art、business 上翻轉偏見並拉平低機率事件，分佈仍集中於 art；小號 GPT-2 亦見類似現象。</p>
+<blockquote>
+<p><strong>觀察 2</strong>：從編碼、編輯、有無前綴等不同角度探測，各導出不同偏見分佈與結論；LLM 偏見行為可能受子詞間概念重疊影響。</p>
+</blockquote>
+<p><strong>量化</strong>：對各結果跑 <strong>χ² 檢定</strong>。無前綴（7a）p≈10⁻¹⁸；規範編碼（7b）p≈10⁻²²⁹（更顯著地判定偏見）；單字元編輯（7c）p≈10⁻⁵⁴。</p>
+<blockquote>
+<p><strong>觀察 3</strong>：ReLM 可跨編碼與局部字元擾動估計偏見的統計量。規範編碼強烈呈現偏見，而全編碼與編輯下 LLM 行為改變，統計顯著性可量測地下降。</p>
+</blockquote>
+<h3 id="43-測試毒性內容生成">4.3 測試毒性內容生成</h3>
+<p>毒性含仇恨/冒犯語言；本文聚焦<strong>顯性毒性</strong>（髒話/侮辱詞），較易分類且可在無標註下擴展到大資料集。從 The Pile 首檔（解壓 41GiB）用 regex 匹配 <strong>6 個侮辱詞</strong>（幾乎專用於人身攻擊的強烈髒話），grep 於 2–7 秒找到 <strong>2807 條</strong>匹配，餵入 ReLM。兩設定：<strong>有提示（prompted）</strong>——取句子構造 prompt、停在髒話前當前綴抽取髒話，跑 5 小時訪逾 150 個 prompt，量測每輸入能否抽出單一結果；<strong>無提示（unprompted）</strong>——無 prompt 抽取整句，對全 2807 條跑 4 小時，量測每輸入可抽總數（上限 1000）。基線＝規範編碼無編輯的標準做法；對照 ReLM 的編輯距離 1 前處理器（＋全編碼）。</p>
+<p><strong>量化（圖 8）</strong>：有提示下，全編碼＋編輯使命中率是純規範基線的 <strong>2.5×</strong>（91% vs 同子集 27%／全資料集 37%）；無提示下同子集僅 18%、全資料集僅 8% 成功。無提示平均每輸入抽 2.4 條，共抽 6616 條；其中 97% 來自編輯、67% 非規範（僅 1.1% 既無編輯又規範，65.4% 既非規範又有編輯）。</p>
+<blockquote>
+<p><strong>觀察 4/5</strong>：ReLM 藉從資料集導出模板抽取毒性樣本，字元編輯在放大查詢空間的同時保留毒性內容；有提示下編輯＋替代編碼解鎖 2.5× 更多抽取，無提示下更達 <strong>93× 更多</strong>毒性抽取——<strong>逐字（verbatim）毒性生成可能嚴重低估毒性暴露</strong>，長查詢尤甚。</p>
+</blockquote>
+<h3 id="44-測試語言理解">4.4 測試語言理解</h3>
+<p>用原始 GPT-2 論文的 <strong>LAMBADA</strong>（給長上下文預測最後一詞，量測長程推理，零樣本）。把每行切成上下文與末詞，餵上下文為前綴，用四種正則逐步加約束預測末詞 <code>[a-zA-Z]+</code>＋可選標點：<strong>baseline</strong> <code>&lt;X&gt; ([a-zA-Z]+)(\.|!|\?)?(&quot;)?</code>；<strong>words</strong>（只用上下文中出現過的詞以 <code>|</code> 列舉）；<strong>terminated</strong>（末端接 EOS）；<strong>no_stop</strong>（再用 nltk 停用詞 filter）。以最短路徑取樣，GPT-2 與 GPT-2XL 各跑 OpenAI 測試集前 500 例。</p>
+<p><strong>定性</strong>：baseline 常出現多詞補全或子詞（如補出 <code>Shane</code>、<code>J</code>）；words 加結構後把某例從錯改對（+15 分）；terminated 加 EOS 確保末詞性（改出 <code>thanks</code>，雖仍錯但合理）；no_stop 濾掉「the/a/it/that」等過泛詞（把過泛預測換成 <code>Vivienne</code>）。加 EOS 後最常見詞從佔 12% 降到 7%，濾停用詞後降到 3%，貼近參考分佈。</p>
+<p><strong>量化（表 1，零樣本 LAMBADA 準確率，500 例）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>baseline</th>
+<th>words</th>
+<th>terminated</th>
+<th>no_stop</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPT-2XL</td>
+<td>41.6%</td>
+<td>56.6%</td>
+<td>65%</td>
+<td>71%</td>
+</tr>
+<tr>
+<td>GPT-2</td>
+<td>27%</td>
+<td>43%</td>
+<td>46.4%</td>
+<td>52.2%</td>
+</tr>
+</tbody>
+</table>
+<p>用齊所有優化後復現並<strong>超越</strong>原論文 63.24% 零樣本（可能因前 500 例較易、問題表示差異、更周全的解碼/搜尋語意）。局部微調正則造成 10–30 分的零樣本差異。</p>
+<blockquote>
+<p><strong>觀察 6</strong>：ReLM 藉把任務約束注入查詢，用極少人力、無需複雜啟發式，即可把零樣本準確率提升多達 <strong>30 分</strong>。</p>
+</blockquote>
+<h2 id="5-其他相關工作">5. 其他相關工作</h2>
+<p><strong>NLP 中的形式語言</strong>：OpenGrm 把正則與上下文敏感改寫規則編為自動機以建 n-gram 模型；也有推廣到下推自動機者。近期查詢語言 <strong>LMQL</strong> 同時暴露宣告式（類 SQL）與命令式構造來寫 LLM prompt 程式；<strong>ReLM 則純宣告式，主聚焦 LLM 評測</strong>。</p>
+<p><strong>對抗攻擊與受控生成</strong>：對抗攻擊構造輸入誘使 NLP 系統產出錯誤/有害內容；也有微調模型行為者。與 ReLM 相關的還有解碼中用 trie 強制受約束 beam search；現有框架雖能自訂推理允許 token 集，但因 tokenization 模糊而難一致運作。最相關的是 <strong>CheckList</strong>（用模板測語言模型）——<strong>ReLM 把模板推廣為在解碼期強制的字元級正則表達式</strong>。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>自然語言的複雜性＋LLM 的快速進展，催生了對 LLM 驗證抽象的需求。ReLM 是首個以 LLM 執行驗證任務的可程式化框架，把邏輯查詢表達成正則、編譯成適合執行的 LLM 專屬表示。在記憶化、性別偏見、毒性、語言理解上，ReLM 能以最高 <strong>15× 更快</strong>、<strong>2.5× 更少資料</strong>、或以能帶來額外洞見的方式執行查詢。ReLM 的經驗有力地反對 ad-hoc 的 LLM 驗證，但系統化處理查詢也帶來新挑戰（如左到右自回歸解碼對後綴補全有天然偏好）。未來將把 ReLM 擴展到其他模型家族並增添查詢執行的優化邏輯。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2211.15458_ReLM.%E6%91%98%E8%A6%81.html"><code>../summarize/2211.15458_ReLM.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

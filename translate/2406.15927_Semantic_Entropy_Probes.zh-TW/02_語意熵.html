@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_語意熵 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2406.15927_Semantic_Entropy_Probes.zh-TW.html">回 2406.15927_Semantic_Entropy_Probes.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_LLM_%E9%9A%B1%E8%97%8F%E7%8B%80%E6%85%8B%E9%9A%B1%E5%90%AB%E6%8D%95%E6%8D%89%E8%AA%9E%E6%84%8F%E7%86%B5.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-語意熵">3. 語意熵</h2>
+<p>在自由格式自然語言生成任務中量測不確定性頗具挑戰：模型輸出 token 的不確定性可能混淆了「語意不確定性」（對生成含義的不確定）與「詞彙/句法不確定性」（對如何措辭的不確定）。為此，Farquhar et al. 提出<strong>語意熵</strong>，把跨語意等價簇的 token 層級不確定性聚合起來（Farquhar et al. 是 Kuhn et al. 原始語意熵論文的期刊版）。</p>
+<p>語意熵在本文中的重要性在於：<strong>我們用它作為監督訊號，訓練隱藏狀態的 SEP 探針。</strong></p>
+<p>語意熵計算分三步：(1) 對給定查詢 x，從 LLM 取樣多個生成；(2) 把生成聚合成語意等價的簇 (C₁,…,C_K)；(3) 藉由聚合各簇內的不確定性計算語意熵 H_SE。步驟 (1) 平凡，以下詳述 (2)(3)。</p>
+<p><strong>語意分群</strong>：用 NLI 模型（如 DeBERTa）預測生成間的蘊含關係，判斷兩段生成 sₐ、s_b 是否含義相同——需雙向蘊含（sₐ 蘊含 s_b 且 s_b 蘊含 sₐ）。以貪婪演算法分群：每個樣本若與現有簇中的某樣本雙向蘊含即併入該簇，否則另立新簇。</p>
+<p><strong>語意熵公式</strong>：給定輸入 x，生成 s（由 token t₁,…,tₙ 組成）的聯合機率為條件 token 機率的乘積 p(s|x)=∏p(tᵢ|t₁:ᵢ₋₁,x)。語意簇 C 的機率是屬於該簇的所有可能生成之機率總和 p(C|x)=Σ_{s∈C} p(s|x)。語意簇分布上的不確定性即語意熵 H[C|x] = E_{p(C|x)}[−log p(C|x)]。</p>
+<p><strong>實務估計</strong>：上式的期望值難以精確計算（可能 token 序列數隨長度指數增長）。實務上以非零溫度取樣 N 個生成（本文與原論文皆用 N=10），把得到的簇 (C₁,…,C_K) 當作真實簇分布 p(C|x) 的蒙地卡羅樣本，近似為 H[C|x] ≈ −(1/K)Σlog p(C_k|x)。本文採用<strong>離散版 SE</strong>：以簇內樣本佔比估計簇機率 p(C_k|x) = （屬於 C_k 的樣本數）/K，再計算該類別分布的熵 H_SE(x) := −Σ p(C_k|x) log p(C_k|x)。離散版 SE 的優點是不需 token 機率（相容黑箱模型），也避免了不同長度生成造成的估計問題。</p>
+<h2 id="4-語意熵探針">4. 語意熵探針</h2>
+<p>雖然語意熵能有效偵測幻覺，其高計算成本可能使其只能用在最關鍵的場景。本節提出 SEP，一種划算且可靠的 LLM 不確定性量化新方法：SEP 是在 LLM 隱藏狀態上訓練、用以捕捉語意熵的線性探針，但與 SE 及其他取樣式方法不同，SEP 作用於<strong>單次模型生成</strong>的隱藏狀態，測試時不需取樣多個回應——藉此幾乎完全消除語意不確定性估計在測試時的計算開銷。我們進一步主張 SEP 優於直接預測模型準確度的探針：直覺是語意熵是模型的內在屬性，應該內建於隱藏狀態中，因此比依賴（可能帶雜訊的）外部資訊的真實性更容易萃取（詳見第 8 節討論）。</p>
+<p><strong>訓練 SEP</strong>：SEP 是線性邏輯迴歸模型，訓練於 LLM 隱藏狀態以預測語意熵。我們建構 (h_p^l(x), H_SE(x)) 配對資料集，其中 x 是輸入查詢，h_p^l(x)∈ℝᵈ 是模型在 token 位置 p、層 l 的隱藏狀態（d 為隱藏維度），H_SE(x)∈ℝ 是語意熵。具體流程：對輸入 x，先以貪婪取樣產生高似然的模型回應並記錄該次生成在特定層與 token 位置的隱藏狀態 h_p^l(x)；再以高溫（T=1）取樣 N=10 個回應，依前節方法算出語意熵 H_SE(x)。輸入來源是常見 QA 資料集的問題（見第 5 節），但<strong>不需要</strong>這些資料集提供的真值標籤，理論上可用任何未標註的合適輸入集合來計算語意熵。</p>
+<p><strong>二值化</strong>：語意熵原本是實數，本文為兩個理由將其轉為二元標籤（高/低）再訓練邏輯迴歸分類器：一是我們最終想用探針預測二元模型正確性，無論如何都要建構二元分類器；二是為了方便與準確度探針比較，兩者統一為二元分類問題較容易對照（邏輯迴歸回傳的仍是機率，二值化後依然能還原細粒度訊號）。</p>
+<p>具體做法：計算 H̃_SE(x)=𝟙[H_SE(x)&gt;γ*]，其中 γ* 是依下列目標最佳切分原始 SE 分數為高/低兩群的門檻：
+γ* = argmin_γ Σ_{j∈SE_low}(H_SE(xⱼ)−Ĥ_low)² + Σ_{j∈SE_high}(H_SE(xⱼ)−Ĥ_high)²，
+其中 SE_low/SE_high 依門檻 γ 劃分，Ĥ_low/Ĥ_high 分別為各群內 SE 的平均值。此程序啟發自迴歸樹的分裂目標，實務效果優於「軟標籤」等替代方案（附錄 B）。</p>
+<p>總結：給定輸入查詢集合 {xⱼ}，計算隱藏狀態–二值化語意熵配對訓練集 {(h_p^l(xⱼ), H̃_SE(xⱼ))}，用來訓練線性分類器，即 SEP。測試時，SEP 預測「給定輸入 x 的模型生成具有高語意熵」的機率。</p>
+<p><strong>探測位置</strong>：我們收集 LLM 所有層 l 的隱藏狀態，以研究哪些層最能捕捉語意熵。考慮兩種 token 位置 p：其一是輸入 x 最後一個 token 的隱藏狀態，即<strong>生成前的 token（token before generating, TBG）</strong>；其二是模型回應最後一個 token（EOS 前一個，即<strong>倒數第二個 token, second-last token, SLT</strong>）。TBG 實驗可研究 LLM 隱藏狀態在生成回應<strong>之前</strong>能多大程度捕捉語意熵——若可行，代表可用單一次前向傳遞、不生成任何新 token，就量化給定輸入的語意不確定性，進一步降低相對取樣式方法的成本，實務上可用來快速判斷模型是否會對某輸入查詢給出高確定性的回答。</p>
+<h2 id="5-實驗設置">5. 實驗設置</h2>
+<p>我們在多個模型與資料集上研究並評估 SEP。第一步證明能從 LLM 隱藏狀態準確預測語意熵（第 6 節），並探索 SEP 預測在不同任務、模型、token 位置、層間的變化。第二步證明 SEP 是划算可靠的幻覺偵測法（第 7 節），比準確度探針更能泛化到新任務，雖然無法追上算力昂貴得多的取樣式方法。</p>
+<p><strong>任務</strong>：在 TriviaQA、SQuAD、BioASQ、NQ Open 四個資料集上評估，用其輸入查詢建構 SEP 訓練集，並在驗證/測試集上評估各方法（必要時自建切分）。分短答與長答兩種設定：短答透過 few-shot 提示模型「盡量簡短」作答；長答提示「以一句簡短但完整的句子」作答，生成 token 數約增六倍。依 Farquhar et al. 做法，短答用 SQuAD F1 分數評估準確度，長答用 GPT-4 比對模型答案與真值標籤。</p>
+<p><strong>模型</strong>：短答用 Llama-2 7B/70B、Mistral 7B、Phi-3 Mini 生成隱藏狀態與答案，用 DeBERTa-Large 作蘊含模型計算語意熵；長答用 Llama-2-70B 或 Llama-3-70B，用 GPT-3.5 預測蘊含關係。</p>
+<p><strong>基線</strong>：與真值語意熵、以正確性標籤監督的準確度探針、樸素熵（naive entropy）、對數似然（log likelihood）、Kadavath et al. 的 p(True) 方法比較。樸素熵是與 SE 相同取樣數下、長度正規化的平均 token 對數機率；對數似然是單次生成、長度正規化的對數似然；p(True) 則是用一組含輸入、低溫模型答案、高溫多樣本、正確性分數的自訂 few-shot 範例，把取樣式真實性偵測轉成情境學習任務，教模型「語意變異大的回答通常錯」。</p>
+<p><strong>線性探針</strong>：SEP 與準確度探針基線都用 scikit-learn 的邏輯迴歸模型，預設超參數，L2 正則化與 LBFGS 最佳化器。</p>
+<p><strong>評估</strong>：以 AUROC（受試者操作特徵曲線下面積）評估探針捕捉語意熵、以及預測模型幻覺的能力，金標籤分別為二值化 SE 或模型準確度。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

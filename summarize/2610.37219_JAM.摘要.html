@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Vision-Language-Action or World-Action? Just Action Models 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yonghao Yu、Lang Huang、Runyi Li、Toshihiko Yamasaki</p><p>日期：2026-10-27（v1，cs.CV）</p><p>arXiv：2610.37219</p><p><a href="https://arxiv.org/html/2610.37219v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="vision-language-action-or-world-action-just-action-models-重點摘要">Vision-Language-Action or World-Action? Just Action Models 重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>JAM 讓機器人策略在訓練時預測已記錄未來觀測的特徵，部署時只保留動作策略。作者在所測模擬任務中發現，這類「預見」監督可取代相配 WAM 的視覺生成目標；其收益和成本仍依骨幹、目標表示與評估設定而變。</p>
+<h2 id="問題與方法">問題與方法</h2>
+<p>作者將 VLA 與 WAM 之間常混在一起的差異拆成三項：骨幹如何預訓練、對未來觀測施加什麼訓練目標、推論時留下哪些模組。光比較兩個模型的成功率，無法將差異歸因於其中任何一項。（<a href="https://arxiv.org/html/2610.37219v1#S1">§1</a>）</p>
+<p>JAM 訓練目標為 <code>L = L_act + λ_F L_F</code>。動作項以 flow matching 監督動作片段；預見項讓預測頭根據當前觀測的骨幹特徵，對齊凍結 anchor 編碼的已記錄未來特徵，使用跨空間 token 與時間位置平均的餘弦距離。未來影像只進目標分支，不進策略動作路徑；固定條件下目標可預算並快取。訓練完成後移除 anchor 與預測頭，僅以當前觀測、指令與機器人狀態產生動作。（<a href="https://arxiv.org/html/2610.37219v1#S3.SS2">§3.1～3.2</a>）</p>
+<p>這裡「不生成影像」指策略微調與部署階段：骨幹仍可取自生成模型的預訓練，動作專家仍使用 flow matching。與本文配對的 FastWAM、ImageWAM 也已在推論時避免未來影像生成，因此 JAM 的額外差異是<strong>訓練時</strong>也不用視覺生成損失；不應將推論速度差歸給與這兩個基線不同的推論架構。（<a href="https://arxiv.org/html/2610.37219v1#S3.SS2">§1、§3.2</a>）</p>
+<p>作者實作生成式 Wan／Ovis-U1／FLUX.2、自監督 DINOv2 與視覺語言 Qwen3.5 骨幹。Wan 的未來位置 <code>[1,2]</code> 對應環境第 4～16、20～32 步的 VAE 時間位置；其他骨幹的 <code>[1]</code> 是第 16 步影像。部分 anchor 同時讀取當前畫面與指令，Wan 的 <code>[0]</code> 特徵也可能透過雙向注意力含有未來脈絡。（<a href="https://arxiv.org/html/2610.37219v1#S4.SS1">§3.3、§4.1</a>、<a href="https://arxiv.org/html/2610.37219v1#A1.SS2">附錄 A.2</a>）</p>
+<h2 id="作者自報結果">作者自報結果</h2>
+<p>LIBERO 評估 40 題、每題 50 次 rollout；LIBERO-Plus 以固定的 1,506 題受擾動子集、每題一次 rollout 計算整體成功率；RoboTwin 2.0 在 Clean 與 Randomized 兩設定各測 50 題、每題 100 次。相配的生成式策略與 JAM 使用同一資料、策略架構、最佳化器、訓練預算及評估器；表中是各基準的成功率百分比。（<a href="https://arxiv.org/html/2610.37219v1#S4.SS1">§4.1</a>、<a href="https://arxiv.org/html/2610.37219v1#A4.SS2">附錄 D.2～D.3</a>）</p>
+<table>
+<thead>
+<tr>
+<th>相配策略與目標</th>
+<th style="text-align:right">LIBERO</th>
+<th style="text-align:right">LIBERO-Plus</th>
+<th style="text-align:right">RoboTwin 2.0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FastWAM（生成）</td>
+<td style="text-align:right">97.00</td>
+<td style="text-align:right">55.31</td>
+<td style="text-align:right">91.21</td>
+</tr>
+<tr>
+<td>JAM（Wan，VAE 目標 <code>[1,2]</code>）</td>
+<td style="text-align:right">98.15</td>
+<td style="text-align:right">64.54</td>
+<td style="text-align:right">91.44</td>
+</tr>
+<tr>
+<td>ImageWAM（Ovis-U1，生成）</td>
+<td style="text-align:right">92.90</td>
+<td style="text-align:right">65.27</td>
+<td style="text-align:right">88.96</td>
+</tr>
+<tr>
+<td>JAM（Ovis-U1，預訓練 Yak 目標 <code>[1]</code>）</td>
+<td style="text-align:right">96.75</td>
+<td style="text-align:right">79.95</td>
+<td style="text-align:right">89.90</td>
+</tr>
+</tbody>
+</table>
+<p>所選 Wan 版本在 LIBERO-Plus 增加 9.23 個百分點，Ovis-U1 增加 14.67 個百分點；RoboTwin 差距較小。固定 checkpoint 的配對比較，作者以任務 bootstrap 報告 LIBERO-Plus 差值 95% 區間分別為 <code>[6.84, 11.69]</code> 與 <code>[12.15, 17.13]</code> 個百分點。這些區間衡量固定 checkpoint 評估任務的不確定性；不是完整訓練隨機性的區間。（<a href="https://arxiv.org/html/2610.37219v1#S4.T1">§4.2、表 1</a>、<a href="https://arxiv.org/html/2610.37219v1#A4.SS3">RoboTwin 附錄表 19</a>、<a href="https://arxiv.org/html/2610.37219v1#A4.SS7">附錄 D.7、表 20</a>）</p>
+<p>目標的選擇很重要。固定 Wan 策略架構、使用預訓練 Wan anchor 時，生成目標與未來特徵目標 <code>[1,2]</code> 在 LIBERO-Plus 分別為 <code>55.31%</code>、<code>55.58%</code>；換為 VAE 目標才達 <code>64.54%</code>。Ovis-U1 的預訓練 Yak、VAE、隨機 Yak 目標分別得到 <code>79.95%</code>、<code>76.43%</code>、<code>72.51%</code>。隨機 anchor 是固定、依輸入變化的表示，並非每次獨立抽樣的噪聲；最佳目標依架構不同。（<a href="https://arxiv.org/html/2610.37219v1#S4.T1">§4.2、表 1</a>）</p>
+<p>在固定策略與訓練條件的動作單獨控制中，Qwen3.5-2B 加入預見損失後 LIBERO-Plus 從 <code>77.03%</code> 升至 <code>81.14%</code>，DINOv2-L 從 <code>68.26%</code> 升至 <code>70.39%</code>；個別擾動類別並非全部改善。跨骨幹比較還改變架構與動作介面，無法單獨識別生成式、自監督或視覺語言預訓練的因果效果。（<a href="https://arxiv.org/html/2610.37219v1#S4.SS3">§4.3</a>、<a href="https://arxiv.org/html/2610.37219v1#A3.SS5">附錄 C.5</a>）</p>
+<h2 id="訓練成本與限制">訓練成本與限制</h2>
+<p>使用快取目標時，作者估計 Wan 的每樣本每次更新線上成本由 <code>15.52</code> 降至 <code>4.19 TFLOPs</code>，下降 <code>73.0%</code>；Ovis-U1 由 <code>5.81</code> 降至 <code>3.67 TFLOPs</code>，下降 <code>36.8%</code>。單張 GH200、batch 16 上對所涵蓋運算的實測 GPU 時間分別下降 <code>67.3%</code> 與 <code>37.8%</code>。<strong>這不是端到端總訓練成本</strong>：快取數字排除一次性的目標萃取，FLOPs 估計也省略注意力分數、文字編碼與最佳化器更新；快取重用要求 anchor、預處理、時間索引和條件固定。（<a href="https://arxiv.org/html/2610.37219v1#S4.SS5">§4.5</a>、<a href="https://arxiv.org/html/2610.37219v1#A2.SS2">附錄 B</a>）</p>
+<p>三次獨立訓練中，所選 Wan 與 Ovis-U1 的 LIBERO-Plus 成功率分別為 <code>64.61±0.37%</code>、<code>79.92±0.43%</code>，為三次的平均與樣本標準差，評估題目與種子固定。作者的主要實驗是模擬操作基準；跨論文已發布模型的表格保留原評估協定，不能視為全部同條件比較。（<a href="https://arxiv.org/html/2610.37219v1#A4.SS8">附錄 D.8</a>、<a href="https://arxiv.org/html/2610.37219v1#S4.SS4">§4.4</a>）</p>
+<p><strong>本檔補註，非作者自陳</strong>：預測錄製軌跡的未來表示能幫助所測控制，不等於模型具備可供規劃的通用世界模型；本文部署時不執行未來特徵 rollout，也未由這些結果證明真實機器人的泛化。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.37219_JAM.zh-TW.html">JAM 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

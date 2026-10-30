@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Don&#x27;t Ask the LLM to Track Freshness：記憶衝突解決的確定性配方》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Vikas Reddy、Sumanth Challaram (IIT Kharagpur)</p><p>日期：2026-05</p><p>arXiv：2606.01435</p><p><a href="https://arxiv.org/abs/2606.01435" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="dont-ask-the-llm-to-track-freshness記憶衝突解決的確定性配方重點摘要">《Don&#x27;t Ask the LLM to Track Freshness：記憶衝突解決的確定性配方》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>不要叫 LLM 追蹤新鮮度</strong>：在 MemoryAgentBench (MAB) FactConsolidation 任務上，把 LLM 自由文本判斷（decode-and-answer）換成「結構化候選提取 + Python max(serial)」的確定性管線，gpt-4o-mini 單跳 +10.8pp（67.2→78.0）、多跳 30.2%（vs 已發表最佳 7%）、gpt-4o 單跳 94.8%。差距隨上下文長度擴大（6K +8pp → 262K +21pp）。瓶頸在<strong>組裝（post-retrieval aggregation）</strong>，不在儲存架構（graph/hippocampal/agentic）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 記憶系統在衝突解決（同一事實多個矛盾值選哪個）上系統性失敗。MAB FactConsolidation 任務把事實編號、反事實版本有更大序號、並明確告訴 agent「較新事實序號較大」，但已發表的 22 個系統全數表現不佳：HippoRAG-v2 54%、BM25 48%、Mem0/Contriever 18%、Zep/Graphiti（專為時間性記憶設計的時間知識圖譜）僅 7%，多跳變體全數 ≤7%。問題不在儲存——在於這些系統把衝突解決交給 LLM 判斷（檢索/更新/答案生成），而非顯式的版本感知聚合。</p>
+<h2 id="核心方法">核心方法</h2>
+<h3 id="sh-conflict-管線單跳50-行-python">SH-conflict 管線（單跳，~50 行 Python）</h3>
+<ol>
+<li><strong>檢索</strong>：BM25 TOP_K=10，事實級切片（每條事實獨立索引，保留序號為索引鍵）</li>
+<li><strong>候選提取</strong>：LLM 用結構化 prompt 提取語意匹配的候選（僅提取，不比較序號、不選最佳），輸出 JSON <code>[{serial, text, entity}]</code></li>
+<li><strong>新鮮度揀選</strong>：<code>max(candidates, key=lambda c: c.serial).entity</code>（確定性 Python，精確、免費、可審計）</li>
+<li>若無候選→返回 &quot;no answer&quot;（校準棄權，非幻覺）</li>
+</ol>
+<h3 id="car-管線chain-aware-resolution多跳">CAR 管線（Chain-Aware Resolution，多跳）</h3>
+<ol>
+<li><strong>分解</strong>：LLM 將多跳問題分解為原子 hop 鏈（HARD_CONSTRAINT：每 hop 不超過一個關係詞）</li>
+<li><strong>逐跳執行</strong>：每 hop 代入前跳答案後執行 SH-conflict</li>
+<li><strong>最終答案</strong>：最後一跳的答案；任一跳無答案則中斷返回 &quot;no answer&quot;</li>
+</ol>
+<h3 id="關鍵設計決策">關鍵設計決策</h3>
+<ul>
+<li><strong>事實級切片</strong>（vs 既有的 chunk-512/4096）：每條事實獨立索引，序號保留為索引鍵，避免多序號擠在同一 chunk 迫使 LLM 做 chunk 內新鮮度推理</li>
+<li><strong>LLM 角色窄化</strong>：只做語意候選提取（擅長），不做新鮮度比較（不擅長）</li>
+<li><strong>確定性聚合</strong>：Python max() 消除兩個 LLM 失敗模式——(1) prior-override（訓練先驗蓋過上下文規則）、(2) serial-comparison drift（候選池變大時追丟最大序號）</li>
+</ul>
+<h2 id="結果">結果</h2>
+<table>
+<thead>
+<tr>
+<th>管線</th>
+<th>骨幹</th>
+<th>FC-SH Avg</th>
+<th>FC-MH Avg</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SH-conflict + Python max</td>
+<td>gpt-4o-mini</td>
+<td><strong>78.0</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td>SH-conflict + Python max</td>
+<td>gpt-4o</td>
+<td><strong>94.8</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td>CAR (Self-Ask + per-hop max)</td>
+<td>gpt-4o-mini</td>
+<td>—</td>
+<td><strong>30.2</strong></td>
+</tr>
+<tr>
+<td>LLM-judgment baseline</td>
+<td>gpt-4o-mini</td>
+<td>67.2</td>
+<td>—</td>
+</tr>
+<tr>
+<td>HippoRAG-v2（最佳已發表）</td>
+<td>gpt-4o-mini</td>
+<td>54.0</td>
+<td>5.0</td>
+</tr>
+<tr>
+<td>Zep/Graphiti（時間 KG）</td>
+<td>gpt-4o-mini</td>
+<td>7.0</td>
+<td>3.0</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>差距隨上下文擴大</strong>：LLM-judgment baseline 在 64K→262K 暴跌 14pp（75→61），確定性管線不降（82@262K）</li>
+<li><strong>gpt-4o + CAR 多跳 51.5%</strong>：vs 已發表最佳 7%，+44.5pp</li>
+<li><strong>o4-mini 單跳 96.5%</strong>：單跳衝突解決實質上已被推理骨幹解決</li>
+<li><strong>方法互補性</strong>：88.5% 題目至少一管線可解（軟天花板）；21.3% Python-only、10.5% LLM-only（嚴格提取過度拒絕的 case）</li>
+<li><strong>跨基準泛化（LongMemEval）</strong>：max(serial)→max(timestamp) 移植成功，但整體僅平手（57.8 vs 64.4, n=45）；失敗全在非新鮮度題型（Yes/No/歷史/聚合），max() 是正確算子但需組合題型感知處理</li>
+<li><strong>成本</strong>：gpt-4o-mini ~$0.0001/查詢，gpt-4o ~$0.005/查詢（50× 成本換 17pp）</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>主要評測僅 MAB FactConsolidation 一個基準（MQUAKE 衍生反事實，未必反映真實衝突模式）</li>
+<li>跨基準檢查 n=45、CIs 寬、單一題型</li>
+<li>需顯式版本標記（序號/時間戳）；無法處理偏序或因果依賴更新</li>
+<li>匹配比較變動超過 resolver 本身（prompt 格式、輸出格式、溫度均不同）——+10.8pp 是管線級效果，非嚴格隔離的 resolver 貢獻</li>
+<li>嚴格提取有召回代價：~10% 題目被過度拒絕，LLM-judgment baseline 反而答對</li>
+<li>多跳 30.2% 遠未解決（多數失敗在 hop-1 候選提取錯誤→級聯失敗）</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>§2 工廠/消費者</strong>的直接實例：LLM 是「工廠」（產候選），確定性程式是「消費者」（揀最新）——這是 ai_core 架構的核心分工模式。本論文以實證量化了這個分工的收益（+10.8pp 平均、+21pp 長上下文），提供了「把 LLM 判斷換成確定性程式」的乾淨基準證據</li>
+<li><strong>§3.6 LLM→確定性程式退化</strong>的具體路徑：當版本標記存在時，新鮮度比較可從 LLM prompt 中完全移除、退化為 <code>max(serial)</code> 一行程式碼。本論文給出了退化條件（顯式全序標記）、退化收益量化（+10.8～+21pp）、以及退化邊界（非當前值查詢需組合題型感知處理）</li>
+<li>對任何用 LLM 做「選最新/選最大/選最優」的管線都是必讀：本論文證明即使 prompt 明確寫了規則，LLM 仍會被訓練先驗覆蓋（prior-override）且隨候選池增大而漂移（serial-comparison drift），這兩個失敗模式是系統性的、不是 prompt engineering 能解決的</li>
+<li>與 <a class="paper-reference" href="2604.05150_CompiledAI.%E6%91%98%E8%A6%81.html">2604.05150</a> Compiled AI（LLM workflow→確定性 Python）對讀：Compiled AI 是「覆蓋後整段換成程式碼」，本論文是「只換掉 LLM 不擅長的新鮮度比較子步驟」——兩者是同一退化光譜上的不同粒度</li>
+<li>與 <a class="paper-reference" href="2511.15715_GraphMemoizedReasoning.%E6%91%98%E8%A6%81.html">2511.15715</a> Graph-Memoized Reasoning（子圖 memoization）並讀：本論文的確定性 max() 是最簡單的 memoization 形式（「最新=正確」規則被固化為程式碼），Graph-Memoized 是更一般的形式化框架</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2606.01435_DontAskLLMFreshness.zh-TW.html"><code>../translate/2606.01435_DontAskLLMFreshness.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

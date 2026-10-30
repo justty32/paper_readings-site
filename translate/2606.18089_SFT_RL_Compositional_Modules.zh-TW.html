@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>從推理軌跡到可重用模組：理解語言模型推理中的組合泛化（From Reasoning Traces to Reusable Modules: Understanding Compositional Generalization in Language Model Reasoning） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Lingjing Kong、Xin Liu、Guangyi Chen、Martin Q. Ma、Xiangchen Song、Yuekai Sun、Mikhail Yurochkin、Taylor W. Killian、Ruslan Salakhutdinov、Kun Zhang、Eric P. Xing、Zhengzhong Liu</p><p>日期：2026-06（arXiv v1）</p><p>arXiv：2606.18089</p><p><a href="https://arxiv.org/abs/2606.18089" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="從推理軌跡到可重用模組理解語言模型推理中的組合泛化">從推理軌跡到可重用模組：理解語言模型推理中的組合泛化</h1>
+<h2 id="摘要">摘要</h2>
+<p>結合監督微調（SFT）與強化學習（RL）的後訓練流程，已是把 LLM 變成穩健推理者的關鍵配方。本文主張這套組合的成功源於<strong>組合泛化</strong>，並以一個<strong>階層式潛在選擇模型</strong>將其形式化：推理軌跡由一串對應「可重用原子模組」的離散潛在選擇變數級聯生成，原子模組分為 <strong>skills（局部操作）</strong> 與 <strong>routing 機制（中間資訊如何被選取、複用與組合）</strong>。在此模型下，理論證明 SFT 與 RL 扮演<strong>不對稱、互補</strong>的角色：SFT 在組合軌跡中提供原始模組素材，RL 則把這些軌跡<strong>拆解</strong>以辨識潛在原子模組、進而達成組合泛化。受控實驗顯示 RL 能從 SFT 供應的複合軌跡中抽取原子模組並重組以解新配置；且<strong>在複合軌跡上訓練比在孤立原子模組上訓練泛化更強</strong>。最後給出有效協定：SFT 透過組合軌跡確保涵蓋所有原子模組，RL 則聚焦 SFT 支撐集之外的新組合以驅動探索。</p>
+<hr />
+<h2 id="1-引言">1 引言</h2>
+<p>SFT＋RL 被普遍認為帶來了現代 LLM 推理能力的階躍。經驗上 SFT-only 常只模仿少數「黃金」軌跡，遇到熟悉步驟需以陌生方式重組時就退化；SFT 後接 RL 則能可靠處理這類 OOD 組合。但<strong>機制不明</strong>：每階段各貢獻什麼？該配什麼資料？先前工作多以標準 benchmark（math/code 的 pass@k）或合成任務經驗評估 RL 的泛化，卻<strong>未說明 RL 如何重塑推理軌跡來達成組合泛化</strong>。本文提出潛變數解釋。</p>
+<p><strong>圖 1 直觀</strong>：一條推理軌跡由兩類可重用原子模組組合而成——(i) <strong>原子技能</strong>（色塊）是對中間狀態的局部操作；(ii) <strong>原子路由機制</strong>（箭頭 R_{i,j}，下標 i 為鏈中位置、j 為選項）決定資訊如何在技能間被選取轉送（消費前一輸出、複用更早中間量、跳過、分支）。上排示範 skill 重組（固定路由模板、換槽內技能）；中排示範 routing 作為獨立的組合軸（同技能、換接線）；下排為 OOD 組合評估：在 L_train=3 上後訓練，評估更長或新穎的 L=4 組合（其 skill–routing 配搭訓練時不存在）。</p>
+<h2 id="2-推理階層式潛在選擇模型">2 推理＝階層式潛在選擇模型</h2>
+<ul>
+<li><strong>2.1 模型</strong>：可觀測問題描述 P、潛在選擇變數 S、可觀測軌跡 D；原子模組＝skills + routing。</li>
+<li><strong>2.2 組合泛化與潛在結構辨識</strong>：定義訓練支撐集與組合；要達組合泛化，必須先把潛在模組階層辨識出來。</li>
+</ul>
+<h2 id="3-理論框架辨識--組合">3 理論框架：辨識 → 組合</h2>
+<ul>
+<li><strong>3.1 辨識</strong>：何時能回復潛在模組階層？說明「被辨識的是什麼」，並由辨識導出兩種後訓練演算法的角色。<strong>SFT 軌跡提供什麼、留下什麼糾纏</strong>：複合軌跡含原子素材但未拆開。<strong>RL 如何拆解</strong>：透過豐富「辨識關鍵的局部事件」來識別潛在原子。詮釋＝<strong>分工</strong>。</li>
+<li><strong>3.2 組合</strong>（定理 3.4）：已辨識的模組何時能在分佈外重組？以「見證」逐層拼接證之，並連結到實證協定。</li>
+</ul>
+<h2 id="4-實證發現">4 實證發現</h2>
+<p><strong>4.1 設定</strong>：合成任務（已知真值結構，便於對齊可識別性宣稱）；訓練/評估於不同組合深度。</p>
+<ul>
+<li><strong>4.2 Finding 1（RL 拆解＋重組）</strong>：SFT 與 RL 都僅見固定深度 L=3 的複合軌跡（如 f₃(f₂(f₁(x)))）。評估：先測單一原子函數（L=1），再測未見組合 L=2…8。
+<ul>
+<li>
+<p>L=1 上模型表現良好，<strong>RL 較 SFT-only +43.7%</strong>；未見組合上 SFT 隨深度急墜、RL 維持較高（平均 <strong>+40.3%</strong>）；SFT-vs-RL 差距在未見組合上遠大於已見。</p>
+</li>
+<li>
+<p><strong>Table 1</strong>（同 SFT 起點、RL 300 步，評估 OOD 複合 L=4）：</p>
+<table>
+<thead>
+<tr>
+<th>訓練設定</th>
+<th>準確率（%）</th>
+<th>增益</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SFT baseline</td>
+<td>4.8</td>
+<td>–</td>
+</tr>
+<tr>
+<td>SFT+RL，原子模組（L=1）</td>
+<td>14.8</td>
+<td>+10.0</td>
+</tr>
+<tr>
+<td>SFT+RL，複合軌跡（L=3）</td>
+<td>42.6</td>
+<td>+37.8</td>
+</tr>
+<tr>
+<td><strong>複合優勢</strong></td>
+<td>–</td>
+<td><strong>+27.8</strong></td>
+</tr>
+</tbody>
+</table>
+<p>原子模組 RL 靠強化可重用操作而改善，但複合軌跡 RL 因<strong>暴露模組間的局部介面</strong>而增益大得多，呼應定理 3.4 的見證式組合觀。</p>
+</li>
+<li>
+<p><strong>要點 1</strong>：RL 把 SFT 供應的複合軌跡拆成可重用原子並重組以解未見組合；同 SFT 起點下，複合軌跡 RL 的 OOD 增益遠大於僅原子的 RL。</p>
+</li>
+</ul>
+</li>
+<li><strong>4.3 Finding 2（須在組合語境中見原子）</strong>：移除 8 個原子技能（1/3）並從 RL 排除所有含它們的組合；比較三設定（不重注入／重注入孤立原子／重注入不同深度的組合軌跡）。結果：無重注入則一律較低；<strong>重注入含保留技能的組合軌跡才大幅恢復</strong>；直接重注入孤立原子無法推廣到更深組合。<strong>要點 2</strong>：原子知識必要但不充分，模型須在組合語境中遇到原子，才學會重組並系統性泛化到更深未見組合。</li>
+<li><strong>4.4 Finding 3（skill 與 routing 共享學習機制）</strong>：對 routing 機制重複上述實驗，得相同樣式；有趣的是<strong>重注入較淺</strong>的 routing 組合，恢復效果比更深的更強（較簡單的 routing 組合讓底層原子路由更易回復）。</li>
+<li><strong>4.5 Finding 4（SFT/RL 資料配對）</strong>：有效協定＝<strong>SFT 用組合軌跡確保涵蓋所有原子模組</strong>，<strong>RL 聚焦 SFT 支撐集之外的新組合</strong>驅動探索（Experiments I–III）。</li>
+<li><strong>4.6</strong>：開源模型上的互補佐證。</li>
+</ul>
+<h2 id="5-結論">5 結論</h2>
+<p><strong>對 curriculum 設計的啟示</strong>：SFT 負責原子覆蓋、RL 負責新組合探索。<strong>局限與未來</strong>：結論主要在合成受控任務上建立；原子模組的離散階層假設於自然語言未必乾淨可拆。</p>
+<hr />
+<blockquote>
+<p>附錄涵蓋：相關工作、與既有工作的詳細比較、辨識理論（定理 3.1/C.2）與組合（3.4）證明、SFT/RL 的形式化支撐集視角、玩具診斷、完整實驗設定、SAE 表示層實驗、RL 超參敏感度等。</p>
+</blockquote>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2606.18089_SFT_RL_Compositional_Modules.%E6%91%98%E8%A6%81.html"><code>../summarize/2606.18089_SFT_RL_Compositional_Modules.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

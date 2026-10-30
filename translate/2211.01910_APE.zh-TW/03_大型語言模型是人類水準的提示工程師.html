@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_大型語言模型是人類水準的提示工程師 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2211.01910_APE.zh-TW.html">回 2211.01910_APE.zh-TW 目錄</a>　<a href="02_%E7%94%A8_LLM_%E5%81%9A%E8%87%AA%E7%84%B6%E8%AA%9E%E8%A8%80%E7%A8%8B%E5%BC%8F%E5%90%88%E6%88%90.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-大型語言模型是人類水準的提示工程師">4. 大型語言模型是人類水準的提示工程師</h2>
+<p>本節從四面向檢視 APE 如何引導 LLM 達到期望行為：zero-shot 表現、few-shot in-context learning、zero-shot CoT 推理、真實性。實驗顯示 APE 能找到與人寫指令相當甚至更好的 prompt，且常產出「如何最好地提示語言模型」的洞見式技巧、可遷移到新任務。</p>
+<h3 id="41-指令歸納instruction-induction">4.1 指令歸納（Instruction Induction）</h3>
+<p>在 Honovich 等提出的 24 個指令歸納任務上評估 zero-shot 與 few-shot in-context learning，任務涵蓋從片語結構到相似性與因果識別等多面向。每任務抽 5 對輸入/輸出、用 Algorithm 1 選最佳指令，再在 **InstructGPT（text-davinci-002）**上執行以評估。以 5 個隨機種子重複、報告均值與標準差。</p>
+<p><strong>Zero-shot 學習</strong>：對照兩個基線——人類提示工程師（Human，用經人工驗證的黃金標註）與 Honovich 等的模型生成指令法（可視為無搜尋與選擇的「貪婪版 APE」，稱 Greedy）。圖 4 顯示 APE 在每個任務都勝過 Greedy，並在 <strong>24/24</strong> 任務追平或勝過人類。跨 24 任務的 IQM：<strong>APE（InstructGPT）0.810 vs 人類 0.749</strong>。</p>
+<p><strong>Few-shot in-context learning</strong>：把 APE 指令插在 in-context 示範之前（依 zero-shot 執行準確率選指令，記為「Instruction + In-context」）。在 <strong>21/24</strong> 任務上追平或勝過標準 in-context learning。反直覺地，替 Rhymes、Large Animal、Second Letters 加 in-context 範例反而傷表現，推測是所選指令對 zero-shot 情境過擬合。改用 few-shot 執行準確率作選擇度量後，除 Rhymes 外多數任務相當或略好。</p>
+<h3 id="42-big-bench">4.2 BIG-Bench</h3>
+<p>為看 APE 能否用於更難的任務，我們提出並精選 <strong>BIG-Bench Instruction Induction（BBII）</strong>——一個乾淨、可處理的 21 任務子集（每任務有可套用到全部樣本、人寫的清楚指令），涵蓋情緒理解、無脈絡問答、閱讀理解、摘要、演算法、以及各式推理（算術、常識、符號、邏輯），並含 BigBench-Hard 子集裡全部九個此類問題。對每任務用 InstructGPT 的 reverse mode 生成候選、依執行準確率排序，再執行所選指令算 zero-shot 表現、對比預設人寫指令。結果 APE 在 <strong>17/21</strong> 任務上表現相當或更好（附錄表 6）。</p>
+<h3 id="43-zero-shot-chain-of-thought">4.3 Zero-shot Chain of Thought</h3>
+<p>CoT 推理能大幅提升 LLM 完成多步驟複雜推理（如數學題）的能力。近期最具影響力的提示工程發現之一是：只要在 LLM 回應開頭加上「Let&#x27;s think step by step.」，就能讓模型展示推理過程（即 <strong>Zero-Shot-CoT</strong>）；這把 InstructGPT 在 MultiArith 的 zero-shot 表現從 17.7 提到 78.7、GSM8K 從 10.4 提到 40.7，且該提示是至少九個人設計提示中最佳者。</p>
+<p>我們用 APE 自動搜尋最佳的「答案前綴」。做法受 STaR（Zelikman 等）啟發：先用「Let&#x27;s think step by step.」讓 InstructGPT 生成一批問題與推理步驟資料，移除答錯的資料點，再用 APE 找一個以「Let&#x27;s」開頭、能最大化這些正確推理步驟之似然的提示。APE 產出：<strong>「Let&#x27;s work this out in a step by step way to be sure we have the right answer.」</strong> 這個生成提示把 MultiArith 從 78.7 進一步提到 <strong>82.0</strong>、GSM8K 從 40.7 提到 <strong>43.0</strong>。我們認為此工作流代表 APE 的常見用例：提示工程師用 APE 去優化既有模板的某些部分以提升表現。</p>
+<h3 id="44-truthfulqa">4.4 TruthfulQA</h3>
+<p>我們把 APE 用於 TruthfulQA，看 APE 生成的指令如何以不同風格引導 LLM，並研究<strong>真實性與資訊性</strong>的取捨。借用原論文度量，我們用 APE 學能最大化三項指標的指令：真實性（% True）、資訊性（% Info）、與兩者結合（%True + %Info），以其 fine-tuned GPT-judge 與 GPT-info 評分。</p>
+<p><strong>設定與提示工程</strong>：須強調 TruthfulQA 原意是測 zero-shot 的預訓練模型；我們因用了部分問答對作訓練示範，故<strong>非「真 few-shot」</strong>，結果不與原 benchmark 相容。我們從 817 題隨機抽 100 題作訓練示範，要 reverse 模型依 6 對隨機示範生成指令。與指令歸納不同，此處目標是找出「橫跨全部 38 類問題（健康、法律、政治、虛構等）都好用的單一最佳指令」；所生成指令都很通用，例如「你將被問一系列問題。對每題你必須回答，或婉拒回答（此時須聲明你沒有評論）」，且不含資料集中的任何範例。</p>
+<p><strong>真實性 vs 資訊性取捨</strong>：僅用 InstructGPT（175B）提出的 200 個候選，APE 就勝過人寫的「help」提示（圖 5）。取訓練集上前 10 名指令，能良好泛化到測試集。APE 發現的指令雖能以「No comment」達到極高真實性，卻資訊量極低；把三項度量的前 10 名畫在真實—資訊平面（圖 5c、5d）可見它們傾向落在 Pareto 前緣兩端。APE 在「同時真實且有資訊」上達 <strong>&gt;40%</strong>（人類「help」提示 30%）。</p>
+<h2 id="5-量化分析">5. 量化分析</h2>
+<p>本節分析方法三大組件：提案分佈、分數函式、迭代搜尋，並在附錄 D 做成本分析——觀察到<strong>更大、更強的語言模型儘管每 token 成本較高，卻更具成本效益地找到最佳 prompt</strong>。</p>
+<h3 id="51-用於提案分佈的-llm">5.1 用於提案分佈的 LLM</h3>
+<p><strong>模型變大時提案品質如何變化？</strong> 檢視 8 個模型（ada、babbage、curie、davinci 及對應 text-*-001、text-davinci-002），每模型生成 250 個指令、在 50 個測試點算執行準確率。以「存活函數」（測試準確率高於某門檻的指令比例）與直方圖呈現。結果（圖 6 左）：<strong>較大模型、以及經 fine-tune 以遵循人類指令的模型，提案分佈更好</strong>。簡單任務（Pluralization）上最佳模型 InstructGPT（175B）生成的所有指令都有合理準確率；較難任務上約半數指令離題、表現差。</p>
+<h3 id="52-用於選擇的-llm">5.2 用於選擇的 LLM</h3>
+<p><strong>提案品質在選擇下是否重要？</strong> 取樣愈多指令愈可能找到更好者。把樣本數從 4 增到 128，測試準確率單調上升但邊際遞減，<strong>64 個指令樣本即達人類水準</strong>，故預設取 50（圖 7 左）。在此設定下，即使小模型較不易生成好指令，只要取樣夠多仍會產生一些好指令，故我們用選擇演算法在小模型上也能找到有前景的指令——這解釋了為何本法在全部 8 個模型上都勝過貪婪法。</p>
+<p><strong>哪個分數函式較好？</strong> 在 24 任務上用 InstructGPT（175B）forward mode 生成 250 指令、在 10 個測試點算度量分數與測試準確率，計算兩者的 Spearman 相關。圖 7（中）顯示<strong>執行準確率</strong>與測試表現對齊更佳，故設為預設度量。</p>
+<h3 id="53-迭代-monte-carlo-搜尋">5.3 迭代 Monte Carlo 搜尋</h3>
+<p><strong>迭代搜尋是否提升指令品質？</strong> 在「Passivization」任務的存活函數與直方圖（圖 6 右）顯示曲線隨輪次上升、提案集品質提高，但<strong>約三輪後品質趨於穩定</strong>、邊際遞減。</p>
+<p><strong>是否需要迭代搜尋？</strong> 在 6 個任務上比較 APE 與 iterative APE（圖 7 右）：迭代搜尋在「APE 原本不及人類」的任務上略有提升，其餘任務則相當。這與假設一致——迭代搜尋在「生成良好初始提案集較困難」的任務上最有用。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>大型語言模型可視為執行「自然語言提示所指定之程式」的通用電腦。我們把提示工程過程自動化，將其化為黑箱最佳化問題，並用「由 LLM 引導的高效搜尋演算法」求解。本法以極少人類輸入即在多種任務達到人類水準。隨近期 LLM 展現遵循人類指令的驚人能力，我們預期許多未來模型（含形式化程式合成的模型）都將具備自然語言介面。本工作為控制與引導生成式人工智慧奠定基礎。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2211.01910_APE.%E6%91%98%E8%A6%81.html"><code>../summarize/2211.01910_APE.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

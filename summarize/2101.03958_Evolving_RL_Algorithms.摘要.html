@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《演化強化學習演算法：以計算圖搜尋空間自動發明 RL 損失函數》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：John D. Co-Reyes, Yingjie Miao, Daiyi Peng, Esteban Real, Sergey Levine, Quoc V. Le, Honglak Lee, Aleksandra Faust（Google Research, ICLR 2021）</p><p>日期：2021-01（ICLR 2021）</p><p>arXiv：2101.03958</p><p><a href="https://arxiv.org/abs/2101.03958" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="演化強化學習演算法以計算圖搜尋空間自動發明-rl-損失函數重點摘要">《演化強化學習演算法：以計算圖搜尋空間自動發明 RL 損失函數》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>用<strong>正規化演化（regularized evolution）外迴圈</strong>，在「計算 RL 損失函數的計算圖（DAG）」空間中搜尋，<strong>自動發明出領域無關、能泛化到未見環境的 value-based RL 演算法</strong>；從零學會重新發現 TD 演算法，從 DQN 啟動則演化出兩個勝過 DQN/DDQN 的新損失 <strong>DQNClipped</strong> 與 <strong>DQNReg</strong>，後者極簡（<code>L = 0.1·Q + δ²</code>）卻能泛化到 Atari。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>設計新的深度 RL 演算法極度仰賴人工試誤。本文把「設計 RL 演算法」本身形式化為 <strong>meta-learning</strong>：外迴圈搜尋計算目標函數的程式（計算圖），內迴圈用該學到的損失函數做梯度更新訓練 agent；外迴圈目標＝最大化內迴圈在一組訓練環境上的正規化平均訓練回報。重點是學到的損失函數要<strong>跨環境泛化</strong>，而非綁定單一領域。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>搜尋語言（DSL）</strong>：把 RL 演算法表示成有<strong>型別</strong>的有向無環圖（DAG）。節點分三類——輸入節點（轉移 <code>(s_t, a_t, r_t, s_{t+1})</code>、常數 γ）、參數節點（神經網路權重，如 Q 網路）、運算節點（線代/機率/統計的基本運算子）。輸出節點＝待最小化的純量損失。型別系統（state/action/vector/float/list/probability）讓程式能套用到任何領域，並縮減搜尋空間。DQN 的損失可被精確表示為一張 7 節點子圖。</li>
+<li><strong>外迴圈：正規化演化 + 錦標賽選擇</strong>。維持 300 個演算法的族群、錦標賽大小 25、突變率 0.95；每輪選錦標賽中最佳者為親代，突變（隨機替換一個節點）成子代加入族群、淘汰最舊個體。</li>
+<li><strong>三項加速技巧</strong>：① <strong>功能等價檢查</strong>（對 10 組隨機輸入雜湊輸出，等價就複用舊分數）；② <strong>早期關卡（early hurdles）</strong>——先在 CartPole 上跑，表現低於閾值 α 即提早終止省算力；③ <strong>程式合法性檢查</strong>（輸出須為 float、須對 policy 參數可微）。</li>
+<li><strong>從零學 vs. 自舉（bootstrap）</strong>：可隨機初始化從零學，也可用 DQN 損失初始化族群前 7 個節點（其餘隨機，且節點不凍結可被替換）。</li>
+</ul>
+<h2 id="關鍵結果">關鍵結果</h2>
+<ul>
+<li>規模：300 CPU 跑約 72 小時、評估約 20,000 個程式；訓練末約 70% 提案程式與舊程式功能等價、早期關卡再砍掉約 40% 非重複程式。</li>
+<li><strong>從零學會重新發現 TD 損失</strong>（用 CartPole+LunarLander 兩環境時學到標準 DQN/TD 損失；只用 CartPole 則學到不含折扣的變體）→ 訓練環境難度多樣性對泛化很重要。</li>
+<li><strong>自舉勝過從零</strong>：從 DQN 啟動使收斂更快、最終訓練表現提升約 40%。</li>
+<li><strong>DQNClipped</strong>＝兩個 max 相加的損失，效果近似 DDQN（抑制 Q 值高估）。</li>
+<li><strong>DQNReg</strong> <code>= 0.1·Q(s_t,a_t) + δ²</code>：直接以恆常啟動的權重項正則化 Q 值，在幾乎所有訓練/測試環境（古典控制 + MiniGrid）匹敵或勝過基線，且方差更低、樣本效率更高；在某些測試環境（SimpleCrossingS9N1、DoorKey-6x6、Unlock）他法拿不到獎勵時它能解。</li>
+<li><strong>泛化到 Atari</strong>：雖只在非影像的簡單環境 meta-train，DQNReg 在 Asteroid/Bowling/Boxing/RoadRunner 上勝過 DQN、DDQN、PPO（如 RoadRunner 65516 vs DQN 39544）。</li>
+<li>分析顯示兩者皆透過<strong>壓低/抑制 Q 值高估</strong>獲益，結構上與後來人工提出的 <strong>CQL、M-DQN</strong> 相呼應——顯示本法能自動發現研究者正手動探索的有用結構。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>僅限<strong>離散動作、value-based、接近 DQN</strong> 的演算法；尚未擴展到 actor-critic 或 policy gradient（作者指出語言可擴展）。</li>
+<li>動作如何從策略取樣未納入搜尋空間；訓練/測試環境的多樣性仍可再擴大。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 <strong>D 類（meta-learning / 演化 RL）</strong> 的奠基代表作之一：把 AutoML-Zero 從零演化演算法的思路，<strong>移植到 RL 並改以損失函數計算圖為搜尋對象</strong>。</li>
+<li>最值得記：<strong>「型別化 DAG 搜尋語言 + 正規化演化 + 功能等價/早期關卡加速 + 從 DQN 自舉」</strong> 的完整配方；以及「演化出來的東西可被人讀懂並對應到 CQL/M-DQN」這個可解釋性賣點。</li>
+<li>與後續 <a class="paper-reference" href="2402.05828_Temporally_Aware_RL_Algorithms.%E6%91%98%E8%A6%81.html">2402.05828</a>（時間感知 LPG/LPO，改參數化神經損失而非符號圖、改用 ES 而非演化計算圖）形成對照：本文走<strong>符號計算圖</strong>路線、產出可分析的閉式損失。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2101.03958_Evolving_RL_Algorithms.zh-TW.html"><code>../translate/2101.03958_Evolving_RL_Algorithms.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

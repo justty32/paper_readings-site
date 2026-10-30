@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2406.16218_Trace.zh-TW.html">回 2406.16218_Trace.zh-TW 目錄</a>　<a href="02_OPTO%EF%BC%9A%E4%BB%A5_Trace_Oracle_%E9%80%B2%E8%A1%8C%E5%84%AA%E5%8C%96.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-實驗">5. 實驗</h2>
+<p>以 GPT-4-0125-Preview 實作，基線包括最先進 LLM 優化器 <strong>OPRO</strong>（不用執行軌跡、只靠參數—回饋對記憶）。Trace 對工作流執行不引入可測開銷。</p>
+<ul>
+<li><strong>5.1 數值優化</strong>：在隨機生成的複雜計算圖上解 min|h(x)−y*|，回饋僅為「輸出應更大/更小」（與梯度資訊等價）。30 次試驗中 <strong>Trace 匹配最佳的 Adam 優化器</strong>；遮蔽計算圖的變體（Trace Masked）則難以找到解——驗證執行軌跡是關鍵。</li>
+<li><strong>5.2 超參數調校（交通控制）</strong>：UXSim 模擬四向路口，參數為兩個綠燈時長整數 [15,90]，回饋為車輛延誤估計，目標是用最少模擬次數最小化延誤。Trace（OptoPrime＋記憶）<strong>快速追平交通控制文獻的 SOTA 啟發式 SCATS</strong>，OPRO 不行；GP 與 PSO 在 50 輪內不足以收斂。記憶對此任務至關重要。</li>
+<li><strong>5.3 統一 prompt 與函數優化（BigBench-Hard）</strong>：優化一個 DSPy 代理的三個組件——meta-prompt <code>prompt_template</code>、修改 prompt 的函數 <code>create_prompt</code>、後處理 LLM 輸出的函數 <code>extract_answer</code>（<strong>prompt＋程式碼聯合優化</strong>）。與 DSPy 的 COPRO 模組（只優化 meta-prompt）比較：0-shot 全 23 任務 Trace 59.5 vs DSPy-PO 55.3 vs DSPy 41.6；+CoT 下 <strong>Trace 78.6 vs DSPy-PO 71.6</strong>，演算法類任務 <strong>80.6 vs 70.0</strong>——Trace 能把 DSPy 程式優化到超越 DSPy 自家優化器的水準。</li>
+<li><strong>5.4 長時程機器人控制</strong>：在 LLF-Bench Meta-World（模擬 Sawyer 機械臂；Reach/Pick-place/Push 三任務）中訓練 Python 控制器程式碼，把環境的 reset/step 也裝飾使<strong>整條 rollout 端到端可追蹤</strong>（「穿越時間的反向傳播」）。每輪一次 rollout（10 步），輸出回饋為任務成功與否的文字表示。OptoPrime（含記憶）明顯最佳，能在<strong>數十次互動內</strong>學到複雜控制邏輯且泛化到 10 個保留初始條件；遮蔽執行軌跡的消融顯著退化，OPRO 在 Reach 上先成功後退化（不穩定）。</li>
+<li><strong>5.5 與 TextGrad 比較</strong>：TextGrad 是在本文投稿 NeurIPS 後發布的同目標 AutoDiff 式框架。TextGrad 傳播<strong>文字回饋</strong>，Trace 傳播<strong>最小子圖</strong>；Trace 的圖式設計把追蹤基礎設施與優化演算法分離，更靈活——<strong>TextGrad 可輕易實作為 Trace 中的一個優化器，反之不可能</strong>（TextGrad 把基礎設施與演算法耦合）。且 Trace 支援聯合優化異質參數、可直接追蹤既有工作流而無需用預定義模板改寫。我們直接以 Trace 裝飾 TextGrad 發布的評估程式碼逐行比較（solution optimization 與 prompt optimization 任務）：各演算法成功率相近（如 MMLU-ML 86.6 vs 86.1；GPQA 59.6 vs 53.2；GSM8K 82.5 vs 82.4），但 <strong>OptoPrime 快約 3 倍 wall-clock</strong>——每步僅單次 LLM 呼叫，TextGrad 的呼叫次數則隨圖大小線性增長。</li>
+</ul>
+<p><strong>Token 用量（附錄 I.1）</strong>：OptoPrime 明顯比 OPRO 耗 token（如 MetaWorld 7101 vs 470），但即使給 OPRO 7-10 倍迭代以拉平 token 成本，其表現仍停滯在較差水準——<strong>OPRO 的次優不是 token 限制，而是缺乏 Trace 所捕捉與表示的資訊</strong>。</p>
+<h2 id="6-局限">6. 局限</h2>
+<p>Trace/OPTO/OptoPrime 是端到端生成式優化與自適應工作流的第一步。OPTO 捕捉豐富回饋，但需指定解概念與回饋來源——<strong>設計回饋將如深度學習中設計損失函數一樣重要</strong>，皆為開放問題。Trace 無法轉換所有工作流：就地修改狀態的有狀態函數無法直接表為 DAG；分散式/平行計算與現行實作不相容。OptoPrime 尚屬初步：非可證最優、比 OPRO 耗 token；<strong>LLM 的除錯能力與 context 上限決定了實際可處理的問題規模</strong>，需要更多 token 高效的生成式優化演算法研究。</p>
+<h2 id="7-結論與未來工作">7. 結論與未來工作</h2>
+<p>Trace 把計算工作流優化問題轉為 OPTO 問題，OptoPrime 是可行的 OPTO 優化器。這只是端到端生成式優化新範式的第一步。未來方向：以 CoT、few-shot、工具使用、多代理等改進 LLM 推理來強化優化器；LLM＋搜尋演算法的混合工作流可能實現真正通用的 OPTO 優化器；為特定計算特化 propagator（如以階層圖表示處理超大圖）；能對反事實參數設定下工作流行為進行推理的優化器可實現分而治之；研究 OPTO 的理論性質（優化地景與複雜度）；擴展到非文字的脈絡與回饋（如搭配 VLM 處理影像/影片回饋）。</p>
+<h2 id="附錄擇要">附錄擇要</h2>
+<ul>
+<li><strong>附錄 A（深度代理工作流展望）</strong>：手工打造計算工作流如同 2000 年代初程式員手工編神經網路權重做遊戲 AI；Trace 是自動化、可擴展優化「深度代理工作流」的第一步。AutoDiff 用數值回饋優化數值參數；黑箱方法（RL）可用數值回饋優化異質參數但低效；<strong>Trace 用豐富回饋（語言）優化異質參數</strong>，且以反向傳播的推廣比黑箱方法更高效。OptoPrime 目前無法處理不能精簡文字化的參數（神經網路權重、資料庫等大型有狀態物件）與數千節點的大圖；參數約束以文字描述表示但 LLM 不總是遵守——有效變通是<strong>在工作流中實作約束檢查並拋出例外（自動成為回饋）</strong>。</li>
+<li><strong>附錄 D（執行錯誤即回饋）</strong>：bundle 內發生執行錯誤時，Trace 在全域計算圖加入特殊例外節點並拋出 TraceExecutionError，計算圖在錯誤處截斷，錯誤訊息作為回饋 f 從例外節點傳播至參數。兩個便利用途：<strong>自動除錯</strong>（程式碼作為參數時語法/API 錯誤頻繁）與<strong>強制中途約束</strong>（中間結果不合約束即拋例外，因圖在錯誤處截斷而提供高效的早期回饋）。</li>
+<li><strong>附錄 F（OPTO 何時可高效求解）</strong>：以「可驗證性公理」定義解概念（存在人類/ML 模型/多項式演算法能驗證 θ 是否為解）。推測：<strong>當脈絡＋trace feedback 能提供建構修正性搜尋方向的資訊時，OPTO 可高效求解</strong>；若回饋只是純量損失且軌跡不提供下降方向資訊，OPTO 退化回黑箱問題。例：表格式 RL 不看軌跡則複雜度指數、用軌跡可多項式近似求解。</li>
+<li><strong>附錄 H（與 TextGrad 的原理性比較）</strong>：(1) <strong>聯合 vs 個別參數優化</strong>——Trace 建構含所有參數的最小子圖做聯合優化；TextGrad 逐參數個別優化（類座標下降），在如 XOR 測試的例子中次優。(2) <strong>異質參數</strong>——Trace 的 node 封裝所有 Python 資料型別；TextGrad 的變數僅限字串。(3) <strong>模組化</strong>——Trace 清楚分離基礎設施（如 PyTorch）與生成式優化器（如 Adam），TraceGraph 物件獨立於優化器與 LLM。(4) <strong>靈活表示</strong>——bundle 支援任意使用者定義函數，TextGrad 依賴特殊模板函數。(5) <strong>可擴展性</strong>——單次 LLM 呼叫策略在錯誤累積與成本上都優於每計算節點一次呼叫。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2406.16218_Trace.%E6%91%98%E8%A6%81.html"><code>../summarize/2406.16218_Trace.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

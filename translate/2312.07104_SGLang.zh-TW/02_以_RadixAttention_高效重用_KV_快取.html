@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_以_RadixAttention_高效重用_KV_快取 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2312.07104_SGLang.zh-TW.html">回 2312.07104_SGLang.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E8%A9%95%E4%BC%B0.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-以-radixattention-高效重用-kv-快取">3. 以 RadixAttention 高效重用 KV 快取</h2>
+<p>SGLang 程式可串接多次生成、用 <code>fork</code> 建並行副本；不同程式實例也常共享部分內容（如系統 prompt），造成大量共享前綴、即大量 KV 快取重用機會。LLM 推論時 KV 快取存前向傳播的中間張量供後續解碼；其計算只依賴前綴 token，故<strong>相同前綴的請求可重用 KV 快取</strong>，減少冗餘計算與記憶體。既有系統雖探索了某些重用情形，但多需手動設定、無法處理所有模式（如動態樹狀結構），故多數 SOTA 系統對每個請求重算 KV。</p>
+<p><strong>RadixAttention</strong>：一種<strong>自動且系統性</strong>的 runtime KV 快取重用技術。不丟快取，改把 prompt 與生成結果的 KV 存進<strong>基數樹</strong>，支援高效前綴搜尋、重用、插入、逐出；配 <strong>LRU 逐出</strong>與 <strong>cache-aware 排程</strong>提升命中率。相容 continuous batching、paged attention、tensor parallelism；無命中時額外開銷可忽略。</p>
+<ul>
+<li><strong>基數樹</strong>是 trie（前綴樹）的空間高效變體，邊可標「不定長的元素序列」而非單一元素。系統用它維護 token 序列↔KV tensor 映射；KV 以<strong>每頁一 token 的分頁、非連續佈局</strong>儲存。因 GPU 記憶體很快被 KV 填滿，採**先逐「最近最少使用的葉節點」**的 LRU——逐葉後其共同祖先可被重用，直到祖先自身成葉再逐出。</li>
+<li><strong>continuous batching 下</strong>：不能逐出正在跑的 batch 用到的節點，故每節點維護<strong>參考計數</strong>（有幾個 running 請求在用），計數為零才可逐出。<strong>不預配固定大小快取池</strong>，而讓「快取 token」與「running 請求」共用記憶體池、動態分配；當等待請求夠多時，會逐出所有快取 token 以換更大 batch。</li>
+<li><strong>Frontend Hint（前端-runtime 協同）</strong>：前端直譯器把完整 prompt 送 runtime 做前綴匹配與重用；樹結構存在 CPU、維護開銷可忽略。執行 <code>fork</code> 時，前端<strong>先把前綴當 hint 送出</strong>確保正確插入樹，再送其餘 prompt——簡化 runtime 排程與匹配，體現前端-runtime 協同設計之益。</li>
+</ul>
+<p><strong>圖 3（要旨）</strong> 以九個時間點示範基數樹隨請求動態演化（兩個聊天會話、一批 few-shot 查詢、一次 self-consistency 採樣）：邊標子字串／token 序列，節點以顏色示狀態（綠＝新增、藍＝本時點命中、紅＝逐出）。過程展示：新一輪對話命中並重用第一輪前綴；新會話開始時<strong>分裂節點</strong>以共享系統 prompt；記憶體不足時逐出 LRU 節點；一批 few-shot 查詢因共享同組範例而分裂節點以共享；self-consistency 需空間時逐出最少用節點。</p>
+<p><strong>Cache-aware 排程</strong>：定義<strong>命中率 = 已快取 prompt token 數 ÷ prompt token 數</strong>。等待佇列請求多時，執行順序大幅影響命中率（頻繁在無關請求間切換會造成 cache thrashing、命中率低）。作者設計 cache-aware 演算法：批處理時<strong>依已匹配前綴長度排序、優先最長匹配前綴</strong>（而非 FCFS），即「<strong>最長共享前綴優先</strong>」順序（附錄 Alg. 1）；延遲敏感場景可容忍有限重排以提升重用。</p>
+<blockquote>
+<p><strong>定理 3.1</strong>：對一批請求，若快取大小 ≥ 最大請求長度，則<strong>以 DFS（深度優先）順序遍歷請求的基數樹可達最優命中率</strong>；「最長共享前綴優先」等價於 DFS 順序。（證明見附錄 A.3。線上情形 DFS 會被打斷，但排程仍近似在完整基數樹增廣部分上的 DFS 行為。）</p>
+</blockquote>
+<p>貪婪 cache-aware 排程雖高吞吐，但可能造成<strong>飢餓</strong>，與公平排程整合留作未來工作。</p>
+<p><strong>分散式</strong>：可擴展至多 GPU。tensor parallelism 下各 GPU 維護分片 KV 快取、樹操作相同故無需額外同步；多 worker 的 data parallelism 見附錄 A.4。</p>
+<h2 id="4-以壓縮有限狀態機高效受約束解碼">4. 以壓縮有限狀態機高效受約束解碼</h2>
+<p>使用者常要模型輸出遵循特定格式（如 JSON schema），以提升可控性、穩健性與易解析性。SGLang 提供 <code>regex</code> 引數以正則強制約束。既有系統把正則轉成<strong>有限狀態機（FSM）</strong>，解碼時維護當前 FSM 狀態、取下一狀態允許的 token、把非法 token 機率設零，<strong>逐 token</strong> 解碼——當本可一次多解時就低效。例如圖 2 中常量序列 <code>{&quot;summary&quot;: &quot;</code> 在正常解碼會橫跨多個 token、需多階段，儘管每步其實只有一個合法下一 token，整段本可**單步（一次前向）**解完。既有系統受限於 FSM 與模型執行器缺乏整合而無法多 token 處理。</p>
+<p>SGLang 以<strong>壓縮 FSM</strong> 打造快速受約束解碼 runtime：分析 FSM、把相鄰的<strong>單一轉移邊壓成單一邊</strong>（圖 4b），辨識何時多 token 可一起解；壓縮邊上的多個 token 於一次前向解完（圖 4d），大幅加速。此法通用、適用所有正則（背景與實作細節見附錄 B，含以 retokenization 處理 tokenization artifact）。</p>
+<h2 id="5-以-api-推測執行高效呼叫端點">5. 以 API 推測執行高效呼叫端點</h2>
+<p>前幾節優化針對開源權重模型（需改推論過程）。SGLang 亦支援僅能呼叫黑箱 API 的模型（如 GPT-4）。本節針對這類模型引入<strong>推測執行</strong>以加速並降低多呼叫程式的 API 成本。例：程式以多呼叫模式生成角色描述——
+<code>s += context + &quot;name:&quot; + gen(&quot;name&quot;, stop=&quot;\n&quot;) + &quot;job:&quot; + gen(&quot;job&quot;, stop=&quot;\n&quot;)</code>。
+天真做法是兩個 <code>gen</code> 對應兩次 API 呼叫，使用者要為 <code>context</code> 的 input token 付兩次費。SGLang 在第一次呼叫啟用推測執行，<strong>忽略停止條件、多生成幾個 token</strong>；直譯器保留這些多餘輸出，與後續原語比對並重用。配合適當 prompt engineering，模型能高準確地匹配模板，省下一次 API 呼叫的延遲與 input 成本。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

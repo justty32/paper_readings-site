@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《FunctionEvolve：以 LLM 進行結構引導的符號迴歸》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zeyu Xia、Jun Zhu、Dong Yan（Bosch Center for AI + 清華大學）</p><p>日期：2026-06，LLM 驅動符號迴歸</p><p>arXiv：2606.07704</p><p><a href="https://arxiv.org/abs/2606.07704" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="functionevolve以-llm-進行結構引導的符號迴歸重點摘要">《FunctionEvolve：以 LLM 進行結構引導的符號迴歸》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>FunctionEvolve</strong>：一個讓 <strong>LLM 看得見表達式樹（AST）結構</strong>的演化式 SR 框架——洞察是「SR 進步常來自<strong>局部編輯</strong>而非整式重寫」，故把 AST 結構顯式攤開供「選親／突變／係數擬合」三環共用：<strong>結構摘要</strong>促進多樣親代選擇、<strong>AST 規則局部編輯 + LLM 引導改寫</strong>保留有用子式、<strong>結構感知擬合</strong>拆分/約束/簡化係數以更可靠評分。只用基本函數族、無領域專屬規則。在 <strong>LLM-SRBench 的 129 題合成子集</strong>配 <strong>Claude Opus 4.6</strong>，回復 <strong>107</strong> 條精確式，<strong>SA@50 達 82.9%</strong>（同骨幹基線的 <strong>4.5 倍</strong>）、<strong>SA@1 達 55.8%</strong>（勝先前最強 top-1 結果 PiT-PO 的 <strong>3.6 倍</strong>）。並稽核出 LLM-SRBench 材料科學子集的<strong>共線性→可辨識性</strong>問題。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>現有 LLM 驅動 SR 雖比隨機 GP 更有方向，但<strong>對結構盲（structure-blind）</strong>：在不透明候選間做選擇、缺顯式局部突變機制、且脆弱的係數擬合會<strong>低估正確骨架</strong>而過早丟棄。三大瓶頸：(1) 從通用種子而非結構先驗起步；(2) 親代選擇靠固定啟發式、難在不同骨架間分配預算；(3) 不可靠的係數最佳化讓對的骨架顯得沒希望。</p>
+<h2 id="核心方法">核心方法</h2>
+<p>四個圍繞「<strong>AST 可見搜尋</strong>」組織的模組：</p>
+<ul>
+<li><strong>Generator（生成器）</strong>：用任務脈絡 + LLM 知識合成領域公式與結構啟發式，並初始化<strong>種子表達式</strong>（不從無結構池起步）。</li>
+<li><strong>Selector（選擇器）</strong>：每輪抽取演化樹摘要（AST 結構/參數量/樹深/運算子數 + 訓練 NMSE/已擬合參數值）給 LLM，回傳一小組親代節點；偏好低誤差+簡單，並用選擇歷史避免重複展開相似分支。<strong>只暴露訓練誤差防洩漏</strong>。</li>
+<li><strong>Mutator（突變器）</strong>：對選定親代做三種互補操作——(1) <strong>規則加法</strong>（保留親代、掛上基本函數模板，含加/乘/除與 exp/log/sin/abs/冪等一元包裹）;(2) <strong>規則刪除</strong>（剪枝/解包以測冗餘）;(3) <strong>LLM 引導改寫</strong>（用親代結構+擬合資訊+歷史+領域知識做非模板的脈絡相依精修）。突變後以結構指紋正規化去重。</li>
+<li><strong>structure-aware Optimizer（結構感知最佳化器）</strong>：流水線＝<strong>變數投影（分離線性/非線性參數）→ DE/CMA-ES 全域探索 → L-BFGS 局部精修 → 參數吸附（snap 結構約束的指數）→ 符號簡化</strong>，降低係數搜尋難度、避免低估正確骨架。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>LLM-SRBench 129 題合成子集 + Claude Opus 4.6</strong>：回復 <strong>107 條精確式</strong>;<strong>SA@50 = 82.9%</strong>（同骨幹基線的 4.5×）;<strong>SA@1 = 55.8%</strong>（勝最強已發表 top-1「PiT-PO」3.6×）。</li>
+<li><strong>消融</strong>：結構可見搜尋、LLM 引導局部精修、結構感知係數最佳化<strong>三者皆對可靠回復關鍵</strong>；結構可見性是核心，LLM 精修與結構感知擬合是必要的提議與評分機制。</li>
+<li><strong>基準稽核</strong>：發現 LLM-SRBench 材料科學子集的<strong>輸入變數線性相依 + 弱非線性因子變化</strong>，造成<strong>結構可辨識性</strong>問題。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>倚賴<strong>任務脈絡 T</strong>（變數意義/單位/科學背景）做引導，純維度任務（如 AI-Feynman 僅給名稱單位）時資訊較少。</li>
+<li>強骨幹依賴大型 LLM（Claude Opus 4.6）；結果以合成子集為主。</li>
+<li>點出但未完全解決基準本身的可辨識性問題（共線性）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 C 類的**「LLM × 演化 × 結構顯式化」代表**——與 <a class="paper-reference" href="2606.04360_Deliberate_Evolution.%E6%91%98%E8%A6%81.html">2606.04360</a> Deliberate Evolution（同攻 LLM-SRBench、強調解耦提議與引導）為姊妹路線；與 <a class="paper-reference" href="2502.03367_SyMANTIC.%E6%91%98%E8%A6%81.html">2502.03367</a> SyMANTIC（壓縮感知）、<a class="paper-reference" href="2505.21879_Symbolic_Foundation_Regressor.%E6%91%98%E8%A6%81.html">2505.21879</a> SFR（純 transformer）形成對照。</li>
+<li>最值得記：<strong>「對結構盲」是 LLM-SR 的關鍵病灶</strong>;<strong>AST 顯式化讓 mutation 回歸 SR 的局部編輯本性</strong>;<strong>結構感知擬合（變數投影 + 參數吸附）避免低估正確骨架</strong>；以及對基準的<strong>共線性稽核</strong>（提醒別只看分數）。</li>
+<li>與 <a class="paper-reference" href="2606.09276_ERBench_Equation_Recovery_Benchmark.%E6%91%98%E8%A6%81.html">2606.09276</a> ERBench 對讀：FunctionEvolve 在「公開」LLM-SRBench 上刷高，ERBench 則主張要在「祕密集 + 複雜度分層」上才看得出真本事——兩者一攻一守。</li>
+<li>定位：<strong>方法論文 + 基準稽核</strong>；適合做 <strong>LLM 驅動 SR、演化框架設計、科學公式發現</strong> 的人，特別是想把「表達式樹結構」當一等公民貫穿選親/突變/擬合者。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2606.07704_FunctionEvolve.zh-TW.html"><code>../translate/2606.07704_FunctionEvolve.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

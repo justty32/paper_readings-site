@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2211.17192_Speculative_Decoding.zh-TW.html">回 2211.17192_Speculative_Decoding.zh-TW 目錄</a>　<a href="02_%E5%88%86%E6%9E%90.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>從大型自迴歸模型（如 Transformer）推論很慢——<strong>解碼 K 個 token 需要 K 次串行的模型前向</strong>。本文提出 <strong>speculative decoding（推測式解碼）</strong>：一個能<strong>在不改變輸出</strong>的前提下、藉由<strong>平行計算多個 token</strong> 來更快地從自迴歸模型抽樣的演算法。方法核心有兩個觀察：(1) 困難的語言建模任務常包含可被更高效模型良好近似的較簡單子任務；(2) 藉由<strong>推測執行</strong>與一種<strong>新的抽樣方法</strong>，我們能讓大模型的精確解碼變快——做法是讓大模型<strong>平行地跑在近似模型的輸出上</strong>，一次可能產生多個 token，且<strong>不改變分佈</strong>。此法能加速現成模型，不需重訓、不需改架構。我們在 T5-XXL 上示範，相較標準 T5X 實作取得 <strong>2X–3X 加速，且輸出完全相同</strong>。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>大型自迴歸模型（尤其大 Transformer，如 GPT-3、LaMDA、Parti、PaLM）能力遠強於小模型，但<strong>單步解碼明顯比小模型慢，且各步是串行的——解碼 K 個 token 要 K 次串行前向</strong>。</p>
+<p><strong>推測執行（speculative execution）</strong>（如處理器中的分支預測）是一種常見最佳化：在「驗證某任務是否真的需要」的同時就<strong>平行地把它先做了</strong>，換取更高的並行度；要有效，就需要一個能提出「很可能被需要之任務」的高效機制。本文把推測執行<strong>推廣到隨機（stochastic）情境</strong>——任務只以某個機率被需要。套用到自迴歸解碼：我們從更高效的<strong>近似模型</strong>抽出生成內容，當作較慢<strong>目標模型</strong>的<strong>推測性前綴</strong>；再用新提出的 <strong>speculative sampling（推測式抽樣）</strong> 最大化這些推測任務被接受的機率，<strong>同時保證系統輸出的分佈與單獨跑目標模型相同</strong>。例如圖 1 中一句 38 個 token 的句子，只用了<strong>目標模型（97M 參數）的 9 次串行前向</strong>便生成，靠的是一個更小更高效的近似模型（6M 參數），而生成該句的機率不變。</p>
+<p>作者另一關鍵觀察：大模型推論常<strong>不是卡在算術運算，而是卡在記憶體頻寬與通訊</strong>，因此可能有多餘算力可用。於是他們主張把「提高並行度」當成「自適應計算量」之外的互補手段——<strong>不改架構、不改訓練、不重訓、不改輸出分佈</strong>，全靠推測執行達成。</p>
+<p><strong>主要貢獻</strong>：(1) 把推測執行推廣到隨機情境，提出新抽樣法 speculative sampling；(2) 一個名為 speculative decoding 的解碼機制，能在不改架構、訓練與輸出分佈下加速自迴歸解碼。</p>
+<h2 id="2-推測式解碼">2. 推測式解碼</h2>
+<h3 id="21-概覽">2.1 概覽</h3>
+<p>令 <strong>Mp</strong> 為目標模型（欲加速者），p(xₜ|x_&lt;t) 為其在前綴 x_&lt;t 上的分佈；令 <strong>Mq</strong> 為同任務更高效的近似模型，q(xₜ|x_&lt;t) 為其分佈。核心想法三步：</p>
+<ol>
+<li>用高效的 Mq 生成 <strong>γ 個候補</strong>（γ∈Z⁺，如何最佳選見 §3.5）。</li>
+<li>用目標模型 Mp <strong>平行地</strong>評估這些猜測與各自機率，接受所有「能導向相同分佈」者。</li>
+<li>從一個<strong>調整後分佈</strong>再抽一個 token，用來修正第一個被拒者；若全部被接受則額外多加一個。</li>
+</ol>
+<p>如此<strong>每次平行跑 Mp 至少產出一個新 token</strong>（故最壞情況也不會比標準自迴歸慢），最好可一次產出 γ+1 個，端看 Mq 近似 Mp 的好壞。</p>
+<p>作者在多種任務與模型尺寸上分析：97M GPT-like（lm1b 無條件生成）、11B T5-XXL（英德翻譯、新聞摘要）、137B LaMDA（對話）。並實作與成熟的 T5X 實作比較 T5-XXL 的實際 walltime，得<strong>開箱即用 2X–3X 延遲改善、輸出完全不變</strong>（§4）。此法易於實際部署、不需訓練新模型、不改輸出；在「記憶體頻寬是瓶頸、算力有餘」的常見情境下，可作為加速自迴歸抽樣的良好預設。</p>
+<h3 id="22-標準化抽樣">2.2 標準化抽樣</h3>
+<p>雖然抽樣有 argmax、top-k、nucleus、溫度等多種方法與參數，且常在 logits 層被不同對待，但它們<strong>都能轉化為「從一個調整後機率分佈做標準抽樣」</strong>（例如 argmax 等於把非最大元素歸零再正規化）。因此後文只處理「從分佈標準抽樣」，並假設 p(x)、q(x) 已依抽樣方法調整完畢。</p>
+<h3 id="23-推測式抽樣speculative-sampling">2.3 推測式抽樣（Speculative Sampling）</h3>
+<p>要抽 x∼p(x)，改為先抽 <strong>x∼q(x)</strong>：</p>
+<ul>
+<li>若 <strong>q(x) ≤ p(x)</strong>：直接保留（接受）。</li>
+<li>若 <strong>q(x) &gt; p(x)</strong>：以機率 <strong>1 − p(x)/q(x)</strong> 拒絕，並改從<strong>調整後分佈</strong> p′(x)=norm(max(0, p(x)−q(x))) 重抽 x。</li>
+</ul>
+<p>可證（附錄 A.1）對任意 p、q，如此抽出的 x 確實服從 p(x)——<strong>這就是無損保證的來源</strong>。</p>
+<p>實際流程：先用 Mq 抽 x₁∼q(x)；再跑 Mp 算 p(x)，<strong>同時平行地</strong>推測性地跑 Mp（在 prefix+[x₁] 上）算下一個 token x₂ 的分佈。兩者算完後：若 x₁ 被拒，丟棄 x₂ 的計算並從調整後分佈重抽 x₁；若 x₁ 被接受，兩個 token 都留。<strong>Algorithm 1</strong> 把此想法推廣為一次抽 1 到 γ+1 個 token。</p>
+<p><strong>Algorithm 1（<code>::SpeculativeDecodingStep</code>）要點</strong>：</p>
+<ul>
+<li>用 Mq 自迴歸抽 γ 個猜測 x₁…x_γ（各自帶分佈 qᵢ）。</li>
+<li><strong>平行</strong>跑 Mp 得 p₁(x)…p_{γ+1}(x)（分別對應 prefix、prefix+[x₁]、…、prefix+[x₁…x_γ]）。</li>
+<li>抽 r₁…r_γ∼U(0,1)，令接受數 n = min({ i−1 | rᵢ &gt; pᵢ(x)/qᵢ(x) } ∪ {γ})。</li>
+<li>修正分佈 p′：預設 p_{n+1}；若 n&lt;γ 則 p′=norm(max(0, p_{n+1}−q_{n+1}))。</li>
+<li>從 p′ 抽 t，回傳 prefix+[x₁…x_n, t]（n 個來自 Mq，1 個來自 Mp）。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2402.16906_LDB.zh-TW.html">回 2402.16906_LDB.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%B1%80%E9%99%90.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-實驗">3. 實驗</h2>
+<p>在三個基準評測：HumanEval、TransCoder、MBPP。HumanEval 與 MBPP 為文字轉程式碼（任務描述是概述功能的短文）；TransCoder 為程式碼翻譯（要求把 C++ 翻成 Python，任務描述即待翻譯的 C++ 程式）。以隱藏測資的 <strong>Pass@1</strong> 準確率評估。Backbone 用專有模型 GPT-3.5（turbo-0613）與開源模型 CodeLlama（34B-Instruct）、StarCoder（~15B）。</p>
+<h3 id="31-實驗設定">3.1 實驗設定</h3>
+<p>seed 程式沿用對照方法（Chen et al. 2023c）的相同 prompt 與生成參數；最大除錯迭代數設為 10。可見測資取得：HumanEval 從任務描述抽出既有可見測資；MBPP 取每題第一筆測資為可見、其餘為隱藏；TransCoder 把資料集所有測資都當可見（可由執行原始 C++ 程式產生，對 LLM 可見）。除錯階段用貪婪解碼、溫度 T=0 以利重現（附錄 C）；抽樣區塊數與輸入 token 門檻分別設 10 與 3,097。</p>
+<h3 id="32-對照方法">3.2 對照方法</h3>
+<p>以 seed 程式表現作為 <strong>Baseline（無除錯器）</strong>。對照兩種來自 Chen et al.（2023c）的「橡皮鴨除錯（rubber duck debugging）」法：<strong>Self-Debug (+Expl.)</strong>（讓 LLM 逐行解釋程式當回饋）與 <strong>Self-Debug (+Trace)</strong>（讓 LLM 乾跑 dry run 程式當回饋）。因原始碼未開源，依其說明重現。提及「Self-Debug」時預設取兩者中較高準確率者。所有除錯法皆用相同 LLM 設定、可見測資、seed 程式與 prompt 格式以求公平。</p>
+<h3 id="33-主要結果">3.3 主要結果</h3>
+<p><strong>表 1（擇要）</strong>——三基準、三 backbone 下 LDB vs Self-Debug（SD），Pass@1 準確率與相對基線增益 Δ：</p>
+<table>
+<thead>
+<tr>
+<th>Backbone</th>
+<th>方法</th>
+<th>HumanEval</th>
+<th>TransCoder</th>
+<th>MBPP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPT-3.5</td>
+<td>Baseline</td>
+<td>73.8</td>
+<td>82.3</td>
+<td>67.6</td>
+</tr>
+<tr>
+<td>GPT-3.5</td>
+<td>SD (+Expl.)</td>
+<td>81.1 (+7.3)</td>
+<td>85.9 (+3.6)</td>
+<td>74.4 (+6.8)</td>
+</tr>
+<tr>
+<td>GPT-3.5</td>
+<td><strong>LDB</strong></td>
+<td><strong>82.9 (+9.1)</strong></td>
+<td><strong>87.7 (+5.4)</strong></td>
+<td><strong>76.0 (+8.4)</strong></td>
+</tr>
+<tr>
+<td>CodeLlama-34B</td>
+<td>Baseline</td>
+<td>49.4</td>
+<td>69.8</td>
+<td>51.2</td>
+</tr>
+<tr>
+<td>CodeLlama-34B</td>
+<td><strong>LDB</strong></td>
+<td><strong>55.5 (+6.1)</strong></td>
+<td><strong>79.6 (+9.8)</strong></td>
+<td><strong>57.4 (+6.2)</strong></td>
+</tr>
+<tr>
+<td>StarCoder-15B</td>
+<td>Baseline</td>
+<td>39.0</td>
+<td>61.8</td>
+<td>51.6</td>
+</tr>
+<tr>
+<td>StarCoder-15B</td>
+<td>SD (+Expl.)</td>
+<td>38.4 (<strong>−0.6</strong>)</td>
+<td>68.9 (+7.1)</td>
+<td>54.4 (+2.8)</td>
+</tr>
+<tr>
+<td>StarCoder-15B</td>
+<td><strong>LDB</strong></td>
+<td><strong>39.6 (+0.6)</strong></td>
+<td><strong>69.8 (+8.0)</strong></td>
+<td><strong>55.4 (+3.8)</strong></td>
+</tr>
+</tbody>
+</table>
+<p>LDB 在所有資料集、所有 backbone 上一致提升最高 <strong>9.8%</strong>，且較「讓 LLM 乾跑/解釋」的 Self-Debug 更高更穩。作者歸因於<strong>細粒度的除錯回饋</strong>與<strong>作為外部補充的 runtime 資訊</strong>：block 級回應讓 LLM 聚焦出錯區、更好對齊任務描述。更關鍵地，如 Huang et al.（2023c）指出，<strong>LLM 自我修正推理能力有限</strong>——尤其在程式碼上易錯，因為它無法準確計算具體變數值、無法正確預測分支/迴圈的執行流；LLM 給出的不準回饋會誤導修復（這解釋了 Self-Debug 在 StarCoder + HumanEval 上為何失效）。LDB 則基於<strong>準確的中間值與執行流</strong>產生判決，把程式導向正解。此外，可見測資雖也在 seed 生成時提供給 LLM，但其效用有限（見 Baseline 的次佳表現）——印證「真實 runtime 執行資訊能顯著幫 LLM 錨定推理」。</p>
+<h3 id="34-對進階生成器的結果">3.4 對進階生成器的結果</h3>
+<p>把 LDB 與 Self-Debug 套用到更強生成器 GPT-4（1106-preview）與 Reflexion 產生的 seed 程式（以 HumanEval 為例）。除錯 backbone 皆用<strong>較弱的 GPT-3.5</strong>。</p>
+<p><strong>表 2（擇要）</strong>——以 GPT-3.5 為除錯 backbone：</p>
+<table>
+<thead>
+<tr>
+<th>除錯器 \ 生成器</th>
+<th>GPT-3.5</th>
+<th>GPT-4</th>
+<th>Reflexion</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>無除錯器</td>
+<td>73.8</td>
+<td>87.2</td>
+<td>91.5</td>
+</tr>
+<tr>
+<td>SD (GPT-3.5)</td>
+<td>81.1 (+7.3)</td>
+<td>88.4 (+1.2)</td>
+<td>92.1 (+0.6)</td>
+</tr>
+<tr>
+<td><strong>LDB (GPT-3.5)</strong></td>
+<td><strong>82.9 (+9.1)</strong></td>
+<td><strong>89.6 (+2.4)</strong></td>
+<td><strong>95.1 (+3.6)</strong></td>
+</tr>
+</tbody>
+</table>
+<p>即使除錯 backbone 弱於生成器，LDB 仍能精修程式、揪出強生成器忽略的細微 bug，把 Reflexion 推到 <strong>95.1% 的新 SOTA</strong>。這顯示 LDB 能檢視 runtime 執行、修正被先進生成器漏掉的錯誤，是現有生成技術的<strong>正交補充（orthogonal supplement）</strong>。</p>
+<h3 id="35-表現-vs-除錯迭代數">3.5 表現 vs 除錯迭代數</h3>
+<p><strong>圖 3（要旨）</strong>：在 HumanEval + GPT-3.5 上，比較 LDB、Repeated Sampling（反覆取樣直到通過可見測資）、Self-Debug(+Expl.)、Self-Debug(+Trace) 每輪表現（跑到 10 輪）。</p>
+<ul>
+<li><strong>LDB 的持續除錯潛力</strong>：隨迭代增加，LDB 持續改善並在 10 輪後達最佳（雖上升速度略慢）；而 Self-Debug <strong>約 2 輪後幾乎停止改善</strong>（與 Chen et al. 2023c 觀察一致）。附錄 G 顯示 LDB 跑到 20 輪仍成長、達 <strong>84.1%</strong>。</li>
+<li><strong>runtime 資訊的必要性</strong>：Self-Debug 在 3 輪後趨勢與 Repeated Sampling 相似，兩者都在早期（約 2~3 輪）停止有效改善。這揭示 LDB 與 Self-Debug 的根本差異：Self-Debug 的自解釋/自乾跑回饋只增進對任務的初步理解、卻無法把任務對齊到具體程式碼，故很快收斂。LDB 則靠<strong>來自 runtime 執行的新資訊</strong>持續把模型推向正解，貼近人類除錯過程。</li>
+</ul>
+<h3 id="36-ldb-的不同分解粒度">3.6 LDB 的不同分解粒度</h3>
+<p>在 Profiling 中，LDB 依 CFG 把軌跡切成 basic block（單一入口單一出口，是 runtime 分析的理想基本單元）。為探討分解粒度的效果，另做 <strong>LDB (line-level)</strong> 與 <strong>LDB (function-level)</strong>（分別以行、函式為單元），與原始 <strong>LDB (block-level)</strong> 對照，三者架構相同、皆在各單元結束處收集中間狀態，並用 Selective Debugging 適配 token 上限。</p>
+<p><strong>圖 4／表 5、6（要旨）</strong>：block-level <strong>以最少 token 成本達最高準確率</strong>。line-level 雖更細，但每行語意不完整，LLM 難以完整理解程式單元、定位 bug 較差；function-level 最粗、大致保留完整程式，但缺乏細部 runtime 資訊，需約 <strong>8.1 輪</strong>才修好一支程式（遠多於其他粒度），token 成本反而最高。HumanEval + GPT-3.5 下三者準確率：line 80.5、block <strong>82.9</strong>、function 79.9。故 LDB 選 block-level。</p>
+<h3 id="37-不同難度的表現">3.7 不同難度的表現</h3>
+<p>深入 LDB 在 TransCoder 成功修好的題目，用 GPT-4（1106-preview）依標準解自動標成 Easy/Medium/Hard 三難度（避免主觀）。<strong>圖 5（要旨）</strong>：GPT-3.5 生成表現隨難度上升而下降，但<strong>除錯器的增益隨難度上升而增大</strong>——LDB 在 Hard 題增益最大（<strong>+9.1%</strong>），顯示它能偵測非平凡的 bug、理解複雜執行流。</p>
+<h3 id="38-案例研究">3.8 案例研究</h3>
+<p><strong>圖 6（要旨）</strong>：HumanEval + GPT-3.5 的例子（is_sorted 函式）。題目要求檢查兩條件：(1) 數字升冪排序；(2) 同一數字重複不超過 1 個。seed 程式正確檢查條件 (1)，卻把條件 (2) 誤寫成「不能有任何重複」（<code>lst.count(x) &gt; 1</code>）。LDB 對 BLOCK-0 到 BLOCK-4 判定正確檢查了條件 (1)；在 <strong>BLOCK-5</strong> 找出條件寫錯、精準定位 bug，提議改為 <code>lst.count(x) &gt; 2</code>（保留數字本身那次出現）以對齊任務描述，修復後通過可見與隱藏測資。</p>
+<h2 id="4-相關工作">4. 相關工作</h2>
+<ul>
+<li><strong>Augmented Code Language Models</strong>：既有工作以多候選、更好的測資、自我一致性增強初次生成，或訓練驗證器預測解的品質。LDB 則<strong>不靠擴大取樣數</strong>來增強生成、與這些方法互補（它們可提供更好的 seed 給 LDB）。</li>
+<li><strong>Feedback-based Code Refinement</strong>：人類回饋有效但費工；語言模型的程式精修法利用直譯器輸出、自生解釋、他人提交等；有些額外訓練 bug 修復模型，LDB 則直接利用原 LLM 的除錯能力。LDB 屬迭代精修範式（Self-Refine 等），並受執行導向程式合成啟發利用執行結果。用 RL 的 agent 框架擅長搜尋生成空間，LDB 則專注於精修、在各種初始程式上一致改善。</li>
+<li><strong>Decomposition in Reasoning</strong>：分解問題有助 LLM 推理（CoT、least-to-most、let&#x27;s verify step by step 等）。Zhang et al.（2022a）提出 program trunking 提升修復率；受此啟發，LDB 把程式切塊查詢判決與解釋，並引入 batch debugging 提升效率。</li>
+</ul>
+<h2 id="5-結論">5. 結論</h2>
+<p>提出 LDB——用 runtime 執行資訊幫 LLM 精修生成程式的除錯框架。透過把程式切成 basic block、追蹤中間值，實證顯示它顯著提升生成準確率、達程式除錯的 SOTA，並揭示一種「以 runtime 資訊除錯」的獨特範式。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

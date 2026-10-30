@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《AFlow：自動化的代理工作流生成（AFlow: Automating Agentic Workflow Generation）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jiayi Zhang, Jinyu Xiang（共同一作）等；Yuyu Luo、Chenglin Wu（通訊）（DeepWisdom / HKUST(GZ) 等）</p><p>日期：2024-10（ICLR 2025）</p><p>arXiv：2410.10762</p><p><a href="https://arxiv.org/abs/2410.10762" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="aflow自動化的代理工作流生成重點摘要">《AFlow：自動化的代理工作流生成》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>AFlow</strong>：把代理工作流優化重新表述為**「在以程式碼表示的工作流圖上做搜尋」<strong>（節點＝帶 prompt 的 LLM 呼叫、邊＝程式碼定義的控制流／依賴），用一個</strong>特製的蒙地卡羅樹搜尋（MCTS）<strong>——以 LLM 當優化器、每個樹節點是一個完整工作流、靠樹狀經驗與執行回饋反覆改程式碼——<strong>幾乎零人工介入</strong>地自動生成有效工作流；在六基準上較最先進基線平均勝 5.7%，並讓</strong>小模型以 GPT-4o 推論成本的 4.55% 在特定任務上反超 GPT-4o**。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 的能力高度依賴<strong>人工設計的代理工作流</strong>（帶詳細指令的 LLM 呼叫序列），設計耗費大量人力、難擴展與遷移。既有自動化嘗試都<strong>未達完全自動或不夠有效</strong>：DSPy 在自動 prompt 優化前仍需人工搭好工作流；GPTSwarm 用「圖＋強化學習」但圖結構難表示帶條件狀態的工作流；ADAS 雖用程式碼表示工作流（表達較完整），卻受其<strong>線性啟發式搜尋</strong>效率所限，難在有限迭代內找到好工作流。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>問題形式化</strong>：工作流 = 節點 N（模型 M、提示 P、溫度 τ、輸出格式 F） ＋ 邊 E；邊可用圖／神經網路／<strong>程式碼</strong>表示。程式碼天生支援線性、條件、迴圈並可內嵌圖，<strong>表達力最強</strong>，故選為主要邊結構。優化即 W* = argmax G(W,T)。</li>
+<li><strong>縮小搜尋空間</strong>：固定 M、τ、F，只搜<strong>程式碼邊 E 與提示 P</strong>；引入 **Operator（算子）**＝預定義可重用的節點組合（Generate、Format、Review &amp; Revise、Ensemble、Test、Programmer、Custom）當積木。</li>
+<li><strong>MCTS 變體</strong>（每個樹節點＝一個完整工作流）四步循環：
+<ol>
+<li><strong>軟性混合機率選擇</strong>：均勻分布＋分數加權（α=0.4、λ=0.2）從 top-k 與初始工作流中選；納入初始工作流以持久探索、避免局部最優。</li>
+<li><strong>LLM 驅動擴展</strong>：LLM 當優化器，用被選工作流的<strong>經驗</strong>（歷次修改及其改善／失敗、預測與期望輸出日誌）改 prompt 或改程式碼連接，生出新工作流。</li>
+<li><strong>執行評估</strong>：直接跑（推理任務有明確評估函數），每工作流跑 5 次取均值／標準差。</li>
+<li><strong>經驗反向傳播</strong>：把表現、對父的修改、優化成敗存回經驗並傳給父節點。</li>
+</ol>
+</li>
+<li><strong>工程細節</strong>：template W₀ 只需補完呼叫函數；驗證/測試 = 20%/80%（seed 42）；空白模板跑 5 次挑高變異子集當驗證集；早停（top-k 均分連續 n 輪無改善或達 N 輪）。優化器用 Claude-3.5-sonnet，執行器用 DeepSeek-V2.5 / GPT-4o-mini / Claude-3.5-sonnet / GPT-4o。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>主結果（表 1，GPT-4o-mini 執行）</strong>：AFlow 平均 <strong>80.3%</strong>，較人工設計法（IO/CoT/CoT-SC/MedPrompt/MultiPersona/Self-Refine）平均勝 <strong>5.7%</strong>、較自動化法 ADAS（67.2%）等勝 <strong>19.5%</strong>。各項：HotpotQA 73.5 / DROP 80.6 / HumanEval 94.7 / MBPP 83.4 / GSM8K 93.5 / MATH 56.2。</li>
+<li><strong>難任務優勢更大</strong>：MATHlv5* 與 MBPP 上較 ADAS 提升達 <strong>57%</strong>。</li>
+<li><strong>成本效益</strong>：小模型套上 AFlow 工作流，在 Pareto front 上以 <strong>GPT-4o 推論成本的 4.55%</strong> 反超 GPT-4o。</li>
+<li><strong>可遷移＋消融</strong>：搜出的工作流多能遷移到其他模型（但不同模型需不同工作流才最佳）；<strong>無任何算子仍達 93.1%（GSM8K）並自主長出類 ensemble 結構</strong>。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>本文<strong>只聚焦「具數值評估函數的推理任務」</strong>（數學／程式／QA）——沒有明確可算獎勵的開放任務不在範圍。</li>
+<li>搜尋成本不低：每次迭代要把工作流在驗證集上跑 5 次、共約 20 輪，且需一顆強優化器（Claude-3.5-sonnet）。</li>
+<li>固定了 M、τ、F 才讓搜尋可行，代表未真正搜索完整節點參數空間；algorithm 表述含少數筆誤。</li>
+<li>工作流<strong>不完全可遷移</strong>：換執行模型常要重搜。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>直接對應 ai_core §1「系統＝可優化的符號神經網路計算圖」＋「對計算圖的自動搜尋」</strong>：AFlow 恰好把「帶 prompt 的 LLM 呼叫＝節點、程式碼控制流＝邊」的計算圖交給 MCTS 自動搜索最佳拓撲與 prompt——這正是把「圖結構本身也當成可優化對象」落地的一個具體演算法樣板（選擇/擴展/評估/反向傳播的骨架可直接借鑑）。</li>
+<li><strong>呼應 §3.3 成本梯度／級聯路由</strong>：其最硬的賣點是「讓便宜小模型跑優化出的工作流去逼近甚至超越貴的大模型（GPT-4o 成本的 4.55%）」——與同庫 <a class="paper-reference" href="2305.05176_FrugalGPT.%E6%91%98%E8%A6%81.html">2305.05176</a> FrugalGPT 的級聯路由互補：FrugalGPT 在「選哪顆模型」上省成本，AFlow 在「用什麼工作流結構」上把小模型的上限拉高，兩者可疊加成 ai_core「貴稀有智能當資產工廠、便宜高頻智能當消費者」的一條落地路徑。</li>
+<li><strong>與 §3.6 固化引擎的關聯與界線</strong>：AFlow 的產物是一段<strong>確定性程式碼骨架＋少數 LLM 節點</strong>，等於把「一類問題的解法」結晶成程式——這是「固化」的雛形；但要注意它固化的是<strong>控制流</strong>、LLM 節點仍在，離「把 LLM 反覆處理的案例結晶成純確定性程式」還有距離，可當作固化引擎的上游「結構搜尋」階段。</li>
+<li><strong>與 ADAS / GPTSwarm 對照的定位</strong>：三者都做自動工作流優化，AFlow 的差異＝程式碼表示（比 GPTSwarm 的圖更能表達條件/迴圈）＋樹狀經驗的 MCTS（比 ADAS 的線性搜尋更高效）。歸 <strong>I 類</strong>（自動化計算圖搜尋／工作流優化），開源、方法＋實證論文，適合做代理工作流自動生成、prompt/結構聯合搜尋、成本效益優化的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2410.10762_AFlow.zh-TW.html"><code>../translate/2410.10762_AFlow.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_總覽與關鍵發現 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2110.07178_Symbolic_Knowledge_Distillation.zh-TW.html">回 2110.07178_Symbolic_Knowledge_Distillation.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E6%A9%9F%E5%99%A8%E5%88%B0%E8%AA%9E%E6%96%99%E7%9A%84%E8%A9%9E%E5%BD%99%E5%8C%96Machine-to-Corpus_Verbalization.html">下一節 →</a></p>
+</blockquote>
+<h2 id="2-總覽與關鍵發現">2. 總覽與關鍵發現</h2>
+<p>論文全文描述符號知識蒸餾「機器→語料→機器」的方法論：先透過從 GPT-3 解碼完成「機器→語料」（§3），再用一個專門的 critic 模型改進知識品質（§4），最後把知識蒸餾進一個高效的常識模型完成「語料→機器」（§5）。全程都以人工知識來源作對照，比較自動產出的知識圖譜 ATOMIC^10x 與常識模型 COMET^DISTIL，對上人工撰寫的 ATOMIC2020 與由其訓練出的 COMET2020。</p>
+<h3 id="21-符號知識蒸餾">2.1 符號知識蒸餾</h3>
+<p>本方法論參照知識蒸餾——把大而複雜的教師分佈 P_t 壓縮進更小/更簡單的學生分佈 P_s 的方法。知識蒸餾的核心是最小化 P_t 與 P_s 的交叉熵 H(P_t,P_s) = −Σ P_t(y) log P_s(y)。Hinton et al. 把這套用在條件分類任務：對每個訓練輸入，P_t 與 P_s 是在標籤集合 Y 上的模型預測，Y 通常是可窮舉、可加總計算的集合。</p>
+<p>若要蒸餾生成式模型的知識，可以把無條件語言模型（如 GPT-3）視為 P_t，此時 Y 是所有字串的集合——語言模型正是定義在這個集合上的機率分佈。但 Y 是指數級的集合，無法直接窮舉求和。過去 Kim &amp; Rush（2016）的做法是只取 P_t 的眾數（mode），把大部分教師分佈截斷成單一最可能序列，捨棄了大量資訊。</p>
+<p>本文改採<strong>取樣式</strong>詮釋同一個目標：H(P_t,P_s) = E_{y~P_t(y)}[−log P_s(y)]，在對 P_t 純取樣的極限下，這在數學上等於式（1）的交叉熵。這種框架的一個實用結論是：不需要取得完整模型分佈——本文實驗使用的 GPT-3，其完整分佈本就無法取得，因此傳統知識蒸餾在此不適用，但本方法可行。</p>
+<p>然而蒸餾教師的「全部」知識未必理想——本研究聚焦於只從 GPT-3 蒸餾<strong>常識</strong>知識。理想的教師 P_t 應是常識專家，而 GPT-3 可以透過提示工程來近似這樣的教師。取樣式詮釋還帶來一個額外優勢：式（1）是對現有資料的連續 logits 操作，取樣則能透過「挑選要引出並使用哪些樣本」對傳遞的資訊做<strong>離散控制</strong>。對於通用語言模型 GPT-3，我們透過提示與截斷取樣（nucleus sampling）鼓勵領域/品質的收斂，稱之為<strong>鬆散教師（loose teacher）P_t^L</strong>——知識由 GPT-3 生成並傳遞，但沒有對正確性做批判性評估（§3）。</p>
+<p>事實上，式（2）的取樣式知識還提供更多控制空間，因為每一則生成都可以被個別解讀與判斷。給定一個判斷知識 x 是否正確的指示函數 A(x)，我們可以定義一個更強的教師模型。利用 Hinton（2002）的 Product of Experts，把鬆散教師 P_t^L 與判準 A(x) 相乘，定義出<strong>批判性教師（critical teacher）</strong>：</p>
+<p>P_t(x) ∝ P_t^L(x|p) · A(x) ……（式 3）</p>
+<p>實務上 A(x) 是一個在人類判斷上訓練出的文字分類器，對判定正確的知識輸出 1、否則輸出 0。因此，critic 讓我們得以控制傳遞知識的正確性與信心（§4）。</p>
+<h3 id="22-關鍵發現">2.2 關鍵發現</h3>
+<ol>
+<li><strong>從語言模型學符號知識，可以被形式化為知識蒸餾的符號延伸</strong>——§2.1 描述了以 GPT-3 為知識來源、將常識學習視為知識蒸餾符號延伸的框架，§3、§4、§5 給出正面結果。</li>
+<li><strong>符號知識蒸餾能大規模建置高品質知識圖譜</strong>——本方法自然產出機器生成的常識知識圖譜，其品質（§4）可超越人工撰寫的資料；有效的 critic 過濾掉錯誤知識是關鍵。</li>
+<li><strong>更具批判性的教師帶來更高品質的學生</strong>——§4 顯示讓教師更具批判性，會提升知識品質（即使因此縮減了傳遞的知識規模），證明重要的是<strong>品質而非單純數量</strong>：更高品質的知識在 §5 帶出更高品質的常識模型，即使資料規模較小。</li>
+<li><strong>無論教師是否批判性，學生都能超越知識來源</strong>——§5 顯示一個出乎意料的結果：所有學生模型的常識品質都超越了知識來源 GPT-3。</li>
+<li><strong>機器能在自動知識圖譜建置上勝過人類</strong>——§4 與 §5 顯示機器生成的知識、以及由此訓出的常識模型，都能勝過使用人工知識來源的對應版本。我們的符號知識在規模、品質、多樣性上都超越人類，所得常識模型也達成最準確的常識知識圖譜補全。</li>
+</ol>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

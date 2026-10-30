@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_黑箱_LLM_的校準流程方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2412.12767_BlackBox_LLM_Calibration_Survey.zh-TW.html">回 2412.12767_BlackBox_LLM_Calibration_Survey.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E6%87%89%E7%94%A8Applications.html">下一節 →</a></p>
+</blockquote>
+<h2 id="2-黑箱-llm-的校準流程方法">2. 黑箱 LLM 的校準流程方法</h2>
+<p>校準流程是一個循環，由兩大步驟組成：信心估計與校準，其中校準再細分為「校準」與「量測」兩階段，目標是取得能準確反映回應品質、與正確性對齊的良好校準信心值。公式化表示為：</p>
+<p><strong>V(Correct | Confidence = v) = v</strong> ——即宣稱信心為 v 的那批回應，其實際正確率也應為 v。</p>
+<p>白箱與黑箱 LLM 共享相同的校準流程步驟，但許多適用於白箱模型的方法因黑箱模型的封閉本質而無法直接套用。以下聚焦黑箱 LLM 適用的信心估計與校準方法，並完整涵蓋量測方法。</p>
+<p><strong>（原文 Table 1：最新信心估計方法彙整，擇要 6 例）</strong></p>
+<table>
+<thead>
+<tr>
+<th>研究</th>
+<th>方法摘要</th>
+<th>分類</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Xiong et al. 2023</td>
+<td>結合 self-random／prompt-based／adversarial 取樣的多變量信心估計框架，用相似度聚合器整合口語化信心與 Pair-Rank</td>
+<td>Consistency</td>
+</tr>
+<tr>
+<td>Zhang et al. 2024a</td>
+<td>用回應樣本間句子的「非矛盾機率」量不確定性，處理長文本信心估計</td>
+<td>Consistency</td>
+</tr>
+<tr>
+<td>Li et al. 2024a</td>
+<td>&#x27;If-or-Else&#x27;（IoE）提示框架：LLM 依信心決定保留或修改答案，答案不變代表信心較高</td>
+<td>Self-Reflection</td>
+</tr>
+<tr>
+<td>Zhao et al. 2024b</td>
+<td>探討 CoT／ToT／Self-Ask 等提示設計對信心的影響，產生中間信心值供最終估計</td>
+<td>Self-Reflection</td>
+</tr>
+<tr>
+<td>Huang et al. 2024b</td>
+<td>用 ChatGPT-4 生成正確性與信心分數分布曲線，以相似度指標算校準誤差並調整</td>
+<td>Hybrid</td>
+</tr>
+<tr>
+<td>Becker and Soatto 2024</td>
+<td>生成多個解釋、用蘊含機率依邏輯一致性重加權，算後驗分布得可靠信心分數</td>
+<td>Hybrid</td>
+</tr>
+</tbody>
+</table>
+<h3 id="21-信心估計confidence-estimation">2.1 信心估計（Confidence Estimation）</h3>
+<p>黑箱 LLM 的信心估計完全仰賴輸入輸出資訊，研究者因此發展出透過設計互動與多次查詢從模型輸出萃取參考資訊的方法（部分文獻稱之為「信心誘出 Confidence Elicitation」，本文統一沿用「信心估計」一詞）。兩條主線是<strong>一致性（Consistency）<strong>與</strong>自我反思（Self-Reflection）</strong>，兩者皆為無需存取模型參數的後處理技術，可單獨使用，也可整合成混合方法（有時借助第三方代理模型）。</p>
+<h4 id="211-一致性方法consistency-methods">2.1.1 一致性方法（Consistency Methods）</h4>
+<p>一致性方法藉捕捉模型回應間的關係與變異來做有效估計，分兩類：**相似度型（similarity-based）**直接產生信心分數；**熵型（entropy-based）**計算不確定性程度，與信心成反向關係（信心衡量回應的穩定度，不確定性衡量其潛在變異性）。</p>
+<ul>
+<li><strong>相似度型</strong>：SelfCheckGPT 用 BERTScore、MQAG、n-gram、NLI 或 GPT-3（text-davinci-003）提示等指標評估同一查詢多個回應樣本間的相似度以推導信心。Wightman et al. 提出評估「不同提示（含相同問題）產生的回應」間相似度的框架，引入依多提示回應頻率算信心值的機制，證明提示數愈多校準愈好。Pedapati et al. 提出六種擴展黑箱模型輸出變異空間的方法——隨機解碼、拆句一致性、改寫、句子重排、實體頻率放大、停用詞移除——再萃取各方法產生回應間的詞彙/語意相似度特徵，餵入邏輯迴歸模型映射到可靠信心值。</li>
+<li><strong>熵型</strong>：Lin et al. 提出用語意集合數量、圖拉普拉斯特徵值、度矩陣等方法量測回應樣本間不確定性的框架。Nikitin et al. 提出更完整做法：先用 PSD 語意核算回應樣本間語意相似度，以回應樣本為節點、相似度為邊建語意圖，最後用 von-Neumann 熵量化不確定性。Tonolini et al. 提出貝氏提示集成（Bayesian Prompt Ensembles）：依語意等價提示的內在不確定性賦權並整合，計算模型誤差下界，產出接近良好校準的不確定性估計。</li>
+</ul>
+<h4 id="212-自我反思方法self-reflection-methods">2.1.2 自我反思方法（Self-Reflection Methods）</h4>
+<p>黑箱 LLM 中，自我反思用提示探索模型知識邊界並評估自身回應以做可靠信心估計；此外，自我反思也利用 LLM 的多維文本評估能力，廣泛用於推理、翻譯、精修等任務。雖然自我反思可整合來自各種來源的外部回饋（如批評模型、知識庫、迭代式自我反思方法），但在黑箱情境下主要依賴模型自身固有的自我反思能力。</p>
+<p>自我反思本質上是一種<strong>口語化方法（verbalization-based）</strong>。例如 Lin et al. 設計以「Confidence (0-1):」為結尾的提示，讓 LLM 輸出對原始回應的信心。實務上，自我反思提示讓 LLM 從多角度反思、產生更接近良好校準值的信心。這類方法的核心在於設計有效的反思問題與回饋機制：Peng et al. 要求模型給出 0 到 100 分的信心值，但實驗顯示這常導致信心高估；為解決此問題，Chen and Mueller 改用選擇題形式的反思問句、對分數取平均並正規化，再映射到對應信心區間。</p>
+<p>近期方法中，自我反思不只提供信心值，也提升回應品質本身。例如 Li et al. 提出 T³ 提示框架：先建立提示反思每個候選回應並產生論證式解釋，再用 Top-K 口語化信心來估計 K 個最可能回應及其機率，最後平均不同解釋的信心分數以決定最佳回應與其信心。Zhang et al. 提出讓 LLM 對同一問題生成多個不同求解視角、對照並自我反思以找出分歧，據此修正錯誤並產出最佳回應與信心值的框架。Fang et al. 提出反思框架 CFMAD，含兩步驟：溯因生成（abduction generation）與反事實辯論（counterfactual debate）——LLM 先假設每個候選答案為真並生成支持理由，接著以批評者/辯護者身分進行反事實辯論，由判官 LLM 評估辯論過程，透過信心評分決定最可靠答案。</p>
+<h4 id="213-混合方法hybrid-methods">2.1.3 混合方法（Hybrid Methods）</h4>
+<p>雖然一致性與自我反思方法都能在不存取內部參數狀態下取得接近良好校準的信心、適合黑箱 LLM 且廣泛用於降低幻覺，但它們終究是後處理技術，無法改變模型內部參數與狀態，也受制於 LLM 固有偏誤，無法修正重大邏輯錯誤。為取得更好效果，近期方法把不同策略與一致性/自我反思技術結合。例如 Chen and Mueller 提出雙分支模型結合一致性與自我反思：生成多個回應樣本算相似度值、設計自我反思問句算反思值，正規化後合併成最終信心值。</p>
+<p>此外，引入<strong>第三方模型</strong>把黑箱模型轉為灰箱模型，是黑箱 LLM 信心估計的另一常見路線。然而研究發現，直接用白箱模型（如 LlaMA）對黑箱模型的回應輸出 token 級機率，會因生成差異導致校準不佳。為此，Shrivastava et al. 首先證明僅由代理模型產生的信心值並非總是準確，接著用自我一致性與口語化方法產生的信心機率去交叉驗證第三方代理模型產生的信心值，得到更可靠的信心估計。Ulmer et al. 進一步嘗試訓練白箱模型去適應黑箱 LLM 的生成模式，學習回應信心與正確性間的映射，藉此取得良好校準的信心值。</p>
+<p>另有許多研究引入多個 LLM 跨模型交叉驗證與優化回應，最終整合各種解釋以產生最終信心分數。例如 Zhang et al. 利用跨模型一致性——把其他 LLM 對同一查詢的回應當參考來計算目標黑箱 LLM 的信心值。Feng et al. 提出多模型協作框架，讓不同 LLM 依各自知識領域的見解生成回應，並用反思提示鼓勵這些模型互相驗證與挑戰，降低幻覺、產出更可靠的回應與信心值。</p>
+<h3 id="22-校準calibration">2.2 校準（Calibration）</h3>
+<h4 id="221-校準方法calibration-methods">2.2.1 校準方法（Calibration Methods）</h4>
+<p>校準的目標是讓信心分數與正確性對齊。常見校準方法包括 temperature scaling、label smoothing、logistic calibration。但 label smoothing 與 logistic calibration 需存取內部模型或做微調，不適用黑箱 LLM；temperature scaling 作用於模型輸出的 logits，較適合灰箱模型。黑箱 LLM 常見的校準方法包括後處理與把模型轉為灰箱兩類；由於黑箱 LLM 的信心估計本身已接近良好校準，後續校準承受的壓力也隨之減輕。</p>
+<p><strong>後處理方法</strong>：常見的有 Histogram Binning 與 Isotonic Regression。Histogram Binning 依各區間預測正確性調整該區間內的信心值，簡單但在信心分布不均時效果有限。Isotonic Regression 尋找一個最優的單調遞增函數 f(c)，把模型信心 c₁,c₂,…,cₙ 映射到正確性，須滿足 f(c₁)≤f(c₂)≤⋯≤f(cₙ)（對應 c₁≤c₂≤⋯≤cₙ），確保信心排序與正確性一致；雖靈活，但因不直接修改決策邊界，在分類任務上效果較弱。為處理更複雜情境，Hébert-Johnson et al. 提出多重校準（multi-calibration）：不只整體對齊，也確保跨多個子群的校準，透過迭代對齊達成。Detommaso et al. 把此概念延伸到 LLM：先在嵌入空間對提示分群形成半結構化群組，再用改良版分組直方圖分箱（Improved Grouped Histogram Binning）做群組層級獨立校準，確保群組內與整體皆良好校準，更適合 LLM 生成任務中決策邊界本就較模糊的特性。</p>
+<p><strong>代理模型/灰箱化方法</strong>：貝氏校準網路（Bayesian calibration Network）是經典方法，建構機率模型表示信心與正確性的依賴關係，在小批資料上訓練以估計條件機率分布，用於推論新樣本的校準信心。Küppers et al. 用隨機變分推論的貝氏框架建模認知不確定性，透過優化證據下界（ELBO），依驗證樣本後驗分布生成校準信心。Ulmer et al. 提出用句嵌入（如 Sentence-BERT）對相似問題分群、以群內準確率當正確性標籤，訓練輔助模型最小化信心與正確性間的均方誤差以達成各子群校準。Ye and Durrett 用隨機森林開發校準模型動態調整信心，並用 LIME 與 SHAP 產生模型預測的局部解釋以萃取校準用特徵。Zhao et al. 提出基於 Pareto 最佳化的校準方法：訓練機率模型（如 BERT、BiomedBERT）整合多個外部資訊源、建構多目標損失函數，透過 Pareto 聚合最佳化，讓 LLM 信心分數與真實錯誤率對齊。隨著人類感知愈受重視，部分方法把校準目標轉向人類相關指標，如 Hashemi et al. 用 LLM 與人類回饋訓練小型前饋神經網路做校準模型，依不同審閱者回饋微調，並設計問卷式評估框架評估人類對文本品質的各面向感知。</p>
+<h4 id="222-量測方法measurement-methods">2.2.2 量測方法（Measurement Methods）</h4>
+<p>校準需要量測方法評估信心與正確性間的距離，確保信心良好校準。這些方法通常普遍適用，不受模型是白箱或黑箱、或特定任務特性影響。量測方法分兩類：</p>
+<ul>
+<li><strong>誤差型（Error-Based）</strong>：正確性與信心須在同一量測空間，直接評估模型在特定樣本上的校準能力，主要偵測過度自信。常見方法：<strong>ECE 系列</strong>（Expected Calibration Error，權重係數依測試樣本數或信心區間權重定義，誤差項量化預測信心機率與實際正確機率的偏差）、<strong>Brier Score</strong>（所有樣本等權重，誤差項用信心機率與正確機率差的平方）、<strong>NLL</strong>（Negative Log-Likelihood，同樣等權重，誤差項用交叉熵形式定義）。</li>
+<li><strong>相關型（Correlation-Based）</strong>：正確性與信心不須同一量尺，通常評估整體校準表現。例如 Zhang et al. 比較「依信心排序」與「依 FActScore（即正確性）排序」的測試樣本排序差異來算校準誤差，此類方法又稱「相對信心（Relative Confidence）」。常見方法：<strong>Spearman 等級相關係數</strong>（聚焦排序一致性，對每個樣本依信心分數與正確性分數各自給定排名 rank，量測排序偏差）、<strong>Pearson 相關係數</strong>（衡量信心與正確性間的線性關係）；此外常見的還有 <strong>AUROC</strong>、<strong>AUARC</strong>。</li>
+</ul>
+<p>生成任務與不確定性估計任務中常用相關型量測（因其能容納多種正確性評分標準，如摘要任務中的事實性與連貫性指標，適用於長文本生成等複雜情境的校準誤差評估）；分類任務中則更常用誤差型量測（有助逐類別衡量校準誤差、辨識潛在知識缺口）。</p>
+<p>（原文附錄 A.1 進一步以公式細節展開 ECE/Brier/NLL 與 Spearman/Pearson 的定義，並在 Table 2 依「量測焦點」「偏好任務類型」「分類」彙整各量測方法；因高度技術化，本譯文從略，讀者可查原文。）</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

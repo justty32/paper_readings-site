@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2203.14465_STaR.zh-TW.html">回 2203.14465_STaR.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4 實驗</h2>
+<h3 id="41-實驗協定">4.1 實驗協定</h3>
+<p>基礎模型為 <strong>GPT-J（6B 參數）</strong>——checkpoint 與微調程式碼公開，且大到足以生成品質非平凡、可供自舉的理據。100 步學習率暖身後恆定學習率；除非另述，第一輪外循環訓練 40 步、每輪遞增 20%（開頭訓練慢一點最終對表現有利）。算術：依 Nye et al. 格式隨機生成 5 萬題（各位數均勻），每輪抽 1 萬題，每種位數用 10 個隨機 few-shot 理據範例。CQA：9,741 題訓練集逐題接上 few-shot 理據提示；起始 10 題沿用 Wei et al. 的 CoT 提示（微幅修正一個錯誤答案並更明確引用相關知識）。跑 STaR 至表現飽和、報最佳結果。</p>
+<h3 id="42-資料集">4.2 資料集</h3>
+<ul>
+<li><strong>算術</strong>：計算兩個 <span class="math inline">\(n\)</span> 位整數之和，模型須生成 scratchpad（逐位相加＋進位）再給最終答案；few-shot 提示涵蓋 1–5 位數。rationalization 時把正確答案放在「Target」之後，要模型產出 scratchpad 後再重現正確答案。</li>
+<li><strong>CommonsenseQA（CQA）</strong>：由 ConceptNet 建構的五選一常識選擇題，12,247 題（train 9,741 / dev 1,221 / test 1,285），人類表現 89%。已知含性別等偏見與歧義題，但作為「一般世界知識＋簡單推理」的測試床仍然合適。</li>
+<li><strong>GSM8K</strong>：7,473 訓練／1,319 測試的小學數學文字題，需 2–8 步計算，結合算術與常識推理所需技能。</li>
+</ul>
+<h3 id="43-符號推理算術結果">4.3 符號推理：算術結果</h3>
+<p>跑 16 輪後整體準確率 <strong>89.5%</strong>；對照組（1 萬例、無理據、訓練 5,000 步）為 <strong>76.3%</strong>。值得注意的是 few-shot（即使帶理據）準確率極低：2 位數加法 &lt;1%，更多位數近乎零。<strong>加入 rationalization 後改善特別快</strong>：僅一輪微調，2 位數加法就從 &lt;1% 升到 32%。無 rationalization 時改進呈階段式——模型通常要先做好 <span class="math inline">\((n\!-\!1)\)</span> 位數才做得好 <span class="math inline">\(n\)</span> 位數；有 rationalization 則可同時學多種位數長度。另外一項實驗在第 20 輪引入更多位數繼續訓練：不僅初始位數集的表現快速改善，在<strong>訓練從未見過的 9、10 位數</strong>上也解出許多分布外問題（但引入新位數使訓練較不穩定，確切原因不明）。</p>
+<h3 id="44-自然語言推理常識問答">4.4 自然語言推理：常識問答</h3>
+<p>CQA 帶來新挑戰：五選一意味著<strong>無論推理品質如何，約 20% 機率隨機猜對</strong>（語意相似度等簡單啟發式可到約 30%）——錯誤推理也可能通過答案過濾。結果（dev set 準確率／使用訓練資料比例）：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>準確率 (%)</th>
+<th>用訓練資料 (%)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPT-3 Direct 微調（30 倍大）</td>
+<td>73.0</td>
+<td>100</td>
+</tr>
+<tr>
+<td>Few-shot Direct GPT-J</td>
+<td>20.9</td>
+<td>~0</td>
+</tr>
+<tr>
+<td>Few-shot CoT GPT-J</td>
+<td>36.6</td>
+<td>~0</td>
+</tr>
+<tr>
+<td>Few-shot CoT LaMDA 137B</td>
+<td>55.6</td>
+<td>~0</td>
+</tr>
+<tr>
+<td>GPT-J Direct 微調</td>
+<td>60.0</td>
+<td>100</td>
+</tr>
+<tr>
+<td>STaR（無 rationalization）</td>
+<td>68.8</td>
+<td>69.7</td>
+</tr>
+<tr>
+<td>STaR（含 rationalization）</td>
+<td>72.5</td>
+<td>86.7</td>
+</tr>
+</tbody>
+</table>
+<p>STaR 無 rationalization 即以較少資料勝過整資料集直接微調；加 rationalization 達 72.5%，逼近 30 倍大 GPT-3 的 73%，並超越 137B LaMDA 的 few-shot CoT。<strong>案例研究</strong>：STaR 訓練後模型能為先前解不出的新問題生成合理理據，且許多情況下理據品質優於 few-shot 生成。<strong>人類評估</strong>：20 名群眾工作者對「兩者皆答對的題目」上的理據排序，STaR 生成的理據被排在 few-shot 理據之上的可能性<strong>高 30%</strong>（p=.039）；甚至比人類撰寫的理據（來自 CoS-E 資料集）更受偏好（+74%，p&lt;.001）——作者強調這不代表達到人類水準，而是凸顯「取得高品質理據之困難」。<strong>失敗案例</strong>多對應標準邏輯謬誤：說了與主題相關但非論證的話、宣稱問題蘊涵答案而不解釋、把個體當已知（「the king&#x27;s castle 是他覺得安全的地方」而非「城堡是國王覺得安全的地方」）。<strong>Few-shot 提示參與訓練</strong>有實質增益（無 rationalization 60.9→68.8；有 rationalization 69.9→72.5）。</p>
+<h3 id="45-語言中的數學推理gsm8k">4.5 語言中的數學推理：GSM8K</h3>
+<p>STaR 同樣大幅優於基線：few-shot Direct 3.0%、few-shot CoT 3.1%、GPT-J 直接微調 5.8%；<strong>STaR 無 rationalization 10.1%（只用 25.0% 資料）、含 rationalization 10.7%（28.7%）</strong>。此任務上 rationalization 增益不大。模型生成的計算步數多數與人類一致（53–57%）；不一致時模型通常用<strong>更少</strong>步——有時跳步，偶爾找到不同解法（附錄 J 有一例：模型忽略冗餘資訊，把 7 步題一步解掉）。</p>
+<h2 id="5-討論與挑戰">5 討論與挑戰</h2>
+<ul>
+<li><strong>Rationalization 的角色</strong>：直覺上它讓模型逆向工程解法。數學上，理據生成從 <span class="math inline">\(p(r\mid x)\)</span> 抽樣，rationalization 則條件於答案、取用 <span class="math inline">\(p(r\mid x,y)\)</span> 這個可能更好的理據搜尋空間；可框成以 hint 增強模型為 proposal distribution 的 <strong>off-policy 估計</strong>。另外，低溫抽樣下無 rationalization 的輸出對應模型最有信心的答案，梯度訊號較弱。且「加 hint」的方式不見得在所有情境都直接可得，hint 技巧的通用性留待未來。</li>
+<li><strong>溫度</strong>：想擴大訓練集，直覺替代方案是更多、更高溫度的抽樣——但實務上<strong>適得其反</strong>：它大幅提高「推理錯誤卻答案正確」的機率，而<strong>在壞的或不相關的推理上訓練會阻礙泛化</strong>；在算術等結構化任務上，高溫 scratchpad 退化為無意義並使模型停滯。高溫（0.5、0.7）替代 rationalization 一律更差；且序列生成使多樣本計算開銷大（10 個樣本約慢 10 倍）。一個有潛力的用法是 self-consistency 式多數決當 ground truth——這可能讓 STaR 應用於<strong>只有問題、沒有答案</strong>的資料集。</li>
+<li><strong>Few-shot 提示</strong>：抽樣時保留 few-shot 提示能顯著減少「漂移」（後期理據漸漸偏離初始理據風格）；去掉提示則訓練迴圈更快，但模型的 rationalization 能力會隨長期訓練漸漸變差。何時停用提示視用途而定，宜當超參數處理。</li>
+</ul>
+<h2 id="6-結論">6 結論</h2>
+<p>STaR 迭代改進模型生成理據解題的能力：few-shot 提示模型逐步解大量問題，對答錯的題目給定正確答案做 rationalization，在「原本就答對的解」與「合理化後答對的解」上微調，重複。此技術在符號推理與自然語言推理上均顯著改善泛化表現。<strong>重要限制</strong>：第一輪要成功，few-shot 表現須高於隨機水準——初始模型得大到具備一定推理能力（GPT-2 連算術域都無法自舉）；隨機命中率高的設定（如二元判斷）會產生大量劣質理據，混淆 STaR——<strong>如何在這些設定下過濾壞推理是開放問題</strong>。儘管如此，「用沒有推理的範例來自舉推理」是非常通用的做法，STaR 可作為許多領域更精巧技術的基礎。</p>
+<h2 id="附錄擇要">附錄擇要</h2>
+<ul>
+<li><strong>附錄 A（CQA 錯誤型態）</strong>：最終答案正確但推理有病的六類——問題性質複述（不解釋為何該答案滿足性質）、丐題（begging the question）、直接略過論證、對個體的世界狀態斷言、紅鯡魚（技術上為真但與論證無關），以及 <strong>hint short-cutting</strong>：訓練中看過 hint 範例的模型學會「最終答案永遠等於 hint」，出現理據講機場、答案卻抄 hint 選火車站的失真案例。</li>
+<li><strong>附錄 G（偏見與忠實性）</strong>：STaR 的設計是<strong>放大在給定資料集上導向正確解的推理</strong>——若偏見對解資料集「有用」就會被放大，rationalization 更會把模型原本不會自然得出的偏見答案「拉」出來。另一根本挑戰是<strong>忠實性（faithfulness）</strong>：很難、甚至不可能保證理據反映模型內部處理——完全可以想像模型先隱式選定答案、再生成理據去辯護，形成「理據無偏、選答案有偏」。這些問題非 STaR 獨有，是理解 LLM 及其生成理據的普遍困難。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2203.14465_STaR.%E6%91%98%E8%A6%81.html"><code>../summarize/2203.14465_STaR.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2309.08168_DraftAndVerify.zh-TW.html">回 2309.08168_DraftAndVerify.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E9%99%84%E9%8C%84%E9%87%8D%E9%BB%9E.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="31-標準自迴歸解碼">3.1 標準自迴歸解碼</h3>
+<p>給定提示序列，模型計算下一 token 的機率分佈並逐一解碼（貪婪或依分佈取樣）。理想上自迴歸解碼的計算量與同 token 數的序列級前向相當，但實務上嚴重受裝置記憶體頻寬限制：每解一個 token 都需讓全部模型參數通過加速晶片，「模型大小 ÷ 記憶體頻寬」構成解碼速度的硬上限。</p>
+<h3 id="32-自我推測式解碼">3.2 自我推測式解碼</h3>
+<p>推測式解碼是兩階段流程：(1) <strong>草稿</strong>：draft 模型從提示產生 K 個草稿 token；(2) <strong>驗證</strong>：原 LLM 在一次前向中預測每個草稿 token 的機率分佈並判斷是否吻合；一旦某草稿 token 未通過，就用原 LLM 的預測覆寫它，並從下一 token 起重啟草稿。其基礎是「平行計算一小段後續 token 的前向，並不比單一 token 慢多少」，故驗證階段遠比逐 token 自迴歸有效率。</p>
+<p>本文的「自我推測」則<strong>以原 LLM 自身同時執行草稿與驗證</strong>：草稿時選擇性跳過部分中間層以更快產生草稿，再由原 LLM 驗證。演算法 2 給出貪婪版流程；取樣版見附錄 K（其驗證用 min（1, p_原/p_草） 的接受準則與殘差分佈重採樣，確保與原模型同分佈）。</p>
+<p>主要挑戰兩點：<strong>挑戰一</strong>——跳層數難定：跳太多草稿品質崩、接受率低反增總時間；跳太少接受率高但加速上限受限。<strong>挑戰二</strong>——難決定何時停產草稿：推測式解碼中一旦某草稿被拒，其後草稿全數丟棄，故產太多草稿會浪費計算。</p>
+<h3 id="33-跳層的選擇selection-of-skipped-layers">3.3 跳層的選擇（Selection of Skipped Layers）</h3>
+<p>跳層選擇須權衡草稿模型的兩因子：**effectiveness（有效性，以接受率衡量）**與 <strong>efficiency（效率，以層數衡量）</strong>。只顧最大化接受率會退化成「不跳任何層」（接受率 100% 但零加速）；只顧最小化層數則草稿品質太差、接受率暴跌、加速歸零。</p>
+<p>作者將其形式化為最佳化問題，目標是<strong>最小化每個已驗證 token 的平均推論時間</strong>——此指標涵蓋草稿與驗證兩階段的端到端時間，並以驗證 token 數正規化。目標函數 f(z) 以跳層向量 z ∈ {0,1}^L 為輸入、回傳開發集上每已驗證 token 的平均推論時間；求 z* = argmin f(z)。暴力搜尋對小模型可行，但對大模型（如 LLaMA-2-70B 有 L=160 層）不可承受。</p>
+<p>因此採用<strong>貝氏最佳化</strong>：以高斯過程（Gaussian process）作為目標函數的代理模型，配合 acquisition function 在「探索（測不確定處）」與「利用（測預期好處）」間平衡，迭代選新輸入評估直到達預定次數。所得 z* 固定用於加速（模型層級生成 draft，不再更新）；若目標任務差異大，可改用任務層級最佳化，並用單一資料源建立開發集以減少任務間干擾。本方案也可與量化（Dettmers et al.）與稀疏化（Sun et al.）整合（附錄 H）。</p>
+<h3 id="34-自適應草稿退出機制adaptive-draft-exiting">3.4 自適應草稿退出機制（Adaptive Draft-Exiting）</h3>
+<p>為避免把算力浪費在「不太可能被接受」的草稿 token，機制將每個草稿 token 的預測機率與門檻 γ 比較：若 p(x_{t+1}|…) &lt; γ（信心不足）即立刻停止草稿。</p>
+<p>但靜態門檻無法準確反映草稿／驗證階段的實際接受率（較難的例子接受率低、宜用更高 γ）。為免逐案手調，作者用<strong>自適應門檻</strong>依更新規則動態調整：以 AR_e 表第 e 次草稿階段的接受率，先做移動平均 AR ← β₁·AR + (1−β₁)·AR_e；再依「AR ≤ α 則 γ+ε、否則 γ−ε」得 γ̃；最後 γ ← β₂·γ + (1−β₂)·γ̃。其中 α 為目標接受率、ε 為步長、β₁/β₂ 抑制波動（e=1 時 β₁=0），每次驗證後更新 γ。此規則使實際接受率持續貼近目標 α。</p>
+<h2 id="4-評估">4. 評估</h2>
+<p><strong>設定（4.1）</strong>：評估 LLaMA-2-13B、LLaMA-2-13B-Chat、CodeLLaMA-13B、LLaMA-2-70B。貝氏最佳化跑 1000 迭代選跳層（離線、模型層級；13B 約 2.5 小時、70B 約 6 小時，見附錄 B）。資料集 CNN/DM、XSum（1-shot、比 ROUGE-2，各隨機抽 1000 筆）與 HumanEval（比 pass@1、pass@10）。附錄 I 另測數學（GSM8K）與開放閒聊（MT-bench）。</p>
+<p><strong>主結果（4.2，表 1／表 2）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>任務</th>
+<th>溫度</th>
+<th>方法</th>
+<th>分數</th>
+<th>加速</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LLaMA-2-13B</td>
+<td>CNN/DM</td>
+<td>0.0</td>
+<td>Self-Spec</td>
+<td>ROUGE-2 0.108（基線 0.106）</td>
+<td><strong>1.572×</strong></td>
+</tr>
+<tr>
+<td>LLaMA-2-13B</td>
+<td>XSum</td>
+<td>0.0</td>
+<td>Self-Spec</td>
+<td>0.125（0.124）</td>
+<td>1.429×</td>
+</tr>
+<tr>
+<td>LLaMA-2-13B-Chat</td>
+<td>CNN/DM</td>
+<td>0.0</td>
+<td>Self-Spec</td>
+<td>0.143（0.144）</td>
+<td>1.409×</td>
+</tr>
+<tr>
+<td>LLaMA-2-70B</td>
+<td>CNN/DM</td>
+<td>0.0</td>
+<td>Self-Spec</td>
+<td>0.130（0.130）</td>
+<td><strong>1.992×</strong></td>
+</tr>
+<tr>
+<td>LLaMA-2-70B</td>
+<td>XSum</td>
+<td>0.0</td>
+<td>Self-Spec</td>
+<td>0.118（0.118）</td>
+<td>1.598×</td>
+</tr>
+<tr>
+<td>CodeLLaMA-13B</td>
+<td>HumanEval</td>
+<td>pass@1</td>
+<td>Self-Spec</td>
+<td>0.317（0.311）</td>
+<td>1.456×</td>
+</tr>
+<tr>
+<td>CodeLLaMA-13B</td>
+<td>HumanEval</td>
+<td>pass@10</td>
+<td>Self-Spec</td>
+<td>0.659（0.659）</td>
+<td>1.345×</td>
+</tr>
+</tbody>
+</table>
+<p>加速介於 1.210×~1.992×，ROUGE-2 幾乎無損（貪婪時的微小差異歸因於數值捨入）。此法可直接用於微調模型（如 LLaMA-2-13B-Chat），有效解決原推測式解碼對「高品質 draft 模型」的依賴。<strong>越大的模型冗餘越多</strong>，草稿可跳更高比例的中間層，故加速更高（70B 近 2×）。</p>
+<p><strong>跳層選擇的影響（4.3，圖 4，LLaMA-2-13B 共 80 層）</strong>：(1) 約跳一半層時端到端加速最高；(2) 具體「跳哪組層」也很關鍵，不當組合反而變慢；(3) 跳超過 42 層時加速明顯下滑（草稿品質惡化）。BO 遠優於其他固定跳層策略（附錄 D）。</p>
+<p><strong>草稿退出的有效性（4.4，表 3／表 4）</strong>：固定 K 時加速隨 K 先升後降（K=8 產生過多會被拒的草稿、浪費算力；K=4 最佳但僅 1.44×，靜態 K 無法隨難度調整）。且接受率與加速不成正比（K=2 接受率高達 0.924 但加速僅 1.37×，因過度保守、未充分利用草稿模型）。靜態門檻 γ 差異大（1.38×~1.58×）：γ=0.8 高估後保守（接受率 0.935 但只 1.55×）、γ=0.2 低估（接受率 0.749、浪費算力、僅 1.38×）。<strong>自適應門檻</strong>達 1.57×，媲美甚至優於精調靜態門檻，且穩定；並對 K 不敏感（附錄 G）。</p>
+<p><strong>門檻演化（4.5，圖 5）</strong>：約 5,000 次草稿／驗證迭代中，γ 隨模型與資料集大幅變動，佐證靜態門檻不足、須自適應更新。</p>
+<p><strong>計算拆解（4.6，表 5，LLaMA-2-13B／CNN/DM）</strong>：自我推測每 token 平均延遲 36.8ms（基線自迴歸 56.3ms）。其中草稿階段 25.5ms（佔多數，故未來加速重點在草稿最佳化）、驗證 10.7ms；γ 更新僅 0.61µs（不涉神經網路計算，成本可忽略）。attention 是主要延遲來源（基線 39.7ms、本法 22.2ms）。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>提出 self-speculative decoding：免額外訓練、免額外顯存、即插即用的無損加速方案；用貝氏最佳化選跳層、用自適應草稿退出提速。LLaMA-2 系列上加速最高 1.99×。未來將探索更精緻的壓縮策略以在低資源場景進一步加速草稿階段。</p>
+<h2 id="6-倫理考量">6. 倫理考量</h2>
+<p>研究全程使用開源資料集、模型與工具，僅聚焦推論效率、無商業使用或倫理疑慮。</p>
+<h2 id="7-局限">7. 局限</h2>
+<ul>
+<li>用貝氏最佳化決定跳層可能需數小時（但為一次性、離線、模型層級，非關鍵）。</li>
+<li>不做任何神經網路訓練，限制了可跳層數：跳太多會使接受率大跌、加速下降。微調 draft 模型（原模型的子圖）雖可緩解並提速（附錄 F），但 draft 不再與原模型共享參數，<strong>會產生額外顯存負擔</strong>。</li>
+<li>可再參考 FlashAttention、vLLM 等把本技術適配到 batched decoding。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.06130_Skill1.zh-TW.html">回 2605.06130_Skill1.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="31-智能體工作流">3.1 智能體工作流</h3>
+<p>每任務 x ∼ D 下，policy πθ 依序執行三階段。完整軌跡 τ = (q, z, a1, o1, ..., aT, oT, snew)，其中 q 為選擇查詢、z 為所選技能（或 ∅）、動作-觀察對構成多輪互動、snew 為蒸餾技能。環境回傳終端 reward r(τ) ∈ {0, 1}。提示模板見附錄 G。</p>
+<p><strong>技能選擇</strong>：policy 生成自然語言查詢 q ∼ πθ(· | x) 搜尋 B。凍結 encoder E 依語意相似度檢索 top-K 候選：BK = top-K_{s∈B} sim(E(q), E(s.desc))。policy 再生成排列 σ ∼ πθ(· | x, BK) 重排序，頂端技能 z = BK[σ(1)] 供利用使用。查詢生成與重排序均由 πθ 產出，故選擇可直接透過策略梯度最佳化。</p>
+<p><strong>技能利用</strong>：policy 以所選技能為條件與環境互動最多 T 回合：τ ∼ πθ(· | x, z.strat, o≤t)。每任務取樣 G 個獨立 rollout，各自執行選擇、利用與蒸餾。</p>
+<p><strong>技能蒸餾</strong>：每次 rollout 後，πθ 反思軌跡產出：(i) 可重用策略 snew.strat ∼ πθ(· | x, τ)，總結解法；(ii) 場景描述 snew.desc ∼ πθ(· | x, τ)，刻畫適用時機。新技能僅在 r(τ) = 1 時入庫。庫達容量上限 Nmax 時，移除退休分數 U(s)·log n(s) 最低者，其中 n(s) 為 s 被選次數。此啟發式淘汰低效用且極少被用的技能，同時保留經充分測試的高效用技能。</p>
+<h3 id="32-reward-指派框架核心">3.2 Reward 指派（框架核心）</h3>
+<p>共同演化要求每項能力從共享任務結果 r(τ) 接收針對性學習訊號。挑戰在於三項能力運作在不同時間尺度：利用關心當前 episode、選擇關心哪些技能跨 episode 持續有效、蒸餾關心新經驗是否改進庫的既有覆蓋。Skill1 將 r(τ) 分解為低頻趨勢與高頻變異，不需輔助模型或多餘 rollout。</p>
+<p><strong>利用 credit</strong>：任務結果直接衡量以給定技能執行的品質，作為利用 reward：Rutil_i = r(τi)。</p>
+<p><strong>選擇 credit</strong>——兩個機制：</p>
+<p>(1) 查詢 q 是 rollout prefix 的一部分，透過利用目標接收策略梯度（Eq. 8）。更好的查詢檢索更好的候選、導致更高 r(τ)，故查詢品質與任務表現共同提升，無需專屬 reward。</p>
+<p>(2) 重排序需反映長期技能品質而非單一 episode 結果的顯式訊號。以 EMA 維護每技能效用分數，每次 rollout 後更新<strong>所有檢索候選</strong>（非僅所選者，視共同被檢索為與相同任務分佈相關的證據）：U(s) ← (1−α)·U(s) + α·r(τi)，∀s∈BK。趨勢平滑 episode 間變異並累積長期貢獻。定義檢索候選中最高效用為庫基線 Û_i = max_{s∈BK_i} U(s)。趨勢以 NDCG（正規化折損累積增益）監督重排序，reward 排列與效用排序的一致性：</p>
+<p>Rrerank_i = NDCG(σi, argsort(−U(BK_i)))</p>
+<p><strong>蒸餾 credit</strong>：理想訊號應衡量新蒸餾技能是否改善未來任務表現，但未來結果在訓練時不可得。以當前結果相對庫趨勢的變異近似：</p>
+<p>Rdistill_i = r(τi) − Û_i</p>
+<p>正變異表示當前經驗超越庫既有覆蓋，蒸餾技能值得入庫；負變異抑制冗餘蒸餾。</p>
+<h3 id="33-聯合最佳化">3.3 聯合最佳化</h3>
+<p>每個 rollout τi 是四個由 πθ 產生的生成段落串接：選擇查詢 qi、重排序排列 σi、動作序列 a1:T、蒸餾技能 snew,i。各段落獲配專屬 reward 訊號（§3.2），在單一梯度步中以 GRPO 聯合最佳化（附錄 B），將每任務 G 個 rollout 的 reward 標準化為群組相對優勢。</p>
+<p><strong>利用與查詢</strong>：動作 tokens a1:T 以 (xi, zi) 為條件，由任務結果 Rutil_i = r(τi) 最佳化。查詢 qi 在序列中先於動作，透過同一目標接收梯度：</p>
+<p>Jutil(θ) = J_GRPO(θ; {τ1,...,τG}, {Â1,...,ÂG})</p>
+<p><strong>重排序</strong>：排列 σi 以任務 xi 與檢索候選 BK_i 為條件生成，由排序 reward Rrerank_i 強化。因不同 rollout 產生不同查詢⇒其 BK_i 不同，群組內比較無意義。每個排列獨立以 REINFORCE 風格最佳化：</p>
+<p>Jrerank(θ) = 1/(N·G) Σ_i Rrerank_i · log πθ(σi | xi, BK_i)</p>
+<p><strong>蒸餾</strong>：蒸餾技能 tokens (snew,i.strat, snew,i.desc) 以 (xi, τi) 為條件生成，由變異 Rdistill_i 強化。優勢 Âdistill_i 與利用分開標準化（兩者量測相同結果的不同面向）：</p>
+<p>Jdistill(θ) = J_GRPO(θ; {snew,1,...,snew,G}, {Âdistill_1,...,Âdistill_G})</p>
+<p><strong>總目標</strong>：J(θ) = Jutil(θ) + λ1 Jrerank(θ) + λ2 Jdistill(θ)。效用分數 U(s) 非參數式以 Eq. (5) 更新。完整程序見 Algorithm 1。訓練超參數（λ1=λ2=0.3, α=0.05, K=5, G=16）見附錄 C。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

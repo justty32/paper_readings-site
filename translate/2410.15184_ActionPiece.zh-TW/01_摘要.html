@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2410.15184_ActionPiece.zh-TW.html">回 2410.15184_ActionPiece.zh-TW 目錄</a>　<a href="02_%E7%82%BA%E6%94%A4%E9%82%84%E5%BC%8F%E5%8F%96%E6%A8%A3%E5%99%A8%E7%99%BC%E7%8F%BE%E5%8B%95%E4%BD%9C%E6%8A%BD%E8%B1%A1.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>當強化學習（reinforcement learning, RL）與生成流網路（generative flow networks, GFlowNets）所用策略取樣的軌跡變長時，信用分配（credit assignment）與探索都變得更困難，且長規劃視野會阻礙 mode（模態，即高回報 state 的聚集區）的發現與泛化。這個挑戰在<strong>追求熵（entropy-seeking）<strong>的 RL 方法（如 GFlowNet）上尤其突出——此時代理必須學會從一個結構化分佈中取樣，並發現多個高回報 state，而每個都要許多步才能到達。為此，我們提出一種把</strong>動作抽象（action abstractions）</strong>、或說<strong>高階動作（high-level actions）<strong>的發現，融入策略最佳化過程的方法。作法是反覆從許多高回報軌跡中抽取常被用到的</strong>動作子序列</strong>，把它們「成塊（chunking）」為單一動作並加進動作空間。在合成與真實環境上的實證顯示，本法能提升「發現多樣高回報物件」的樣本效率，在較難的探索問題上尤為明顯。我們也觀察到抽象出的高階動作<strong>具可解釋性</strong>，捕捉了動作空間中回報地景（reward landscape）的潛在結構。本工作為 RL 中的動作抽象提供了一個<strong>受認知科學啟發</strong>的取徑，並且是<strong>攤還式序列取樣（amortized sequential sampling）中階層式規劃的首次示範</strong>。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>RL 依賴隨機策略 π_θ 生成可能很長的動作軌跡 τ 以取得回報 r。標準 RL 用損失函數強化「最大化回報」的動作；而追求多樣性的 RL 方法（如 GFlowNet，屬熵正則化 RL 的特例）則讓策略以<strong>與回報成正比</strong>的機率取樣終端 state。兩種情況下，愈長的軌跡都因<strong>信用分配</strong>問題（學習訊號要跨長時間視野傳播）而更難訓練。</p>
+<p>信用分配的難度隨軌跡長度增長：已有研究指出時序差分法需要（軌跡長度的）指數級更新次數才能修正學習偏差，蒙地卡羅法受延遲回報影響的 state 數也隨延遲步數指數成長。既有做法多靠把學習訊號直接傳到軌跡的特定時刻、跳過中間動作，等效地縮短軌跡。近期工作進一步顯示<strong>軌跡壓縮能改善信用分配</strong>：Ramesh 等（2024）明確丟棄「在前驅下高度可預測」的中間 state（呼應 Schmidhuber 的歷史壓縮原則）；Saanum 等（2023）則把可壓縮性直接當回報項，鼓勵策略隱式學出易壓縮/含重複元素的軌跡。這些都暗示<strong>動作序列的較低描述長度</strong>有助於信用分配。</p>
+<p>人工與自然學習系統的壓縮之間有類比。心理學長期研究「chunking（成塊）」——人類傾向把較小的資訊單元收編進更大的高階單元，以減輕工作記憶負擔（Miller, 1956 等）。在 RL 中，option 與 macro-action（巨集動作）把原始動作一般化、允許時序上延展的動作序列（時序抽象），有助探索與階層學習，但被發現對加速學習與改善信用分配的效果並不一致。</p>
+<p>本文據此提出：在訓練中<strong>線上</strong>地從 GFlowNet 或 RL 策略取樣的軌跡裡抽取高階「chunk」，讓動作空間在訓練期間<strong>動態成長</strong>。與 Saanum 等（2023）不同，我們<strong>不用目標函數去強制</strong>可壓縮性，而是善用「策略軌跡自發湧現的可壓縮性」與「較短動作序列帶來的加速學習」之間的良性循環。貢獻如下：</p>
+<ul>
+<li>提出 <strong>ActionPiece</strong>，用 tokenization 技術從取樣軌跡抽高階動作（chunk），含兩變體 <strong>ActionPiece-Increment</strong> 與 <strong>ActionPiece-Replace</strong>，可搭配任何取樣器且幾乎無額外成本。</li>
+<li>引入 <strong>ShortParse</strong>：一種為 GFlowNet 設計、專取短軌跡的新反向策略。</li>
+<li>在多個環境上驗證：加速 mode 發現、改善密度估計、降低樣本描述長度。</li>
+<li>展示學到的 chunk 能代表目標分佈的潛在結構，且可遷移到不同演算法與新任務。</li>
+</ul>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p><strong>Macro-action（巨集動作）</strong> 是由原子動作集組出的動作序列，屬時序抽象，源自早期以規則/啟發式自動歸納程式 macro 的想法。在本文語境，macro-action 是「一次執行一連串原子動作」的策略，在某些情況能減少發現最優策略與動作值函數所需時間。前人曾用 n-gram 組 macro 以加速規劃、用於建構不同時間解析度的策略階層；但結果好壞參半，取決於 macro 是否契合任務。也有用演化演算法在 Atari 上有效發現 macro 的工作。整體而言，引入 macro-action 最可靠的好處是<strong>加速收斂</strong>，並降低回報變異；有效的場景多半是「學到的 macro 與環境/回報地景的潛在結構有較多共享結構」。</p>
+<p><strong>程式歸納中的庫學習（library learning）</strong>（如 Ellis 等）常依**最小描述長度（minimum description length, MDL）**原則，漸進地修改領域專用語言以降低有用程式的複雜度。DreamCoder 等在訓練中設一個獨立的「抽象階段」引入新副程式，並用「解過的問題庫」當先驗。相關的證明合成領域也有類似工作。</p>
+<p><strong>信用分配</strong>是序列決策的根本問題，其難度來自 MDP 的深度（軌跡到回報的典型步數）、密度（非零回報數）、廣度（從初始到回報的路徑數）。RL 有 Hindsight Credit Assignment；GFlowNet 則有 trajectory balance（依整條動作序列而非單步轉移的損失）與 forward-looking flow 參數化，兩者都是為信用分配而設計。</p>
+<h2 id="3-預備知識">3. 預備知識</h2>
+<p>令 G=(S, A) 為有向無環圖：節點 s∈S 為 state，邊 (s→s′) 為動作；有唯一無父的初始 state s0，無子的終端 state 集為 X（可視為能取樣的完整「物件」）。表述動作抽象需要一個關鍵假設：<strong>不同 state 的可用動作之間存在對應關係</strong>（RL 的 MDP 常見，但非 GFlowNet 慣例）。這裡假設有一個全域動作集 A，每個非終端 state s 有子集 A_s ⊆ A 可用，並固定 A_s 與 s 的子節點間的雙射；施加動作 a 即轉移到 s+a。（例如逐字元往字串尾加符號時，A 就是字母表，A_s=A。）</p>
+<p><strong>前向策略 P_F</strong> 對每個非終端 state 給出 A_s 上的分佈，誘導出從 s0 到終端 state 的完整軌跡分佈（式 1，各步機率連乘）。取樣終端 state x 的邊際似然是所有終於 x 的軌跡機率之和（可能難以精確計算）。</p>
+<p><strong>Trajectory balance（TB，軌跡平衡）</strong>：GFlowNet 訓練要讓 P_F 的終端邊際 ∝ 回報 R。TB（Malkin 等， 2022）引入可學標量 Z_θ（估規範化常數）與反向策略 P_B（每個非初始 state 的父節點上的分佈）；目標是讓 P_F(τ) ∝ P_B(τ|x)·R(x)，其損失（式 2）為 (log[Z_θ·P_F(τ)] − log[P_B(τ|x)·R(x)])²，對所有 τ 為 0 時即滿足所需比例。行為策略可用 P_F 本身（on-policy）或促進探索的分佈（off-policy）。</p>
+<p><strong>RL 演算法</strong>：上述設定可直譯為 MDP（確定性轉移 T(s,a)=s+a，稀疏回報 r=log R(s′) 於終端否則 0）。本文另用兩種 RL 目標評測：<strong>A2C（Advantage Actor-Critic）</strong> 聯合學策略（actor）與狀態-動作值（critic）網路，常用 baseline 降梯度變異；<strong>SAC（Soft Actor-Critic）</strong> 為 off-policy，最大化「期望回報 + 策略熵」的權衡（式 3，α 為熵正則係數），以鼓勵探索。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

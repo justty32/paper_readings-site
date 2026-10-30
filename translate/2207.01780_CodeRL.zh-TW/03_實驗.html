@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2207.01780_CodeRL.zh-TW.html">回 2207.01780_CodeRL.zh-TW 目錄</a>　<a href="02_CodeRL.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-設定">4.1 設定</h3>
+<p><strong>預訓練</strong>：從頭訓 CodeT5-large（770M，仿 T5-large）；用 CodeSearchNet 6 種語言（C/C# 不公開故略），僅用 MSP（免解析 AST）。在 16 張 A100-40G 上約 21 天：MSP 階段 CSN 150 epochs（10 天）＋GCPY 10 epochs（5 天）；NTP 階段 10 epochs（6 天）。在 CodeXGLUE 上驗證新骨幹達 SOTA（附錄 B.1）。
+<strong>評估指標</strong>：pass@k（用 k 支生成解出題目的比例）與 n@k（僅取 k 支中經 example test 過濾出的 n 支子集）。CS 可多輪改進／修復，但實作<strong>最多各一輪</strong>。</p>
+<h3 id="42-benchmark">4.2 Benchmark</h3>
+<ul>
+<li><strong>APPS</strong>：10,000 題（50-50 分割），難度分 Introductory／Interview／Competition，平均每題 20 個單元測試、293.2 字題目、程式 18 行。以 L_ce 暖啟動約 30 小時（單張 A100）。</li>
+<li><strong>MBPP</strong>（Mostly Basic Programming Problems）：974 題（374/90/500 訓/驗/測），題目通常一句話、每題 1 解＋3 個 assert 單元測試。MBPP 的測試<strong>明置於輸入</strong>（可能誘使模型硬寫 if 對答），為公平比較沿用 Austin et al. 的 prompt 格式。零樣本與全微調兩種設定。</li>
+</ul>
+<h3 id="43-apps-結果">4.3 APPS 結果</h3>
+<p>與 GPT2/GPT-Neo/GPT3、Codex、AlphaCode 比較（除 Codex/GPT3 外皆為在 APPS 上以 L_ce 微調）。</p>
+<ul>
+<li><strong>表 1(a) pass@k</strong>：CodeRL+CodeT5（770M）達 <strong>pass@1 2.69、pass@5 6.81、pass@1000 20.98</strong>（All），全面刷新 SOTA，勝過大得多的模型（Codex-12B All pass@1000 僅 7.87、GPT-J-6B 17.63）。</li>
+<li><strong>表 1(b) n@k</strong>：CodeRL+CodeT5 達 <strong>1@k 8.48、5@k 12.62</strong>（k=1000）。<strong>k=1000 即匹敵 AlphaCode 用 k=50000</strong> 的成績（5@50000=11.42）。</li>
+<li>觀察：增大取樣 k 有益；在 interview／competition 難度上，微調顯著優於 Codex 的少樣本設定，顯示預訓練與下游任務間存在明顯落差。</li>
+</ul>
+<h3 id="44-消融研究">4.4 消融研究</h3>
+<ul>
+<li><strong>return 估計（表 2）</strong>：以 beam search 報 pass@{1,5}。「baseline＋trained critic」（Model D）最佳（All pass@1 2.20、pass@5 3.10）；只用絕對 return 無 baseline（B）最差（過度懲罰所有錯誤樣本）；無 critic 對所有 token 給相同 reward（A）太粗糙；規則式「距離衰減 critic」（C）也不如訓練式 critic。</li>
+<li><strong>學習目標（表 3，CodeT5 與 GPT-Neo）</strong>：只用 L_rl 會梯度消失、模型退化；只用 L_ce 續訓則過擬合、測試退步；把合成樣本全當正確（r=1）以 L_ce 訓，僅 GPT-Neo 的 pass@5 略有改善；<strong>L_ce＋L_rl 併用最穩定一致地提升</strong>。</li>
+<li><strong>Critical Sampling（表 4）</strong>：refine＋repair 且 <strong>M=1 最佳</strong>（All pass@1000 由無 CS 的 17.78 提升到 20.98）；M 增大反降（每候選批量 N/M 變小、修復機會減）。單獨 refine 已有增益，但對 n@k 影響較小（refine 擴大了過濾子集 P，正規化基數變大）。</li>
+<li><strong>競賽級（圖 5）</strong>：把 CodeRL 套 CodeT5 與 GPT-J，pass@k／n@k 隨 k 增大增益更明顯——歸功於 L_rl 鼓勵模型探索多樣解。</li>
+<li><strong>CodeT5 預訓練變體（表 5、圖 6）</strong>：模型由 60M→770M、加 GCPY 資料、加 NTP 目標皆逐步增益（pass@5 由 2.06→2.9）；只用 L_ce 微調約 10 epoch 後就過擬合，故建議用 L_rl 利用合成樣本避免過擬合。</li>
+</ul>
+<h3 id="45-mbpp-結果">4.5 MBPP 結果</h3>
+<p><strong>零樣本遷移</strong>：CodeRL+CodeT5（在 APPS 訓、直接測 MBPP）以 770M 拿 <strong>63.0% pass@80，勝過微調過的 GPT-137B（61.4%）</strong>。並分析 APPS 與 MBPP 的程式碼行重疊極小（僅 12.6% 的 MBPP 程式有過半行出現在 APPS 訓練集；過半程式零重疊；連續重疊不超過 2 行），排除記憶洩漏疑慮。</p>
+<h3 id="46-定性分析">4.6 定性分析</h3>
+<ul>
+<li><strong>依測試結果（圖 8）</strong>：套 CodeRL 後通過測試的機率上升、失敗機率下降（introductory 級最明顯）；編譯錯誤下降（interview／competition 級更顯著），但相對地執行錯誤機率略升。example test 與 hidden test 間有明顯落差，顯示 example test 不夠全面、易生 false positive。</li>
+<li><strong>範例（圖 9）</strong>：某 interview 級題，純 CodeT5 誤解題意（只求 a、b 的最大公因數）；CodeRL 正確求「a! 與 b! 的最大公因數」。未用 CS 時程式雖功能正確卻因分別算 a!、b! 而在極大值超時；套 CS 後條件化前段重生，改為對 min(a,b) 算階乘，效率提升並通過所有 hidden test。顯示 CodeRL 亦能改善程式的複雜度／效率。</li>
+</ul>
+<h2 id="5-局限與更廣影響">5. 局限與更廣影響</h2>
+<p>程式合成可帶來正面社會影響（提升開發生產力、程式教育可及性）。局限與風險：</p>
+<ul>
+<li><strong>偏見與安全</strong>：訓練於程式碼的 LM 可能生出有偏見的碼、甚至在註解中生成有毒文字；公共 GitHub 語料可能含漏洞，導致生成程式安全性弱。CodeRL 輸出仍<strong>需合格人類開發者驗證</strong>。可用 RL 對齊人類偏好、或以導引解碼／安全控制 token 引導生成朝安全、可靠、高效、公平。</li>
+<li><strong>計算成本</strong>：需額外訓 critic（與修復模型）。但實作上 critic 不需大模型——由 GPT-2 small 初始化的 critic 即達 <strong>&gt;75% 誤差預測準確率</strong>，成本相對骨幹預訓練甚小；且搭配小模型（如 CodeT5-770M）推論成本更低卻勝過更大的預訓練 LM。</li>
+<li><strong>對齊失敗</strong>：NTP 訓練的系統輸出未必符使用者意圖；CodeRL 也會生出不滿足單元測試的碼。但 CodeRL 的輸出可由使用者透過題目描述與單元測試大幅調控——藉在訓練與推論期利用單元測試，<strong>改善與使用者意圖的對齊</strong>，有助緩解隨規模擴大而預期惡化的錯位問題。</li>
+</ul>
+<h2 id="6-結論">6. 結論</h2>
+<p>CodeRL 是以深度 RL 改進預訓練 LM 的程式合成新框架，在訓練與推論兩階段皆利用單元測試訊號：訓練用 actor-critic 對合成樣本給密集回饋；推論用 critical sampling 依單元測試與 critic 分數自動重生程式。整合改良版 CodeT5-large（770M）後在 APPS 與 MBPP 皆刷新 SOTA，勝過大得多的預訓練 LM。CodeRL 為通用框架，可換更佳 LM、也可用更細緻的環境回饋（如靜態程式碼分析器）進一步改進。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2207.01780_CodeRL.%E6%91%98%E8%A6%81.html"><code>../summarize/2207.01780_CodeRL.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

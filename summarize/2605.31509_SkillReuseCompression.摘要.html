@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《技能重用即壓縮：以 MDL 原理正則化智能體強化學習（Skill Reuse as Compression in Agentic RL）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zhikun Xu, Yu Feng, Jacob Dineen, Taiwei Shi, Jieyu Zhao, Ben Zhou（Arizona State University / University of Pennsylvania / University of Southern California）</p><p>日期：2026-05</p><p>arXiv：2605.31509</p><p><a href="https://arxiv.org/abs/2605.31509" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="技能重用即壓縮以-mdl-原理正則化智能體強化學習重點摘要">《技能重用即壓縮：以 MDL 原理正則化智能體強化學習》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>ReuseRL（技能重用即壓縮的 RL）</strong>：把「成功軌跡是否可被少量可重用技能組合出來」形式化為<strong>最小描述長度（Minimum Description Length, MDL）<strong>問題——線上從成功軌跡以貪婪 BPE 抽出一部</strong>共享技能字典</strong>，再把該字典下的<strong>分段成本（segmentation cost）<strong>當作</strong>逐軌跡懲罰</strong>加進 GRPO 訊號：可重用子程序編碼便宜、特異一次性行為編碼昂貴。如此在不加老師蒸餾／檢索／外部記憶的前提下，用「壓縮即正則化」抑制 reasoning collapse，並在 ALFWorld / TextWorld-Cooking / Countdown-Stepwise 上一致勝過 vanilla GRPO 與純回合長度懲罰，尤其顯著改善 OOD 泛化。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>RL 訓練 LLM 智能體常<strong>固化脆弱的行為捷徑</strong>（reasoning collapse）：只獎勵任務成功，會放任策略形成能過訓練關卡、卻無法組合成可重用技能的<strong>特異一次性解法</strong>，泛化差。既有補救（SkillRL 老師蒸餾、ERL 反思迴圈、外部記憶）雖有效，但<strong>沒說清楚是學到行為的哪個共享結構性質</strong>帶來增益。作者主張：可泛化的成功行為，正是那些能被<strong>緊湊、可重用地分解</strong>的行為——把此性質命名為成功軌跡的「結構可壓縮性」，並直接把壓縮訊號注入 RL 訓練訊號來檢驗此假設。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>技能投影 φ</strong>：用確定性的、逐環境的<strong>規則式映射</strong>把原始動作（依動詞）抽象成小型技能字母表 Σ 上的技能序列（如 Explore/Take/Transform/Deliver）；Σ 刻意小而任務相關（ALFWorld 5 個、TW-Cooking 10 個、Countdown 26 個）。</li>
+<li><strong>兩部式描述長度（MDL two-part code）</strong>：對一批成功軌跡 B⁺，字典成本 L_skill_dict（存 M 個片語）＋資料成本（各序列用動態規劃求最小分段數 seg(s,C)，乘以 log₂|C| 位元索引），兩者平均即批次描述長度 L_BDL。</li>
+<li><strong>EM 式交替最佳化</strong>：E 步在固定策略下由成功批次抽字典（最小化 L_BDL）；M 步固定字典、用 GRPO 把策略推向「在該字典下編碼便宜」的成功軌跡。逐軌跡懲罰即 <strong>SegCost(s|C)=seg(s,C)/T</strong>，只對成功軌跡施加（指示函數 1{R=1}，永不壓抑完成任務），效率係數為 λ。</li>
+<li><strong>理論支撐</strong>：(1) 命題 1 證明<strong>純回合長度懲罰＝只含單元素的退化「固定碼」分段成本</strong>，故原始長度無法區分等長但重用性不同的序列；(2) 定理 3 給出 MDL 目標的 <strong>PAC-Bayes 泛化界</strong>；(3) 把 SkillRL（壓縮字典項）與 ERL（壓縮實例級修正）詮釋為<strong>隱式、部分的 MDL 最小化者</strong>，而 ReuseRL 顯式最小化完整批次級 MDL。</li>
+<li><strong>實作</strong>：作為 GRPO 內的 reward-shaping 模組；貪婪 BPE 合併頻繁相鄰片語（片語長度上限 L=4，只在嚴格降低 MDL 時才接受合併），輔以跨批次的 <strong>FIFO 全域成功緩衝區 G</strong> 穩定小批次的 E 步。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>主結果（表 1）</strong>：ReuseRL-SegCost 在每個 benchmark 都拿最佳分數。ALFWorld SC@7 IID/OOD 達 <strong>97.14 / 93.28</strong>（vanilla GRPO 84.29 / 79.85）；TW-Cooking Pass@1 <strong>81.73</strong>（GRPO 74.97）；Countdown-Stepwise Pass@1 <strong>80.37</strong>（GRPO 68.46）。</li>
+<li><strong>壓縮全面勝 GRPO</strong>：在以「步數預算耗盡」為主要失敗模式的 ALFWorld / Countdown，任何一致的壓縮訊號都有效（純回合長度即在 ALFWorld OOD +11.94、Countdown +8.56%）。</li>
+<li><strong>純長度會反噬</strong>：TW-Cooking 上純回合長度比 vanilla GRPO 還低 10.94 分——它塌縮到「照食譜字面重複 cook」的脆弱捷徑，把已熟食材再煮而燒焦（其失敗 74% 含 burned，vs GRPO 21%）；而 SegCost 因獎勵跨軌跡重現的技能子序列，避開此陷阱，較純回合長度 <strong>+17.70%</strong>。</li>
+<li><strong>學到多步字典</strong>：Countdown 上 SegCost 獨有地擴大乘/除運算使用，形成「大減法逼近目標＋精確除法清餘」的多步 solver 模板；ALFWorld 把成功回合平均長度由 15.3 步砍到約 9 步，且抽出的高頻片語與 SkillRL 的 Skillbank 蒸餾技能重合。</li>
+<li><strong>消融</strong>：貪婪 BPE 逼近暴力最優誤差僅 0.14%、回收 99.02% 非單元素片語、快 285×–2231×；全域緩衝在成功軌跡稀疏／多樣時有益（移除使 ALFWorld、Countdown 明顯下滑），但在被簡單樣式主導時有害（TW-Cooking 移除反升）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>技能投影 φ 是逐環境<strong>手工規則 schema</strong>，換新領域需少量人工設計（作者認為短小可驗、優於依賴外部 LLM 剖析器）。</li>
+<li>貪婪 BPE 是 NP-hard 最優字典問題的近似，|Σ| 變大時近似落差可能擴大。</li>
+<li>泛化論證依賴假設 2（成功軌跡須有界複雜度的共享可重用分解）；在無結構／純新穎推理領域可能失效，此時 SegCost 會退化成回合長度懲罰。</li>
+<li>僅在文字型 agentic benchmark 與 1.5–1.7B 模型上驗證；未及視覺語言智能體與更大骨幹。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>直接對應 ai_core §3.6「固化引擎」，並補上其最缺的一塊：把「壓縮即正則化」變成可訓練訊號而非事後離線步驟。</strong> 本文用 MDL 兩部式碼把「技能重用」形式化為壓縮，並用<strong>分段成本懲罰特異行為</strong>——這正是 ai_core 想要的機制：讓系統偏好「能被少量可重用抽象組合出來」的行為，同時用字典成本項（L_skill_dict 攤提）<strong>懲罰庫膨脹、避免抽象庫爆炸</strong>。命題 1「純長度＝退化固定碼」給了一個乾淨的教訓：固化不能只求「短／少呼叫」，必須求「可重用結構」，否則會塌縮成脆弱捷徑（TW-Cooking 燒焦即活生生案例）——對應 ai_core 把 LLM 反覆案例結晶成確定性程式時，光求呼叫次數少是不夠的，要抽出真正可組合的資產。</li>
+<li><strong>與 <a class="paper-reference" href="2211.16605_Stitch.%E6%91%98%E8%A6%81.html">2211.16605</a> Stitch 對照</strong>：Stitch 以 top-down 合成、保證 MDL 最優的<strong>單一抽象</strong>離線建庫；ReuseRL 則把同一 MDL 原理搬成<strong>線上、逐軌跡的 RL 訊號</strong>作用於成功行為。前者是「資產工廠」離線精煉一次，後者是把壓縮壓力持續反饋進策略本身——兩者互補：Stitch/LILO 那條線負責高品質離線抽象與自帶規格（§3.6 完整範式），ReuseRL 提示「訓練階段就能用 MDL 訊號預防捷徑固化」。也呼應 ai_core §1 的「符號神經網路計算圖」：把少數 LLM 的成功行為壓成可重用（趨近確定性）的技能片語。</li>
+<li>歸 <strong>I 類（系統架構／智能體）</strong>。最值得記：<strong>MDL 兩部式碼＝重用性度量</strong>、<strong>segmentation cost 逐軌跡懲罰特異行為</strong>、<strong>命題 1「純長度是退化固定碼」</strong>、以及把 SkillRL/ERL 統一詮釋為隱式 MDL 最小化者。適合做 agentic RL 正則化、技能／庫學習、防 reasoning collapse、把壓縮理論接進 RL 訓練訊號的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2605.31509_SkillReuseCompression.zh-TW.html"><code>../translate/2605.31509_SkillReuseCompression.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

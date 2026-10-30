@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_Lemmanaid_評估 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2504.04942_Lemmanaid.zh-TW.html">回 2504.04942_Lemmanaid.zh-TW 目錄</a>　<a href="02_Lemmanaid_%E6%96%B9%E6%B3%95.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-lemmanaid-評估">4. Lemmanaid 評估</h2>
+<p>研究問題：<strong>RQ1</strong> 神經符號法 Lemmanaid 與神經法、既有符號法相比如何？<strong>RQ2</strong> 不同脈絡資訊（型別、定義）如何影響表現？<strong>RQ3</strong> Lemmanaid 生成的猜想有何特徵（多少可證／有反例）？</p>
+<h3 id="41-實驗設定">4.1 實驗設定</h3>
+<p><strong>模型</strong>：以 DeepSeek-coder-1.3B、DeepSeek-coder-6.7B、Llama-3.2-1B 為神經後端（皆為擅長程式碼的開源權重基礎模型）。用小模型的好處是更貼近使用者在本機執行猜想工具的真實情境。推論時試 greedy 解碼與 beam search（size 4）及兩者組合。<strong>基線</strong>：因 Isabelle 無現成神經工具，自訓神經基線（§3.3）直接建議引理；QuickSpec 為最先進符號工具，但只能生成等式引理（其演算法基於列舉式合成與等價類建構）。</p>
+<p><strong>基準集</strong>：兩個訓練集——HOL-train（57,576 點，僅 HOL）與 HOL+AFP-train（加入 2024 前發表的 AFP 專案，249,098 點）；兩個互斥測試集——HOL-test（4,740 點）與 AFP-test（18,975 點，取自 2024 年發表的專案）。AFP 在主題、內容、風格上差異大，故預期 AFP-test 更難。在 AFP-test 上評估也降低純神經基線的測試資料洩漏風險（其預訓練截止在 2023，早於 AFP-test 專案發表；且 Lemmanaid 的神經模組產生的是作者自建的模板，不存在於先前訓練資料中）。與 QuickSpec 比較則另在 <strong>Octonions 專案</strong>（350 條引理，全程排除於訓練外）上測試——選它因其為等式引理、正是 QuickSpec 支援的領域。</p>
+<p><strong>評估指標</strong>：以人類撰寫的<strong>金標準引理</strong>為代理（人類專家認為有趣有用才會納入形式化）。每個評估任務有一條金標準引理，方法生成一組建議引理，只要金標準引理在其中即算成功。比對基於 Isabelle 內部 term 表示（解析後比較，可接受 alpha 更名、eta 收縮等無害的呈現差異），此指標比「證明等價」更嚴格——僅在改寫或推理後才邏輯等價的預測仍算失敗。<strong>推論預算</strong>：純神經模型與 Lemmanaid 給相同 GPU 推論預算；Lemmanaid 另給每任務最多 60 秒的符號 CPU 預算搜尋實例化。兩者用相同輸入提示（含目標引理中出現的符號資訊）。</p>
+<h3 id="42-rq12發現金標準引理">4.2 RQ1–2：發現金標準引理</h3>
+<p>（表 1 摘要，數值為金標準引理發現百分比，5 次預測＝1 greedy＋4 beam）以最佳配置 <strong>DeepSeek-coder-6.7B ＋ HOL+AFP-train</strong> 為例：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>HOL-test</th>
+<th>AFP-test</th>
+<th>Octonions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Lemmanaid（types+defs）</td>
+<td>50.2%</td>
+<td>27.9%</td>
+<td>76.6%</td>
+</tr>
+<tr>
+<td>Lemmanaid（types）</td>
+<td>44.5%</td>
+<td>28.6%</td>
+<td>78.9%</td>
+</tr>
+<tr>
+<td>Neural（types+defs）</td>
+<td>29.7%</td>
+<td>25.1%</td>
+<td>62.3%</td>
+</tr>
+<tr>
+<td>Lemmanaid Combined（集成提示策略）</td>
+<td>55.1%</td>
+<td>34.8%</td>
+<td>83.1%</td>
+</tr>
+<tr>
+<td>Combined（Lemmanaid＋Neural 集成）</td>
+<td>58.6%</td>
+<td>42.7%</td>
+<td>84.9%</td>
+</tr>
+<tr>
+<td>QuickSpec</td>
+<td>—</td>
+<td>—</td>
+<td>22.8%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>要點</strong>：(1) Lemmanaid 在所有測試集都勝過對應神經基線；(2) 神經法與 Lemmanaid <strong>互補</strong>——集成後發現更多引理（HOL-test 58.6%、AFP-test 42.7%）；(3) <strong>型別資訊對兩法都大有助益</strong>，有時只含型別（不含定義）表現更好，但差距不大；(4) 各法在 AFP-test 都比 HOL-test 掉分（AFP 引理更多樣，且長距離依賴的定義未必包含在輸入中）；(5) 在 Octonions 上，Lemmanaid（最高 78.9%）勝神經基線（62.3%），兩者都遠勝 QuickSpec（22.8%）。此外 QuickSpec 生成數千條引理、精確率不到 1%（缺乏判斷「有趣」的啟發，且會跳過如 <code>inner e1 x = Im1 x</code> 這類被視為瑣碎結論的有用簡單引理）。</p>
+<h3 id="43-rq3生成猜想分析">4.3 RQ3：生成猜想分析</h3>
+<p><strong>對真實形式化的適用性</strong>（附錄 D）：按 HOL-test／AFP-test 各理論細分，Lemmanaid 幾乎在每個測試理論都優於神經法；AFP 測試集主題橫跨電腦科學、數學、邏輯的多樣領域，證實「類比猜想」能在廣泛真實形式化上產生有趣引理。</p>
+<p><strong>生成的猜想</strong>（用最佳 Lemmanaid＋greedy 解碼，以 Sledgehammer 證明、Nitpick／Quickcheck 找反例，分為真／假／未決三類）：HOL-test（4,740 條金標準引理）共生成 <strong>7,628 條猜想</strong>——</p>
+<table>
+<thead>
+<tr>
+<th>類別</th>
+<th>數量（佔比）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>金標準（命中）</td>
+<td>1721（22.6%）</td>
+</tr>
+<tr>
+<td>其他真陳述（非金標準但被證明）</td>
+<td>1356（17.8%）</td>
+</tr>
+<tr>
+<td>假猜想（有反例）</td>
+<td>1802（23.6%）</td>
+</tr>
+<tr>
+<td>未決猜想（既未證亦無反例）</td>
+<td>2749（36.0%）</td>
+</tr>
+</tbody>
+</table>
+<p>值得注意的是，除了命中金標準外，另有 1,356 條為「金標準以外的真陳述」，以及 2,749 條需要進一步非平凡推理的未決猜想。</p>
+<h2 id="5-與商用-llm-比較">5. 與商用 LLM 比較</h2>
+<p><strong>RQ4</strong>：大型指令微調商用模型作為 Lemmanaid 後端、以及在直接猜想任務上表現如何？作者以 few-shot 評估 <strong>Claude Opus 4.5</strong> 與 <strong>GPT-5.2</strong>。為控制成本，僅在小測試集上進行：Octonions，以及 2026 年新加入 Isabelle AFP、涉及常見 list 資料型別的兩個形式化（Swap Distance、Linear Orders as Rankings）。兩商用模型訓練截止均在 2025，用 2026 極新形式化以盡量降低測試資料洩漏。每題用 5 個 few-shot 範例（取自 AFP-train），依 top-5 預測計算成功率。（表 2 摘要）</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>Octonions（模板）</th>
+<th>AFP-2026（模板）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Lemmanaid DeepSeek-6.7B</td>
+<td>76.6%</td>
+<td>41.7%</td>
+</tr>
+<tr>
+<td>Claude Opus 4.5</td>
+<td>47.1%</td>
+<td>19.4%</td>
+</tr>
+<tr>
+<td>GPT-5.2</td>
+<td>50.0%</td>
+<td>15.8%</td>
+</tr>
+</tbody>
+</table>
+<p>Lemmanaid（含 lemma-object 直接猜想時商用模型稍好，但模板任務上 Lemmanaid 明顯領先）以更小的本地模型勝過商用模型。關鍵差異在<strong>token 用量</strong>：微調模型的模板預測輸入約 <strong>325 token／查詢</strong>，商用模型約 <strong>1700 token</strong>——商用模型消耗顯著更多算力與 token。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>Lemmanaid 是 Isabelle 的新型神經符號式自底向上猜想工具：<strong>（神經）學習類比的猜想家族並表示為模板，再（符號）在新理論中實例化</strong>。它能在橫跨 HOL 與 AFP 廣泛主題的形式化上高效發現引理，勝過微調神經基線、符號工具，並在含近期形式化的測試集上勝過 Claude Opus 4.5 與 GPT-5.2。作者證明：<strong>在較簡單的「模板生成」任務上微調較小模型，以適度算力即可獲得良好結果</strong>。最佳後端（DeepSeek-6.7B）發現 50%（HOL-test）、29%（AFP-test）、41%（AFP-2026）的金標準引理；集成不同提示策略再提升，顯示不同做法發現略有不同的猜想。這是邁向「證明輔助器上神經符號類比猜想」實用性的第一步，超越高中／大學競賽層級的基準理論。</p>
+<h2 id="局限">局限</h2>
+<ul>
+<li>受算力所限，僅用 1B–6.7B 的較小 LLM 後端（DeepSeek、Llama 3 兩家）；每個 Lemmanaid 實例都需微調「模板生成模型」與「直接神經猜想模型」，且對多種提示策略各做一次，更大的 beam search 與更多提示實驗超出算力預算。</li>
+<li>以金標準人類引理為評估基礎，未評估這些猜想對「其他未知下游任務」是否真的有用——評估對真實形式化人類使用者的實際幫助值得另立專文研究。</li>
+<li>猜想的證明僅嘗試以全自動 tactic Sledgehammer 進行；需更專門 tactic 證明的猜想仍為開放問題。</li>
+<li>商用高階 LLM 的評估規模較小（為降低測試資料洩漏、並控制預算）；商用與自迴歸微調模型在算力、成本、訓練、輸入 token 用量上本有固有差異。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2504.04942_Lemmanaid.%E6%91%98%E8%A6%81.html"><code>../summarize/2504.04942_Lemmanaid.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

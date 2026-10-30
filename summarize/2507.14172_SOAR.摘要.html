@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《SOAR：用於演化程式合成的自我改進語言模型——ARC-AGI 案例研究》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Julien Pourcel、Cédric Colas、Pierre-Yves Oudeyer（Inria / Flowers team）</p><p>日期：2026-03（v2），程式合成 × 自我改進</p><p>arXiv：2507.14172</p><p><a href="https://arxiv.org/abs/2507.14172" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="soar用於演化程式合成的自我改進語言模型arc-agi-案例研究重點摘要">《SOAR：用於演化程式合成的自我改進語言模型——ARC-AGI 案例研究》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>SOAR</strong>（Self-improving Operators for Automated program Refinements）：讓 LLM 在「<strong>演化搜尋 ↔ 從搜尋軌跡自我微調</strong>」的閉環中持續變強——搜尋階段用 LLM <strong>採樣 + 精煉</strong>候選 Python 程式，學習階段用<strong>事後重標記（hindsight relabeling）<strong>把成功與失敗都轉成 （任務， 解） 訓練對來微調採樣與精煉能力；在 ARC-AGI 上</strong>不靠任何人工 DSL／人工資料</strong>，純從自身搜尋經驗 bootstrap，最終以開源 LLM 集成達<strong>公開測試集 52%</strong>（oracle 57.25%），突破固定模型的規模/算力天花板。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 直接寫程式解 ARC 太難（連 Claude-4-Sonnet 僅 20.75%、GPT-4.1 僅 8%）。演化搜尋能靠多採樣改善，但<strong>底層生成模型能力固定</strong>→ 加大採樣/精煉預算只會邊際遞減，存在性能天花板。如何讓「搜尋運算子」本身<strong>從搜尋經驗中持續學習變強</strong>？</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>Sample&amp;Refine 搜尋</strong>（每任務 6k 預算）：
+<ol>
+<li><strong>採樣</strong>：用 base LLM 直接生成 3k 個通用 Python 程式（歸納式 sample-and-test，非手刻 DSL），執行得輸出格。</li>
+<li><strong>精煉</strong>：對錯誤程式，把成功/失敗的輸入輸出回饋餵回 LLM 修補；以 <strong>REX</strong>（Thompson sampling + 探索獎勵）把精煉當生成式多臂老虎機，平衡探索/利用，跑 3k 步。</li>
+<li><strong>加權多數投票集成</strong>：6k 程式按各自在範例上的準確度給其產生的測試輸出格投票，回傳 2 個候選（符合 benchmark 規則）。</li>
+</ol>
+</li>
+<li><strong>學習階段（自我微調）</strong>：
+<ul>
+<li><strong>採樣微調</strong>：用 <strong>hindsight relabeling</strong>——任一採樣程式雖對原任務或許錯，但對「它自己實際產生的輸出」必然正確 → 造出合成 （任務， 解） 對，化失敗為訓練資料（2.4M 點，子採樣每任務 50 條；<strong>greedy-diverse</strong>：25 條最佳 + 25 條最差保多樣性最優）。</li>
+<li><strong>精煉微調</strong>：收集「錯→對」的成功修補對，按父程式準確度分箱（0%/1-34%/34-98%/100%）平衡採樣（<strong>diverse</strong> 略勝）。</li>
+<li><strong>正向協同</strong>：採樣與精煉<strong>共同微調一個模型</strong>勝過各自專用模型（共享程式結構表徵）。</li>
+</ul>
+</li>
+<li><strong>閉環自我改進</strong>：迭代「搜尋→學習」；訓練集跑 4 輪；再做<strong>測試時訓練（TTT）</strong>——目標任務無真值，改用「範例準確度」選解 + hindsight relabeling，於測試任務上續跑 2 輪。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>ARC-test：Sample&amp;Refine-6k 已讓 7B 勝 GPT-4.1、32B 勝 Claude-4-Sonnet;<strong>SOAR 幾乎把搜尋表現翻倍</strong>。</li>
+<li>訓練集 4 輪自我改進：各尺寸多解 <strong>+19~27%</strong>（7B 近翻倍）。</li>
+<li>測試時訓練再 <strong>+5%</strong>;7B 從 14.25%→<strong>36.25%</strong>（2.5 倍）、14B→42.75%、32B→44.37%、72B→44.87%、Mistral-Large→45.5%。</li>
+<li><strong>跨尺寸集成投票達 52.00%</strong>（oracle 57.25%）——開源 LLM 程式合成 SOTA，無任何人工資料/DSL。</li>
+<li>突破<strong>模型尺寸天花板</strong>（SOAR(no learning) 在 32B 後走平，SOAR 逐輪抬高曲線）與<strong>搜尋預算天花板</strong>（基線 ~5.2k 次後飽和）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>算力昂貴</strong>：每任務每輪 6k 次合成；增益隨輪次遞減（內在或方法侷限未定）。</li>
+<li><strong>解多樣性下降</strong>：已解任務收斂、未解任務靠 hindsight relabeling 勉強維持多樣性，但仍不足以支撐持續進步。</li>
+<li>僅在 ARC 驗證（雖宣稱領域無關）；多數投票與 oracle 差約 9.5%，集成策略仍有改善空間。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 E 類（ARC-AGI）的**「歸納式程式合成 + 自我改進閉環」代表**——相對 <a class="paper-reference" href="2505.07859_Product_of_Experts_ARC.%E6%91%98%E8%A6%81.html">2505.07859</a>（轉導式、PoE 集成、無學習閉環）走<strong>完全不同路線</strong>：產通用 Python 程式而非直接生格、靠 finetune 而非單純推論技巧。</li>
+<li>最值得記：<strong>hindsight relabeling 化失敗為訓練資料</strong>、<strong>採樣/精煉共同微調的正向協同</strong>、<strong>搜尋↔學習閉環抬高 scaling 曲線</strong>、<strong>TTT 把訓練集學的搬到測試任務</strong>。</li>
+<li>與 CodeIt（Butt et al. 2024）的關係：SOAR 四點擴展＝通用 Python（非手刻 DSL）、加執行回饋精煉步、擴到更大開源 LLM、TTT+測試時搜尋結合。</li>
+<li>定位：<strong>完整方法 + 大量消融</strong>，開源（github.com/flowersteam/SOAR）；適合做 <strong>程式合成搜尋、自我改進/expert-iteration、ARC、LLM 演化搜尋運算子</strong> 的人。可作為 FunSearch/AlphaEvolve 等「固定模型搜尋」系統的 drop-in 升級。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2507.14172_SOAR.zh-TW.html"><code>../translate/2507.14172_SOAR.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

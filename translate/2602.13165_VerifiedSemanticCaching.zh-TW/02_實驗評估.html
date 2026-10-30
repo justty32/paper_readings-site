@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗評估 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2602.13165_VerifiedSemanticCaching.zh-TW.html">回 2602.13165_VerifiedSemanticCaching.zh-TW 目錄</a>　<a href="01_%E5%BC%95%E8%A8%80.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗評估">4. 實驗評估</h2>
+<h3 id="41-資料集與分割">4.1 資料集與分割</h3>
+<p>使用 vCache 引入的兩個開放基準：</p>
+<ul>
+<li><strong>SemCacheLMArena</strong>（~60k prompt）：來自 Chatbot Arena 日誌，開放式對話 prompt，詞彙多樣性高</li>
+<li><strong>SemCacheSearchQueries</strong>（~150k prompt）：來自 ORCAS 查詢日誌，短關鍵字搜尋查詢</li>
+</ul>
+<p>以 20% 歷史前綴建構靜態層（覆蓋頻率最高且累計達 60% 的 equivalence class，每個 class 取最短 prompt 為 canonical 代表），剩餘 80% 作為線上評估串流。兩策略在相同靜態預載、相同閾值、相同請求順序下比較。</p>
+<h3 id="42-基線與配置">4.2 基線與配置</h3>
+<p>基線使用 vCache Pareto 分析中的最優靜態閾值配置（錯誤率約 1-2% 的 GPTCache 前沿點）。Krites 使用完全相同的嵌入、標註和閾值，僅啟用灰色地帶的非同步 VerifyAndPromote 迴圈。實驗取 <code>σ_min = 0</code> 以最大化覆蓋。</p>
+<h3 id="43-結果">4.3 結果</h3>
+<table>
+<thead>
+<tr>
+<th>資料集</th>
+<th>基線（靜態命中率）</th>
+<th>Krites（靜態來源服務率）</th>
+<th>相對提升</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SemCacheLMArena</td>
+<td>8.2%</td>
+<td>19.4%</td>
+<td>+136.5%</td>
+</tr>
+<tr>
+<td>SemCacheSearchQueries</td>
+<td>2.2%</td>
+<td>8.6%</td>
+<td>+290.3%</td>
+</tr>
+</tbody>
+</table>
+<p>Krites 在對話流量上讓 curated 答案覆蓋率翻倍以上；搜尋查詢的提升更大（近 4 倍）。由於關鍵路徑決策規則不變，基線的延遲與錯誤行為在觸發驗證的請求上完全保留。隨著時間推移，動態層逐漸被 verified pointer 填充，靜態來源服務率持續增長。</p>
+<h2 id="5-討論">5. 討論</h2>
+<h3 id="成本與-roi">成本與 ROI</h3>
+<p>離線法官的原始請求率約為 <code>λ_J ≈ λ * p_grey</code>（去重/速率限制前）。設 <code>c_J</code> 為每次法官呼叫的平均運算成本，<code>p_app</code> 為核准機率，<code>N</code> 為晉升鍵在被回收前的後續命中次數。則每次法官呼叫預期貢獻的額外靜態來源服務數為 <code>E[p_app * N]</code>——當改述頻繁重現且動態快取保留晉升條目足夠久時，該值最大。</p>
+<p>模型選擇方面：使用大模型（如 Claude Opus 4.6）為法官可能在運算上昂貴（因為法官 prompt 包含快取答案），但不影響關鍵路徑延遲。若運算預算緊張，可使用較小法官模型及/或以重現次數為門檻（僅在觀察到重複查詢後才送審），取捨晉升量與驗證器精度/召回率。</p>
+<h3 id="與相關工作的關係">與相關工作的關係</h3>
+<p>Krites 與先前語意快取研究處於互補空間：GPTCache 等系統在單層快取上應用靜態閾值；vCache 證明單一閾值設計的根本限制——相似度分佈高度重疊，最優閾值因嵌入而異。Krites 回答不同的問題：給定營運者已在分層快取前執行調校過的靜態閾值策略，且靜態條目為 curated 且難以更新，如何在<strong>不改變服務決策規則及其延遲特徵</strong>的前提下，安全地回收更多靜態命中。</p>
+<p>同步驗證快取（blocking verified cache）是自然替代方案：將 LLM 法官直接放在服務路徑上。這可增加快取命中，但為許多請求增加額外模型呼叫——增加平均及尾部延遲，侵蝕快取對互動式工作負載的核心效益。Krites 藉由分離服務與驗證避免了此延遲成本。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>Krites 示範了一種將非同步 LLM 驗證整合進分層語意快取的實用策略：保留保守的服務路徑閾值，以離線法官安全地將 curated 靜態答案的覆蓋範圍擴展到相似度灰色地帶。在對話與搜尋工作負載上，靜態來源服務率提升 136%–290%，且不增加關鍵路徑延遲。此方法將驗證成本與服務延遲解耦，使營運者可以獨立調整靜態覆蓋率與法官預算，為分層 LLM 服務架構提供了一個新的自由度。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

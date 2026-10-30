@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2507.17668_meta_learn_rl_algorithms.zh-TW.html">回 2507.17668_meta_learn_rl_algorithms.zh-TW 目錄</a>　<a href="02_%E8%A9%95%E4%BC%B0.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>「從資料元學習演算法」以取代人工設計，正成為提升 ML 系統的熱門範式。它對 RL 尤具潛力——RL 演算法常從監督/非監督學習借來、對 RL 並非最優。但至今<strong>嚴重缺乏不同元學習法之間的比較</strong>（如用演化優化黑箱函數，或用 LLM 提案程式碼）。本文對應用於 RL 流程不同環節的一系列被學演算法，做此實證比較（並開源元學習函式庫）。除了元訓練/元測試表現，也考察<strong>可解釋性、樣本成本、訓練時間</strong>，據此提出元學習新 RL 演算法的數條準則。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>ML 演算法改進通常靠人工設計——繁瑣、受人類直覺所限、少有突破。另一新範式是<strong>從資料元學習演算法</strong>：演算法被計算式地發現，人僅需設計元學習流程。這對 RL 特別有潛力，因 RL 不穩定、又常借用需改造的監督/非監督演算法。</p>
+<p>元學習法眾多（演化神經網路、提示 LLM 用程式碼提案、從黑箱蒸餾成符號式…），但多數論文只跟手工 baseline 比，<strong>少有對「學演算法的方法本身」的直接比較</strong>→不清楚各法優劣與適用場景。本文以實證分析補此空白。我們區分兩件事（圖 1，改自 Goldie et al. 2024）：<strong>meta-learned algorithm（被學的演算法，取代 RL 訓練某元件）</strong> 與 <strong>meta-learning algorithm（訓練被學演算法的方法）</strong>。選取具不同特性（遞迴、輸入多寡）的被學演算法，含學習式優化器與學習式 drift 函數。</p>
+<p>分析聚焦權衡：<strong>分布內外表現</strong>（RL 演算法常難遷移）、<strong>時間與計算成本</strong>（元學習可耗數千 TPU-月，且 RL 需環境模擬）、<strong>可解釋性</strong>（利於分析行為與安全）。主要發現：LLM 能樣本高效地找到有效 RL 演算法（只要有好的暖啟動起點）；把學到的演算法蒸餾進別的網路有時不增樣本就能提升；符號表示對遞迴或多輸入演算法擴展性差。據此提出建議：許多系統可受益於把 LLM 納入迴圈；從黑箱蒸餾進另一網路通常值得一試以求便宜的性能提升。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<h3 id="21-學習式演算法">2.1 學習式演算法</h3>
+<p>元學習在 RL 與 ML 都漸流行（多種學習式優化器）。本文不同：聚焦<strong>元學習法如何影響 RL 的泛化等因素</strong>。亦有發現<strong>符號演算法</strong>（可解釋數學式、易以程式碼表示、契合 LLM 流程）者，可經符號演化（如 Lion）或提示 LLM 迭代改進（如 FunSearch）。RL 中先驅被學演算法為 <strong>LPG</strong>（取代 actor-critic 更新），本文還聚焦 <strong>LPO</strong>（PPO 的學習式替代）與 <strong>OPEN</strong>（用特徵工程的學習式優化器）。泛化方面，Jackson et al. 用無監督環境設計課程改善 LPG 泛化，與本文（探討元學習法本身對泛化的影響）互補。</p>
+<h3 id="22-蒸餾">2.2 蒸餾</h3>
+<p>蒸餾（學生模仿老師）關聯許多元學習法。<strong>黑箱蒸餾</strong>（網路到網路）常蒸成較小網路（降推論成本/過擬合）或同尺寸（蒸餾本身即正則化）。<strong>符號蒸餾</strong>則學一個與神經老師映射相近的符號程式（Cranmer et al.），常用於物理系統的可解釋性，亦延伸到學習式優化器。Lu et al. 手動把 LPO 蒸成 discovered policy optimisation。本文探討何時符號蒸餾適合 RL 被學演算法，並考察其是否改善泛化。</p>
+<h2 id="3-背景">3. 背景</h2>
+<p><strong>強化學習</strong>：MDP 框架，agent 依狀態條件策略選動作、環境轉移並給獎勵，訓練策略最大化期望折扣回報。</p>
+<p><strong>Mirror Learning</strong>（Kuba et al.）：為含 PPO 的一類 RL 演算法提供保證、支撐 LPO 架構。策略更新含<strong>抽樣分布、漂移分布、優勢</strong>，與 <strong>drift 函數</strong>（量測新舊策略差異、懲罰過大更新）。有效 drift 函數須：處處非負、在當前策略處為零、且在當前策略處對其梯度為零。PPO 的 drift 即此類。</p>
+<h2 id="4-元學習演算法">4. 元學習演算法</h2>
+<h3 id="41-黑箱元學習">4.1 黑箱元學習</h3>
+<p>黑箱演算法常以神經網路表示（如優化器把梯度映射成參數更新），多用<strong>演化或 meta-gradient</strong> 訓練。Meta-gradient 常以 BPTT 對 RL 目標反傳、把演算法本身當 agent，rollout 通常截斷以防梯度爆炸/消失（引入偏差）。雖 Jackson et al. 顯示演化常勝 meta-gradient，為求多樣性，本文 LPG 用 meta-gradient（依 Oh et al.），其他用<strong>演化策略（ES）</strong>。ES 是群體式優化，用適應度的自然梯度估計迭代更新網路參數；<strong>易 GPU 向量化平行</strong>（不像符號演化每程式計算軌跡不同而難向量化）。</p>
+<h3 id="42-黑箱蒸餾">4.2 黑箱蒸餾</h3>
+<p>兩型：<strong>同尺寸蒸餾</strong>（同架構，蒸餾本身的正則化或可助泛化）與<strong>縮小蒸餾</strong>（層寬減半、學生欠擬合老師，若老師過擬合則欠擬合或助泛化）。用<strong>回歸匹配學生輸出到老師</strong>，輸入為合成生成（不需額外環境轉移、比 RL 抽樣更多樣不偏斜），定期在原元訓練環境評估 RL 表現、選最佳 checkpoint。</p>
+<h3 id="43-符號發現">4.3 符號發現</h3>
+<p>演化（突變/交叉/選擇）作用於表示符號程式的<strong>抽象語法樹（AST）</strong>。Lion 即符號演化發現的可解釋優化器，但<strong>符號搜尋低效</strong>（Lion 單 seed 評估三萬個函數，且 RL 需昂貴環境模擬）。又因各程式計算圖不同<strong>難 GPU 向量化</strong>（硬編分支會嚴重降速）→本文排除直接符號發現的實測，僅為完整性提及。</p>
+<h3 id="44-符號蒸餾">4.4 符號蒸餾</h3>
+<p>較快的替代：把黑箱演算法在監督問題中蒸成符號程式（兼得可解釋與可能更好泛化）。基於 Zheng et al.，用與黑箱蒸餾相同統計、單一大批生成靜止資料集，以 <strong>PySR</strong> 符號演化找對黑箱老師輸出低損的程式。雖 PySR 內建依「高適應+低複雜度」選式，本文一貫發現<strong>選最契合（最低損）函數的 RL 結果更好</strong>，故選最準擬合者。</p>
+<h3 id="45-llm-提案">4.5 LLM 提案</h3>
+<p>基於高能力 agentic LLM 做演算法發現。前提是 LLM 產出<strong>智慧提案</strong>→比符號演化樣本高效（只評估數十個演算法而非數千，實務上可直接在 RL 評估）。因提示調校影響大，本文建於 <strong>DiscoPOP</strong>、從手工演算法<strong>暖啟動</strong>；LLM 須在脈絡中推理先前演算法表現以提下一個建議；對 OPEN 等非常規輸入，提供各輸入簡述。訓後選最佳分布內演算法評估。LLM 用 <strong>GPT o3-mini</strong>（強推理、擅編碼）。</p>
+<h2 id="5-被學的演算法">5. 被學的演算法</h2>
+<p>依「條件於多少輸入、是否遞迴、影響 RL 哪一環節」精選：</p>
+<ul>
+<li><strong>LPO</strong>：取代 PPO 的 mirror drift。網路無偏置（滿足 mirror 條件）、過 ReLU 保非負；輸入為策略比 r 與優勢 A（GAE 算）的變換；初始化近 PPO drift 以利元學習。</li>
+<li><strong>LPG</strong>：元學習基於 actor-critic 的策略更新規則，用學習式 value(critic) 更新策略（actor）；以 meta-gradient 訓練；從定長 rollout 取輸入、用 backward-LSTM；輸入含獎勵、done 旗標、折扣、動作機率、作為 bootstrap 向量的 m 維類別分布。</li>
+<li><strong>OPEN</strong>：為 RL 設計的學習式優化器，除一般優化器輸入外還條件於：<strong>可塑性損失</strong>（用神經元 dormancy + 深層差異化）、<strong>探索</strong>（讓更新略帶隨機如 noisy nets）、<strong>非平穩性</strong>（訓練/批次時間尺度）。共約 20 輸入、逐參數獨立套用；本文探討前饋與遞迴兩版。</li>
+<li><strong>No Features</strong>：類 OPEN 但只用參數/梯度/動量的簡單前饋優化器。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

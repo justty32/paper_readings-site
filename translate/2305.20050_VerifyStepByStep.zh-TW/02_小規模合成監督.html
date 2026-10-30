@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_小規模合成監督 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.20050_VerifyStepByStep.zh-TW.html">回 2305.20050_VerifyStepByStep.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-小規模合成監督">4. 小規模合成監督</h2>
+<p>大規模結果有兩個混淆因子待分離：(1) 兩個訓練集不可直接比較——PRM 訓練集經主動學習構建、偏向錯誤答案解答、且小一個數量級；(2) 最終答案判分會給「推理錯誤但答案恰好正確」的<strong>偽解</strong>發正標籤，可能傷害 ORM 表現。人類標註太貴，改用大規模 PRM（記為 <strong>PRM_large</strong>）監督小模型，以低成本模擬大量資料收集。</p>
+<p><strong>4.1 過程 vs 結果監督（直接比較）</strong>：從小規模生成器每題抽 1～200 個解答，對相同資料集提供三種監督：PRM_large 的過程監督、PRM_large 的結果監督、最終答案核對的結果監督——唯一差異即監督形式。結果（圖 4）：<strong>過程監督在所有資料規模下都顯著勝過兩種結果監督</strong>；且 PRM_large 的結果監督明顯優於最終答案核對（因後者會被「推理錯誤但答案正確」的偽陽性污染）。何者是更合適的結果監督基線？最終答案核對的弱點（偽陽性）在 MATH 上被放大，PRM_large 式結果監督更能代表不易受偽陽性影響的領域；作者視後者為更相關的基線。</p>
+<p><strong>4.2 主動學習</strong>：先用每題一個樣本訓練小型 <strong>PRM_selector</strong>，用它給每題 1000 個樣本評分；訓練各 reward model 時每題選 N 個樣本——<strong>80% 是（PRM_selector 認為）最有說服力的錯誤答案樣本，20% 是其餘最有說服力的樣本</strong>（不論對錯），再以 PRM_large 打分後訓練。此策略確保樣本都相對有說服力、大部分已知至少含一個錯、且整體不過度偏向錯誤答案。以資料量—表現趨勢線斜率估計，<strong>此形式的主動學習比均勻標註資料效率高約 2.6 倍</strong>。（最大的主動學習資料集〔每題 200 樣本〕略低於趨勢線，最佳解釋是 200 已占選擇池〔1000〕相當比例、多樣性不足限制了上升空間。）另曾初步嘗試收集過程中迭代重訓 PRM_selector，但觀察到無法診斷的不穩定，最終表現無改善；作者仍預期某種迭代重訓有益，留待未來研究。</p>
+<h2 id="5-分布外ood泛化">5. 分布外（OOD）泛化</h2>
+<p>在 224 道最新 AP 物理／微積分／化學、AMC10、AMC12 考題（皆晚於預訓練資料截止，確定未見過）上評估 best-of-100：<strong>整體 ORM 63.8%、PRM 72.9%、多數決 61.3%</strong>（如 AP 微積分 PRM 86.7% vs ORM 68.9%；AMC10/12 PRM 53.2% vs 多數決 32.8%）。PRM 能承受適度的分布偏移，在全新測試題上依然強勢。</p>
+<h2 id="6-討論">6. 討論</h2>
+<p><strong>6.1 信用分配（credit assignment）</strong>：過程監督最明確的優勢是回饋更精確。結果監督下的 reward model 面對艱難的信用分配——要泛化好，它必須自己推斷錯誤解答錯在哪；難題上多數模型解答都在某處出錯，結果監督的負標籤邊際價值很低。過程監督的訊號豐富得多：指明前幾步中有多少確實正確、以及錯誤步的精確位置。<strong>信用分配變容易，是 PRM 強勢表現的解釋</strong>。</p>
+<p><strong>6.2 對齊影響</strong>：過程監督更可能產生<strong>可解讀的推理</strong>（鼓勵模型遵循人類認可的過程）、且<strong>本質上更安全</strong>（直接獎勵對齊的思路鏈，而非以結果作為對齊行為的代理）；結果監督難以審查、傳達的偏好較不精確，最壞情況下以結果為不完美代理可能導致模型學會鑽獎勵訊號的漏洞而失準。更安全的方法常帶來效能損失（alignment tax，對齊稅）；本文結果顯示<strong>過程監督其實是「負對齊稅」</strong>——更安全同時更強，可望促進其被採用。此結果在數學以外領域能否推廣未知，是重要的未來工作。</p>
+<p><strong>6.3 測試集污染</strong>：MATH 測試題在網上多處被討論，可能出現在預訓練資料中；雖用字串比對啟發式從 MathMix 移除，但無法強保證。檢查模型生成的解答未見記憶跡象；即使有輕微污染，預期對所有方法影響相似，<strong>相對比較結論大致不受影響</strong>。PRM 也常找出生成器解出率僅個位數百分比的難題正解，加上第 5 節保證無污染的泛化結果，都支持此主張。</p>
+<h2 id="7-相關工作">7. 相關工作</h2>
+<p>與 Uesato et al. (2022) 最接近：他們在小學數學上比較兩種監督，發現最終答案錯誤率相近、但過程監督用較少資料達成。本文三點不同：更強模型收集 PRM800K（不過小規模結果顯示大模型並非觀察到過程監督優勢的必要條件）、在遠難於 GSM8K 的 MATH 上評估、收集多得多的過程監督資料。表面上兩文結論衝突，實則可由<strong>監督規模差異</strong>解釋：圖 4(a) 的資料縮放趨勢顯示，少量過程監督與大量結果監督確實表現相近（與 Uesato et al. 一致），<strong>但規模放大後過程監督勝出——即使只用結果來評判</strong>。其他相關：Gao et al. (2022) 同樣用大 reward model 代替人類回饋研究 RLHF 過度優化；Minerva、self-consistency、chain-of-thought／scratchpad 等推理研究亦相關。</p>
+<h2 id="8-結論">8. 結論</h2>
+<p>在數學推理領域，過程監督能訓練出遠比結果監督可靠的 reward model；主動學習能藉由只呈現最有價值的模型輸出給人類，降低回饋收集成本。釋出 PRM800K（訓練最先進 reward model 的全部人類回饋），希望移除這一重大門檻、催化 LLM 對齊的相關研究。過程監督目前仍未被充分探索，期待未來工作深入研究其可泛化程度。</p>
+<h2 id="附錄擇要">附錄擇要</h2>
+<ul>
+<li><strong>A MathMix</strong>：15 億 token 高品質數學內容（題目與解答約 2.75 億、自由討論文字約 8.8 億、合成資料約 1.3 億、批改評註資料約 5 億），比 Minerva 的 38.5B token 更小、過濾更嚴，不另混一般語料。</li>
+<li><strong>B PRM800K</strong>：原始共 1,085,590 筆步級標籤、101,599 個解答樣本；過濾品管與未完成標註後餘約 80 萬筆／75K 解答。收集分兩階段：階段 1（約 5%）對每步的多個候選續寫標註；階段 2 分 10 個世代，每代以當前最佳 PRM 排序、呈現最高分的錯誤答案解答，代間重訓 PRM。主動學習使資料嚴重偏向錯誤解答（階段 2 僅 13.2% 解答正確），但步級標籤仍有 74.1% 為正確步。標註者須先通過 30 題品管篩選（與研究者金標一致率 ≥75%），並持續以隨機品管題監控淘汰。</li>
+<li><strong>D 標註指引</strong>：標註者看不到參考解答（避免偏向特定解法路徑）但拿得到真值最終答案。階段 2 預生成完整解答、遇第一個 negative 步即結束任務。</li>
+<li><strong>F PRM 評分策略</strong>：四種組合（neutral 當正／負 × 乘積／最小值歸約）表現差異很小；最佳為「neutral 當 positive＋各步分數乘積」（78.2%），全篇採用。乘積歸約對步數多的解答有輕微懲罰偏差。</li>
+<li><strong>G 難度分解</strong>：PRM 對 ORM 的優勢<strong>遍及所有難度</strong>，非僅難題。最易的題目上 ORM 表現隨樣本數增加反而略降（找得到騙過 ORM 的對抗樣本），PRM 則保持高度穩健；增加樣本數對最難題目的正面效果最大。</li>
+<li><strong>I PRM 視覺化案例</strong>：真陽性——對生成器解出率僅 0.1% 的三角恆等式難題，PRM 能認出罕見的有效思路鏈；真陰性——PRM 抓到「對非平方差的式子用平方差公式」「簡單計算錯」等步級錯誤；偽陽性——微妙的計數錯誤（少乘 2）、長除法漏前導零、週期誤判（12 誤為 10）等仍能騙過 PRM。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2305.20050_VerifyStepByStep.%E6%91%98%E8%A6%81.html"><code>../summarize/2305.20050_VerifyStepByStep.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

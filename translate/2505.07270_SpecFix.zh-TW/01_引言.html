@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_引言 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2505.07270_SpecFix.zh-TW.html">回 2505.07270_SpecFix.zh-TW 目錄</a>　<a href="02_%E8%A9%95%E4%BC%B0.html">下一節 →</a></p>
+</blockquote>
+<h2 id="1-引言">1. 引言</h2>
+<p>自然語言（NL）因大型語言模型（LLM）的強大能力而在軟體開發中扮演重要角色。然而，NL 固有的歧義性與被誤解的可能性會損害生成程式碼的品質。Vijayvargiya 等人觀察到歧義問題描述使模型效能下降 20%。</p>
+<p>既有工作（ClarifyGPT）分析 LLM 取樣程式的語意差異以量化描述歧義，再促使 LLM 向使用者提澄清問題。然而實驗顯示，LLM 產生的澄清問題往往與其自身對問題的詮釋無關，導致冗長且無效的描述，增加使用者認知負擔。</p>
+<p>鑑於上述限制，本文引入<strong>自動修復歧義 NL 問題描述</strong>的問題，定義為系統性地修改描述以確保符合預設品質標準的任務。核心洞察：許多歧義可以完全自動解決——(1) 可透過增加 LLM 產出最可能詮釋的機率來降低程式碼生成不確定性；(2) 雖然 SOTA LLM 在歧義語言下難以正確解讀輸入輸出範例，但可透過將 NL 對齊到釐清範例來消除歧義。</p>
+<p>SOTA LLM 難以直接修補歧義描述，常產生不相關或不一致的變動。我們假設這是因為 LLM 難以反思「自然語言文字的變化如何影響基於修改後文字所生成的程式」。為克服此問題，我們提出 <strong>SpecFix</strong>，將任務拆解為較簡單的子任務：(1) 先分析並修復該描述所誘導的<strong>程式分佈</strong>，(2) 再透過**對比規格推斷（contrastive specification inference）**將分佈變化映射回描述文字。</p>
+<p>本文貢獻：</p>
+<ul>
+<li>首個針對 LLM 程式碼生成的自動 NL 問題描述修復方法。</li>
+<li>新的問題描述品質標準：<strong>範例一致性（example consistency）</strong>，源於 LLM 無法從釐清用的 I/O 範例中抽取潛在意圖。</li>
+<li>透過程式分佈反思的修復機制——對比規格推斷。</li>
+<li>廣泛評估展示描述修復的有效性及其跨模型泛化能力。</li>
+</ul>
+<h2 id="2-動機範例">2. 動機範例</h2>
+<h3 id="21-nl-歧義降低-llm-效能圖-1">2.1 NL 歧義降低 LLM 效能（圖 1）</h3>
+<p>考慮一個要求「移除圖中節點間重複連線」的規格。歧義在於：(1) 刪除所有出現超過一次的連線，還是 (2) 從第二次出現起刪除。雖然嵌入的 I/O 範例明確支持第一種解讀，但 DeepSeek-V3 取樣 20 個程式全部落入第二種（錯誤）語意簇，範例一致性 EC=0。SpecFix 透過添加「only keep connections that appear exactly once」成功消除歧義，使 DeepSeek-V3 以 P=1 產出正確實作。</p>
+<p><strong>觀察 1</strong>：細微的 NL 歧義可能使 LLM 即使在有釐清用 I/O 範例的情況下仍產生錯誤程式碼。將 NL 對齊到範例可實現自動精確消歧。</p>
+<h3 id="22-既有-llm-方法的限制圖-2">2.2 既有 LLM 方法的限制（圖 2）</h3>
+<p>ClarifyGPT-auto（以使用者模擬 prompt 回答澄清問題並附加到原始描述）被測試時，對一個因缺少「and」等連接詞導致的歧義（swap cases／replace vowels 的先後順序），問了五個問題——四個多餘，唯一相關的問題答案模糊，導致修補後 pass rate 降為 0。SpecFix 改為先分析語意簇的機率（P）與範例一致性（EC），選取 EC=1 的最大簇 vs 拒絕簇，以對比推斷產生最小修訂（加上「Additionally」表明順序性），修補後 Pass@1 達到 1.0。</p>
+<p><strong>觀察 2</strong>：LLM 難以進行歧義修復，常產生多餘或誤導的澄清。透過拆解任務，SpecFix 達成小而意圖對齊的修補。</p>
+<h3 id="23-問題描述修復-vs-推理圖-3">2.3 問題描述修復 vs. 推理（圖 3）</h3>
+<p>µFix（SOTA 推理式程式碼生成方法）在面對「金字塔的 height 到底是垂直高還是斜高」的歧義時，雖正確辨識表面積公式，但計算結果與範例不符時，錯誤歸因於「四捨五入誤差」而非質疑其對 height 參數的理解。結果 Pass@1=0。SpecFix 改為先對 EC=0 的簇中程式進行程式修補（以 I/O 範例為正確性標準），再以對比推斷將描述改為「slant height（斜高）」，Pass@1 達 1.0。</p>
+<p><strong>觀察 3</strong>：SOTA 推理方法在歧義存在時難以正確「逆向工程」釐清範例。SpecFix 改為修補程式分佈使其對齊範例。</p>
+<h2 id="3-背景與記號">3. 背景與記號</h2>
+<ul>
+<li><strong>問題描述 D</strong>：本工作聚焦功能性規格（可觀察的程式行為），即 LLM 程式碼生成 prompt。</li>
+<li>LLM 可形式化為條件機率分佈 m(·|D)，實際以取樣 N 個程式近似。</li>
+<li><strong>語意簇</strong>：取樣程式依輸入輸出行為分群（等價類）。同一個簇內的程式在所有測試輸入上產出一致輸出。</li>
+<li><strong>語意熵（SE）</strong>：語意簇分佈的熵。SE&gt;0 表示多種不同詮釋。ClarifyGPT 以此定義歧義。</li>
+<li><strong>範例一致性（EC）</strong>：給定描述中嵌入的 I/O 範例 {(x_i, y_i)}，對一個語意簇 [P]，EC 為該簇中程式通過這些範例的比例。對整個分佈，EC 為加權平均。</li>
+</ul>
+<p><strong>問題描述修復的正式定義</strong>：尋找 D&#x27; 使得 SE(m_≡(·|D&#x27;)) &lt; SE(m_≡(·|D)) 且 EC(m_≡(·|D&#x27;), EX) &gt; EC(m_≡(·|D), EX)，且 diff(D, D&#x27;) &lt; τ（τ 為預設閾值）。終極目標是 SE=0（單一語意簇）且 EC=1（所有生成程式通過嵌入範例）。</p>
+<h2 id="4-specfix-方法">4. SpecFix 方法</h2>
+<h3 id="41-分佈修復algorithm-1">4.1 分佈修復（Algorithm 1）</h3>
+<p>輸入：問題描述 D、LLM m、迭代上限 K、取樣大小 N。</p>
+<ol>
+<li><strong>Extract_Examples(D)</strong>：從描述中提取嵌入的 I/O 範例。</li>
+<li><strong>Interpret(m, D, N)</strong>：取樣 N 個程式，生成測試輸入以覆蓋功能，依輸出分群為語意簇，得近似分佈 m̂_≡(·|D)。</li>
+<li>計算 SE 與 EC。</li>
+</ol>
+<p><strong>兩種修復策略</strong>：</p>
+<p><strong>機率引導修復</strong>（存在 EC=1 的簇時）：選取 EC=1 中機率最大者為 P_select，其餘為 P_reject。優先在範例一致的詮釋中挑選最可能者。</p>
+<p><strong>程式修復式描述修復</strong>（無任何簇 EC=1 時）：對最大簇（代表 LLM 的主要詮釋）中的程式以 self-refine 方法修復——給定錯誤程式與執行回饋（測試失敗、預期 vs 實際輸出），自動產生修正版。修復後的程式為 P_select，原程式為 P_reject。</p>
+<p>迭代最多 K 輪，每輪接受條件為 ec&#x27; &gt; ec 且 se&#x27; &lt; se。</p>
+<h3 id="42-對比規格推斷">4.2 對比規格推斷</h3>
+<p>SpecFix 的核心創新：將 P_select（支持證據）與 P_reject（反對證據）同時餵給 LLM，要求 (i) 診斷歧義來源，(ii) 重寫規格使只有預期行為可接受。原理：解釋在對比「為何是 A 而非 B」時最具資訊量，而非孤立描述 A。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

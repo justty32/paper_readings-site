@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2505.07859_Product_of_Experts_ARC.zh-TW.html">回 2505.07859_Product_of_Experts_ARC.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-實驗">5. 實驗</h2>
+<h3 id="51-資料建模tokenization">5.1 資料建模（Tokenization）</h3>
+<p>須最小化 token 數（context 有限、長 context 降效）且避開 tokenization 失敗模式（標準分詞會把數字併成「分組數字 token」，徒增謎題複雜度）。故<strong>精簡 token 集</strong>（從 &gt;10 萬減到約 64 個，見表 5）：每格用一 token（不壓縮）、盡量不加多餘分隔符；移除嵌入層多數列以縮小模型、杜絕 token 合併。任務開頭加少量額外 pre-prompt token（大小寫字母 A…Za…z），意外略升效能——推測微調時模型學會用這些當<strong>計算緩衝</strong>影響後續 token。</p>
+<h3 id="52-訓練">5.2 訓練</h3>
+<p>選 <strong>Mistral-NeMo-Minitron-8B-Base</strong> 表現最強。用 <strong>LoRA + 4-bit 量化 + 梯度檢查點</strong>（unsloth），LoRA 套用所有層含輸入輸出嵌入。只對輸出格算梯度（不令模型預測輸入格；且無範例無法預測第一個輸出）。訓練於增強資料（所有對稱 + 顏色置換 + 範例重排）。</p>
+<ul>
+<li><strong>初始微調</strong>：LoRA rank 256，單 H100;<strong>只用 RE-ARC</strong>——避「概念洩漏」（某類題出現在訓練資料會不當降低評估難度）。98 H100-時。</li>
+<li><strong>測試時訓練</strong>：限時、僅針對評估集，LoRA rank 32、64 步、batch 1；單獨 TTT 即顯著提升；平均 51 秒/任務（4090）。</li>
+</ul>
+<h3 id="53-解推論">5.3 解推論</h3>
+<p>DFS 採樣產候選集。增強含 16 個函數/任務（各對稱用兩次但配不同隨機顏色置換與範例重排）。表 3 比較 DFS / beam / 多項式 / 貪婪：<strong>DFS 快、省 VRAM、誤報率低</strong>。DFS T=9% 雖比 4× 隨機採樣找到的正解少（76% vs 77.3%），但選擇分數更好（誤報只約一半）、僅 1/4 推論時間（9:32 vs 39:47）。</p>
+<ul>
+<li><strong>對比 beam search</strong>：4-beam 可達 DFS T=9% 同準確度（71.6%），但需約 2 倍 VRAM（14GB vs 7.3GB）、4 倍時間；DFS 只需記單一路徑、靠低機率路徑早剪而快。對第一個之後的增強，先把目前最佳候選當初始猜測單次前向處理再回溯，更快。</li>
+<li>閾值 T 為超參（無法預知正解採樣機率）;T 約 1%–9% 在時間與正解數間取平衡；模型越確定 DFS 越快。T 越低候選集愈含正解（單調增）但選擇愈難；最終結果用 T=9%（推論時間約等於貪婪採樣）。</li>
+</ul>
+<h3 id="54-選擇策略">5.4 選擇策略</h3>
+<p>用增強集算 PoE 集成；取 PoE 機率最高與次高者為兩次猜測。圖 5：正解原非 rank 1 時，此程序多能改善其 rank。表 3 證實乘積（PoE）一致勝過取平均（averaging）;DFS 推論下 PoE 比平均高（71.6% vs 較低）。</p>
+<h3 id="55-conceptarc">5.5 ConceptARC</h3>
+<p>為驗不過擬合原 ARC，於 ConceptARC（按概念分類的 ARC 樣資料集）測：同 DFS T=9% 超參達 <strong>73.3%</strong> 兩次猜測準確度，顯示良好泛化到同難度 ARC 樣資料。</p>
+<h3 id="56-sudoku">5.6 Sudoku</h3>
+<p>換域驗證（Sudoku 3M）。規則跨題一致故不用 TTT；以 ARC 預訓 Llama-3B 再於 Sudoku 微調。無歧義故報 top-1。用 DFS T=1%，達 <strong>53%</strong>（SOTA LLM &lt;3%）。且<strong>若採到正解幾乎必選中</strong>——Sudoku 正確性易驗，增強更能識錯、大減誤報。圖 6：PoE 較單純取最高採樣機率大幅提升。</p>
+<h2 id="6-討論">6. 討論</h2>
+<p>核心：<strong>單一微調 LLM 兩角色</strong>——生成器（為各增強提解）+ 評分器（跨所有增強取似然乘積/幾何平均重評）。好處雙重：(1) 候選須在每個有效變換下皆合理才排前，難靠單表示的偽相關取巧；(2) log-linear pooling 天然是集成法。儘管 ARC 號稱複雜，此「先生成再重評」兩階段於開源模型達 SOTA；唯一更高的閉源解每題 17 美元，而本法全開源、可重現、每題僅約 2 美分。</p>
+<p>更廣原則：處理結構化/抽象推理時，<strong>關鍵是善用保語意變換、逼模型在同問題多視角下保持一致</strong>，從而把單模型當專家集成。此視角可望推廣到能定義此類變換的更複雜符號推理。</p>
+<h3 id="61-未來工作">6.1 未來工作</h3>
+<p>(1) 探索把單 LLM 當 PoE 推廣到 ARC 專屬變換之外的增強（如文字改寫、風格變體）以擴及更廣自然語言推理；(2) 評估 DFS 候選生成於 ARC 樣謎題之外（邏輯推理、程式合成、數學）的適用性。</p>
+<h2 id="附錄要點">附錄（要點）</h2>
+<ul>
+<li><strong>A. DFS 演算法</strong>：機率引導的 DFS 採樣偽碼（用負對數機率避數值問題）；實作因 unsloth 不支援動態快取須自行剪 KV-cache，並用「最佳已知序列含 prompt+預測的同時初始前向」等優化。</li>
+<li><strong>B. 訓練參數</strong>：初始 LoRA rank 256 / TTT rank 32;rank-stabilized LoRA on;cosine LR;adamw_8bit;4-bit;bfloat16；只訓輸出 token；初始 RE-ARC、TTT 單任務範例。</li>
+<li><strong>C. PoE 證明</strong>：定理 4.1 的完整推導（KL 分解 + 幾何平均 ≤ 算術平均得 log Z ≤ 0）。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2505.07859_Product_of_Experts_ARC.%E6%91%98%E8%A6%81.html"><code>../summarize/2505.07859_Product_of_Experts_ARC.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

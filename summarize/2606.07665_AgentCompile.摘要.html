@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>AgentCompile: An LLM-Guided Compiler for Direct CUDA Inference 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>arXiv：2606.07665</p><p><a href="https://arxiv.org/abs/2606.07665" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="agentcompile-an-llm-guided-compiler-for-direct-cuda-inference">AgentCompile: An LLM-Guided Compiler for Direct CUDA Inference</h1>
+<ul>
+<li><strong>arXiv</strong>: 2606.07665</li>
+<li><strong>作者</strong>: Xuanzhe Li, Ziyan Weng, Zhiyu Zhu, Junhui Hou (CityU HK / CityU HK Dongguan)</li>
+<li><strong>分類</strong>: I（方向二：AI 輔助系統/編譯器）</li>
+</ul>
+<h2 id="核心貢獻">核心貢獻</h2>
+<p>提出 AgentCompile，一個 LLM 引導的 CUDA 推論編譯器框架。關鍵設計原則是：LLM 僅提供<strong>諮詢性搜尋元資料</strong>（語意標籤、候選優先序、參數提示、風險註解），而<strong>可執行行為</strong>完全由編譯器確定性控制（模板生成、介面檢查、硬體約束、經驗驗證、效能量測、回退機制）。LLM 不得直接產生或允許任何 CUDA 原始碼。</p>
+<h2 id="管線架構八階段">管線架構（八階段）</h2>
+<ol>
+<li><strong>模型捕捉</strong>：追蹤 PyTorch/HuggingFace 模型，取得標準化計算圖</li>
+<li><strong>圖分析器</strong>：依賴/別名/邊界規則將 IR 分割為候選區域，記錄算子序列、張量介面、歸約軸、記憶體存取模式、動態形狀旗標</li>
+<li><strong>規劃器</strong>：枚舉合法融合/排程/記憶體/平行化方案，產生的候選空間 C(r,H) 受模板可用性與硬體約束限定；LLM 僅可在 C(r,H) 內重新排序或建議參數</li>
+<li><strong>CUDA 程式碼生成</strong>：確定性模板庫覆蓋向量化逐元素核、歸約、softmax、LayerNorm/RMSNorm、tiled GEMM、Tensor-Core GEMM、解碼導向 GEMV</li>
+<li><strong>驗證</strong>：編譯檢查、介面檢查、數值比對（含 dtype 容差）、結構/煙霧測試、選擇性記憶體安全工具</li>
+<li><strong>效能量測與選擇</strong>：取最快驗證候選；LLM 信心分數從不直接選擇核</li>
+<li><strong>回退</strong>：無效或無利區域退回框架/函式庫路徑</li>
+<li><strong>混合執行期</strong>：生成核 + 手寫 Triton/C++ 融合核 + FlashAttention/cuBLAS 第三方核</li>
+</ol>
+<h2 id="關鍵技術">關鍵技術</h2>
+<ul>
+<li><strong>自訂 GEMV</strong>：權重 [N,K] 佈局、256 執行緒區塊、128-bit 向量化載入、warp shuffle 歸約（無 shared memory bank conflict）、雙路徑 adaptive-N 策略</li>
+<li><strong>融合執行期核</strong>：fused RoPE（Q/K 旋轉嵌入單次 Triton 啟動）、fused residual-RMSNorm（float32 累加）、fused activation-multiply（MLP gating）、C++ 擴展 fused GEMV epilogue（Gate/Up + SiLU/GELU，Down + residual）</li>
+<li><strong>CUDALinear</strong>：替換 PyTorch nn.Linear，預轉置權重，M=1 GEMV 解碼，可退回 cuBLAS</li>
+<li><strong>FlashKVCacheManager</strong>：預分配固定 KV 緩衝、GPU 端追蹤序列長度、匯入 HuggingFace DynamicCache 狀態</li>
+<li><strong>CUDA Graph 重播</strong>：消融實驗中貢獻最大（2.06×），消除重複 Python dispatch 與逐 token 啟動開銷</li>
+</ul>
+<h2 id="實驗結果">實驗結果</h2>
+<ul>
+<li><strong>硬體</strong>：NVIDIA A800 SXM4 80GB</li>
+<li><strong>模型</strong>：Llama-3.2-1B/3B-Instruct, Qwen3-1.7B/4B（float16）</li>
+<li><strong>工作負載</strong>：輸入 128–40960 tokens，輸出 32–32768 tokens</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>vs PyTorch eager</th>
+<th>vs vLLM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen3-1.7B</td>
+<td><strong>5.66×</strong></td>
+<td>1.06×</td>
+</tr>
+<tr>
+<td>Qwen3-4B</td>
+<td><strong>4.05×</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Llama-3.2-1B</td>
+<td><strong>4.26×</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Llama-3.2-3B</td>
+<td>—</td>
+<td>1.07×</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>消融</strong>（Qwen3-4B）：baseline → +GEMV 1.45× → +FAKV 1.02× → +CUDA Graph 2.06× → +LLM &amp; fused 1.33× → 全系統 4.05×</li>
+<li>編譯器管線：Llama-3.2-3B 從 192 IR 節點分 34 區域，生成 174 候選全部通過驗證</li>
+</ul>
+<h2 id="與-ai_core-36-的關聯">與 ai_core §3.6 的關聯</h2>
+<p>AgentCompile 是 <strong>LLM 引導編譯＝固化</strong>（§3.6）的具體實例：LLM 在編譯器定義的確定性邊界內提供語意指導、排序偏好與風險評估，但候選產生、約束檢查、數值驗證、效能選擇與回退全部由編譯器機制執行。這正是 §3.6 所描述的「將 LLM 推理固化到確定性工程管線中」的模式。</p>
+<h2 id="限制">限制</h2>
+<p>原型僅針對 transformer 推論區域；不支援區域退回框架路徑；LLM 引導是搜尋策略（優化排序/語意假設），不保證最優實現。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

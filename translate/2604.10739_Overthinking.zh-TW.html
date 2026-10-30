@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>When More Thinking Hurts：LLM 測試時運算擴展中的過度思考（When More Thinking Hurts: Overthinking in LLM Test-Time Compute Scaling） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Shu Zhou, Rui Ling, Junan Chen, Xin Wang, Tao Fan, Hao Wang</p><p>日期：2026-04</p><p>arXiv：2604.10739</p><p><a href="https://arxiv.org/abs/2604.10739" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="when-more-thinking-hurtsllm-測試時運算擴展中的過度思考">When More Thinking Hurts：LLM 測試時運算擴展中的過度思考</h1>
+<h2 id="1-導論與動機">1. 導論與動機</h2>
+<p>測試時運算擴展（test-time compute scaling）——透過生成延伸推理鏈（extended reasoning chains）或思維鏈（Chain-of-Thought, CoT）token 後再給出最終答案——已成為提升大型語言模型（LLM）推理能力的主要範式。o1 類模型與推理引擎包的設計者普遍假設：<strong>更長的思考始終帶來更好的表現</strong>。</p>
+<p>本論文系統性挑戰此假設，透過量化不同運算預算與任務難度下推理 token 的邊際效用，揭示一個被忽略的現象：<strong>過度思考（overthinking）</strong>——超過任務特定閾值後，追加推理 token 非但無法提升準確度，反而導致模型放棄正確答案、轉向錯誤答案。</p>
+<h2 id="2-邊際報酬遞減">2. 邊際報酬遞減</h2>
+<p>作者在不同運算預算下繪製準確度-vs-推理 token 曲線，發現一致的倒 U 型（或漸進平台後下降）模式：</p>
+<ul>
+<li><strong>初期增益區</strong>：少量推理 token 帶來快速準確度提升，模型透過逐步推理消除歧義與錯誤。</li>
+<li><strong>平台區</strong>：邊際報酬趨近於零——追加 token 僅重述或微調已收斂的推理，不產生新洞察。</li>
+<li><strong>過度思考區</strong>：超過閾值後準確度<strong>下降</strong>——模型開始自我懷疑（&quot;Wait, let me reconsider...&quot;）、為簡單題構造不存在的邊界案例、或幻覺出虛構的例外情境，最終推翻原本正確的答案。</li>
+</ul>
+<p>此曲線的形狀與位置高度依賴任務難度：簡單題的峰值出現極早（少量 token），難題的峰值滯後但仍存在下降區。</p>
+<h2 id="3-翻轉事件flip-events">3. 翻轉事件（Flip Events）</h2>
+<p>作者定義「翻轉事件」（flip event）為：模型在推理過程中的某個 token 位置從<strong>正確狀態轉為錯誤狀態</strong>（correct→incorrect flip），且此轉變非因新資訊，而是純因<strong>推理鍵自身的動態</strong>。</p>
+<p>三種主要翻轉原因：</p>
+<ol>
+<li><strong>遞迴自我懷疑</strong>：模型在已達正確結論後，觸發「再檢查一遍」的元認知模式，過程中說服自己原本正確的推理有漏洞，轉而採納錯誤替代方案。</li>
+<li><strong>過度複雜化</strong>：對簡單題，模型在延伸推理中虛構額外約束或邊界案例（「但如果考慮 X 的特殊情況……」），最終以不存在的複雜性推翻簡潔的正確答案。</li>
+<li><strong>幻覺條件</strong>：模型在長推理鏈尾部幻覺出不存在的例外或規則，以幻覺為前提推導出錯誤結論。</li>
+</ol>
+<p>翻轉事件的頻率在推理鏈尾部顯著上升，且 correct→incorrect 翻轉的發生率高於 incorrect→correct（自我修正）。</p>
+<h2 id="4-難度依賴的最優運算分配">4. 難度依賴的最優運算分配</h2>
+<p>論文證明最優推理 token 預算與任務難度呈非線性關係：</p>
+<ul>
+<li><strong>簡單題</strong>：極少量 token 即達峰值，追加推理不僅浪費運算、更損害準確度。</li>
+<li><strong>中等題</strong>：中等預算達峰值，過度思考閾值較晚但依然存在。</li>
+<li><strong>困難題</strong>：受益於較大預算，但最終仍出現邊際報酬歸零。</li>
+</ul>
+<p><strong>均勻預算策略</strong>（對所有查詢分配相同的大預算）的雙重失敗：（1）簡單/中等題上浪費 50%+ token 並損害準確度；（2）部分難題仍可能分配不足。動態預算分配——依查詢難度調整推理預算——是效率與準確度的共同最優解。</p>
+<h2 id="5-成本感知評估與自適應門控">5. 成本感知評估與自適應門控</h2>
+<h3 id="51-成本感知評估框架">5.1 成本感知評估框架</h3>
+<p>傳統評估僅考量準確度，忽略達成該準確度所消耗的 token 成本。作者提出成本調整準確度（cost-adjusted accuracy）：將 token 消耗作為懲罰項納入評估指標——最優策略非「絕對最準確」，而是「每單位 token 成本下準確度最高」。</p>
+<h3 id="52-自適應早期停止">5.2 自適應早期停止</h3>
+<p>基於推理軌跡內部信號（如推理步驟間的共識穩定性、信心飽和度）訓練 gating layer，動態判斷何時推理已收斂、可以提前終止生成。實驗顯示：</p>
+<ul>
+<li>以 gating 提前終止的推理預算為全預算的 <strong>40–60%</strong>，但準確度匹配或超越全預算。</li>
+<li>簡單/中等題上 token 節省最顯著（70%+）。</li>
+<li>證明了「知道何時停止」與「知道如何推理」是互相獨立的能力維度。</li>
+</ul>
+<h2 id="6-實驗設計">6. 實驗設計</h2>
+<ul>
+<li><strong>模型</strong>：多個前沿 LLM（涵蓋不同規模與推理架構），包括 o1 類推理模型與標準 LLM。</li>
+<li><strong>任務</strong>：跨難度梯度的推理基準（數學推理、邏輯推理、常識推理），依內在難度量尺分層。</li>
+<li><strong>指標</strong>：準確度-vs-token 曲線、邊際效用、翻轉事件頻率、成本調整準確度、token 節省比率。</li>
+<li><strong>對照</strong>：固定預算（uniform budget）vs. 自適應停止（adaptive stopping）vs. oracle 最優停止（upper bound）。</li>
+</ul>
+<h2 id="7-實務啟示">7. 實務啟示</h2>
+<ul>
+<li><strong>動態運算分配</strong>：真實推理系統（o1 類模型、推理引擎包）應依查詢複雜度動態調整推理預算，而非靜態限制。</li>
+<li><strong>早期停止啟發式</strong>：訓練用於偵測 CoT 推理鏈已達穩定共識的 gating layer，可防止自我修正漂移（self-correction drift）。</li>
+<li><strong>成本感知部署</strong>：生產環境中 token 成本是真實約束——成本調整準確度應取代純準確度作為部署決策指標。</li>
+<li><strong>「不要想太多」作為安全特性</strong>：阻止模型在已達正確結論後繼續推理，可防止正確→錯誤翻轉，這既是效率優化、也是安全治理。</li>
+</ul>
+<h2 id="8-局限與未來方向">8. 局限與未來方向</h2>
+<ul>
+<li>研究集中於線性 CoT 推理格式；tree-search、beam-search 等替代擴展策略下的過度思考現象未充分探索。</li>
+<li>翻轉事件的自動化檢測與分類方法尚未建立（目前依賴人工標註）。</li>
+<li>自適應 gating 的跨任務泛化性、訓練開銷、與不同模型架構的相容性需進一步驗證。</li>
+<li>未探索「欠思考」（underthinking）——推理不足導致錯誤的對稱現象，以及欠思考與過思考之間的最佳平衡區間的 formal characterization。</li>
+</ul>
+<h2 id="9-結論">9. 結論</h2>
+<p>測試時運算擴展存在明確的報酬遞減邊界——「更長思考」不等於「更好思考」。過度思考現象表明：推理是一種需要<strong>成本感知終止條件</strong>的有限資源，而非可無限追加的免費午餐。自適應早期停止以顯著更低的 token 成本達成匹配或超越的準確度，為下一代推理系統的部署提供了「何時該停止」的實證基礎。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

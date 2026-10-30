@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>04_相關工作 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.03495_ProTeGi.zh-TW.html">回 2305.03495_ProTeGi.zh-TW 目錄</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-相關工作">4. 相關工作</h2>
+<p>本文的工作橫跨多個與 LLM prompt 相關的研究領域。多數工作嘗試透過可微調的軟 prompt 或訓練參與 prompt 操作的輔助模型（或直接訓練 prompt 產生器本身）來改進 LLM prompt，但許多實務工作者只能透過 API 與 LLM 溝通，拿不到模型訓練所需的內部狀態變數，且直接優化出的 prompt 語言往往不連貫。另一支工作以強化學習引導的離散操作改進 prompt，在逐詞或逐片語層級上構建 prompt，但這些方法依賴文字上的原始操作、屬於參數化方法（至少依賴一個輔助的獎勵模型），且綁定於數值獎勵函數，而本文的評分函數可以是任何東西，甚至是一則使用者文字評語（本文使用 GPT 本身）。另一支離散操作方向的工作利用 LLM 回饋：Zhou et al.（2022）、Guo et al.（2023）提出的 LLM 生成蒙地卡羅取樣法即本文 MC 基線的代表；Prasad et al.（2022）則以演化搜尋處理由 LLM 釋義與交換組塊生成的 prompt。與本文同期，Chen et al.（2023）提出依輸出回饋編輯 SQL 生成 prompt。雖然這些工作與本文構想相近且具前景，但它們大多依賴任務特化或無方向性的局部搜尋，缺乏有意義的語意方向；此外，這些工作常聚焦於從零生成 prompt，而人類寫出一份粗略初稿（例如一段模糊的行為描述）其實相當容易。本文提出的是可套用到任何任務、能為 prompt 帶來有意義語意改進的通用方法。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>本文提出 ProTeGi，一個簡單、通用的 LLM prompt 自動優化框架。作者採用一套新穎技巧克服離散優化障礙——在文字型對話中模擬梯度下降的步驟，並以高效的 bandit 選擇步驟在 prompt 空間上做束搜尋。實驗涵蓋四個基準分類任務，結果顯示 ProTeGi 能在無需超參數調校或模型訓練的情況下顯著改進 prompt。未來工作方向包括：把此技術推廣到更多採用新度量函數的任務、把步長概念納入學習過程、以及擴展文本梯度下降的概念框架。</p>
+<h2 id="局限">局限</h2>
+<p>儘管結果令人期待，本研究仍有若干限制。首先，ProTeGi 框架的效率在現實中受限於 LLM API 的速率限制，實際上會轉化為效率下降；雖然 ProTeGi 在候選挑選上相對高效，但包括梯度生成、以及每輪過後對所選束候選做完整評估在內的許多步驟仍需要大量 API 呼叫（且 prompt 常常很長），可能使優化程式的執行時間即使在查詢預算不大時也超過 1 小時；對非常大的 prompt 空間或時效性要求高的應用，若無充足的計算資源，可能不宜使用 ProTeGi。其次，ProTeGi 框架僅在四個基準分類任務上測試。雖然這些任務涵蓋多樣領域，但遠非窮盡；對於建模需求更複雜的其他類型任務，可能還需要進一步測試與精修。</p>
+<h2 id="附錄要點">附錄要點</h2>
+<ul>
+<li><strong>A.1「梯度下降」Prompt</strong>：公開了實驗中使用的三段固定模板全文——∇（產生梯度：告知 LLM 目前 prompt 及其答錯的樣本，要求給出若干個「這個 prompt 可能哪裡錯了」的理由，並以 <code>&lt;START&gt;</code>/<code>&lt;END&gt;</code> 包裹每個理由）、δ（依梯度改寫：把當前 prompt、錯誤範例與 ∇ 產生的問題描述一併餵入，要求 LLM 寫出若干個改進版 prompt，同樣以 <code>&lt;START&gt;</code>/<code>&lt;END&gt;</code> 包裹）、釋義（蒙地卡羅取樣：沿用 Zhou et al. 2022 的釋義模板，要求 LLM 在保留語意的前提下改寫措辭）。三者皆為全任務共用的固定模板，不做任務客製化。</li>
+<li><strong>A.2 初始 Prompt</strong>：為貼近真實 LLM 開發情境，四個任務的起始 prompt p₀ 均由專業機器學習工程師「一次快速草擬」寫成（僅被告知寫下期望行為的描述），格式統一為 <code># Task</code> / <code># Output format</code>（回答 Yes 或 No）/ <code># Examples</code>（動態填入隨機抽取的少樣本範例）/ <code># Prediction</code>。</li>
+<li><strong>附錄 B、附錄 C（質化範例與優化變異數）</strong>：附錄 B 補充表 4 之外的質化範例（如 Liar 案例中梯度指出「未考慮說話者潛在偏見／議程」，ProTeGi 候選據此加入「潛在偏見」考量；Sarcasm 案例中梯度指出 prompt 不夠具體，ProTeGi 候選改寫為「這則推文是否以諷刺方式嘲弄個人或組織」）。附錄 C 為排除小預算下的高變異，以 6 次查詢/候選、12 次重複試驗計算標準誤，結果顯示 ProTeGi 準確率始終優於 MC，但有時標準誤更高，作者推測可能與文本梯度更新的語意定向性有關（表 5：Ethos 0.95±0.003 vs MC 0.94±0.001；Sarcasm 0.87±0.003 vs 0.86±0.002；Jailbreak 0.81±0.006 vs 0.76±0.009；Liar 0.64±0.005 vs 0.62±0.007）。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2305.03495_ProTeGi.%E6%91%98%E8%A6%81.html"><code>../summarize/2305.03495_ProTeGi.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

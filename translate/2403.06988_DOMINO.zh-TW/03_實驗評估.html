@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗評估 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2403.06988_DOMINO.zh-TW.html">回 2403.06988_DOMINO.zh-TW 目錄</a>　<a href="02_%E9%AB%98%E6%95%88%E4%B8%94%E5%B0%8D%E9%BD%8A%E7%9A%84%E7%B4%84%E6%9D%9F%E8%A7%A3%E7%A2%BC.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗評估">4. 實驗評估</h2>
+<p><strong>設定</strong>：在 Mistral 7B 與 Llama-2 13B 上評估，推理後端用 transformers 與 llama.cpp，硬體為 A100 40GB / H100 80GB。DOMINO 明確在<strong>離線設定</strong>評估（所有文法事先已知、不隨請求變化）。</p>
+<p><strong>資料集</strong>：以 GSM8K（數學推理）與 CoNLL-2003（命名實體辨識，取 400 筆測試）評估下游準確率；並以 JSON、帶 schema 的 JSON、C 程式語言、帶 schema 的 XML 及靜態 regex 模板等任務比較相對無約束解碼的開銷。<strong>基線</strong>：無約束生成、guidance 程式（模板式與對空白不敏感的 CFG 式 WS）、llama.cpp 的 EBNF 文法（代表線上解析法）。</p>
+<h3 id="41-任務準確率表-2">4.1 任務準確率（表 2）</h3>
+<p>DOMINO 在所有任務上取得<strong>最佳準確率</strong>，同時吞吐量遠超無約束生成。DOMINO 的準確率相對無約束皆持平或提升，顯示極低或零侵入性。反觀標準 guidance 有明顯侵入性痕跡，準確率最多掉 <strong>11 個百分點</strong>；guidance 的優化雖能提吞吐（最高 2.02×），DOMINO 更快（最高 <strong>2.71×</strong>）且維持高準確率。改用彈性空白的 guidance WS 能救回部分準確率但不完全，且吞吐降到約 0.8×；llama.cpp 的線上解析也非完全非侵入（準確率受損較輕），吞吐同樣降到約 0.8×。</p>
+<p>代表數據（Accuracy / 相對吞吐）：</p>
+<table>
+<thead>
+<tr>
+<th>資料集 / 模型</th>
+<th>無約束</th>
+<th>guidance</th>
+<th>llama.cpp</th>
+<th><strong>DOMINO (k=∞)</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GSM8K / Mistral 7B</td>
+<td>0.415 (1.0×)</td>
+<td>0.345 (0.98×)</td>
+<td>0.375 (0.80×)</td>
+<td><strong>0.418 (1.77×)</strong></td>
+</tr>
+<tr>
+<td>GSM8K / Llama-2 13B</td>
+<td>0.262 (1.0×)</td>
+<td>0.152 (1.12×)</td>
+<td>0.237 (0.86×)</td>
+<td><strong>0.262 (1.66×)</strong></td>
+</tr>
+<tr>
+<td>CoNLL2003 / Mistral 7B</td>
+<td>0.21 (1.0×)</td>
+<td>0.098 (2.02×)</td>
+<td>0.117 (0.80×)</td>
+<td><strong>0.21 (2.66×)</strong></td>
+</tr>
+<tr>
+<td>CoNLL2003 / Llama-2 13B</td>
+<td>0.09 (1.0×)</td>
+<td>0.062 (2.18×)</td>
+<td>0.080 (0.86×)</td>
+<td><strong>0.09 (2.71×)</strong></td>
+</tr>
+</tbody>
+</table>
+<p>（guidance 在 CoNLL2003/Llama-2 準確率 0.062 vs 無約束 0.09，掉幅顯著；DOMINO 完全還原無約束準確率。）</p>
+<h3 id="42-參數研究">4.2 參數研究</h3>
+<p><strong>前瞻 k（表 4）</strong>：k 值過低會顯著損害表現。人工檢視發現 k 太小時模型被逼入不同的空白行為（如 <code>},</code> 這類橋接 token 不可用導致格式異常），甚至使 Llama-2 無法生成長度大於 1 的物件列表。Mistral 7B：k=0 為 0.308、k=1 為 0.1、<strong>k=∞ 為 0.418</strong>（略超無約束 0.415）；Llama-2 13B：k=0 為 0.0、k=1 為 0.036、<strong>k=∞ 為 0.157</strong>（無約束 0.155）。k=∞ 完全還原並略超無約束準確率，印證最小侵入性。</p>
+<p><strong>推測與機會式遮罩</strong>：對 schema 驅動的 JSON，推測解碼（s∈{6,8,10}）特別有效，達到相對無約束 <strong>1.7× 吞吐</strong>；但對自由形式 JSON 推測無效，改用機會式遮罩較佳，僅 <strong>4.21% 開銷</strong>。</p>
+<h3 id="43-效率表-3">4.3 效率（表 3）</h3>
+<p>DOMINO 明顯降低推理時約束的計算負擔，顯著勝過 guidance 與 llama.cpp 的線上解析。對結構可預測的文法（如 schema 驅動格式），推測解碼特別有效，吞吐比無約束生成高出最多 <strong>77%</strong>（1.77×），且仍最小侵入。代表數據（相對無約束吞吐，DOMINO 取「機會式遮罩或推測解碼中較佳者」）：</p>
+<table>
+<thead>
+<tr>
+<th>文法 / 模型</th>
+<th>llama.cpp CFG</th>
+<th>guidance CFG</th>
+<th><strong>DOMINO</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>JSON （無 schema） / Mistral 7B</td>
+<td>0.79×</td>
+<td>0.88×</td>
+<td><strong>0.96×（機會式）</strong></td>
+</tr>
+<tr>
+<td>JSON (GSM8K schema) / Mistral 7B</td>
+<td>0.80×</td>
+<td>0.99×</td>
+<td><strong>1.77×（推測 s=10）</strong></td>
+</tr>
+<tr>
+<td>C 程式語言 / Mistral 7B</td>
+<td>0.74×</td>
+<td>0.41×*</td>
+<td><strong>0.78×（機會式）</strong></td>
+</tr>
+<tr>
+<td>XML （帶 schema） / Llama 13B</td>
+<td>0.87×</td>
+<td>0.98×</td>
+<td><strong>1.84×（推測 s=10）</strong></td>
+</tr>
+<tr>
+<td>固定模板 / Llama 13B</td>
+<td>0.69×</td>
+<td>0.99×</td>
+<td><strong>1.91×（推測 s=10）</strong></td>
+</tr>
+</tbody>
+</table>
+<p>C 程式碼生成開銷最大（C 文法最複雜、推測解碼因難以用簡單計數模型預測而無益），但靠機會式遮罩仍以 0.78× 勝過 llama.cpp 的 0.74×。文法預計算時間未計入吞吐，範圍約 1–5 秒（C 為離群值約 20 秒）。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>作者論證了對「最小侵入、高效率」約束解碼方法的需求，並提出 DOMINO 作為針對文法約束的首個實例。DOMINO 結合<strong>預計算、推測解碼與機會式遮罩</strong>，實現最小侵入約束（無準確率損失）、常常零開銷甚至更快的生成，因而達成高吞吐推理。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2403.06988_DOMINO.%E6%91%98%E8%A6%81.html"><code>../summarize/2403.06988_DOMINO.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

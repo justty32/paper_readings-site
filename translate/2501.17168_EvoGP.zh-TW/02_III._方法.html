@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_III._方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2501.17168_EvoGP.zh-TW.html">回 2501.17168_EvoGP.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_V._%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="iii-方法">III. 方法</h2>
+<h3 id="iii-a-張量化資料結構">III-A 張量化資料結構</h3>
+<p>為達群級 GPU 並行，需可 coalesced 記憶體存取與統一張量形狀。採<strong>線性前綴編碼</strong>把樹攤平成節點序列：一般前綴序列不足以還原任意樹（每節點子數可變），但 <strong>TGP 中每節點子數由其類型與值完全決定</strong>（常數／變數無子、一元函數一子、二元函數二子），故前綴的「類型 + 值」即可無歧義編碼拓撲與值。先用兩陣列：<strong><code>node_type</code></strong>（第 i 節點類型）、<strong><code>node_value</code></strong>（第 i 節點值），長度＝節點數。</p>
+<p>但此表示不存顯式結構，子樹交叉／變異須反覆解析前綴定子樹邊界，複雜度 <strong>O(n)</strong>，GPU 上低效。故再加一陣列 <strong><code>subtree_size</code></strong>（第 i 節點為根的子樹大小），子樹邊界可 <strong>O(1)</strong> 直接定位，省去結構解析、大幅提升 GPU 遺傳操作效率。</p>
+<p>為解決變長難批次：引入超參 <strong>最大允許節點數</strong>，把三陣列各以 <strong>NaN</strong> padding 補成定長（真實資料佔前段、其餘填 NaN），使所有樹共用一致張量形狀、利 GPU 批次。最後把族群（共 P 棵樹）沿族群維串接成三個批次張量 <code>node_types</code>、<code>node_values</code>、<code>subtree_sizes</code>。如此遺傳算子與 fitness 評估皆可有效用 GPU 並行（圖 2）。</p>
+<h3 id="iii-b-張量化操作">III-B 張量化操作</h3>
+<p>此編碼不只利批次評估，也提供統一結構表示利高效 GPU 遺傳操作；EvoGP 全程在裝置上做交叉／變異。關鍵觀察：許多常用算子（<strong>單點交叉、子樹變異、hoist 變異</strong>）共用一個結構基元——<strong>把某節點處的子樹換成另一子樹</strong>，故抽象成<strong>子樹交換（subtree exchange）</strong>：<code>SubtreeExchange(原樹, 目標子樹根, 替換子樹)</code>。在張量編碼下用張量拼接重組三陣列；新樹的 <code>subtree_size</code> 由「對目標節點所有祖先的子樹大小加上 Δ」算得。若新樹超過最大尺寸約束，<strong>操作判無效、直接返回原樹</strong>（靠顯式 subtree_size 陣列使此檢查高效）。</p>
+<p>藉子樹交換可實作幾乎所有 TGP 算子：<strong>單點交叉</strong>＝把一父的隨機子樹換成另一父的隨機子樹；<strong>子樹變異</strong>＝把隨機子樹換成新生成子樹（圖 3）。一旦子樹交換成為 GPU primitive，新算子只需改「如何選／造子樹」、核心張量操作不變、不必改 GPU kernel——兼得高效能與廣擴展性。</p>
+<h3 id="iii-c-fitness-評估的自適應並行">III-C fitness 評估的自適應並行</h3>
+<p>符號迴歸是 TGP 核心應用：每個體 fitness ＝其預測與所有資料點目標值比較。為各種資料量都高 GPU 利用率，EvoGP 在<strong>執行期動態選執行模式</strong>：</p>
+<ul>
+<li><strong>資料量小至中</strong>：單個體評估不足以填滿 GPU → 採<strong>混合並行</strong>，單次 kernel 啟動內結合資料級與群級並行。配置二維 CUDA grid（形如 族群 × 資料分段）；多個 block 評估同一個體、各算一段資料的部分 fitness，再用<strong>硬體原子操作</strong>彙總。即使資料量小，個體間並行也補上每個體工作量不足；單 kernel 啟動省 overhead（圖 4 右上）。</li>
+<li><strong>資料量大</strong>：單個體在大量資料點上已能飽和所有 CUDA 核心，加群級並行幾無增益 → 切<strong>純資料級並行</strong>，每個體獨立 kernel 啟動，啟動前把該樹載入<strong>常數記憶體</strong>（執行期不可變、跨執行緒廣播存取快），較混合模式從較慢全域記憶體讀樹，大幅提升記憶體吞吐與大規模 runtime（圖 4 右下）。</li>
+<li><strong>執行期自動切換（Choose Parallelism Adaptively）</strong>：以<strong>資料點數 vs GPU 總 CUDA 核心數</strong>（由 SM 數 × 每 SM 核心數估計）為閾值決定，無需手動配置。</li>
+</ul>
+<p>不論用哪種並行，單個體輸出計算皆走<strong>後綴（逆波蘭）堆疊式求值</strong>：樹雖以前綴格式存，但<strong>反向</strong>（從尾到頭）走訪即模擬後綴遍歷；每步由節點類型推 arity、對堆疊上的值施對應運算。此模式天生相容前綴編碼、特別適合 GPU 高效實作。</p>
+<h2 id="iv-實作">IV. 實作</h2>
+<h3 id="iv-a-evogp-總覽">IV-A EvoGP 總覽</h3>
+<p>以 <strong>Python + PyTorch</strong> 實作（張量操作與 GPU 資源管理）。為效能，內含一套<strong>自製 CUDA kernel</strong>（樹初始化、變異、交叉、推論、SR fitness 評估），並依資料量採資料級／混合並行；這些 kernel 以 <strong>PyTorch 自訂算子</strong>整合，無縫相容 PyTorch 生態。採<strong>全 GPU 常駐</strong>模型：族群與評估上下文皆留 GPU，免主機↔裝置頻繁搬運（<strong>zero-copy</strong> 設計），契合 GPU 加速的 RL 環境，達端到端高效並行模擬、消除 IO 瓶頸。內建支援符號迴歸、策略優化、分類三類應用與標準化基準（圖 5：Algorithm 模組＋Problem 模組）。</p>
+<h3 id="iv-b-豐富功能與客製">IV-B 豐富功能與客製</h3>
+<p>除基本 GPU 加速操作，提供多種演化算子變體（選擇、變異、交叉），可自由組合配置成客製 TGP 演算法（表 I 比較各主流庫的算子變體，EvoGP 支援最全面）。並提供直觀介面定義自訂算子與問題；用戶可用低階 CUDA 實作自家最佳化算子；模組化設計利套用至自有問題域。</p>
+<h3 id="iv-c-多輸出支援">IV-C 多輸出支援</h3>
+<p>擴充傳統 TGP 支援多輸出（如 RL 策略優化）。用 <strong>Modi 節點</strong>（圖 6）：① 每個 Modi 節點指定其值貢獻到哪個輸出，同一輸出的多個 Modi 貢獻依預定規則（此處為求和）彙總；② Modi 節點若有父節點，<strong>不向上傳遞自身計算值，而直接採其最右子節點的值</strong>——此機制使樹結構實際變成 <strong>DAG</strong>，可同時計算多個輸出。使 EvoGP 適配 RL 等需多個相關輸出的任務。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

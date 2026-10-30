@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Reflexion：具語言強化學習的語言智能體（Reflexion: Language Agents with Verbal Reinforcement Learning）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Noah Shinn, Federico Cassano, Edward Berman, Ashwin Gopinath, Karthik Narasimhan, Shunyu Yao（Northeastern / MIT / Princeton）</p><p>日期：2023-03（NeurIPS 2023）</p><p>arXiv：2303.11366</p><p><a href="https://arxiv.org/abs/2303.11366" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="reflexion具語言強化學習的語言智能體重點摘要">《Reflexion：具語言強化學習的語言智能體》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Reflexion（言語式強化）</strong>：不更新任何權重，而是把環境／評估器給的<strong>二元或純量失敗訊號放大成一段自然語言反思（verbal reflection）</strong>，存進<strong>情節式記憶緩衝（episodic memory）</strong>，下一次嘗試時把這些反思當額外脈絡讀回給 LLM，使智能體在少數幾次 trial-and-error 內從過去失敗中學會改進；反思等同一種「語意梯度（semantic gradient）」，在 HumanEval 上以 91% pass@1 超越 GPT-4 的 80%。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>以 LLM 為核心的自主智能體（ReAct、Toolformer、WebGPT 等）過去只能靠 in-context 範例學習；要讓它們從試誤中學，傳統強化學習需要大量樣本與昂貴的權重微調，對動輒數千億參數的 LLM 不切實際。核心難點是<strong>信用分派（credit assignment）</strong>——要能判斷模型「在哪裡錯了」並生成一段可執行的改進建議。Reflexion 主張用語言而非梯度來做這件事。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>三模組架構</strong>：Actor（LLM，依狀態生成文字/動作，內含 memory；可用 CoT 或 ReAct 當生成器）／Evaluator（對軌跡打分：推理用 exact-match、決策用啟發式、程式用自寫單元測試或 LLM 自評）／Self-Reflection（LLM，把「稀疏純量獎勵＋軌跡＋記憶」放大成具體的口語反思）。</li>
+<li><strong>迴圈（Algorithm 1）</strong>：Actor 產生軌跡 → Evaluator 打分 → Self-Reflection 生成反思 sr_t → 附加進長期記憶 mem → 重置環境重試，直到通過或達最大次數。</li>
+<li><strong>兩層記憶</strong>：短期＝當前軌跡；長期＝歷次反思文字，滑動窗口上限 Ω（通常 1–3 條）以符合脈絡長度限制。</li>
+<li><strong>接地的自我評估</strong>：程式任務用 CoT 自生單元測試套件（經 AST 過濾、最多 6 條），因此仍符合 pass@1 資格；不依賴隱藏測試集。</li>
+<li>相對傳統 RL 的優勢：輕量免微調、回饋更細緻可解釋、記憶明確、對未來動作給出具體提示。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>HumanEval Python：91.0% pass@1</strong>（前 SOTA GPT-4 為 80.1%）；HumanEval Rust 68 vs 60、MBPP Rust 75.4 vs 70.9、LeetcodeHard PY 15.0 vs 7.5。<strong>唯一落後</strong>：MBPP Python 77.1 &lt; 80.1（歸因於內部測試 16.3% 的偽陽性率，遠高於 HumanEval 的 1.4%）。</li>
+<li><strong>AlfWorld 決策</strong>：ReAct+Reflexion 在 12 次連續試驗內解出 134 題中的 130 題，較強基線<strong>絕對 +22%</strong>；ReAct-only 在第 6–7 試就停滯（幻覺率 22%）。</li>
+<li><strong>HotPotQA 推理</strong>：較基線 <strong>+20%</strong>；消融顯示「自我反思」較「僅情節記憶」再多帶來 <strong>+8%</strong> 絕對增益（證明 refinement-only 不如 reflection-guided）。</li>
+<li>提出 <strong>LeetcodeHardGym</strong>（40 題 hard、19 種語言，題目均在 GPT-4 預訓練截止後發布）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>本質是用自然語言做策略最佳化，仍可能卡在<strong>非最優局部極小</strong>；記憶只是有上限的滑動窗口（作者建議未來改用向量資料庫/SQL）。</li>
+<li>高度依賴 LLM 自評能力（弱模型如 starchat-beta 無改善——自我修正是<strong>強模型的湧現能力</strong>），且無成功的形式保證。</li>
+<li>程式 TDD 面對非確定性/不純函式/硬體相依/並行行為時難以指定正確輸入輸出映射；WebShop 這類需高度探索多樣性的任務失敗。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>對 ai_core <strong>§3.4「外部接地訊號驅動改進」</strong>：Reflexion 是「把（編譯器/單元測試/環境）的<strong>確定性失敗訊號</strong>當作接地信號、驅動 LLM 節點下一輪改進」的乾淨範例——Evaluator 是確定性/可驗證節點，LLM 只負責把訊號翻成改進方向，正合「多數確定性節點＋少數 LLM」的計算圖直覺。</li>
+<li>對 ai_core <strong>§3.6「經驗記憶雛形／固化引擎」</strong>：episodic memory buffer 是「把反覆處理的失敗案例結晶下來、下次讀回」的<strong>最初階雛形</strong>。但要點在於<strong>對照</strong>：Reflexion 只把經驗固化成<strong>易失的自然語言反思</strong>（Ω=1–3 的滑動窗口，跨題不保留），距離 ai_core 想要的「把案例結晶成<strong>確定性程式碼/抽象庫</strong>」的固化引擎仍有本質差距——它示範了「外部訊號→反思→記憶→重讀」的迴圈值得做，也暴露了「反思停在自然語言、不沉澱為程式資產」是為何無法真正剃除 LLM 依賴的原因。</li>
+<li>跨主題 5（程式自我除錯：自生測試＋反思修碼）與 7（反思迴圈）。與已入庫 <strong>CRITIC</strong>（用外部工具接地做單輪批評-修正）、<strong>Self-Refine</strong>（無外部接地、無持久記憶的單次自我精修）對照：Reflexion 的差異化＝<strong>外部接地評估＋跨試驗持久情節記憶</strong>二者兼具。歸 <strong>I 類</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2303.11366_Reflexion.zh-TW.html"><code>../translate/2303.11366_Reflexion.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

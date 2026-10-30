@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_Prolog_協助規劃器活動的角色 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2506.23408_LLMsDreamDiscreteAlgorithms.zh-TW.html">回 2506.23408_LLMsDreamDiscreteAlgorithms.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="7-prolog-協助規劃器活動的角色">7. Prolog 協助規劃器活動的角色</h2>
+<p>先理解使用者提問時<strong>可能出什麼錯</strong>：(1) LLM 幻覺；(2) RAG 鄰近度量與意圖不對齊、檢索不到答案；(3) <strong>planner 選錯執行步驟</strong>（這是要用邏輯推理攻克的）。神經符號與 LLM+Prolog 已有多項前作。規劃器要能：把步驟定義為正/負謂詞序列、用大量謂詞覆蓋技術提問、組合步驟（and/or）、用 LLM 已學過的語言、且<strong>建立 ground truth 成本極低</strong>（用 Prolog 則編譯即可驗證、parse tree 可評估解的好壞）。</p>
+<h3 id="71-透過拼接邏輯元件來規劃">7.1 透過拼接邏輯元件來規劃</h3>
+<p>策略：把問題化為<strong>文法問題＋強型別系統</strong>。定義基本型別（<code>StrOrList</code>、<code>TableName</code>、<code>Filter</code>、<code>Projection</code>、<code>Header</code>、<code>Data</code>），再定義操作資料的謂詞工具（表 1：<code>query_data</code>、<code>filter</code>、<code>project</code>、<code>count</code>、<code>anomaly</code>、<code>visualize_map</code>），分三類——SQL 類資料函式、演算法（傳統預測 ML/複雜算術）、UI/UX 產物。沿用 [20]：由種子問題擴增題庫 → 萃取 MVC 元件（盡量重用既有元件）→ 找缺口列待實作函式（演算法 1；因 LLM 會幻覺，建議人工複審）。</p>
+<p><strong>規劃 prompt</strong> 要求 LLM 解讀查詢、生成 Prolog 計畫並依 <code>evaluation</code> 指標自評最大化，輸出 JSON（<code>explanation/gaps/findings/plan/action/result/evaluation</code>）。評分守則：生成後從 <strong>1.0</strong> 起；<strong>未實例化即用 foreign function 之輸入 → 0.0</strong>；用 LLM 自寫 assert 謂詞 <strong>−0.2</strong>；對含 header+data 的物件呼叫原生 <code>sort/findall/aggregate</code> <strong>−0.4</strong>…。藉獎懲讓 LLM 自我反思推理步驟（類似把自生評估指標餵入 GRPO 微調迴圈 [57]）。三種「動態實例化函式」情境：固定 user story（傳統）、動態生成程式碼直到通過（連 Python 但太複雜）、<strong>提供大量小元件由 LLM 拼接</strong>（較能控幻覺與安全、可用小模型，但能力受初始探索步驟限制）——本文取中道。</p>
+<h2 id="8-資料集概覽">8. 資料集概覽</h2>
+<h3 id="81-dabstep-benchmark">8.1 DABStep benchmark</h3>
+<p><strong>DABStep（Data Agent Benchmark for Stepwise Evaluation of Planning）</strong>：450+ 個真實多跳推理任務，領域含金融交易、風險分析、商戶行為、營運指標。每題含結構化資料（CSV/JSON）、選用非結構化脈絡（文件/手冊）、與須高度精確作答的自然語言問題，<strong>採精確匹配，不容部分正確或幻覺</strong>。核心資料檔含 <code>payments.csv</code>（13.8 萬筆匿名交易+詐欺風險訊號）、<code>fees.json</code>（1000 條費率規則）、<code>acquirer_countries.csv</code>、<code>merchant_category_codes.csv</code>、<code>merchant_data.json</code>、<code>manual.md</code>。統計（表 3）：<strong>456 題</strong>、平均 3.2 表/題、中位 5,000 列/表、<strong>64% 需 join</strong>、<strong>28% 需外部文件</strong>、易/難 <strong>55%/45%</strong>、精確匹配。</p>
+<h3 id="82-範例任務">8.2 範例任務</h3>
+<p>如「2023 年哪個 card scheme 平均詐欺率最高？」（答 SwiftCharge）、「2023 年 Crossfit Hanna 若鼓勵用戶換 ACI 以降詐欺，哪選項最省費？」（答 E:346.49）——須時間過濾、欄位選取、彙總、領域知識解讀。用 40 題/查詢擴增 + MVC 萃取，推得近 30 個工具函式介面（<code>get_payments_data</code>、<code>calculate_transaction_fee</code>、<code>identify_local_acquiring_opportunities</code>、<code>display_*</code> 等），並擴展 [20] 同時生成 controller/view 介面。</p>
+<h2 id="9-結論">9. 結論</h2>
+<p>LLM 擅機率語言任務，但面對嚴格邏輯推理、離散決策、形式規則時有關鍵限制，在安全攸關領域尤甚。本文提出神經符號方法：用模組化可組合工具（尤其 Prolog 謂詞）增強 LLM，使其把複雜查詢拆成可驗證小步驟、拼接專用函式編排解法；藉一階邏輯與顯式規則精確表達事實、規則與否定（純機率模型或知識圖譜難達）。在 planner 階段整合邏輯推理，配合自我反思/評估，緩解幻覺與錯誤步驟拆解。DABStep 實驗驗證：把使用者問題擴成完整子任務集並映到 MVC 元件，重獲傳統 user story/use case 的精度與覆蓋，利系統文件化、工作量估算與功能缺口辨識。整體：LLM + 邏輯推理模組 + 模組化工具編排，提供通往可靠、可解釋、安全的複雜域 AI agent 的可擴展路徑，為 LLM 驅動系統恢復工程嚴謹度。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2506.23408_LLMsDreamDiscreteAlgorithms.%E6%91%98%E8%A6%81.html"><code>../summarize/2506.23408_LLMsDreamDiscreteAlgorithms.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

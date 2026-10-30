@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>VLA-Touch: Enhancing Vision-Language-Action Models with Dual-Level Tactile Feedback 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jianxin Bi、Kevin Yuchen Ma、Ce Hao、Mike Zheng Shou、Harold Soh</p><p>日期：2025-07-23（v1，cs.RO）</p><p>arXiv：2507.17294</p><p><a href="https://arxiv.org/abs/2507.17294" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="vla-touch-enhancing-vision-language-action-models-with-dual-level-tactile-feedback-重點摘要">VLA-Touch: Enhancing Vision-Language-Action Models with Dual-Level Tactile Feedback 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>VLA-Touch 不重訓基礎 VLA，而是在高階規劃端把觸覺轉成語言交給 VLM，在低階控制端用帶視覺與觸覺條件的 interpolant controller 修正 VLA action chunk，讓同一份接觸訊號同時決定「下一步做什麼」與「手上動作怎麼微調」。</p>
+<h2 id="方法架構">方法架構</h2>
+<ul>
+<li><strong>問題</strong>：視覺看不出杯中是否有水、海綿粗糙度或芒果硬度，也難以可靠判斷接觸力與摩擦。現成 VLA 又沒有觸覺輸入介面，而視覺、語言、觸覺與動作的聯合資料不足以直接重訓大型模型。</li>
+<li><strong>規劃層觸覺</strong>：GPT-4o 根據場景影像與任務目標產生單步操作指令，RDT 執行後，預訓練 tactile-language model Octopi 讀取 GelSight 最近六幀，輸出粗糙度、硬度等語言描述，再交回 GPT-4o 重規劃。這是一個「執行、觸摸、描述、再規劃」的循環。</li>
+<li><strong>控制層觸覺</strong>：基礎 RDT 先產生 action chunk。BRIDGeR interpolant controller 不從高斯雜訊起步，而把 RDT 動作分布當作 informative source，再以 DinoV2 視覺 embedding、proprioception 與觸覺力條件把它推向 expert action。觸覺影像經 marker tracking 轉成 <code>m_t=(X,Y,M)</code>，其中前兩項是彙總力向量，後者是其大小。</li>
+<li><strong>模組化訓練</strong>：基礎 VLA 不接觸觸覺；作者以 expert demonstration 中的 state 讓 RDT 產生 source action，再用配對的 expert action 監督 interpolant controller。推論時控制器以 sliding window 逐段修正與執行，規劃器則在指令完成或失敗後取得新的語言觸覺回饋。</li>
+</ul>
+<h2 id="作者報告的結果">作者報告的結果</h2>
+<p>實體系統使用 Franka Panda、Robotiq gripper、單指 GelSight Mini、兩台 RealSense 與 RTX 4090，測試 Cup、Wipe、Peel 三項接觸密集任務。規劃實驗每種條件跑 20 次。只看場景影像時 GPT-4o 無法判斷物理性質；加入 raw tactile image 後，粗糙度判斷為 100%，力與硬度只有 50% 與 60%；Octopi 語言描述把力提高到 90%、硬度提高到 75%（作者自報）。這表示把陌生感測格式翻成 VLM 熟悉的語言介面，確實比直接塞觸覺影像有效。</p>
+<p>控制端的 interpolant controller 在完整任務成功率上，相對基礎 RDT 的 Cup、Wipe、Peel 分別提高 42%、140%、67%；相對 residual controller 則提高 67%、100%、42%（作者自報）。分階段看，interpolant 在 Cup 的 pick 與 place 為 12／20、10／20，完整擦拭為 12／20，完整削皮為 10／20，均高於相應 baseline（作者自報）。作者的觀察是 residual correction 容易學成平均動作，而 interpolant 較能保留示範資料的多模態解。</p>
+<p>雙層整合不是任一單層的替代品。Cup 中只留控制層、只留規劃層、兩層皆用的成功次數為 5／20、6／20、9／20；Wipe 為 5／20、5／20、12／20；Peel 為 6／20、4／20、7／20（作者自報）。控制器消融也顯示，去掉觸覺後 cup placement、wiping、peeling 分別下降 50%、42%、50%；去掉視覺則主要傷害空間定位與抓取位置（作者自報）。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>VLA-Touch 的核心證據是，觸覺在不同時間尺度上解決不同問題：語言化回饋補規劃器看不見的物性，低維力訊號補控制器在接觸過程中的即時誤差。兩者採鬆耦合，因此能在不重訓大型 VLA 的情況下分別驗證與替換。</p>
+<p>作者也列出幾個實體限制。實驗 gripper 與 Octopi 預訓練資料的接觸方式不同，硬度解讀會受 domain gap 影響；RDT 原先為雙臂預訓練，此處只做單臂與有限環境變化，尚不能主張跨任務泛化；interpolant controller 約 8 Hz，沒有用滿觸覺感測器不低於 25 Hz 的頻率（作者自報）。附錄另顯示，離散語言物性可能抹掉細微差異：芒果硬度任務用完整語言描述為 60%，直接用連續 classifier 輸出為 75%（作者自報）。所以「轉成語言」方便 VLM，不代表它是無損介面。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>這篇提供一個清楚的 retrofit 模式。當核心模型不懂某種新訊號時，可以先在規劃層把它轉成模型原生可讀的結構化描述，再在執行層保留一條高頻、非語言的修正路徑。對 ai_core 而言，前者類似意圖翻譯，後者則像確定性 guardrail；兩條路徑處理的抽象層級不同，不必強迫所有訊息都擠進同一個 prompt。</p>
+<p>不過語言化介面必須附帶解析度聲明。Octopi 的例子顯示，離散形容詞足以表達粗糙度大差異，卻可能丟掉硬度的細粒度排序。ai_core 若把連續感測、風險分數或成本估計翻成自然語言，應同時保留原始數值或可機讀區間，讓規劃器享受語意介面的便利，控制與稽核端仍看得到未壓縮證據。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2507.17294_VLATouch.zh-TW.html"><code>../translate/2507.17294_VLATouch.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗與結論 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><p>← <a href="../2310.08560_MemGPT.zh-TW.html">回母檔</a></p>
+<h2 id="3-實驗">3. 實驗</h2>
+<p>作者測兩個 long-context domains：conversational agents 與 document analysis。Base models 是 GPT-4 <code>gpt-4-0613</code>（8,192 tokens）、GPT-3.5 Turbo <code>gpt-3.5-turbo-1106</code>（16,385）、GPT-4 Turbo <code>gpt-4-1106-preview</code>（128K）。</p>
+<h3 id="31-conversational-agents">3.1 Conversational agents</h3>
+<p>長期對話的兩個目標是 consistency 與 engagement。前者要求新 facts、preferences、events 不與過往衝突；後者要求 agent 主動利用對使用者的長期知識。</p>
+<p>Multi-Session Chat（MSC）由人類扮演固定 personas。每個 chat 有五個 sessions，每 session 約十多則 messages。作者新增 session 6，放一個 QA pair 或讓 agent 產生 opener。</p>
+<h4 id="deep-memory-retrieval">Deep memory retrieval</h4>
+<p>DMR 的問題由另一個 LLM 根據先前 sessions 生成，必須依舊對話才能回答，不能只靠 persona。固定 context baseline 取得五段舊對話的 lossy summary；MemGPT 擁有完整 conversation history，但必須以 paginated recall search 搬回 context。</p>
+<table>
+<thead>
+<tr>
+<th>Base model</th>
+<th style="text-align:right">Baseline accuracy</th>
+<th style="text-align:right">+ MemGPT</th>
+<th style="text-align:right">Baseline ROUGE-L recall</th>
+<th style="text-align:right">+ MemGPT</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPT-3.5 Turbo</td>
+<td style="text-align:right">38.7%</td>
+<td style="text-align:right">66.9%</td>
+<td style="text-align:right">0.394</td>
+<td style="text-align:right">0.629</td>
+</tr>
+<tr>
+<td>GPT-4</td>
+<td style="text-align:right">32.1%</td>
+<td style="text-align:right">92.5%</td>
+<td style="text-align:right">0.296</td>
+<td style="text-align:right">0.814</td>
+</tr>
+<tr>
+<td>GPT-4 Turbo</td>
+<td style="text-align:right">35.3%</td>
+<td style="text-align:right">93.4%</td>
+<td style="text-align:right">0.359</td>
+<td style="text-align:right">0.827</td>
+</tr>
+</tbody>
+</table>
+<p>Accuracy 由 LLM judge 對 gold answer 評定；ROUGE 用 recall 版本，因模型回答常比短 gold answer 冗長。</p>
+<h4 id="conversation-opener">Conversation opener</h4>
+<p>Agent 應用舊對話知識主動開場。作者將 opener 與 persona labels、human-created opener 做 cosine similarity。Human 的 SIM-1／SIM-3 是 0.800／0.800；MemGPT + GPT-4 是 0.868／0.843，GPT-4 Turbo 是 0.857／0.828，GPT-3.5 是 0.830／0.812。</p>
+<p>MemGPT 常比人類 opener 長，覆蓋更多 persona facts。這會提高 similarity，因此此實驗證明 memory 能被帶入生成，不足以單獨證明真人認為更自然或更 engaging。</p>
+<h3 id="32-document-analysis">3.2 Document analysis</h3>
+<h4 id="multi-document-qa">Multi-document QA</h4>
+<p>任務取自 NaturalQuestions-Open retriever-reader setup。Baseline 與 MemGPT 共用 OpenAI <code>text-embedding-ada-002</code> cosine-similarity retriever；資料為 2018 Wikipedia dump。作者抽取 50 questions，並釋出約 2,000 萬 Wikipedia articles 的 embeddings。</p>
+<p>Baseline 在 inference 前取得 top-K documents，一次塞入 context；MemGPT 把整個 embedding corpus 放 archival storage，可由 LLM 反覆 query、pagination。固定 context baseline 的上限受第一次 retrieval 限制；MemGPT 可換 query 或取更多 pages，不受單次 window 可容納 document 數限制。</p>
+<p>不過 embedding retrieval 仍是共同瓶頸。Gold document 常位於前十幾筆之外；MemGPT 理論上可一直查到它，實際 agent 常在掃完整個 database 前停止。GPT-3.5 因 function calling 能力較弱，MemGPT performance 顯著下降；GPT-4 最佳。評分使用 LLM judge，要求答案同時附上支持它的 document text。</p>
+<h4 id="nested-key-value-retrieval">Nested key-value retrieval</h4>
+<p>作者將原本 UUID key→value lookup 改成 value 也可能是下一個 key，迫使 agent multi-hop retrieval。資料固定 140 UUID pairs，約 8K tokens；nesting levels 為 0–4，每層抽 30 種 initial／nested-key ordering。</p>
+<p>GPT-3.5 baseline 在一層 nesting 即降到 0%；GPT-4 與 GPT-4 Turbo baseline 到三層也是 0%。MemGPT + GPT-4 不受 0–4 層增加影響，能用 heartbeat 反覆 lookup，直到 value 不再是 key。MemGPT + GPT-4 Turbo／GPT-3.5 雖比各自 baseline 好，兩層後仍因 function calls 次數不足而下降。這也顯示 agent runtime 並未消除 base-model policy 的不可靠性。</p>
+<p>此處原文有一個 storage-tier 矛盾：結果段稱 key-value pairs 位於 main context，卻同時說 MemGPT 透過 function queries 反覆存取；方法章把 function retrieval 定義為把 external context 搬回 main context，範例也以 query 呈現。僅憑論文無法確定這是文字誤植或特殊實驗設定。</p>
+<h2 id="4-相關工作">4. 相關工作</h2>
+<p>Long-context model 透過 sparse attention、low-rank approximation、neural memory 或 position extrapolation 擴大 window；對 MemGPT 而言，這等於擴大 main memory，但 external hierarchy 仍可繼續向外延伸。</p>
+<p>External memory 建立在 retrieval-augmented models 上。與一次性 RAG 不同，FLARE、interleaved retrieval/CoT 與 MemGPT 都讓模型在 generation 中決定是否繼續檢索。WebGPT 也使用 pagination 控制 context。Generative Agents、ReAct、AgentBench 等工作則提供 memory、planning 或 interactive-agent 背景；MemGPT 聚焦使用者輸入的長期記憶與 agent 自主管理 context。</p>
+<h2 id="5-結論與限制">5. 結論與限制</h2>
+<p>MemGPT 以 memory hierarchy 與 event/control-flow 類比傳統 OS，在固定 context LLM 上提供較大的 virtual context。文件分析顯示反覆 paging 可超過單次 window；長對話顯示 recall 與 core memory 可改善 consistency 與 persona-grounded generation。</p>
+<p>原文沒有獨立 limitations 章節，但實驗明確暴露幾項邊界：retrieval ranking 仍會漏資料，agent 會太早停止 paging；效果依賴 base model function calling；評測樣本小且多用 LLM judge／similarity；DMR／opener 未交代樣本數、重複試驗或信賴區間；self-directed memory 沒有真值驗證與衝突治理。所謂 unbounded context 是外部資料可持續存放與查詢，不是模型可同時注意無限 token，更不等同完整作業系統。</p>
+<p>MemGPT 後續更名／發展為 Letta 是產品沿革，不屬本篇 2023–2024 arXiv v2 的方法或實驗，故不以後來功能補寫原文。</p>
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2310.08560_MemGPT.%E6%91%98%E8%A6%81.html"><code>../summarize/2310.08560_MemGPT.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

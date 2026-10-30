@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>ACT：代理式分類樹（2/4） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2509.26433_ACT.zh-TW.html">回 2509.26433_ACT.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>在高風險環境中使用的 AI 系統，其決策應具備透明性、可解釋性與可審計性——這項要求日益受到法規的期待。CART 等決策樹提供清晰且可驗證的規則，但僅限於結構化表格資料，無法直接處理文字等非結構化輸入。實務上，大型語言模型（LLM）廣泛用於此類資料，然而鏈式思考（chain-of-thought）或 prompt 優化等策略仍依賴自由形式推理，限制了擔保可信行為的能力。我們提出<strong>代理式分類樹（Agentic Classification Tree, ACT）</strong>，將決策樹方法論擴展至非結構化輸入：每個分裂點被表述為一道自然語言問題，透過不純度評估與 LLM 回饋（經由 TextGrad）進行精煉。在文字 benchmark 上的實驗顯示，ACT 匹配或超越了基於 prompt 的 baseline，同時產出透明且可解釋的決策路徑。</p>
+<h2 id="1-簡介">1. 簡介</h2>
+<p>隨著 AI 系統日益整合至醫療、教育、法律決策與金融等高風險領域，對 AI 決策的透明性、可解釋性與可審計性需求急遽增加。這些要求不僅基於實務考量，也源於法律義務：歐盟 AI 法案、NIST AI 風險管理框架等近期治理框架強調，高風險場景中的 AI 決策必須可解釋且受人為監督。</p>
+<p>歷史上，高風險領域的複雜決策任務由專家系統與決策樹等可解釋 AI 系統處理。這些模型允許使用者透過一系列明確、人類可理解的規則追溯每個決策，直接支持法規框架所設定的要求。然而，它們的適用性基本上限於結構化輸入（如表格資料），無法直接用於自然語言或圖像等非結構化資料。</p>
+<p>LLM 的最新進展大幅增強了 NLP 中的語義理解與推理能力。在此基礎上，代理式系統（agentic systems）被提出來處理涉及多樣資料類型的複雜推理任務，並被視為未來 AI 系統非常有前景的方向。然而，儘管能力令人印象深刻，LLM 仍存在幻覺、不可靠性與難以審計等缺陷——這些問題構成建構可靠 AI 系統的主要障礙，限制了它們在敏感或受規範領域的採用。</p>
+<p>既有工作嘗試透過引導 LLM 行為朝向更結構化或自洽的推理來解決這些弱點：CoT prompting 鼓勵多步推理、self-reflection 與 prompt 優化引入代理式回饋迴圈迭代精煉輸出。但這些方法仍依賴自由形式文字生成與隱性推理，難以驗證或審計。</p>
+<p><strong>ACT 的核心思想</strong>是遵循分治範式——將困難的分類問題（例如「病人是否患有疾病 X？」）分解為一系列較簡單的問題（例如「症狀 Y 是否存在？」）。ACT 將 LLM 與代理式推理結構化為一棵代理式決策樹，透過可驗證的決策模式處理非結構化資料上的複雜分類任務，同時經由階層式問題分解減少推理錯誤。</p>
+<p>ACT 的優勢：</p>
+<ul>
+<li><strong>準確性</strong>：在非結構化輸入上具有競爭力的預測效能</li>
+<li><strong>透明且結構化的決策過程</strong>：ACT 強制執行系統性、基於規則的結構，使其內部推理與可觀察的決策過程對齊。樹狀架構提供完全可追蹤且可解釋的決策路徑，有利於審計、人為監督與干預</li>
+<li><strong>優化的決策過程</strong>：將任務分解為子問題在不重新訓練的情況下提升了 LLM 的效能</li>
+</ul>
+<h2 id="2-問題設定與相關工作">2. 問題設定與相關工作</h2>
+<p>考慮非結構化輸入空間 X（如文字或圖像）上的二元分類問題，標籤 y ∈ {0, 1}。給定從未知分佈 i.i.d. 採樣的資料集 D = {(x_i, y_i)}^N_{i=1}，目標是學習一個既準確又可解釋的分類器 f : X → {0, 1}。</p>
+<p>基於第 1 節討論的法規要求，ACT 旨在建構滿足以下屬性的決策模型：</p>
+<ul>
+<li><strong>透明性</strong>：決策應透過可解釋的逐步推理產生</li>
+<li><strong>可爭議性（Contestability）</strong>：能夠透過質疑演算法所依賴的條件來挑戰其決策</li>
+</ul>
+<p>這些期望轉化為技術要求時面臨挑戰——LLM 與 VLM 等現代架構的不透明性使得相關文獻中對合適解釋的指引有限。因此，本工作透過<strong>顯式決策路徑</strong>的概念來定義可解釋性——即由語義有意義的推理步驟構成的結構化序列，可供人類使用者檢查、理解與驗證。</p>
+<p><strong>可解釋模型與事後解釋</strong>：決策樹等可解釋模型傳統上被視為滿足上述三個標準的自然解方。其透明的規則結構允許使用者透過人類可讀的分裂追溯預測，使它們非常適合受規範或高風險領域。但它們根本上受限於結構化輸入，依賴預定義特徵，難以處理文字或圖像。LIME、SHAP 等事後解釋技術雖受歡迎，但被批評常無法捕捉模型的真實推理，提供有限的審計性、一致性或法規合規保證。更近期的自解釋（self-explanation）與代理式回饋迴圈嘗試將解釋直接納入模型輸出，但仍依賴自由形式 NL 生成——雖對人類可解釋，但不可驗證且非結構化。</p>
+<p><strong>工作流與 prompt 優化</strong>：AutoPrompt、TextGrad、DSPy 等方法自動優化 prompt 指令以對齊 LLM 行為與下游任務。這些方法顯示 LLM 可在不重新訓練的情況下被引導朝向更準確或系統化的輸出，但不提供解釋模式。CoT、ReAct、Reflexion 等技術透過中間步驟或自我回饋結構化推理，同時提供效能提升與透明決策模式。然而，它們對自由形式文字生成的依賴使其仍易受幻覺影響。</p>
+<h1 id="act代理式分類樹24">ACT：代理式分類樹（2/4）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

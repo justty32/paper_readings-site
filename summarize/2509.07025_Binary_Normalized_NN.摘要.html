@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《我們只需要 1 位元：二進制正則化神經網路》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Eduardo L. L. Cabral、Paulo Pirozelli、Larissa Driemeier（Mauá Institute of Technology + University of São Paulo，巴西）</p><p>日期：2025-09，模型壓縮／量化（1-bit 神經網路）</p><p>arXiv：2509.07025</p><p><a href="https://arxiv.org/abs/2509.07025" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="我們只需要-1-位元二進制正則化神經網路重點摘要">《我們只需要 1 位元：二進制正則化神經網路》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>提出一種<strong>所有參數（含卷積核權重與偏置）都只取 0 或 1（單位元）<strong>的神經網路層——<strong>二進制正則化層（binary normalized layer）</strong>：在常規層的線性變換後、激活前</strong>加一道把每個樣本特徵正則化成零均值單位標準差的正則化</strong>，以補償極端量化的表徵限制並穩定訓練；訓練時用 QAT 式雙表徵（前向用 1-bit、反向用 32-bit 算梯度），訓完只留 1-bit 參數。在影像分類（Food-101）與語言解碼（WikiText-103）上<strong>幾乎追平 32-bit 模型、無訓練不穩定、記憶體少 32 倍</strong>，且可在普通 CPU/手機用 1-bit 陣列實作、不需專用硬體。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>大型語言模型與基礎影像模型越來越大，部署到嵌入式/邊緣裝置（水下、地下、航太、農業等連線受限環境）困難。量化是關鍵壓縮手段，但<strong>1-bit 量化（BNN）雖理論上可達 32× 壓縮，卻在複雜任務上嚴重掉精度</strong>（如 BNN 在 AlexNet+ImageNet 僅 41.8% top-1、XNOR-Net 44.2%），且常有訓練不穩定。作者先前研究（Cabral &amp; Driemeier 2025）更指出<strong>傳統二進制參數模型根本無法有效訓練</strong>。本文要解的就是「讓純 1-bit 參數模型既穩定訓練、又逼近全精度效能」。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>量化（式 1）</strong>：每個參數同時有 32-bit 浮點形（θ，算梯度用）與二值形（以「該層參數均值」為門檻、大於均值取 1 否則取 0）。前向用 1-bit、反向用 32-bit；訓完丟棄 32-bit。此雙表徵思路借鏡 VQ-VAE、近 QAT（STE 處理不可微）。</li>
+<li><strong>關鍵創新＝層內正則化</strong>：權重只剩 0/1 時線性變換會「放大大值、壓抑小值」且加劇梯度消失/爆炸。故<strong>在線性變換後、激活前，把每個樣本的特徵正則化成零均值單位標準差</strong>——這既穩定訓練，又補償極端量化的限制（均衡特徵影響、改善收斂、控梯度幅度、避免偏倚學習、緩解梯度消失/爆炸）。</li>
+<li><strong>四種二進制正則化層</strong>：全連接（BNFCL）、卷積（BNCVL，把矩陣乘換成卷積）、嵌入（BEMBL，token + position 用 one-hot → BNFCL）、注意力（BATL）／含其之 Transformer 區塊（BTFB，多頭注意力 + BNFCL + 正則化）。</li>
+<li>兩個模型：<strong>卷積影像分類（BCVNN，5 個卷積區塊 + 分類層）</strong> 與 <strong>語言解碼器（BLM，多個 BTFB + MLP head）</strong>；皆有對應的同配置 <strong>32-bit「標準」模型</strong>當基準。</li>
+</ul>
+<h2 id="結果含數字">結果（含數字）</h2>
+<ul>
+<li><strong>影像分類（Food-101，101 類，75,750 訓練 / 25,250 驗證）</strong>：
+<ul>
+<li>3×3 濾波器（5.13M 參數）：標準模型驗證準確率 0.703、二進制 0.637。</li>
+<li>5×5 濾波器（13.5M 參數）：標準 0.679、二進制 <strong>0.686</strong>（二進制反而略勝）。</li>
+<li>二進制模型<strong>訓練全程無不穩定</strong>、<strong>幾乎不過擬合</strong>（標準模型強過擬合，需 dropout）；標準模型學得較快（需較少 epoch）。</li>
+</ul>
+</li>
+<li><strong>語言解碼（WikiText-103-raw，30,522 詞彙）</strong>：
+<ul>
+<li>標準模型（≈154.4M）：驗證準確率 0.664、驗證困惑度 7.47。</li>
+<li>小二進制（154.4M）：0.659 / 7.92。</li>
+<li>大二進制（332.8M）：<strong>0.666 / 7.47</strong>，等同標準模型最佳結果。</li>
+<li>二進制模型無過擬合（標準模型大幅過擬合）；<strong>加大參數量能提升二進制效能且不過擬合</strong>。</li>
+</ul>
+</li>
+<li>整體：<strong>1-bit 模型幾乎追平 32-bit、記憶體少 32 倍</strong>，可用 1-bit 陣列在普通 CPU/手機部署、免專用硬體。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>二進制模型<strong>需更多訓練 epoch 才收斂</strong>（影像用到 1000 epoch）、學得比標準模型慢。</li>
+<li><strong>訓練階段仍需 32-bit 參數</strong>（記憶體與常規模型同），省的是「部署/推論」記憶體；要訓練時也免 32-bit 須開發全新的非梯度下降訓練法。</li>
+<li>本文未做架構精調或追求 SOTA，只為示範可行性；<strong>活化值仍是全精度</strong>（未來才量化到 8/16-bit）。</li>
+<li>benchmark 僅 Food-101 / WikiText-103 兩個中等任務，未測 ImageNet 級或大規模 LLM。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 I 類**「模型壓縮／高效部署」代表**——和符號迴歸/神經符號主線不同，這是純粹的<strong>極端量化（1-bit）+ 一個簡單正則化技巧</strong>就解決「BNN 訓不動、掉精度」老問題的工程貢獻。</li>
+<li>最值得記：<strong>「線性變換後逐樣本正則化」是讓純 0/1 參數可訓且逼近全精度的關鍵</strong>；<strong>二進制參數天然抗過擬合</strong>（可省 dropout）；<strong>加大模型可補精度且不過擬合</strong>這個對「在嵌入式上放更大模型」很有吸引力的性質。</li>
+<li>對比 BitNet/BitNet 1.58（三值 −1/0/+1）：本文是嚴格 0/1 單位元、且把正則化當成核心配方。</li>
+<li>定位：<strong>短篇方法 + 概念驗證論文</strong>（巴西團隊，附演算法偽碼）；適合做 <strong>邊緣/嵌入式 AI、模型量化、1-bit 網路、低資源 LLM 部署</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2509.07025_Binary_Normalized_NN.zh-TW.html"><code>../translate/2509.07025_Binary_Normalized_NN.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.07915_EditSR.zh-TW.html">回 2606.07915_EditSR.zh-TW 目錄</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>神經 SR 模型藉把結構搜尋移到預訓練來提升推論效率，但其<strong>一遍式自迴歸解碼易累積誤差</strong>，可能產出結構錯誤的式子，尤其在複雜式生成情境。既有修正策略能緩解，卻常倚賴<strong>重啟全域搜尋</strong>而削弱神經模型的效率優勢，且自身仍易誤差累積。本文提出 <strong>EditSR</strong>——兩層框架：第一層為神經 SR 模型，第二層為<strong>編輯式 Rectifier（修正器）</strong>，達成高效預測與後處理修正。我們不重啟全域搜尋，而以<strong>預訓練</strong>維持修正效率。具體：把修正構為「從錯誤式出發、逐步的狀態轉移鏈」，並設計狀態轉移演算法造監督修正鏈來訓練 Rectifier；每個編輯動作限定在語法有效空間，使每步編輯後的式子皆可解析；且每步編輯決策<strong>只條件化於當前狀態而非歷史</strong>，使早步錯誤能被後步修復、降低誤差累積。大量實驗與消融顯示 EditSR <strong>以極小額外成本顯著提升符號結構回復</strong>，且<strong>對複雜式增益更明顯</strong>。</p>
+<p><strong>關鍵詞</strong>：符號迴歸、編輯式修正器、模組化框架、後處理修正。</p>
+<h2 id="1-引言動機">1. 引言（動機）</h2>
+<p>GP 仍是有競爭力的範式，但搜尋空間隨深度與運算子集快速膨脹、效率受限。另一路線把<strong>大規模預訓練</strong>引入 SR（仿機器翻譯）：Transformer 在海量「資料–式子對」上訓練，把昂貴的結構探索吸進預訓練，推論減為一遍前向；引入噪聲後更有零樣本泛化與抗噪。</p>
+<p>然而一遍式自迴歸解碼常受<strong>誤差累積</strong>所限，阻礙生成複雜式。後處理修正雖能緩解，卻常帶來顯著計算成本、抵銷預訓練的速度。故本文問：<strong>能否用輕量後處理修正模組，在不犧牲效率下修好神經 SR 的錯誤預測？</strong></p>
+<p>近年<strong>編輯式生成模型</strong>在多領域興起（NLP 的 Levenshtein Transformer、EDITOR 以迭代插入/刪除/局部重寫取代一遍自迴歸；離散擴散把生成本身建模為多步編輯序列）。其關鍵優勢是「<strong>讓誤差被漸進修復</strong>」，且支援預訓練——對 SR 特別有吸引力，因許多式子錯誤是局部的、大量子式可重用無需從頭探索。</p>
+<p><strong>我們的 EditSR</strong> 含兩層：第一層為神經 SR，實作為代表性架構 <strong>NeSymReS</strong>（與其他一遍自迴歸模型一樣，早期錯誤扭曲下游語法脈絡後無法自救）；第二層為 <strong>Rectifier</strong>，對錯誤預測做多步編輯式修正。Rectifier 由 <strong>Tagger（決定編輯位置與動作）+ Editor（預測編輯內容）<strong>組成，定義五種編輯動作 <strong>Keep、Replace、Delete、Rewrite、Insert</strong>，在</strong>子樹級</strong>而非 token 級執行，故編輯後式子仍語法有效。</p>
+<p>修正過程組織為<strong>狀態轉移鏈</strong>：每狀態對應一個可解析式、每次轉移由單一編輯動作實現。我們對目標式施隨機破壞造出多樣錯誤樣式的初始狀態（靈感取自離散擴散），再以狀態轉移演算法映回目標，得<strong>監督修正鏈</strong>;Rectifier 在這些單步轉移上訓練。推論時每決策只看當前狀態而非歷史，助抑制誤差累積、並留空間讓後編輯修早錯。</p>
+<p><strong>貢獻</strong>：(1) 從誤差累積視角重審神經 SR，問錯誤預測能否「幾次編輯」修好而非重啟全域搜尋；(2) 兩層 EditSR——保住神經模型推論效率，以語法受限的後處理編輯修結構錯誤、不重開全域搜尋；(3) 把修正表為迭代狀態轉移、每決策只看當前狀態，抑制誤差累積又允許後步修早錯；(4) 廣泛評測顯示 Rectifier 利於長式生成、改善符號結構回復（因其修正目標始終朝目標式，而非只滿足數值誤差閾值）。</p>
+<h2 id="23-動機與相關工作精要">2–3. 動機與相關工作（精要）</h2>
+<ul>
+<li><strong>誤差累積的本質</strong>：teacher-forcing 訓練與 free-running 推論的失配；式子是嚴格 arity 約束下的樹，一旦早期運算子/子樹錯，後續即脫離預期語法脈絡，<strong>主導誤差是結構性而非詞彙性</strong>。</li>
+<li><strong>既有後處理修正的痛點</strong>：多重啟全域搜尋或推論時隱空間最佳化，帶來大量額外開銷，削弱神經模型靠預訓練取得的效率。</li>
+<li><strong>核心觀察</strong>：神經模型即使沒回復精確目標，常已抓到可重用結構（對的變數/常數/子樹），複雜式上失配多集中局部 → 保留對的、只修錯的更有效率。但把編輯式生成用於 SR 有挑戰：式子受嚴格 arity 約束、修正目標遠比 NLP 明確。故限制編輯於嚴格語法空間，並造<strong>確定性</strong>修正鏈（朝目標），而非擴散式隨機前向破壞/反向路徑重建。</li>
+<li><strong>相關工作脈絡</strong>：迭代/編輯式生成（DiffusER 把編輯拆成位置/動作/內容三子問題；Edit Flows 以對齊描述中間序列轉換）;GP 式 SR（Eureqa、Operon、PySR、AI Feynman 等）；神經 SR（NeSymReS、SymbolicGPT、E2E、SymFormer、SNIP、MMSR、ViSymRe;LLM-SR、LaSR;SR4MDL 用 MDL 代理、ParFam 連續化、CaMo 模組重用）；後處理修正（TPSR 的 MCTS、SNIP 隱空間、SNR 的 RL，皆每輪反覆數值評估與常數最佳化，成本明顯）。</li>
+</ul>
+<h2 id="4-editsr-架構">4. EditSR 架構</h2>
+<ul>
+<li><strong>第一層</strong>：神經 SR 模型（NeSymReS）。任何「資料→可解析式一遍自迴歸」模型只要介面相容皆可當第一層。</li>
+<li><strong>第二層 Rectifier</strong>：Tagger（位置 + 動作）+ Editor（內容）；子樹級五動作 Keep/Replace/Delete/Rewrite/Insert，限定語法有效空間。</li>
+<li><strong>Tagger 與 Editor 的訓練目標</strong>：在離線造的監督修正鏈的單步轉移上學「給當前錯誤狀態，下一步該在哪、做什麼動作、填什麼內容」。</li>
+</ul>
+<h2 id="5-資料生成">5. 資料生成</h2>
+<ul>
+<li><strong>Skeleton 生成</strong>：造帶多樣錯誤樣式的初始狀態，以狀態轉移演算法構造從錯誤式到目標式的確定性修正鏈作監督。</li>
+</ul>
+<h2 id="67-實驗與結果精要">6–7. 實驗與結果（精要）</h2>
+<ul>
+<li><strong>Benchmark</strong>：標準 benchmark（含 Feynman 物理式、ODE-Strogatz 動力系統等）+ SRBench 1.0 / 2.0;<strong>Baselines</strong>：ParFam、uDSR、TPSR、SR4MDL、RILS-ROLS。</li>
+<li><strong>指標</strong>（多目標剖面而非單一純量）：R²（擬合優度）、複雜度、<strong>Accuracy 解率（R²≥0.999 的題目比例）、Symbolic 解率（符號結構回復）、推論時間、干擾項使用率</strong>。</li>
+<li><strong>標準 benchmark</strong>：EditSR mean R² 多排第一/二且通常更簡單；改善 R² 不伴複雜度上升。<strong>Symbolic 解率通常貼近 Accuracy 解率</strong>——多數基線則 Symbolic 明顯低於 Accuracy，顯示「好的數值擬合不等於可靠的符號結構回復」，而 EditSR 始終朝目標符號結構編輯故兩者接近。</li>
+<li><strong>效率</strong>：EditSR <strong>推論時間最短</strong>（修正成本移到預訓練）;TPSR 等重啟式修正慢得多。</li>
+<li><strong>抗噪</strong>（0/0.001/0.01/0.1 高斯噪聲）：R² 的 ECDF 在各級都較右移，高 R² 比例較多。</li>
+<li><strong>抗無關變數</strong>：附加 k∈{1,2,3} 個干擾項，EditSR <strong>Symbolic 解率最強且干擾項使用率最低</strong>——穩健性不靠把虛假輸入吸進式子（科學發現中極可取）。</li>
+<li><strong>與 TPSR 對比</strong>：凸顯「預訓練式修正」vs「推論時搜尋式修正」的效率分野。</li>
+</ul>
+<h2 id="8-結論與未來">8. 結論與未來</h2>
+<p>EditSR 以「保留對的、只修錯的」編輯式後處理，在不重啟全域搜尋下顯著提升符號結構回復、維持快推論、抗噪抗干擾，且對複雜式增益更明顯。<strong>未來</strong>：與更強全域搜尋（GP／深度 SR）緊耦合——探索式產多樣候選、Rectifier 局部精修，把後處理修正從跟班模組擴成混合 SR 管線的通用組件，緩解其對第一層探索能力的依賴。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2606.07915_EditSR.%E6%91%98%E8%A6%81.html"><code>../summarize/2606.07915_EditSR.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

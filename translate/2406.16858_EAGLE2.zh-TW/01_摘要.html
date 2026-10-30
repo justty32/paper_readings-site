@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2406.16858_EAGLE2.zh-TW.html">回 2406.16858_EAGLE2.zh-TW 目錄</a>　<a href="02_Context-Aware_%E5%8B%95%E6%85%8B%E8%8D%89%E7%A8%BF%E6%A8%B9.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>以現代大型語言模型（LLM）做推論既昂貴又耗時，而推測式取樣（speculative sampling）已被證明是有效解法。多數推測式取樣方法（如 EAGLE）使用<strong>靜態草稿樹（static draft tree）</strong>，隱含假設草稿 token 的接受率只取決於它的位置。有趣的是，我們發現草稿 token 的接受率同時也<strong>依賴上下文（context-dependent）</strong>。本文在 EAGLE 之上提出 <strong>EAGLE-2</strong>，把一種新技術——<strong>context-aware 動態草稿樹（context-aware dynamic draft tree）</strong>——引入草稿建模。此改進利用了一個事實：EAGLE 的草稿模型是<strong>良好校準的（well-calibrated）</strong>，其信心分數（confidence score）能以很小的誤差逼近接受率。我們在 3 個系列的 LLM、6 個任務上做了大量評估，EAGLE-2 取得 <strong>3.05x–4.26x 的加速比，比 EAGLE-1 快 20%–40%</strong>；且能保證生成文本的分布不變，屬**無損（lossless）**加速演算法。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>現代 LLM 參數量動輒上百億甚至更多。在自回歸生成中，每產生一個 token 都要存取全部模型參數，一次對話動輒生成數百至數千 token，使推論又慢又貴。推測式取樣的思路是：快速生成草稿 token，再<strong>平行驗證（verify in parallel）</strong>，一次前向就能產出多個 token，大幅降低延遲。</p>
+<p>標準推測式取樣用<strong>鏈狀（chain-structured）<strong>草稿。為提升接受長度，近期工作改用</strong>樹狀（tree-structured）<strong>草稿。Sequoia 明確假設接受率只取決於 token 在樹中的位置；EAGLE 與 Medusa 在所有上下文都用同一個靜態草稿樹（第 i 步固定加入 k 個候選），也隱含此假設。但這與推測式取樣的洞見——「有些 token 較簡單、可由小模型預測」——相矛盾。我們的實驗（§3.1）顯示接受率不只 position-dependent，更是高度 context-dependent，故靜態結構有先天限制；依不同上下文的接受率</strong>動態調整草稿樹結構</strong>能得到更好結果。</p>
+<p>然而，要得到草稿 token 的真實接受率需要原 LLM 的前向結果，這與「減少原 LLM 前向次數」的目標衝突。所幸我們發現 EAGLE 是良好校準的：草稿模型的信心分數（機率）是接受率的良好近似（§3.2），這讓 context-dependent 的動態草稿樹變得可行。</p>
+<p>EAGLE-2 利用草稿模型的信心分數逼近接受率，據此動態調整草稿樹結構、增加被接受的 token 數。我們在 6 個任務（多輪對話、程式生成、數學推理、指令遵循、摘要、問答；對應 MT-bench、HumanEval、GSM8K、Alpaca、CNN/DM、Natural Questions）上，與 6 種先進推測式取樣方法（標準推測式取樣、PLD、Medusa、Lookahead、Hydra、EAGLE）比較，於 Vicuna、LLaMA2-Chat、LLaMA3-Instruct 上實驗，EAGLE-2 皆表現最佳，加速 2.5x–5x。除性能外，EAGLE-2 還有兩項優點：</p>
+<ul>
+<li><strong>開箱即用（out-of-the-box）</strong>：相較 EAGLE，不需訓練任何額外模型去預測草稿樹結構，而是直接用推測式取樣本就會產生的信心分數來調整，故無需額外訓練。</li>
+<li><strong>可靠（reliability）</strong>：不微調也不更新原 LLM 參數，不放寬接受條件，可證明生成文本分布與原 LLM 完全一致。</li>
+</ul>
+<h2 id="2-預備知識">2 預備知識</h2>
+<h3 id="21-推測式取樣">2.1 推測式取樣</h3>
+<p>核心是「先草稿、再驗證」。給定前綴 T_{1:j}，<strong>草稿階段</strong>呼叫草稿模型（比原 LLM 小的 LLM）自回歸產生草稿 T̂_{j+1:j+k}，並記下每個 token 的機率 p̂。<strong>驗證階段</strong>呼叫原 LLM 檢查草稿並記其機率 p，然後從前到後依序判定接受：對 token t̂_{j+i}，被接受的機率為 min(1, p_{j+i}(t̂)/p̂_{j+i}(t̂))；若接受則檢查下一個，否則從分布 norm(max(0, p−p̂)) 重新取樣一個 token 取代之並丟棄其後所有草稿 token。已有證明此程序與原始自回歸解碼的分布一致。EAGLE 與 EAGLE-2 都採用此框架。</p>
+<h3 id="22-eagle">2.2 EAGLE</h3>
+<p>EAGLE 是對推測式取樣的改進，投稿當時在 Spec-Bench（評估推測式解碼的綜合基準）上排名第一。</p>
+<ul>
+<li><strong>草稿階段</strong>：不像標準推測式取樣自回歸預測 token 序列，EAGLE 在更結構化的**特徵層（feature level，LM head 之前）**做自回歸，再用原 LLM 的 LM Head 得到草稿 token。因取樣會替特徵序列引入不確定性，EAGLE 額外把「前移一個時間步的 token 序列」也輸入草稿模型。</li>
+<li><strong>驗證階段</strong>：用樹狀草稿，某 token 被拒時可改試其他分支（鏈狀則須丟棄其後全部）。</li>
+<li><strong>與 EAGLE-2 的差異</strong>：EAGLE 的草稿樹<strong>形狀固定</strong>，草稿階段只是把 token 填進固定位置；EAGLE-2 改為<strong>可動態調整</strong>的草稿樹。圖 4 舉例：query 為「10+2=」時下一 token 幾乎必為「1」，靜態樹仍多加了機率極低的候選「3」；EAGLE-2 依上下文調整——「10+2」難預測就加兩個候選，「10+2=」較簡單就只加一個「1」。</li>
+</ul>
+<h2 id="3-觀察">3 觀察</h2>
+<h3 id="31-接受率依賴上下文">3.1 接受率依賴上下文</h3>
+<p>先驗證用動態草稿樹的必要性：接受率是否只與位置有關？在 Alpaca 資料集與 Vicuna 7B 上，測不同位置 token 的接受率（圖 5）。整體上接受率確實 position-dependent：位置 P1（樹的左上）最高、P6（右下）最低——這解釋了為何 EAGLE、Medusa 等靜態樹在左上放較多節點、右下放較少。但<strong>同一位置的接受率變異很大</strong>，顯示接受率不只取決於位置也取決於上下文，故 context-aware 動態草稿樹比靜態樹更有潛力。</p>
+<h3 id="32-良好校準的草稿模型">3.2 良好校準的草稿模型</h3>
+<p>要用動態草稿樹，需要一個<strong>不呼叫原 LLM</strong> 的低成本方式估計接受率。在 Alpaca 上探究草稿模型信心分數（LLM 對每個 token 的輸出機率）與接受率的關係（圖 6）：兩者強正相關——信心分數低於 0.05 的草稿 token 接受率約 0.04，高於 0.95 者接受率約 0.98。因此可用草稿模型的信心分數<strong>零額外開銷</strong>地估計接受率，實現對草稿樹的動態調整。類似現象在 GLIDE、CAPE 等其他方法的草稿模型上也觀察到。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

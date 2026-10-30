@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2311.08692_ZOOTER.zh-TW.html">回 2311.08692_ZOOTER.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4 實驗</h2>
+<h3 id="41-實驗設置">4.1 實驗設置</h3>
+<p><strong>候選 LLM</strong>：選六個同為 13B 的 LLaMA 系模型作路由候選：(a) WizardLM——用 EvolInstruct 增強查詢與回覆對齊；(b) WizardCoder——用相同技術對齊的程式專家；(c) WizardMath——以查詢增強、ChatGPT 獎勵與 PPO 優化對齊的數學專家；(d) Vicuna——對齊自使用者與商用聊天機器人的大量對話；(e) OpenChat——用篩選過的 ShareGPT 資料加額外訓練策略對齊；(f) Llama-2-Chat——先做監督微調再多輪拒絕抽樣對齊。基線與 Zooter 均以這六個候選實驗評估。</p>
+<p><strong>訓練資料集</strong>：從開源資料建立一個多樣混合指令資料集，以最大化 Zooter 的泛化能力。先用本地標註器對 13 個開源資料集打標籤，並對含有與下方評測集 6-gram 重疊查詢的樣本做去污染，避免資料洩漏。接著對每個獨特標籤隨機取 10 筆樣本，組成 <strong>DivInstruct</strong>：共 47,986 筆指令、涵蓋 6,270 個不同標籤。</p>
+<p><strong>評測集</strong>：涵蓋四組評測。先納入三個廣泛使用、以 GPT-4 當裁判的對齊評測——<strong>AlpacaEval</strong>（koala、vicuna 等 5 個子集，共 805 筆）、<strong>FLASK</strong>（10 個細粒度對齊技能領域）、<strong>MT-Bench</strong>（涵蓋數學與程式共 8 個面向的多輪評測，訓練與路由僅用首輪查詢，但按原始流程做多輪評估）。由於 GPT-4 裁判可能帶偏見且與人類判斷有顯著分歧，另納入 <strong>MMLU、GSM8K、HumanEval</strong> 一組。</p>
+<p><strong>指標</strong>：因各評測分數尺度不同，除各評測分數外，另定義 <strong>MTR（mean task rank，平均任務排名）</strong>——某模型在所有基線中的平均排名（越低越好），可跨不同分數尺度的評測比較；並提出 <strong>%Uplift（拿下最佳表現的子集比率，越高越好）</strong>。共在四組評測、26 個子集上報告這兩指標。</p>
+<p><strong>基線</strong>：與既有 reward model 排序（RMR）方法比較，用當時最新的 reward model 組成基線——OAssistRM、Auto-J、UltraRM、QwenRM，及一個 Oracle 排序作參照；也把 LLM-Blender 的 pairwise ranking 視為 RMR 方法之一；並報告 GPT-3.5-turbo、GPT-4 兩個商用模型的表現作參考。</p>
+<p><strong>配置</strong>：路由函數以 mdeberta-v3-base 為骨幹訓練；用 QwenRM 對訓練查詢產生獎勵作監督，因其在 4.2 節所述的 RMR 表現中，以相對小得多的參數量取得最佳效果；全部訓練與推論在 8 張 A100 GPU 上完成；MMLU、GSM8K、HumanEval 使用貪婪解碼。</p>
+<h3 id="42-結果">4.2 結果</h3>
+<p>主結果如表 1（26 個子集）。六個路由候選中，「單一平均最佳模型」（BMA）是 Llama-2-Chat。Zooter 以 <span class="math inline">\(\beta=0.3\)</span> 的標籤增強設定為主結果。</p>
+<p><strong>互補潛力</strong>：以五個不同現成 reward model 做 RMR 評估。UltraRM 的 RMR 在整體 MTR（1.53）與 %Uplift（72%）上最佳；QwenRM 的 RMR 次佳，效果接近 UltraRM 但參數量小得多；接著依序為 Auto-J、LLM-Blender、OAssistRM。QwenRM、UltraRM、Auto-J 三者的 RMR 都優於 BMA，證明 RMR 的有效性。用 Oracle 排序（理論上限）的 RMR 一致優於全部候選，甚至在 AlpacaEval 與 FLASK 上超越 GPT-4，為 LLM 互補潛力假設提供有力證據，也支持 Zooter「用現成 reward model 的獎勵當路由函數銀標籤監督」的核心動機。但 RMR 在 MMLU、GSM8K、HumanEval 上表現不佳，顯示現成 reward model 精準判斷知識、數學、程式問題仍具挑戰。</p>
+<p><strong>Zooter 表現</strong>：Zooter 在 AlpacaEval、MT-Bench、Benchmarks 上勝過 BMA，FLASK 上表現相近，MT-Bench 上提升最明顯（平均分高出 BMA 0.39）。整體而言 Zooter 在 44% 子任務拿下第一，BMA 僅 31%。以上證據顯示，Zooter 只需一個 86M 參數的路由器的計算開銷，即能更一致地利用 LLM 間互補潛力取得最佳表現；Zooter 也以顯著更少的計算開銷勝過 OAssistRM、LLM-Blender、Auto-J 三個 RMR 基線。但 Zooter 雖在 AlpacaEval 勝過 QwenRM 的 RMR，整體上 Zooter 與 QwenRM 的 RMR 之間仍有明顯落差。</p>
+<h3 id="43-分析">4.3 分析</h3>
+<p><strong>RM 不確定性</strong>：既有研究指出 RM 的純量獎勵存在不確定性，會在把 RM 分數當銀標籤監督時引入雜訊。作者先展示此不確定性的存在，以說明基於標籤的標籤增強（緩解此不確定性的方法）的動機：對 MT-Bench 每個樣本，計算 QwenRM 在全部候選 LLM 間給出獎勵的熵，並與用 QwenRM 做偏好排序所得的 MT-Bench 分數對照（圖 3）。結果顯示獎勵熵越低的樣本，MT-Bench 分數往往越高，即獎勵熵越高代表該獎勵的不確定性越大。因此提出基於標籤的標籤增強，用標籤先驗調整獎勵熵。</p>
+<p><strong>標籤增強</strong>：<span class="math inline">\(\beta\)</span> 代表細粒度樣本級獎勵與粗粒度標籤級獎勵間的權衡。實驗調整此超參數並分析不同粒度獎勵如何影響路由函數訓練（表 2）：Zooter 在 <span class="math inline">\(\beta=0.3\)</span> 時整體 MTR 最佳（1.97），證明樣本級與標籤級獎勵的組合有利於獎勵蒸餾，也證明標籤增強的必要性。此外，純標籤級蒸餾（<span class="math inline">\(\beta=0\)</span>，MTR 2.06）明顯優於純樣本級蒸餾（<span class="math inline">\(\beta=1\)</span>，MTR 2.34），支持「樣本級獎勵中來自 RM 不確定性的雜訊會傷害獎勵蒸餾」的分析。</p>
+<h2 id="5-結論">5 結論</h2>
+<p>本文重新檢視開源 LLM 的互補潛力，以及多個現成 reward model 的排序，為 LLM 集成的有效性提供證據。作者提出 Zooter，一個高效的 reward 引導路由方法，用於集成現成 LLM。綜合評估顯示 Zooter 能以顯著更少的計算開銷，勝過單一平均最佳模型，甚至勝過以 reward model 排序做集成的方法。有價值的未來工作包括深入探究各 LLM 潛在專長的可解釋性。</p>
+<h2 id="附錄-a-資料集">附錄 A 資料集</h2>
+<p><strong>DivInstruct</strong> 是整合自多個開源資料集的多樣混合指令集，並對本文評估的全部評測集做嚴謹去污染。組成（節錄，樣本數）：ultrachat 18,588、sharegpt 10,432、wizardlm(sharegpt) 5,325、wizardlm(alpaca) 5,145、alpaca 2,186、repair 1,034、openchat 1,033、flan 862、math 849、unnatural 582、dmcc 573、dolly 560、oasst 183、lima 70、mbpp 43，合計 47,986 筆。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2311.08692_ZOOTER.%E6%91%98%E8%A6%81.html"><code>../summarize/2311.08692_ZOOTER.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

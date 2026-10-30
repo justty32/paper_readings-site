@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.01314_SkillSmith.zh-TW.html">回 2606.01314_SkillSmith.zh-TW 目錄</a>　<a href="02_SkillSmith_%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>近期自演化代理系統已被證明可透過執行來發現、精煉、累積技能。然而既有技能演化框架通常假設固定的工具層，並獨立評估每個技能的效用——這限制了它們修復工具層故障或推理技能間交互的能力。為此我們提出 <strong>SkillSmith</strong>，一個協同感知的技能–工具共演化框架。SkillSmith 引入一個統一的提案空間，反思產出可同時修改技能與工具的<strong>原子 bundle</strong>——允許工具被包裝、編輯、組合、拆分或退役，以應對技能演化識別出的可重用能力缺口。為引導此聯合搜尋，SkillSmith 維護一個受 Lotka-Volterra 動力學啟發的生態效用模型：從執行軌跡估計的<strong>交互矩陣</strong>捕捉技能間的成對互補性與衝突，並為檢索、突變優先級與退役提供壓力訊號。此外 SkillSmith 記錄<strong>反模式（anti-pattern）</strong>——失敗簽名、歸因與補救措施——以加速診斷並否決重複已知錯誤的提案。在三個基準（如 WildClawBench）與五個 Qwen3.5 規模上的實驗顯示，SkillSmith 一致優於強 baseline，增益隨任務複雜度與多技能共活化程度增加而放大。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>工具使用已成為 LLM 驅動代理的基礎原則。從 WebGPT、MRKL、ReAct 到 Toolformer，再到現代代理架構，系統日益將可重用能力組織成<strong>技能（Skills）</strong>：包含工作流指令、可執行腳本、領域參考資料與元資料的結構化能力套件。技能庫 S_t 是一種外部、非參數化狀態物件，維持在模型權重之外，類似 RAG 中的外部記憶。</p>
+<p>然而，技能的生成、修復與持續改進機制仍未被充分探索。既有 prompt 最佳化方法主要在自然語言指令空間中搜尋，而技能庫最佳化需要在離散、結構化、多組件的外部策略空間中搜尋。</p>
+<p>近期工作開始自動化技能生成與改進：Trace2Skill、SkillX 從執行軌跡離線萃取可轉移技能知識庫；CoEvoSkills 探索技能生成器與驗證器的對抗共演化；SkillClaw 將技能演化從私有代理記憶擴展為共享多人資產層；EvoSkill 透過失敗驅動分析與 Pareto 前沿選擇來發現並最佳化技能；D2Skill 以可顯式計算的信用訊號建模技能效用；GEPA 表明反思式文本演化可顯著比標量獎勵 RL 更具樣本效率。這些研究共同暗示：技能正在成為 LLM 代理的一種非參數、可版本化、可治理的外部策略層。</p>
+<p>然而，改進常是模糊的：失敗可能源於工具缺陷、技能衝突或未記錄的錯誤，而非技能本身。例如，問答代理可能因搜尋工具過時或多技能干擾而失敗，僅靠重寫技能只會產生虛假增益而留下真因未解。這凸顯了三個核心限制：(1) 工具層被視為固定——迫使人們在技能層過度補償；(2) 技能效用被獨立評估——假設各技能價值彼此獨立，但實際執行中多技能被同時檢索與組合；(3) 失敗經驗很少被保留——只保留成功產物，導致重複診斷與無意中重新生成已退役技能。</p>
+<p>為此我們提出 <strong>SkillSmith</strong>，一個協同感知的技能–工具共演化框架，透過三項延伸聯合演化技能、工具與失敗記憶：</p>
+<p><strong>(1) 基於 Bundle 的技能–工具共演化</strong>：從失敗執行軌跡生成原子提案 bundle，聯合更新技能與工具。Bundle 可修改技能並應用型別化工具生命週期操作——WRAP、EDIT、COMPOSE、SPLIT、RETIRE——以修復、重構或退役既有工具。原子性保證互相依賴的技能與工具變更同時生效。</p>
+<p><strong>(2) 協同感知的技能生態動力學</strong>：受 Lotka-Volterra 競爭–互利方程式啟發，從執行日誌估計技能交互矩陣。正值表示互補性，負值表示干擾，全域承載容量捕捉有限檢索、上下文與維護預算下的競爭。所產生的動態效用不僅按單獨表現來排定技能突變優先級，還考慮它們是否壓制有用鄰居、重複能力或缺乏必要互補。</p>
+<p><strong>(3) 反模式記憶</strong>：記錄經驗證的失敗模式及其歸因。在反思時加速診斷（檢索相似歷史失敗），並否決與已知模式相似的突變提案，防止先前失敗的技能–工具組態再次出現。</p>
+<h2 id="2-預備知識與問題形式化">2. 預備知識與問題形式化</h2>
+<p><strong>代理系統作為外部狀態</strong>。考慮一個 LLM 驅動的代理，其能力由模型權重與一組外部非參數資產共同決定。在時刻 t，外部狀態為三元組 Σ_t = (S_t, T_t, F_t)：</p>
+<ul>
+<li><strong>技能</strong> s = (m, w, r, u)：任務面向策略，包含元資料 m（名稱、觸發條件、版本）、工作流主體 w（編排邏輯與步驟級指令）、參考資源 r（模板、領域知識），以及純量效用估計 u。技能庫 S_t = {s_1, ..., s_n}。</li>
+<li><strong>工具</strong> τ = (d, f, σ)：原子操作，包含介面描述 d、可執行實現 f、型別簽名 σ（輸入/輸出格式合約）。工具庫 T_t = {τ_1, ..., τ_m}。技能與工具互補：技能編排多步規劃，工具執行個別步驟。既有系統將 T_t 視為固定，僅更新 S_t；SkillSmith 聯合演化兩者。</li>
+<li><strong>反模式記憶</strong> F_t：結構化失敗記錄。每條 ϕ = (p, a, c) 包含失敗簽名 p、因果歸因 a、補救措施 c。</li>
+</ul>
+<p><strong>執行模型</strong>：對任務實例 x，代理先檢索相容技能子集 S_act(x) ⊆ S_t，再編排調用工具的多步規劃，產出軌跡 ξ = (a_1, o_1, ..., a_L, o_L)，最終獲得黑箱任務分數 P(x) ∈ [0, 1]。結果由技能品質、工具能力與其交互共同決定。</p>
+<p><strong>問題形式化</strong>：系統接收初始狀態 Σ_0、訓練集 D_train、驗證集 D_val、總執行預算 B。每次迭代產出 bundle 提案 L_t（技能與工具修改的原子封裝）。目標是在預算限制下最大化保留效能：</p>
+<pre><code>max E_{x~D_val}[P(x|π, Σ_T)]  s.t.  Σ_{t+1} = U(Σ_t, L_t),  Σ b(L_t) ≤ B
+</code></pre>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

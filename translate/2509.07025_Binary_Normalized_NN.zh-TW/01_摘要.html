@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2509.07025_Binary_Normalized_NN.zh-TW.html">回 2509.07025_Binary_Normalized_NN.zh-TW 目錄</a>　<a href="02_%E5%BD%B1%E5%83%8F%E5%88%86%E9%A1%9E%E5%95%8F%E9%A1%8C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型神經網路（尤其語言模型與基礎影像模型）日益龐大，帶來部署挑戰，促使人們設法降低記憶體需求、提升計算效率。本文開發一種<strong>只用單位元參數</strong>的新型神經網路層與模型：所有層的所有參數（含卷積核權重與偏置）只取 <strong>0 或 1</strong>。此新型模型用名為<strong>二進制正則化層（binary normalized layer）<strong>的層——它們可以是任意類型（全連接、卷積、注意力等），是對應常規層的</strong>微小變體</strong>。為展示有效性，配置兩個模型解多類別影像分類與「預測序列下一 token」的語言解碼：影像模型含卷積與全連接層，語言模型由含多頭注意力的 Transformer 區塊組成。結果顯示二進制正則化層的模型<strong>與等價的 32-bit 實數參數模型幾乎結果相同</strong>，卻<strong>少用 32 倍記憶體</strong>；且可在現有電腦用 1-bit 陣列輕易實作、<strong>不需開發專用電子硬體</strong>。這開啟「以簡單廉價硬體（如手機或純 CPU）部署大型神經網路」的新時代。</p>
+<p><strong>關鍵詞</strong>：神經網路、二進制參數、二進制正則化層。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>機器學習與硬體進步帶來各領域卓越表現，但當前 AI 模型應用於嵌入式系統仍有嚴重限制：多數 SOTA 方案重度依賴雲端與高效能專用硬體，深度網路常需數十億次浮點運算處理單一輸入。大型 AI 模型（尤其 LLM 與基礎影像模型）的算力、能耗、記憶體需求難在資料中心外滿足，使其難以部署於連線受限或不存在的孤立環境（水下、地下、航太、農業等）；本地資料處理成為確保自主性與即時反應的必然。</p>
+<p><strong>量化</strong>是關鍵手段：以低位元整數取代高精度浮點，通常在 2–8 bit 範圍、對準確度影響極小，業界廣用，壓縮率與速度（CPU/專用定點硬體）、能效都大幅改善。但量化挑戰在於保準確度（量化函數不可微、對權重/活化值範圍敏感）。兩大策略：<strong>PTQ（訓練後量化）</strong>（訓完才量化，免重訓）與 <strong>QAT（量化感知訓練）</strong>（訓練中模擬量化效應，低位元下準確度通常顯著高於 PTQ）。關鍵研究：Jacob 等（TFLite 採用的量化方案，權重/偏置存 32-bit 浮點供精確更新、前向量化模擬低精度推論、反向用全精度梯度 + STE 處理不可微）、Krishnamoorthi（PTQ/QAT 白皮書）、Banner 等（4-bit PTQ 的 ACIQ）、Hubara 等（QNN + STE）、Choi 等（PACT 學習活化裁剪門檻）等。Cabral &amp; Driemeier（2025）發現 **2.32-bit 權重（五個離散級）**能在記憶體與準確度間取得良好平衡，並觀察到低解析度小模型需更多 epoch、大模型則能在典型配置內達相近表現。</p>
+<p>近期 <strong>BitNet</strong>（為 LLM 設計、二進制權重 + 低精度活化、優化器/梯度保全精度）與其變體 <strong>BitNet 1.58</strong>（三值權重 −1/0/+1，逼近 16-bit 效能且記憶體/延遲/能效更佳）值得注意。<strong>1-bit 量化（BNN）</strong> 把權重/活化降到一位元（通常 +1/−1），以 XNOR、位元計數等高效位元運算取代昂貴浮點運算，理論上達 32× 壓縮與大量節能。早期工作（Hwang &amp; Sung；Courbariaux 等的 BinaryConnect；Hubara 等延伸到權重+活化並訓於 MNIST/CIFAR-10/SVHN/ImageNet；Rastegari 等的 XNOR-Net 用縮放因子提升）證明可行，<strong>但 1-bit 模型在複雜任務仍嚴重掉精度</strong>（BNN 在 AlexNet+ImageNet 僅 41.8% top-1、XNOR-Net 44.2%）。</p>
+<p>本文提出<strong>全用單位元參數</strong>的新型模型（二進制正則化層）：所有層參數（含核權重與偏置）限為一位元解析度，概念通用於全連接、卷積、注意力等架構。以影像分類（卷積二進制模型）與語言解碼（二進制 Transformer）展示：二進制模型<strong>逼近全精度 32-bit 模型、且無低解析度網路常見的訓練不穩定</strong>；記憶體少達 32 倍、可用 1-bit 陣列在標準硬體實作，使大型網路能部署於手機/CPU 等資源受限平台；且降低的記憶體足跡允許<strong>擴展到更大模型</strong>。</p>
+<h2 id="2-二進制正則化層">2. 二進制正則化層</h2>
+<p>二進制正則化層（含核與偏置）的每個參數在訓練時<strong>同時以兩種形式存在</strong>：32-bit 浮點值（θ，供梯度更新）與其二值化對應（θ_b，供前向計算）。<strong>量化過程（式 1）</strong>：以<strong>該層參數的均值</strong>為門檻——大於均值取 1、否則取 0。32-bit 參數是必要的，因反向傳播梯度更新通常極小，若訓練中永久二值化會完全丟失；前向用二值參數算活化、反向用全精度參數算梯度。訓練完丟棄 32-bit、只留 1-bit 供部署。（注：訓練時用 32-bit 仍需與常規模型同等記憶體；若要訓練時也免 32-bit，須開發全新的非梯度下降訓練法。）</p>
+<p><strong>為何需要正則化</strong>：任何層的基本操作是「輸入×權重 + 偏置 → 激活」。但權重只剩 0 與 1 時有兩大限制：(1) 不成比例地<strong>放大大的正負輸入、壓抑小的</strong>，難以萃取複雜特徵；(2) 二值性質<strong>顯著加劇梯度消失與爆炸</strong>。有效對策是<strong>在套用激活函數前，把線性變換的輸出正則化</strong>——這在二進制權重網路中尤為關鍵，既穩定訓練又補償極端量化的限制。其作用（相對常規網路更重要）：均衡特徵影響、改善收斂穩定、控制梯度幅度、避免偏倚學習、緩解梯度消失/爆炸。</p>
+<p>實作四種二進制正則化層：全連接、卷積、注意力、嵌入。</p>
+<h3 id="21-二進制正則化全連接層bnfcl">2.1 二進制正則化全連接層（BNFCL）</h3>
+<p>前向（演算法 1）：若訓練則量化核與偏置供訓練、否則供推論 → <strong>線性變換</strong> → <strong>把每個樣本的特徵正則化成零均值單位標準差</strong> → 算激活。訓練時（trainable=1）梯度算並施加於 32-bit 權重矩陣與偏置（保留更新、不丟資訊），前向則用二值權重。此方案改編自 Alcorn（2023）、近 QAT。訓練後只留 1-bit 參數（演算法 2：直接線性變換 → 正則化 → 激活）。</p>
+<h3 id="22-二進制正則化卷積層bncvl">2.2 二進制正則化卷積層（BNCVL）</h3>
+<p>與 BNFCL 唯一差別：用<strong>卷積</strong>（二值核 × 輸入張量，式 2）取代矩陣乘。二值核為四維（高、寬、通道數、濾波器數），二值偏置長度等於濾波器數。前向（演算法 3）以式 2 取代演算法 1 的線性變換；推論同樣只留 1-bit 參數。</p>
+<h3 id="23-二進制嵌入層bembl">2.3 二進制嵌入層（BEMBL）</h3>
+<p>演算法 4：對 token 與 position 做嵌入。建線性位置向量（0 到 max_length−1）→ 對位置做 one-hot → 經（線性激活的）BNFCL 做位置嵌入；對 token 序列做 one-hot → 經 BNFCL 做 token 嵌入；最後相加。</p>
+<h3 id="24-含二進制注意力層的二進制-transformer-區塊btfb">2.4 含二進制注意力層的二進制 Transformer 區塊（BTFB）</h3>
+<p>Transformer 區塊只用嵌入層、全連接層、正則化層。BTFB（演算法 5）：套用**二進制正則化注意力（BATL）**→ Add &amp; Normalize → 兩層 BNFCL（第一層用 gelu 激活）→ 再 Add &amp; Normalize。<strong>二進制多頭注意力 BATL（演算法 6）</strong>：對輸入做線性投影得 Q/K/V → 切成多頭並換軸 → 算縮放點積注意力分數 → 套因果遮罩 → softmax → 算注意力 → 重塑回原維度 → 最終線性投影。其中所有全連接/投影皆為二進制正則化層，正則化層僅做「零均值單位標準差」正則化。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

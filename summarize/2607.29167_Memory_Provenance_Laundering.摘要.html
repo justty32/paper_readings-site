@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Memory Provenance Laundering in LLM Agents: A Non-Amplification Firewall for Persistent Memory · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jinghan Xu, Yiyong Xiao, Wanru Shao, Hankai Liu, Xinjin Li</p><p>日期：2026-07-31</p><p>arXiv：2607.29167</p><p><a href="https://arxiv.org/abs/2607.29167" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="llm-agent-的記憶來源洗白persistent-memory-的權限非放大防火牆">LLM Agent 的記憶來源洗白：Persistent Memory 的權限非放大防火牆</h1>
+<h2 id="一句話結論">一句話結論</h2>
+<p>LLM consolidation 可能保留外部文字中的 action trigger，卻把「來自低信任網頁／郵件」洗成「使用者歷史／既定流程」。PPMF 的關鍵不是更會辨識惡意文字，而是把 provenance 保存成平台 metadata，將每個 tool argument 綁回支持它的 memories，再以 least-trust authority 對照 action risk；在完整標籤與固定 policy 的 benchmark 中阻止所有受測未授權高風險動作，但 metadata forgery、risk mislabel 與更複雜的多 agent authority transfer 仍在保證外。</p>
+<h2 id="威脅與不變量">威脅與不變量</h2>
+<p>Task A 中 agent 讀取 user、web、email、document、message 或 tool output，LLM writer 把它們壓成 long-term memories；Task B 再檢索並產生 tool call。攻擊者控制外部 observation 與其措辭，不能改 system prompt、schema、gate 或平台 metadata。attack success 定義為只靠 external-derived memory，讓未被 Task B user request 或 recorded confirmation 授權的 high-risk effect 執行。</p>
+<p>PPMF 將 memory 存為 <code>(content, source, trust, transformation history, risk labels, external flag)</code>。信任格為 UNKNOWN &lt; EXTERNAL &lt; TRUSTEDTOOL &lt; USERHISTORY &lt; USER_CONFIRMED &lt; SYSTEM。每個與 action argument 有關的 claim，權限不得高於其所有 supporting sources 中最低者，除非有平台 declassification event 且綁定相同 principal、target、risk class 與 scope。</p>
+<p>gate 先用 explicit memory pointer 綁 support；沒有 pointer 才 canonicalize URL、handle、file、account、endpoint、workflow id 等 arguments。ambiguous/conflicting/partial match 保留所有候選並取最低 trust。READ 至少 EXTERNAL，NAV 至少 USERHISTORY，EFFECT/PURCHASE/CREDENTIAL 則需 USER_CONFIRMED。模型可以規劃，但不能用文字「user-confirmed」自行升權。</p>
+<h2 id="主要實驗數字">主要實驗數字</h2>
+<ul>
+<li>Qwen2.5-14B consolidated memory 在 synthetic/adaptive cases 的 no-defense ASR 均 0.933；raw memory 為 1.000。PPMF 為 0，benign success 1.000、false block 0。</li>
+<li>AgentDojo Q14：no defense ASR 0.490、benign success 0.042；content filter ASR 0.281。PPMF 為 0/1.000/0。</li>
+<li>server-backed HTTP：no defense ASR 1.000；content filter 降至 0.300 卻 false-block 全部 benign；PPMF ASR 0 且 confirmed benign 1.000。Mistral memory no-defense 0.900，PPMF 0。</li>
+<li>3,680-page BrowseSafe-Bench adaptation：no defense 1.000；HTML lexical filter 0.689，prompt filter 0.609；PPMF 0，benign success 1.000。</li>
+<li>726 AgentDojo traces 加 20 decoys：no defense 1.000，content filter 0.518；PPMF 0。PPMF benign success 隨 top-k confirmed support retrieval 從 k=10 的 0.794 升至 k=20 的 0.990。</li>
+<li>laundering 與直接 ASR 不同：AgentDojo Qwen2.5-3B vulnerable ASR 只有 0.083，但 laundering rate 0.990，表示攻擊尚未立即觸發不代表來源權限仍被保存。</li>
+<li>cross-writer 包含 Qwen2.5 1.5B/3B/7B/14B、Llama3-8B、Mistral-7B，laundering 並非單一 summarizer 現象；另有 1,046 個 Llama-3.3-70B trace-derived memories 診斷。</li>
+</ul>
+<h2 id="ablation-的含義">Ablation 的含義</h2>
+<p>在 vulnerable summary 後才做 provenance-text filter（ProvF）沒有作用，因來源已在 consolidation 過程遺失。只生成帶可讀 provenance 的 memory、沒有 deterministic gate（PPMF-Mem）也多半仍可被 action-bearing content 穿透。gate-only 雖 ASR 0，卻把 confirmed benign 一起擋掉。完整效果來自「寫入時保存平台 provenance + 執行時 argument-level support binding + risk-authority gate」的組合，而非更安全的 summary wording。</p>
+<h2 id="邊界與證據成熟度">邊界與證據成熟度</h2>
+<p>missing metadata 採 fail closed：20% provenance missing 時 ASR 仍 0，但 benign success 降至 0.814。相反，trust root 被破壞就失守：10% forged confirmations 產生 ASR 0.088±0.016，10% risk downgrade 為 0.112±0.006。這不是小瑕疵，而是把安全問題移到 observation-channel labeling、UI confirmation、tool schema registry 與 append-only event log 的完整性。</p>
+<p>utility 測試只涵蓋 low-risk recall、navigation、preference reuse、confirmed high-risk action 與一步 re-confirmation，不衡量 open-ended task quality、長期 confirmation fatigue。LangGraph pilot 用固定、預先生成的 Qwen2.5-14B memories 與 InMemoryStore，不代表 LangChain、Letta、AutoGen 或 online-learned memory 已整合驗證。單 agent direct state change 是主範圍；低風險動作組合成高風險、多 tenant、inter-agent authority transfer 均待研究。</p>
+<p>這是一篇 EMNLP 2026 submitted preprint，有多模型、多資料形態、server-side HTTP effects、完整 ablation 與清楚 threat model，研究證據中等偏強；但所有 0 ASR 都是「在平台 metadata 正確、policy 固定、schema coverage 完整」的條件式結果，不能解讀為通用 memory security 已解決。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

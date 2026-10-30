@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Dominated Novelty Search：重新思考 Quality-Diversity 中的局部競爭》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Ryan Bahlous-Boldi、Maxence Faldor、Luca Grillotti、Hannah Janmohamed、Lisa Coiffard、Lee Spector、Antoine Cully（UMass Amherst / Imperial College London）</p><p>日期：2025-02，演化演算法／Quality-Diversity／局部競爭</p><p>arXiv：2502.00593</p><p><a href="https://arxiv.org/abs/2502.00593" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="dominated-novelty-search重新思考-qd-中的局部競爭重點摘要">《Dominated Novelty Search：重新思考 QD 中的局部競爭》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>DNS（Dominated Novelty Search）</strong>：把 QD 演算法重新理解成「<strong>用 fitness 變換實作局部競爭的 GA</strong>」（而非靠網格/archive 等顯式收集機制），並提出一個新競爭函數——每個解的 competition fitness = <strong>「到 k 個比自己 fitter 的最近鄰的平均 descriptor 距離」（dominated novelty score）</strong>；這讓局部競爭<strong>動態適應 descriptor 空間的形狀</strong>、完全不需預先定義邊界、網格或固定距離閾值，是 MAP-Elites 網格的 drop-in 替代品，在標準 QD benchmark、不連續/受限/高維/無監督 descriptor 空間都顯著勝過 ME、Threshold-Elites、Cluster-Elites。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>QD 的核心是<strong>局部競爭</strong>，但既有實作各有死穴：</p>
+<ul>
+<li><strong>MAP-Elites 網格</strong>：須<strong>預先定義</strong> descriptor 邊界（無監督/學習式 descriptor 根本不知道邊界）；高維時網格爆炸且大量 cell 落在<strong>不可達</strong>區域，浪費有效族群、卡住 stepping stone 的探索；網格形狀很少匹配真實解空間（不連續、非凸時尤糟）。</li>
+<li><strong>Unstructured archive（Threshold-Elites/AURORA）</strong>：靠<strong>固定距離閾值</strong> l，需細調、常要複雜的容器大小自適應。</li>
+</ul>
+<p>而「如何設計更好的局部競爭策略」這個問題本身在 QD 文獻裡幾乎沒被探索——多數研究改的是 reproduction 或 robustness，competition 規則本身被當成理所當然。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>新視角：QD = GA + competition 函數</strong>：不把 QD 當成「跟 GA 不同的、有顯式 archive 的東西」，而是「把 GA 的全域競爭換成一個對 fitness 做變換的 competition 函數」。在此框架下 ME 與 Threshold-Elites 都能被表達成特定 competition 函數 → 可系統地推導新演算法。</li>
+<li><strong>Dominated Novelty Search 競爭函數</strong>（三步）：
+<ol>
+<li>對每個解 i，找出<strong>所有 fitness 比它高</strong>的解 j（f_j &gt; f_i），算它們在 descriptor 空間的距離集合 D_i。</li>
+<li>competition fitness f̃_i = <strong>到 k 個最近的 fitter 解的平均距離</strong>（dominated novelty score）。若 fitter 解不足 k 個就用全部；若<strong>沒有 fitter 解</strong>（即 Pareto 前緣）→ f̃_i = +∞ 強制保留。</li>
+<li>把 f̃_i 高於中位數的個體選去 reproduction（套進標準 GA）。</li>
+</ol>
+</li>
+<li><strong>直覺</strong>：一個解該被淘汰，當且僅當它<strong>同時 fitness 較差且行為與既有解相似</strong>。於是產生兩股互補壓力——要嘛提升 fitness、要嘛發現與更強解不同的行為。</li>
+<li><strong>關鍵優勢</strong>：不需任何 descriptor 邊界/結構先驗，自然適應<strong>可達區域</strong>；可當 ME 網格的 drop-in 替換，相容既有 QD 框架（QDax）。</li>
+</ul>
+<h2 id="結果jaxqdaxa10010-次重複mann-whitney-u--holm-bonferroni">結果（JAX/QDax，A100，10 次重複，Mann-Whitney U + Holm-Bonferroni）</h2>
+<ul>
+<li><strong>well-defined descriptor（MuJoCo 連續控制）</strong>：DNS 在三環境的 QD score 與 coverage 都顯著勝 Threshold-Elites 與 Cluster-Elites（皆 p&lt;1e-9）；在 Walker、Ant Blocks（含<strong>隱式約束</strong>，如某些 foot-contact 比例不可達、障礙物擋住區域）顯著勝 ME（p&lt;1e-3）；在 descriptor 空間恰好對齊網格的 Ant，DNS 與 ME 打平。</li>
+<li><strong>不連續 descriptor（迷宮）</strong>：障礙使網格大量 cell 不可達 → ME 浪費 cell;DNS 適應可達區域。</li>
+<li><strong>高維 descriptor</strong>（Kheperax，descriptor = 軌跡上 30 個位置 → 網格需 60 維且大量組合不可行）：DNS 在大多數 n 顯著勝所有 baseline（p&lt;0.05），且<strong>全部條件下顯著勝 ME</strong>；隨維度上升 ME 越來越多網格落在不可達區、stunting stepping stone。</li>
+<li><strong>無監督 descriptor</strong>（AURORA 式學習 embedding，邊界未知）：DNS 仍在 QD score 與 coverage 顯著勝（p&lt;0.05）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>在 descriptor 空間恰好對齊網格、低維、well-bounded 的情況（如 2D Ant），對 ME 的優勢不顯著。</li>
+<li>計算 k-nearest-fitter 需 pairwise 距離，族群很大時有成本（雖 JAX 平行化）。</li>
+<li>仍沿用 GA 的「中位數選擇 + reproduction」外框；competition 規則是人手設計（對照 <a class="paper-reference" href="2502.02190_LQD_MetaBBO_QD.%E6%91%98%E8%A6%81.html">2502.02190</a> 直接元學習此規則）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 D 類**「重新表述 QD 的競爭機制」<strong>代表，最大貢獻是</strong>觀念框架**：「QD 演算法 = GA + 不同的 fitness 變換 competition 函數」這個統一視角，把 archive/網格從「必要的資料結構」降格為「眾多 competition 函數之一」，開啟了系統性設計（甚至元學習）競爭規則的空間。</li>
+<li>與 <a class="paper-reference" href="2502.02190_LQD_MetaBBO_QD.%E6%91%98%E8%A6%81.html">2502.02190</a> LQD 是<strong>同一作者群的姊妹作且互為前提</strong>：LQD 正是建立在「QD=GA+competition 函數」這個框架上、把 DNS 當 baseline 並嘗試用 Transformer <strong>學出</strong>比 DNS 更好的競爭規則。兩篇一起讀＝「手工設計更好的競爭規則（DNS）→ 元學習競爭規則（LQD）」的完整脈絡。</li>
+<li>最值得記：<strong>「dominated novelty = 到 k-nearest-fitter 的平均距離、Pareto 前緣設 +∞」</strong> 這個無參數、自適應、可 drop-in 的局部競爭算子；以及「<strong>網格在 descriptor 邊界未知/高維/不連續時的系統性失效</strong>」這組診斷。</li>
+<li>定位：方法 + 實證論文（QDax 開源），適合做 Quality-Diversity、open-ended evolution、unsupervised behavior descriptor（AURORA 系）的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2502.00593_DNS_QD_Local_Competition.zh-TW.html"><code>../translate/2502.00593_DNS_QD_Local_Competition.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

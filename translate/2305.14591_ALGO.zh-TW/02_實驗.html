@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.14591_ALGO.zh-TW.html">回 2305.14591_ALGO.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-設定">4.1 設定</h3>
+<p><strong>Verifier</strong>：用 ChatGPT Code Interpreter 建立——先提示生成參考 oracle，再生成輸入產生器。溫度 1.0，重抽樣直到通過所有範例測資。輸入產生器與輸入驗證器（input validator）用 zero-shot prompt 生成即可，因為兩者都是容易的功能合成任務。每個輸入變數最大長度設為 10；經 oracle 產生輸出時跳過逾時與遞迴錯誤的案例。<strong>每題只需建立一次 verifier，即可生成任意測資、導引任意模型。</strong></p>
+<p><strong>整合的 coder 與基線</strong>：</p>
+<ul>
+<li><strong>Codex 與 CodeT</strong>（隱式搜尋器）：CodeT 用 Codex 同時生成程式與測試案例，以雙向一致性（dual agreement）過濾排序。我們用 CodeT 論文釋出的同一批 Codex 生成程式，以三種方式排序（隨機／CodeT 啟發式／ALGO 驗證結果）後比較最頂端的程式。</li>
+<li><strong>ChatGPT Code Interpreter</strong>（指令枚舉器）：GPT-3.5 加程式碼直譯器外掛（text-davinci-002-code，2023-03-24 版）。因其受指令微調，可遵循「用某類演算法解題」的指示，故可枚舉演算法類別清單找正確解；溫度 1.0，重抽樣至通過範例測資或達上限（N=5）。</li>
+<li><strong>PG-TD</strong>（迭代搜尋器）：樹搜尋式解碼規劃演算法，用測資 reward 估計搜尋樹子節點價值；底層為在 APPS 訓練集上微調的 GPT-2。PG-TD* 只用公開測資，PG-TD 另有 AlphaCode 式生成測資；整合 ALGO 時以 verifier 的 reward 取代生成測資。</li>
+</ul>
+<p><strong>基準</strong>：<strong>CodeContests</strong> 測試集全部 165 題（來自 Codeforces），三個基線都在其原論文中評測過，完全沿用原設定；<strong>LeetCode</strong> 35 題近期題目（10 easy／18 medium／7 hard），確保<strong>發布時間與 GPT-4 同期或更晚以避免資料污染</strong>，並人工標註每題解法的演算法類別。</p>
+<p><strong>指標</strong>：n@k——生成 k 個候選、依重排機制選出前 n 個提交，n@k 為任一提交通過的題目比例；無重排機制者以隨機抽 n 個計。同設定下與基線用相同抽樣預算。</p>
+<h3 id="42-合成準確率">4.2 合成準確率</h3>
+<p><strong>CodeContests（表 2 擇要，1@k）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>1@k</th>
+<th>增益</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Codex（k=1000）</td>
+<td>0.70</td>
+<td>-</td>
+</tr>
+<tr>
+<td>CodeT</td>
+<td>2.10</td>
+<td>+1.40</td>
+</tr>
+<tr>
+<td><strong>ALGO w/ Codex</strong></td>
+<td><strong>5.60</strong></td>
+<td>+4.90</td>
+</tr>
+<tr>
+<td>PG-TD*（k=20）</td>
+<td>0.62</td>
+<td>-</td>
+</tr>
+<tr>
+<td>PG-TD</td>
+<td>0.67</td>
+<td>+0.05</td>
+</tr>
+<tr>
+<td><strong>ALGO w/ PG-TD</strong></td>
+<td><strong>1.57</strong></td>
+<td>+0.95</td>
+</tr>
+<tr>
+<td>ChatGPT（k=20）</td>
+<td>4.40</td>
+<td>-</td>
+</tr>
+<tr>
+<td><strong>ALGO w/ ChatGPT</strong></td>
+<td><strong>12.00</strong></td>
+<td>+7.60</td>
+</tr>
+</tbody>
+</table>
+<p>ALGO 在所有 n 值上一致勝過基線，<strong>增益在 1@k 最顯著</strong>：較 Codex 8 倍、較 CodeT 2.6 倍、較 PG-TD 2.5 倍、較 ChatGPT 2.8 倍。k 增大時優勢遞減——n 趨近 k 時通過率收斂到候選集中正確程式的比例，屬預期現象。</p>
+<p><strong>LeetCode（圖 5）</strong>：以 ALGO 枚舉演算法類別（每題的指令集中含一個正確類別），Code Interpreter 的一次提交通過率<strong>超過 GPT-4</strong>。這展示了枚舉演算法的指令搜尋器的好處，以及 ALGO 過濾並選出正確演算法類別的能力——<strong>沒有 verifier，就無從分辨對錯</strong>。</p>
+<h3 id="43-驗證分析">4.3 驗證分析</h3>
+<p><strong>LLM 生成的 oracle 通常正確</strong>。將 oracle 提交至題目來源的線上評測（Codeforces、LeetCode）取得系統判定：Accepted／TLE／Runtime Error 以外的判定直接視為錯誤；TLE 與 RE 者（可能語意正確但超時/爆棧）聘請資深競程選手人工檢查。結果：<strong>LeetCode 題 88.5% 的 oracle 語意正確</strong>（含所有 TLE 者）；<strong>CodeContests 題 72% 語意正確</strong>。</p>
+<p><strong>Oracle 生成的測試案例品質更好（表 3）</strong>。以 <strong>Agreement</strong>（測資集判定與系統評判的一致性）與 <strong>Coverage</strong>（測資執行到的程式碼行覆蓋率）衡量：CodeContests 上 Agreement 從範例測資的 57.39% 升至 <strong>94.78%</strong>（+37.39），Coverage 85.78%→89.39%；LeetCode 上 Agreement 68.57%→74.29%，Coverage 90.32%→93.00%。</p>
+<p><strong>更好的測資帶來更好的合成（表 4）</strong>。同一 coder、同預算 k=20 下：範例測資 1@20＝4.4%、ChatGPT 直接生成的測資 6.8%、<strong>ALGO 測資 12.0%</strong>（3@20：7.9／8.2／12.0；7@20：12.2／11.7／14.0）。</p>
+<p><strong>更多測資帶來更好結果（圖 6）</strong>。測資少於 30 個時，增加測資對所有 n@k 顯著有益，對依賴測資選出唯一提交的 1@k 尤其關鍵；超過 30 個後增益極小（推測受 oracle 品質與生成範圍所限）。</p>
+<h3 id="44-案例研究">4.4 案例研究</h3>
+<p>以 LeetCode「minimum-time-to-repair-cars」為例：求把汽車分配給效率不一的技師（同時工作）使總修理時間最短。oracle prompt 生成的程式<strong>窮舉所有可能的汽車分配</strong>並選出最優——時間複雜度 O(2^m) 的指數時間解，無法通過線上評測，但語意正確（J_T=False、J_S=True），作為參考仍有價值。coder 生成兩個候選：<strong>二分搜尋候選 P_B</strong>（此題的理想解法——「能否在 t 分鐘內修完」的指示函數具單調性，可對 t 二分把最佳化問題轉為判定問題）為 O(n log m) 的正確高效解，通過系統評判；<strong>貪婪候選 P_G</strong> 雖只需 O(n) 但語意錯誤（J_T=True、J_S=False）。對拍結果：P_G(I₀) ≠ P_O(I₀) 被驗證器判失敗、P_B 通過——<strong>與系統評判一致</strong>，且驗證結果能幫助找到正確的指令（演算法類別）。</p>
+<h2 id="5-相關工作">5. 相關工作</h2>
+<p><strong>LLM 程式碼生成的重排技術</strong>：一類用神經模型預測信心分數（程式似然、程式與描述的互資訊、專門訓練的驗證器模型），但分數只是純量、不可解釋；ALGO 的 oracle 與測試結果都容易檢查與解讀。另一類用測試案例與執行結果重排（AlphaCode 的執行結果聚類≈多數決；CodeT 等用 coder 模型多生測資交叉檢查），但 LLM 對單一問題生成的測資對錯混雜，會提供有害回饋。<strong>ALGO 把「檢查 AI 生成的程式」轉化為「檢查 AI 生成的暴力解」——後者容易得多。</strong></p>
+<p><strong>程式合成與軟體測試中的 oracle</strong>：傳統程式合成因有形式規格（輸入輸出範例、邏輯約束）可自動驗證；由文字生成 oracle 則因文字的歧義與缺乏形式規格而困難。軟體測試領域的 test oracle 生成聚焦回歸測試、程式崩潰或基本功能性質，不適用於複雜演算法問題的語意錯誤偵測。</p>
+<p><strong>自我精煉的語言模型</strong>：Self-Debug、Self-Refine 等以 LLM 自我回饋改善生成的程式。本文改用<strong>參考 oracle 的執行結果</strong>作為回饋來導引程式生成。</p>
+<h2 id="6-結論與討論">6. 結論與討論</h2>
+<p>ALGO 由 coder 與 verifier 組成：coder 生成解並向 verifier 請求驗證以迭代精煉想法與程式碼；verifier 以 LLM 生成的 oracle 產生測試案例。合成 oracle 的方法立足於「演算法問題的暴力解容易生成」。在兩個資料集、三種基線上大幅勝出；oracle 準確率高、判定與系統評判高度一致，支撐了整體表現。未來方向：更複雜的 coder-verifier 互動（如自我精煉研究）、引入程式語言社群中 oracle-guided synthesis 的成熟技術——NLP 與軟體工程兩個社群的知識都能在 ALGO 框架中啟發後續工作。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2305.14591_ALGO.%E6%91%98%E8%A6%81.html"><code>../summarize/2305.14591_ALGO.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

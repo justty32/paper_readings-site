@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_推理捷徑的溫和介紹 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2510.14538_Reasoning_Shortcuts.zh-TW.html">回 2510.14538_Reasoning_Shortcuts.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E8%99%95%E7%90%86%E6%8E%A8%E7%90%86%E6%8D%B7%E5%BE%91.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-推理捷徑的溫和介紹">3. 推理捷徑的溫和介紹</h2>
+<p>何時 NeSy 預測器會錯誤接地?直覺上會以為「只要訓練資料充足無噪、知識完整正確，最小化訓練損失就會像監督學習一樣學對概念」——<strong>但並非如此</strong>，因為 RS。</p>
+<blockquote>
+<p><strong>定義 3.1（RS，非正式）</strong>：RS 是「NeSy 預測器透過<strong>錯誤地接地概念</strong>，達到符合先驗知識的、準確的標籤預測」的情形。</p>
+</blockquote>
+<blockquote>
+<p><strong>例 3.2（MNIST-Add 的 RS）</strong>：訓練集僅兩例。理想接地是學到正確的圖→概念映射；但也可<strong>錯誤接地</strong>成另一套不直觀映射，同樣滿足約束、達高準確率。
+<strong>例 3.3（BDD-OIA 的 RS）</strong>：正確接地紅綠燈與行人的預測器準確；但<strong>系統性把行人與紅燈搞混</strong>的預測器準確率相同（真值表中兩概念可互換，任一觸發都推出同一正確動作）。</p>
+</blockquote>
+<p>這些例子顯示：<strong>正確與有缺陷的 NeSy 預測器無法僅靠標籤準確率區分</strong>，故訓練時沒有理由偏好其一；RS <strong>即使知識正確完整、資料無噪也會發生</strong>；甚至<strong>訓練資料窮舉</strong>（含所有紅綠燈/行人組合）RS 仍持續（正確與錯誤模型在所有例子上給相同預測）。</p>
+<h3 id="31-成因頻率與影響">3.1 成因、頻率與影響</h3>
+<ul>
+<li><strong>為何出現?</strong> 兩個相關問題之結合：(a) 先驗知識允許從<strong>不當接地的概念向量</strong>推出正確標籤；(b) 概念抽取器<strong>表示力夠強</strong>（夠多層）足以習得任何此種錯誤映射。兩者結合在學習問題中引入<strong>歧義</strong>，模型可自由學錯概念映射又保持高準確。</li>
+<li><strong>實務中會發生嗎?</strong> 知識不夠「嚴格」時 RS <strong>可能</strong>發生（非必然）。但文獻中標準條件下訓練的 NeSy 預測器<strong>屢屢落入 RS</strong>，顯示 RS 在 NeSy benchmark 中<strong>自然出現</strong>。</li>
+<li><strong>RS 讓 NeSy 不可用嗎?</strong> 否。只求準確（B1）與有效（B2）時 RS 不成問題（RS 不改標籤準確率，有效性是內建的）。但<strong>無法僅靠監看標籤預測偵測</strong>。</li>
+<li><strong>有何後果?</strong> 嚴重損害<strong>可重用（B3）<strong>與</strong>可解釋（B4）</strong>：壞接地概念無法在其他設定運作（例：把救護車知識「緊急時可闖紅燈」配上「行人↔紅燈混淆」的預測器 → 緊急時遇行人反而開過去）；持續學習中也卡關（微調新任務時把 stop sign 與紅燈劃等號）;NeSy 驗證失效；解釋誤導（畫面是行人卻解釋成「因為有紅燈」）。</li>
+</ul>
+<h2 id="4-推理捷徑的理論">4. 推理捷徑的理論</h2>
+<p>兩種主流形式化。<strong>§4.2 可識別性</strong>：無限樣本下，達高概似的模型何時能真學到正確概念。<strong>§4.3 統計學習</strong>：有限資料下學正確概念的保證（經驗風險最小化）。</p>
+<h3 id="41-設定與假設">4.1 設定與假設</h3>
+<p><strong>資料生成過程</strong>：區分<strong>真值概念 g*</strong>（underlying）與<strong>學到概念 c</strong>。訓練樣本取自真值聯合分布 = 真值概念抽取器（input→概念分布）與真值推理函數（概念分布→標籤分布）之合成。</p>
+<ul>
+<li><strong>假設 4.1（完整性）</strong>：真值概念抽取器是「從 input 推真值標籤」的<strong>充分統計量</strong>（保留所有必要資訊）；標籤在給定真值概念下與 input 獨立，且所有 (x,y) 都與知識相容。（排除「概念空間相對標籤空間過於受限」的情形。）</li>
+<li><strong>假設 4.2（可外推性）</strong>：真值概念抽取為<strong>確定性 one-hot</strong> 函數（可由 input 唯一取回真值概念）。</li>
+<li><strong>假設 4.3（確定性）</strong>：真值推理層把<strong>每個概念向量映到單一標籤</strong>（one-hot）。</li>
+<li>MNIST-Add、BDD-OIA 都滿足 4.2/4.3。</li>
+</ul>
+<h3 id="42-視角可識別性">4.2 視角：可識別性</h3>
+<p>問：標準監督方式訓練的 NeSy 預測器，是否保證學到真值概念抽取器?即真值概念抽取器是否為訓練資料概似的<strong>唯一最大值</strong>?——這是<strong>可識別性理論</strong>的範疇。</p>
+<ul>
+<li><strong>模型類（4.2.1）</strong>：NeSy 預測器＝（概念抽取器 ∈ F, 推理層）。多數理論在<strong>非參數設定</strong>（F 含所有 input→概念分布的函數）；且假設推理層在 one-hot 上等同真值推理層（<strong>Eq.11</strong>）。</li>
+<li><strong>概念抽取器不可識別（4.2.2）</strong>;<strong>概念重映射分布 α（4.2.3）</strong>：α 描述「真值概念向量如何被映成學到概念向量」；確定性 α 對每個真值向量輸出 one-hot；任意 α 可表為確定性重映射的凸組合。<strong>真值對應的 α 是恆等映射 id</strong>（在假設 4.2 下）。</li>
+<li><strong>RS＝非預期的最優概念重映射（4.2.4）</strong>：
+<blockquote>
+<p><strong>定義 4.7（RS，正式）</strong>：若可學概念重映射分布 α 能滿足推理層且存在對應概念抽取器，但 <strong>α ≠ id（至少在一個真值概念上不同）</strong>，則 α 是該推理層的 RS。</p>
+</blockquote>
+<ul>
+<li>α≠id 有兩因：要嘛是有缺陷預測器（分布內就接地錯），要嘛雖分布內正確但在<strong>支撐集外（OOD）行為異於 id</strong>（組合泛化失敗）。</li>
+<li>此定義把焦點從概念抽取器（子符號層）移到<strong>概念重映射（符號層）</strong>。<strong>確定性 RS 對所有推理層都是 RS</strong>（因 Eq.11 在 one-hot 上輸出相同）。</li>
+</ul>
+</li>
+<li><strong>確定性 RS 的刻畫（4.2.5）</strong>：
+<blockquote>
+<p><strong>Theorem 4.10（數 RS）</strong>：在假設 4.1/4.2/4.3 下，確定性 RS 的數目有顯式公式；<strong>此數與 F 的具體選擇無關 → 所有 NeSy 架構有相同的確定性 RS</strong>（因所有整合知識的推理層都滿足 Eq.11）。</p>
+</blockquote>
+<ul>
+<li><strong>若一個標籤可由 k 個不同概念向量推得，RS 數就乘 k!</strong> → 隨「多對一」程度<strong>迅速爆炸</strong>。</li>
+<li><strong>例 4.11（XOR）</strong>：兩二元概念經 XOR 生標籤；窮舉支撐下有確定性 RS（如翻轉位元仍給正確標籤）。</li>
+</ul>
+</li>
+</ul>
+<h3 id="43-視角統計學習">4.3 視角：統計學習</h3>
+<p>學 NeSy 模型＝學概念抽取器使（配上推理層後）達高標籤概似 ＝ 找最小經驗標籤風險的模型。問：何時<strong>最小化標籤風險會帶動概念風險下降</strong>?</p>
+<ul>
+<li><strong>知識複雜度（Def 4.15）</strong>：依訓練觀察到的標籤分布，衡量「有多少概念與知識不相容」;<strong>少數概念才能推出某標籤 → 複雜度高（知識更明確）</strong>；多概念映同標籤 → 複雜度低。（BDD-OIA 三概念：8 個向量中僅 1 個推 go、7 個推 stop。）</li>
+<li><strong>Theorem 4.16（RS 風險無界，不可能性結果）</strong>：若<strong>知識複雜度不夠高</strong>（被概念空間大小上界界住），則存在概念抽取器使標籤風險→0 但<strong>概念風險→∞</strong>（RS 風險趨於無限）。兩主因：知識複雜度不滿（每標籤對多概念向量）、F 無限制（可表達任意條件概念分布）→ 皆為緩解目標（加更專門的約束提高知識複雜度；或限制抽取器架構縮小 F）。</li>
+<li><strong>分解式概念抽取器的 PAC 可學性（4.3.3–4）</strong>：許多任務 input 可分解成獨立單元（MNIST-Add 各數字），用<strong>同一函數獨立處理各單元</strong>（即「架構解耦」）。在 PAC 框架下研究，連到弱監督模型的可學性。</li>
+<li><strong>k-unambiguous 推理層的 PAC 可學性（4.3.5）</strong>：
+<blockquote>
+<p><strong>定義 4.17（k-unambiguity）</strong>：對任意兩概念向量 (z,c)、(z,c&#x27;)（c≠c&#x27;），推理層都給出不同標籤（即在這些對上單射）。MNIST-Add 滿足此條件。</p>
+</blockquote>
+<ul>
+<li><strong>Lemma 4.18</strong>：在 k-unambiguity 下，概念風險可被標籤風險上界 → 任務 <strong>PAC 可學</strong>。</li>
+</ul>
+</li>
+</ul>
+<h3 id="44-兩理論的關係">4.4 兩理論的關係</h3>
+<p>可識別性（無限樣本、唯一最大概似）與統計學習（有限樣本、風險上界）互補；知識複雜度/k-unambiguity 與「數 RS」彼此呼應——都指向「知識的多對一程度」是 RS 的根源。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

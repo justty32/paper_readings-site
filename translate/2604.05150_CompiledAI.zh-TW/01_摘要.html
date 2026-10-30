@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Compiled AI：LLM 工作流自動化的確定性程式碼生成（續 2） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.05150_CompiledAI.zh-TW.html">回 2604.05150_CompiledAI.zh-TW 目錄</a>　<a href="02_%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>我們研究<strong>編譯式 AI</strong>——一種範式：大型語言模型在編譯階段生成可執行程式碼產物，之後工作流以確定性方式執行，不再呼叫模型。此範式在宣告式管線最佳化（DSPy）和混合神經-符號規劃（LLM+P）等先前工作中已有前身；我們的貢獻是對其應用於高風險企業工作流進行系統導向研究，特別強調醫療場景——此處可靠性與可審計性至關重要。</p>
+<p>透過將生成約束在嵌入經過驗證模板的窄域業務邏輯函式中，編譯式 AI 以執行時靈活性換取可預測性、可審計性、成本效率與減少安全暴露。我們引入：(i) 受約束 LLM 程式碼生成的系統架構，(ii) 將機率性模型輸出轉換為生產就緒程式碼產物的四階段生成與驗證管線，以及 (iii) 衡量操作性指標（包括 token 攤銷、確定性、可靠性、安全性與成本）的評估框架。</p>
+<p>我們在兩類任務上進行評估：函式呼叫（BFCL，n=400）和文件智慧（DocILE，5,680 張發票）。在函式呼叫上，編譯式 AI 達 96% 任務完成率且執行時為零 token，約 17 筆交易即攤平成本，1,000 筆交易時減少 57× token 消耗。在文件智慧上，我們的 Code Factory 變體在關鍵欄位抽取（KILE：80.0%）上匹配 Direct LLM，同時達成最高的行項辨識準確度（LIR：80.4%）。安全評估跨 135 個測試案例顯示 prompt injection 偵測準確度 96.7%，靜態程式碼安全分析 87.5%，且無誤報。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>大型語言模型正日益部署於企業工作流自動化，從問答系統演進至自主 agent 架構 [Wu et al., 2024; CrewAI, 2024; LangChain, 2022]。雖然這些方法展示靈活性，但它們依賴執行期間重複呼叫模型，導致高 token 消耗、可變延遲與非確定性行為。</p>
+<p>將 LLM 當作<strong>編譯器而非直譯器</strong>的想法並非新創。DSPy [Khattab et al., 2023] 將宣告式 LLM 呼叫編譯為最佳化管線，相對提示工程達成 25–65% 改善。LLM+P [Liu et al., 2023] 將自然語言轉譯為 PDDL，再用經典規劃器產生最優方案——LLM 處理意圖理解，確定性求解器處理執行。Text-to-SQL 系統實例化相同模式：LLM 一次性生成查詢，資料庫確定性大規模執行。我們的貢獻是將此範式作為<strong>第一級生產系統關注點</strong>進行研究，以適合企業部署的操作性指標進行評估，並展示其在醫療場景中的特殊價值——此處可靠性與可審計性為法規要求。</p>
+<p>實證研究揭露執行時 agent 系統的持續可靠性挑戰。Cemri et al. [2025] 發現 79% 的多代理失敗源於規範與協調問題而非基礎設施。Salesforce 的 CRMArena-Pro 基準顯示 agent 成功率從單輪 58% 退化至多輪 35% [Salesforce, 2025]。即使在 temperature=0 下非確定性仍持續存在：Atil et al. [2024] 發現準確度在不同執行間變異高達 15%，Ouyang et al. [2023] 證明因架構因素（包括 Mixture-of-Experts 路由）存在 18–75% 的輸出變異。這些局限在醫療領域尤其成問題——此處事先授權工作流、臨床文件處理與帳務自動化需要確定性、可審計性與 HIPAA 和 CMS 決策時限的合規性。</p>
+<p>本文研究編譯式 AI 作為一個針對<strong>明確定義、高流量、合規敏感工作流</strong>的最佳化設計點。關鍵觀察是：許多企業工作流需要智慧去<strong>設計</strong>，但不需要智慧去<strong>重複執行</strong>。一旦業務邏輯被指定並驗證，重複執行可由傳統軟體基礎設施處理——具備完全可觀測性，使編譯產物可隨時間進行針對性細化。LLM 不是在此時解釋自然語言，而是被約束生成經過預先驗證模板中的窄域業務邏輯函式。這些產物在部署為靜態程式碼前通過多階段驗證管線（安全分析、語法驗證、執行測試、輸出準確度），具備可預測延遲、零隨機性與接近零的邊際推論成本。</p>
+<p><strong>定義（編譯式 AI）</strong>：滿足三項特性的工作流系統：</p>
+<ol>
+<li><strong>一次性 LLM 呼叫</strong>——模型僅在生成時執行一次，非交易時。</li>
+<li><strong>零 token 確定性執行</strong>——部署後的工作流以靜態程式碼執行，無進一步模型呼叫。</li>
+<li><strong>強制性多階段驗證</strong>——每個產物在部署前必須通過安全、語法、執行與準確度檢查。</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>系統</th>
+<th>執行時 LLM？</th>
+<th>確定性？</th>
+<th>需要驗證？</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Agents（AutoGen, LangChain）</td>
+<td>是</td>
+<td>否</td>
+<td>否</td>
+</tr>
+<tr>
+<td>DSPy</td>
+<td>部分</td>
+<td>部分</td>
+<td>是</td>
+</tr>
+<tr>
+<td>Compiled AI</td>
+<td>否</td>
+<td>是</td>
+<td>是</td>
+</tr>
+</tbody>
+</table>
+<p><strong>貢獻</strong>：本文做出三項貢獻：(1) 用於受約束 LLM 程式碼生成的系統架構，在耐久的工作流模板中產出有界業務邏輯函式（第 3 節）;(2) 將機率性模型輸出轉換為生產就緒程式碼產物的四階段生成與驗證管線（第 3 節）;(3) 衡量操作性可行性的評估框架——token 攤銷、確定性、可靠性、驗證有效性與成本——跨兩種不同任務類型進行評估（第 4–6 節）。</p>
+<h1 id="compiled-aillm-工作流自動化的確定性程式碼生成續-2">Compiled AI：LLM 工作流自動化的確定性程式碼生成（續 2）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

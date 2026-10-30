@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《SGLang：結構化語言模型程式的高效執行（Efficient Execution of Structured Language Model Programs）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Lianmin Zheng, Liangsheng Yin, Zhiqiang Xie, Chuyue Sun, Jeff Huang, Cody Hao Yu, Shiyi Cao, Christos Kozyrakis, Ion Stoica, Joseph E. Gonzalez, Clark Barrett, Ying Sheng（Stanford / UC Berkeley 等）</p><p>日期：2023-12</p><p>arXiv：2312.07104</p><p><a href="https://arxiv.org/abs/2312.07104" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="sglang結構化語言模型程式的高效執行重點摘要">《SGLang：結構化語言模型程式的高效執行》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>SGLang＝「前端 DSL＋協同設計 runtime」的結構化 LLM 程式執行系統</strong>：把「多次、常互相依賴的 LLM 呼叫＋控制流＋結構化輸入輸出」這種「語言模型程式（LM program）」當成第一級執行對象，用 <strong>RadixAttention（以基數樹＋LRU 管理 KV 快取、自動跨呼叫重用前綴）</strong> 與 <strong>壓縮有限狀態機（compressed FSM，一次解多個受約束 token）</strong> 系統性地剃除冗餘計算，在 agent 控制、邏輯推理、few-shot、JSON 解碼、RAG、多輪對話等工作上較 vLLM / Guidance / LMQL 取得 <strong>最高 6.4 倍吞吐、3.7 倍延遲降幅</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 應用正從「單次聊天」轉向「用程式排程與控制 LLM 生成」的<strong>程式化使用</strong>（LM program）。這類程式有兩個共通性質：(1) 多次 LLM 呼叫交錯控制流；(2) 收結構化輸入、產結構化輸出。但現有系統對它們既難寫也跑得慢，作者點出兩大痛點：</p>
+<ul>
+<li><strong>編寫繁瑣</strong>：LLM 的非確定性使開發需大量字串處理、prompt 試調、脆弱的輸出解析、多模態處理與手工並行，連簡單程式都難讀。</li>
+<li><strong>執行低效</strong>：SOTA 推論引擎（vLLM、TGI、TensorRT-LLM）不了解 workload，導致大量冗餘。典型如 <strong>KV 快取無法跨呼叫重用</strong>（請求完成即丟棄，即使多個呼叫共享前綴）；以及 <strong>受約束解碼一次只解一個 token</strong>（JSON 等格式明明常有「下一步唯一合法」可一次多解的機會）。</li>
+</ul>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>前端語言（DSL，嵌入 Python）</strong>：提供生成原語 <code>gen</code>（可帶 <code>regex</code> 約束）、<code>select</code>（選最高機率選項）、<code>extend</code>/<code>+=</code>（接字串）、以及並行原語 <code>fork</code>/<code>join</code>、多模態 <code>image</code>/<code>video</code>。相容 Python 控制流與函式庫；同一 essay judge 範例比 OpenAI-like 介面少 <strong>2.1 倍</strong>程式碼行數。屬<strong>低階系統</strong>（同 LMQL / Guidance，不改 prompt），與高階的 DSPy / LangChain 對照——高階語言可<strong>編譯</strong>到低階的 SGLang。</li>
+<li><strong>執行模式</strong>：預設<strong>直譯器</strong>把 prompt 當非同步 stream，原語非阻塞提交、背景執行緒管理，達成程式內並行；亦可<strong>編譯成計算圖</strong>由 graph executor 做更多優化（附錄 D）。支援開源權重（自帶 SGLang Runtime, SRT）與 OpenAI/Anthropic 等 API 模型。</li>
+<li><strong>RadixAttention（§3）</strong>：不丟 KV 快取，改用<strong>基數樹（radix tree）<strong>維護 token 序列↔KV tensor 的映射，配 <strong>LRU 逐出（先逐葉節點）<strong>＋</strong>參考計數</strong>（running 請求不被逐出）＋</strong>cache-aware 排程</strong>（依已匹配前綴長度排序，最長共享前綴優先＝離線最優的 DFS 順序，Thm 3.1）。KV 以每頁一 token 的分頁非連續佈局、快取與 running 請求共用記憶體池。並與 continuous batching、paged attention、tensor parallelism 相容。</li>
+<li><strong>壓縮 FSM（§4）</strong>：把正則約束轉成 FSM 後，將相鄰的<strong>單一轉移邊壓成一條邊</strong>，辨識何時可一次前向解多個 token（如常量 <code>{&quot;summary&quot;: &quot;</code>），突破「逐 token」瓶頸；對所有正則皆通用。</li>
+<li><strong>API 推測執行（§5）</strong>：對黑箱 API 模型（如 GPT-4）的多呼叫程式，讓第一個 <code>gen</code> 忽略停止條件多生成幾個 token，直譯器保留並與後續原語比對重用，省下重複的 input token 費與一次呼叫延遲。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>開源權重模型：<strong>吞吐最高 6.4 倍、延遲最低降至 3.7 分之一</strong>（Llama-7B/70B、Mixtral-8x7B，A10G/A100，vs Guidance / vLLM / LMQL）。</li>
+<li>快取命中率 50%–99%；cache-aware 排程平均達<strong>最優命中率的 96%</strong>。RadixAttention 額外開銷 &lt;0.3%（100 請求 74.3 秒中僅 0.2 秒維護樹），故可<strong>預設開啟</strong>。</li>
+<li>壓縮 FSM 在 JSON 解碼上提升吞吐 <strong>1.6 倍</strong>（且預處理狀態機須跨批重用，否則反而慢 2.4 倍）。</li>
+<li>多模態（LLaVA image/video）吞吐最高 <strong>6 倍</strong>（image 0.18→1.15 image/s）。</li>
+<li><strong>生產部署</strong>（Chatbot Arena，一個月）：RadixAttention 命中率 LLaVA-Next-34B 52.4%、Vicuna-33B 74.1%，後者<strong>首 token 延遲平均降 1.7 倍</strong>。API 模型（GPT-3.5 抽三欄位）推測執行約省 <strong>3 倍</strong> input token 成本。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>Cache-aware 貪婪排程可能導致<strong>飢餓（starvation）</strong>，與公平排程整合留作未來工作。</li>
+<li>RadixAttention 目前限於 GPU 記憶體階層；跨 DRAM/Disk、模糊語意匹配、更高階原語、編譯器靜態優化（排程/記憶體規劃）皆未做。</li>
+<li>多輪對話<strong>長輸出</strong>時共享少、解碼主導，幾乎無加速；API 推測執行須靠 prompt engineering 才能高準確匹配。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>對應 ai_core <strong>§1「系統＝符號神經網路計算圖（多數確定性節點＋少數 LLM）」</strong>：SGLang 正是把「LLM 計算圖當可執行程式」的 <strong>runtime 層</strong>具體實作——直譯器把 prompt 當 stream、可 trace 成計算圖，<code>fork</code>/<code>join</code> 讓確定性控制流與 LLM 節點並存，示範了「LM program 作為第一級執行對象」該長什麼樣。ai_core 若要把 LLM 呼叫包成可靠函數並組成圖，SGLang 是現成的執行棧參考。</li>
+<li>對應 ai_core <strong>§3.3 成本降本</strong>：RadixAttention 的前綴 KV 重用＋壓縮 FSM，是「同一批確定性/半確定性節點反覆處理」時最直接的降本手段（生產命中率 52%–74%、首 token 延遲降 1.7 倍）。這與級聯路由是互補的兩條省本路徑——一條選更便宜的模型，一條讓同模型少算冗餘。</li>
+<li>作為<strong>執行棧座標</strong>：DSPy＝高階「編譯」optimizer、LMQL＝「查詢語言」、SGLang＝低階「co-designed runtime」；三者可疊（DSPy 可編譯到 SGLang 當後端）。ai_core 在「把 LLM 圖跑起來」這層應把 SGLang 視為 runtime 選項、DSPy 視為上游編譯器。歸 <strong>I 類</strong>。</li>
+<li>最值得記：<strong>RadixAttention（KV 快取當基數樹 LRU、最長共享前綴＝DFS 最優排程）</strong>、<strong>壓縮 FSM 一次多解 token</strong>、<strong>frontend-runtime 協同設計（Frontend Hint）</strong>、以及「前端 DSL 與 runtime 可獨立亦可協同」的分層哲學。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2312.07104_SGLang.zh-TW.html"><code>../translate/2312.07104_SGLang.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

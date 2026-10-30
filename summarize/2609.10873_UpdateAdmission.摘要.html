@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>When Validation Stops Learning: Auditing Update Admission for Continual Embodied Agents 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Qinzhen Ma、Ruihai Wu</p><p>日期：2026-09-09（v1，cs.AI）</p><p>arXiv：2609.10873</p><p><a href="https://arxiv.org/abs/2609.10873" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="when-validation-stops-learning-auditing-update-admission-for-continual-embodied-agents-重點摘要">When Validation Stops Learning: Auditing Update Admission for Continual Embodied Agents 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>這篇論文指出，持續學習的更新准入器不能只管「放進來的更新有沒有害」，也要算「在給定互動預算下放掉多少真的可學機會」；否則一個永遠不放行的安全門，可以用零記錄違規掩飾它已經凍結學習。</p>
+<h2 id="問題與立場">問題與立場</h2>
+<p>持續具身 agent 要在學新任務時保住舊能力，因此常用獨立驗證集檢查候選策略。但「有統計保證」不等於「在實際預算下有用」。作者展示，一個合法的範圍型 Hoeffding 信心門可能因為區間過寬，連候選策略與歷史參考在舊任務上完全一樣時都無法證明「沒有退步」。所以驗收應同時報告錯誤控制、准入覆蓋、錯失機會、學習效果與取得證據的全部成本。</p>
+<h2 id="方法架構">方法架構</h2>
+<ul>
+<li><strong>事先承諾的准入契約</strong>：在看獨立結果前，先固定候選策略、現行策略、歷史參考、要保護的任務、允許退化幅度、最低新任務增益與樣本數。世界模型可以用於候選排名，但不得把模型分數當成獨立環境結果。</li>
+<li><strong>成對二項檢查</strong>：對同一個 fresh reset，比較候選與參考策略的二元成功差。與只使用差值全範圍的 Hoeffding 區間相比，Clopper–Pearson 做法分別估計「候選贏」與「候選輸」的機率，因此在兩個策略很少意見不同時，可以用更少樣本證明保留舊能力。結果分成接受、拒絕與延後；證據不足必須延後，不可當成通過。</li>
+<li><strong>可證明的歷史參考升級</strong>：永遠只和初始策略比，可能漏掉學會後又退化的軌跡。新策略通過後，只在同一有效信心區間證明它不差於舊參考時，才升格為新歷史參考。</li>
+<li><strong>以「輪」為單位的錯失機會</strong>：一輪候選池只要有任一候選滿足真實契約，卻沒有採用任一合格候選，才計一次 missed opportunity。這避免把正常的候選遴選誤算成系統失敗。</li>
+</ul>
+<h2 id="主要實驗與數字">主要實驗與數字</h2>
+<ul>
+<li>作者先做可行性分析：在指定的三比較、首次嘗試與誤差設定下，Hoeffding 關卡需每個比較 <code>4,229</code> 對樣本，等量分配共需 <code>25,374</code> 個 episode，超過 <code>20,000</code> 的上限；若成對資料完全沒有分歧，二項區間在同一範例只需 <code>117</code> 對（作者自報）。作者特別強調，這是特定規則的限制，不是資訊理論下界。</li>
+<li>共同候選流實驗中，成對關卡在 <code>B=2,000</code> 時接受 <code>81/256</code> 次更新，在 <code>B=20,000</code> 時接受 <code>229/256</code> 次，未觀察到契約違規；Hoeffding 兩者都沒有接受任何更新（作者自報）。這證明區間構造本身就會決定學習機會能否穿過安全門。</li>
+<li>閉環診斷中，fresh paired 關卡的採用率為 <code>37.1</code>、契約違規為 <code>0.0</code>、錯失機會為 <code>60.4%</code>、最終成功率為 <code>59.6</code>；無條件 replay 的最終成功率為 <code>100.0</code>，但有 <code>5.9%</code> 契約違規（表中數值單位為百分比，作者自報）。這些違規是新任務增益不足，不是舊能力退化；作者因此不主張准入方法優於 replay。</li>
+<li>另一個 proxy 壓力測試中，當動力學具有設定的非線性且自適應搜尋發出 <code>256</code> 次查詢時，重用回饋與每次重抽回饋的持出 proxy 成功率分別高估真實成功率 <code>40.8</code> 與 <code>41.9</code> 個百分點（作者自報）。換新 proxy 抽樣無法消除模型偏誤與選擇樂觀。</li>
+</ul>
+<h2 id="結論">結論</h2>
+<p>准入治理的好壞不能只看通過後的錯誤率。它至少有兩條軸：對不合格更新的阻擋能力，與對合格學習機會的保留能力。作者提出的成對檢查改善了低分歧情境的檢定力，卻也藉由閉環實驗誠實展示，它仍會錯失大量可學機會。所以這篇的成果是一套審計協議與診斷證據，不是已被證明優於現有學習法的機器人系統。</p>
+<h2 id="局限">局限</h2>
+<p>作者明示界定了證據邊界。所有示範、動力學觀測、策略更新與評測都是合成的，沒有預訓練 VLA、LIBERO 試驗或實體機器人實驗。診斷環境是有明確任務身分、容易的局部 adapter 與可窮舉審計群體的一步純量模型，省略接觸幾何、慣性、感知與多步規劃。方法還要求承諾後的成對樣本在各任務內獨立同分布、策略與評分凍結，且只直接支援二元分數。範圍不包括未來分布漂移、未保護任務與實體安全危害。作者也說明，重要實驗程式、設定檔、原始決策與輸出沒有包在預印本來源包中。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>這篇幾乎是 ai_core「憑證准入治理」的負向單元測試：一個門檻只要拒絕所有更新，就能讓「已接受更新的違規率」看起來完美。因此每份准入憑證不只要記錄 pass／fail，還要記錄 defer、證據預算、候選池是否有真正合格選項，以及因關卡無力而錯失的更新輪。這才能分清系統是「安全而且會學」，還是只是「不敢動」。</p>
+<p>成對比較也為 ai_core 的低成本驗證提供一個實用原則：當新舊版本在大多數情境下結果相同，不要丟掉成對資訊，改用兩者真正分歧的結果來建立憑證。但 proxy 壓力測試同時畫出邊界：無論開多少 agent、換多少模型抽樣，只要最後的准入證據還來自同一個有偏的世界模型，它就不是獨立驗證。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2609.10873_UpdateAdmission.zh-TW.html"><code>../translate/2609.10873_UpdateAdmission.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

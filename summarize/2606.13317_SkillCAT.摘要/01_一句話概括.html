@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.13317_SkillCAT.%E6%91%98%E8%A6%81.html">回 2606.13317_SkillCAT.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>SkillCAT</strong>：一個<strong>免訓練（training-free）<strong>的三階段技能自我演化框架——用</strong>多種子成敗對比</strong>（CCE）在「因果分水嶺」處萃取證據，把每個候選技能修補（patch）當<strong>待驗證假說</strong>而非直接合併的規則、靠<strong>來源任務重播評分</strong>（AAE）決定去留與合併順序，再把演化後的技能編譯成<strong>可路由的子技能拓撲</strong>（TTE）讓推論時只載入任務相關節點——在 SpreadsheetBench 等基準上把平均分較基線最多提升 <strong>40.40 個百分點</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>以 Trace2Skill 為代表的離線技能自我演化管線，把智能體執行軌跡蒸餾成可重用技能文件時，隨任務與技能庫增長會出現三個問題：<strong>(1) 單軌偏誤（Single-Trace Bias）</strong>——每個任務只從一條軌跡學習，成功軌跡可能只是僥倖策略、失敗軌跡也未必指出真正病因；<strong>(2) 未經驗證的合併（Unvalidated Merging）</strong>——候選修補未先獨立檢驗是否真對其來源任務有幫助就直接併入，低品質甚至有害的修補可能混進技能庫；<strong>(3) 情境過載（Context Overload）</strong>——合併後的技能持續變大，推論時把無關甚至互相衝突的規則一併塞進 prompt，拉長脈絡、分散智能體注意力。</p>
+<h2 id="核心方法">核心方法</h2>
+<p>把技能自我演化拆成三個可獨立消融的階段，前兩階段離線執行、第三階段線上執行：</p>
+<ul>
+<li><strong>問題形式化</strong>：給定基礎技能 S₀、任務集 X 與隨機種子集 Z，對每個任務以多個種子跑出多條軌跡 τ，每條軌跡對應一個官方評估器給出的二元結果 y∈{0,1}。目標不只是寫出更長的技能文件，而是要決定「哪些證據可信、哪些修補該入庫、推論時該載入哪部分」。</li>
+<li><strong>對比因果萃取（CCE）</strong>：對每個任務用 K（實驗中取 5）個種子取樣多條軌跡，若同一任務同時存在成功與失敗軌跡，隨機各取一條組成「同任務成敗對」（因輸入、工具、評估器完全相同，差異只反映執行選擇）。定位兩條軌跡動作序列<strong>首次出現分歧的時間點</strong>（causal watershed），只在這個分歧點附近萃取候選經驗記錄（局部證據＋推斷的失敗原因＋可編輯的技能教訓），而不是摘要整條軌跡。若某任務的所有種子軌跡全成功或全失敗（無法配對），視設定啟用單軌萃取器當 fallback，或直接跳過該任務以維持「嚴格對比證據」的定義。</li>
+<li><strong>評估增強演化（AAE）——這是「合併前先 assess 候選」的具體實作</strong>：把每個候選修補視為需要驗證的假說。做法是把修補套進一個臨時技能，在其<strong>來源任務的 clone（複本）<strong>上重播，比較套用前後的結果轉移：失敗→成功（3 分，最強證據）、成功→成功（2 分，行為保留）、失敗→失敗（1 分）、成功→失敗（0 分，直接淘汰，因為它破壞了已知可行的行為）。只有分數 a_j ≥ 閾值 θ（設 2.0）的修補才會進入合併階段——即修補至少要「修好一個失敗」或「不破壞一個已知成功」才准入。通過門檻的修補再依分數分層，從低分層往高分層依序做</strong>階層式分層合併</strong>（複用 Trace2Skill 的技能編輯運算子，但改變了哪些修補進場、以何種順序合併），讓高分修補在後段合併中享有更高優先權，同時保留低分但已驗證、彼此不衝突的規則。</li>
+<li><strong>拓撲感知任務執行（TTE）——即「topology 只載相關 sub-skill」</strong>：離線把演化後技能 S* 依 Markdown 階層編譯成拓撲：Level-1 內容做為一律載入的核心技能 S_core；Level-2 各小節各自成為一個可路由節點，保留原始內容本體、並抽出標題／關鍵字／摘要／依賴關係做為路由用的「拓撲摘要」。推論時給定任務描述與路由預算 k，先由 LLM router 從拓撲摘要中選出至多 k 個相關主節點（只讀精簡摘要，不讀全文），再由執行期做確定性擴展——驗證節點 ID、沿依賴邊擴展、補上基礎節點——最後把核心技能與選中節點內容串接成該任務專屬的精簡技能餵給智能體，全程不重寫技能文字、只改變載入哪些部分。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<p>主要基準為 SpreadsheetBench-Verified（400 樣本切 200 演化／200 保留測試），並輔以完整 SpreadsheetBench 的 Soft/Hard 分數、WikiTableQuestions（域外表格泛化）與 DocVQA（多模態遷移）。</p>
+<ul>
+<li><strong>同模型 Skill Deepening</strong>（從人類撰寫 xlsx 技能起演化）：Qwen3.5-35B-A3B 身兼作者與使用者時，SkillCAT 達 <strong>55.50% Vrf</strong>，比 Trace2Skill+Combined（29.67%）高 25.83 點、比人類撰寫基線（9.67%）高 45.83 點；Qwen3.5-122B-A10B 情形下 Vrf 略低於 Trace2Skill（69.50% vs 69.83%），但 Soft／Hard／WikiTQ／平均分皆更高。</li>
+<li><strong>Skill Creation</strong>（從較弱的 xlsx-basic 起演化）：Trace2Skill 幾乎沒有進步（Vrf 變化 −0.17／+0.16），SkillCAT 則達 54.50%／64.50%，分別高出 Parametric 基線 34.33／38.33 點。</li>
+<li><strong>跨模型泛化</strong>：把 Qwen 系列演化出的技能<strong>不重新演化</strong>、直接套用給 gemma-4-31B-it、gpt-5.4-mini 當使用者，仍有提升（如 gemma 由 39.00% 升至 61.00% 或 70.50%），但增益幅度依使用者模型而異，對 gpt-5.4-mini 的增益明顯較小。</li>
+<li><strong>DocVQA 多模態</strong>：SkillCAT 對兩種使用者模型都最佳（Qwen3.5-35B-A3B 達 0.9159 ANLS／93.3% Acc；Qwen3.5-122B-A10B 達 0.7200 ANLS／79.0% Acc）；對照組 Trace2Skill+Error 甚至<strong>低於 No-Skill 基線</strong>（0.6223 ANLS，−0.0620），顯示未經驗證的修補會傷害跨域泛化——這正是 AAE 存在的價值。</li>
+<li><strong>消融</strong>（Qwen3.5-35B-A3B、Deepening 設定，以 Trace2Skill+Combined 29.67% 為參照）：拿掉 CCE 降到 32.50%；拿掉 AAE 降到 26.00%（<strong>低於</strong>未加任何模組的參照，說明無驗證的合併甚至比不演化更糟）；拿掉 TTE 降到 46.50%（仍優於參照但比完整管線低 9 點）；三個模組單獨使用（Only CCE 39.00%、Only AAE 34.00%、Only TTE 27.50%）都遠不如完整管線，顯示光靠路由無法彌補技能內容本身演化不足。</li>
+<li><strong>補充分析</strong>：CCE 種子數掃描（1/3/5/7/9）顯示 5 種子是精度—成本的最佳平衡點（Vrf 32.50%→55.50% 再降到 41.50%，取樣時間則從 22 分鐘漲到近 4 小時 42 分）；AAE 分數校準實驗（197 個候選修補分桶單獨評估）顯示結果轉移分數與下游效益<strong>單調對應</strong>（失敗→成功桶 51.00% 最佳，成功→失敗桶 23.50% 最差、甚至低於基線）；TTE 路由比較顯示 LLM 圖路由器（top_k=7）在減少 41.6% 脈絡長度的同時仍達 55.50% Vrf，優於不路由、全量載入的 46.50%。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<p>論文正文未設獨立的「Limitations」章節，以下為依方法與實驗描述整理的觀察，非作者自陳條列：</p>
+<ul>
+<li>跨模型遷移的效益明顯依賴使用者模型本身能力，對 gpt-5.4-mini 的增益遠小於對 gemma-4-31B-it，說明「技能演化一次、到處適用」有其邊界。</li>
+<li>CCE 需要對每個任務多次取樣（實驗用 5 種子＋128 平行推論工作者）並在 AAE 階段對每個候選修補做來源任務重播，帶來顯著的離線運算成本（種子數掃描顯示取樣時間可從 23 分鐘漲到近 5 小時）。</li>
+<li>主要實驗集中在 xlsx／表格類技能與三個特定基準（SpreadsheetBench、WikiTableQuestions、DocVQA），是否能推廣到更廣泛的技能類型（如程式碼工具鏈、多步驟 API 調用）論文未驗證。</li>
+<li>AAE 的四級評分與固定閾值 θ=2.0 是人工設定，論文未討論閾值本身的敏感度或是否可自動校準。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《透過圖元網路進行元剪枝：一個通用的網路剪枝元學習框架》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yewei Liu, Xiyuan Wang, Muhan Zhang（北京大學人工智慧研究院）</p><p>日期：2025-06，網路剪枝／元學習方法</p><p>arXiv：2506.12041</p><p><a href="https://arxiv.org/abs/2506.12041" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="透過圖元網路進行元剪枝一個通用的網路剪枝元學習框架重點摘要">《透過圖元網路進行元剪枝：一個通用的網路剪枝元學習框架》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>MetaPruning</strong>：把元學習的「<strong>元網路（metanetwork）</strong>」概念首次引入剪枝——先在「神經網路↔圖」之間建<strong>雙射對應</strong>，再用一個<strong>圖神經網路（GNN）當元網路</strong>，學會把「難剪」的網路<strong>就地改寫權重</strong>成「易剪」的網路；訓練好後剪枝只需「<strong>過一次元網路前饋 + 標準微調</strong>」，不必每次剪枝都重訓，且能在不同資料集／架構間<strong>自然遷移</strong>，在 CNN 與 Transformer 多個任務上達 SOTA。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>既有剪枝兩條路都有缺陷：(1)<strong>固定手工準則</strong>（norm/magnitude/saliency）粗糙、表達力受限；(2)<strong>learning to prune</strong>（用 NN／RL 學剪枝）每次剪一個網路都要專門訓練、缺乏通用性，多半只能「學一次剪一個特定網路」。如何讓「學到的剪枝策略」可重用、可遷移、通用於各種網路與各種剪枝方式？</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>第二條路線思路</strong>：不改剪枝準則，而是<strong>把網路變得更好剪</strong>（繼承稀疏正則化剪枝精神，特別參考 DepGraph）。</li>
+<li><strong>網路↔圖雙射</strong>：神經元／卷積通道→節點；連接（FC／卷積／殘差）→邊；節點特徵＝BatchNorm 參數（weight/bias/running mean/var，含前一層與 skip）；邊特徵＝連接權重（線性／殘差視為 kernel size=1 的卷積，攤平成向量）。可逆轉換回網路。</li>
+<li><strong>元網路（GNN）</strong>：基於 message passing + <strong>PNA</strong> 架構；節點與邊特徵編碼→多層訊息傳遞（含 <strong>EdgeInvertor</strong> 設計：前半維學無向不變特徵、後半維學隨方向等變的有向資訊）→解碼；<strong>殘差係數很小（學 delta 權重而非完全重寫）</strong>。</li>
+<li><strong>元訓練（meta-training）</strong>：取「data model」當原始網路→轉圖→過元網路→轉回新網路，算兩種損失：<strong>準確度損失</strong>（交叉熵，避免破壞有效部分）＋<strong>稀疏度損失</strong>（group norm 為基的正則項，促稀疏好剪），反傳更新元網路。</li>
+<li><strong>剪枝管線</strong>：初始剪枝（把易剪網路先剪成難剪，去掉低品質參數）→過元網路→剪枝→微調。</li>
+<li><strong>關鍵性質</strong>：元網路是相對極小的 GNN、每個參數只看<strong>局部</strong>鄰域→必須學<strong>通用</strong>策略→剪枝模型與訓練 data model 完全不同也照樣好、對 data model 數量（1/2/8）不敏感、<strong>無過擬合</strong>、可跨資料集與架構遷移。</li>
+</ul>
+<h2 id="結果含數字">結果（含數字）</h2>
+<ul>
+<li><strong>ResNet56/CIFAR10</strong>：剪 65.6% FLOPs，準確率 93.51%→93.64%（<strong>+0.13%</strong>，不降反升）。</li>
+<li><strong>VGG19/CIFAR100</strong>：剪 88.83% FLOPs，Top-1 -3.90%。</li>
+<li><strong>ResNet50/ImageNet</strong>：剪 57.2% FLOPs，Top-1 僅 <strong>-0.01%</strong>、Top-5 -0.33%。</li>
+<li><strong>彈性</strong>：準則高度可換（不同 NORMALIZE／alpha 甚至 naive 無正規化都穩）；支援結構化、非結構化、N:M 稀疏剪枝。</li>
+<li><strong>遷移</strong>：metanetwork 可在 CIFAR10/100/SVHN 之間、ResNet56↔ResNet110 之間遷移，皆優於不用元網路。</li>
+<li><strong>成本</strong>：元網路不隨被剪網路規模擴張；與 DepGraph 對比，攤提後時間更省（一次元訓練可剪無數網路）。A100 80G 足以元訓練 ResNet50/ViT，微調用 RTX 4090 即可。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>元訓練前期成本</strong>（範例 357 分鐘）須一次性付出，雖可攤提但單次剪一個網路不划算。</li>
+<li>前饋過元網路<strong>瞬間 VRAM 峰值高</strong>。</li>
+<li>通用性目前達「階段（3）」（可剪相似架構／資料集的一群網路），尚未達「階段（4）」（剪任意網路）——需在更多網路／資料集上預訓練才有望。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 D 類的**「元學習×圖神經網路用於模型壓縮」代表**——與傳統「準則式剪枝」正交，走「<strong>用 NN 改寫 NN 權重</strong>」路線。</li>
+<li>最值得記：**「網路↔圖雙射 + GNN 元網路 + 局部訊息傳遞學通用權重改寫」<strong>的配方；</strong>「學一次、剪無數、可遷移」**打破 learning-to-prune 每次重訓的痛點；EdgeInvertor、小殘差係數學 delta 等實作細節。</li>
+<li>開源（github.com/Yewei-Liu/MetaPruning）；適合做<strong>模型壓縮、剪枝、weight-space／graph metanetwork、神經網路處理神經網路</strong>研究的人。</li>
+</ul>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

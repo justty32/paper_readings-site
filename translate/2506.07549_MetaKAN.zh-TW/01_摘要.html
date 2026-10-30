@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2506.07549_MetaKAN.zh-TW.html">回 2506.07549_MetaKAN.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>KAN 受 Kolmogorov-Arnold 表示定理啟發，以<strong>可學習的單變量函數</strong>取代傳統權重，是 MLP 的高效可解釋替代。但 KAN <strong>可訓練參數遠多於 MLP</strong>，導致記憶體效率與訓練成本問題。本文提出用一個更小的<strong>元學習器（meta-learner）為 KAN 生成權重</strong>，稱 <strong>MetaKANs</strong>。以端到端可微方式同時訓練 KAN 與 MetaKAN，MetaKAN 在<strong>大幅減少可訓練參數</strong>並維持良好可解釋性的同時，達到相當甚至更佳的效能。在符號迴歸、偏微分方程求解、影像分類等多樣 benchmark 上的大量實驗證明其在參數效率與記憶體使用上的有效。此法為訓練 KAN 提供另一條技術路線，提升可擴展性與可延展性，並縮小原 KAN 論文所述與 MLP 的訓練成本差距。程式碼：github.com/Murphyzc/MetaKAN。</p>
+<p><strong>關鍵詞</strong>：機器學習、ICML。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>深度學習從 MLP、CNN、RNN、LSTM 到 Transformer 多用<strong>固定激活函數</strong>，限制了可解釋性與靈活性。2024 年 <strong>KAN</strong>（Liu 等）以<strong>邊上 spline 參數化的可學習單變量激活函數</strong>取代固定激活，更靈活可解釋。近期研究多在改 B-spline 基函數（Chebyshev/Gram/Legendre 多項式、wavelet、rational、RBF）以提升逼近力或速度；也有 ConvKAN 等擴展到影像。但<strong>可學習激活函數帶來大量可訓練參數</strong>，重創記憶體效率、推高訓練成本。</p>
+<p>本文提出 <strong>MetaKANs</strong>，透過元學習提升 KAN 訓練效率。<strong>關鍵觀察</strong>：KAN 把高維函數分解成逐維單變量函數，而這些函數同屬一個<strong>共享函數類 Ω</strong>、共用同一套參數設定規則。受 meta-learning 與 in-context learning 啟發，用一個小元學習器<strong>模擬這套共享的參數生成規則</strong>，把激活函數的海量參數壓縮成小元學習器的參數。MetaKAN 參數含兩部分：(1) <strong>可學習輸入變量（即 prompt）</strong> 作為每個激活函數的唯一識別符；(2) <strong>元學習器參數</strong>（學共享權重設定規則）。</p>
+<p><strong>三項貢獻</strong>：(1) 提出新穎的 KAN 記憶體高效訓練法 MetaKAN，用小元學習器生成 KAN 權重而非直接最佳化，僅用 KAN <strong>1/3 到 1/9</strong> 的參數即達相當或更佳效能（圖 2）;(2) <strong>模型無關</strong>，可套用 FastKAN、ConvKAN、WavKAN 等變體；(3) 在符號迴歸、PDE 求解、影像分類等多 benchmark 上實證減記憶體、提升可擴展性。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<h3 id="21-kan">2.1 KAN</h3>
+<p>KAN 以可學習激活函數取代 MLP 固定激活。近期研究分三向：基函數參數化策略（多項式/rational/RBF/wavelet）、領域應用（ConvKAN、KAT、TIMEKAN、U-KAN、KAN-ODEs、KA-GNNs 等）、理論基礎（泛化界、表達力——KAN 在大 grid 下可勝 MLP、譜偏差較弱、更能建模高頻）。但可學習激活 → 大量參數與記憶體挑戰。MetaKAN 不同：用元學習器 + 可學習提示，使可訓練參數量<strong>接近同結構 MLP</strong>。</p>
+<h3 id="22-hypernetworks">2.2 HyperNetworks</h3>
+<p>HyperNetwork 用小輔助網路生成大主網路的權重（Ha 等首提）。後續用於 Transformer 高效微調、meta-learning（template-sharing 重構為 prompt 引導的 hypernetwork）、多目標、StyleGAN 等。既有工作多用<strong>啟發式</strong>參數生成（整層共享 hypernetwork、task-agnostic template）。MetaKAN 不同：<strong>奠基於對 KAN 工作機制的理解</strong>——權重學習可視為「來自共享函數族的多任務基表示學習」，故<strong>顯式建模共享權重生成規則</strong>，以可學習提示作激活函數識別符。</p>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="31-預備">3.1 預備</h3>
+<ul>
+<li><strong>3.1.1 KA 表示定理</strong>：任何連續多變量函數可分解為有限多個單變量函數之和（式 1）。</li>
+<li><strong>3.1.2 KAN</strong>：每個激活函數 = 基函數 + B-spline 曲線（式 2，係數 c 可學、wb 控幅度），記為 φ（式 3）。L 層 KAN 結構 [n0,…,nL]，第 l 層輸出為激活矩陣 Φ 作用於輸入（式 4）；全部參數見式 5。KA 定理對應 2 層 KAN [n, 2n+1, 1]。目標為擬合（式 7，迴歸用 MSE、分類用交叉熵）。</li>
+<li><strong>3.1.3 記憶體低效</strong>：B-spline（階 k、grid G）每激活需 G+k+1 個參數；KAN 總參數 ∝ 結構規模 ×(G+k)。同結構 MLP 只需權重數參數 → <strong>KAN 約為 MLP 的 (G+k+3) 倍</strong>，造成記憶體與擴展性問題（表 1）。</li>
+</ul>
+<h3 id="32-以元學習提升記憶體效率">3.2 以元學習提升記憶體效率</h3>
+<p><strong>3.2.1 理解 2 層 KAN 的工作機制</strong>：把權重學習視為<strong>多任務學習</strong>——第 1 層權重是學若干屬共享函數類 Ω₁ 的迴歸任務，第 2 層屬 Ω₂。每個迴歸任務可表為 w = （task 資訊 c → 該激活函數係數）（式 8）。常規 KAN 學習（式 7）忽略這條共享規則、暴力最佳化每個權重 → 重創計算與記憶體效率。</p>
+<p><strong>3.2.2 MetaKAN 框架</strong>：用元學習器 h 參數化式 8 的規則：<strong>w = h(c; θ)</strong>（式 9）。其中 <strong>c 為可學習任務提示</strong>（識別是哪個激活函數，類比 LLM prompt），<strong>h 為兩層 MLP</strong>（萬能逼近器、簡單高效）。激活函數（式 3）變為由生成權重定義（式 10）。激活函數的可學習參數轉成元學習器參數 + 提示（式 11）。目標函數由式 7 導出（式 12），提示與元學習器同時梯度下降更新（Algorithm 1）。</p>
+<p><strong>3.2.3 擴展到深層 KAN</strong>：深層各層的任務分布會<strong>漂移/演化</strong>，使式 8 的權重規則跨層不同；單一共享元學習器難挖層資訊 → 效能下降（表 9）。直接做法是每層配一個元學習器，但參數隨層數 L 線性增長、反而更不省。<strong>折衷</strong>：把層<strong>分群成 K 個 cluster</strong>（依輸入/輸出通道相近分組，Algorithm 2），每群配專屬元學習器（式 13、14、目標式 15、Algorithm 3）。</p>
+<p><strong>記憶體效率分析</strong>：深層 MetaKAN 參數增量來自額外元學習器（K=1 退化為淺層情形），元學習器參數因架構固定大致不變，而提示項隨 KAN 結構規模成長。總參數量近似<strong>等於同結構標準 MLP</strong>（表 1），故 MetaKAN 有望把訓練記憶體壓到接近 MLP。</p>
+<h3 id="33-擴展到其他-kan-變體">3.3 擴展到其他 KAN 變體</h3>
+<p>框架<strong>模型無關</strong>，可套 WavKAN、FastKAN、ConvKAN → 提出 MetaWavKAN、MetaFastKAN、MetaConvKAN（附錄 A），實證有效（表 6/7、表 3）。元學習器把參數量減少約 1/d（FastKAN d=G、WavKAN d=2），降到約等於 MLP。</p>
+<h3 id="34-記憶體效率的條件">3.4 記憶體效率的條件</h3>
+<p>KAN 參數 ∝ 總激活數 × 每 spline 參數；MetaKAN 每激活一個提示（共 d_p 量）+ 固定元學習器成本。<strong>當固定成本 &lt; 省下的 spline 參數</strong>才減參 → 對<strong>更大、更深的網路</strong>更顯著。故表 2 中很小的 KAN（總激活少），元學習器固定成本可能使 MetaKAN 參數略多於 KAN，但仍常維持競爭力效能。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《KAN-SR：Kolmogorov-Arnold 網路引導的符號迴歸框架》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：（ETH Zürich Guillén-Gosálbez 組等，化工 ML）</p><p>日期：2025-09，符號迴歸 × KAN</p><p>arXiv：2509.10089</p><p><a href="https://arxiv.org/abs/2509.10089" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="kan-srkolmogorov-arnold-網路引導的符號迴歸框架重點摘要">《KAN-SR：Kolmogorov-Arnold 網路引導的符號迴歸框架》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>用 Kolmogorov-Arnold 網路（KAN）做符號迴歸</strong>：KAN 的「可學單變數函數」天然適合 SR。<strong>KAN-SR</strong> 走分而治之——可微訓練 KAN + <strong>AI Feynman 式符號簡化（對稱性、可分離性）<strong>把複雜問題拆成子問題（常可用單層 KAN 直接擬合）；擬合後</strong>把網路拆成模組化代數組件、用非線性最小平方匹配到符號函數庫</strong> → 抽出緊湊表達式而<strong>不靠暴力枚舉</strong>。在 SRSD-Feynman 上勝基線（尤含無關變數時），並經 neural CDE 延伸到生物製程動態建模。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>SR 同時推結構與參數、可解釋。GP 法彈性但樣本低效、計算貴、難擴展；神經符號系統多靠<strong>離散符號表示難端到端訓練</strong>。</li>
+<li><strong>KAN</strong>（Kolmogorov-Arnold 表示定理啟發）：用<strong>可學單變數函數</strong>取代「固定激活 + 線性權重」→ 更具表達力且可解釋 → 天然適合 SR 的符號抽取。</li>
+</ul>
+<h2 id="方法7-步工作流可選可配置">方法（7 步工作流，可選/可配置）</h2>
+<ol>
+<li><strong>前處理</strong>（正規化/縮放）;</li>
+<li><strong>暴力搜尋</strong>（對簡單乘法式窮舉擬合 + BFGS，誤差低於閾值即接受）;</li>
+<li><strong>單層 KAN + 單 unit</strong>（summation 或 multiplication unit 的最小架構符號近似）;</li>
+<li><strong>單層 KAN + 多 unit</strong>;</li>
+<li><strong>簡化 + 子問題分解</strong>（辨識結構簡化/可分離組件 → 對子問題遞迴重啟）;</li>
+<li><strong>輸出變換</strong>（log/exp 等簡化函數形式後重搜）;</li>
+<li><strong>深層 KAN 擬合</strong>（巢狀迴圈：對各深度探索增加的寬度，前面失敗才用）。</li>
+</ol>
+<ul>
+<li>找到符號匹配即<strong>提早返回</strong>；否則逐步進入更具表達力階段。</li>
+<li><strong>Fast-KAN</strong>（用徑向基函數取代 B-spline 提速）+ <strong>RSWAF 激活函數</strong>;Jax 實作。<strong>加法 + 乘法 KAN 層</strong>組合可表廣泛表達式。</li>
+<li><strong>符號抽取</strong>：用領域知情的單變數函數庫 + 非線性最小平方，把 KAN 拆成代數組件匹配閉式。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>SRSD-Feynman benchmark</strong>：<strong>解出率（solution rate）勝所研究的基線</strong>，<strong>含無關變數時提升尤顯著</strong>（歸功於分而治之 + 簡化管線發現更簡單子問題）。</li>
+<li><strong>生物製程動態建模</strong>（in-silico）：結合 <strong>neural CDE</strong> → 回復可解釋的動力學速率方程。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>優越表現只在「單層表示 + 簡化 + 單變數庫足以擬合」時</strong>才得到。把 SR（大型非凸混合整數非線性規劃）拆兩層、用固定 unit 數 + 有限單變數庫<strong>限縮搜尋空間</strong> → 可能找<strong>局部解</strong>;<strong>若最優解在約束空間外則常失敗</strong>（不像 GP 演化探索）。更大更深 KAN 可緩解但會「擴散」、難抽符號、超參暴增。需<strong>完整資訊</strong>（閉式，關鍵變數不缺）；雖善處理高斯噪聲，但資訊不全會妨礙發現好方程。</li>
+<li>neural CDE 是<strong>兩步法</strong>（乾淨做法是把 SR 直接整合進 neural CDE，但超出範圍）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批的**「KAN × SR」橋樑**——連接 C 類（SR）與 H 類（KAN，<a class="paper-reference" href="2501.17896_KAN_Airfoil_Lift.%E6%91%98%E8%A6%81.html">2501.17896</a> 等）；與 <a class="paper-reference" href="2511.04124_Decomposable_NeSy_Regression.%E6%91%98%E8%A6%81.html">2511.04124</a> SeTGAP、<a class="paper-reference" href="2506.19537_Dimension_Reduction_SR.%E6%91%98%E8%A6%81.html">2506.19537</a> 降維同走「<strong>分而治之 + 簡化降維</strong>」攻 SR，但用 <strong>KAN 的可學單變數函數</strong>當骨幹。</li>
+<li>最值得記：<strong>KAN 的可學單變數函數天然契合 SR 符號抽取</strong>（拆成模組代數組件匹配函數庫）;<strong>AI Feynman 式對稱/可分離簡化 + 單層 KAN 子問題擬合</strong> 的分而治之；以及誠實的局限（限縮空間 → 局部解、最優在外則失敗）。</li>
+<li>與 <a class="paper-reference" href="2505.21879_Symbolic_Foundation_Regressor.%E6%91%98%E8%A6%81.html">2505.21879</a> SFR（網路動力學）、SINDy 皆觸及動態系統方程辨識（KAN-SR 用 neural CDE）。</li>
+<li>定位：<strong>方法論文 + SRSD benchmark + 生物製程案例</strong>（ETH 化工背景，Jax 實作）；適合做 <strong>KAN-based SR、動態系統方程辨識、化工/生工建模</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2509.10089_KAN_SR.zh-TW.html"><code>../translate/2509.10089_KAN_SR.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

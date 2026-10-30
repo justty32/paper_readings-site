@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>神經符號合規：整合 LLM 與 SMT 求解器於金融法規自動化分析（Neuro-Symbolic Compliance: Integrating LLMs and SMT Solvers for Automated Financial Legal Analysis） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yung-Shen Hsia, Fang Yu</p><p>日期：2026-01</p><p>arXiv：2601.06181</p><p><a href="https://arxiv.org/abs/2601.06181" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="神經符號合規整合-llm-與-smt-求解器於金融法規自動化分析">神經符號合規：整合 LLM 與 SMT 求解器於金融法規自動化分析</h1>
+<h2 id="摘要">摘要</h2>
+<p>本論文提出一個神經符號合規框架（Neuro-Symbolic Compliance Framework），用於自動化、可驗證的金融法規分析。框架結合大型語言模型（LLM）的自然語言理解能力與可滿足性模理論（SMT）求解器（具體使用 Z3）的形式嚴謹性，橋接非結構化法律文本與形式邏輯驗證之間的鴻溝。</p>
+<p>與純神經方法——常受邏輯不一致、幻覺與缺乏自我驗證所困——不同，本框架以 LLM 將法規文本與案件事實翻譯為 SMT 表述，再以 SMT 求解器執行形式一致性檢查、以 unsat core 精準定位法規違反，並以 MaxSAT 優化計算恢復合規所需的最小事實修正。</p>
+<h2 id="核心技術組成">核心技術組成</h2>
+<h3 id="1-混合法律-rag-管線">1. 混合法律 RAG 管線</h3>
+<p>檢索管線結合多階段策略：(1) BM25 詞彙搜尋與向量搜尋（text-embedding-ada-002），覆蓋 75 部法規、3,753 條條文的資料庫；(2) Cross-Encoder 重排序（bge-reranker-v2-m3）結合 LLM 相關性過濾，自動提取上下文支持的法律條款。此設計確保輸入 SMT 階段的法條既完整又精確，減少不相關條文干擾形式化品質。</p>
+<h3 id="2-形式-smt-約束合成">2. 形式 SMT 約束合成</h3>
+<p>法規條文被編碼為不可變更的<strong>硬約束</strong>（H_law），代表法律強制要求——例如保險法第 143-4 條與第 143-6 條的資本適足門檻。案件事實則編碼為<strong>軟約束</strong>（H_case），代表可調整的事實狀態——例如淨值比、改善計畫提交狀態。案件中未明確提及的變數保留為自由變數，供求解器在修正階段探索可能的事實調整空間。</p>
+<h3 id="3-驗證與合規恢復">3. 驗證與合規恢復</h3>
+<p>管線執行三階段推理：(1) <strong>法規一致性檢查</strong>：驗證法規內部無邏輯矛盾（SAT）；(2) <strong>案件違法性檢查</strong>：測試案件事實是否觸發法規違反（預期 UNSAT），並提取 unsat core 隔離具體違法條款與涉案事實；(3) <strong>合規恢復</strong>：使用 Z3 的 Optimize() 模組進行 MaxSAT 優化，計算將 UNSAT 不合規狀態轉換為 SAT 合規狀態所需的最小事實變更集合（Δ）。最小干預原則確保修正建議在恢復合規的同時，盡可能保留原始案件事實。</p>
+<h3 id="4-模組化多代理平台">4. 模組化多代理平台</h3>
+<p>系統由五個專業 AI 代理組成：(1) <strong>Rewriter Agent</strong>：規劃查詢並檢索前例案件；(2) <strong>Execute Agent</strong>：調用 SMT 求解器執行形式驗證；(3) <strong>Coding Agent</strong>：在 SMT 語法或邏輯綁定錯誤時執行自我修復；(4) <strong>Analysis Agent</strong>：將求解器輸出與 Δ 修正軌跡轉換為人類可讀的合規報告；(5) <strong>Instruction Rewriter</strong> 與 <strong>Modify Constraint</strong> 模組：支援人機互動的規則修改。</p>
+<h2 id="實驗結果">實驗結果</h2>
+<p>系統在台灣金融監督管理委員會（FSC）的 87 件真實裁罰案件上進行實證評估：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">任務/指標</th>
+<th style="text-align:left">基線 LLM</th>
+<th style="text-align:left">LLM + SMT（本方法）</th>
+<th style="text-align:left">改善</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">SMT 代碼生成準確度</td>
+<td style="text-align:left">N/A</td>
+<td style="text-align:left"><strong>86.2%</strong></td>
+<td style="text-align:left">高 zero/few-shot 形式邏輯合成能力</td>
+</tr>
+<tr>
+<td style="text-align:left">違法條款識別速度</td>
+<td style="text-align:left">~5.00 秒</td>
+<td style="text-align:left"><strong>0.191 秒</strong></td>
+<td style="text-align:left">&gt;25x 加速；消除模糊/誤分類條款</td>
+</tr>
+<tr>
+<td style="text-align:left">合規恢復速度</td>
+<td style="text-align:left">~1.50 秒</td>
+<td style="text-align:left"><strong>0.004 秒</strong></td>
+<td style="text-align:left">&gt;300x 加速</td>
+</tr>
+<tr>
+<td style="text-align:left">合規恢復準確度</td>
+<td style="text-align:left">低（偽陰性偏差）</td>
+<td style="text-align:left"><strong>100%</strong></td>
+<td style="text-align:left">純 LLM 常誤判無解；SMT 保證正確性</td>
+</tr>
+</tbody>
+</table>
+<h2 id="主要貢獻">主要貢獻</h2>
+<ol>
+<li><strong>可驗證的法律 AI</strong>：以可證明的符號驗證取代啟發式 LLM 推理，提供可審計性與法律可辯護性。</li>
+<li><strong>邏輯驅動優化</strong>：計算恢復合規所需的最小必要事實調整（Δ），遵循法律最小干預原則。</li>
+<li><strong>高效自我修復架構</strong>：推理速度較純 LLM 快 100–300 倍，並內建自動修復迴路處理形式約束代碼錯誤。</li>
+<li><strong>跨管轄框架</strong>：雖以台灣 FSC 案例示範，管線本身與法域無關——替換檢索語料庫與 prompt 模板即可適應普通法系及國際監理框架。</li>
+</ol>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

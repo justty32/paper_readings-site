@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《LLM Agent 失敗的即時偵測與修復》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Sunny Dubey</p><p>日期：2026-08，Agent trajectory monitoring × deterministic verification × rollback repair</p><p>arXiv：2608.02464</p><p><a href="https://arxiv.org/abs/2608.02464" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="llm-agent-失敗的即時偵測與修復重點摘要">《LLM Agent 失敗的即時偵測與修復》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>這篇把 agent 錯誤管理拆成互補三層：用只看健康軌跡的 one-class ESN+CUSUM 在每步監控行為變化；用 deterministic checks 查總數、必要工具覆蓋與工具回傳 contract；命中後回滾到最後一次事實蒐集點，告訴 agent「哪個檢查失敗」再重跑。統計 monitor 每步約 200 μs、telemetry adapter 中位 674 μs；但真正可靠的是可寫成規格的 deterministic verifier，held-out 120 episodes 上以 coverage 結合抓到 93% 失敗且 0/64 false positives。</p>
+<h2 id="監控模型">監控模型</h2>
+<p>每步 telemetry 包含：</p>
+<ul>
+<li>32 維 deterministic char 3-gram hash embedding；</li>
+<li>4 個 token uncertainty 統計；</li>
+<li>動作 one-hot、latency、輸出長度、錯誤等 metadata；</li>
+<li>後續版本加入 8 個行為衍生特徵與 9 個 content-grounding 特徵，總維度由 43 增至 51、60。</li>
+</ul>
+<p>每個 channel 各有一組 echo-state network。隨機 recurrent reservoir 固定不訓練，只用健康 runs 以 ridge regression 學下一步預測 readout。預測誤差轉成 surprise，再由單側 CUSUM 累積持續的小偏移；三個 channel 各自累積，取最大值報警。threshold 是健康 validation episodes 最大分數的分位數，對應指定 false-alarm budget。</p>
+<p>這個 monitor 是 causal、one-class、無需 failure label。ESN fit 約 1.7 秒，每步約 200 μs；輸入 hash 不需外部 encoder。代價是每個 deployment 都要自己的健康 null。</p>
+<h2 id="實證結果">實證結果</h2>
+<ul>
+<li>corpus 宣稱含 2,823 episodes、25 datasets、三種 agent framework、qwen2.5 7B/3B、llama3.1 8B 與 gemini-2.5-flash；導言另稱其中 770 episodes 使用真實工具，後文卻寫整個 corpus 每集都是 live agent against real tools，範圍敘述有歧義。</li>
+<li>九個 real corpora：loop detection 0.48–1.00；tool cascade 0.17–1.00；存在 abrupt goal drift 的五個 corpus 中四個為 0.66–0.86；wrong document 只有 0.00–0.20，malformed JSON 為 0.05–0.50。</li>
+<li>ESN 要有 post-onset horizon 才能累積證據。相對 Mahalanobis 的 detection gap 在 ≤3、4–8、≥9 steps 分別為 +0.09、+0.14、+0.40。</li>
+<li>qwen2.5:7b 校準後直接移到 llama3.1:8b，AUROC 只有 0.527、healthy FA 0.75；在 llama 自身重校後 AUROC 0.885。跨部署不能沿用 threshold/null。</li>
+<li>外部 AFTraj-2K 上 zero-shot ranking AUROC 0.745，但 5% false-alarm budget 下只 detect 4.8%；61% 失敗在 onset 後三步內結束，monitor 沒有反應時間。</li>
+<li>外部 ATBench 上 ESN AUROC 0.779、detect 31.1% unsafe；較會抓行動型錯誤，不準確資訊只有 3.8%。</li>
+</ul>
+<h2 id="hybrid-與內容盲點">Hybrid 與內容盲點</h2>
+<p>ESN 適合長 horizon，delta-Mahalanobis 適合短 episode。logistic hybrid 的 grand-mean AUROC 0.826，高於 ESN 0.802 與 Mahalanobis 0.807；但逐 dataset 和當地較佳 parent 比，八個中七個 AUROC 不高於 parent，detection rate 八個全輸。它是未知 regime 的保守預設，不是全面支配。</p>
+<p>只看行為抓不到「動作照常、資料被換掉」。加入 content-grounding channel 後，874 個 injected episodes 中，content gate 將 content detection 由 0.27 提到 0.58，behavioral detection 由 0.74 提到 0.79。wrong-but-plausible number 若沒有外部參照，仍從 telemetry 無法辨識。</p>
+<h2 id="deterministic-verification">Deterministic verification</h2>
+<ul>
+<li><code>total_consistency</code>：用該 run 實際收到的 tool results 重算回答中的 total。</li>
+<li><code>required_coverage</code>：確認任務要求的每個工具呼叫都做過。</li>
+<li><code>tool_contract</code>：確認 result 符合該工具可能回傳的 shape，能在結果抵達當步報警。</li>
+<li>completion check：最後一步若空白或只剩 bare tool call，判定 silent abort。</li>
+</ul>
+<p>同一批 served episodes 上，deterministic checks 抓 60% failure，結合 coverage 為 96%，false positives 0/63；behavioral monitor 為 54%，false positives 11/63=17%。後收的 disjoint-seed 120 episodes 以 frozen checks 測試，重算抓 54%、加 coverage 93%、算術錯誤 36/36、false positives 0/64。llama3.1:8b 在相同 120 seeds、完全不調整下抓 110/110 failures，0/10 false positives，但此 arm 幾乎全是 failure，分布極端。</p>
+<p><code>tool_contract</code> 跨所有標註 corpus 對 1,825 healthy episodes 為 0 false alarm；抓到 46% context corruption、44% looping，218 個命中中 215 個在 onset 一步內。</p>
+<h2 id="repair">Repair</h2>
+<p>flag 後回滾到最後事實蒐集 checkpoint，後續每步重新呼叫模型。55 個確實錯誤案例、每個策略重跑三次：</p>
+<ul>
+<li>單純 rollback+resample：recover 16%。</li>
+<li><code>located</code>，只告知失敗檢查名稱、不給數值：45%，對 control <code>p=0.0005</code>。</li>
+<li>generic re-check：36%；specific，連正確值都給：36%。</li>
+<li>強制 calculator：28%；adaptive：21%。</li>
+</ul>
+<p>五種修復對同一 control 做 Bonferroni 校正後，只有 <code>located</code> 仍顯著。它把 120 episodes 的 net task success 由 52% 提到 73%，修好 25 個 failure、沒有破壞原本正確的 run。提供錯誤類型比直接餵答案更有效，至少在此樣本如此。</p>
+<h2 id="對-agent-錯誤管理的架構啟發">對 Agent 錯誤管理的架構啟發</h2>
+<pre><code class="language-text">每步 telemetry → 超便宜 one-class monitor → 行為異常候選
+工具與回答 → deterministic contracts/checks → 高精度具體故障
+仍不確定 → LLM judge / 人工 escalation
+可修復 → checkpoint rollback + failure-type hint
+不可修復 → circuit breaker / 安全終止
+</code></pre>
+<p>單一 detector 不可能覆蓋所有類型。遺漏用 completion check，數值捏造用 grounding，行為漂移用序列 monitor，工具本身壞掉則停止或升級；retry 只會重新取得同一壞結果。這個分工比「每一步都叫另一個 LLM 評審」更便宜，也更可預測。</p>
+<h2 id="局限">局限</h2>
+<ul>
+<li>健康 null 對模型、temperature、toolset、probe、latency 高度敏感，跨 deployment 幾乎必須重校。</li>
+<li>gradual goal drift、silent abort、plausible-value corruption 是 observable telemetry 的結構性盲點。</li>
+<li>organic high-temperature runs 中 monitor 對健康軌跡仍有 36% false alarm，且 11 個 organic failures 的 AUROC 只有 0.31–0.42。</li>
+<li>預註冊 fabrication study 只出現 2 個 hallucinations，低於預定至少 10 個，作者明確不提出統計 monitor 的 fabrication claim。</li>
+<li>deterministic checks 表現強，但規格來自先看 serving-arm failures，雖有 frozen held-out 驗證，仍需更多任務與獨立作者重現。</li>
+<li>repair 主要對算術／覆蓋類錯誤有效；tool cascade、looping、contract violation 多只能中止或 escalation。</li>
+</ul>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2608.02464_AgentTrajectorySentinel.zh-TW.html"><code>../translate/2608.02464_AgentTrajectorySentinel.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

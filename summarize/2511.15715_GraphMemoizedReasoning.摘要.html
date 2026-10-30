@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Graph-Memoized Reasoning：智慧系統中結構化工作流重用的形式基礎》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yash Raj Singh（獨立研究者）</p><p>日期：2025-11，形式框架（圖 memoization／推理重用）</p><p>arXiv：2511.15715</p><p><a href="https://arxiv.org/abs/2511.15715" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="graph-memoized-reasoning智慧系統中結構化工作流重用的形式基礎重點摘要">《Graph-Memoized Reasoning：智慧系統中結構化工作流重用的形式基礎》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Graph-Memoized Reasoning</strong>：一個形式框架，把 LLM 代理的推理工作流建模為<strong>標記 DAG</strong>，以圖編輯距離＋嵌入相似度檢索歷史子圖，並透過<strong>最小化 Cost + λ Inconsistency</strong>的最佳化目標，在「重算 vs. 重用」之間取得原則性取捨——等於把傳統 memoization 從「函數級快取」推到「圖級結構化推理重用」，為 §3.6「何時固化」提供理論骨架。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 推理系統（LangChain、AutoGPT、LangGraph）每次推理都<strong>從頭重算</strong>，即便任務間存在大量重疊的決策模式與工具呼叫路徑，導致重複運算、推論延遲、能源浪費，且推理軌跡在執行後即丟棄、無法被追溯或重用。既有的 memoization 與快取只在 token／API 呼叫層次運作，<strong>案例推理（CBR）僅處理離散問題–解答對、不具備組合性的內部步驟表示</strong>，工作流引擎（Airflow、Kubeflow）雖以 DAG 管理執行軌跡，但不做語意檢索或跨上下文重用。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>推理圖形式化</strong>：每個推理過程定義為標記 DAG G=(V, E, ℓ)——節點是決策／狀態表示、邊記錄因果/資料流/邏輯蘊涵依賴關係、標記函數 ℓ 附加提示詞/嵌入/工具呼叫/執行軌跡等元資料。多個推理回合累積成<strong>儲存庫 R={G₁,…,Gₙ}</strong>。</li>
+<li><strong>相似度算子</strong> S(Gᵢ, Gⱼ)=α S_struct + (1−α) S_sem，結合圖編輯距離（GED）與嵌入相似度，平衡結構與語意匹配。</li>
+<li><strong>Memoization 函數</strong> Ĝ_T=Memo(T, R; S, π)：對新任務 T，從儲存庫檢索並<strong>組合相關子圖</strong>（與新增節點拼接），在重用策略 π 的約束下（無環性、型別一致性、語意門檻 τ、版本控制）形成完整推理工作流。</li>
+<li><strong>最佳化目標</strong>：min L(Ĝ_T)=Cost(Ĝ_T)+λ Inconsistency(Ĝ_T)，其中 Cost 量化 token 消耗／API 呼叫／延遲／路徑深度，Inconsistency 以 1−S(Ĝ_T, G̃) 懲罰與檢索子圖的語意偏離。λ 控制效率–保真取捨。</li>
+<li><strong>局部貪婪重用策略</strong>：對每個節點 v 計算邊際目標變化 ΔL(v←m)，僅當 min ΔL(v←m) &lt; −τ 時觸發重用。在溫和假設下保證單調改進（L 非嚴格遞減）並終止於 π-穩定圖。</li>
+<li><strong>從目標到系統旋鈕</strong>：λ 和 τ 對映到候選集大小／相似度切斷值／合併門檻等實作控制項，支持多租戶預算、A/B 測試與離線調參。</li>
+</ul>
+<h2 id="評估概念性">評估（概念性）</h2>
+<ul>
+<li><strong>指標</strong>：Cost（token/工具/延遲加權和）、Inconsistency（嵌入距離）、Reuse Ratio ρ（從歷史繼承的節點/邊比例）、複合目標 L。</li>
+<li><strong>模擬情境</strong>：連續 SQL 生成／特徵合成／工作流規劃任務中，冷啟動對比 memoized 運行；預期約 60–80% 節點語意重疊，成本隨 ρ 近似線性下降、較大 λ 以極小效能損失換取較嚴格一致性。</li>
+<li><strong>未來量化路線</strong>：真實 LLM 代理推理軌跡＋每節點成本儀表＋語意保真度＋跨迭代輸出再現性，候選基準含 SQL 合成、分析特徵規劃、工具使用代理、多跳 QA。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>相似度算子品質決定檢索精確度與召回率；嵌入差或啟發式脆弱會直接損害候選品質。</li>
+<li>重用策略 π 可能過度保守（錯失有益重用）或過度寬鬆（引入語意漂移）。</li>
+<li>儲存庫增長帶來檢索延遲與相關性的擴展性挑戰，需高效的索引、版本管理與修剪策略。</li>
+<li>目前僅概念性評估，缺乏真實 LLM 推理工作負載的實證驗證。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>§3.6「何時固化」的理論骨架</strong>：本文給出「固化即 memoization」的形式定義——當過去軌跡的子圖與當前任務語意足夠相似、且邊際成本節省超出門檻 τ 時，就可安全用靜態查表或確定性控制迴圈取代 LLM 節點；λ 控制「省錢 vs. 保真」的取捨面。</li>
+<li>與 <a class="paper-reference" href="2604.05150_CompiledAI.%E6%91%98%E8%A6%81.html">2604.05150</a> Compiled AI（LLM workflow→確定性 Python）、<a class="paper-reference" href="2601.16286_SemanticALLI.%E6%91%98%E8%A6%81.html">2601.16286</a> SemanticALLI（管線感知語意快取）構成「方向二★」三本柱，從形式基礎→工程實作逐漸落地。</li>
+<li>定位：短篇理論論文（5 頁），適合做 <strong>LLM 代理架構／推理系統／快取與重用／圖資料庫</strong> 的人，作為把「直覺上應該能重用」變成「何時可以重用」的數學基礎。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2511.15715_GraphMemoizedReasoning.zh-TW.html"><code>../translate/2511.15715_GraphMemoizedReasoning.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

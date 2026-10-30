@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2411.17708_GridCoder_ARC_Program_Induction.zh-TW.html">回 2411.17708_GridCoder_ARC_Program_Induction.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97%E8%88%87%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>ARC-AGI 是一個<strong>開放世界</strong>問題域，其中<strong>分布外 (OOD) 泛化</strong>能力至關重要。在<strong>程式誘導</strong>範式下，本文呈現一系列實驗，揭示各種神經引導程式誘導方法的<strong>效率與泛化特性</strong>。考慮三種範式：<strong>學網格空間 (Learning the Grid Space, LGS)</strong>、<strong>學程式空間 (Learning the Program Space, LPS)</strong>、<strong>學變換空間 (Learning the Transformation Space, LTS)</strong>。前兩者已實作並充分實驗，選 LPS 作 ARC-AGI 提交。在分析兩者優劣後，提出第三者 (LTS) 作為潛在解方並做初步實驗。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>深度學習在<strong>封閉世界</strong>域（能密集取樣並內插全部可能性）常達近人類甚至超人類水準；但在<strong>開放世界</strong>域（可能性範圍浩瀚到無法密集取樣），內插式技術次優，難以泛化出訓練分布。ARC-AGI（Chollet 等 2024）用「<strong>與任何公開任務質性不同</strong>的隱藏測試集」專門挑戰封閉世界假設，鼓勵研究 OOD 泛化。本文報告的是受控有限條件下的概念驗證 (proof-of-concept)，尚不具 ARC-AGI 競爭力。</p>
+<p><strong>主要貢獻</strong>：(1) 首次分析「基於枚舉程式機率空間」之程式誘導法的 OOD 泛化特性；(2) 首次給出 LGS 在 ARC-AGI 的結果；(3) 提出新穎的機率程式枚舉搜尋演算法，<strong>重用 transformer 自回歸 token 序列</strong>而非典型 n-gram;(4) 勾勒新方法 LTS 並做初步實驗。</p>
+<h2 id="問題設定">問題設定</h2>
+<p>典型程式合成設定：假設 <strong>DSL 含解每個測試任務所需的全部原語</strong>，目標是在 CPU/記憶體預算內，給定支撐輸入/輸出範例，搜尋出能解該任務的程式（用查詢範例驗證正確性）。小程式易解，大程式因<strong>組合爆炸</strong>難解。<strong>額外關鍵約束</strong>：測試集解程式的<strong>組合結構</strong>須對訓練集 OOD（否則純神經網路即足以解此域）。</p>
+<h2 id="學網格空間-lgs">學網格空間 (LGS)</h2>
+<p>學「在特定 DSL 下的可能 ARC 網格空間」之模型（注意：脫離 DSL 無純粹網格相似度——同一對網格在不同 DSL 下距離可不同）。輸入兩網格估其相似度，當作搜尋啟發式做<strong>執行引導</strong>的逐步建程式（程式建構與執行平行、互相影響）。每步嘗試所有原語、選最接近目標網格者。此法假設**（幾乎） 每步都是網格到網格變換**，故用純網格到網格的 DSL Version 1——這是「最佳情況」。模型為 Transformer encoder + max pooling 輸出網格嵌入，訓練時餵成對網格、懲罰其點積與真實距離的偏差。訓練資料隨機取 ARC 訓練網格 patch 並施加 0–8 個變換原語。<strong>弱點</strong>：程序生成常產生「<strong>高估的變換距離真值</strong>」（易意外生冗餘變換，如「rot90×3」應記為距離 1=rot270 而非 3）——監督式學 cost-to-go 的固有弱點。</p>
+<h2 id="學程式空間-lps--gridcoder選定方案">學程式空間 (LPS) = GridCoder（選定方案）</h2>
+<p>因表現勝 LGS 而選定，命名為 <strong>GridCoder</strong>。高層：訓練 transformer 用預定文法 (DSL) 與語法輸出能解任務的程式——輸出 token 機率序列、解讀為程式空間的機率分布，再用搜尋演算法枚舉並驗證。搜尋探索神經網路不確定區域的解空間。</p>
+<h3 id="搜尋演算法">搜尋演算法</h3>
+<p>概念近 <strong>DreamCoder</strong>（Ellis 等 2021）與 <strong>Heap Search</strong>（Fijalkow 等 2021），但機率<strong>非基於 n-gram</strong>，而基於 transformer 自回歸 token 機率序列——即不是「給定 (n-1) 個父節點的子類別機率」，而是「給定整個最大機率 token 序列的子類別機率」（如典型自回歸解碼）。<strong>非執行引導</strong>（不接收程式中間狀態反饋；原本期望 transformer 解碼器能隱式做到，但實證顯示並非如此）。</p>
+<p>流程（演算法 1 GridCoder / 演算法 2 getProbSpace）：對 VLM 餵一對輸入輸出網格做完整解碼迴圈（最大序列長 40，或唯一機率超閾值類別為 <code>&lt;EOS&gt;</code> 時停）→ 短 bootstrapping 階段（隨機選範例對與起始 token 多跑幾次，機率取均值）→ 機率分布是「token 位置 × 類別機率」的二維陣列（<strong>攤平序列而非樹</strong>，條件獨立簡化假設）→ 枚舉機率 &gt; 閾值 θ 的所有程式（若太多則漸增 θ）→ 按聯合機率（各 token 機率相乘，於首個 <code>&lt;EOS&gt;</code> 截斷）降序排 → 逐一驗證返回正確者。</p>
+<h3 id="條件獨立">條件獨立</h3>
+<p>關鍵但 pseudo-code 不明顯的底層資料結構：典型程式誘導用<strong>樹</strong>，GridCoder 用<strong>攤平節點序列</strong>——某 token 的機率分布只依其序列位置，不依先前 token 選擇（嚴格說：依自回歸計算當時的先前最大機率 token，但搜尋時不更新選擇再查詢）。維護機率樹理論上正確（尊重原語間自然條件依賴），但作<strong>條件獨立簡化假設</strong>（如貝氏網路）換取<strong>大幅效率</strong>：只需 bootstrapping 時呼叫神經網路幾次（基線版甚至只需呼叫一次）。Bootstrapping（6 次解碼均值）緩解「神經網路首次推論輸出異常受限（假性自信）」的罕見情況，注入急需的熵。</p>
+<h2 id="dsl-與-vlm">DSL 與 VLM</h2>
+<p><strong>三版 DSL</strong>：V1 含 74 個純網格到網格原語（換色、旋轉、鏡像等，為 LGS 設計）;V2 增至 89（加 6 種物件偵測 + 物件清單迴圈/變換）;V3 增至 98（加按大小/對稱性過濾物件）。</p>
+<p><strong>VLM 架構</strong>（圖 1）：一對 CNN（分別收輸入/輸出網格）橋接為一個 CNN 編碼器，後接 transformer 解碼器處理目標序列。比 T5/LongT5 收斂更快、驗證準確度更高、同 VRAM 下參數更多。<strong>452M 參數、單解碼層、嵌入維 512、4 注意力頭</strong>。每 token 序列自底向上、左到右建語法樹；特殊 token：<code>&lt;EOS&gt;</code>、<code>&lt;New Level&gt;</code>（下一層級開始）、<code>&lt;Identity&gt;</code>（原樣返回網格，常作消歧佔位）。例：<code>[lefthalf, righthalf, &lt;New Level&gt;, cellwiseOR, &lt;New Level&gt;, set_fg_color3, &lt;EOS&gt;]</code> = 取左右半、OR 合併、再把非零像素改色 3。</p>
+<p><strong>訓練</strong>：先在 DSL V1 資料訓練至收斂，V2/V3 從 V1 預訓練模型分別微調（課程式漸進）。學習率 0.0001、weight decay 0.005;V1 約 5M 樣本、V2 約 600K、V3 約 300K。</p>
+<p><strong>訓練資料生成</strong>：辨識 ARC 訓練集的任務「meta-pattern」並實作生成器隨機變化。V1 三個生成器（單/雙原語瑣碎任務、split-merge 模式、tiling 模式）;V2 加通用物件任務生成器；V3 加物件選擇器/開窗/物件重組三個生成器。</p>
+<h2 id="學變換空間-lts">學變換空間 (LTS)</h2>
+<p>可視為 LPS 的演化、同時帶回 LGS 的執行引導。概念：訓練模型，給定<strong>中間或起始程式狀態 + 目標網格</strong>，預測下一 token 的 DSL 機率分布——即顯式把程式中間狀態回饋進每步解碼，結合自回歸解碼效率與「評估變換本身（不論該模式是否訓練見過）」的能力。GridCoder 原意如此，但分析揭示它<strong>不隱式維護此隱藏狀態</strong>，只表面依賴輸入輸出網格編碼與已生 token 序列。LTS 沿用 GridCoder 的語法與自回歸監督；基本實作中間狀態可為「最後一個完整中間網格」（表 4 即此假設）；進階版需維護隨步更新的隱藏潛在狀態——難點是原語輸出可為網格/整數/布林/清單等，需設計巧妙機制嵌入固定向量空間（留待未來）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

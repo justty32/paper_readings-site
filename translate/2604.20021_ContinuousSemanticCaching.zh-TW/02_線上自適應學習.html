@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_線上自適應學習 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.20021_ContinuousSemanticCaching.zh-TW.html">回 2604.20021_ContinuousSemanticCaching.zh-TW 目錄</a>　<a href="01_%E5%B0%8E%E8%AB%96.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-線上自適應學習">5. 線上自適應學習</h2>
+<p>當系統必須從查詢流中動態學習最優快取（無預收集資料集），需同時估計到達分佈與成本函數，在探索（呼叫 LLM 以改善估計）和利用（從快取服務）間權衡，且面臨部分回饋挑戰。</p>
+<h3 id="51-線上學習設定">5.1 線上學習設定</h3>
+<p>𝑇 回合序貫決策問題。每回合 𝑡，系統維護大小 𝑘 的快取 Mₜ，查詢 𝑥ₜ 到達，系統選擇快取查找或 LLM 查詢。回合結束時決定是否更新快取——若 Mₜ ≠ Mₜ₋₁，產生切換成本（fetch 並存儲新查詢的回應）。</p>
+<p>目標：最小化相對於最優固定 𝛼-近似快取 M*_{Nₜ}（從所有已觀測查詢集 Nₜ 中選取的 𝑘 大小快取）的累積 regret，同時計入服務成本與切換成本。</p>
+<h3 id="52-clcb-sc-ls-cont-演算法設計">5.2 CLCB-SC-LS-Cont 演算法設計</h3>
+<p>CLCB-SC-LS-Cont 分四階段（Algorithm 3–5）：</p>
+<p><strong>動態代表性集合建構</strong>（Alg. 3 lines 5-11）：每當新查詢到達，若其與現有 Sₜ₋₁ 中所有中心點的距離均超過 𝜖，則將其加入為新中心並強制快取切換（以涵蓋新語意區域）。否則映射到最近中心點。</p>
+<p><strong>階段式快取切換</strong>（Alg. 3 lines 12-18）：為控制切換頻率，每個中心 𝑢 維護局部階段索引 𝜏ᵤ。當當前階段映射到 𝑢 的查詢數超過動態門檻（基於當前活躍中心數 𝑚ₜ 調整）時觸發新階段並設 Switch flag。全域階段 𝜏𝒻 同樣追蹤。門檻設計確保探索足夠但不過度切換。</p>
+<p><strong>KRR 樂觀主動探索</strong>（Alg. 4 lines 3-18）：觸發切換後，使用樂觀面對不確定性原則重建快取。對每個中心 𝑢 ∈ Sₜ，計算 KRR 後驗均值 ĉₜ₋₁ 與變異數 𝜎²ₜ₋₁,𝜆，構造樂觀下信心界（LCB）𝑐ₜ₋₁(𝑢) = ĉₜ₋₁(𝑢) − 𝛽ₜ₋₁·𝜎ₜ₋₁,𝜆(𝑢)。以樂觀成本與經驗權重調用 Cont_Reverse_Greedy 計算新快取 M̂ₜ，並對不在先前快取中的項查詢 LLM 以獲得回應。</p>
+<p><strong>服務與更新</strong>（Alg. 5 lines 6-15）：以 LCB 路由決策——若 𝑐ₜ₋₁(𝑢ₜ) &lt; 𝜙(𝑑(𝑥ₜ, M̂ₜ))（樂觀成本低於不匹配成本），則呼叫 LLM 獲取真實成本觀測，將 (𝑥ₜ, 𝐶ₜ) 加入觀察集；否則從快取服務，不更新 KRR 資料集。</p>
+<p><strong>相比離散情形的創新</strong>：(i) 動態建構擴展中的 𝜖-net Sₜ，切換門檻隨 𝑚ₜ 自適應調整；(ii) KRR 跨空間共享資訊——觀測一個查詢成本後，所有鄰近中心的不確定性均下降；(iii) 信心區間從基於局部命中次數的 Hoeffding/Chernoff 界過渡到後驗變異數。</p>
+<h3 id="53-理論結果">5.3 理論結果</h3>
+<p><strong>Assumption 2（叢集式到達分佈）</strong>：假設真實查詢自然群聚在有限語意最優快取點 M* 周圍。查詢與其最近中心的最大距離以 𝜀ₜ = O(1/√𝑡) 衰減，且覆蓋高機率區域所需的有效中心數 𝑚_eff 有界。</p>
+<p><strong>合理性</strong>：在最壞均勻連續空間中，需大小 ≈ O(𝑇^(𝑑ₑ/2)) 的 𝜖-net，導致 regret 率為 O(𝑇^((𝑑ₑ+1)/(𝑑ₑ+2)))。但真實用戶查詢不隨機散佈——如 PCA 和 UMAP 視覺化所示，查詢嚴格集中為稠密的語意叢集。因此演算法僅在密集區域內形成中心，有效中心數 𝑚_eff 受叢集幾何限制（𝑚_eff ≤ 𝑚_max）。</p>
+<p><strong>Theorem 5.1（Regret 上界）</strong>：在 Assumption 2 下，CLCB-SC-LS-Cont 的累積 regret 為：</p>
+<p>Reg(𝑇) ≤ O(𝛽ₜ√(𝑇𝛾ₜ) + √(𝑚_eff 𝑇 log 𝑇)) + O((1+2𝛼)𝐿𝑔√𝑇 + 𝑘𝑚_max log log 𝑇)</p>
+<p>其中 𝛽ₜ 為 KRR 信心乘數、𝛾ₜ 為最大資訊增益（information gain）、𝛼 為 Reverse Greedy 近似比。此界達嚴格的次線性 Õ(√𝑇)。</p>
+<p><strong>Regret 項分解</strong>：(i) <strong>成本項</strong>——來自 KRR 估計的泛化誤差，以資訊增益 𝛾ₜ 刻畫；(ii) <strong>到達項</strong>——來自到達權重的經驗估計；(iii) <strong>離散化項</strong>——O(𝐿𝑔√𝑇)，來自以有限代表點近似連續空間；(iv) <strong>切換項</strong>——O(𝑘𝑚_max log log 𝑇)，來自快取更新。</p>
+<p><strong>與離散 regret 界的比較</strong>：離散設定 [19] 的界為 O(√(𝑚𝑇 log(𝑚𝑇)) log log 𝑇)，其 regret 隨已知有限查詢數 𝑚 縮放。連續設定以兩個連續對應項取代對 𝑚 的依賴：最大 RKHS 資訊增益 𝛾ₜ 與有效覆蓋數 𝑚_eff。儘管在無窮維動作空間中操作，仍匹配 [19] 的 √𝑇 時間縮放。</p>
+<p><strong>Lemma 5.2（隨時信心區間）</strong>：以高機率對所有 𝑡 ∈ [𝑇] 和 𝑥 ∈ X，到達權重與成本估計的聯合信心事件成立——樂觀 LCB 𝑐ₜ(𝑥) ≤ 𝑐(𝑥) 以高機率滿足。</p>
+<p><strong>Lemma 5.3（快取切換次數界）</strong>：總快取切換次數 Σᵤ 𝜏ᵤ(𝑇) ≤ O(𝑚_max log log 𝑇)。即使新查詢叢集在執行中動態出現，演算法仍避免過度快取更新——切換門檻與空間幾何限制（最大覆蓋數 𝑚_max）掛鉤。</p>
+<h2 id="6-實驗">6. 實驗</h2>
+<p><strong>實驗設定</strong>：兩種查詢宇宙：(1) 合成基準——50 個跨領域自然語言提示 + 高斯雜訊擾動嵌入，模擬連續空間；(2) 真實資料基準——合併 Natural Questions（2,500 筆）與 TriviaQA（2,500 筆），共 5,000 筆真實查詢。嵌入以 sentence-transformer 模型（384 維）獲得，距離以歸一化歐氏距離度量。服務成本從 GPT-2 tokenizer 長度推導（min-max 歸一化）。</p>
+<p>真實查詢流採用突發（bursty）非均勻採樣：burst 在兩資料集間交替，各資料集內查詢從重尾對數常態熱門度分佈採樣。</p>
+<p><strong>離線設定</strong>：在合成資料集上評估 CUCB-SC-Cont，對比 CUCB-SC、Greedy、Epsilon-Greedy、LFU。(a) 𝜖 消融：CUCB-SC-Cont 在小至中等 𝜖 達成最低次優性 gap，𝜖=0.4 時比 CUCB-SC 改善 52.95%；𝜖 過大時離散化過粗導致效能下降。(b) 流長度消融：CUCB-SC-Cont 在少量資料時優勢最明顯——流長度=100 時比 CUCB-SC 改善 73.32%，展示 𝜖-net + KRR 泛化在小樣本下的價值。</p>
+<p><strong>線上設定</strong>：CLCB-SC-LS-Cont 在合成與真實資料集上均展現最優平均 regret。合成：最終平均 regret = 0.0083，比 CLCB-SC-LS 降 72.41%（runtime 增加 47.8%）。NQ+TriviaQA 突發流：最終平均 regret = 0.0061，比 Greedy 降 63.27%，比 CLCB-SC-LS 降 43.14%，且延遲近乎相同（約 250 秒）。真實資料上因觸發更頻繁切換導致 runtime 增加，但 regret 回報顯著。</p>
+<h2 id="7-結論">7. 結論</h2>
+<p>本文建立首個不確定性下連續查詢空間語意快取的理論框架。透過 𝜖-net 離散化與 KRR，在預言機、離線、線上三種設定下研究快取問題。理論分析給出次優性與次線性 regret 保證，實驗展示 regret 顯著降低。未來工作包括：語意 LLM 快取問題的下界建立、真實查詢分佈的更精細刻畫以改進快取策略。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

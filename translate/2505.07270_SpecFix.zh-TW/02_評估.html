@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_評估 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2505.07270_SpecFix.zh-TW.html">回 2505.07270_SpecFix.zh-TW 目錄</a>　<a href="01_%E5%BC%95%E8%A8%80.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-評估">5. 評估</h2>
+<h3 id="51-實驗設定">5.1 實驗設定</h3>
+<ul>
+<li><strong>基準</strong>：HumanEval+（164 題）、MBPP+（378 題）、LiveCodeBench v6（175 題，2025-01 至 2025-05）。</li>
+<li><strong>模型</strong>：GPT-4o、GPT-4o-mini、DeepSeek-V3、Qwen2.5-Coder-32B-Instruct。</li>
+<li><strong>取樣</strong>：溫度 0（程式生成），取樣時用各 LLM 預設溫度以鼓勵多樣性。N=20（實驗顯示 20 個樣本後熵趨穩）。</li>
+<li><strong>比較方法</strong>：
+<ul>
+<li><strong>Vanilla Repair</strong>：LLM 判斷歧義後採最可能詮釋直接修補。</li>
+<li><strong>ClarifyGPT-auto</strong>：ClarifyGPT 的使用者模擬版本，以嵌入範例回答澄清問題並附加。</li>
+<li><strong>µFix</strong>：SOTA 推理增強方法，分析範例並生成推理鏈。</li>
+</ul>
+</li>
+<li><strong>指標</strong>：Pass@1、AvgPassRate (APR)、%Pass@1&gt;0 (NZP@1)、Majority@20 (M@20)、Semantic Entropy (SE)。</li>
+</ul>
+<h3 id="52-rq1修復效能">5.2 RQ1：修復效能</h3>
+<p>在所有 12 組（4 模型 × 3 基準）中，SpecFix 的 Pass@1 均為最高。以 DeepSeek/HumanEval+ 為例：原始 87.8%，ClarifyGPT-auto 89.0%，SpecFix 92.0%。SpecFix 也是唯一持續改善 Majority@20 的方法。</p>
+<p>與 µFix 零樣本對比：µFix 在 HumanEval/MBPP 上改進微小（基準已趨飽和），但 SpecFix 的修復後描述在這些基準上仍展現顯著增益。</p>
+<p>在修改子集上（平均 43.58% 的描述被修改）：Pass@1 平均提升 30.9%；全量絕對提升 4.09%。平均修復時間 36.7 秒，平均 token 成本 6,770.7 tokens/題。</p>
+<p>成對比較（交集子集）：SpecFix 在所有子集上均優於基線方法。</p>
+<h3 id="53-rq2跨模型泛化">5.3 RQ2：跨模型泛化</h3>
+<p>以模型 A 修復的描述，對模型 B 評估（表 III）。平均而言，使用不同模型修復問題描述使效能提升 10.48%。這表明 SpecFix 處理的是問題描述本身的缺陷，而非特定模型的誤解。少數退化案例（如 MBPP+ 以 GPT-4o-mini 修復後由其他模型評估時略降）為例外。</p>
+<h3 id="54-rq3描述長度變化">5.4 RQ3：描述長度變化</h3>
+<p>ClarifyGPT-auto 與 µFix 均大幅增加描述長度（ClarifyGPT-auto 在 MBPP+ 上 +576.61%，µFix +425.56%）。Vanilla Repair 長度增加最小但修復效果最差。SpecFix 在最佳修復效果的同時保持描述簡潔（平均增幅遠小於基線）。</p>
+<h3 id="55-消融實驗">5.5 消融實驗</h3>
+<ul>
+<li><strong>SpecFix_woSE</strong>（移除語意熵）：Pass@1 平均降低 2.2%。</li>
+<li><strong>SpecFix_woEC</strong>（移除範例一致性）：Pass@1 平均降低 0.92%。</li>
+<li>兩者皆有益，SE 貢獻略大於 EC。</li>
+<li>迭代次數 k 的影響：LiveCodeBench+Qwen2.5 上，Pass@1 從 k=1（31.17%）升至 k=3（36.51%），之後趨穩。</li>
+</ul>
+<h3 id="56-修復錯誤分析與緩解">5.6 修復錯誤分析與緩解</h3>
+<p>平均錯誤修改率（IMR）為 3.23%，錯誤修改後的 Pass@1 為 20.93%。主要錯誤源於多數投票：當正確與錯誤語意簇機率相近時，多數投票可能選錯。</p>
+<p><strong>緩解策略</strong>：應用 modified z-score——僅在簇機率顯著超過所有其他簇時才選取；否則推遲給使用者（僅 10.8% 的修改需要使用者在兩個程式中選擇）。模擬使用者以隱藏測試選取，IMR 降至 1.58%，Pass@1 升至 47.93%。</p>
+<h2 id="6-有效性威脅">6. 有效性威脅</h2>
+<ul>
+<li><strong>內部</strong>：假設程式碼可獨立執行且有候選程式是正確或接近正確的。對大型系統或高複雜度任務可能不成立。</li>
+<li><strong>建構</strong>：以量化指標（Pass@1、SE、EC）操作化「歧義」可能不完美；部分歧義仍需人類介入。</li>
+<li><strong>外部</strong>：僅限於 HumanEval+/MBPP+/LiveCodeBench；真實世界應用（如 AI 編碼助手互動）中的歧義有待研究。</li>
+</ul>
+<h2 id="7-相關工作">7. 相關工作</h2>
+<ul>
+<li><strong>LLM 對問題描述的推理</strong>：µFix 以思考誘發 prompt＋回饋式生成強化理解；SpecFix 則直接修補描述使其不再歧義。CodeMind 定義「規格推理」任務，本文揭示 SOTA LLM 在此任務上常產生與範例矛盾的程式。</li>
+<li><strong>以 LLM 偵測 NL 歧義</strong>：ClarifyGPT 衡量程式碼生成不確定性以觸發澄清問題，但常產生無關查詢且未納入嵌入範例。</li>
+<li><strong>Prompt 最佳化</strong>：反思式 prompt 調優常無法識別 prompt 錯誤的根因；SpecFix 改為分析並修復程式分佈。</li>
+<li><strong>信心與不確定性</strong>：Hou 等人連結任務歧義與 aleatoric uncertainty；語意熵用於量化不確定性，SpecFix 採用差異測試進行程式分群。</li>
+<li><strong>以 LLM 推斷規格</strong>：SpecRover 推斷 NL 程式規格以生成修復；SpecFix 的獨特之處在於<strong>對比式</strong>規格推斷——推斷能區分兩程式的規格。</li>
+<li><strong>自動程式修復</strong>：SpecFix 將程式修復作為其演算法元件，但最終目標是修復問題描述而非程式。</li>
+</ul>
+<h2 id="8-結論">8. 結論</h2>
+<p>本文引入自動修復歧義問題描述的問題，展示可透過將自然語言與 I/O 範例對齊並降低程式碼生成不確定性來完全自動修復描述。SpecFix 透過先分析並修復問題描述誘導的程式分佈，再將變化映射回描述來實現此目標。實驗評估顯示修復後的問題描述顯著改善 SOTA LLM 的程式碼生成效能。</p>
+<p>代碼與資料公開於：https://github.com/msv-lab/SpecFix</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

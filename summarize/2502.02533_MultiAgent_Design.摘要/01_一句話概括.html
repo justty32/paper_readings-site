@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2502.02533_MultiAgent_Design.%E6%91%98%E8%A6%81.html">回 2502.02533_MultiAgent_Design.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>MASS（Multi-Agent System Search）</strong>：先用實證分析證明「prompt 優化」與「拓撲優化」對多智能體系統（MAS）表現皆有關鍵影響、且多數拓撲維度其實無效，再據此提出<strong>三階段交錯（interleave）優化框架</strong>——① block-level 局部 prompt 暖身、② 在以影響力剪枝過的空間內做 workflow 拓撲搜尋、③ workflow-level 全局 prompt 微調——在 8 個推理／多跳理解／程式任務上，用 Gemini 1.5 Pro/Flash 平均分別比最強基線再高約 8–9 個百分點。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>既有 MAS 自動化研究幾乎都只優化<strong>單一維度</strong>：DSPy／MIPRO 之類的 prompt optimizer 只調節點內容、不碰拓撲；ADAS／AFlow 之類的拓撲搜尋法用 LLM 或 MCTS 生成新工作流，卻仍套用手寫 prompt，未把 prompt 當可優化對象。作者先做前置分析：把 prompt 優化（MIPRO）與「單純擴大 agent 數量」（self-consistency／self-refine／debate）在相同推理 token 成本下比較，發現<strong>優化 prompt 的 token 效益顯著優於單純堆疊 agent</strong>；接著逐一測試各類拓撲對 HotpotQA、LiveCodeBench 的增益，發現<strong>只有一小部分拓撲維度真正有正面貢獻</strong>（如 HotpotQA 上只有 debate 帶來 3% 增益，其餘持平甚至倒退）。結論是：prompt 與拓撲<strong>都重要，但各自的有效子空間都很小</strong>，因此需要一套能同時、有效率地聯合搜尋兩者的框架，而非各自為政。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>搜尋空間形式化</strong>：定義建構區塊集合 𝒜={aᵢ}，每個區塊由其參數化維度描述——Aggregate（N_a 個並行 agent＋聚合，涵蓋 majority vote／self-consistency）、Reflect（N_r 輪自我反思與精修，涵蓋 Self-Refine／Reflexion）、Debate（N_d 輪全連結多 agent 辯論）、Custom（如 Summarize，N_s 輪長文摘要以增強長上下文能力）、Tool-use（N_T∈{0,1} 的二元工具插入決策，如 RAG 檢索器或程式碼執行器）。目標是求 𝒲*(a) = argmax_{a∼𝒜} E_{(x,y)∼𝒟}[f(𝒲(a(x)), y)]。</li>
+<li><strong>影響力量測與剪枝</strong>：對每個維度 aᵢ 先各自做局部 prompt 優化得 aᵢ*，計算增量影響力 I_{aᵢ} = ℰ(aᵢ*)/ℰ(a₀*)（相對於單一暖身 agent a₀* 的相對增益），再以 p_a = Softmax(I_a, t)（t 為溫度、經驗設 0.05 以銳化選擇機率）決定每個維度被保留進搜尋空間的機率——高影響力維度更常被納入拒絕採樣（rejection sampling）出的候選拓撲。</li>
+<li><strong>三階段演算法（Algorithm 1）</strong>：
+<ol>
+<li><strong>[1PO] Block-level Prompt Optimization</strong>：先用 prompt optimizer 𝒪（預設 MIPRO，可替換 APE／DSPy）暖身單一 agent a₀ 得 a₀*；再對搜尋空間中每個維度 aᵢ，在「最小可行拓撲」（如 debate 用 2 個 predictor＋1 個 debator）下、以 a₀* 為條件各自做局部 prompt 優化得 aᵢ*，同時記錄各自的驗證集表現以算出 I_{aᵢ}。</li>
+<li><strong>[2TO] Workflow Topology Optimization</strong>：依 I_a 算出的選擇機率剪枝出 𝒜_p；在總 agent 數不超過預算 B 的限制下（𝒩(a)&lt;B），對 𝒜_p 做拒絕採樣，並依固定規則序（[summarize, reflect, debate, aggregate]）把採樣到的區塊、連同其在 Stage 1 已優化好的 prompt，組裝成候選 workflow 𝒲_c；候選在驗證集上評估並取最佳 𝒲_c*。</li>
+<li><strong>[3PO] Workflow-level Prompt Optimization</strong>：以 𝒲_c* 為整體，再跑一輪聯合 prompt 優化 𝒲* = 𝒪_𝒟(𝒲_c*)，讓 prompt 進一步針對「agent 之間的相互依賴」做微調，而非停留在各自獨立優化的狀態。</li>
+</ol>
+</li>
+<li>框架對 prompt optimizer 與拓撲搜尋演算法皆為即插即用（plug-and-play），實驗預設用 MIPRO，並在附錄消融 APE、DSPy 等替代品。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>主表（Table 1，8 個任務：MATH／DROP／HotpotQA／MuSiQue／2WikiMQA／MBPP／HumanEval／LiveCodeBench）</strong>：Gemini 1.5 Pro 上 MASS 平均 <strong>78.79%</strong>，勝過最強基線 Multi-Agent Debate（70.26%）、ADAS（69.72%）、AFlow*（僅部分任務可比）；Gemini 1.5 Flash 上 MASS 平均 <strong>74.30%</strong>，同樣大幅勝過 Multi-Agent Debate（65.91%）。單項如 MATH 84.67 vs 基線最佳 80.00（ADAS）、MuSiQue 51.40 vs 46.00（Debate）、LiveCodeBench 82.33 vs 73.67（Debate）。</li>
+<li><strong>逐階段消融</strong>：相對單一 agent 的 APO（MIPROv2）基線，Stage 1（block-level）平均再提升約 <strong>6%</strong>；Stage 1→2（拓撲搜尋）再提升約 <strong>3%</strong>；Stage 2→3（workflow-level prompt 微調）再提升約 <strong>2%</strong>——且消融證實「不先做 prompt 暖身」或「不做影響力剪枝」直接做拓撲搜尋，效果都明顯較差。</li>
+<li><strong>對照圖優化基線 GPTSwarm</strong>：MASS 在 MATH／HumanEval 上平均 88.2%（Pro）／82.9%（Flash），對比 GPTSwarm 的 80.5%／67.0%——作者將差距歸因於 GPTSwarm 側重「從全連結圖剪成稀疏圖以省推理成本」而非任務表現本身。</li>
+<li><strong>最佳架構案例（MATH，Fig. 7）</strong>：Stage 1 顯示 debate 是表現最好的單一區塊，但 Stage 2 搜尋後發現「更多並行 agent 聚合（aggregate，最終選 9 個並行 agent，無 reflect／debate）」反而優於 debate 拓撲，驗證了「局部最佳未必是全局最佳、必須真正搜拓撲」的論點。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>論文自陳：目前拓撲空間（並行／串行／混合連結）雖涵蓋多數常見設計，但仍可能遺漏更稀疏、非全連結的通訊模式（如近期研究對 agent 間通訊做剪枝）；拓撲搜尋用拒絕採樣＋影響力剪枝，換更先進的貝氏優化等方法可能更有樣本效率；prompt 優化器本身也未接入基於錯誤日誌的文字回饋（如 ProTeGi／TextGrad），留給未來工作。</li>
+<li>成本分析（附錄 C.3）顯示：1PO 成本隨區塊數 J 線性增長（每區塊 M 個候選 × K 輪評估 × 該區塊的 agent 呼叫數）、2TO 成本為 N 個候選拓撲各自的 agent 呼叫數總和、3PO 成本隨最終 workflow 的 agent 數線性增長——三階段疊加後，訓練成本與 ADAS／AFlow 等自動化基線相當，但驗證集僅 50–60 筆、拓撲候選數僅 10 個，屬於刻意壓縮過的小規模搜尋，能否線性放大到更大的建構區塊庫、更貴的工具（如需真的跑測試套件）或更大驗證集，論文並未驗證。</li>
+<li>依賴自動化評估指標 ℰ 才能跑完整流程（需要 (x,y) 驗證集），對缺乏乾淨標籤、只能用人類或 LLM-judge 打分的任務，適用性未知。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2402.16906_LDB.zh-TW.html">回 2402.16906_LDB.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）在程式碼生成上帶來顯著進展。除了一次性生成外，近期工作進一步把單元測試（unit test）與程式驗證器整合進 LLM，以迭代方式精修生成的程式。然而，這些工作把生成的程式當成<strong>不可分割的整體（indivisible entity）</strong>，在除錯上有所不足——尤其當程式含有複雜的邏輯流與資料操作時。相對地，人類開發者除錯時通常會<strong>設中斷點（breakpoint）</strong>、有選擇地檢視執行期資訊；執行流與中間變數在除錯中扮演關鍵角色，卻在既有程式生成文獻中被低估。本研究提出 <strong>LDB</strong>，一個讓 LLM 能用執行期資訊精修生成程式的新除錯框架：LDB 把程式切成 <strong>basic block（基本區塊）</strong>，並在執行期追蹤每個區塊之後的中間變數值。這讓 LLM 能專注於整體執行流中較簡單的程式單元、逐塊對照任務描述驗證其正確性、有效定位潛在錯誤。實驗顯示 LDB 在 HumanEval、MBPP、TransCoder 三個基準上一致將基線表現提升最高 <strong>9.8%</strong>，於多種 LLM 選擇下達成程式除錯的新 SOTA。</p>
+<p><strong>圖 1（要旨）</strong>：既有除錯法把程式當不可分割整體、依賴「執行後」回饋；LDB 則利用執行期資訊，追蹤中間變數值、逐步（step by step）拿每個 basic block 對照任務描述驗證。</p>
+<p><strong>圖 2（要旨）</strong>：LDB 除錯工作流。Step 0 由程式生成器產生 seed 程式；<strong>Profiling（§2.2）</strong>——依 CFG 把 seed 程式分解成 basic block（Step 1），餵入一筆失敗的可見測資取得執行軌跡（Step 2）；<strong>Debugging（§2.3）</strong>——檢視執行期每個 block 之後的變數狀態，查詢 LLM 對各 block 相對任務描述的正確性做出判決（Step 3）；<strong>Regeneration（§2.4）</strong>——LLM 依 LDB 的除錯回饋重生一支精修後的程式（Step 4）。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>程式碼生成是重要且具挑戰性的任務，下游應用包括文字轉程式碼、程式碼翻譯、程式碼自動補全等。LLM 的近期進展大幅提升生成表現，但<strong>產生正確程式並非一次到位</strong>。既有工作以多次取樣（multiple sampling）、自我一致性（self-consistency）、候選重排（candidates ranking）增強生成，卻仍在 HumanEval、MBPP 的基礎題上不足——凸顯單次生成（single-pass）的侷限。</p>
+<p>因此出現一系列「精修單次生成程式」的工作，回饋來自人類標註者或 LLM 自身，這過程類似人類的除錯實務。Chen et al.（2023c，即 Self-Debug）、Jiang et al.（2023）把單元測試結果與錯誤訊息引入 LLM，讓其反思錯誤並重生。然而，考量人類的除錯流程，<strong>只靠這些「執行後」資訊來除錯是次佳的</strong>，尤其涉及複雜資料結構與控制流時。人類遇到 bug 時做的不只是蒐集程式輸出：他們會<strong>深入 runtime 觀察執行軌跡、用中斷點檢查中間變數</strong>；當中間執行狀態偏離意圖時，便定位錯誤並修正——這正是 GDB、PDB 等互動式除錯器的常見工作流。</p>
+<p>為此本文提出 LDB，模擬人類除錯實務：餵入一筆可見測資，依 CFG 把執行軌跡切成 basic block，在<strong>每個 block 結束處追蹤中間變數</strong>（如同開發者設的中斷點），再查詢 LLM 對各 block 正確性做判決並解釋執行流。這讓 LLM 能專注於較簡單的程式單元、對照任務描述驗證中間狀態、定位潛在 bug。</p>
+<p>在 HumanEval、MBPP（文字轉程式碼）與 TransCoder（C++→Python 翻譯）上驗證，使用專有模型 GPT-3.5 與開源模型 StarCoder、CodeLlama。實驗顯示 LDB 一致提升各 backbone 的準確率並達 SOTA；即使是 GPT-4、Reflexion 這類更強生成器所產生的程式，LDB 仍能揪出先前先進方法漏掉的錯誤。<strong>貢獻</strong>：(1) 提出 LDB，率先把 runtime 執行資訊納入 LLM 除錯；(2) 利用執行軌跡中的 basic block 把程式切成更小更簡單的單元，讓 LLM 逐步對照使用者意圖驗證、有效定位 bug；(3) 三基準的大量實驗證明其在不同 backbone 上的有效性。程式碼將於 GitHub（FloridSleeves/LLMDebugger）釋出。</p>
+<h2 id="2-large-language-model-debugger大型語言模型除錯器">2. Large Language Model Debugger（大型語言模型除錯器）</h2>
+<p><strong>問題形式化</strong>：沿用 Self-Debug（Chen et al. 2023c）的設定。每個樣本為三元組 (Q, T_v, T_h)：Q 為任務描述、T_v 為可見測資、T_h 為隱藏測資。文字轉程式碼任務中 Q 是一段自然語言目標；程式碼翻譯任務中 Q 是一支待翻譯的（其他語言）程式。生成器先用 Q 與 T_v 產生 seed 程式 A_0；除錯階段精修 A_0 得到 A*；A* 再用 T_h 評測。T_h 只在評測階段使用，生成與除錯階段皆不可見。</p>
+<h3 id="21-概覽">2.1 概覽</h3>
+<p>先讓 LLM 生成 seed 程式；若未通過任一可見測資即作為除錯起點。除錯時 LDB 把失敗的可見測資餵入 seed 程式，收集 runtime 執行資訊（含執行軌跡與每個 basic block 之後的變數值，§2.2），再查詢 LLM 逐步比對任務描述、驗證各 block 正確性（§2.3），據以偵測出錯區塊並重生程式。三步迭代直到新解通過所有可見測資，或達到最大除錯迭代數（§2.4）。</p>
+<h3 id="22-profiling剖析">2.2 Profiling（剖析）</h3>
+<p>在失敗的可見測資上執行程式，收集執行軌跡並切成 basic block 以檢視中間變數。</p>
+<ul>
+<li><strong>執行軌跡（Execution Traces）</strong>：靜態分析中每支程式對應唯一的<strong>控制流程圖（control flow graph, CFG）</strong>，圖上每個節點是一個 basic block——具<strong>單一入口、單一出口</strong>的直線程式段。CFG 表示程式執行可能走過的所有路徑。餵入可見測資後，控制流走過一連串 basic block，此路徑即執行軌跡 [B_1, B_2, …, B_n]。</li>
+<li><strong>中間狀態（Intermediate States）</strong>：給定軌跡 [B_1, …, B_n]，執行前 i 個 block 並收集當前作用域內所有變數及其 runtime 值，記為狀態集 V_i = { v = v̂ | v ∈ ⋃ B_{≤i} }（v̂ 為第 i 個 block 之後 v 的實際值）。把前 i 個 block 之後的中間狀態定義為 <strong>(V_{i-1}, B_i, V_i)</strong>：V_{i-1} 是該區塊的進入狀態、B_i 是當前要執行的區塊、V_i 是 B_i 執行後的實際結果。</li>
+</ul>
+<h3 id="23-debugging除錯">2.3 Debugging（除錯）</h3>
+<p>逐塊的中間狀態完整刻畫了 runtime 執行。除錯時把中間狀態整合進 prompt，查詢 LLM 驗證各 basic block 是否符合任務描述 Q 的預期語意。</p>
+<ul>
+<li><strong>除錯判決（Debugging Verdicts）</strong>：對軌跡中每個中間狀態 (V_{i-1}, B_i, V_i)，要求 LLM 給出正確性判決 D_i ∈ {True, False} 並闡述解釋 E_i。若偵測到出錯區塊，LDB 把訊息納入除錯回應。</li>
+<li><strong>Selective Debugging（選擇性除錯）</strong>：迴圈與遞迴很常見、可能導致極長軌跡；若整段塞進 prompt 極可能超出 token 上限。這與人類實務相仿——執行冗長時，開發者只檢視少數區塊、跳過其餘冗長軌跡。受此啟發，LDB <strong>選擇性抽樣 N_b 個 block</strong>，確保 runtime 資訊總長在 LLM token 上限內。</li>
+<li><strong>Batch Debugging（批次除錯）</strong>：各 basic block 之後的中間狀態在執行 seed 程式時就已一次確定，故 LDB 可把這些狀態<strong>打包成一次查詢</strong>取得所有判決。這大幅提升 token 效率，避免迭代精修中反覆送出長 context 的陷阱。流程為：{V_0, B_1, V_1, B_2, …, B_n, V_n} → LLM → {(D_1, E_1), …, (D_n, E_n)}。</li>
+</ul>
+<h3 id="24-regeneration重生">2.4 Regeneration（重生）</h3>
+<p>runtime 執行資訊有助精準定位出錯區塊，讓 LLM 在重生時專注於這些區域。LDB 蒐集判決 D 與解釋 E，連同任務描述 Q 一起放進 prompt，查詢 LLM 生成精修後的程式。LDB 迭代執行 Profiling、Debugging、Regeneration，直到精修程式通過所有可見測資或達最大迭代數；最終解 A* 再用隱藏測資 T_h 評測。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

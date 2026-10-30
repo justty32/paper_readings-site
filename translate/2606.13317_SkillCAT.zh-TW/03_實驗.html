@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.13317_SkillCAT.zh-TW.html">回 2606.13317_SkillCAT.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">← 上一節</a></p>
+</blockquote>
+<h2 id="實驗">實驗</h2>
+<h3 id="實驗設置">實驗設置</h3>
+<p><strong>任務與資料集</strong>：主要基準為 SpreadsheetBench-Verified；依循 Trace2Skill 的做法，把其 400 個樣本切成 200 個演化樣本與 200 個保留測試樣本，測試樣本從不用於演化。主要指標 Vrf 為此切分上的保留準確率；Soft（子問題通過率）與 Hard（全部子問題皆通過）則在完整 SpreadsheetBench 上報告。另外在 WikiTableQuestions（WikiTQ）上測試域外泛化，把輸入與期望輸出轉成試算表格式，使同一套 xlsx 技能可套用。多模態遷移則用 DocVQA 驗證集切分，前 2,700 對問題—圖片用於演化、其餘 2,649 對用於評估，報告 ANLS 與 Acc（ANLS ≥ 0.5）。</p>
+<p><strong>比較方法與模型</strong>：與 No Skill、Human-Written（Anthropic 官方 xlsx 技能）、Parametric（prompt 生成的基礎 xlsx 技能）、以及 Trace2Skill 的 +Combined 與 +Error 變體比較。評估兩種設定：<strong>Skill Deepening</strong>（從人類撰寫的 xlsx 技能起演化，對照 Human-Written）與 <strong>Skill Creation</strong>（從較弱的 xlsx-basic 技能起演化，對照 Parametric）。主實驗以 Qwen3.5-35B-A3B 與 Qwen3.5-122B-A10B 作為匹配的技能作者與使用者；跨模型分析則把演化出的 Deepening 技能重用給 gemma-4-31B-it 與 gpt-5.4-mini 當使用者。</p>
+<p><strong>實作細節</strong>：所有智能體在具檔案系統與試算表工具的 ReAct 式框架中執行。CCE 對每個演化任務取樣 5 條軌跡種子，用 128 個平行推論工作者蒐集成功／失敗證據。AAE 在來源任務複本上評估候選修補，只保留 a_j ≥ 2.0 的修補進行階層合併。最終 TTE 設定使用基於 prompt 的 llm_graph_router，top_k=7，隨後做執行期節點驗證、依賴展開與基礎節點注入。</p>
+<h3 id="主要結果">主要結果</h3>
+<p><strong>SkillCAT 提升試算表表現與 OOD 表格泛化</strong>：同模型 Skill Deepening 下，Qwen3.5-35B-A3B 身兼作者與使用者時，SkillCAT 達 55.50% Vrf，較 Trace2Skill+Combined（29.67%）高 25.83 點，較 Human-Written（9.67%）高 45.83 點；Qwen3.5-122B-A10B 情形下，SkillCAT 在 Vrf 上略低於 Trace2Skill（69.50% vs 69.83%），但在 Soft、Hard、WikiTQ 與平均分上更高。Skill Creation 下，Trace2Skill 對 Vrf 的改變很小（Qwen3.5-35B-A3B：−0.17；Qwen3.5-122B-A10B：+0.16），而 SkillCAT 分別達 54.50% 與 64.50%，較 Parametric 高 34.33 與 38.33 點。WikiTQ 上，SkillCAT 在每個同模型作者／使用者設定中都高於 Trace2Skill，最大差距出現在 Qwen3.5-35B-A3B 的 Skill Creation 設定（72.82% vs 38.14%）。</p>
+<p><strong>演化後的 SkillCAT 技能對未見使用者模型仍有用</strong>：跨模型區塊重用由 Qwen3.5-35B-A3B 或 Qwen3.5-122B-A10B 演化出的 Deepening 技能、不重新演化。用 Qwen3.5-35B-A3B 撰寫的技能，gemma-4-31B-it 由 Human-Written 基線 39.00% 升至 61.00% Vrf，gpt-5.4-mini 由 31.00% 升至 37.00%。用 Qwen3.5-122B-A10B 撰寫的技能，gemma-4-31B-it 達 70.50% Vrf（+31.50），gpt-5.4-mini 達 32.50%（+1.50）。結果顯示演化後技能可超越作者模型被重用，但效益依使用者模型而異。</p>
+<p><strong>SkillCAT 提升 DocVQA 表現，而未經驗證的修補可能傷害表現</strong>：所有技能皆由 Qwen3.5-35B-A3B 撰寫，分別用 Qwen3.5-35B-A3B 與 Qwen3.5-122B-A10B 當使用者評估。SkillCAT 完整版對兩種使用者都最佳：Qwen3.5-35B-A3B 獲得 0.9159 ANLS（較 No Skill +0.2316）與 93.3% Acc（+18.1）；Qwen3.5-122B-A10B 獲得 0.7200 ANLS（+0.0776）與 79.0% Acc（+7.8）。相對地，Trace2Skill+Error 對 Qwen3.5-35B-A3B 甚至低於 No Skill 基線（0.6223 ANLS，−0.0620），顯示未經驗證的修補可能傷害跨域泛化；SkillCAT 透過修補驗證避開此失敗模式。</p>
+<h3 id="消融研究">消融研究</h3>
+<p>在 Qwen3.5-35B-A3B 同模型 Skill Deepening 設定下，以 Trace2Skill+Combined（29.67% Vrf）為參照，完整 SkillCAT 管線達 55.50%，增益 25.83 點。移除任一模組都會降低表現，但失敗模式不同：拿掉 CCE，準確率降到 32.50%，說明同任務成敗對比提供了重要的技能編輯證據；拿掉 AAE，準確率降到 26.00%，<strong>低於</strong>參照值，顯示來源任務重播是防止有害修補進入合併技能所必需的；拿掉 TTE，系統仍達 46.50%，但仍比完整管線低 9.00 點，說明高品質的演化後技能同樣受惠於任務相關的脈絡部署。單一模組列的結果支持同樣結論：只用 CCE 與只用 AAE 分別達 39.00% 與 34.00%，只用 TTE 只有 27.50%——單靠路由無法彌補技能內容演化不足。</p>
+<h3 id="更多分析">更多分析</h3>
+<p><strong>CCE 需要多少軌跡種子才能構成有用的對比配對？</strong> 種子數在 1、3、5、7、9 之間掃描，並以 CCE 取樣時間作為成本參照。保留集 Vrf 從 1 個種子的 32.50% 升到 5 個種子的 55.50%，之後在 7、9 個種子時降到 46.00% 與 41.50%。取樣時間隨種子預算增加，從 1 個種子的 22 分 56 秒漲到 9 個種子的 4 小時 41 分 49 秒。因此，更多軌跡雖提高取樣成本，但超過 5 個種子後並未改善泛化——本文因此選用 5 個種子作為此掃描下最佳的精度—成本平衡點。</p>
+<p><strong>來源任務重播能否可靠預測哪些修補會改善下游表現？</strong> 把 197 個候選修補依重播結果轉移分桶，各桶單獨評估（為求公平比較，把每桶樣本數等化為最小桶的大小）。純分桶 Vrf 遵循 AAE 預期的順序：失敗→成功桶達 51.00%（較 Trace2Skill +21.33）、成功→成功桶達 41.00%（+11.33）、失敗→失敗桶達 32.00%（+2.33）、成功→失敗桶降到 23.50%（−6.17）。此單調順序顯示重播轉移確實攜帶下游訊號：能修復來源任務失敗的修補最有價值，而把成功變成失敗的修補理應被拒絕。</p>
+<p><strong>拓撲感知路由能否在不犧牲準確率的前提下縮減技能 prompt 大小？</strong> 虛線為表 2 中不做 TTE 的完整技能載入基準（46.50% Vrf）。兩種路由器在多數預算下都高於此基準，同時使用更少 token。嵌入檢索路由器在 top_k=3 時 Vrf 峰值達 57.00%。最終選用的 LLM 圖路由器在 41.6% 脈絡縮減下達到 55.50% Vrf。選用它的原因是它具競爭力、省 token，且利用了 TTE 的依賴拓撲、不需額外的嵌入模型。</p>
+<h2 id="結論">結論</h2>
+<p>本文研究 LLM 智能體既有技能自我演化方法的三個限制：單軌偏誤、未經驗證的合併，以及推論時的情境過載。SkillCAT 透過 CCE 萃取同任務對比證據、透過 AAE 以來源任務重播過濾候選修補、透過 TTE 只載入任務相關的技能內容，分別加以解決。為評估 SkillCAT 的有效性，本文在 SpreadsheetBench、WikiTableQuestions、DocVQA 等標準智能體基準上進行評估，並進一步探討其跨模型與域外泛化能力。在這些條件下，SkillCAT 較可比基線平均分最多提升 40.40%，消融與分析也證實了各模組的貢獻。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2606.13317_SkillCAT.%E6%91%98%E8%A6%81.html"><code>../summarize/2606.13317_SkillCAT.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

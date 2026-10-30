@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_半監督學習實現可控選擇性生成 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2307.09254_Selective_Generation.zh-TW.html">回 2307.09254_Selective_Generation.zh-TW 目錄</a>　<a href="02_%E8%83%8C%E6%99%AF.html">← 上一節</a>　<a href="04_%E9%99%84%E9%8C%84%E8%A6%81%E9%BB%9E.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-半監督學習實現可控選擇性生成">4. 半監督學習實現可控選擇性生成</h2>
+<h3 id="41-相對文字蘊涵關係的偽發現率fdr-e">4.1 相對文字蘊涵關係的偽發現率（FDR-E）</h3>
+<p>文字蘊涵關係 R_E 是 Y×Y 的有序子集：(y′,y)∈R_E 表示 y′ 蘊涵 y。以問答為例，生成答案 G(x) 正確若真答案 y 是 G(x) 的邏輯後果，亦即 G(x)∈E_true(y)，其中真蘊涵集合函數 E_true(y)≔{y′∈Y | (y′,y)∈R_E}。以此關係代入上節的廣義 FDR 定義，即得 FDR-E。</p>
+<h3 id="42-監督式學習的-fdr-e-界sgensup">4.2 監督式學習的 FDR-E 界（SGen^Sup）</h3>
+<p>SGen^Sup 是 Geifman &amp; El-Yaniv 選擇性分類演算法的直接改版：用人工標註的蘊涵標籤 e 取代 EM 正確性標籤，套用相同的二項尾界門檻搜尋，得到控制 FDR-E 的 PAC 保證。缺點是需要對訓練所用的每一筆校準資料都做人工蘊涵標註。</p>
+<h3 id="43-半監督學習的-fdr-e-界sgensemi">4.3 半監督學習的 FDR-E 界（SGen^Semi）</h3>
+<p><strong>4.3.1 FDR-E 分解</strong>：把校準資料拆成有標籤集 Z_E（人工蘊涵標註）與無標籤集 Z_U。整體 FDR-E 被分解為：(C) 用 Z_E 直接估計的部分、(E) 需靠偽標籤估計的部分（進一步拆成 FER、FNER、NER 三項），分別對應不同信賴水準 δ_S、δ_E 的分配。</p>
+<p><strong>4.3.2 透過保形化蘊涵集合學習做偽標籤</strong>：本文設計偵測函數 ℓ(Ê,x,y,e)≔1(e=0 ∧ G(x)∈Ê(y))，此損失相對門檻 τ_E 單調不增，因此可直接套用 §2.4 的 PAC 保形集合學習演算法 A_FER（即 Algorithm 1）。給定期望風險 ε_E 與信心 δ_E，A_FER 從有標籤資料 Z_E 學出估計的蘊涵集合函數 Ê，其在無標籤資料上做偽標籤（e=0 且 G(x)∈Ê(y) 時視為誤蘊涵）造成的**假蘊涵率（FER，false entailment rate）**滿足 P{R_FER(Ê)≤ε_E}≥1−δ_E。</p>
+<p><strong>4.3.3 FDR-E 界</strong>：把 (E) 分解為 FER（由 Ê 學習過程的 PAC 界上界）、FNER（用 Z_E 估計的二項尾下界）、NER（用 Z_U 估計的二項尾上界）三項，用聯集界（union bound）把各自的信賴水準 δ 相加組合，得到整體 FDR-E 的 PAC 保證（Lemma 2 → Theorem 1）。實務上：SGen^Semi 只需 75% 的有標籤校準資料（其餘 25% 的標註量省下）＋最多 27k（Alpaca-7B）／10k（GPT-3.5-Turbo）筆無標籤資料，即可學出滿足期望 FDR-E 水準、或至少達最低可達風險水準（帶信心 δ）的選擇性生成器。</p>
+<h3 id="44-neuro-selection-functions神經選擇函數">4.4 Neuro-selection functions（神經選擇函數）</h3>
+<p>標準選擇函數是單門檻指示函數 ŝ(x)≔1(f_M(x,G(x))≥τ_S)。分類任務常直接用最大概似當信心率函數；生成任務中，一個自然候選是序列條件機率 f_M1，但已知它校準很差；另一替代是<strong>自一致性分數</strong> f_M2(x,G(x))≔(1/K)Σ_k f_E(ỹ_k,G(x))，即對同一問題以不同隨機種子重複生成 K 次答案 ỹ_k，取 G(x) 與這些答案的平均蘊涵分數——已有工作實證此分數能較好量化模型不確定性。Lemma 4 給出：若能取得真蘊涵集合函數 E_true，且評分函數 f_M 相對 E_true 完美校準，則單門檻選擇函數（Algorithm 5）的 FDR-E 相對門檻 τ_S 單調不增，因而可控。但校準語言評分函數本身仍是活躍研究難題（完美校準難以達成）。因此本文提出更一般的選擇函數類別——<strong>neuro-selection functions</strong>：用可學特徵映射 Φ:x↦R^v，構成多門檻指示函數，把多個評分函數（如 f_M1、f_M2）組合起來。</p>
+<h3 id="45-帶-neuro-selection-的半監督選擇生成器學習演算法">4.5 帶 neuro-selection 的半監督選擇生成器學習演算法</h3>
+<p>完整的 SGen^Semi（Algorithm 7）整合：(1) 用保形化蘊涵集合學習對無標籤資料做證書化偽標籤，(2) 從候選評分函數組合中，選出既滿足 FDR-E 保證、又使選擇效率最大化的最優 neuro-selection function 組合。Theorem 1 證明：只要 Algorithm 4（FDR-E 界計算）與 Algorithm 7 的組成部分各自成立，SGen^Semi 在意義上是「可控」的——把學出的選擇生成器 FDR-E 上界壓到期望水準 ε_S，或至少壓到帶信心 δ 的最低可達水準 Û。</p>
+<h2 id="5-實驗">5. 實驗</h2>
+<p>實驗以 GPT-3.5-Turbo（閉源）與 Alpaca-7B（開源）兩個 GLM、Natural Questions 資料集驗證方法在控制 FDR-E 上的效力。蘊涵模型採用 deberta-v2-xxlarge-mnli；人工蘊涵標註分別得到約 4,595 筆（GPT-3.5-Turbo）與 7,374 筆（Alpaca-7B）樣本，各以 8:2 切成校準集與測試集；半監督演算法額外使用最多 10k（GPT-3.5-Turbo）／27k（Alpaca-7B）筆無標籤資料，且只用 75% 的標籤校準資料（相對監督式版本）。計算環境為 4 張 NVIDIA A100 80GB、128 CPU。</p>
+<p><strong>FDR-E 保證與效率</strong>：SGen^Semi 整體上能以比基線更好的效率達到期望 FDR-E 水準；若評分函數品質不佳（如僅用 f_M1），未做多分數選擇的變體 SGen^Semi_NoMS 可能無法找到滿足期望 FDR-E 的選擇性生成器（表中以底線標示違反保證的結果）；缺乏理論保證的啟發式半監督基線（SGen^H-Semi_PL、SGen^H-Semi_PFL，即純粹偽標籤但不套 PAC 界）不提供 FDR-E 的理論保證。以 100 次隨機切分校準/測試集重複實驗，證書化方法的 FDR-E 穩定壓在期望水準 ε_S=0.25 之下，與理論相符；啟發式方法則無此保障。</p>
+<p><strong>為何需要蘊涵標籤</strong>：比較 SGen_EM 與 SGen^Sup 可見，EM 這類指標無法正確衡量生成任務的正確性——生成任務可能有無限多個真答案，字面完全相符的機率很低；改用蘊涵標籤能反映語意正確性，使 SGen^Sup 表現更好、效率更高。定性範例（如「誰演出跩哥·馬份」“Tom Felton” vs 完整句「Thomas Andrew Felton...」）顯示：SGen_EM 因字面不符而拒答，SGen^Semi 則能正確接受。</p>
+<p><strong>為何需要半監督學習</strong>：全監督方法（用全部標籤 Z_E、且滿足 ε-FDR-E 保證）的選擇效率為 GPT-3.5-Turbo 0.7535、Alpaca-7B 0.2959；本文提出的半監督 SGen^Semi 只用 75% 的標籤量，效率達到 0.7334（GPT-3.5-Turbo）與 0.3173（Alpaca-7B，甚至略高於全監督），顯示只要能把蘊涵集合逼近得夠好、無標籤集夠大，即使有標籤資料少也能靠證書化偽標籤達到相近甚至更好的效率；無標籤樣本越多，效率越好（見隨無標籤樣本數變化的效率曲線）。</p>
+<p><strong>為何需要 Neuro-selection</strong>：人工找到校準良好的單一評分函數很難，但給定多個候選評分函數，neuro-selection function 能學會挑出對的組合，同時達成期望 FDR-E 並最大化選擇效率——實驗顯示 SGen^Semi（帶 neuro-selection）平均效率優於單一評分函數的變體。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>本文提出選擇性生成，把 Geifman &amp; El-Yaniv 的選擇性分類推廣到 GLM，處理兩個結構化答案之間的語意正確性。為此，本文借助邏輯蘊涵定義新的 FDR-E 指標。由於取得蘊涵標籤成本高，本文提出以蘊涵集合當偽標籤函數的半監督學習方法；為改善評分函數不佳導致的低選擇效率，本文提出 neuro-selection functions 以有效最佳化評分函數，兼顧選擇效率與 FDR-E 保證。SGen^Semi 與 SGen^Sup 的效力皆經理論與實證證實。</p>
+<p><strong>局限</strong>：演算法需要 i.i.d. 假設，實務情境可能違反此假設；本文依賴昂貴的蘊涵標籤（透過真答案與生成答案間的邏輯蘊涵取得），此限制透過提出半監督方法、把有標籤樣本的資訊傳播到無標籤樣本上得到部分緩解；此外，結果顯示實測 FDR-E 相對 ε 的界並不算很緊，尤其在 Alpaca-7B 上更明顯，意味著可能需要更緊的 FDR-E 界。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

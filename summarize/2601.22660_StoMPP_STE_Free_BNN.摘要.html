@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《StoMPP：以逐層漸進凍結實現無 STE 的深層二值神經網路訓練》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Evan Gibson Smith, Bashima Islam（Worcester Polytechnic Institute，投 ICML）</p><p>日期：2026-01，二值/極低位元網路</p><p>arXiv：2601.22660</p><p><a href="https://arxiv.org/abs/2601.22660" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="stompp以逐層漸進凍結實現無-ste-的深層二值神經網路訓練重點摘要">《StoMPP：以逐層漸進凍結實現無 STE 的深層二值神經網路訓練》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>StoMPP（Stochastic Masked Partial Progressive Binarization）</strong>：訓練二值網路（權重/激活∈{−1,+1}）時<strong>完全不用直通估計器 STE</strong>——改用<strong>逐層漸進凍結 + 隨機遮罩</strong>，把每層的可微「裁剪（clip）」運算子漸進換成硬性 sign 階梯函數，且<strong>只對未凍結（仍可微）那部分反傳梯度</strong>（凍結部分視為常數、零梯度）。關鍵發現：<strong>全域</strong>漸進凍結對二值權重網路（BWN）可行，但對全二值網路（BNN）會因<strong>激活誘發的梯度封鎖</strong>失敗；改成<strong>從輸入到輸出逐層凍結</strong>即可避開。在受控最小訓練配方下勝 BinaryConnect 式 STE，<strong>增益隨深度放大</strong>（ResNet-50 BNN：CIFAR-10 +18.0、CIFAR-100 +13.5、ImageNet +3.8）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>訓練 BNN 主流靠 <strong>STE</strong>（前向用硬 sign、反向用替代梯度），但這造成<strong>前向算子與反向梯度不匹配</strong>，網路愈深愈嚴重 → 深層 BNN 準確度劣化、優化不穩。既有「可微鬆弛 + 退火」雖前後一致，但硬化臨界時脆弱（梯度爆/消）；既有漸進量化/凍結（INQ 等）多只處理<strong>權重</strong>、不碰二值激活的梯度阻斷問題。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>遮罩二值化前向</strong>：對每個權重/預激活項 u，前向值 u′ = M⊙sign(u) + (1−M)⊙SmoothFunc(u)；遮罩 M∈{0,1} 決定該項是凍結（硬 sign）還是未凍結（連續代理）。激活用 clip 當 SmoothFunc、權重用 identity。</li>
+<li><strong>無 STE 反向</strong>：sign 的導數幾乎處處為 0，故<strong>只經連續代理分支反傳</strong>（∂ℒ/∂u =(1−M)⊙∂ℒ/∂u′⊙∂clip/∂u），凍結項收到零梯度。即「只算代理映射對未凍結項的精確梯度」，不假裝算離散網路的梯度。</li>
+<li><strong>隨機遮罩漸進凍結</strong>：每層轉換期目標凍結比例 p(τ)=(τ/T)³（立方排程，0→1）;<strong>軟刷新（soft refresh）</strong>——每步只重抽 k=⌊n/r⌋ 個索引（r=100，約 1%/步）的遮罩值（Bernoulli(p)），其餘不動 → 兼顧穩定與探索，避免過早鎖死。</li>
+<li><strong>逐層排程（核心）</strong>：把網路分成「已凍結前綴（全二值，不需梯度）／轉換層（部分凍結、軟刷新）／未凍結後綴（全連續，提供梯度路徑）」，<strong>二值化像一道從輸入推進到輸出的波</strong>，保證轉換層永遠有有效學習訊號 → 避開全域凍結的梯度封鎖。</li>
+<li>架構無關、開銷極小（軟刷新 O(n/r)、逐元素）；訓練結束所有排程層 p(T)=1，得<strong>完全二值</strong>的推論網路；首末層與下採樣層保持全精度（慣例）。</li>
+</ul>
+<h2 id="結果resnet-183450cifar-10100--imagenet受控最小配方無權重衰減定學習率">結果（ResNet-18/34/50，CIFAR-10/100 + ImageNet；受控最小配方：無權重衰減、定學習率）</h2>
+<ul>
+<li><strong>BNN 深度擴展大幅改善</strong>：CIFAR-10 STE 從 R18 的 77.8% 掉到 R50 的 51.5%，StoMPP 從 80.9% 只掉到 69.5%;CIFAR-100 STE 49.1%→26.7%，StoMPP 53.8%→40.2%;ImageNet R50 StoMPP 34.2% vs STE 30.8%。</li>
+<li><strong>增益隨深度放大</strong>（ResNet-18: +3.1/+4.7/+1.3;ResNet-50: +18.0/+13.5/+3.8 於 CIFAR-10/100/ImageNet）。</li>
+<li><strong>BWN</strong>：ResNet-50 達 CIFAR-10 91.2%、CIFAR-100 69.5%。</li>
+<li>消融：全域凍結對 BNN 崩潰（驗證梯度封鎖假說）；與 Bi-Real Net 等架構改良<strong>正交可疊加</strong>；呈現非單調（鋸齒）收斂動態。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>在<strong>受控最小配方</strong>下比較（無蒸餾、無學習率排程、無特製激活/縮放因子）——刻意隔離演算法效果，故絕對準確度非 SOTA；與完整 SOTA 訓練配方疊加的效果留待後續。</li>
+<li>各層分配等量 epoch（未探非均勻排程）；訓練流程較 STE 略複雜（遮罩/排程）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>「極低位元/二值網路」<strong>主題裡少見的</strong>正面挑戰 STE</strong> 之作：把困擾 BNN 多年的「前後向不匹配」從根本繞開，用<strong>漸進凍結 + 逐層波</strong>替代替代梯度，並精準指出「激活誘發梯度封鎖」是全域凍結對 BNN 失效的真因。</li>
+<li>與 <a class="paper-reference" href="2509.07025_Binary_Normalized_NN.%E6%91%98%E8%A6%81.html">2509.07025</a>（1-bit 二值正規化網路）、<a class="paper-reference" href="2512.04189_BEP_Binary_Error_Propagation.%E6%91%98%E8%A6%81.html">2512.04189</a> BEP（完全二值的二進位誤差反傳）並讀，構成「<strong>如何在不靠 FP 梯度/STE 下訓練二值網路</strong>」的三條不同路線（StoMPP＝漸進凍結仍用 FP 代理梯度於未凍結部分；BEP＝全程位元運算）。</li>
+<li>最值得記：<strong>「只對未凍結代理分支反傳、凍結即常數」<strong>的無 STE 訓練範式、<strong>立方排程 + 軟刷新</strong>、以及</strong>逐層波避梯度封鎖</strong>；定位：訓練方法論文 + ImageNet 級實證，適合做<strong>模型壓縮、邊緣/低功耗推論、量化感知訓練、二值網路訓練理論</strong>的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2601.22660_StoMPP_STE_Free_BNN.zh-TW.html"><code>../translate/2601.22660_StoMPP_STE_Free_BNN.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

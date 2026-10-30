@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2310.02304_STOP.zh-TW.html">回 2310.02304_STOP.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97%E8%88%87%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>近期多項 AI 系統進展（如 Tree-of-Thoughts、Program-Aided Language Models）以「<strong>鷹架程式（scaffolding program）</strong>」結構化多次語言模型呼叫來產出更好的輸出；鷹架程式通常以 Python 等程式語言寫成。本文用一個「注入語言模型的鷹架程式」來<strong>改進它自己</strong>：從一個種子「<strong>改進器（improver）</strong>」出發——它依給定的<strong>效用函數（utility function）<strong>多次查詢語言模型並回傳最佳解——然後</strong>用這個種子改進器來改進種子改進器本身</strong>。在一小組下游任務上，改進後的改進器所生成的程式表現顯著優於種子改進器。語言模型自行提出多種自我改進策略，包括 beam search、遺傳演算法（genetic algorithms）、模擬退火（simulated annealing）。由於語言模型本身未被更動，這<strong>不是完全的遞迴自我改進（recursive self-improvement, RSI）</strong>；但它證明現代語言模型（概念驗證用 GPT-4）有能力寫出「呼叫自己以改進自己」的程式碼。我們也考察自我改進技術發展的疑慮，並量測生成程式碼**繞過沙箱（sandbox）**的頻率。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>語言模型可被查詢以優化幾乎任何能用自然語言描述的目標；而<strong>對語言模型做多次結構化呼叫的程式</strong>往往能產生目標值更高的輸出（如 ToT、PAL 等）——我們稱之為「鷹架」程式，通常由人類以 Python 撰寫。<strong>關鍵觀察：對任何優化問題分佈與任何固定的語言模型而言，鷹架程式的設計本身就是一個優化問題。</strong></p>
+<p>本文提出 <strong>Self-Taught Optimizer（STOP，自學優化器）</strong>：把「用語言模型改進任意解」的程式碼<strong>遞迴地套用在它自己身上</strong>。方法從一個初始種子改進器出發，系統迭代時由模型精煉這個改進器程式。我們用一小組下游演算法任務量化自我優化框架的表現，結果顯示模型隨迭代增加持續改善——<strong>語言模型可以充當自己的元優化器（meta-optimizer）</strong>。我們並考察模型提出哪些自我改進策略、策略跨下游任務的可轉移性，以及模型對不安全自我改進策略的傾向。</p>
+<p>我們稱此問題為<strong>遞迴自我改進的程式碼生成（recursively self-improving code generation）</strong>——受 RSI 啟發但非完整 RSI，因底層語言模型不變。RSI 想法可上溯半世紀（Good 1966；Schmidhuber 2003 形式化），但過去工作假設模型可改進自身程式碼的每一部分；本文只是朝該方向的一小步，聚焦模型遞迴改進「呼叫它的鷹架」的能力。值得注意的是，本文用的 GPT-4 版本訓練資料截至 2021 年，<strong>早於多數鷹架系統問世</strong>，模型卻自行提出了其中多種。第 6.2 節量測模型試圖關閉沙箱旗標的頻率，第 8 節討論負責任發展的顧慮。</p>
+<p><strong>種子改進器（圖 2）</strong>：一個極簡函數 <code>improve_algorithm(initial_solution, utility, language_model)</code>——把「初始解 + 效用函數原始碼」放進 prompt，要求模型提出新穎、非平凡的改進，批次取樣多個候選解，最後<strong>回傳依效用函數評分最高者</strong>。</p>
+<p><strong>貢獻</strong>：(a) 提出「鷹架系統遞迴改進自己」的元優化框架；(b) 證明以現代語言模型（GPT-4）能成功遞迴自我改進；(c) 考察模型提出並實作的自我改進技術，包括模型<strong>規避沙箱等安全措施</strong>的方式。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>語言模型鷹架</strong>：scratchpad／chain-of-thought、Tree-of-Thoughts、Graph of Thoughts、PoT／PAL／Reflexion／ReAct、DSP、Language Model Cascades、Cognitive Architectures 等，皆可理解為研究者在問「給定不完美的語言模型，如何提供結構幫它解題？」本文反問：<strong>語言模型能否自己設計那個結構，並用它提出的結構遞迴改進該結構？</strong> 令人驚訝的是，GPT-4 自然提出了其中數種技術，儘管它們不在其訓練資料內。</li>
+<li><strong>語言模型作為 prompt 工程師</strong>：APE、OPRO、Promptbreeder 等讓模型優化 prompt，但目標始終是「產生 prompt」而非「產生更好的鷹架」，更非遞迴可套用的鷹架。例如 Promptbreeder 能改進某鷹架內的 prompt，卻無法實作或改進鷹架本身。</li>
+<li><strong>語言模型自我改進</strong>：<strong>STaR</strong>（Zelikman et al. 2022）證明模型可藉「以答案正誤過濾自己的推理鏈再微調」學會解更難的問題（另有 Huang et al. 2022 以多數決為過濾器、Uesato et al. 2022 強調檢查推理本身）；Haluptzok et al. 2023 讓模型自行出題微調自己。**本文方法與這些正交：不動微調，專注於模型改進「讓它解題的程式碼」的能力。**另有 Voyager、LATM（Language Models as Tool Makers）。</li>
+<li><strong>遞迴自我改進（RSI）</strong>：Minsky（1966）與 Good（1966）提出，Schmidhuber（2003）首度嚴格形式化（要求可證明的自我改進）。本文不試圖證明模型所做的鷹架改進是最優的；且與早期「打字機前的猴子」式隨機枚舉不同，語言模型可在 prompt 中描述目標（prompt 本身也可被改進），直覺上使程式搜尋更有效。在實作上，本文是<strong>第一個利用語言模型做遞迴自我改進程式碼生成</strong>的工作。</li>
+</ul>
+<h2 id="3-問題陳述">3. 問題陳述</h2>
+<p>把「選出一個改進器」視為計算上昂貴的「<strong>預優化（pre-optimization）</strong>」步驟，其收益可在眾多下游應用中回收。形式定義：</p>
+<ul>
+<li><strong>效用（utility）</strong> <code>u = (u_func, u_str)</code>：<code>u_func</code> 是給解字串評實值分數的黑箱（可隨機）函數；<code>u_str</code> 是其描述（可以就是原始碼）。</li>
+<li><strong>任務</strong> <code>τ = (u, s)</code>：效用 u 加初始解 s（本文中 s 為程式原始碼字串）。</li>
+<li><strong>改進器（improver）</strong> I：用語言模型 L 改進任務解的程式——<code>s′ = I(u, s, L)</code>，理想上 <code>u(s′) ≫ u(s)</code>。</li>
+<li>給定下游任務分佈 𝒟，目標是找到期望效用 <code>ū(I) = E_{(u,s)~𝒟}[u(I(u,s,L))]</code> 高的改進器。訓練時給 n 個下游任務集合 D，定義<strong>元效用（meta-utility）</strong> <code>û(I)</code> 為 D 上改進後解的平均效用。</li>
+<li><code>ū</code>、<code>û</code> 的描述字串採共同的「<strong>灰箱</strong>」描述：說明效用是一組下游任務上的期望，但不含個別任務本身。附錄 A 給出「優化 û 亦近乎優化 ū」的簡單條件，並形式化執行時間與語言模型呼叫的<strong>資源預算</strong>。成本約為 <code>O((budget_u + budget_L) × budget_û)</code>。</li>
+<li>附錄 A 另給出等價的「遞迴最大化」表述（無需初始解、更利於理論分析）；STOP 採改進器表述，因初始解對**熱啟動（warm-start）**自我改進過程很有價值。</li>
+</ul>
+<h2 id="4-self-taught-optimizerstop">4. Self-Taught Optimizer（STOP）</h2>
+<p><strong>演算法 1</strong>：輸入種子改進器 I₀、語言模型 L、遞迴深度 T、下游任務集 D；對 t = 1…T 迭代 <strong><code>I_t ← I_{t−1}(û, I_{t−1}, L)</code></strong>——即用上一代改進器、以元效用為目標、改進上一代改進器自己；回傳 I_T。</p>
+<p><strong>直覺</strong>：以 û 選擇改進器，是基於「擅長改進下游解的改進器，較可能是好的鷹架程式、因而較可能擅長自我改進」；同理「選單輪改進好的，可望帶來更好的多輪改進」。實務上允許效用與語言模型施加預算限制（執行時間、可呼叫次數等）。</p>
+<p><strong>種子改進器設計</strong>：刻意選極簡形式，理由：1) 鼓勵模型盡量「有創意」；2) 最小化初始 prompt 複雜度（自我改進因「prompt 內嵌程式碼字串的巢狀引用」而額外複雜）；3) 最小化 token 數與查詢成本。作者試過其他變體，啟發式地發現此版最能激發 GPT-4 提出新穎的改進器改進。</p>
+<p><strong>描述效用</strong>：效用以兩種形式提供給改進器——<strong>可呼叫函數</strong>與<strong>含效用原始碼精要的描述字串</strong>。描述字串能清楚傳達預算約束；作者最初把預算指示寫在種子改進器 prompt 裡，但後續迭代中<strong>這些指示被刪除、並出現 reward hacking 企圖</strong>（見 6.2）。實證上，把原始碼換成純英文描述會降低非平凡改進的頻率。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

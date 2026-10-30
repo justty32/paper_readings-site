@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2207.14255_FIM.zh-TW.html">回 2207.14255_FIM.zh-TW 目錄</a>　<a href="02_%E9%A0%90%E8%A8%93%E7%B7%B4%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>我們證明：只要對資料集施加一個簡單變換——把文件中段的一段文字搬到文件末尾——自迴歸語言模型就能學會填補文字（infill）。我們提供大量證據顯示：以高比例如此變換的資料訓練模型，<strong>不會傷害原本的左到右生成能力</strong>（以 perplexity 與採樣評測跨多種規模衡量）。鑑於 fill-in-the-middle（FIM，中段填補）訓練的實用性、簡單性與效率，我們建議未來的自迴歸語言模型<strong>預設加入 FIM 訓練</strong>。為此我們對關鍵超參數做了一系列消融——資料變換頻率、變換結構、中段選取方式——並據以給出強力的預設設定與最佳實務。我們已在 API 釋出以最佳實務訓練的最強填空模型，並開源填空 benchmark。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>Transformer 之後的大型語言模型分幾大類：encoder-only（BERT，masked language modeling 目標）、encoder-decoder（T5，span prediction 目標）、因果解碼器（causal decoder，GPT 系列，左到右下一 token 預測）。當今最大最強的生成式模型（GPT-3、Codex、PaLM、Chinchilla 等）皆屬第三類——因其在開放式生成、in-context learning、預訓練計算效率上的優勢與架構簡潔性。</p>
+<p>但所有類別在**填空（infilling）**上都受限：任務是在 prompt 內的特定位置生成文字、同時以前綴（prefix）與後綴（suffix）為條件。左到右模型只能看 prefix；encoder 類雖能看 suffix，訓練時 infill 區段長度卻遠短於實用所需。這很可惜，因為填空天然出現在「生成點前後皆有上下文」的應用——例如程式助手中的 docstring 生成、import 語句生成、補完寫了一半的函數。</p>
+<p>本文目標：對目前主流的因果解碼器 LM 加上 FIM 能力。方法核心是對一部分資料施加變換——把文件隨機切成三段並將中段搬到末尾：</p>
+<blockquote>
+<p>document →（prefix, middle, suffix）→（prefix, suffix, middle）</p>
+</blockquote>
+<p>再以哨兵 token（sentinel token）串接三段。此作法與 Donahue et al. 2020、CM3、InCoder 相近，但本文強調<strong>訓練的計算效率</strong>：對極昂貴的大模型訓練而言，加新能力最關鍵的問題是「對既有能力的影響與計算效率取捨」。我們證明：在 FIM 變換資料與普通左到右資料的混合上聯合訓練的模型，<strong>左到右能力不變、同時學會填空</strong>——稱之為 <strong>FIM-for-free（FIM 免費）性質</strong>。下文以「FIM 模型」指在混合資料上訓練者、「AR 模型」指 FIM rate 為 0 者。</p>
+<h3 id="11-貢獻">1.1 貢獻</h3>
+<ul>
+<li><strong>FIM-for-free 性質</strong>：訓練 8 個規模（含/不含 FIM）的模型套件做大規模 scaling 研究——程式與自然語言各 16 個模型、各訓 100B tokens——以 perplexity 與採樣評測雙重驗證：FIM 可在預訓練中習得而不損左到右能力（圖 1：50% FIM rate 下左到右 test loss 曲線與 0% 完全重合；圖 2：FIM 模型的 FIM test loss 顯著低於 AR 模型→兩圖合觀，FIM 模型<strong>嚴格優於</strong> AR 模型）。</li>
+<li><strong>FIM 預訓練最佳實務</strong>：全面消融 FIM rate（施加變換的機率）、變換結構變體、中段選取方式。</li>
+<li><strong>Finetune 低效</strong>：另一條路是對既有 LM finetune 補學 FIM——我們證明這在計算上很低效：預訓練免費學到的能力，finetune 要花可觀額外算力才追平。</li>
+<li><strong>新填空 benchmark</strong>：沿用 InCoder 的單行/多行填空（從 HumanEval 標準解移除非空行），另創 <strong>random span infilling</strong>（隨機字元跨度填空，1640 題）與其輕量版（164 題），已開源（github.com/openai/human-eval-infilling）。</li>
+<li><strong>採樣評測的必要性</strong>：多處發現改變超參數對 FIM test loss 幾無影響、對採樣評測卻差異巨大——只看 test loss 的 scaling 分析會誤導。</li>
+</ul>
+<h2 id="2-評測">2. 評測</h2>
+<p>AR loss＝普通左到右資料上的交叉熵；FIM loss＝100% FIM 變換資料上的 loss（單位 nats/token）。採樣評測皆用 nucleus sampling（p=0.95）。</p>
+<p><strong>自迴歸評測</strong>：自然語言用 PIQA、Winograd、WinoGrande（常識推理）、DROP、QuAC（閱讀理解）、HellaSwag、LAMBADA、StoryCloze（補完）；程式碼用 HumanEval pass rate。</p>
+<p><strong>填空評測</strong>：對 AR 測試集施以 100% FIM 變換得 FIM 測試集（同底資料可直接比較）；另做只計中段 loss 的遮罩版，用以比較 P(middle|prefix,suffix)（FIM 模型）與 P(middle|prefix)（AR 模型），量化「能看 suffix」帶來的資訊增益。生成式填空聚焦程式碼——可用測試套件驗證長樣本的正確性。單行、多行、random span 三個 benchmark 各有 1033、5815、1640 題（遠多於 HumanEval 的 164 題，降低變異）。</p>
+<h2 id="3-fim-訓練與推論">3. FIM 訓練與推論</h2>
+<p>FIM 以隨機變換實作，分 document-level 與 context-level 兩種（差在變換發生於資料載入管線的哪一階段）。</p>
+<p><strong>Document-level FIM</strong>：以機率 p（<strong>FIM rate</strong>，主線模型用 0.5）把每份文件切成 prefix / middle / suffix 三段——<strong>在 tokenize 之前於字元層級均勻隨機切</strong>（三段期望長度各 1/3）。三段分別編碼、各自前置哨兵 token <code>&lt;pre&gt;</code>、<code>&lt;suf&gt;</code>、<code>&lt;mid&gt;</code>，按 prefix→suffix→middle 順序串接：</p>
+<blockquote>
+<p><code>&lt;pre&gt; ∘ Enc(prefix) ∘ &lt;suf&gt; ∘ Enc(suffix) ∘ &lt;mid&gt; ∘ Enc(middle)</code></p>
+</blockquote>
+<p>文件之間（無論 FIM 或 AR）以 <code>&lt;eot&gt;</code> 相接。<strong>三段全部保留 loss</strong>，故 FIM 訓練不減少自迴歸學習信號——初步實驗顯示此點對 FIM-for-free 成立至關重要；哨兵是否遮罩不影響該性質，但<strong>務必訓練 <code>&lt;eot&gt;</code></strong>，它是「成功接上 suffix」的信號。推論時以 <code>&lt;pre&gt; ∘ Enc(prefix) ∘ &lt;suf&gt; ∘ Enc(suffix) ∘ &lt;mid&gt;</code> prompt 模型、採樣直到生成 <code>&lt;eot&gt;</code>。若在合理 token 預算內生不出 <code>&lt;eot&gt;</code>，通常表示模型難以銜接前後文、樣本品質較差——由此引出 EOT-aware best-of-n 採樣（見附錄 H）。</p>
+<h3 id="31-spm-模式">3.1 SPM 模式</h3>
+<p>將 prefix 與 suffix 對調（suffix, prefix, middle），稱 <strong>SPM</strong>。主要動機是<strong>推論時的 KV 快取</strong>：SPM 下向 prefix 追加 token 不會使 suffix 段已算好的 keys/values 失效（實務上 prefix 變動遠比 suffix 頻繁）。此外 4.3 節顯示 SPM 在填空 benchmark 上還略優於 PSM。主線訓練把 FIM rate 均分給 PSM 與 SPM（各半），使模型兩種格式都能用。SPM 的哨兵擺放有微妙之處（見附錄 D）。</p>
+<h3 id="32-context-level-fim">3.2 Context-level FIM</h3>
+<p>LM 訓練中文件以 <code>&lt;eot&gt;</code> 相接後切塊（chunk）到 context 長度。對長文件先做 FIM 再切塊，可能把整個 prefix 或 suffix 切出 context、產生碎片化 FIM 資料。解法：<strong>切塊之後才施加 FIM</strong>——按 <code>&lt;eot&gt;</code> 拆回個別文件、依 FIM rate 變換部分文件、重新接合、再修剪到 context 長度。4.4 節顯示此法優於 document-level FIM，主線全部採用。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

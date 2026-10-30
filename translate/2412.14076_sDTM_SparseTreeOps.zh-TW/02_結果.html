@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_結果 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2412.14076_sDTM_SparseTreeOps.zh-TW.html">回 2412.14076_sDTM_SparseTreeOps.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-結果">5 結果</h2>
+<p>（皆為五個隨機種子下測試集<strong>最佳精確匹配率</strong>；只比未經大規模預訓練、從零訓練的模型。）</p>
+<h3 id="51-baselines">5.1 Baselines</h3>
+<p>全神經：標準 <strong>Transformer</strong>、<strong>RU-Transformer</strong>（相對通用 Transformer，曾於系統性泛化見長）；混合神經符號：<strong>NQG</strong>（學準同步上下文無關文法；其 NQG-T5 會在文法失敗時退回微調 T5，本文不比，因要避大規模預訓練）。評測分佈：<strong>IID</strong>＋多種 <strong>OOD</strong>——1-shot/0-shot 詞彙、結構/長度、Template（訓練時保留某抽象 n-gram 模板）、<strong>MCD（最大化合分歧度</strong>：訓練/測試 unigram 同、n-gram 頻率最大分歧）。</p>
+<h3 id="52-效能回歸驗證active-logicaltree2tree">5.2 效能回歸驗證（Active Logical，tree2tree）</h3>
+<p>主動語態↔邏輯形式互譯（模擬語意剖析/自然語言生成），測 IID/0-shot 詞彙/結構。DTM 系列與 Transformer 都過 IID；<strong>NQG 學不會此任務</strong>（混合神經符號脆弱性實例）；<strong>只有 DTM 系列過 OOD</strong>；RU-Transformer 的結構泛化優於標準 Transformer。sDTM（無剪枝）對原 DTM：<strong>參數降約 70 倍</strong>（來自 PMA）、記憶體降 20%、<strong>約 13 倍加速</strong>；剪枝（k=1024）再省 5 倍記憶體、2.5 倍加速，且對詞彙泛化零影響、結構泛化僅小影響。（兩者都近天花板，難隔離改動效果，留待 5.5 SCAN 探討。）</p>
+<h3 id="53-可擴展性for2lam">5.3 可擴展性（FOR2LAM）</h3>
+<p>命令式語言（FOR）AST 翻譯到函數式語言（LAM）AST；樹很深，<strong>原 DTM 連 batch=1 都塞不下記憶體</strong>，sDTM 可跑。自建 0-shot 詞彙測試（訓練僅見變數 x、y；測試把 x 全換成新 token z）。所有模型過 IID，但 <strong>0-shot 只有 sDTM 拿到 .61</strong>，兩種 Transformer 僅 <strong>.03</strong>（從 2 變數泛化到 3 變數、小詞彙特別難）；NQG 訓練+評估超 7 天無法納入。</p>
+<h3 id="54-seq2treegeoquery">5.4 Seq2Tree（GeoQuery）</h3>
+<p>自然語言→SQL（用括號標函數/引數關係當輸出樹結構），屬 seq2tree。訓練集僅約 440–600 樣本，是<strong>最難任務</strong>（小資料 + 非合成文法的自然語言輸入）。NQG 與 sDTM 在 IID、Template 都<strong>輸給</strong> Transformer；Length/TMCD 各 baseline 相近、sDTM 略差。所有模型連 IID 都不佳，故作者不據此單一任務的微小差異下結論。（數值：sDTM IID .73 / Length .20 / Template .20 / TMCD .36；Transformer IID .88 / Length .26 / Template .79 / TMCD .40。）</p>
+<h3 id="55-seq2seqscan">5.5 Seq2Seq（SCAN）</h3>
+<p>合成 seq2seq，專測 OOD。比較兩種輸出轉樹法：自寫 SCAN parser vs LAUD。另加 0-shot 詞彙測試。因 SCAN 樹不深，得以對比 sDTM 與 DTM 來隔離 <strong>PMA</strong> 的效果：把 DTM 的線性變換換成 PMA 後結果大幅變好——<strong>原 DTM 連 IID 都 0.0，sDTM 多數 split 良好</strong>。
+數值（sDTM parse trees）：IID 1.0、1-shot .99、<strong>0-shot .99（唯一會做 0-shot 詞彙者）</strong>、Length .75、Template .95、<strong>MCD 僅 .03</strong>。Transformer 在 Template 1.0 但詞彙/長度/MCD 皆差；<strong>NQG 在 MCD=1.0</strong>（唯一會 MCD 者）。LAUD 版主要在 Length 輸給 parse 版（.06 vs .75）→ <strong>長度泛化倚賴輸出有結構</strong>（輸入有無結構則不關鍵）。</p>
+<h2 id="6-結論">6 結論</h2>
+<p>提出 <strong>sDTM</strong> 與 <strong>SCT</strong>（向量空間高效表示樹）。不同於全神經與混合神經符號 baseline，sDTM 採<strong>統一式</strong>——符號操作發生在向量空間。雖非完美（<strong>MCD、Template 移位差</strong>，極小的 GeoQuery 也難），但<strong>跨最廣的分佈移位穩健泛化</strong>，且<strong>獨具零樣本詞彙泛化</strong>（得益於內容/結構分解）。這些泛化力與原 DTM 共享，但本實作<strong>參數降約 75 倍</strong>、可用於 tree2tree/seq2tree/seq2seq。本工作重申神經符號法能橋接連結派彈性與符號系統泛化；持續聚焦高效神經符號實作有望逼近人類智能般的穩健泛化、可擴展性與彈性。</p>
+<blockquote>
+<p>程式碼：github.com/psoulos/sdtm。附錄涵蓋 SCT≡受限 TPR 的證明、詞彙正則化消融、資料前處理、訓練細節、算力等。</p>
+</blockquote>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2412.14076_sDTM_SparseTreeOps.%E6%91%98%E8%A6%81.html"><code>../summarize/2412.14076_sDTM_SparseTreeOps.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

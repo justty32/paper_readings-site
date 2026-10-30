@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>READY：為元黑箱最佳化做獎勵發現（READY: Reward Discovery for Meta-Black-Box Optimization） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zechuan Huang、Zhiguang Cao、Hongshu Guo、Yue-Jiao Gong、Zeyuan Ma（MetaBBO 研究群，ICML 投稿）</p><p>日期：2026-01</p><p>arXiv：2601.21847</p><p><a href="https://arxiv.org/abs/2601.21847" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="ready為元黑箱最佳化metabbo做獎勵發現">READY：為元黑箱最佳化（MetaBBO）做獎勵發現</h1>
+<h2 id="摘要">摘要</h2>
+<p>元黑箱最佳化（MetaBBO）是最佳化社群中新興的方向——演算法設計策略可由 RL meta-learn 來提升最佳化效能。至今既有 MetaBBO 的獎勵函數都由人類專家設計，引入設計偏差與 reward hacking 風險。本文用 LLM 當 MetaBBO 的自動獎勵發現工具。效果面：借「演化啟發式」思路，在迭代 LLM 程式搜尋中引入量身演化 paradigm，確保持續改進。效率面：額外引入<strong>多任務演化架構</strong>支援對多樣 MetaBBO 方法的平行獎勵發現，此平行過程也受益於跨任務知識共享以加速收斂。實證顯示我們發現的獎勵函數能 boost 既有 MetaBBO，凸顯獎勵設計在 MetaBBO 中的重要性。</p>
+<p><strong>關鍵詞</strong>：機器學習、ICML。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>MetaBBO 是解「無梯度資訊之複雜最佳化」的轉型 paradigm。採雙層 meta-learning：meta 層維護一個神經網路策略（如 RL）指揮 BBO 優化器去優化目標問題。獎勵函數把優化器的環境互動翻成反饋訊號，直接影響 RL 的效能與泛化，故獎勵設計意義重大。但 MetaBBO 有複雜雙層結構與不確定優化地景，設計有效獎勵極具挑戰。當前 MetaBBO 多靠人類專長手刻簡單啟發式，鮮有研究檢視獎勵函數的效力與合理性。</p>
+<p>這種人工依賴嚴重阻礙 MetaBBO 的可擴展與進步：開發新架構都得費力刻獎勵；適配多樣真實場景需手調對齊；且不為每個方法用最優獎勵充分釋放潛力，公平比較幾乎不可能——手刻獎勵常遠非最優，遮蔽各 MetaBBO 架構真實能力。因此我們期待一個<strong>自動獎勵發現框架</strong>。</p>
+<p>近期 LLM 革新了自動程式搜尋（FunSearch、EoH、AlphaEvolve 建立「LLM 當智能演化算子發現可驗證數學程式」的新 paradigm;Eureka、CARD 把它延伸到獎勵工程、生成人類水準控制任務獎勵）。沿此 paradigm，我們提出 <strong>READY</strong>：LLM 自主合成「即插即用」獎勵函數給多樣 MetaBBO。三設計：(1) <strong>多任務程式演化</strong>——替多個 MetaBBO 任務部署多個獎勵程式種群，借共享方法論洞見與架構加速搜尋；(2) <strong>細粒度演化算子</strong>——五個 reflection-based 程式級算子保證多樣搜尋行為；(3) <strong>知識遷移</strong>——顯式跨任務知識共享。</p>
+<p><strong>貢獻</strong>：(1) READY 是 LLM-based 獎勵設計領域的首次探索，也是首個用自動獎勵設計來提升 MetaBBO 效能的框架；(2) 多任務 paradigm + 細粒度算子 + 知識遷移；(3) 實證驗證 READY 對代表性 baseline 的優越設計能力與可解釋洞見，且發現的獎勵設計能泛化到未見 MetaBBO 任務。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>MetaBBO</strong>：把 BBO 演算法設計形式化為學習驅動 paradigm。任務 <code>T={D,O,π}</code>＝MDP：D 含 train/test 問題分布、O 為 low-level BBO 優化器、π 為 meta 策略。給訓練問題 f，每優化步抽優化狀態 s_t、π 輸出演算法設計動作 ω_t、O 用 ω_t 優化 f 一步、獎勵 R 評估此設計動作的效能增益。訓練目標 <code>J(π)=E[Σ γ^t R(s_t,ω_t,f)]</code>。test 上用正規化目標指標 F（每實例取多 run median 的 （最終−最優）/（初始−最優）、跨實例平均，越小越好）。MetaBBO 任務範圍廣（算子/演算法選擇/配置到演算法生成；單目標/多模/多目標/約束/昂貴優化）。</li>
+<li><strong>LLM 自動獎勵發現</strong>：Eureka（LLM 演化搜尋、依環境反饋迭代精煉獎勵碼）、Text2Reward（把語意規格分解成可執行子獎勵）、CARD（自策展反饋迴圈對齊獎勵與目標）。</li>
+</ul>
+<h2 id="3-方法">3. 方法</h2>
+<p>把獎勵設計形式化為<strong>多任務獎勵發現</strong>：給一組演算法設計任務 {T_k}，對每個 T_k=(D_k,O_k,π_k)，找在每個任務上最小化效能成本 J 的獎勵 R。離散空間 Ω 搜尋難解，故 READY 用 LLM 程式演化自動搜尋可行/最優獎勵設計，最小化專長與人力輸入。</p>
+<p><strong>演算法（Algorithm 1）</strong>：多任務 niche 架構——替每個 MetaBBO 任務初始化獨立種群（niche），讓它們做種群內演化 + 種群間知識遷移；透過與 LLM 迭代互動，反思式地提議、分析、精煉各任務的獎勵設計。</p>
+<ul>
+<li><strong>個體表示</strong>（承 EoH，解耦碼生成）：每個個體 <code>I=⟨Thought, Code⟩</code>，Thought 為 LLM 摘要的獎勵自然語言描述、Code 為獎勵函數碼。</li>
+<li><strong>效能式 rejection sampling</strong>：新生個體先按 F 評估，<strong>只有 fitness 勝過人類設計獎勵個體才入 niche</strong> → 確保初始種群每個都支配 baseline。約束：Diversity「與既有獎勵差異 ≥95%」、Quality「須優於既有」。</li>
+<li><strong>細粒度演化算子（五個 reflection-based）</strong>：
+<ul>
+<li><strong>M1（局部反思/debug）</strong>：找個體 I 產出最差正規化目標的 top-K（K=3）實例，LLM 分析失敗案例產文字反思（診斷獎勵邏輯為何與策略失準），再指引 LLM 修碼（針對弱點、保留優點）。</li>
+<li><strong>M2（全域反思）</strong>：回溯過去 L 代（如 L=5）演化軌跡，LLM 當趨勢分析師找「哪些碼改動歷史上與 fitness 增益相關」，據此外推下一優化步。</li>
+<li>另含 M3 全域反思、C1 exploitative、C2 exploratory prompts 與知識遷移 prompt（見附錄）。</li>
+</ul>
+</li>
+</ul>
+<h2 id="4-實證">4. 實證</h2>
+<ul>
+<li><strong>一致提升</strong>：READY 在 DEDQN、RLEPSO、RLDAS 三個 MetaBBO 上一致改善最佳化效能，勝過其原始獎勵設計，也勝過最新 baseline Eureka、EoH、ReEvo。</li>
+<li><strong>單 run 多任務</strong>：READY <strong>一個 run 同時替三個 MetaBBO 發現獎勵</strong>（baseline 須各自獨立最佳化），靠多任務 niche + 知識遷移。Table 1 報測試函數上 51 獨立 run 的 mean 最小成本 ± std（越低越好）與 Avg. Rank。</li>
+<li><strong>可解釋</strong>：產出隨獎勵程式共同演化的清晰可解釋設計洞見（Thought）。</li>
+<li><strong>零樣本遷移（驚人）</strong>：為某 MetaBBO 設計的獎勵能直接適配去 boost 未見的 MetaBBO。</li>
+</ul>
+<h2 id="結論">結論</h2>
+<p>READY 是「LLM-based 獎勵設計 × MetaBBO」的首次探索，用多任務 niche + 細粒度反思算子 + 知識遷移，自動替多樣 MetaBBO 合成即插即用獎勵，並推進其效能前沿。限制：聚焦 MetaBBO niche、每候選需完整雙層評估成本高、依賴 LLM 程式生成品質。專案：anonymous.4open.science/r/ICML_READY-747F。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

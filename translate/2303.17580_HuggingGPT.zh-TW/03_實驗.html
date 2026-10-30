@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2303.17580_HuggingGPT.zh-TW.html">回 2303.17580_HuggingGPT.zh-TW 目錄</a>　<a href="02_HuggingGPT.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-設定">4.1 設定</h3>
+<p>實驗使用 OpenAI API 公開提供的 gpt-3.5-turbo、text-davinci-003 與 gpt-4 作為主要 LLM。為使輸出更穩定，解碼溫度設為 0；為讓 LLM 輸出滿足預期格式（如 JSON），對格式相關 token（如 <code>{</code>、<code>}</code>）設定 <code>logit_bias</code> 為 0.2。</p>
+<h3 id="42-定性結果">4.2 定性結果</h3>
+<p>以兩個案例展示 HuggingGPT：其一，用戶請求含「描述圖片」與「數物件」兩個子任務，HuggingGPT 規劃出圖片分類、圖片描述、物件偵測三項任務，分別啟動 <code>google/vit</code>、<code>nlpconnect/vit-gpt2-image-captioning</code>、<code>facebook/detr-resnet-101</code> 模型，並整合結果回應用戶。其二，更複雜的案例中，用戶請求含三項任務（偵測人物姿勢、依姿勢與指定文字生成新圖、為圖片生成描述語音），HuggingGPT 將其解析為六項任務（姿勢偵測、依姿勢生圖、物件偵測、圖片分類、圖片描述、文字轉語音），並正確編排任務間的執行順序與資源依賴（如「依姿勢生圖」須接在「姿勢偵測」之後並使用其輸出作為輸入）。</p>
+<h3 id="43-定量評估">4.3 定量評估</h3>
+<p>任務規劃是 HuggingGPT 整個流程的關鍵環節，決定後續 pipeline 要執行哪些任務，因此其品質可用來衡量 LLM 作為控制器的能力。評估時只考慮任務類型、不考慮其引數，把任務分為三類並設計不同指標：</p>
+<ul>
+<li><strong>單一任務（Single Task）</strong>：只涉及一項任務的請求，任務名稱與預測標籤完全一致才算正確，用 F1 與 Accuracy 評估。</li>
+<li><strong>序列任務（Sequential Task）</strong>：可拆解成一連串多個子任務的請求，用 F1 與正規化編輯距離（normalized Edit Distance）評估。</li>
+<li><strong>圖任務（Graph Task）</strong>：可拆解成有向無環圖的請求，因規劃拓撲可能有多種，僅用 F1 不足以反映能力，故仿照 Vicuna 的做法，讓 GPT-4 當評審給出判斷（&quot;GPT-4 Score&quot;）。</li>
+</ul>
+<p><strong>資料集</strong>：邀請標註者提交請求，用 GPT-4 生成任務規劃作為偽標籤（涵蓋 single/sequential/graph 三類），總計 3,497 則請求（single 1,450、sequential 1,917、graph 130）；並另邀專家標註者為 46 則複雜請求人工標註（24 則 sequential、22 則 graph）高品質資料集。</p>
+<p><strong>主要結果</strong>：在三類 GPT-4 標註資料集上，GPT-3.5 全面優於開源 LLM Alpaca-7b 與 Vicuna-7b，尤其在較複雜的 sequential 與 graph 任務上優勢明顯。這說明任務規劃評估能反映 LLM 作為控制器的能力，也印證了持續提升 LLM 任務規劃能力的重要性。在高品質人工標註資料集上（表 6），結論一致：GPT-4 sequential task Accuracy 41.36%（vs. GPT-3.5 18.18%、Vicuna-7b 7.45%、Alpaca-7b 0%），graph task Accuracy 58.33%（vs. GPT-3.5 20.83%）。同時，即便 GPT-4 優於其他 LLM，與人工標註相比<strong>仍有明顯落差</strong>，凸顯強化 LLM 規劃能力的必要性。</p>
+<h3 id="44-消融研究">4.4 消融研究</h3>
+<p>考察 few-shot demonstration 的<strong>數量</strong>與<strong>多樣性</strong>（涉及的任務類型數）對規劃效果的影響：增加示範多樣性能適度提升 LLM 規劃表現；示範數量增加也能略微提升表現，但超過 4 則後改善幅度趨於有限。</p>
+<h3 id="45-人類評估">4.5 人類評估</h3>
+<p>除客觀評估外，另邀請人類專家做主觀評估：收集 130 則多樣化請求，評估 HuggingGPT 在任務規劃、模型選擇、最終回應生成各階段的表現，設計三項指標——<strong>Passing Rate</strong>（規劃出的任務圖或所選模型能否成功執行）、<strong>Rationality</strong>（生成的任務序列或所選工具是否合理對應用戶請求）、<strong>Success Rate</strong>（最終結果是否滿足用戶請求）。結果（表 8）：GPT-3.5 大幅領先 Alpaca-13b 與 Vicuna-13b——任務規劃 Passing Rate 91.22%（Rationality 78.47%）、模型選擇 Passing Rate 93.89%（Rationality 84.29%）、最終 Success Rate 63.08%（vs. Alpaca-13b 6.92%、Vicuna-13b 15.64%）。這與前述客觀評估結論一致，進一步證明自主智能體框架中強大 LLM 控制器的必要性。</p>
+<h2 id="5-局限">5. 局限</h2>
+<p>1）HuggingGPT 的規劃高度依賴 LLM 的能力，因此無法保證生成的計畫永遠可行或最優，探索如何優化 LLM 以提升規劃能力至關重要；2）<strong>效率</strong>是本框架的通病——要建構這種具任務自動化能力的協作系統，高度仰賴強大的控制器（如 ChatGPT），但整個流程需與 LLM 多次互動，帶來不小的回應時間成本；3）<strong>Token 長度</strong>是使用 LLM 的常見問題，最大 token 長度總是有限，即便已有工作把長度擴展到 32K，若要連結大量模型仍嫌不足，因此如何簡潔有效地總結模型描述值得探索；4）<strong>不穩定性</strong>主要源於 LLM 本質上難以完全受控——儘管 LLM 擅長生成，仍可能不遵守指令格式或在預測中給出錯誤答案，導致程式流程出現例外，如何在推論時降低這些不確定性應在系統設計中被納入考量。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>本文提出 HuggingGPT 系統，用語言作為介面連結 LLM 與 AI 模型解決 AI 任務。其原則是：LLM 可被視為管理 AI 模型的控制器，能利用 Hugging Face 等機器學習社群中的模型自動解決各種用戶請求。借助 LLM 的理解與推理能力，HuggingGPT 能剖析用戶意圖並拆解成多個子任務，再依專家模型描述為每項任務指派最合適的模型、整合不同模型的結果生成最終回應。透過運用機器學習社群中大量 AI 模型的能力，HuggingGPT 展現了解決具挑戰性 AI 任務的巨大潛力，為實現通用人工智慧鋪出新路徑。</p>
+<h2 id="附錄要點">附錄要點</h2>
+<ul>
+<li><strong>A.1 更多設計細節</strong>：任務規劃模板四槽位定義（task/id/dep/args）；模型描述直接取自 Hugging Face 模型卡（功能、架構、支援語言與領域、授權等）；<strong>混合式端點部署</strong>——本地端點速度快但覆蓋模型少、雲端端點（如 Hugging Face）覆蓋廣但較慢，本地端點優先，僅本地未部署時才呼叫雲端；目前支援 24 種涵蓋語言/視覺/語音的 AI 任務；GPT-4 Score 讓 GPT-4 依任務規劃指引（任務須在支援清單內、能解決用戶請求、任務間邏輯順序合理）當評審打分，作者提醒此分數並非總是正確；人類評估邀 3 位專家，從 Hugging Face 任務清單挑 3–5 項任務手造請求，隨機抽樣得 130 則。</li>
+<li><strong>A.3 案例研究</strong>：涵蓋多模態單一/複雜任務案例（含多輪對話中的資源依賴追蹤、單一請求拆成 5 項任務多角度描述圖片、資源依賴下的姿勢偵測→生圖串接、音訊/影片模態的平行與序列執行、多資源輸入的整合推理）。</li>
+<li><strong>附錄 B：與其他自主智能體的更多討論</strong>（Table 12）——與 AutoGPT、AgentGPT、BabyAGI 相比：<strong>場景</strong>上這些智能體多用於日常請求，HuggingGPT 聚焦 AI 領域專業任務；<strong>規劃策略</strong>上，AutoGPT/AgentGPT/BabyAGI 採「逐步迭代規劃」（AutoGPT 還加了逐任務的 reflexion 檢查模組），一步生成一個下一任務，缺點是需要大量 LLM 查詢、且某一步出錯可能陷入無窮迴圈，HuggingGPT 則採「全域規劃」，一次查詢生成整條任務隊列，缺點是無法保證每一步或整體計畫的正確與最優，兩種策略各有優劣、可互補；<strong>工具</strong>上，AutoGPT 主要用網頁搜尋、程式碼執行器等通用工具，任務範圍較廣但不夠專業，HuggingGPT 用 Hugging Face 等機器學習社群的專家模型，更專精但範圍較窄，工具選擇本質是任務深度與任務廣度的權衡；文中也提及同期業界產品（ChatGPT plugins）與開發者工具（LangChain、HuggingFace Transformer Agent、Semantic Kernel）。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2303.17580_HuggingGPT.%E6%91%98%E8%A6%81.html"><code>../summarize/2303.17580_HuggingGPT.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

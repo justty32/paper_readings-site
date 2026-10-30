@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話總綱 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../nesy_code_software.html">回 nesy_code_software 目錄</a>　<a href="02_%E5%85%B1%E9%80%9A%E6%A8%A1%E5%BC%8F%EF%BC%9A%E5%85%AD%E6%A2%9D%E5%8F%8D%E8%A6%86%E5%87%BA%E7%8F%BE%E7%9A%84%E8%A8%AD%E8%A8%88%E5%BE%8B.html">下一節 →</a></p>
+</blockquote>
+<h2 id="0-一句話總綱">0. 一句話總綱</h2>
+<blockquote>
+<p><strong>在程式碼領域，神經符號的共同配方是：讓 LLM 負責「提案」（從自然語言／原始碼抽取結構、生成候選程式或事實），讓一個零相依、確定性的符號驗證器（SMT／Datalog／型別／執行／CAS）負責「把關」；幻覺與不可靠被工程化地關進「召回遺漏」而非「自信而錯」，整條管線因此可審計、可撤照、可累積。</strong></p>
+</blockquote>
+<p>這正是 ai_core 北極星的另一種講法——LLM 退縮到「意圖翻譯＋模糊前沿」兩個介面，其餘固化成可被機械驗證的確定性程式碼。本批 20 篇論文，等於把這條路線在程式碼／軟體工程上<strong>已經跑通的各個落點</strong>攤開來看。</p>
+<hr />
+<h2 id="1-任務地圖">1. 任務地圖</h2>
+<p>把本批論文按「神經符號在程式碼生命週期裡解決什麼」分成六大任務軸。每軸下標出代表作與其符號把關器。</p>
+<pre><code class="language-mermaid">graph TD
+    ROOT[&quot;神經符號 × 程式碼／軟體工程&quot;]
+
+    ROOT --&gt; T1[&quot;① 受約束生成／程式合成&lt;br/&gt;LLM/神經提案 → 符號驗證選程式&quot;]
+    ROOT --&gt; T2[&quot;② 程式理解&lt;br/&gt;從原始碼抽結構化事實/規則&quot;]
+    ROOT --&gt; T3[&quot;③ 漏洞挖掘與形式驗證&lt;br/&gt;找 bug／證安全性&quot;]
+    ROOT --&gt; T4[&quot;④ 規格／政策合規&lt;br/&gt;把規則翻成約束、執行期把關&quot;]
+    ROOT --&gt; T5[&quot;⑤ 自修正迴圈&lt;br/&gt;驗證器回饋驅動 LLM 迭代修&quot;]
+    ROOT --&gt; T6[&quot;⑥ 可重用庫累積&lt;br/&gt;把成功經驗抽成可復用抽象&quot;]
+
+    T1 --&gt; T1a[&quot;GridCoder：VLM 機率枚舉 DSL [[2411.17708]]&quot;]
+    T1 --&gt; T1b[&quot;NLI：離散語言+可微解釋器+梯度搜尋 [[2604.18907]]&quot;]
+    T1 --&gt; T1c[&quot;Presynthesis/Foresighter：FTA 離線剪枝 [[2604.13290]]&quot;]
+    T1 --&gt; T1d[&quot;LLM2SMT：LLM 親手合成 SMT 求解器 [[2603.06931]]&quot;]
+
+    T2 --&gt; T2a[&quot;NsPC：SHAP×AST→符號規則 [[2502.01806]]&quot;]
+    T2 --&gt; T2b[&quot;程式碼幻覺 SLR：定義/成因/緩解地圖 [[2511.00776]]&quot;]
+
+    T3 --&gt; T3a[&quot;NeuroLog：LLM 事實+Datalog+Z3+ASan [[2606.00669]]&quot;]
+    T3 --&gt; T3b[&quot;VerIbmc：本地 LLM+符號列舉+ESBMC [[2606.16886]]&quot;]
+
+    T4 --&gt; T4a[&quot;Policy Compliance：政策→SMT 執行期攔 [[2603.20449]]&quot;]
+    T4 --&gt; T4b[&quot;Logitext：LLM 當 SMT theory [[2602.18095]]&quot;]
+    T4 --&gt; T4c[&quot;AXIOM：CAS 正規化器+棄答 [[2606.00671]]&quot;]
+    T4 --&gt; T4d[&quot;VeryTrace：CoT→可編譯 DSL 驗證 [[2606.24124]]&quot;]
+
+    T5 --&gt; T5a[&quot;LLM+ASP：clingo 回饋自我修正 [[2604.27960]]&quot;]
+    T5 --&gt; T5b[&quot;ChatLogic：pyDatalog 語意/語法雙修正 [[2407.10162]]&quot;]
+    T5 --&gt; T5c[&quot;VERUS-LM：IDP-Z3 語意精煉 [[2501.14540]]&quot;]
+    T5 --&gt; T5d[&quot;NOVA：驗證即梯度去噪 [[2606.27243]]&quot;]
+
+    T6 --&gt; T6a[&quot;DreamProver：wake-sleep 引理庫 [[2604.26311]]&quot;]
+    T6 --&gt; T6b[&quot;CoCoDA：組合式程式碼 DAG [[2605.08399]]&quot;]
+    T6 --&gt; T6c[&quot;TheoryCoder-2：PDDL+Python 抽象 [[2602.00929]]&quot;]
+    T6 --&gt; T6d[&quot;AutoSpec：ILP 演化安全規則 [[2606.24245]]&quot;]
+</code></pre>
+<p><strong>軸之間不是互斥的</strong>——多數系統橫跨數軸：NeuroLog 同時是③漏洞挖掘＋⑤自修正（崩潰合成迴圈）；VerIbmc 是③驗證＋⑤自修正；AutoSpec 是④規格＋⑥庫累積。下表把「主軸／次軸」標清楚。</p>
+<table>
+<thead>
+<tr>
+<th>論文</th>
+<th>主軸</th>
+<th>兼涉</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GridCoder <a class="paper-reference" href="../../summarize/2411.17708_GridCoder_ARC_Program_Induction.%E6%91%98%E8%A6%81.html">2411.17708</a></td>
+<td>① 程式合成</td>
+<td>——</td>
+</tr>
+<tr>
+<td>NLI <a class="paper-reference" href="../../summarize/2604.18907_NLI_Neural_Interpreter.%E6%91%98%E8%A6%81.html">2604.18907</a></td>
+<td>① 可微合成</td>
+<td>——</td>
+</tr>
+<tr>
+<td>Foresighter <a class="paper-reference" href="../../summarize/2604.13290_Presynthesis_FTA.%E6%91%98%E8%A6%81.html">2604.13290</a></td>
+<td>① 形式化合成</td>
+<td>（經典 PBE）</td>
+</tr>
+<tr>
+<td>LLM2SMT <a class="paper-reference" href="../../summarize/2603.06931_LLM2SMT.%E6%91%98%E8%A6%81.html">2603.06931</a></td>
+<td>① 合成「會推理的程式」</td>
+<td>③（產出即驗證器）</td>
+</tr>
+<tr>
+<td>NsPC <a class="paper-reference" href="../../summarize/2502.01806_Neurosymbolic_Program_Comprehension.%E6%91%98%E8%A6%81.html">2502.01806</a></td>
+<td>② 程式理解</td>
+<td>③ 漏洞偵測落地</td>
+</tr>
+<tr>
+<td>程式碼幻覺 SLR <a class="paper-reference" href="../../summarize/2511.00776_CodeHallucinationSLR.%E6%91%98%E8%A6%81.html">2511.00776</a></td>
+<td>② 可靠性地圖</td>
+<td>①③④⑤（緩解光譜）</td>
+</tr>
+<tr>
+<td>NeuroLog <a class="paper-reference" href="../../summarize/2606.00669_NeuroLog_Datalog_SMT.%E6%91%98%E8%A6%81.html">2606.00669</a></td>
+<td>③ 漏洞挖掘</td>
+<td>②（事實抽取）⑤（崩潰合成）</td>
+</tr>
+<tr>
+<td>VerIbmc <a class="paper-reference" href="../../summarize/2606.16886_VerIbmc_Local_Invariant.%E6%91%98%E8%A6%81.html">2606.16886</a></td>
+<td>③ 形式驗證</td>
+<td>⑤（不變量精修）</td>
+</tr>
+<tr>
+<td>Policy Compliance <a class="paper-reference" href="../../summarize/2603.20449_SolverAided_Policy_Compliance.%E6%91%98%E8%A6%81.html">2603.20449</a></td>
+<td>④ 政策合規</td>
+<td>⑤（重規劃）</td>
+</tr>
+<tr>
+<td>Logitext <a class="paper-reference" href="../../summarize/2602.18095_Logitext_NeSy_SMT.%E6%91%98%E8%A6%81.html">2602.18095</a></td>
+<td>④ 文字約束推理</td>
+<td>① 受約束生成</td>
+</tr>
+<tr>
+<td>AXIOM <a class="paper-reference" href="../../summarize/2606.00671_AXIOM_Verifiable_Math.%E6%91%98%E8%A6%81.html">2606.00671</a></td>
+<td>④ 可驗證數學</td>
+<td>（棄答治理）</td>
+</tr>
+<tr>
+<td>VeryTrace <a class="paper-reference" href="../../summarize/2606.24124_VeryTrace.%E6%91%98%E8%A6%81.html">2606.24124</a></td>
+<td>④ 推理軌跡驗證</td>
+<td>⑤（步級修復）</td>
+</tr>
+<tr>
+<td>LLM+ASP <a class="paper-reference" href="../../summarize/2604.27960_LLM_ASP_Self_Correction.%E6%91%98%E8%A6%81.html">2604.27960</a></td>
+<td>⑤ 自修正</td>
+<td>④ 非單調規則</td>
+</tr>
+<tr>
+<td>ChatLogic <a class="paper-reference" href="../../summarize/2407.10162_ChatLogic.%E6%91%98%E8%A6%81.html">2407.10162</a></td>
+<td>⑤ 自修正</td>
+<td>④ Datalog 推理</td>
+</tr>
+<tr>
+<td>VERUS-LM <a class="paper-reference" href="../../summarize/2501.14540_VERUS_LM.%E6%91%98%E8%A6%81.html">2501.14540</a></td>
+<td>⑤ 語意精煉</td>
+<td>④ 多任務 KB</td>
+</tr>
+<tr>
+<td>NOVA <a class="paper-reference" href="../../summarize/2606.27243_NOVA_Verification_Aware_Agent_Harness.%E6%91%98%E8%A6%81.html">2606.27243</a></td>
+<td>⑤ 驗證感知 harness</td>
+<td>⑥（skill 規格累積）</td>
+</tr>
+<tr>
+<td>DreamProver <a class="paper-reference" href="../../summarize/2604.26311_DreamProver.%E6%91%98%E8%A6%81.html">2604.26311</a></td>
+<td>⑥ 庫累積</td>
+<td>⑤（wake-sleep 迭代）</td>
+</tr>
+<tr>
+<td>CoCoDA <a class="paper-reference" href="../../summarize/2605.08399_CoCoDA_Compositional_DAG.%E6%91%98%E8%A6%81.html">2605.08399</a></td>
+<td>⑥ 工具庫</td>
+<td>①（可執行工具合成）</td>
+</tr>
+<tr>
+<td>TheoryCoder-2 <a class="paper-reference" href="../../summarize/2602.00929_TheoryCoder2_Abstractions.%E6%91%98%E8%A6%81.html">2602.00929</a></td>
+<td>⑥ 抽象學習</td>
+<td>①（Python 世界模型合成）</td>
+</tr>
+<tr>
+<td>AutoSpec <a class="paper-reference" href="../../summarize/2606.24245_AutoSpec_ILP.%E6%91%98%E8%A6%81.html">2606.24245</a></td>
+<td>⑥ 規則演化</td>
+<td>④ 安全規格</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

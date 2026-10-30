@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Heads of Security: Learned Attention Gates Improve Prompt Injection Robustness 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Igor Shilov、Xiaoxue Yang、Alexander Panfilov、Evgenii Kortukov、Matthieu Meeus、Peter Romov、Wojciech Samek、Jonas Geiping、Yves-Alexandre de Montjoye</p><p>日期：2026-10-27（v1，cs.LG）</p><p>arXiv：2610.37657</p><p><a href="https://arxiv.org/html/2610.37657v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="heads-of-security-learned-attention-gates-improve-prompt-injection-robustness-重點摘要">Heads of Security: Learned Attention Gates Improve Prompt Injection Robustness 重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>HoS 凍結語言模型，只學每個 attention head 對不同信任通道的注意力閘門，在保留讀取外部資料能力的同時降低跟隨注入指令的傾向；它提高了所測攻擊的成本，但仍可被強白盒攻擊突破。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>間接 prompt injection 把指令放進網頁、郵件或 tool output，使模型將外部資料誤認成授權命令。本文聚焦 instruction–data separation：內容可供讀取與分析，但不能被當成指令。</p>
+<p>信任邊界由外部系統指定，不由 HoS 判定。一般將 system／user 及模型生成內容設為 trusted、tool output 設為 untrusted，另設 template 通道。合法任務若需要遵循外部內容中的步驟，例如安裝軟體，就不能不加區分地套用嚴格資料隔離。（<a href="https://arxiv.org/html/2610.37657v1#S3.SS1">§1、§3.1、§6</a>）</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>對 query／key 通道配對加閘門</strong>：每層每個 head 學一張通道配對表，在 attention logits 加上 <code>log(sigmoid(g[query_channel,key_channel]))</code>，再做 softmax。這等於調整各通道未正規化注意力權重；相對權重重分配後，有些 head 可少讀不可信內容，有些仍保留甚至提高其相對占比。它不是把外部文字全面遮掉。（<a href="https://arxiv.org/html/2610.37657v1#S3.SS2">§3.2、式 1</a>）</li>
+<li><strong>只更新少量 gate</strong>：基礎模型權重保持凍結，沿用 SecAlign++ 的 DPO 與注入偏好資料。Llama-3.3-70B 有 46080 個 gate 參數；GPT-OSS-20B 因顯式 attention sink 加 key-only 通道，共 18432 個。GPT-OSS 的 sink gate 另行訓練，因此不能泛稱所有單通道輸入在訓練後都與基礎模型完全相同。（作者自報，<a href="https://arxiv.org/html/2610.37657v1#S3.SS3">§3.3、附錄 D、J</a>）</li>
+<li><strong>比較實作有差異</strong>：Llama 的 SecAlign 使用已發布 Meta-SecAlign-70B adapter；GPT-OSS 的 SecAlign LoRA 由本文作者訓練。ASIDE 則是作者為 GPT-OSS 適配並比較多種訓練／通道配置後選出的版本。這些比較不能直接當成所有 SecAlign、ASIDE 訓練方式的普遍結論。（<a href="https://arxiv.org/html/2610.37657v1#A10">附錄 J～K</a>）</li>
+</ul>
+<h2 id="結果">結果</h2>
+<h3 id="黑盒針對模型訓練的-rl-攻擊與跨模型轉移">黑盒：針對模型訓練的 RL 攻擊與跨模型轉移</h3>
+<p>以下均為作者自報。RL-Hammer 以 Llama-3.1-8B-Instruct 為攻擊者，在 310 個 InjecAgent direct-harm 案例上以 GRPO 訓練，優化外部注入內容；每個攻擊者對應主要目標與較容易的輔助目標。防禦模型的原始 user task、工具定義及前序工具呼叫保持 trusted，注入位於 untrusted tool response。</p>
+<p>評估使用同一組 100 個留出目標；<strong>首個解析出的工具呼叫名稱等於攻擊者工具</strong>才算成功，沒有工具呼叫或無效輸出算攻擊失敗。下表為已展示攻擊者中最高平均 ASR，<code>±</code> 為在相同留出目標上五次執行的標準誤，不是五百個不同任務的合併結果。（作者自報，<a href="https://arxiv.org/html/2610.37657v1#A5.SS1">§4.1、附錄 E.1～E.2、表 5～6</a>）</p>
+<table>
+<thead>
+<tr>
+<th>評估目標家族</th>
+<th>Base ASR（%）</th>
+<th>SecAlign ASR（%）</th>
+<th>HoS ASR（%）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPT-OSS-20B</td>
+<td>97.2±0.5</td>
+<td>85.2±1.2</td>
+<td>10.0±0.6</td>
+</tr>
+<tr>
+<td>Llama-3.3-70B</td>
+<td>99.4±0.2</td>
+<td>81.6±0.8</td>
+<td>1.2±0.4</td>
+</tr>
+</tbody>
+</table>
+<p>GPT-OSS 這組評估採 medium reasoning effort；Llama 沒有 reasoning-effort 控制。各欄最高值可能來自不同的訓練目標，對 HoS 最強的攻擊在這些結果中反而來自 SecAlign-trained attacker。作者認為 HoS-trained attacker 的獎勵較稀疏，可能妨礙 RL 學習；所以只測各模型自己的專屬攻擊者會低估風險。（<a href="https://arxiv.org/html/2610.37657v1#S4.SS1">§4.1、附錄 E.1</a>）</p>
+<h3 id="白盒延緩成功不等於阻止成功">白盒：延緩成功，不等於阻止成功</h3>
+<p>白盒攻擊者可讀模型權重、gate、梯度與先前紀錄，修改 suffix optimizer。本文以 Claudini 為起點，針對 HoS 做 50 次 autoresearch trials，在六個開發案例選出 V38；開發過程看不到最終評估集合。攻擊控制的是注入欄位中的 suffix，不是 system 指令或信任標記。（作者自報，<a href="https://arxiv.org/html/2610.37657v1#A6.SS1">§4.1、附錄 F.1</a>）</p>
+<p>主白盒測試使用 GPT-OSS-20B 家族，對每個模型／案例給 <code>10^17</code> active-parameter FLOPs，優化 120-token suffix。AgentDojo 的 100 組 user-task／injection-task 配對，是從固定攻擊對三模型都失敗、且攻擊目標可由單次工具呼叫完成等條件篩出的子集；另測與黑盒相同的 100 個 InjecAgent 目標。（作者自報，<a href="https://arxiv.org/html/2610.37657v1#A6">附錄 F</a>）</p>
+<p>達到 50% <strong>cumulative ASR</strong> 時，HoS 相對 base／SecAlign 的所需攻擊計算量，在 AgentDojo 約高 2.6～2.7 倍，在 InjecAgent 約高 3.2～3.6 倍。cumulative 計算「預算內曾找到任何成功 suffix」；delivered 則只算攻擊最後交付的 suffix。完整預算下，InjecAgent 的 HoS cumulative ASR 仍達 90%，delivered 為 84%。因此約三倍是指定成功率門檻下的攻擊成本差，不是防禦不會失守。（作者自報，<a href="https://arxiv.org/html/2610.37657v1#S4.SS1">§4.1、附錄 F</a>）</p>
+<p>Llama 另以 <code>5×10^18</code> FLOPs／例測試，白盒集合只有 20 個 AgentDojo 案例：base、SecAlign、HoS 分別成功 12、6、7 例。作者明說兩防禦只差一例，不能據此排名。（作者自報，<a href="https://arxiv.org/html/2610.37657v1#A6.SS2">附錄 F.2</a>）</p>
+<h3 id="效用與靜態-agentic-測試須一起看">效用與靜態 agentic 測試須一起看</h3>
+<p>作者自報，在全部 prompt content 標為 trusted 的 5-shot MMLU-Pro，GPT-OSS base、HoS、SecAlign、ASIDE 的準確率分別為 68.3%、67.2%、59.4%、52.1%。few-shot 與多輪效用退化是本文所用訓練配置的觀察；作者沒有主張 SecAlign 的退化必然無法透過更多元資料改善。（<a href="https://arxiv.org/html/2610.37657v1#S4.SS2">§4.2、表 2、§6</a>）</p>
+<p>對 AgentDojo、AgentDyn、WASP、LLMail-Inject 的靜態攻擊測試，作者報告 HoS 與 SecAlign 有相近或較好的 security–utility trade-off，但分母與評分不能互換：</p>
+<ul>
+<li>AgentDojo／AgentDyn：utility 是完成合法任務的比例，ASR 是完成注入目標的 trajectory 比例；attacked utility 跨 user-task／injection-task 組合平均。超出指定軌跡限制時，兩項任務皆算失敗。</li>
+<li>WASP：乾淨效用與攻擊集合分開；僅使用者可改的頁面元素標為 untrusted，不把固定網頁介面一起降信任。</li>
+<li>LLMail：從四級挑戰抽樣 4000 份 Phase-1 注入；ASR 看是否被誘導寄信，attacked utility 另由模型評審判斷是否涵蓋所有相關郵件，即使摘要出現在虛構工具呼叫中也可能計入。</li>
+</ul>
+<p>以上為作者評估協定，來源：<a href="https://arxiv.org/html/2610.37657v1#A7.SS1">§4.3、附錄 G.1</a>。</p>
+<p>效用也有明顯反例：Llama 的 AgentDyn clean utility 從 base 的 33.7% 降至 HoS 的 18.3%，同時 ASR 從 18.5% 降至 1.4%。ASIDE 適配版則常無法產生有效工具呼叫，因此低 ASR 本身不能證明實用防護。（作者自報，<a href="https://arxiv.org/html/2610.37657v1#S4.SS3">表 3、附錄 K</a>）</p>
+<h2 id="局限">局限</h2>
+<p><strong>作者自陳</strong>：HoS 不決定來源是否可信或使用者授權範圍，嚴格 instruction–data separation 只適用於外部內容確實應當作資料的情境。有限測試不能建立安全保證，攻擊者可在看到防禦後繼續適配。固定偏好資料也限制結論，更豐富的多輪資料可能改善比較方法。HoS 依賴 softmax 前的成對 attention logits，不能直接套用到純 linear attention。（<a href="https://arxiv.org/html/2610.37657v1#S6">§6</a>）</p>
+<p><strong>本檔補註，非作者自陳</strong>：本文沒有證明信任標籤錯誤、模型生成內容受污染或更長的攻擊鏈下仍能維持防護。小參數量也不等於完整部署無成本。黑盒首工具呼叫、白盒篩選子集、靜態 trajectory 成功與郵件摘要評審各回答不同問題，不能合併成單一「安全率」。</p>
+<h2 id="對讀者的價值接點">對讀者的價值・接點</h2>
+<p><strong>本檔補註，非作者自陳</strong>：對 agent 安全，值得借用的是把可信來源標籤變成模型內部可學的資訊路由限制，同時保留真正讀懂資料的能力。驗收時應保留合法任務效用、無效工具輸出比例、跨目標適配攻擊與完整預算終點；只報較低 ASR 或約三倍門檻成本會漏掉重要失敗模式。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.37657_HeadsSecurity.zh-TW.html">HeadsSecurity 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

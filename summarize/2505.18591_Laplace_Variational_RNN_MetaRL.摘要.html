@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《基於拉普拉斯變分循環網路的貝葉斯元強化學習》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Joery A. de Vries, Jinke He, Mathijs M. de Weerdt, Matthijs T.J. Spaan（TU Delft）</p><p>日期：2025-05，貝葉斯元 RL／不確定性量化方法論文</p><p>arXiv：2505.18591</p><p><a href="https://arxiv.org/abs/2505.18591" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="基於拉普拉斯變分循環網路的貝葉斯元強化學習重點摘要">《基於拉普拉斯變分循環網路的貝葉斯元強化學習》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Laplace VRNN</strong>：給「用 RNN 隱狀態做點估計」的記憶式元 RL agent，<strong>事後（post-hoc）套一層拉普拉斯近似</strong>，在<strong>不改架構、不改損失、不重訓</strong>的前提下，把點估計升級成任務後驗的<strong>完整高斯分布</strong>——只需 RNN 輸出對隱狀態的 <strong>Jacobian 外積和</strong>當逆協方差（比對全網路參數做 Laplace 便宜得多）；藉此能估計非貝葉斯 agent 的<strong>熵等後驗統計</strong>，並揭露其學到的估計子是<strong>過度自信（overconfident）且不一致（inconsistent）</strong>；當作變分推理替代品時，<strong>用更少參數即可與 VRNN 打平或更好</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>元 RL 中準確的<strong>任務後驗</strong>對不確定性量化至關重要（偵測分布偏移、引導探索、部署時及時人為介入）。但主流做法用 RNN 隱狀態做<strong>點估計</strong>：拿不到分布統計、且易<strong>過度自信</strong>（除非真後驗剛好尖峰於該點，這是不切實際的強假設），導致過擬合訓練分布、下游脆弱。顯式參數化完整分布（如高斯 VRNN）雖更準，卻<strong>訓練更慢、回報常還輸給點估計法</strong>（點估計法採樣噪聲低、數值好表示、模型容量不被「學複雜後驗」佔用）。本文要<strong>魚與熊掌兼得</strong>。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>框架基礎</strong>：把元 RL 視為對訓練任務後驗的<strong>攤銷變分推理（amortized VI）</strong>；採 <strong>control-as-inference</strong>（Levine 2018）把 RL 化為推理，並擴展 <strong>MPO</strong>（Abdolmaleki 2018）目標納入潛變數後驗與其 KL 項；點估計（Dirac 後驗）+ 忽略 KL 即退回標準記憶式元 RL 目標（RL²/Duan 2016）。</li>
+<li><strong>拉普拉斯近似</strong>：對變分後驗 <span class="math inline">\(q(z)\)</span> 做<strong>均場假設</strong>，在 MAP 點（即 RNN 預測的 <span class="math inline">\(\mu\)</span>）做<strong>二階 Taylor 展開</strong>再指數化、正規化 → 得中心在 RNN 隱狀態、逆協方差為<strong>對數後驗 Hessian</strong> 的高斯。</li>
+<li><strong>特例（便宜關鍵）</strong>：取標準高斯 + 無資訊先驗時，Hessian 化為 <strong>RNN 狀態 Jacobian 的外積和</strong>（式 9），可用 forward accumulation（JAX）廉價算；只對<strong>小子集（隱狀態）</strong> 建分布，繞開對高維網路參數求逆 Hessian 的代價，且能表達<strong>多峰分布</strong>。</li>
+<li><strong>時序聚合</strong>：跨時間步對後驗做高斯卷積 → 參數相加（式 7/8），即「把最近幾步的隱狀態均值與協方差相加」；實務用滑動窗口控成本。</li>
+<li><strong>後驗預測 / 策略</strong>：策略走 posterior predictive，用 <strong>Monte-Carlo</strong> 採樣（式 10）→ 誘導出有限混合策略（對應 Thompson/posterior sampling）；可在訓練開始、訓練中、或訓練後任一時點套用。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>監督式（1D Fourier 迴歸）</strong>：<strong>Markovian（累加協方差）變體</strong>在所有情況下至少與基線打平，並能在訓練後提供貝葉斯後驗；<strong>stationary 變體</strong>事後套用會嚴重退化（後驗過寬，樣本對預測模型而言離分布）。</li>
+<li><strong>強化學習（5-臂隨機 bandit + 稀疏獎勵 gridworld，用 recurrent PPO）</strong>：確定性 RNN（黑）回報最佳、噪聲最低、訓練最快；<strong>Laplace VRNN 勝過 baseline VRNN</strong>；proper-Markovian（藍）在 bandit 早期學更快但 gridworld 退化。所有貝葉斯法在 gridworld 達次線性累積後悔。</li>
+<li><strong>核心觀察</strong>：唯有 <strong>Markovian + 累加協方差（綠）<strong>的事後後驗能給出有洞見的統計——<strong>熵穩定下降、但相鄰後驗 KL 越來越大</strong>，證明確定性 RNN <strong>未收斂到穩定隱狀態</strong>：估計子</strong>越來越自信卻不一致</strong>（延伸 Xiong 2021）。事後套用任何變體都<strong>不退化</strong>效能。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>需算 <strong>Jacobian</strong>，且受<strong>高斯分布限制</strong>。</li>
+<li>RNN-based agent 需對機率模型做<strong>多種簡化</strong>（某些配置才成立），所引入偏差對近似後驗的影響待究。</li>
+<li>方法<strong>只能觀察、無法修正</strong>非貝葉斯 agent 的過度自信。</li>
+<li>Gaussian 均場假設可能與真後驗失配（model misspecification）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批偏 RL／元學習方法側的一篇：示範**「不動架構、事後加 Laplace」<strong>這條低成本路徑，把既有確定性 RNN agent 轉成可量化不確定性的貝葉斯模型——對想在</strong>部署期做分布偏移偵測、探索引導**的人很實用。</li>
+<li>最值得記：<strong>「Jacobian 外積和 = 逆協方差」這個只對隱狀態（非全參數）做 Laplace 的省錢技巧</strong>；<strong>post-hoc 後驗可在任意訓練時點套用</strong>；以及<strong>用 Laplace 當「探針」量出點估計元 RL 的過度自信＋不一致</strong>這一診斷貢獻。</li>
+<li>與 D 類另一篇 <a class="paper-reference" href="2509.12387_Causal_Symbolic_Meta_Learning.%E6%91%98%E8%A6%81.html">2509.12387</a> CSML 對照：都談「世界模型／任務結構 + 樣本高效泛化」，但 CSML 走<strong>因果圖結構先驗</strong>、本篇走<strong>貝葉斯不確定性量化</strong>；與 Bayes-adaptive MDP、神經過程（neural process）、PlaNet/Dreamer 系出同源。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2505.18591_Laplace_Variational_RNN_MetaRL.zh-TW.html"><code>../translate/2505.18591_Laplace_Variational_RNN_MetaRL.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.21619_Alignment_Constrained_CodeGen.%E6%91%98%E8%A6%81.html">回 2606.21619_Alignment_Constrained_CodeGen.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p>本文把「約束解碼」形式化為<strong>模型語言 L_M（LLM 想寫的）、目標語言 L_T（規格真正要的）、約束語言 L_C（約束器允許的）<strong>三方對齊問題（以 Jaccard 相似度定義對齊度 A），並用七個 LLM、兩種目標語言、兩種約束器的大規模實證證明：只要約束器對目標語言</strong>不完整</strong>（L_C 是 L_T 的真子集），就會把 LLM 推入其學到分布的低機率區，觸發逾時與退化生成，導致約束解碼的<strong>功能正確率反而輸給無約束解碼</strong>、最多倒退 97%；並提出兩條系統性的對齊修復路徑——微調模型貼合約束器，或把約束器做完整。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>既有約束解碼工作（型別約束、語法約束）幾乎都預設「合法必更正確」，卻很少檢驗約束器本身是否忠實覆蓋目標語言規格。本文的前導研究（RQ0，複製並延伸 Mündler et al. 2025b 的 TypeScript 型別約束解碼）發現一個反直覺結果：在六個 LLM（2B–34B）、HumanEval／MBPP 兩個基準、三種溫度、十次重複＋統計檢定（Wilcoxon、Vargha-Delaney 效應量）下，<strong>無約束解碼的功能正確率（FC）一致優於或至少持平型別約束解碼</strong>——即便約束解碼的型別/語法正確率（TSC）明顯更高。本文要解釋這個落差的根因，並給出可操作的修復方案，而不是再提一種新的約束機制。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>三語言形式化</strong>：L_M＝LLM 在給定 prompt 下、機率高於門檻 ε 會生成的程式集合；L_T＝符合目標規格（語法＋型別系統）的合法程式集合；L_C＝約束器（增量剖析器＋增量型別/語法檢查器，逐 token 施加）允許的程式集合，通常只是 L_T 的近似。定義對齊度 <strong>A = |L_M∩L_C∩L_T| / |L_M∪L_C∪L_T|</strong>（Jaccard 相似度），對齊問題＝在固定 L_T 下調整 L_M、L_C 以最大化 A。</li>
+<li><strong>理想與一般情形</strong>：理想情形是 L_C=L_T 且約束器 sound（只允許 L_T 內的程式）又 complete（允許 L_T 全部程式），但複雜型別系統（前向引用、使用者自定型別等 token 級檢查困難的特徵）幾乎不可能同時達成。本文主張<strong>優先追求 sound（L_C⊆L_T，寧可漏放合法程式）而非 complete（放行非法程式）</strong>，因為只有 sound 的約束器才能保住「通過即正確」的形式保證；unsound 情形（L_C 與 L_T 出現交集之外的部分）會讓約束器發出「假憑證」——語法/型別通過但實際違反目標規格。</li>
+<li><strong>兩條對齊修復路徑</strong>：(1) <strong>微調模型貼合約束器</strong>（RQ2）：在「對齊率＜10%」的困難題子集上，用 GRPO（group size 8、LoRA r=16/α=32、學習率 5e-5、KL 係數 0.04）以「是否通過增量型別檢查」為二元獎勵微調 Gemma-2-2B 與 Qwen2.5-32B；(2) <strong>把約束器做完整</strong>（RQ3）：以 TOML 語法為案例構造一個對規格完整（L_T⊆L_C）的 GGML BNF 語法約束器（基於 llama.cpp），再人為移除註解、點鍵、等號前空格等特徵，逐步製造不同程度的不完整，量化模型對「不完整」的敏感度。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>RQ1（對齊代價）</strong>：以標準化負對數概似（NLL）量化約束造成的分布扭曲，低溫（τ=0.1）下顯著推高 NLL 的題目比例最高可達約三分之一（如 Gemma-2-2B 在 MBPP 上約 33–36%），逾時樣本的 NLL 又遠高於一般樣本；具體案例顯示前向引用（forward reference）被約束器拒絕後，模型被迫用不相關函式頂替（如把 <code>isPalindrome</code> 硬換成 <code>isNaN</code>），產出型別正確但功能錯誤的程式，或陷入重複生成迴圈直到逾時——即論文所稱「把模型推入未知疆域（uncharted territory）」。</li>
+<li><strong>RQ2（微調修復）</strong>：GRPO 微調後，逾時率（token 限制）下降 53–73%、（時間限制）下降 74–94%；HumanEval 上 Gemma-2-2B 的約束/無約束功能正確率趨於相等（約 32%），Qwen2.5-32B 差距也顯著縮小（約束 77.6% vs 無約束 82.0%）；但 MBPP 上約束解碼仍顯著落後——微調能<strong>緩解</strong>不完整偏誤（incompleteness bias），無法<strong>消除</strong>。</li>
+<li><strong>RQ3（完整約束器）</strong>：對完整的 TOML 語法約束器，約束解碼顯著勝過無約束（Gemma-2-2B exact match +53%、similarity +48%），但增益隨模型能力提升遞減，對最強的 Qwen-3-Coder-Next-80B 已無顯著差異；一旦人為引入不完整（尤其是移除「等號前空格」這種看似無關緊要的美觀性語法），功能正確率暴跌，Qwen-3-Coder-Next-80B 的 exact match 由 62.5% 掉到 1.9%（<strong>降幅約 97%</strong>，對應摘要所稱上限），證明模型會把語意附加在所有語法構造上，連空格也不例外。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>只涵蓋兩種目標語言（TypeScript 型別、TOML 語法）、兩種約束器、七個模型（2B–80B），對更複雜的語意約束（跨檔案倉庫級約束、資料流分析）外部效度未知。</li>
+<li>RQ2 的微調修復只在困難題子集上以單一二元獎勵驗證，未系統探討獎勵設計副作用——微調後「無約束模型」的型別正確率上升但功能正確率反而略降（歸因於獎勵偏好型別正確但未必功能正確的解）。</li>
+<li>RQ3 的 TOML 約束器只做到語法層完整（L_T⊆L_C 而非 L_T=L_C），未涵蓋「衝突鍵」之類語意錯誤，複雜約束器 sound/complete 兩難依然存在。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

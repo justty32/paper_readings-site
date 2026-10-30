@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>An Omitted Mode Is a Rare Rule: The Sampling-Verification Danger Law in Continuous Code World Models 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Javier Aguilar Martín</p><p>日期：2026-08-18（v1，cs.LG）</p><p>arXiv：2608.17956</p><p><a href="https://arxiv.org/abs/2608.17956" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="an-omitted-mode-is-a-rare-rule-the-sampling-verification-danger-law-in-continuous-code-world-models-重點摘要">An Omitted Mode Is a Rare Rule: The Sampling-Verification Danger Law in Continuous Code World Models 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>在連續控制裡，只要真正重要的動態模式很少被隨機驗證軌跡碰到，通過逐轉移抽樣檢查的程式世界模型仍可能漏掉整條規則，之後又被相信它的規劃器系統性利用；驗證應覆蓋規劃器會查詢的區域，而不能只看平均轉移誤差。</p>
+<h2 id="問題與理論框架">問題與理論框架</h2>
+<p>論文研究 Code World Model 管線中的一個落差：LLM 先合成可執行動態模型，抽樣 gate 驗證它是否重現觀察到的轉移，傳統規劃器再搜尋這個模型。問題不在於模型是否普遍不準，而在於它能否在幾乎所有抽樣點都正確，卻剛好漏掉一個會改變最佳策略的混合動態模式。</p>
+<p>作者把 danger 定義成「系統實際交付某模型時的期望風險」，並拆出兩個角色。第一個是交付模型造成的 play cost，亦即真實模型規劃器與交付模型規劃器之間的正規化報酬差。第二個是 gate 完全漏掉臨界事件的機率。若每條驗證軌跡獨立同分布，而單條軌跡碰到臨界事件的機率為 r，抽 N 條仍全數漏掉的因子恰為 <code>(1−r)^N</code>。只有當交付成本與接受事件不相關時，兩者才可直接相乘；若訓練樣本與接受樣本彼此獨立，中央漏檢事件的指數則會相加。</p>
+<p>另一個理論貢獻是把「局部錯誤能藏多小」與模型表徵連起來。對 Lipschitz 常數有界的模型，只要某點的誤差幅度超過容忍值，鄰近一整個球形區域都必須超標，因此錯誤區不能任意縮小。牆面碰撞後速度歸零、角度到停止點後歸零、進入區域後凍結等不連續 reset mode 沒有有限的局部 Lipschitz 常數，恰好能逃過這個體積下界。於是連續空間中的「罕見規則」，具體形狀就是抽樣分布很少碰到的不連續模式邊界。</p>
+<h2 id="方法與實驗設計">方法與實驗設計</h2>
+<p>作者建立三套受控 hybrid instruments：帶非彈性牆的推車、帶角度硬停止點的擺，以及含兩個凍結區域的四維 PatchField2D。手寫的 mode-blind 模型只刪除模式分支，其他地方與真實動態逐位元一致；隨機射擊 MPC 或 CEM 在模型內想像候選動作，再到真實環境執行。這個設計把「廣泛近似誤差」排除，只測一條局部規則缺失會怎樣。</p>
+<p>實驗分成四層。第一層改變模式罕見度與 gate 樣本量，檢查接受率是否遵循漏檢律。第二層比較 gate 軌跡、規劃器查詢與實際軌跡，確認失敗源自分布錯位。第三層讓 GPT-5.x、Qwen 與 Claude 系列實際從規格與轉移樣本合成程式，區分樣本沒出現模式時的不可識別性，以及模式已出現後的規則歸納能力。第四層另抽獨立接受樣本，檢查在訓練樣本上滿分的 artifact 是否仍能過關。</p>
+<h2 id="作者報告的結果">作者報告的結果</h2>
+<p>手寫實驗重現預測的 threshold law：模式仍在隨機軌跡可達範圍時，漏檢風險低；模式逐漸離開該分布後，danger 上升並接近完整 play cost。關鍵機制是 mode-blind 規劃器會反覆追逐不存在的高報酬區，於真實邊界被卡住；gate 沒看見的並非無關角落，而是規劃器會大量查詢的區域。</p>
+<p>LLM 合成呈現明顯的幾何分界。一維推車牆與擺停止點的 mode 已在樣本出現時，GPT-5.x 在 <code>105／111</code> 次合成中恢復規則；嚴格檢查另發現少數 artifact 雖修好真實停止點，卻發明了樣本無法反駁的另一個停止點（作者自報）。換成二維 disc、方形區域與提高預算的引導處理後，真正的區域規則在 <code>0／156</code> 次含模式嘗試中被恢復，常見錯法是把二維區域降成一維門檻或只包住已見接觸點（作者自報）。這說明「樣本有證據」不等於模型能從證據歸納出帶位置的規則。</p>
+<p>獨立接受樣本讓驗證語意更誠實，卻沒有消除抽樣盲點。在自身樣本得滿分的 <code>650</code> 次合成中，獨立同尺寸 gate 拒絕 <code>40</code> 次，約 <code>6.2％</code>；失敗幾乎都落在模式接觸，另有一次撞上發明的停止點（作者自報）。獨立 gate 能抓到更多沒見過的反例，但若新的樣本仍未進入錯誤區，通過仍只代表在這些抽樣輸入上正確。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>結論不是「抽樣驗證沒用」，而是它只認證自己實際覆蓋的輸入。對會交給規劃器搜尋的世界模型，驗證分布應跟著規劃器查詢分布走，必要時加入主動邊界探測、反例導向 refinement 或規劃器側的 distrust fence；單純縮小逐點誤差容忍值，抓不到完全未被抽到的硬模式。</p>
+<p>外推範圍仍窄。實驗使用作者設計的確定性 instruments，規劃只測兩個家族且各用固定設定；二維 mitigation 在遠端彎曲邊界會鎖死，process noise、外部 benchmark、移動邊界與更多模式未測。跨模型的 spot-check 規模也小，而 GPT-5.x 在一維與二維幾何上的差異只能定位成「帶位置規則的歸納缺口」，尚不能分辨是代數擬合、refinement 記憶或提示目標哪一項造成。</p>
+<h2 id="對讀者的價值ai_core-接點">對讀者的價值／ai_core 接點</h2>
+<p>這篇對 ai_core 最直接的提醒是：憑證不能只記「測試通過」，還要記測試分布覆蓋了什麼。若固化程式碼會被搜尋器、規劃器或 optimizer 主動查詢，驗收資料應從它的查詢軌跡採樣，並把未覆蓋的模式邊界列成顯式風險。否則一條局部規則即使對平均準確率幾乎沒有影響，也可能完全翻轉下游決策。</p>
+<p>第二個接點是把失敗拆成「不可識別」與「可識別但未歸納」。前者應要求更多資料、先驗或規格，不能讓模型猜；後者才適合用更好的 synthesis、工具化擬合或 refinement 修復。這個區分可落成 ai_core 的准入欄位：證據是否碰到規則、相對指定 hypothesis class 是否足以辨識、artifact 是否在獨立樣本與針對性 probe 上通過。三者分開，才不會把抽樣滿分誤當成全域正確。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2608.17956_SamplingVerificationLaw.zh-TW.html"><code>../translate/2608.17956_SamplingVerificationLaw.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

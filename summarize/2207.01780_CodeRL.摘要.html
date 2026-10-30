@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《CodeRL：以預訓練模型與深度強化學習精通程式碼生成（Mastering Code Generation through Pretrained Models and Deep Reinforcement Learning）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Hung Le, Yue Wang, Akhilesh Deepak Gotmare, Silvio Savarese, Steven C.H. Hoi（Salesforce Research）</p><p>日期：2022-07</p><p>arXiv：2207.01780</p><p><a href="https://arxiv.org/abs/2207.01780" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="coderl以預訓練模型與深度強化學習精通程式碼生成重點摘要">《CodeRL：以預訓練模型與深度強化學習精通程式碼生成》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>CodeRL：把程式碼生成當 actor-critic 強化學習問題</strong>——訓練一個 <strong>critic 網路預測「單元測試會編譯錯/執行錯/測試失敗/全部通過」四類結果</strong>，用它產生的 token 級分數當**密集回饋（dense reward）**微調當 actor 的程式碼 LM；推論期再以 <strong>critical sampling</strong> 用同一 critic 導引，對通過樣本重生子序列（refine）、對失敗樣本挑最佳送修復模型（repair），在 APPS 與 MBPP 上以 770M 小模型刷新 SOTA、勝過大得多的模型。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>既有程式碼生成 LM 只用「自然語言題目→標準答案程式」做監督式微調，有兩個缺陷：(1) 只靠 <strong>next-token prediction（NTP）</strong> 的 teacher-forcing 目標，測試時逐 token 自回歸會累積誤差，而 BLEU 等 token 相似度分數與<strong>功能正確性（functional correctness）相關性極低</strong>，無法衡量完整程式對錯；(2) 完全<strong>沒用到單元測試（unit test）這個直接決定成敗的訊號</strong>——無論訓練期的優化目標，或推論期（題目常自帶 example unit tests）都被忽略。既有 AlphaCode 雖用 example test 過濾排序輸出，卻不能據此<strong>改寫</strong>程式。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>RL 形式化</strong>：把 LM 參數視為隨機策略（policy），每個 token 是 action，整段程式跑完由編譯器（環境）依單元測試給 return。用 REINFORCE／policy gradient 優化期望 return。</li>
+<li><strong>以單元測試定義 return</strong>（Eq.4-7）：編譯錯 −1.0、執行錯 −0.6、測試失敗 −0.3、全通過 +1.0。</li>
+<li><strong>相對 return（baseline）</strong>：以 greedy decoding 當基線，樣本贏基線才給正 return，允許探索「不完美但比基線好」的程式，降低梯度變異。</li>
+<li><strong>Critic 當誤差預測器</strong>（§3.3.3，核心）：另訓一個較小的 Transformer critic，輸入題目＋取樣程式，預測四類測試結果之一；取其 <strong>token 級 hidden state</strong> 算出每個 token 對「達成真實測試結果」的價值 q̂，把終端 return 細化為 <strong>token 級中間 return</strong>（避免「多一個空格→整段被重罰」的粗糙訊號）。</li>
+<li><strong>Critical Sampling（CS）推論期雙策略</strong>（§3.3.4）：先生 N=200 支程式對 example test 篩成通過集 P／失敗集 F。<strong>Program refining</strong>：對 P 用 critic 找價值最高的分割點，取左半當 seed 讓 actor 重生後半。<strong>Program repairing</strong>：對 F 用 critic 挑 top-M，連同編譯器錯誤型別與訊息送進 seq2seq <strong>修復模型</strong>，修好再走 refine。</li>
+<li><strong>骨幹</strong>：擴充 CodeT5-large（770M）——加入 NTP 預訓練目標、擴 10 倍 Python 資料（GCPY 10.5B tokens）。訓練先用 L_ce 暖啟動、凍結 actor 訓 critic，再以 L_ce＋L_rl 等權微調。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>APPS</strong>（新 SOTA）：pass@1 2.69%、pass@5 6.81%、pass@1000 20.98%；n@k 為 1@k 8.48%、5@k 12.62%。<strong>k=1000 即匹敵 AlphaCode 用 k=50000</strong> 的成績。</li>
+<li><strong>MBPP 零樣本</strong>（APPS 訓練直接測 MBPP）：770M 拿 <strong>63.0% pass@80，勝過微調過的 GPT-137B 的 61.4%</strong>。</li>
+<li><strong>消融</strong>：return 估計上「baseline＋trained critic」（Model D）最佳；CS 以 refine＋repair 且 M=1 最佳；NTP 預訓練目標把 pass@5 從 2.06 拉到 2.9；critic 用 GPT-2 small 即達 &gt;75% 誤差預測準確率（成本相對骨幹極小）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>多訓一個 critic 與修復模型有額外算力成本（作者稱相對小）。</li>
+<li><strong>example unit tests 不如 hidden tests 全面</strong>，會有 false positive，限制 CS 效益；建議用測資變異增強。</li>
+<li>沿用大型 code LM 的通病：可能生出有偏見／不安全／有漏洞的程式，輸出仍需人工驗證；NTP 帶來的對齊失敗（輸出不符使用者意圖）依然存在。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>直接命中 ai_core §3.4「學習式驗證器當獎勵訊號」＋治理「憑證准入」</strong>：CodeRL 的 critic 就是一個<strong>學來的驗證器</strong>——不靠形式證明、而是用單元測試結果訓練出「這段碼會不會通過」的機率打分，既當訓練期密集 reward，又當推論期的准入／重生依據。這正是把「拒絕為預設＋憑證准入」量化的一種做法：唯有 critic／實測給出高通過機率的程式才被採信，其餘退回 refine/repair。</li>
+<li><strong>對 §5「程式碼助手」的下層「受約束填碼」是可操作範式</strong>：CS 的 refine（保留正確前綴、只重生可疑後段）＋repair（帶編譯器錯誤訊息定向修復）示範了如何用<strong>確定性訊號（編譯器／測試）閉環約束 LLM 生成</strong>，把單次昂貴呼叫變成「生成→實測→定點重生」的可靠函數，貼合「逐步剃除對 LLM 不確定性依賴」的北極星。</li>
+<li><strong>歸 I 類（學習式驗證器／執行回饋）</strong>，與 <a class="paper-reference" href="https://arxiv.org/abs/2305.14263">2305.14263</a> LEVER（訓驗證器據執行結果重排）、<a class="paper-reference" href="2207.10397_CodeT.%E6%91%98%E8%A6%81.html">2207.10397</a> CodeT（自生測試 + 雙重執行一致性）對照：三者都以「<strong>執行／測試訊號</strong>」取代 token 相似度當品質判準，但 CodeRL 更進一步把驗證器訊號<strong>灌回訓練梯度與推論期重生</strong>，而非僅事後過濾排序。對 ai_core 而言，這說明「驗證器」不只是准入閘門，也可反哺資產工廠的訓練迴圈。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2207.01780_CodeRL.zh-TW.html"><code>../translate/2207.01780_CodeRL.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

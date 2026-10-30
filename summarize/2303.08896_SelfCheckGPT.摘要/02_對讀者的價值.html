@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_對讀者的價值 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2303.08896_SelfCheckGPT.%E6%91%98%E8%A6%81.html">回 2303.08896_SelfCheckGPT.摘要 目錄</a>　<a href="01_%E4%B8%80%E5%8F%A5%E8%A9%B1%E6%A6%82%E6%8B%AC.html">← 上一節</a></p>
+</blockquote>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本篇是 ai_core 主題 12「信心校準／幻覺偵測」中**「黑箱可用」的實作範式代表**：五種變體全程只讀模型的文字輸出，完全不需 token 機率、不需白箱存取、不需外部知識庫，因此最適合直接套在<strong>外部 API 型 LLM 節點</strong>（ChatGPT/GPT-4 之類無法拿到 logits 的服務）外面當一道 gate，這正是 ai_core 把「多數確定性節點＋少數 LLM」計算圖套在真實 API 邊界上時最常遇到的限制。</li>
+<li>與庫中已有路線對照：<strong>2203.11171 Self-Consistency</strong> 同樣靠「N 條取樣的一致度」，但用途是<strong>在多個候選答案間投票選出最終答案</strong>（單一封閉式答案的正確性代理）；SelfCheckGPT 把同一機制反過來用在<strong>任意長度自由文本的逐句除錯</strong>上——不選答案，而是給已生成文本的每一句打幻覺分數。兩者共享「一致性＝可用信號」的核心直覺，但一個做選擇、一個做審查，可以互補而非取代。<strong>2207.05221 LMs Know What They Know</strong> 走的是另一條路：讓模型自己回答「我有把握嗎」（P(True)/P(IK)），本質上仍是<strong>要求模型對自己的輸出做內省判斷</strong>；SelfCheckGPT 完全不問模型「你信不信」，只看<strong>外顯文本間</strong>是否彼此吻合，因此不受「模型自己簽自己的憑證」這個風險影響，但代價是需要 N 倍生成成本而非一次自評。</li>
+<li>與 <strong>2305.11738 CRITIC</strong> 互補而非重疊：CRITIC 靠<strong>外部工具</strong>（搜尋引擎、程式直譯器）產生接地訊號來批判與修正，能力上限取決於工具能否覆蓋到相關知識；SelfCheckGPT 完全不接外部世界，靠模型自身生成分佈的內部一致性做審查，適用範圍更廣（任何黑箱 LLM 皆可用）但精確度上限受限於模型本身是否「真的知道」——兩者可串接：先用 SelfCheckGPT 便宜地標出低一致性（高風險）句子，只對這些句子觸發 CRITIC 式的外部工具查核，形成一道<strong>成本分層</strong>的兩段式流程。</li>
+<li>對 ai_core <strong>§3.3 成本梯度（升級信號）</strong>：SelfCheckGPT 本身就是一個典型的成本-效益權衡樣本——Prompt 變體最準但要對每句每份取樣各呼叫一次 LLM，NLI 變體較便宜但效果接近，Unigram(max) 幾乎零額外模型呼叫但仍有可用訊號；這條「便宜→昂貴」的變體序列，本身就可以當成本梯度上「先用便宜訊號篩選、對存疑案例才升級到貴訊號」的現成範例，其代價（N 倍取樣、Prompt 變體再乘一次 LLM 呼叫）必須明確計入升級判斷的成本模型。</li>
+<li>對 ai_core <strong>§3.4 治理＝拒絕為預設＋憑證准入</strong>：SelfCheckGPT 的逐句分數天生就是<strong>撤照信號</strong>——不是對整段 LLM 輸出做通過/拒絕的粗粒度判斷，而是能在<strong>句子級</strong>做細粒度准入：高一致性的句子放行，低一致性的句子標記、丟棄或觸發重新生成/升級查核。這比對整段輸出做二元拒絕更貼近「逐項准入」的治理精神，也提示 ai_core 在設計憑證機制時，准入粒度可以下探到「LLM 輸出中的單一陳述/欄位」而非整個回應。</li>
+<li><strong>2504.19254 UQ Scorers</strong>、<strong>2405.01563 Conformal Abstention</strong> 這類把「信心分數→棄答決策」形式化、加上覆蓋率保證的下游機制，可以直接把 SelfCheckGPT 逐句一致性分數當作輸入信號使用。另需注意：<strong>2302.09664 Semantic Uncertainty</strong>、<strong>2406.15927 SEP</strong>、<strong>2402.03744 INSIDE</strong> 是同批次由其他 drafter 處理中、尚未入庫的相鄰路線（分別是語意熵、語意熵探針、內部表徵一致性），與 SelfCheckGPT 同屬「用一致性偵測幻覺」家族但取徑不同（白箱/探針 vs 純黑箱取樣），值得日後入庫後並列參照。</li>
+<li>歸 <strong>I 類</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../../translate/2303.08896_SelfCheckGPT.zh-TW.html"><code>../translate/2303.08896_SelfCheckGPT.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

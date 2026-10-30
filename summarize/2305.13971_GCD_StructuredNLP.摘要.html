@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《免微調的結構化 NLP 任務文法約束解碼（Grammar-Constrained Decoding for Structured NLP Tasks without Finetuning）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Saibo Geng, Martin Josifoski, Maxime Peyrard, Robert West（EPFL；EMNLP 2023）</p><p>日期：2023-05</p><p>arXiv：2305.13971</p><p><a href="https://arxiv.org/abs/2305.13971" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="免微調的結構化-nlp-任務文法約束解碼gcd重點摘要">《免微調的結構化 NLP 任務文法約束解碼（GCD）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Grammar-Constrained Decoding（GCD，文法約束解碼）作為結構化 NLP 的統一框架</strong>：把封閉資訊抽取（cIE）、實體消歧（ED）、成分剖析（CP）等各種結構化任務的<strong>輸出空間一律表述為形式文法（形式語言）</strong>，解碼時用增量剖析器（incremental parser）當「補全引擎」逐 token 剪掉不合文法的機率質量，保證輸出必然合法；再引入 **input-dependent grammar（IDG，依輸入而變的文法）**擴大適用面——few-shot 提示的 LLaMA-33B <strong>免任何微調</strong>即在 cIE 上勝過專門訓練的 GenIE（F1 36.0 vs 34.8）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 擅長自由文本，但在「輸出須遵守預定格式＋受限詞彙表（如 270 萬 Wikidata 實體名、888 個關係名）」的結構化預測任務上不可靠——few-shot GPT-3.5 在 cIE 上表現差，因詞彙表太大無法靠幾個示範傳達。傳統解法是每個任務各自微調（GenIE、GENRE），昂貴、不靈活、需專屬訓練資料；既有約束解碼多限於單一任務（剖析、代碼生成），且用有限狀態自動機或 trie 表達約束、工程負擔重。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>任務＝形式語言</strong>：以 14 個常見結構化 NLP 任務示範其輸出空間皆可寫成 context-free（多數 regular）文法；使用者只需<strong>宣告式地寫文法</strong>（像寫 regex），約束解碼細節由框架處理。</li>
+<li><strong>token 級文法</strong>：字元級文法 G 經 tokenizer 轉為 token 級 G_tok；採 Grammatical Framework（GF）「抽象文法＋各 tokenizer 的具體文法」解耦（類比 AST 對多語言），其增量剖析器即補全引擎，回傳當前前綴下的合法後繼 token 集，於解碼時剪枝機率分佈——相容任何解碼演算法與任何開放 logits 的自迴歸 LM（API 型如 OpenAI 不可用）。</li>
+<li><strong>Input-dependent grammar（IDG）</strong>：文法隨輸入而變——ED 限定在該 mention 的候選實體集、CP 強制剖析樹葉節點恰為輸入句的詞。14 個示範任務中 13 個需要 IDG；約束愈緊效果愈好。</li>
+<li>與 few-shot prompting 結合：LLM 出「合理性」、文法出「合法性」。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>cIE（SynthIE-text，4-shot）</strong>：無約束 LLaMA-33B F1 僅 17.5；加文法約束升至 <strong>36.0，勝過弱監督專用模型 GenIE T5-base 的 34.8</strong>（precision/recall 更均衡）。</li>
+<li><strong>ED（六個資料集平均 micro-accuracy，4-shot）</strong>：無約束 54.1 → IIG（輸入無關文法）68.2 → <strong>IDG 80.3</strong>，勝過只用 AIDA 訓練的 GENRE（80.0），惟仍低於全量預訓練 SOTA（GENRE 88.8、ReFinED 89.4）。</li>
+<li><strong>CP（PTB，8-shot）</strong>：IDG 把 F1 從 42.9 提到 54.6 且<strong>合法樹比例 100%</strong>，但仍遠遜專用模型（95+）——需句法理解的任務是 GCD 弱項。</li>
+<li><strong>延遲</strong>：約束計算全在 CPU；ED/CP 開銷可忽略（1/4 ms/token），cIE 的 270 萬實體大文法開銷 69 ms/token、與 LM 前向相當。</li>
+<li><strong>似然錯位（§5）</strong>：約束下最可能生成常是空字串（EOS），調大長度正規化 α≥2.5 即解。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>不適用於不開放 logits 的 API 型 LLM；超大文法（百萬級規則）增量剖析延遲高。</li>
+<li>需句法理解的任務（CP）約束幫助有限；有任務資料時微調小模型仍可能更強（附錄 A）。</li>
+<li>BPE 使同一字串有多種 token 化，token 級文法目前靠非原則性的手工處理。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>對 ai_core「剃除 LLM 依賴」路線的直接實證</strong>：本文證明「<strong>確定性約束（文法＋增量剖析器）可以換掉微調與更大模型</strong>」——免訓練的 LLaMA-33B 靠一層純 CPU 的符號機制勝過專訓的 GenIE。這正是 ai_core §5 程式碼助手「下層<strong>受約束填碼</strong>」的方法學原型：LLM 只在文法許可的空隙裡出機率，合法性由確定性節點保證，等於把「輸出必合規」從 LLM 的責任移交給符號計算圖節點（§1 符號神經網路圖像）。</li>
+<li><strong>Input-dependent grammar 是可直接挪用的概念</strong>：約束不必是靜態 schema，可由每次輸入（候選集、上下文詞面）<strong>現場編譯出一副文法</strong>——對 ai_core §3.2 把 LLM 呼叫包成可靠函數極具啟發：函數簽名＝動態生成的文法，輸出型別安全在解碼期而非驗證期達成，錯誤輸出根本無法被生成、省掉重試迴圈。</li>
+<li>三條可搬走的工程教訓：(1) <strong>文法愈緊愈好</strong>（IDG 全面壓過 IIG）；(2) 約束會造成<strong>似然錯位</strong>（空字串陷阱），接約束層時要調長度正規化——這是把 LLM 包進確定性殼時的通用暗礁；(3) 約束開銷在 CPU、與 GPU 前向可重疊，成本結構友善（呼應 §3.3 成本梯度）。</li>
+<li>邊界同樣重要：GCD 保證「合法」不保證「正確」，需真正語法/語義理解的任務（CP）仍差專用模型一截——ai_core 的固化引擎（§3.6）不能指望光靠約束層固化掉理解本身。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2305.13971_GCD_StructuredNLP.zh-TW.html"><code>../translate/2305.13971_GCD_StructuredNLP.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

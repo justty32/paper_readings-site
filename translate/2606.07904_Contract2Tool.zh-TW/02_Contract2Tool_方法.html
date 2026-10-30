@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Contract2Tool：為可靠的工具增強 LLM Agent 學習前置條件與效果（3/3） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.07904_Contract2Tool.zh-TW.html">回 2606.07904_Contract2Tool.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-contract2tool-方法">4. Contract2Tool 方法</h2>
+<p>Contract2Tool 將可觀察工具證據轉換為正規化符號合約，供下游工具過濾使用。管線包含四個階段：建構證據視圖、生成原始合約預測、正規化與驗證預測欄位、產生學習合約集。</p>
+<h3 id="41-證據條件">4.1 證據條件</h3>
+<p>Contract2Tool 在不同層級的可用工具證據下運行。六種逐漸豐富的證據條件：</p>
+<ul>
+<li><strong>Name</strong>：僅工具名稱。</li>
+<li><strong>Metadata</strong>：工具名稱與自然語言描述。</li>
+<li><strong>Schema</strong>：metadata 加上輸入/輸出 schema。</li>
+<li><strong>Documentation</strong>：metadata 與 schema 加上簡短 API 風格文件。</li>
+<li><strong>Traces</strong>：執行軌跡，包含前後任務狀態、工具輸出與執行狀態。</li>
+<li><strong>Hybrid</strong>：文件與軌跡合併。</li>
+</ul>
+<p>這些條件反映工具生態系統中現實的資訊可用層級。某些系統僅暴露名稱與 schema，成熟系統可能還維護文件與執行日誌。框架可同時納入成功與失敗軌跡；實驗中主要使用受控成功任務軌跡。</p>
+<h3 id="42-合約生成">4.2 合約生成</h3>
+<p>給定工具 ti 在條件 m 下的證據視圖 zi^(m)，合約生成器 f_θ 產生結構化合約預測。預測合約包含前置條件、效果、風險與可選成本欄位。例如，日曆更新工具可能需要 event identifier、產生 updated-event 狀態、並因修改外部狀態而獲得高風險標籤。風險欄位從固定標籤集選取（low/medium/high）。</p>
+<h3 id="43-正規化與驗證">4.3 正規化與驗證</h3>
+<p>生成的合約可能包含同義詞、無效變數、重複條目或格式錯誤輸出。Contract2Tool 因此在使用預測合約前應用正規化與驗證層。此層假設預定義的標準狀態變數詞彙。正規化將生成欄位映射到此詞彙（例如&quot;event identifier&quot;或&quot;document text&quot;映射到基準詞彙中的標準狀態變數）。驗證檢查變數有效性、風險標籤有效性、移除重複、拒絕或標記格式錯誤輸出。此步驟至關重要——下游因果過濾依賴精確的符號狀態變數。</p>
+<h3 id="44-軌跡證據">4.4 軌跡證據</h3>
+<p>執行軌跡提供關於工具引發狀態變化的直接證據。軌跡記錄：(s_before, ti, args, status, oi, s_after)——調用前狀態、選定工具、參數、執行狀態、輸出觀察、執行後狀態。成功軌跡透過前後狀態差異揭示產生的狀態變數；失敗軌跡（可用時）可提示缺失的前置條件。實驗聚焦受控成功軌跡，使用狀態差異識別產生的效果。這很有用，因為文件可能描述人類面向的輸出（如搜尋結果列表），而下游過濾可能需要更具體的狀態變數（如下一步工具所需的 identifier）。</p>
+<h3 id="45-學習合約集">4.5 學習合約集</h3>
+<p>經過生成、正規化、驗證與可選的軌跡證據使用後，Contract2Tool 返回學習合約集 Ĉ = {ĉ_1, ĉ_2, ..., ĉ_n}。此學習合約集可對照金合約進行內在評估，或用於下游因果工具過濾方法。下游問題是：Ĉ 是否保留在多步驟執行中暴露正確下一步工具所需的因果邊——即使個別合約欄位不完美。</p>
+<h2 id="5-基準設計">5. 基準設計</h2>
+<h3 id="51-工具註冊表與金合約">5.1 工具註冊表與金合約</h3>
+<p>基於受控合成工具使用基準，含 100 個工具註冊表。領域涵蓋日曆、郵件、檔案/文件等工作流及受控干擾領域。每個工具包含：名稱、自然語言描述、輸入/輸出 schema、可選 API 風格文件、金前置條件、金效果、風險標籤、可選成本標籤。註冊表包含任務相關工具、近似重複工具、語意合理干擾項、過早工具、高風險工具、跨域干擾項。這些干擾項使合約學習具有後果性：缺失或虛假的前置條件與效果可導致下游過度過濾或過濾不足。</p>
+<h3 id="52-合約學習範例與執行軌跡">5.2 合約學習範例與執行軌跡</h3>
+<p>對每個工具 ti，透過配對證據視圖與金合約目標建構合約學習範例：zi^(m) → ci = (Ri, Ei, ρi, ki)。評估 name-only、metadata、schema、documentation、trace 與 hybrid 視圖。</p>
+<p>執行軌跡從基準環境生成，記錄執行前狀態、選定工具、參數、執行狀態、模擬輸出、執行後狀態。軌跡證據主要來自成功金任務軌跡，透過前後狀態差異揭示產生的狀態變數。</p>
+<h3 id="53-filter-oracle-評估">5.3 Filter-Oracle 評估</h3>
+<p>內在合約品質不完全決定學習合約對因果過濾是否有用。因此納入 filter-oracle 評估——使用金任務軌跡隔離合約與過濾行為，排除模型特定工具調用行為。在每個金決策步驟，使用候選合約集運行 CMTF，測量過濾器是否暴露金下一步工具。報告金工具暴露率、無可見率、平均可見工具數、額外暴露工具數。</p>
+<h3 id="54-下游-agent-任務">5.4 下游 Agent 任務</h3>
+<h2 id="下游評估重用因果工具過濾所用的多步驟工具使用基準基準含-102-個任務跨日曆郵件檔案文件工作流相同任務集在五種過濾方法下執行全工具暴露關鍵字-top-5狀態感知過濾金合約-cmtf學習合約-cmtf此設置允許測量學習合約相對於金合約因果過濾保留了多少可靠性以及相對於非因果基線減少了多少工具暴露">下游評估重用因果工具過濾所用的多步驟工具使用基準。基準含 102 個任務，跨日曆、郵件、檔案/文件工作流。相同任務集在五種過濾方法下執行：全工具暴露、關鍵字 top-5、狀態感知過濾、金合約 CMTF、學習合約 CMTF。此設置允許測量學習合約相對於金合約因果過濾保留了多少可靠性，以及相對於非因果基線減少了多少工具暴露。</h2>
+<h2 id="title-contract2tool為可靠的工具增強-llm-agent-學習前置條件與效果part-33實驗設置至結論-source-httpsarxivorgabs260607904-arxiv_id-260607904-date-2026-06">title: Contract2Tool：為可靠的工具增強 LLM Agent 學習前置條件與效果（part 3/3：實驗設置至結論）
+source: https://arxiv.org/abs/2606.07904
+arxiv_id: 2606.07904
+date: 2026-06</h2>
+<h1 id="contract2tool為可靠的工具增強-llm-agent-學習前置條件與效果33">Contract2Tool：為可靠的工具增強 LLM Agent 學習前置條件與效果（3/3）</h1>
+<h2 id="6-實驗設置">6. 實驗設置</h2>
+<h3 id="61-合約推斷協議">6.1 合約推斷協議</h3>
+<p>每個合約生成器接收一個工具的證據視圖，輸出結構化合約（requires/produces/risk/cost）。基於 LLM 的生成器在每種證據條件下使用固定輸出 schema 推斷合約。所有生成合約在評分前經過正規化與驗證。無效輸出、未解決變數與正規化失敗單獨記錄。內在實驗評估多個 Bedrock 託管模型家族（Amazon Nova、Anthropic Claude、Meta Llama）。下游主學習合約實驗使用最強學習合約集：<strong>Claude Opus 4.8 + Hybrid 文件與軌跡證據</strong>。</p>
+<h3 id="62-評估指標">6.2 評估指標</h3>
+<p><strong>內在指標</strong>：前置條件/效果 set precision/recall/F1；風險分類準確率；exact match；無效輸出率。<strong>Filter-oracle 指標</strong>：金工具暴露率、無可見率、平均可見工具數、額外暴露工具數。<strong>下游 Agent 指標</strong>：任務成功、錯誤工具數、過早行動數、每步平均暴露工具數、token 成本。主下游聚合在四個可靠工具調用模型上計算（Nova 2 Lite、Nova 2 Pro、Claude 3.5 Haiku、Claude Sonnet 4.6），Llama 3.3 70B 因工具調用相容性問題被排除。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Ranking Function Generation with LLMs for Termination 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Rongkang Li、Jiaxin Hu、Taolue Chen、Yong Li、Fu Song、Zhilin Wu</p><p>日期：2026-10-26（v1，cs.SE）</p><p>arXiv：2610.35523</p><p><a href="https://arxiv.org/html/2610.35523v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="ranking-function-generation-with-llms-for-termination-重點摘要">Ranking Function Generation with LLMs for Termination 重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>RAINFALL 把迴圈排名函式合成轉為受限制的程式與斷言填空，再以符號檢查和診斷回饋反覆修正；在所選已知終止的 C 程式上，作者報告比多個基線證明更多題，但其理論敘述有需要釐清的良基性問題。</p>
+<h2 id="問題與方法">問題與方法</h2>
+<p>排名函式將狀態映射到有良基次序的值，要求迴圈執行時依適當條件下降，並藉下界與迴圈 guard 的關係排除無限執行。作者處理單一、字典序及多階段排名函式；論文將多個或巢狀迴圈的處理交給歸約，並將 <code>for</code> 轉換為 <code>while</code>。（<a href="https://arxiv.org/html/2610.35523v1#S2">§2</a>）</p>
+<p>RAINFALL 先解析 C 程式，為每個迴圈插入四個位置：迴圈前宣告輔助變數、迭代前記錄排名值、迭代後更新排名值、最後檢查排名條件。結構化提示包含排名類型的說明與 few-shot 範例，LLM 填入輔助程式與斷言，不直接輸出一個未經確認的答案。（<a href="https://arxiv.org/html/2610.35523v1#S4.SS1">§4.1</a>）</p>
+<p>候選依序接受三項檢查，失敗診斷連同候選送回 LLM，直到通過或用完資源：（<a href="https://arxiv.org/html/2610.35523v1#S4.SS2">§4.2</a>）</p>
+<ol>
+<li><strong>原程式語法比對</strong>：刪去產生的填空後比較 AST，檢查模型是否修改原程式；語義等價但語法改動的程式不在此比較方式的接受範圍內。</li>
+<li><strong>斷言完整性</strong>：檢查輔助變數宣告、前後更新與符合目標排名類型的下降、非負及終止條件。只驗證像 <code>true</code> 這種過弱斷言無法構成排名證明。</li>
+<li><strong>安全性檢查</strong>：以 UAutomizer 驗證插入的斷言；若取得反例，將違反位置與執行路徑加入下一次提示。所有檢查通過時輸出 <code>Terminate</code> 與含斷言的證明程式；資源耗盡或未能證明則輸出 <code>Unknown</code>，不是宣稱程式不終止。</li>
+</ol>
+<p>作者聲稱此流程可確保通過的候選構成終止證明；其實際可靠性仍取決於程式轉換與完整性檢查是否忠實實作所需證明義務、數值型別語義及底層安全驗證器的正確性。（<a href="https://arxiv.org/html/2610.35523v1#S4.SS2.SSS2">§4.2.2～4.2.3</a>）</p>
+<h2 id="作者自報實驗">作者自報實驗</h2>
+<p>作者以兩個公開基準中<strong>已知終止</strong>的 C 程式測試：BS-F 170 題，BS-L 去除 AST 重複後 188 題，共 358 題。非 LLM 工具每題限時 1,800 秒；LLM 工具每次安全驗證限 60 秒、最多 12 次模型查詢，RAINFALL 使用兩次嘗試、每次最多六次查詢。這些資源限制不同，平均時間也需按各表的統計口徑解讀。（<a href="https://arxiv.org/html/2610.35523v1#S5">§5</a>）</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th style="text-align:right">BS-F／170</th>
+<th style="text-align:right">BS-L／188</th>
+<th style="text-align:right">合計／358</th>
+<th style="text-align:right">成功題平均時間</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RAINFALL（MiniMax V2.7）</td>
+<td style="text-align:right">156</td>
+<td style="text-align:right">167</td>
+<td style="text-align:right">323</td>
+<td style="text-align:right">482.35 秒</td>
+</tr>
+<tr>
+<td>PROTON 2.1</td>
+<td style="text-align:right">148</td>
+<td style="text-align:right">163</td>
+<td style="text-align:right">311</td>
+<td style="text-align:right">139.12 秒</td>
+</tr>
+<tr>
+<td>UAutomizer</td>
+<td style="text-align:right">116</td>
+<td style="text-align:right">167</td>
+<td style="text-align:right">283</td>
+<td style="text-align:right">7.82 秒</td>
+</tr>
+<tr>
+<td>AProVE</td>
+<td style="text-align:right">123</td>
+<td style="text-align:right">159</td>
+<td style="text-align:right">282</td>
+<td style="text-align:right">20.59 秒</td>
+</tr>
+<tr>
+<td>LOOPY（同 MiniMax）</td>
+<td style="text-align:right">124</td>
+<td style="text-align:right">140</td>
+<td style="text-align:right">264</td>
+<td style="text-align:right">875.27 秒</td>
+</tr>
+</tbody>
+</table>
+<p>RAINFALL 單獨解出 <code>323/358 = 90.22%</code>，比 PROTON 多 12 題；兩者解題集合合併為 <code>346/358 = 96.65%</code>。合併代表兩者任一成功的集合聯集，並非聲稱一次 RAINFALL 執行解出 346 題。ddlTerm 無 BS-L 的前處理工具，故未列合計；FreqTerm 受版本相容限制只使用 FreqHorn。表 1 時間包含 LLM 延遲與多次驗證，但僅平均成功題。（<a href="https://arxiv.org/html/2610.35523v1#S5.SS1">§5.1、表 1</a>）</p>
+<p>BS-F 的單次 MiniMax 查詢消融中，加入 few-shot 範例可證明 110 題，未加入為 70 題；完整的兩次嘗試、最多 12 次查詢則證明 156 題。未解的 14 題中，作者歸因於產生非本方法範圍內的迴圈界限 3 題、初始提示無輸出 4 題、安全驗證逾時 5 題、用完查詢 2 題。未證明不等於存在無限迴圈。（<a href="https://arxiv.org/html/2610.35523v1#S5.SS2">§5.1～5.2</a>）</p>
+<p>在 BS-F 的模型比較中，RAINFALL 使用 GPT 5.5、Claude Opus 4.7、MiniMax V2.7 與 Qwen-Plus 3.6 分別證明 <code>163 / 160 / 156 / 138</code> 題。此表的平均時間涵蓋成功與失敗題，與前表僅成功題的時間不可直接比較；模型服務、預設設定及價格亦屬作者當時的實驗條件。（<a href="https://arxiv.org/html/2610.35523v1#S5.SS3">§5.3、表 2</a>）</p>
+<h2 id="理論與實務邊界">理論與實務邊界</h2>
+<p><strong>本檔補註，非作者自陳</strong>：原文 §2 稱有理數上的 <code>&lt;</code> 為良基，但一般有理數次序不具此性質；例如正有理數 <code>1, 1/2, 1/4, …</code> 可無限嚴格下降。作者的單一排名函式定義另要求每步至少下降固定 <code>ε&gt;0</code>，有下界時能排除無窮下降；然而 §4.2.2 的斷言完整性樣式僅列嚴格 <code>&gt;</code>。因此若允許無固定下降量的稠密數值語義，不能僅據「嚴格下降」推得終止；各類排名斷言的型別與良基條件仍須具體核實，本文的宣稱不應不加條件外推。（<a href="https://arxiv.org/html/2610.35523v1#S2">§2、§4.2.2</a>）</p>
+<p>作者對範例的推理明示忽略整數溢位與下溢，並將此類問題交由獨立安全驗證；這個假設不能自動視為所有實際 C 執行的保證。評估只選已知終止案例，不能衡量對不終止程式的整體分類表現；公開基準也可能出現在 LLM 訓練資料中。作者認為改為生成程式斷言可緩和污染，但這不證明不存在污染；驗證器逾時、模型選擇與基準代表性也會影響解題數。（<a href="https://arxiv.org/html/2610.35523v1#S2.SS1">§2.1</a>、<a href="https://arxiv.org/html/2610.35523v1#S5.SS4">§5、§5.4</a>）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.35523_RankingLLM.zh-TW.html">Ranking Function 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

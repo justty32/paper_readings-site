@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2410.13246_Atomic_Calibration.zh-TW.html">回 2410.13246_Atomic_Calibration.zh-TW 目錄</a>　<a href="02_%E4%BF%A1%E5%BF%83%E6%8A%BD%E5%8F%96%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）常有幻覺問題，對實務應用構成重大挑戰。信心校準（confidence calibration）作為幻覺的有效指標，對提升 LLM 可信度至關重要。既有工作主要針對短答案任務，用單一 response-level 分數（macro calibration）衡量，這對可能同時含有正確與錯誤陳述的長文輸出並不足夠。本文系統性研究<strong>原子校準（atomic calibration）</strong>：把長回應拆成原子主張（atomic claim），在細粒度層級評估事實性校準。我們進一步把既有的信心抽取方法分為判別式（discriminative）與生成式（generative）兩類，並提出兩種新的信心融合策略以改善校準。實驗顯示 LLM 在長文生成的原子層級校準明顯較差；更重要的是，原子校準揭露了信心方法之間對齊關係、以及信心隨生成過程變化的規律，為長文生成的信心估計提供未來研究方向。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>LLM 雖在多項任務表現優異，但仍受可信度問題困擾，常生成事實錯誤或誤導性內容，限制其在高風險場景的應用。信心校準旨在估計模型預測的內在不確定性、反映預測正確的真實機率。本文區分「校準」作為一種<strong>性質</strong>與作為一種<strong>流程</strong>：<strong>原子校準</strong>指每個原子主張的信心與其事實性對齊良好這一性質；額外的事後方法（如溫度縮放、Platt scaling）用來達成此對齊，稱為校準方法或校準器（calibrator），不在本文討論範圍。</p>
+<p>既有 LLM 校準研究多聚焦短答案 QA（TriviaQA、Natural Questions，答案常少於 10 個詞）。但真實查詢常引出長得多的回應，可長達數百甚至上千字，此時回應品質不再是二元的，答案可能混雜正確與錯誤陳述。近期已有工作開始處理長文生成的校準，部分估計整段回應的單一信心分數（<strong>macro calibration</strong>），部分則在原子主張層級評估信心（<strong>atomic calibration</strong>）。但既有工作留下幾個關鍵問題未答：為何要在原子主張層級評估校準？哪些因素影響此層級的校準結果？在此層級分析能觀察到哪些規律？</p>
+<p>本文系統性檢視原子校準：把長回應拆成原子主張，每個主張只含單一事實陳述，並用各種信心抽取方法賦予信心分數。為分析不同信心抽取方法，我們把它們分為**判別式（模型內在的信心估計）<strong>與</strong>生成式（外部的信心評估）**兩類。在三個長文 QA 資料集、七個 LLM 上的實驗顯示：(1) response-level 看似校準良好的模型，在原子層級表現不佳；(2) 運用原子校準能提升 macro 校準。這兩點凸顯了研究原子層級校準、以開發更好校準模型的必要性。</p>
+<p>我們進一步探討判別式與生成式信心的特性，發現：(1) 兩者互補——結合兩者可改善校準，同類型內部結合則收益有限；(2) 生成式方法在不同模型尺寸間保持一致的校準表現，判別式方法則隨模型變大而受益。受發現 (1) 啟發，我們提出兩種基於**信心分歧（confidence agreement）**的新融合策略，整合生成式與判別式信心，效果優於既有融合方法。</p>
+<p>第 6 節的原子層級分析進一步揭示信心方法對齊、以及生成過程中信心變化的規律：同類型的信心方法彼此對齊較好，說明跨類型融合為何更有效；有趣的是，判別式方法下，模型對原子事實的信心隨生成推進而遞減，生成式方法則在生成<strong>中段</strong>顯示最低平均信心。這些結果凸顯了長文生成需要細粒度校準評估，能為模型可信度與可用性提供洞見。</p>
+<h2 id="2-相關工作">2 相關工作</h2>
+<p><strong>原子主張生成與驗證</strong>：長文回應常同時含正確與錯誤陳述，影響整體事實性評估。Min et al. (2023) 提出把長回應拆成原子事實、計算這些事實片段的準確率來得出整體事實性分數；Wei et al. (2024) 與 Zhao et al. (2024) 把此範式擴展到更多領域；Song et al. (2024) 為多樣長文生成任務設計 VeriScore；Chiang and Lee (2024) 提出專門處理實體歧義內容的 D-FActScore。把長文拆成原子主張再逐一事實查核，已成為廣泛採用的管線。</p>
+<p><strong>長文生成中的不確定性與校準</strong>：既有不確定性估計與校準研究多聚焦多選題或短答案問題。長文生成的校準研究漸增：Huang et al. (2024) 提出適用所有文本生成任務的統一校準框架，比較回應正確性與對應信心的分布；Band et al. (2024) 提出語言式校準（linguistic calibration），讓模型在長文生成中明確表達不確定性；Zhang et al. (2024b) 提出 Luq，一種為長文生成設計的不確定性估計法，並展示其在集成不同 LLM 上的效果。另一支工作把句子拆成原子主張、對每個主張賦予信心分數，但原子層級校準的統一定義仍付之闕如。</p>
+<h2 id="3-原子校準">3 原子校準</h2>
+<p>對語言模型 M，回應 x ~ M(x|q) 對應查詢 q；y ∈ Y_t 為對應標籤，代表任務 t 下 0 到 1 之間的品質分數（任務可涵蓋事實性、連貫性、創意等多個面向）。定義機率預測函數 f: X → Δ^|Y_t|，f(x)_y 代表輸出 x 被賦予標籤 y 的機率。本文聚焦事實性校準，因幻覺是 LLM 眾所周知的難題，且原子主張的事實性可被客觀評估。</p>
+<p><strong>定義 1（Macro 校準／事實性）</strong>：模型 M 若滿足 P(y | f(x)_y = β) = β（對所有 β ∈ [0,1]），則稱其在 response 層級（macro）已校準。</p>
+<p>在長文場景，一次回應 x 可能涵蓋多個原子主張，macro 校準無法完整呈現原子層級的細粒度不確定性。為此，把回應 x 拆成 N 個原子主張 c_i，x = ⊔ c_i；每個 c_i 賦予二元真偽標籤 y_i ∈ {0,1}，整段回應的事實性分數 y = (1/N)Σy_i；f(c_i)_{y_i} 為給定原子主張 c_i 下標籤 y_i 的機率。</p>
+<p><strong>定義 2（原子校準／事實性）</strong>：模型 M 生成的長文回應 x，若對每個原子主張 c_i 及其標籤 y_i 都滿足 P(y_i | f(c_i)_{y_i} = β_i) = β_i（對所有 β_i ∈ [0,1]），則稱其在原子層級已校準。</p>
+<p><strong>備註</strong>：(1) 與傳統分類問題中 f(x)_y 通常就是預測答案的單一 log 機率不同，在文本生成任務中衡量模型信心困難得多，不同信心抽取方法可能給出不同的 f(x)_y，因此如何設計合適的抽取方法是關鍵問題。(2) Macro 校準不等於各原子校準之和：「response-level 校準成立」不蘊涵「各原子主張信心的平均等於整段信心」，後者也不蘊涵「每一個原子主張各自都校準成立」——三者是遞減的三個不同命題。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>SEAgent：以強制存取控制馴服 LLM Agent 系統的各種權限提升（Taming Various Privilege Escalation in LLM-Based Agent Systems: A Mandatory Access Control Framework） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zimo Ji, Daoyuan Wu, Wenyuan Jiang, Pingchuan Ma, Zongjie Li, Yudong Gao, Shuai Wang, Yingjiu Li</p><p>日期：2026-01</p><p>arXiv：2601.11893</p><p><a href="https://arxiv.org/abs/2601.11893" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="seagent以強制存取控制馴服-llm-agent-系統的各種權限提升">SEAgent：以強制存取控制馴服 LLM Agent 系統的各種權限提升</h1>
+<h2 id="摘要">摘要</h2>
+<p>LLM agent 已能規劃、呼叫工具並依環境回饋調整行為，但自然語言攻擊可利用過大的工具權限。本文以「權限提升」理解這些攻擊：agent 執行了超出使用者任務所需最小權限的行為。作者形式化 LLM agent 系統，展示單 agent 與多 agent 的新攻擊，並提出 SEAgent。它以 ABAC 為基礎實作強制存取控制，利用資訊流圖追蹤 agent 與工具的互動，再按實體屬性執行可客製的安全政策。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>MCP 等工具協定讓 agent 能接觸郵件、資料庫與實體裝置。只靠偵測模型、prompt 或模型對齊並不穩固，因為防線本身仍是機率性的；只做隔離也可能漏掉 RAG 或跨 agent 的委派路徑。</p>
+<p>作者的主張是把問題拉回作業系統安全：所有敏感作用都必須在使用點受到強制、可稽核的政策檢查。本文統一描述提示注入、RAG poisoning、不可信 agent 與 confused deputy，並用 SEAgent 在執行期阻擋不合法的資訊流。</p>
+<h2 id="2-背景">2. 背景</h2>
+<p>傳統權限提升包含水平、垂直、confused deputy 與權限串謀。LLM agent 的特殊處在於，權限與資料透過自然語言一起流動：工具輸出可以藏指令，agent 訊息可轉交請求，接收者很難只靠語意判斷真正授權者。</p>
+<p>現有 agent 系統可分成單 agent、多 agent 與 Agent-as-App／LLM-as-OS 等形態。共同元素是使用者、agent、工具、RAG、記憶與訊息通道，因此可用同一個資訊流模型處理。</p>
+<h2 id="3-預備定義">3. 預備定義</h2>
+<p>系統被建模為使用者、agent 與資源之間的互動。工具或資料來源可具備不同敏感度、完整性與隱私屬性。最小權限要求執行路徑只能取得完成當前使用者意圖所需的權限。</p>
+<p>政策不是判斷一段文字是否「看起來惡意」，而是判斷從來源到敏感作用的路徑是否符合規則。這使相同文字在不同來源、不同使用者或不同工具上能得到不同決策。</p>
+<h2 id="4-agent-的權限提升">4. Agent 的權限提升</h2>
+<h3 id="41-定義與威脅模型">4.1 定義與威脅模型</h3>
+<p>攻擊者可輸入惡意指令、控制工具／RAG 回傳內容，或安裝不可信 agent；可信執行基礎與政策資料庫不在攻擊者控制內。當最終動作超出使用者意圖所需權限，即構成權限提升。</p>
+<h3 id="42-單-agent">4.2 單 agent</h3>
+<p>間接提示注入把指令放進工具回傳，RAG poisoning 則讓檢索內容攜帶惡意行動。隔離式方法若只包住工具 spoke、卻讓 hub 直接處理 RAG，仍可能被繞過；匿名建立子元件也可能失去正確權限檢查。</p>
+<h3 id="43-多-agent">4.3 多 agent</h3>
+<p>不可信瀏覽器 agent 可把「解鎖門」訊息傳給具有智慧鎖工具的 agent。後者若只根據任務語意執行，就成為 confused deputy。問題不在它本身是否可信，而在授權不能沿著未受控訊息自動提升。</p>
+<h2 id="5-seagent">5. SEAgent</h2>
+<h3 id="51-system-view">5.1 System View</h3>
+<p>每輪執行維護有向圖。呼叫工具時加入帶 UUID 與 arguments 的工具實例節點；回傳時加入工具到 agent 的邊；RAG 檢索與 agent 間訊息也各自形成邊。每輪結束後清空圖與 agent context，跨輪資料交由 SEMemory 管理。</p>
+<h3 id="52-主體標記">5.2 主體標記</h3>
+<p>實體依物件、動作、敏感度、完整性與隱私等屬性分類。作者以 OpenAI o1 初標工具，再由人工確認。標記是安全決策的可信輸入，因此自動化只能降低工作量，不能取消複核責任。</p>
+<h3 id="5354-政策資料庫與決策器">5.3–5.4 政策資料庫與決策器</h3>
+<p>政策以路徑模式表達資訊流條件，並指定 allow、警告／要求確認或 deny。每次新工具呼叫都由決策器比對 System View；若低完整性來源流向高敏感度作用，即在 effect 發生前阻擋。此機制同時適用單 agent 與跨 agent 路徑。</p>
+<h3 id="55-sememory">5.5 SEMemory</h3>
+<p>SEMemory 包含 entity dictionary 與 Memory LLM。字典保存使用者查詢、工具結果與 RAG 結果及其來源；新一輪開始前，Memory LLM 只選回與問題相關的 key-value，再據此初始化 context 與 System View。作者論證，字典污染與 Memory LLM 操控都可約化為直接／間接注入或 RAG poisoning，因此沒有超出既定威脅模型的新類別。</p>
+<h2 id="6-實作">6. 實作</h2>
+<p>政策由屬性條件與圖路徑構成，工具標記採 LLM 加人工的混合流程。80 個 InjecAgent 工具上，LLM／人工對物件屬性的 Cohen’s κ 為 1.0000，動作為 0.8884。附錄另提供政策語法、決策演算法、使用者級隔離與各 benchmark 的工具標記。</p>
+<h2 id="7-評估">7. 評估</h2>
+<h3 id="71-防護">7.1 防護</h3>
+<p>InjecAgent 上，naive agent 的 RAG poisoning ASR 最高達 80%；IsolateGPT 在 hub RAG 路徑仍可超過 50%。SEAgent 在 app compromise、資料竊取與 RAG poisoning 的所有表列類別均為 0%。AgentDojo 的整體 ASR 為 naive 39.14%、IsolateGPT 0.82%、SEAgent 0%。</p>
+<p>不可信 agent 與 confused deputy 因沒有大規模資料集，採智慧鎖案例研究。SEAgent 根據「UNFILTERED 瀏覽器 agent → 智慧鎖 agent → HIGH sensitivity UnlockDoor」路徑命中政策，拒絕工具呼叫。</p>
+<h3 id="72-功能與成本">7.2 功能與成本</h3>
+<p>重建版 API-Bank 中，SEAgent 大致維持 naive agent 的正確率，誤報率為 0%、0%、5.13%；IsolateGPT 在多工具任務正確率下降超過 20%，兩工具誤報率達 18.31%。原始 API-Bank 啟用 SEMemory 後，平均正確率從 naive 的 72.97% 降至 68.29%，短 context 下 token 與 API 延遲也增加。</p>
+<p>AWS 多 agent 實驗中，travel overall GSR 為 74.24%（baseline 71.97%），mortgage 為 63.11%（baseline 52.46%）；token 分別降低約 32% 與 39%。政策檢查延遲只有毫秒級，但該實驗的模擬工具沒有足夠 backend／資料來源資訊可標記，因此並未真正執行安全政策。</p>
+<h2 id="8-討論">8. 討論</h2>
+<p>目前工具屬性靜態指定，無法依 runtime 行為動態調整。自動產生政策與標記可以擴展，但高保證部署仍需保留確定、可稽核的權威資料。SEMemory 的固定成本在短任務很明顯；作者預期長對話中，選擇性回憶可避免 context 隨輪次累積而攤平成本。</p>
+<h2 id="910-相關工作與結論">9–10. 相關工作與結論</h2>
+<p>SEAgent 與模型層防禦的差異是把權限判斷移到可信的執行層；與純隔離的差異則是追蹤跨工具、RAG 與 agent 的資訊流。結果顯示 MAC／ABAC 能以低誤報阻擋受測權限提升，但其保證依賴標記、政策、可信執行基礎與威脅模型是否完整。</p>
+<h2 id="附錄要旨與限制">附錄要旨與限制</h2>
+<p>附錄形式化 SEMemory、使用者隔離、政策語法與標記流程。需要注意：0% ASR 不是一般性的安全證明；MAS 新攻擊只做案例；AWS 工具未啟用政策；靜態標記也無法處理執行期信任變化。arXiv HTML 尚殘留 ACM 範本的 2018、Woodstock 與 placeholder DOI，與 arXiv:2601.11893 的提交時間不一致，故未採用。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

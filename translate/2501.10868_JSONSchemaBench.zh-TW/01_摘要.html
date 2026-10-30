@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2501.10868_JSONSchemaBench.zh-TW.html">回 2501.10868_JSONSchemaBench.zh-TW 目錄</a>　<a href="02_%E6%95%88%E7%8E%87.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>可靠地生成結構化輸出，已成為現代語言模型（language model, LM）應用的關鍵能力。<strong>受約束解碼（constrained decoding）</strong> 已成為各領域強制生成過程輸出結構化格式的主流技術。儘管採用日增，對其行為與效能的系統性評估卻幾乎付之闕如。受約束解碼框架已圍繞 <strong>JSON Schema</strong> 這個結構化資料格式標準化，多數用法在給定 schema 下保證約束合規；但對這些方法在實務中的實際效果，理解仍很貧乏。</p>
+<p>我們提出一個評估框架，沿三個關鍵維度評測受約束解碼方法：生成合規輸出的<strong>效率（efficiency）</strong>、對多樣約束類型的<strong>覆蓋率（coverage）</strong>、以及生成輸出的<strong>品質（quality）</strong>。為此我們引入 <strong>JSONSchemaBench</strong>——一個含 <strong>10K 條真實世界 JSON schema</strong> 的受約束解碼基準，涵蓋各種複雜度不一的約束。我們把它與既有的官方 <strong>JSON Schema Test Suite</strong> 配對，評測六個當前最先進的受約束解碼框架：<strong>Guidance、Outlines、Llamacpp、XGrammar、OpenAI、Gemini</strong>。透過大量實驗，我們釐清了受約束解碼在真實 JSON schema 上做結構化生成的能力與限制，並提供可操作的改進洞見。基準開源於 https://github.com/guidance-ai/jsonschemabench 。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>近年 LM 的快速進展大幅拓寬其應用，從自然語言任務延伸到 web 導航、資料抽取、工具使用等更複雜挑戰。與「輸出供人類審閱」的傳統 NLP 任務不同，這些應用的輸出常被<strong>機器</strong>（控制器、服務 API）消費，因此要求 LM 生成嚴格遵守預定格式與約束的結構化輸出。然而 LM 生成過程本質是機率性的，對輸出結構不提供保證，這使得在「需要結構化輸入與高可靠度」的應用中部署 LM 變得困難。</p>
+<p><strong>受約束解碼</strong>這一方法應運而生：它在 LM 每一步解碼時，依據給定約束與前綴 token <strong>遮罩掉不合法的 token</strong>，引導 LM 只從合法 token 取樣，確保最終輸出完美符合預定結構（見 Algorithm 1：迴圈中反覆 <code>update</code> 約束狀態、<code>mask</code> 出合法 token 集、對 logits 做遮罩後取樣，直到 EOS）。</p>
+<p>對結構化生成的強烈需求，催生了多個受約束解碼框架（本文將 <strong>constrained decoding framework</strong> 與 <strong>grammar engine（文法引擎）</strong> 交替使用）：Guidance、Outlines、XGrammar、以及 llama.cpp 的文法模組。它們提供對不同約束類型的廣泛支援、極小的額外開銷、與各種 LM 生態的相容性。JSON Schema 提供了一種高階、領域專屬的方式來定義 JSON 資料的約束，已成為受約束解碼的關鍵規格語言；OpenAI 等商用 LM 供應商更直接把 JSON Schema 支援整合進 API，凸顯其成為業界標準。</p>
+<p>儘管採用日增，仍有數個問題懸而未決，本文以三問題組織全文：</p>
+<ul>
+<li><strong>Q1 效率</strong>：受約束解碼會拖慢還是加速生成？哪個框架最有效率？</li>
+<li><strong>Q2 覆蓋率</strong>：JSON Schema 規格特性集龐大且持續演進，現有框架對這些特性支援得多好？</li>
+<li><strong>Q3 品質</strong>：受約束解碼雖保證輸出符合結構，會不會反而傷害輸出的語意品質？</li>
+</ul>
+<p>為回答這些問題，需要用<strong>大規模、多樣、真實世界</strong>的使用者自定義結構來研究。我們引入 <strong>JSONSchemaBench</strong>：一個含 10K 條真實 JSON schema 的集合，組織成 10 個複雜度與多樣性各異的資料集，涵蓋函數簽名、服務 API、系統設定等領域。我們在其上評測六個框架，並配對官方 JSON Schema Test Suite 以萃取各框架對 JSON Schema 功能覆蓋的細緻洞見，並進一步結合多個真實任務的端到端準確率評估。</p>
+<p><strong>三項發現</strong>（對應圖 1，Guidance 在三軸上皆勝出）：</p>
+<ol>
+<li>受約束解碼相對無約束解碼<strong>最多可加速 50%</strong>。</li>
+<li>各框架對真實 JSON schema 的<strong>實際支援差異巨大</strong>，最好的框架支援的 schema 數是最差的<strong>兩倍</strong>。</li>
+<li>受約束解碼<strong>一致提升下游任務表現，最多達 4%</strong>，即便是像 GSM8k 這類結構極簡的任務。</li>
+</ol>
+<p><strong>貢獻</strong>三方面：(1) 匯集多來源 JSON schema 組成基準 JSONSchemaBench；(2) 提出細緻的評估框架（declared / empirical coverage 與 compliance rate）衡量框架處理多樣 JSON Schema 特性的通用性；(3) 評測六個框架，揭示其在生成 schema 合規 JSON 上的強弱及對下游任務的影響。</p>
+<h2 id="2-背景與相關工作">2. 背景與相關工作</h2>
+<p><strong>JSON Schema</strong> 是描述 JSON 資料結構的元語言，能表達多種約束（物件屬性型別、陣列長度、字串須符合的 pattern 等）。其語法與能力由 JSON Schema 規格（Wright 等人，Draft 2020-12）定義，含大量 <strong>keyword</strong>，可單用或組合以強制約束。JSON Schema 在軟體生態廣泛使用，前人已收集大量範例（兼顧真實用途與正確性）。</p>
+<p>Baazizi 等人（2021）從公開 GitHub 倉庫收集了逾 6,000 條 JSON schema。官方 <strong>JSON Schema Test Suite</strong> 則是由 JSON Schema 核心團隊維護的人工測試案例集，覆蓋規格定義的大部分功能，原本用來協助 JSON Schema 驗證工具的實作者測試其對規格的合規性，因此對每個 keyword（含邊界情況）都有多樣範例。<strong>Bowtie</strong> 更以此 Test Suite 為基礎，跨程式語言比較不同的 JSON Schema 實作。兩個資料集合起來，既涵蓋 JSON Schema 多樣的特性集，也涵蓋其真實使用。</p>
+<p><strong>受約束解碼</strong>（Deutsch 2019、Shin 2021、Scholak 2021/PICARD、Poesia 2022 等）指在每步遮罩不合約束的 token 以引導 LM 生成的方法。近期出現高度最佳化的文法約束解碼框架（Guidance、LMQL、Outlines、ReLM、SGLang、XGrammar）以提升效率與易用性。然而受約束解碼的評估仍是探索不足的題目，對「何謂受約束解碼的有效性」尚無共識。既有研究雖有拿受約束解碼與無約束 LM 比較者，卻未提供<strong>跨不同框架</strong>的比較；所用基準要嘛只聚焦特定任務，要嘛依賴形式文法的人造設定，與真實用例關聯不明。</p>
+<h2 id="3-jsonschemabench">3. JSONSchemaBench</h2>
+<p>設計目標：(1) 夠<strong>多樣</strong>以涵蓋真實應用中最常見的約束類型；(2) 夠<strong>大</strong>以提供可靠評估；(3) 配備公平、多維的指標以確保全面評估。</p>
+<h3 id="31-資料收集">3.1 資料收集</h3>
+<p>以 Baazizi 等人（2021）從 GitHub 收集的 6K schema 與 JSON Schema Test Suite 為起點，再從 JSON Schema Store、GlaiveAI 函數呼叫資料集 V2、Kubernetes 設定檔等來源補充。我們過濾掉非法 schema，並依各 schema 自身透過 <code>$schema</code> keyword 宣告的 JSON Schema 版本做標準化。</p>
+<p>最終各子集（Table 1，共 9558 條）：GlaiveAI-2K（函數呼叫，1707）、Github-Trivial（444）、Github-Easy（1943）、Snowplow（營運 API，403）、Github-Medium（1976）、Kubernetes（Kubernetes API，1064）、Washington Post（資源存取 API，125）、Github-Hard（1240）、JSONSchemaStore（492）、Github-Ultra（164）。</p>
+<p>GitHub 部分依 schema 大小切成五級：trivial、small、medium、large、ultra。實驗中排除了 Github-Trivial（太易）與 Github-Ultra（太難），但仍保留於基準中，Github-Ultra 作為未來進展的「志向性目標」。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

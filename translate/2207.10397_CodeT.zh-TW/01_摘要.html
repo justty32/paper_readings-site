@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2207.10397_CodeT.zh-TW.html">回 2207.10397_CodeT.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97%E8%A8%AD%E5%AE%9A.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>為給定程式設計問題生成程式碼解，可受益於 Codex 這類能產出多個多樣樣本的預訓練語言模型（pre-trained language model）。然而此任務的一大挑戰是<strong>從模型生成的多個樣本中挑出最合適的解</strong>。評估程式碼解品質與正確性的自然方式是用一組測試案例（test case）去執行它，但人工撰寫測試往往昂貴又耗時。本文提出 <strong>CodeT</strong>：利用<strong>同一個</strong>預訓練模型為程式碼樣本<strong>自動生成測試案例</strong>，降低人力並擴大測試場景覆蓋；接著用生成的測試執行程式碼樣本，並施行<strong>雙重執行一致性（dual execution agreement）</strong>——同時考量「輸出對生成測試的一致性」與「輸出與其他程式碼樣本的一致性」。我們在 HumanEval、MBPP、APPS、CodeContests 四個基準上、用五個不同規模與能力的預訓練模型做了全面實驗：CodeT 顯著超越既有選解方法，且跨模型跨基準增益一致。例如 CodeT 把 HumanEval 上的 pass@1 提升到 <strong>65.8%</strong>，較 code-davinci-002 模型絕對提升 <strong>18.8%</strong>、較先前最先進結果絕對提升 <strong>20% 以上</strong>。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>儘管程式碼生成的預訓練技術進展顯著，<strong>從大模型生成的多個候選中選出單一正確解</strong>仍是難題。例如 Codex（code-cushman-001）在 HumanEval 上 pass@100（100 個解中至少一個通過測試即算對）達 77.4%，但 pass@1（單一解的正確率）僅 33.5%。這一巨大落差限制了程式碼生成模型的實用性，促使我們探索如何從多候選中挑出正確或最佳解。</p>
+<p>驗證解正確性的直接方式是執行它並檢查是否通過所有測試案例——這種<strong>執行導引（execution-guided）<strong>做法已廣泛用於程式碼生成、程式碼翻譯、程式合成等任務。但它嚴重依賴測試案例的質與量，而測試的建立與維護昂貴耗時；且在 Copilot 這類真實應用中，期待使用者為每個問題提供測試並不現實。因此我們提出</strong>為任意程式設計問題自動生成測試案例</strong>，用以快速驗證任何解。</p>
+<p>本文提出 CodeT（<strong>Code</strong> generation with generated <strong>T</strong>est-driven dual execution agreement）：首先利用生成解的同一個預訓練模型（如 Codex），以精心設計的指令作為提示（prompt），為每個問題生成大量測試案例。接著採用受經典 <strong>RANSAC</strong> 演算法（Fischler &amp; Bolles, 1981）啟發的雙重執行一致性方法：把每個生成解在每個生成測試上執行，迭代找出多組「解×測試」配對群。每一群（<strong>共識集，consensus set</strong>）內的解通過相同的測試，表示即使實作不同、功能也相同。我們預期：通過更多測試的解更可能正確；擁有更多相似解（同一共識集內的解）的解更符合問題規格。因此以「組內測試數與解數」對每個共識集評分，從最高分的共識集中挑出最佳解。</p>
+<p>方法簡單高效——<strong>不需任何標註資料或額外排序器（ranker）</strong>——卻表現驚人。我們在五個模型（OpenAI 三個 Codex 模型、InCoder、CodeGen）與四個基準（HumanEval、MBPP、APPS、CodeContests）上評估，zero-shot 設定下 pass@1 全面顯著提升。例如 code-davinci-002 配 CodeT：HumanEval 47.0%→65.8%、MBPP 58.1%→67.7%、APPS Introductory 27.2%→34.6%、CodeContests 0.7%→2.1%；且大幅超越先前最先進方法（HumanEval：42.7%（Inala et al., 2022）→65.8%）。程式碼已開源：github.com/microsoft/CodeT。</p>
+<h2 id="2-方法">2. 方法</h2>
+<p>程式碼生成任務：根據上下文 c（含以註解形式呈現的自然語言問題描述，以及 import 陳述與函數標頭等程式碼片段）生成解 x。我們用預訓練模型 M 基於 c 採樣一組解 X = {x₁,…,x_N}，目標是從 X 中選出最可能正確的最佳解 x̂。CodeT 分兩步：用 M 生成測試案例（§2.1），再依雙重執行一致性選出 x̂（§2.2）。</p>
+<h3 id="21-測試案例生成">2.1 測試案例生成</h3>
+<p>測試案例是「針對 context 中所定義函數的一對輸入與期望輸出」。我們用<strong>生成解的同一個模型 M</strong>，但在 context c 後附加指令 p 作為提示，指明要的是測試而非解。指令 p 含三部分：(1) 一個 <code>pass</code> 陳述作為函數體佔位符，表示不需生成函數本體；(2) 註解「check the correctness of [entry point]」（entry point 為函數名）以澄清生成測試的意圖；(3) 一個起頭的 <code>assert</code> 陳述，指定測試為輸入-輸出對的格式。將 concat(c, p) 餵給 M 採樣得測試集 Y = {y₁,…,y_M}。</p>
+<p>注意：生成解與測試前，我們<strong>移除 context 中所有範例輸入輸出</strong>，以避免把真實測試洩漏給模型，並提高生成測試的多樣性與難度。</p>
+<h3 id="22-雙重執行一致性">2.2 雙重執行一致性</h3>
+<p>「解 x 通過測試 y」指以 y 的輸入執行 x 定義的函數且無錯誤、輸出與 y 的期望輸出相符。若兩個解 xᵢ、xⱼ 能通過 Y 中<strong>完全相同</strong>的測試集合，稱兩者有<strong>功能一致性（functionality agreement）</strong>。方法基於兩個假設：(1) 解與測試是模型對給定問題<strong>獨立隨機採樣</strong>的；(2) <strong>錯誤解往往彼此多樣，兩個錯誤解碰巧功能一致的機率極低</strong>——這與經典 RANSAC（在雜訊資料中穩健尋找共識）的假設相似。迭代程序如下：</p>
+<ul>
+<li>從所有配對 D = {(x,y) | x∈X, y∈Y} 中隨機取一對 (x,y) 並執行。若 x 通過 y，稱該配對為<strong>假設內點（hypothetical inlier）</strong>——它假設性地描述了問題的正確功能；否則為外點（outlier）。</li>
+<li>若 (x,y) 是假設內點，收集 D 中所有與之一致的配對構成<strong>共識集 S</strong>：先找出 x 能通過的所有測試 S_y，再找出「通過的測試集合與 x 完全相同」的所有解 S_x，則 S = {(x,y) | x∈S_x, y∈S_y}。</li>
+<li>共識集評分 <strong>f(S) = |S_x|·|S_y|</strong>（即組內配對數）。直覺：與該假設功能一致的配對越多，此功能越可能正確。</li>
+</ul>
+<p>重複上述程序固定次數，每次產生一個帶分數的共識集。最後從<strong>最高分共識集</strong>中任選一解作為 x̂；若要 k 個解，取分數最高的前 k 個共識集、每組各挑一解。實務上當解的數量不大時可簡化：對每個解跑遍所有測試、按「通過的測試集合」把解分組（同組即同功能），一次得到全部 K 個共識集再評分，不需反覆採樣配對。</p>
+<p>（圖 3 以「回傳一個數的平方」為例：x₁、x₂ 通過 {y₁,y₂,y₃} 構成分數 6 的共識集；x₃ 通過 {y₂,y₃,y₄,y₅} 構成分數 4 的共識集。）</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

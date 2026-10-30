@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《xList-Hate：以檢查清單為基礎的可解釋且可泛化仇恨言論偵測框架》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Adrián Girón, Pablo Miralles, Sergio D&#x27;Antonio, Javier Huertas-Tato, David Camacho (Universidad Politécnica de Madrid)</p><p>日期：2026-02</p><p>arXiv：2602.05874</p><p><a href="https://arxiv.org/abs/2602.05874" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="xlist-hate以檢查清單為基礎的可解釋且可泛化仇恨言論偵測框架重點摘要">《xList-Hate：以檢查清單為基礎的可解釋且可泛化仇恨言論偵測框架》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>xList-Hate</strong>：不用讓 LLM 直接判斷仇恨/非仇恨，而是把仇恨言論拆成<strong>10 個概念層二元檢查問題</strong>（基於法律、平台政策與學術共識），由 LLM 各自獨立回答，產生的 10-bit 診斷向量再交給一個<strong>輕量決策樹</strong>做最終分類——LLM 只負責語意判斷、分類邏輯透明可審計；跨資料集泛化穩定、對標註雜訊具抗性，且隨模型增大與端到端監督微調的差距縮小。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>仇恨言論沒有單一定義——法律框架、平台政策、學術分類各不相同。既有<strong>監督微調法</strong>雖域內強，但跨資料集崩潰（過擬合特定標註慣例與詞彙捷徑）；<strong>零樣本 LLM 直接分類</strong>不一致且不透明；事後可解釋工具（SHAP/LIME）只給 token 級相關性而非概念級推理。核心缺口：缺少一個<strong>模組化、概念級、可追溯決策路徑</strong>的框架，既能適應不同標註標準，又能抵抗標註雜訊。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>十因子檢查清單</strong>（q1-q10）：從法律（聯合國、ECRI）、平台政策（Meta、YouTube、X、Reddit、TikTok）與學術框架交叉歸納出十個最小正交概念因子：(1) 受保護群體鎖定、(2) 貶損/敵意內容、(3) 明確蔑稱、(4) 去人化/妖魔化、(5) 歸咎/代罪羔羊、(6) 鼓吹排斥/歧視、(7) 威脅/傷害願望、(8) 煽動/支持暴力、(9) 說話者背書 vs 引用/諷刺、(10) 目標群體可能感知的傷害。</li>
+<li><strong>獨立 LLM 回答</strong>：每個問題為一次獨立推論（無跨題污染、可平行化），prompt 含問題本身＋引導理由＋少樣本範例＋二元輸出格式（<code>&lt;a&gt;Yes|No&lt;/a&gt;</code>）。最終標籤從未暴露給 LLM，防止捷徑推理。</li>
+<li><strong>log-probability 強制解析</strong>：小模型可能拒答或格式不符→用 token 級 log-probability 在 <code>&lt;a&gt;Yes</code> vs <code>&lt;a&gt;No</code> 間強制二選一（避免系統偏差）。</li>
+<li><strong>決策樹聚合</strong>：10 位元診斷向量交 scikit-learn DecisionTree 學習→每條預測路徑都是 <code>(q3=Yes ∧ q9=Yes ∧ q4=Yes…)</code> 的顯式邏輯合取，完全可解釋。<strong>刻意不用硬編碼聚合規則</strong>——因為不同資料集的標註標準各異，讓樹自適應各資料集的隱含標註邏輯。</li>
+<li><strong>成本特性</strong>：每樣本 10 次 LLM 呼叫（可平行），但<strong>一旦產出診斷向量，後續加新資料只需追加推論＋重訓輕量樹</strong>（無需重訓完整 LLM）；對照端到端微調，大模型（27B）checklist 約 30h vs 微調約 35h——推論一次後維護成本極低。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>checklist 全面勝零樣本直接分類</strong>（Table 5）：8 個 LLM × 5 資料集，3B 以上模型所有資料集皆正增益（最高 +0.197 AUC HateXplain/gemma3-27b vs 零樣本）；小模型（1B）變異性較大。</li>
+<li><strong>域內 vs 跨域</strong>：端到端微調域內 AUC 最高（差距隨模型增大而縮小），但 checklist 的 <strong>Relative AUC（域外/域內）平均 &gt;100%</strong>（多數模型），表示跨域時效能折損比端到端微調小；部分中等/大模型在 HateXplain 與 Stormfront 為訓練集時，<strong>checklist 的 OOD AUC 超越微調</strong>。</li>
+<li><strong>決策樹特徵重要性</strong>（Figure 2）：q4（去人化）、q7（威脅/傷害願望）、q3（明確蔑稱）、q9（說話者背書）、q8（煽動暴力）為跨資料集/跨模型規模/跨模型家族<strong>一致最強判別因子</strong>；q1（受保護鎖定）和 q2（貶損語調）被「語意前提冗餘」解釋——高嚴重性因子（如去人化）已隱含了鎖定與敵意，故分裂時邊際貢獻低。</li>
+<li><strong>模型規模效應</strong>：更大模型對 q3（蔑稱）賦予更高重要性——更大的詞彙覆蓋使其更可靠辨識新興/小眾蔑稱。</li>
+<li><strong>標註雜訊抗性</strong>（Table 9, §6.2）：五個分歧案例展示 checklist 在面對明顯誤標註（如種族蔑稱＋貶損刻板卻標為非仇恨）時不會跟隨雜訊，而是以相同診斷路徑分類；對引用/歌詞（無背書→判非仇恨）與人身攻擊（無群體鎖定→判非仇恨）給出與仇恨言論定義一致的決策，凸顯既有資料集常混淆仇恨言論與一般辱罵。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>推論成本高</strong>：每樣本 10 次 LLM 呼叫（Table 4，gemma3-27b 約 2.7s/sample）——雖可平行仍比單次推論貴；但維護成本（加新資料只需重訓輕量樹）部分抵消。</li>
+<li><strong>部分設定 OOD 絕對效能略輸微調</strong>：尤其在 MHS 為訓練集時，微調的 OOD AUC 整體仍略高（但差距隨模型增大收窄）。</li>
+<li><strong>僅限仇恨言論</strong>：框架適用於任何可拆成語意因子的分類任務，但論文只在仇恨言論評估。</li>
+<li><strong>因子選擇仍帶研究者先驗</strong>：10 個因子雖基於文獻歸納，但不同應用場域可能需要調整因子組合。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>ai_core §3.6「固化引擎」最直接對應</strong>（方向二★）：xList-Hate 示範了「LLM 負責語意判斷→確定性模組負責最終決策」的典範退化解——把 monolithic LLM 分類節點<strong>退化成一組 LLM 回答的 checklists + 一棵決策樹</strong>。一旦對某個領域的因子穩定，決策樹可以直接取代 LLM（不需再呼叫），且每條推理路徑都是顯式邏輯合取。這正是 ai_core 固化引擎的核心命題：<strong>「把 LLM 反覆做的事降格為確定性程式碼/規則」</strong>。此處已做到：10 次 LLM→0 次 LLM（用已產生的樹推理）。</li>
+<li><strong>§3.2 前濾網模式</strong>（對照 Compiled AI 2604.05150 的編譯路線）：xList-Hate 與 Compiled AI 形成兩條互補路徑——Compiled AI 把 workflow 整段<strong>編譯</strong>成 Python；xList-Hate 是把 LLM 呼叫<strong>結構化</strong>為 checklist→tree，保留 LLM 的語意彈性但把分類邏輯確定化。兩者的交集：<strong>「前端 LLM 語意擷取 + 後端確定性決策」分離架構</strong>是 §3.6 固化的通用模板。</li>
+<li><strong>§3.4 抗標註雜訊＝治理面向</strong>：決策樹從不追隨單一誤標註調整——因子空間受概念問題語意約束、以非監督方式回答——這使系統不會過擬合到孤立標註錯誤。對應 ai_core 治理精神：「拒絕為預設」——寧可與雜訊標註不一致，也要守住概念一致性。</li>
+<li><strong>對照方向四「固化價值＝省搜尋」</strong>：xList-Hate 的 10 因子×1024 可能組態揭示了另一種度量——<strong>診斷空間的可枚舉性</strong>就是固化程度的量化：1024 種組合均可被決策樹窮盡，無需 LLM 的機率判斷；這與 SemanticALLI（2601.16286）的「子圖 memoization」、Graph-Memoized Reasoning（2511.15715）的「過去軌跡覆蓋→安全取代」構成「何時 LLM 節點確定性化」的三條判斷準則。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2602.05874_xListHate.zh-TW.html"><code>../translate/2602.05874_xListHate.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

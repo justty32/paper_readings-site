@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>AGEL-Comp 論文全文翻譯（第 7 部分，終） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.26522_AGELComp.zh-TW.html">回 2604.26522_AGELComp.zh-TW 目錄</a>　<a href="02_LLM_%E6%A0%B8%E5%BF%83%E7%BA%8C%EF%BC%9A%E7%9B%AE%E6%A8%99%E8%99%95%E7%90%86%E8%88%87%E8%A6%8F%E5%8A%83.html">← 上一節</a>　<a href="04_%E7%B5%90%E6%9E%9C%E8%88%87%E5%88%86%E6%9E%90%E7%BA%8C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-agel-comp-工作流程與學習機制">4. AGEL-Comp 工作流程與學習機制</h2>
+<p>Agent 的操作循環（詳見演算法 1）在兩個階段之間交替：行動與學習。</p>
+<p>**行動階段（Perceive And Act）**始於 agent 觀察其環境 St。例如，一枚閃亮的硬幣旁邊有一團劈啪作響的火焰。為了達成目標 G（「取回閃亮的硬幣！」），LLM 核心查詢當前世界模型 Wt。若 Wt 中沒有關於火焰危險的規則，LLM 可能提出直接計劃 At（a1: approach(fire); a2: grab(coin)）。NTP 根據 Wt 驗證此計劃為有效。Agent 執行計劃並收到負面反饋（f1: HP 下降，damage=-50HP）。此經驗被捕捉為情節（episodes），記錄在情節記憶 M 中。</p>
+<p>此觀察到的結果構成預測錯誤，因為負面反饋未被當前 Wt 預見。此錯誤觸發<strong>學習階段（Learn From Experience）</strong>。基礎化函數（G），使用因果歸因與抽象歸納的原則性機制，分析情節以理解錯誤原因並修復 agent 的世界模型。它歸納出一組解釋該事件的 Horn 子句（∆W）：</p>
+<ul>
+<li>causes_damage(X) :- is_harmful(X).</li>
+<li>is_harmful(fire).</li>
+</ul>
+<p>此規則集隨後整合到世界模型中（Wt+1 ← Wt ∪ ∆W）。此循環使 agent 透過將符號知識建立於直接經驗中，持續精煉其理解。</p>
+<p><strong>循環閉合</strong>：下一次 agent 規劃時，NTP 將查詢更新後的 Wt+1。涉及 approach(fire) 的計劃現在將由 NTP 評估。NTP 將找到目標 causes_damage(agent) 的證明路徑：is_harmful(fire) 是已知事實，規則 causes_damage(X) :- is_harmful(X) 將其連接到負面結果。由於此證明導致已知的負面結果，NTP 將返回極低的證明成功分數（σ ≈ 0），導致該計劃被拒絕，強制 LLM 生成更安全的替代方案。</p>
+<p>AGEL-Comp 的學習是一個混合過程，具有兩種互補形式。首先，新知識透過向世界模型符號性地添加新的 Horn 子句（∆W）來捕捉。隨後，神經推理器適應（neural reasoner adaptation）發生：當 NTP 與符號嵌入矩陣 E 在此更新的知識庫上被定期微調時。此協同作用使 agent 的演繹能力與其不斷演進的、經經驗驗證的符號世界理解保持緊密一致。</p>
+<h2 id="5-實驗">5. 實驗</h2>
+<p>本研究的核心思想是 AGEL-Comp 架構透過促進原位（in-situ）、有基礎的學習，使 agent 能克服 LLM 固有的組合限制。為驗證此觀點，我們設計了在單一連續運行中測量零樣本泛化（zero-shot generalization）的評估協議，不進行任何離線訓練或微調。實驗不僅對比 baseline，也透過嚴格的消融研究解剖每個組件的貢獻。</p>
+<h3 id="51-實驗假設">5.1 實驗假設</h3>
+<ul>
+<li><strong>H1</strong>：AGEL-Comp 在具有模糊或隨機事件的環境中，將優於標準 LLM-based agent。</li>
+<li><strong>H2</strong>：缺乏 NTP 驗證器或 ILP 學習器的消融版將表現下降：
+<ul>
+<li><strong>H2a</strong>：w/o NTP agent 相比完整系統性能將下降。</li>
+<li><strong>H2b</strong>：w/o ILP agent 在需要新知識的新型任務上將無法泛化。</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="翻譯接續第-6-部分"><em>翻譯接續：第 6 部分</em></h2>
+<h2 id="52-模擬環境--retro-quest">5.2 模擬環境 —— Retro Quest</h2>
+<p>我們開發了 Retro Quest for Compositionality，一款基於 Unity 引擎與 ML-Agents 工具包的 top-down 2D 動作 RPG 遊戲。視覺資產基於 Pixel Frog 的「Tiny Swords」像素藝術包，包含角色、怪物（哥布林）、NPC（農夫）及互動物件（綿羊、南瓜）。Agent 從俯視角感知世界，接收視覺資訊以及附近實體及其狀態的結構化列表。其動作空間包括導航、基本攻擊以及與物件/NPC 的互動（移動、對話、拾取、使用物品）。</p>
+<h2 id="53-模型與配置">5.3 模型與配置</h2>
+<p>四種 agent 配置使用相同底層多模態 LLM 作為核心認知引擎：</p>
+<table>
+<thead>
+<tr>
+<th>配置</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MLLM-Agent（Baseline）</td>
+<td>標準 ReAct 風格 agent，無持久世界模型</td>
+</tr>
+<tr>
+<td>AGEL-Comp（完整系統）</td>
+<td>完整架構：CPG + ILP 學習器 + NTP 驗證器</td>
+</tr>
+<tr>
+<td>AGEL-Comp w/o NTP</td>
+<td>可學習新規則但無驗證器，計劃僅基於 LLM 判斷</td>
+</tr>
+<tr>
+<td>AGEL-Comp w/o ILP</td>
+<td>有驗證器但世界模型為靜態，無法從經驗學習</td>
+</tr>
+</tbody>
+</table>
+<p>四個 LLM 骨幹：GPT-4o、Gemini Pro 2.5、LLaVA 1.6、DeepSeek-VL。每種配置透過 10 任務課程在單一連續 session 中執行，隨機種子使用三次。後期任務明確納入模糊場景以探測穩健的、有基礎的學習。實驗前已在 OSF 預註冊協議：https://osf.io/a6j4c。</p>
+<h2 id="54-評估指標">5.4 評估指標</h2>
+<table>
+<thead>
+<tr>
+<th>指標</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Quest Success Rate (%)</td>
+<td>成功完成任務的比例（含崩潰視為失敗）</td>
+</tr>
+<tr>
+<td>First-Try Success Rate (%)</td>
+<td>零樣本泛化能力，無需試錯產出正確計劃</td>
+</tr>
+<tr>
+<td>Iterations</td>
+<td>完成任務所需總迭代次數</td>
+</tr>
+<tr>
+<td>Sample Efficiency</td>
+<td>達到性能閾值所需的總互動次數</td>
+</tr>
+<tr>
+<td>Adaptation Trials</td>
+<td>失敗後學習正確規則的速度（AGEL-Comp 專屬）</td>
+</tr>
+<tr>
+<td>Rules Learned</td>
+<td>ILP 生成並整合到 CPG 的規則數（AGEL-Comp 專屬）</td>
+</tr>
+</tbody>
+</table>
+<h2 id="55-結果與分析">5.5 結果與分析</h2>
+<p>實驗結果（見表 3 彙總數據及圖 2-5）為我們的主要假設提供了強力支持。AGEL-Comp 架構（H1）顯著優於 MLLM-Agent baseline，且其核心組件（H2）——ILP 學習器與 NTP 驗證器——皆關鍵且具協同作用。</p>
+<h3 id="h1agel-comp-vs-baseline">H1：AGEL-Comp vs. Baseline</h3>
+<p><strong>整體性能</strong>：AGEL-Comp（完整）在四個 LLM 骨幹上皆達 100% 任務成功率。Baseline 表現不僅較低且高度依賴 LLM：GPT-4o 86.67% → Gemini 83.33% → DeepSeek 66.67% → LLaVA-1.6 63.33%。在「困難」（第 4 級）與「非常困難」（第 5 級）任務上，baseline 與 w/o ILP 降至 0%，而 AGEL-Comp 維持 100%。</p>
+<p><strong>零樣本泛化</strong>：AGEL-Comp 的 First-Try Success 平均為 60.0%，baseline 僅 3.3%（差 18 倍）。AGEL-Comp 的混合推理核心——NTP 驗證 LLM 計劃、ILP 學習新規則——使其能在行動前演繹出正確的新穎計劃。</p>
+<p><strong>效率</strong>：使用 Gemini-2.5-Pro 時，AGEL 系統平均僅需 23.27 次樣本，而 baseline 需 159.30——樣本效率改善 6.8 倍。Baseline 花費愈來愈多的迭代次數與時間在後續任務上，而 AGEL-Comp 保持高效率。</p>
+<hr />
+<p><em>翻譯接續：第 7 部分</em></p>
+<h1 id="agel-comp-論文全文翻譯第-7-部分終">AGEL-Comp 論文全文翻譯（第 7 部分，終）</h1>
+<hr />
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

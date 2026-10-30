@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2310.10501_NeMo_Guardrails.zh-TW.html">回 2310.10501_NeMo_Guardrails.zh-TW 目錄</a>　<a href="02_NeMo_Guardrails.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>NeMo Guardrails 是一套開源工具箱，可輕易為以 LLM 為基礎的對話系統加上可程式化的護欄（guardrails，簡稱 rails）。護欄是一種控制 LLM 輸出的特定方式，例如不談論被認為有害的話題、遵循預先定義的對話路徑、使用特定語言風格等。目前已有多種機制可讓 LLM 供應商與開發者在<strong>訓練期</strong>把護欄嵌入特定模型，例如透過模型對齊（model alignment）。與此不同，NeMo Guardrails 借用受對話管理（dialogue management）啟發的執行期（runtime），讓開發者可以為 LLM 應用加上<strong>可程式化</strong>的護欄——這些護欄是使用者自訂的、獨立於底層 LLM、且可解讀的。初步結果顯示，此方法可搭配多家 LLM 供應商，用以開發可控且安全的 LLM 應用。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>可操控性（steerability）與可信任性（trustworthiness）是將大型語言模型（LLM）部署到生產環境的關鍵因素。讓這些模型在多輪對話中保持在正軌上，是開發任務導向對話系統的必要條件。這是個嚴峻的挑戰，因為 LLM 很容易被誘導偏題（Pang et al. 2023）。同時，LLM 也傾向生成事實錯誤或完全捏造的內容（幻覺，hallucinations）（Manakul et al. 2023；Peng et al. 2023；Azaria and Mitchell 2023）。此外，它們也容易受到提示注入（或稱越獄）攻擊，惡意行為者可操縱輸入誘使模型產出有害輸出（Kang et al. 2023；Wei et al. 2023；Zou et al. 2023）。</p>
+<p>打造值得信任、可控的對話系統，對於將 LLM 部署到面向客戶的場景至關重要。NeMo Guardrails 是一套開源工具箱，可輕鬆為以 LLM 為基礎的應用加上可程式化的護欄。護欄（或稱 rails）提供一種機制，讓 LLM 的輸出遵守人類設下的限制，例如不涉入有害話題、遵循預定的對話路徑、對特定使用者請求加上特定回應、使用特定語言風格、抽取結構化資料。要實作各種類型的護欄，可使用多種技術，包括訓練期的模型對齊、提示工程與思維鏈（chain-of-thought, CoT）、以及加入對話管理器。</p>
+<p>模型對齊在 LLM 訓練期提供內嵌於模型的通用護欄，提示調校（prompt tuning）則可在客製化模型中提供使用者專屬的內嵌護欄；不同於這兩者，NeMo Guardrails 讓使用者可以在<strong>執行期</strong>定義自訂的可程式化護欄（如圖 1 所示）。此機制獨立於對齊策略之外，補充內嵌護欄的不足，可搭配不同的 LLM 運作，並提供以自訂建模語言 <strong>Colang</strong> 定義、可解讀的護欄。</p>
+<p>（圖 1：可程式化護欄 vs. 內嵌護欄的示意——內嵌護欄在訓練期固化進模型；可程式化護欄則由開發者在執行期以 Colang 定義，位於 LLM 之外、可隨時調整。）</p>
+<p>為了替 LLM 實作使用者自訂的可程式化護欄，本工具箱使用一個可程式化的執行期引擎，扮演使用者與 LLM 之間的<strong>代理（proxy）</strong>。此方法與模型對齊互補，用以定義 LLM 在與使用者互動時應遵循的規則。因此，Guardrails runtime 的角色相當於對話管理器（dialogue manager），能夠解讀並強制執行定義可程式化護欄的規則。這些規則以一種稱為 <strong>Colang</strong> 的建模語言表達。</p>
+<p>具體來說，Colang 用來把規則定義為 LLM 應始終遵循的<strong>對話流程（dialogue flows）</strong>（見圖 2）。透過結合上下文學習（in-context learning）的提示技巧與一種特定形式的 CoT，我們讓 LLM 能夠生成引導對話走向的下一步。Colang 接著由對話管理器解讀，套用使用者預先定義的、或由 LLM 自動生成的護欄規則，藉此引導 LLM 的行為。</p>
+<p>（圖 2：以 Colang 定義的對話流程——一個簡單的打招呼流程，以及兩個呼叫自訂動作 <code>wolfram alpha request</code> 來回應數學與距離查詢的主題護欄流程。）</p>
+<p>雖然 NeMo Guardrails 可用於為任何 LLM 應用加上安全性與可操控性，我們認為由 LLM 驅動的對話系統最能受益於 Colang 與 Guardrails runtime。本工具箱以 Apache 2.0 授權釋出，並提供對數個 LLM 供應商的初步支援，連同起始範例應用與評測工具。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<h3 id="21-模型對齊">2.1 模型對齊</h3>
+<p>現有為 LLM 加上護欄的解法，大量仰賴模型對齊技術，如指令微調（Wei et al. 2021）或強化學習（Ouyang et al. 2022；Glaese et al. 2022；OpenAI 2023）。LLM 的對齊在多個維度上運作，主要是提升有幫助性（helpfulness）並降低有害性（harmfulness）。廣義的對齊——包括紅隊測試（red-teaming, Perez et al. 2022）——需要大量人工依特定準則（例如無害性）標註的輸入提示與回應。</p>
+<p>模型對齊提供的是訓練期嵌入 LLM 中的護欄，使用者難以在執行期輕易變動；此外它也需要為每一項要納入 LLM 的護欄準備大量人工標註的回應評分。雖然「基於人類回饋的強化學習」（RLHF, Ouyang et al. 2022）是最流行的模型對齊方法，也有替代方案如「基於 AI 回饋的強化學習」（Bai et al. 2022b），不需要人工標註資料集，而是用 LLM 本身來為每個回應提供回饋。</p>
+<p>大多數對齊方法提供的是通用的內嵌護欄；與此類似，開發者也可透過提示調校（prompt tuning, Lester et al. 2021；Liu et al. 2022）為 LLM 加上應用專屬的內嵌護欄。</p>
+<h3 id="22-提示與思維鏈">2.2 提示與思維鏈</h3>
+<p>為 LLM 加上使用者自訂的可程式化護欄，最常見的做法是使用提示——包括提示工程與上下文學習（Brown et al. 2020）——在使用者輸入前後附加特定文字（Wang and Chang 2022；Si et al. 2022）。這段文字指定 LLM 應遵循的行為。</p>
+<p>另一種提供使用者自訂執行期護欄的方法是思維鏈（CoT, Wei et al. 2022）。最簡單的形式是在使用者指令後附加一或多個該任務的輸入輸出範例，每個範例的輸出中含有較詳細的說明，有助於推導最終答案。更複雜的方法涉及以由泛到specific 的方式進行多步提示（Zhou et al. 2022），或甚至用不同角色構成整段對話，類似內心獨白（Huang et al. 2022）。</p>
+<h3 id="23-任務導向對話智能體">2.3 任務導向對話智能體</h3>
+<p>建立任務導向對話智能體通常需要兩個元件：自然語言理解（NLU）與對話管理（DM）引擎（Bocklisch et al. 2017；Liu et al. 2021）。NLU 與 DM 都有各式各樣的工具與解法，從開源方案如 Rasa（Bocklisch et al. 2017），到 Microsoft LUIS、Google DialogFlow 等專有平台（Liu et al. 2021）。其功能大致遵循兩步驟：先由 NLU 從使用者訊息中抽取意圖與槽位，再由 DM 依當前對話脈絡預測下一個對話狀態。</p>
+<p>意圖與對話狀態的集合是有限且由對話設計者預先定義的。機器人的回應也是依對話狀態從一個封閉集合中選出。這種方式能定義出緊密控制整個對話智能體的特定對話流程，但相對地也使智能體較僵化，需要大量人力設計與更新 NLU 及對話流程。</p>
+<p>另一極端則是近期的端到端（E2E）生成式方法，用 LLM 同時做對話追蹤與機器人訊息生成（Hudeček and Dušek 2023；Zhang et al. 2023）。NeMo Guardrails 也採用 E2E 方式打造由 LLM 驅動的對話智能體，但它結合了一個類似 DM 的 runtime——能解讀並維護以 Colang 撰寫的對話流程狀態——與一個以 CoT 為基礎、用 LLM 生成機器人訊息、甚至生成新對話流程的方法。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

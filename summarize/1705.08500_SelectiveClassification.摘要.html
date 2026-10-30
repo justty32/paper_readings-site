@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《深度神經網路的選擇性分類（Selective Classification for Deep Neural Networks）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yonatan Geifman, Ran El-Yaniv（Technion）</p><p>日期：2017-05</p><p>arXiv：1705.08500</p><p><a href="https://arxiv.org/abs/1705.08500" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="深度神經網路的選擇性分類selective-classification重點摘要">《深度神經網路的選擇性分類（Selective Classification）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>首度把 selective classification（選擇性分類／reject option）帶進 DNN</strong>：給定已訓練好的分類器 f，用 SGR 演算法（二分搜尋閾值＋最緊數值泛化界＋union bound）學出拒絕函數 g，讓使用者直接指定期望風險 r* 與信心 δ——<em><em>測試風險以 ≥1−δ 機率保證不超過 r</em>，不夠有把握就輸出「不知道」</em>*，覆蓋率則盡量最大化；如 ImageNet top-5 以 99.9% 機率保證 2% 錯誤率、仍覆蓋近 60%。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>DNN 有時會錯，但任務關鍵應用（自駕、醫療、金融）需要「知道自己不知道」——存疑時棄權、可靠時才輸出。</li>
+<li>既有 NN 拒絕機制走 <strong>cost-based rejection</strong>（須先量化誤分類／棄權成本），但許多應用中有意義的成本難以構想；本文改採<strong>風險—覆蓋率（risk-coverage）觀點</strong>：直接指定可容忍風險上限，換取最大覆蓋率。</li>
+<li>Reject option 文獻 60 年來多針對 SVM／boosting／最近鄰，此前從未針對深度神經網路；ensemble 式信心估計在 DNN 上訓練成本過高。</li>
+</ul>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>選擇性分類器 (f, g)</strong>：g(x)=1 才輸出 f(x)，否則答「don&#x27;t know」；表現由<strong>覆蓋率</strong> φ = E[g(x)] 與<strong>選擇性風險</strong> R(f,g) = E[ℓ·g]/φ 刻畫，兩者構成 risk-coverage curve 上的權衡。</li>
+<li><strong>信心評級函數 κ_f</strong>（只需能排序，不需是機率）：(1) **softmax response（SR）**＝softmax 最大響應值；(2) <strong>MC-dropout</strong>＝多次帶 dropout 前向傳播下最可能類別響應之變異數取負。</li>
+<li><strong>SGR 演算法</strong>：按 κ_f 排序訓練樣本，對閾值做 ⌈log₂m⌉ 步二分搜尋；每步用 <strong>Gascuel–Caraux (1992) 最緊數值界</strong>（解二項尾方程，比 Hoeffding 緊）算選擇性風險上界 b*，配 δ/⌈log₂m⌉ 的 union bound；Theorem 3.2 證明整體以 ≥1−δ 保證真實選擇性風險 ≤ b*。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>CIFAR-10</strong>（VGG-16，δ=0.001）：保證 1% 錯誤率仍覆蓋 78.6%；界 b* 極貼近目標 r*，測試風險從未違反界。</li>
+<li><strong>CIFAR-100</strong>：67% 覆蓋率下即超越當時最佳全覆蓋結果（wide ResNet 18.85% 錯誤率）。</li>
+<li><strong>ImageNet</strong>（VGG-16 與 ResNet-50）：ResNet-50 top-5 在 r*=2% 時測試覆蓋率 59.4%（即「99.9% 機率保證 2% 錯誤、近 60% 覆蓋」）；r*=5% 時覆蓋 88.5%。</li>
+<li><strong>SR vs MC-dropout</strong>：CIFAR 上兩者幾乎相同；ImageNet 上 SR 顯著更優（top-1、60% 覆蓋率：SR 10% 錯誤 vs MC-dropout &gt;20%）——<strong>最簡單的信心函數反而最強</strong>。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>f 是事後給定的，κ_f 未與 f 聯合訓練；作者自認最難的開放問題是<strong>同時訓練 f 與 g</strong>（後續 SelectiveNet 等工作的起點）。</li>
+<li>保證依賴校準集與部署分布 i.i.d.；κ_f 若嚴重偏斜，所得界可能遠離目標風險（定理仍成立但覆蓋率差）。</li>
+<li>只處理 0/1 損失的分類；迴歸、其他損失、偽陽／偽陰率的完全控制皆留待未來。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>ai_core §3.4「拒絕為預設＋憑證准入」的理論原型</strong>：本文把治理直覺形式化成可證明的機制——輸出的預設狀態是「don&#x27;t know」，唯有信心 κ_f 過閾值 θ（一種「憑證」）才准入輸出，且閾值不是拍腦袋定的，而是由（r*, δ）反推、帶統計保證。ai_core 的「穩定度 % 門檻」可直接借用此框架：門檻＝在校準集上跑 SGR 式程序求出的 θ，而非手調魔數。</li>
+<li><strong>risk-coverage 權衡是「LLM 呼叫包成可靠函數」的正確詞彙</strong>（§北極星）：一個可靠函數不必然全域可靠——它可以是「在 φ% 的輸入上保證錯誤率 ≤ r*，其餘拒絕並升級」。這給了 §3.3 成本梯度／級聯路由的接口語義：便宜節點先答，κ 不過閾值才升級到貴模型，正是 FrugalGPT 級聯評分函式的統計嚴謹版前身。</li>
+<li><strong>SR 的教訓</strong>：最廉價的信心訊號（softmax 最大值／LLM 的 logprob 或自評分）只要<strong>排序連貫</strong>就夠用，不需是校準機率——對固化引擎（§3.6）判斷「哪些案例已穩定到可結晶成確定性程式碼」同樣適用：要的是可靠排序＋帶保證的閾值，不是完美的不確定性估計。</li>
+<li>定位：<strong>方法＋理論保證＋實證</strong>的奠基論文（NeurIPS 2017），是後續 selective prediction／conformal prediction 應用於深度模型這條線的起點。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/1705.08500_SelectiveClassification.zh-TW.html"><code>../translate/1705.08500_SelectiveClassification.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

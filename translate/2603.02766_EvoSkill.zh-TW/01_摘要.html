@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.02766_EvoSkill.zh-TW.html">回 2603.02766_EvoSkill.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>編碼代理（coding agents）日益被用作通用解題器，但其靈活性本身並不賦予專業任務所需的領域專長。近期工作透過<strong>代理技能（agent skills）</strong>——可復用的工作流程與程式碼，為代理增強領域特定能力——來解決此問題。目前大多數技能是手工製作的，而現有的演化方法最佳化的是與特定模型和任務緊密耦合的低層 artifact（如 prompt 與程式碼）。本文提出 <strong>EvoSkill</strong>，一個透過迭代失敗分析自動發現與精煉代理技能的自我演化框架。EvoSkill 分析執行失敗、提議新技能或編輯既有技能，並將其具體化為結構化、可復用的技能資料夾。一個代理程式的 <strong>Pareto frontier</strong> 控制選擇，只保留在保留驗證集上提升效能的技能，而底層模型保持凍結。在兩個基準上評估 EvoSkill：OfficeQA（美國財政部資料的接地推理基準），exact-match 準確率提升 7.3%（60.6%→67.9%）;SealQA（含噪音檢索的搜尋增強 QA 基準），提升 12.1%（26.6%→38.7%）。本文也探討了技能 zero-shot 遷移能力：在 SealQA 上演化出的技能 zero-shot 遷移到 BrowseComp，準確率提升 5.3%，無需任何修改，證明技能級別最佳化產生的能力可超越訓練任務進行遷移。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>編碼代理（如 Claude Code、OpenHands、Codex）已成為跨領域解題的主導範式，此趨勢由程式碼作為靈活中間表示的使用所驅動。然而，此靈活性本身並不賦予領域專長。</p>
+<p>為彌補此差距，近期工作探索了<strong>代理技能</strong>：為通用編碼代理增強結構化工作流程、指令與輔助程式碼的可復用領域特定能力。目前多數技能以臨時方式手工製作，需要領域知識與大量人工投入——此過程隨著目標任務數增長而難以規模化。</p>
+<p>演化方法如 AlphaEvolve 與 GEPA 提供了有前景的替代方案，但這些方法在 <strong>artifact 層級</strong>操作：最佳化的 prompt 或程式碼與特定模型和任務配置緊密耦合，不自然產生可跨設定復用的組件。</p>
+<p>本文提出 <strong>EvoSkill</strong>，一個在更高抽象層級操作的自我演化框架：EvoSkill 透過<strong>失敗驅動的文字回饋</strong>迭代發現與精煉代理技能，而非直接最佳化 prompt 或程式碼。EvoSkill 維護一個代理程式的 Pareto frontier，每次迭代分析執行失敗以提議新建或精煉技能。提議的技能被具體化為結構化、可復用的技能資料夾（包含指令、觸發元資料與輔助腳本），僅在提升保留驗證集效能時才保留。技能隨迭代累積，在模型凍結下逐步擴展代理能力。</p>
+<p>貢獻：</p>
+<ol>
+<li>提出 EvoSkill，一個在<strong>技能抽象層級</strong>操作的框架，透過迭代失敗分析自動發現與精煉可復用代理技能</li>
+<li>在兩個不同基準上展示顯著提升：OfficeQA +7.3%、SealQA +12.1%，僅使用少量訓練子集</li>
+<li>證明技能可 zero-shot 遷移到未見任務（SealQA→BrowseComp +5.3%），展示技能級別最佳化產出可遷移能力</li>
+</ol>
+<h2 id="2-方法論">2. 方法論</h2>
+<p>EvoSkill 的核心思路是：對當前代理失敗的範例應用 <strong>textual feedback descent</strong>，迭代發現與精煉代理技能。EvoSkill 假設一個支援技能資料夾的編碼代理 harness（如 Claude Code、Codex、OpenCode）與一個能使用此類技能的模型。底層模型全程凍結；僅技能庫與代理元資料隨迭代演化。</p>
+<h3 id="21-框架概述">2.1 框架概述</h3>
+<p>EvoSkill 由三個協作代理組成：</p>
+<ol>
+<li><strong>Executor 代理（A）</strong>：在當前代理程式治理下執行任務。基礎程式初始以無技能狀態啟動 Executor。</li>
+<li><strong>Proposer 代理（P）</strong>：分析 Executor 的輸出軌跡、預測答案與真實答案，診斷失敗並提議高層技能描述。真實答案用於進行根本原因診斷（類似監督學習中檢查標記錯誤分類），但<strong>不傳播</strong>到生成的技能本身。Proposer 決定是新建技能還是編輯既有技能。</li>
+<li><strong>Skill-Builder 代理（S）</strong>：將 Proposer 的高層提議具體化為包含觸發元資料、程序性指令（SKILL.md）與選用輔助腳本（Python/TypeScript）的技能資料夾。Skill-Builder 以一個編纂技能編寫最佳實踐的 <strong>meta-skill</strong> 引導。</li>
+</ol>
+<p>所有代理對基礎代理的倉庫有讀取權限；僅 Skill-Builder 對技能目錄有寫入權限。Proposer 額外維護一個累積的回饋歷史 H，記錄所有先前提案、其結果與分數變化，防止重複提案並讓 Proposer 的上下文隨迭代逐步豐富。</p>
+<h3 id="22-evoskill-迴圈">2.2 EvoSkill 迴圈</h3>
+<p>EvoSkill 透過由文字回饋引導的迭代技能突變來最佳化代理程式（Algorithm 1）。一個程式 p 封裝代理的系統提示與累積技能。迴圈維護一個固定容量 k 的最高分程式 frontier G。</p>
+<p>每次迭代 t：從 G 中以 round-robin 循環選擇父程式 p，確保每個 frontier 成員在被重訪前都被探索。父程式在不重複取樣的訓練批次上評估。回應以任務特定評分函數對照真實答案評分。低於固定門檻的樣本收集為失敗集 F；若無失敗則跳過迭代。</p>
+<p>Proposer P 接收 F 與回饋歷史 H，執行結構化失敗分析：回顧執行軌跡、識別能力缺口、審計既有技能，產出文字提案 π（指定新建技能或編輯既有技能）。</p>
+<p>Skill-Builder S 接收父程式 p 與提案 π，將提案具體化為候選程式 p̃（父配置加上新增或修訂的技能）。候選在保留驗證集 V 上以相同評分函數評估。若候選分數超過 frontier 最弱成員則加入並取代之；否則丟棄。無論結果，提案、分數與選擇判決都追加到 H。</p>
+<p>T 次迭代後，迴圈回傳 G 中最高分程式。</p>
+<h3 id="23-實作細節">2.3 實作細節</h3>
+<p><strong>資料設置</strong>：給定監督資料集 D = {(xi, yi)} 與評分函數，先用 LLM 作為分類器將資料集聚類為 K 類別，再進行分層分割為訓練集（演化中失敗檢測）、驗證集（frontier 選擇）與保留測試集（最終評估，演化中不可見）。分割比可配置。</p>
+<p><strong>環境設置</strong>：EvoSkill 在 git 倉庫中運作，每個代理程式表示為一個分支，僅在技能資料夾與元資料上與父分支分歧。此設計確保程式間效能差異僅歸因於演化出的技能，同時保持分支輕量。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2006.01862_Consistent_Estimators_L2D.%E6%91%98%E8%A6%81.html">回 2006.01862_Consistent_Estimators_L2D.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p>把「委派給下游專家」正式化成分類器的<strong>第 K+1 個類別 ⊥</strong>，透過化約為代價敏感學習（cost-sensitive learning），推導出一個凸、**Bayes 一致（consistent）**的代理損失 L_CE，同時聯合學出分類器 h 與拒絕器 r——解決了 Ni et al. (2019) 提出「多類別拒絕學習找不到一致代理損失」的公開問題；CIFAR-10/100、CIFAR10H、仇恨言論偵測、CheXpert 胸腔 X 光等實驗顯示，系統準確率與樣本複雜度均優於既有的信心分數（confidence score）基線。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>機器學習系統愈來愈常與下游專家（人類判官、放射科醫師、內容審核員）協同運作，但設計時多半忽略這個事實。本文只假設能取得<strong>專家決策的樣本</strong>（不知道專家用了什麼額外側面資訊 Z），要學一個預測器：對每個樣本要嘛自己預測、要嘛委派給專家。既有做法各有缺陷：(1) 傳統 rejection learning 假設委派代價恆定，等於只看分類器自身信心，不管專家在哪些區域強、哪些區域弱；(2) 前作 Learning to Defer（Madras et al. 2018／<a class="paper-reference" href="../1711.06664_LearningToDefer.%E6%91%98%E8%A6%81.html">1711.06664</a>）的混合專家損失（mixture-of-experts loss）<strong>不一致</strong>，且需要專家不確定性的估計；(3) 信心分數法（Confidence Score，Raghu et al. 2019）分別訓練分類器與「專家是否會答對」的模型再比大小，雖各自一致，但<strong>分類器無法據此調整去適應專家的強弱項</strong>；(4) Ni et al. (2019) 想把 Cortes et al. (2016) 的二元一致代理損失延伸到多類別但失敗了，只能退回信心式啟發法。本文正是要補上這個一致代理損失的缺口。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>問題化約</strong>：把委派視為代價敏感學習，標籤空間擴增為 [K+1]，第 K+1 個「類別」代表委派給專家，其代價即為專家犯錯的機率。</li>
+<li><strong>一致代理損失 L_CE</strong>（式 7）：對一般代價敏感版本先給出一個一致代理（命題 1），再特化到 0-1 系統損失，證明 L_CE <strong>凸、上界 0-1 系統損失、且 Bayes 一致</strong>（定理 1）——只需在既有網路架構上加一個輸出單元、換損失函式，幾乎不增加計算成本。</li>
+<li><strong>Bayes 最優解</strong>（命題 2）：h_B(x)=argmax_y η_y(x)；<strong>r_B(x)=1[max_y η_y(x) ≤ P(Y=M|X=x)]</strong>——白話講就是「只有當專家在這一例答對的機率高於分類器自己答對的機率時，才委派」。這是本文一致性判準的核心直覺。</li>
+<li>引入超參數 α 調整「專家答對的樣本」的權重，可鼓勵或抑制委派行為，訓練時當作驗證集上的超參數搜尋。</li>
+<li><strong>理論分析（§5）</strong>：(a) 用兩個子群的玩具範例證明信心分數法（分開訓練兩個網路）無法讓分類器聚焦到自己該負責的子群；(b) 證明混合專家損失（前作延伸到多類別後）<strong>只是「可實現（H,R）一致」而非分類一致</strong>，實務上會學到「永不委派」；(c) 給出聯合學習分類器與拒絕器的泛化界（定理 2），顯示委派比單純拒絕學習更耗樣本。</li>
+<li>與前先前 binary rejection learning 代理損失（Cortes et al. 2016）的關係：附錄中將其延伸到本文設定並比較。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>合成高斯混合玩具實驗：L_CE（α=0）優於信心分數基線 6.39 個百分點系統準確率，逼近 oracle（+0.22）。</li>
+<li><strong>CIFAR-10</strong>（合成專家、能力隨可完美預測的類別數 k 變化）：系統準確率平均優於信心分數基線 1.01%、優於 LearnedOracle 1.94%；樣本複雜度上，訓練集僅 2000 筆時 L_CE 達 70.12% vs 信心分數基線 62.33%（+7.89 點）；混合專家損失基線在此設定下學到「永不委派」。</li>
+<li><strong>CIFAR-100</strong>：k 介於 30–90 時平均優於信心分數基線 1.60%。</li>
+<li><strong>CIFAR10H</strong>（僅部分資料有專家標註，其餘用「專家是否出錯」的二元模型插補）：系統準確率 96.29% vs 信心分數基線 95.09%（+1.2）；委派後留給分類器的子集準確率 99.2% vs 96.09%（+3.1）。</li>
+<li><strong>仇恨言論偵測</strong>（依 AAE 方言呈現不同錯誤率的合成專家）：與信心分數、oracle 表現相近，但意外揭露「公平不可組合」——公平專家（歧視度 0.03）搭配信心分數基線後，系統歧視度反而從分類器單獨的 0.226 翻倍到 0.449。</li>
+<li><strong>CheXpert 胸腔 X 光</strong>（5 個任務、依「是否有支持裝置」模擬側面資訊的合成專家、以覆蓋率 c% 為限制）：在整個覆蓋率範圍全面優於信心分數與 ModelConfidence 基線的 AU-ROC/AU-PR，5 個任務最大 AU-ROC 差距 0.016–0.043；樣本複雜度與輸入雜訊穩健性同樣占優。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>定理 2 的泛化界僅針對<strong>二元目標</strong>推導，未涵蓋多類別情形。</li>
+<li>一致性只保證在<strong>無限函數空間</strong>下收斂到 Bayes 最優；作者自己（§5.2）也指出，在受限的假設空間 H、R 下，一致性不必然直接轉譯成好表現——樣本複雜度優勢是額外的實證論證，不是定理保證的延伸。</li>
+<li>訓練仍需<strong>逐樣本</strong>取得專家的實際決策（或委派代價的實現值）；CIFAR10H 實驗示範了半監督插補可部分緩解但非免費解法。</li>
+<li>只處理<strong>單一固定專家</strong>；作者在結論中明列「有限專家資料、學習自帶偏誤的專家資料、同時委派多位專家」為未來工作，本文未涵蓋。</li>
+<li>原文未提供推論延遲或訓練時間的量化基準比較，只定性宣稱「幾乎零額外計算成本」；這點原文沒有具體數字，故本摘要不予杜撰。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

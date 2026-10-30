@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《經驗證的工具呼叫改善非原子失敗下的 LLM Agent 可靠性》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Isham Kalappurackal Mansoor, Abhishek Phadke, Pratip Rana（Old Dominion University / Christopher Newport University）</p><p>日期：2026-08，Agent 工具可靠性 × verify-before-retry</p><p>arXiv：2608.02645</p><p><a href="https://arxiv.org/abs/2608.02645" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="經驗證的工具呼叫改善非原子失敗下的-llm-agent-可靠性重點摘要">《經驗證的工具呼叫改善非原子失敗下的 LLM Agent 可靠性》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>工具回 timeout，不代表副作用沒有發生。本文在 agent 與工具之間加一層 wrapper：遇到模糊結果先用唯讀 postcondition verifier 查真實世界狀態，只有確認尚未完成才重試，且重試沿用 idempotency key；在兩個模擬工作流、300 次主實驗中，高故障下把重複副作用從 72%／76% 降到 20%／20%，但證據只來自手工 verifier 與受控模擬器。</p>
+<h2 id="問題回應通道不等於效果通道">問題：回應通道不等於效果通道</h2>
+<p>典型 agent 把工具回應 <code>r</code> 當成世界狀態由 <code>S</code> 轉為 <code>S'</code> 的忠實描述。真實分散式系統卻把兩條通道分開：請求可能已在伺服器生效，確認回應仍可能遺失、延遲或過時。盲目 retry 會把「未知」錯當「未執行」。</p>
+<p>論文整理四種非原子故障：</p>
+<ul>
+<li><strong>timeout-after-dispatch</strong>：動作已開始或完成，回應在途中逾時。</li>
+<li><strong>delayed visibility</strong>：寫入成功，立即讀取仍看到舊 replica。</li>
+<li><strong>partial success</strong>：複合操作只完成部分，但 API 可能仍回 200。</li>
+<li><strong>stale conflict</strong>：agent 依舊狀態發出的合法動作，因其他寫入而衝突。</li>
+</ul>
+<h2 id="verified-tool-wrapper">Verified Tool Wrapper</h2>
+<ul>
+<li>每個動作有完整 postcondition <code>C(S')</code>，不是只檢查物件存在。例如 invoice 必須存在、invoice ID 與 amount 都正確。</li>
+<li>verifier 回 <code>True / False / Unknown</code>。<code>Unknown</code> 專門保留給 eventual consistency 等暫時無法判定狀態。</li>
+<li>模糊回應後先 backoff 再驗證：True 就視為成功並停止；Unknown 繼續等；False 才允許重試。</li>
+<li>每個邏輯操作產生 deterministic idempotency key：<code>hash(agent_id, action_type, payload, timestamp_bucket)</code>；同一操作所有嘗試沿用同 key。</li>
+<li>verifier 必須唯讀，才能安全重複執行。底層 API 不支援 idempotency 時，驗證只能提供 best-effort，仍有 race window。</li>
+</ul>
+<h2 id="實驗">實驗</h2>
+<ul>
+<li><code>activate_customer</code>：建立客戶、設 ACTIVE、只送一則 welcome message，重複訊息即違反正確性。</li>
+<li><code>record_invoice</code>：更新 invoice row、建立對應紀錄、設 RECORDED，測試 partial write。</li>
+<li>agent 為 Gemini Flash-Lite、temperature 0、最多 1024 tokens，以 LangGraph 實作 ReAct loop。每個邏輯操作最多重試 1 次。</li>
+<li>三級故障率依 timeout／delayed visibility／partial success／conflict 設定：低為 5%／5%／3%／2%，中為 20%／15%／10%／5%，高為 35%／25%／15%／10%。</li>
+<li>2 tasks × 3 fault levels × 2 methods × 25 episodes，共 300 runs；不同方法共用 seed sequence。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><code>activate_customer</code>：wrapper 三級皆 100% 成功；baseline 由低故障 92% 降到高故障 64%。高故障提升 36 個百分點。</li>
+<li><code>record_invoice</code>：baseline 成功率為 100%／96%／96%，wrapper 為 100%／96%／100%。成功率原本已高，主要收益在安全路徑。</li>
+<li><code>activate_customer</code> 重複副作用：baseline 20%／44%／72%，wrapper 0%／16%／20%。</li>
+<li><code>record_invoice</code> 重複副作用：baseline 32%／52%／76%，wrapper 0%／16%／20%。</li>
+<li>獨立 ablation 的中故障設定不可與主實驗絕對值比較：baseline 約 58% success、42% duplicate；verify-only 約 80%／20%；full verify-before-retry 約 72%／28%。此輪反而 verify-only 較好，說明 retry 會重新暴露於故障，驗證才是主要收益來源。</li>
+</ul>
+<h2 id="對-agent-錯誤管理的價值">對 Agent 錯誤管理的價值</h2>
+<p>最重要的控制原則是把 <code>failure</code> 拆成 definitive failure 與 ambiguous outcome。前者可停止或補償，後者必須先查世界狀態，不能直接重試。這也表示工具介面除了 action，還應提供 operation ID、status endpoint、read-only verifier、idempotency semantics 與可觀測 postcondition。可靠性不應交給 LLM 自己「反思」，而應固化在 execution layer。</p>
+<h2 id="局限與原文問題">局限與原文問題</h2>
+<ul>
+<li>只有兩個合成工作流、每格 25 runs，尚未測真實 API 的 rate limit、認證失敗、跨服務交易與長時間延遲。</li>
+<li>postcondition 由人手寫；若 verifier 不完整、過嚴或讀到 stale state，wrapper 仍會誤判。</li>
+<li>baseline 被 prompt 明確要求失敗後直接 retry 且不帶 key，偏向刻意脆弱；缺少「只加 idempotency」、「polling」、「status endpoint」等強基線。</li>
+<li>只報成功與 duplicate；未完整報驗證呼叫、延遲、token、retry 次數、false success 與人工接管成本。</li>
+<li>演算法對 <code>Unknown</code> 只 <code>continue</code>，受限於 <code>N=1</code> 時可能直接耗盡迴圈，文字所稱「wait and recheck」與偽碼細節不完全清楚。</li>
+<li>任務文字要求客戶狀態 <code>ACTIVE</code>，形式化 postcondition 卻寫成字串 <code>&quot;activate&quot;</code>，是原文內部不一致；本文摘要以任務語意為準並保留此警告。</li>
+</ul>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2608.02645_VerifiedToolCalls.zh-TW.html"><code>../translate/2608.02645_VerifiedToolCalls.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

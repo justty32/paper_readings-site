@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《快速符號迴歸基準測試》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：（DFG 資助；程式碼 viktmar/FastSRB）</p><p>日期：2025-08，符號迴歸 benchmark 方法</p><p>arXiv：2508.14481</p><p><a href="https://arxiv.org/abs/2508.14481" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="快速符號迴歸基準測試重點摘要">《快速符號迴歸基準測試》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>改進 SR 的「ground-truth 回復」基準測試的<strong>兩個痛點</strong>：(1) 既有 benchmark <strong>過度強調回復「唯一那個公式形式」或只靠 SymPy 判定</strong>（SymPy 在某些情況失敗）;(2) <strong>發現後仍繼續搜尋</strong>（浪費）。解法：<strong>人工策劃的「可接受表達式清單」</strong>（函數等價形式）+ <strong>early termination 回呼機制</strong>（發現即停）。在 SRSD benchmark 上把 SymbolicRegression.jl 回復率 <strong>26.7%→44.7%、省 41.2% 計算</strong>;TiSR 回復率 <strong>69.4%、省 63% 時間</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>SR 是 NP-hard、計算昂貴；benchmark 對公平比較與超參調校關鍵。</li>
+<li><strong>問題 1：要求精確回復「唯一形式」不合理</strong>——一個公式有（潛在無限多）相同/相似複雜度的<strong>函數等價形式</strong>，SR 沒理由偏好某一個。La Cava 的 SymPy 判據（差或比化約為常數）有用但<strong>受 SymPy 能力限制、某些 SRSD 案例失敗</strong>。</li>
+<li><strong>問題 2：發現後仍繼續搜尋</strong> → 浪費計算。</li>
+</ul>
+<h2 id="解法">解法</h2>
+<ol>
+<li><strong>可接受表達式清單（curated list）</strong>：為每個公式策劃一組函數等價形式；<strong>持續擴充</strong>（後處理時檢查記錄的新等價式、回溯接受、加進清單供未來使用 → 重用人工檢查、<strong>benchmark 效率隨使用增長</strong>）。公平性：參考式＝SymPy 簡化的原式；接受條件＝代數等價 + <strong>運算子/運算元數 ≤ 參考式的 1.2 倍</strong>。</li>
+<li><strong>early termination 回呼機制</strong>：搜尋中<strong>週期性（~15 秒）<strong>檢查 hall-of-fame 候選 vs 可接受清單。候選須先過濾（測試資料</strong>最大相對誤差 &lt;1e-6%</strong>）→ SymPy 簡化 + 常數<strong>四捨五入到 5 位有效數字</strong> → 比對清單。匹配則<strong>以成功終止</strong>；不匹配則記錄（不終止）供後處理檢查新等價式。
+<ul>
+<li>（註：用 La Cava 的鬆弛判據做即時監控太貴；只用「簡化 + 常數捨入」的開銷可接受。）</li>
+</ul>
+</li>
+</ol>
+<h2 id="結果">結果</h2>
+<ul>
+<li>benchmark <strong>SRSD</strong>（Yoshitomo 等）問題；兩套件 <strong>SymbolicRegression.jl、TiSR</strong>。</li>
+<li><strong>SymbolicRegression.jl</strong>：回復率 <strong>26.7%（原報告）→ 44.7%</strong>;<strong>省 41.2% 計算</strong>。</li>
+<li><strong>TiSR</strong>：回復率 <strong>69.4%</strong>;<strong>省 63% 時間</strong>。</li>
+<li>提供 <strong>Julia 套件 FastSRB</strong>（benchmark 問題、可接受形式、取樣、回呼設計工具）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 C 類的**「SR benchmark 方法學」代表**——與 <a class="paper-reference" href="2512.01682_SR_Current_Challenges_Thesis.%E6%91%98%E8%A6%81.html">2512.01682</a> Aldeia 論文的 SRBench 重評、<a class="paper-reference" href="2512.15920_SR_Physical_Sciences_Intro.%E6%91%98%E8%A6%81.html">2512.15920</a> 特刊總綱強調的「MSE 不夠用、需更好評估」呼應；本文聚焦**「函數等價回復」的判定 + 提早終止省算力**。</li>
+<li>最值得記的兩個務實招式：<strong>(1) 可接受表達式清單（隨用增長、重用人工檢查）取代「唯一形式」或純 SymPy</strong>、<strong>(2) 即時回呼提早終止（發現即停，省 40–63% 算力）</strong>；以及「<strong>用相對誤差 + 簡化 + 常數捨入做輕量即時比對</strong>」（避開昂貴的代數等價判定）。</li>
+<li>定位：<strong>短的 benchmark 工程論文</strong>（DFG 資助、化工 ML 背景）；適合做 <strong>SR benchmark、SR 演算法比較、超參調校</strong> 想省算力 + 公平判定的人；有開源 Julia 套件。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2508.14481_Fast_SR_Benchmarking.zh-TW.html"><code>../translate/2508.14481_Fast_SR_Benchmarking.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

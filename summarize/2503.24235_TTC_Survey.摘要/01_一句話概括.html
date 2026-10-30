@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2503.24235_TTC_Survey.%E6%91%98%E8%A6%81.html">回 2503.24235_TTC_Survey.摘要 目錄</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Zhang 等人（14 位跨機構作者）的首篇 TTS 四維度分類綜述</strong>：提出 <strong>「what to scale / how to scale / where to scale / how well to scale」</strong> 的統一階層架構，系統拆解預訓練規模化放緩後最活躍的推理研究方向——測試時擴展（test-time scaling, TTS）。how 層區分 <strong>調優路徑（SFT／RL）</strong> 與 <strong>推理路徑（刺激／驗證／搜索／聚合）</strong> 為核心技術軸；what 層將擴展形式歸為<strong>並行／順序／混合／內部</strong>四類；where 層覆蓋<strong>推理密集</strong>與 <strong>agent 任務</strong>的完整 benchmark 地景；how well 層從<strong>效能／效率／可控性／可擴展性</strong>四維度建立評估坐標系。對 ai_core 而言，這篇提供 §3.3 三條路線（並行取樣→多數投票、順序精煉→驗證器把關、混合搜索→PRM+MCTS 樹搜索）的完整技術分類學與成本梯度地圖。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>自 o1 和 DeepSeek-R1 展示推理模型的突破後，TTS 相關論文爆炸增長，但領域存在三個根本缺口：</p>
+<ol>
+<li><strong>缺乏統一的分類架構</strong>：並行取樣（self-consistency）、順序精煉（self-refine）、樹搜索（MCTS）、內部 RL（R1）、驗證器設計等技術各自發展，彼此關係不清，跨論文不可比。</li>
+<li><strong>技術組合 vs 元件貢獻混淆</strong>：單一工作常涉及多種技術，現有 survey 多以時間線排列、不區分「什麼被擴展」與「如何實現擴展」。</li>
+<li><strong>缺乏實戰指導與多維度評估框架</strong>：準確率之外，效率（token/FLOPs）、可控性（思考長度）、可擴展性（計算預算→效能曲線）等維度缺少系統化測量標準。</li>
+</ol>
+<p>這份 survey 的貢獻不是另一套方法，而是<strong>第一個四維度分解的 TTS 分類學</strong>。</p>
+<h2 id="核心貢獻">核心貢獻</h2>
+<h3 id="1-四維度分類學figure-2-總覽">1. 四維度分類學（Figure 2 總覽）</h3>
+<table>
+<thead>
+<tr>
+<th>維度</th>
+<th>核心問題</th>
+<th>主要子類</th>
+<th>代表性方法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>What to scale（§2）</td>
+<td>推論時擴展什麼？</td>
+<td>並行、順序、混合、內部</td>
+<td>Self-Consistency, ToT/MCTS, o1/R1</td>
+</tr>
+<tr>
+<td>How to scale（§3）</td>
+<td>如何實現擴展？</td>
+<td>調優式（SFT/RL）、推理式（刺激/驗證/搜索/聚合）</td>
+<td>STaR, GRPO, PRM, Beam Search</td>
+</tr>
+<tr>
+<td>Where to scale（§4）</td>
+<td>哪些任務受益？</td>
+<td>推理密集、Agent、開放式、多模態</td>
+<td>AIME, SWE-bench, WebArena</td>
+</tr>
+<tr>
+<td>How well to scale（§5）</td>
+<td>如何評估效果？</td>
+<td>效能、效率、可控性、可擴展性</td>
+<td>Scaling Metric, FLOPs-matched</td>
+</tr>
+</tbody>
+</table>
+<h3 id="2-what-to-scale-四種擴展形式2">2. What to Scale 四種擴展形式（§2）</h3>
+<ul>
+<li><strong>並行擴展（§2.1）</strong>：同一問題生多個答案→聚合。關鍵挑戰：覆蓋率飽和、聚合品質。S = {s_m,i}，ŝ = A(S)。</li>
+<li><strong>順序擴展（§2.2）</strong>：基於中間步驟迭代更新。n_{t+1} = R(n_t, p)。核心：串接步驟/精煉/整合子問題。</li>
+<li><strong>混合擴展（§2.3）</strong>：並行展開候選 + 順序過濾。F_{t+1} = S(∪E(s))。ToT 在決策點分支、MCTS 平衡探索與利用。</li>
+<li><strong>內部擴展（§2.4）</strong>：模型自主任意分配推理計算。z_{t+1} = f_θ(z_t)，π_θ 控制何時停止。RL（結果導向獎勵）即可自發產生長 CoT。</li>
+</ul>
+<h3 id="3-how-to-scale-的技術矩陣3">3. How to Scale 的技術矩陣（§3）</h3>
+<p><strong>調優途徑（§3.1）</strong>：</p>
+<ul>
+<li><strong>SFT</strong>：(a) 模仿：用 planner（如 MCTS）生示範→微調；(b) 蒸餾：強模型輸出轉移（32B 可接近 o1-level）；(c) 暖身：RL 前的短時 SFT 穩定訓練。</li>
+<li><strong>RL</strong>：(a) 無獎勵模型：R1 的 rule-based verifiable reward，cDPO/GRPO/SimPO/DAPO 等；(b) 有獎勵模型：PPO→GRPO 用改進取樣取代值模型，PRIME 將 SFT 作為 PRM 線上更新。</li>
+</ul>
+<p><strong>推理途徑（§3.2）</strong>：</p>
+<ul>
+<li><strong>刺激（§3.2.1）</strong>：提示策略（hint-infer, budget forcing）、解碼策略（filler tokens, AFT）、潛在策略（Coconut, CoDI）。</li>
+<li><strong>驗證（§3.2.2）</strong>：結果驗證（OVM/判別器/功能型/bandit）、過程驗證（狀態評估器/SIaM/演繹驗證）。</li>
+<li><strong>搜索（§3.2.3）</strong>：樹搜索（ToT, MCTS）、圖搜索（GoT）、beam search。MCTS 是 2024 至今最活躍的混合搜索方法。</li>
+<li><strong>聚合（§3.2.4）</strong>：多數投票、Best-of-N、加權融合、LLM 合成。</li>
+</ul>
+<h3 id="4-技術演化路徑6-figure-4">4. 技術演化路徑（§6, Figure 4）</h3>
+<pre><code>CoT Prompting (2022.1) → Self-Consistency (2022.3) / STaR (2022.3)
+→ PRM (2023.5) / ToT (2023.5) → MCTS (2023.12)
+→ o1 (2024.11) → R1 (2025.1)
+→ 下一階段：更多擴展 / 釐清技術本質 / 跨任務泛化 / 效率優化
+</code></pre>
+<p>關鍵洞察：<strong>技術互補而非互斥</strong>。R1 依賴 SFT-based 拒絕取樣暖身；RL 仍需結構化推理策略。Table 5 將 30+ 代表性方法在 what/how/where/how well 四軸上完整矩陣化。</p>
+<h3 id="5-14-條實戰指南7重點摘錄">5. 14 條實戰指南（§7，重點摘錄）</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>問題</th>
+<th>核心答案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>TTS 適合什麼任務？</td>
+<td>幾乎所有——從奧數/程式到開放式生成/醫療/法律</td>
+</tr>
+<tr>
+<td>2</td>
+<td>最小成本起手路徑？</td>
+<td>(i) 推理時故意推理；(ii) 模仿複雜推理軌跡；(iii) RL 激勵。先用現成 RL 模型看天花板→用 (i) 建 baseline→用 (ii) 泛化</td>
+</tr>
+<tr>
+<td>3</td>
+<td>三條路徑互斥？</td>
+<td>非互斥。R1 = RL + SFT 暖身的典範</td>
+</tr>
+<tr>
+<td>4</td>
+<td>訓練選擇影響 TTS？</td>
+<td>SFT 提供強推理先驗；RL 激勵簡潔鏈。最佳：SFT→RL→蒸餾回 SFT 節省成本</td>
+</tr>
+<tr>
+<td>5</td>
+<td>多輪 TTS 效率改善？</td>
+<td>模型端（RL 懲罰冗長/蒸餾）、輸出端（驗證器信心早停）、提示端（token 預算/難度提示）</td>
+</tr>
+<tr>
+<td>6</td>
+<td>代表性 baseline？</td>
+<td>並行：Self-Consistency/Best-of-N；順序：STaR/Self-Refine/PRM；混合：MCTS/ToT；內部：Distilled-R1/R1</td>
+</tr>
+<tr>
+<td>7</td>
+<td>最優通用方案？</td>
+<td>無免費午餐。最優計算分配取決於問題難度與開放性</td>
+</tr>
+<tr>
+<td>8</td>
+<td>如何評估？</td>
+<td>準確率最關鍵，效率/穩健性/安全/偏見/可解釋性正成必評維度</td>
+</tr>
+<tr>
+<td>9</td>
+<td>外部→內部擴展差異？</td>
+<td>內部效率更高（只調用一次 LM），但調優資源不可忽略</td>
+</tr>
+</tbody>
+</table>
+<h3 id="6-開放挑戰8">6. 開放挑戰（§8）</h3>
+<ol>
+<li><strong>更多擴展是前沿</strong>：並行（智慧覆蓋擴張 vs 暴力 Best-of-N）、順序（結構化自我精煉）、混合（統一框架動態選策略）、內部（有效計算分配/穩定性/可控性）。</li>
+<li><strong>釐清技術本質是基礎</strong>：SFT/RL 在 TTS 中的角色與最優組合；PRM 對多步推理的真實貢獻；推論效能的基本上限。</li>
+<li><strong>優化擴展是關鍵</strong>：效率/穩健性/偏見/安全/可解釋性的多維度評估體系剛起步。</li>
+<li><strong>跨領域泛化是主流</strong>：醫療/金融/法律等領域的 TTS 擴展。</li>
+</ol>
+<h2 id="局限">局限</h2>
+<ul>
+<li>分類學綜述（非 meta-analysis），不提供跨方法排行榜。部分方法跨越多類。</li>
+<li>快速發展領域：2025 年 5 月後的新方法可能改變部分觀察。</li>
+<li>效率與可控性的評估體系仍在形成中，各方法報告標準不一致。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>對 ai_core 而言，這篇是 <strong>§3.3 成本梯度路線圖</strong>的最直接地圖級參考：它把 §3.3 討論的三條路線——(a) 並行取樣→多數投票（Self-Consistency / Best-of-N）、(b) 順序精煉→驗證器把關（Self-Refine / PRM / 工具驗證）、(c) 混合搜索→PRM+MCTS——完整分解為 what/how/where/how well 四軸，並在 Table 5 中給出 30+ 方法的技術組合矩陣，可直接作為 ai_core 在推理預算分配上的設計參考。</li>
+<li>最值得記的三個實證洞察：(1) <strong>三條路徑非互斥</strong>——最強 TTS（o1/R1）來自 SFT+RL 的組合，對應 ai_core 中「§3.3 路線選擇不是排他性的」；(2) <strong>效率維度多於 token 成本</strong>——η(M) = Q/C 的推理效率公式、冗餘/欠思考/過思考的分類，直接對應 §3.3 中「成本梯度」的核心概念；(3) <strong>無免費午餐</strong>——最優計算分配取決於問題難度，這正是 §3.3 需要「依任務難度自適應分配預算」的實證基礎。</li>
+<li>第 7 節的 14 條實戰指南是直接可操作的 TTS 部署檢查表，從最小成本起手到前沿策略設計有清晰路徑。</li>
+<li>作者團隊來自 CityU HK、McGill/MILA、Salesforce AI、Stanford、Renmin、CUHK、Macquarie 等，涵蓋學界與業界視角。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../../translate/2503.24235_TTC_Survey.zh-TW.html"><code>../translate/2503.24235_TTC_Survey.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

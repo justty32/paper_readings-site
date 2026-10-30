@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2306.05301_ToolAlpaca.%E6%91%98%E8%A6%81.html">回 2306.05301_ToolAlpaca.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>ToolAlpaca</strong>：不靠人工蒐集真實 API、也不靠人工撰寫指令，而是用<strong>三個角色（使用者／助理／工具執行者）皆由 LLM 扮演的多代理模擬環境</strong>，自動「無中生有」出一份涵蓋 400 多個工具、50 個類別、3,938 筆指令-動作-回應範例的工具使用語料，再拿去微調 Vicuna-7B/13B；結果顯示<strong>完全沒真實 API 呼叫過</strong>的小模型，在未見過的模擬工具與真實世界 API 上都能達到接近 GPT-3.5 的通用工具使用能力（人工驗收率 73%／75%，遠高於未微調 Vicuna 的 16%／25%）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>GPT-4 等超大模型可靠 zero-shot prompting 展現通用工具使用能力，但小模型只能靠微調在少量特定工具上打轉，換一個沒見過的工具就失靈——這中間有兩層落差：(1) 小模型能否也學到「通用」工具使用能力，而非只認得訓練時見過的工具；(2) 若答案是可以，訓練語料從哪來？真實世界 API 數量龐大、功能重疊、且真實多輪試誤互動（問使用者補資訊、呼叫錯了再改、串多個函式）極難靠人工大規模標註。ToolAlpaca 要驗證：<strong>用完全模擬、不需任何真實可用 API 的方式，能否量產出足夠多樣的語料，讓小模型學會可泛化到未見工具的能力</strong>。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>兩階段流程</strong>：①工具集建構 ②工具使用實例生成（多代理模擬）→ ③微調 Vicuna。</li>
+<li><strong>工具集建構</strong>：從 public-apis（1,400+ 個 API、50+ 類別）隨機挑 500 個 API 的名稱與簡介，用 ChatGPT 把每個工具擴寫成標準化五元組文件 {name, introduction, description, function documentation, OpenAPI specification}——<strong>這些工具不需要真的能打，也不需要原本就有結構化文件</strong>，全靠 LLM 生成內容補完。過濾後得到 426 個工具、平均每工具 4.85 個函式。</li>
+<li><strong>三代理模擬環境</strong>（每個代理都是一次獨立 prompt 的 LLM）：
+<ul>
+<li><strong>使用者代理</strong>：依工具文件生成十種不同格式（命令句、問句等）的指令，並在互動中補答助理反問的缺漏資訊。</li>
+<li><strong>助理代理</strong>（用 GPT-3.5）：採 ReAct 的 (thought, action, observation) 格式，決定要呼叫哪個函式、帶什麼參數，多輪迭代直到蒐集到足夠資訊，最後彙整成給使用者的回應。</li>
+<li><strong>工具執行者代理</strong>：檢查助理請求的格式/參數後，<strong>不真的發送網路請求，而是讓 LLM 讀該工具的 OpenAPI 規格去「模擬」執行結果</strong>，回傳合理的假 API 回應。</li>
+</ul>
+</li>
+<li>三者反覆互動直到助理判定已能作答，產出一筆 {指令， 動作序列（含工具回應）, 最終回應} 的實例。過濾規則：丟棄超過 5 步互動、缺函式呼叫、或輸出解析錯誤的樣本。</li>
+<li><strong>語料統計</strong>：50 類別、426 個工具、3,938 筆實例（2,512 筆單函式呼叫 + 1,426 筆多函式呼叫）；平均指令長 23.42 詞、平均輸出長 36.19 詞、平均每工具 4.85 個函式、平均每實例 1.66 步動作。</li>
+<li><strong>品質抽查</strong>（人工看 100 筆）：指令可解性 88%、工具回應有效性 92%、動作序列與最終輸出正確率 80%——三個代理的可靠度都在八成以上。</li>
+<li><strong>微調</strong>：以 Vicuna-7B/13B 為底，AdamW、學習率 2e-5、batch size 128、3 epoch、max length 2048，得到 ToolAlpaca-7B / ToolAlpaca-13B。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>未見過的模擬工具</strong>（10 個新工具、100 筆評測）：GPT-4 機器評測搭配人工驗收，ToolAlpaca-7B/13B 人工整體驗收率達 <strong>73% / 75%</strong>，較未微調 Vicuna-7B/13B 的 16% / 25% 大幅提升（+57 / +50 個百分點），13B 版本已接近 GPT-3.5 水準。</li>
+<li><strong>真實世界 API</strong>（11 個未見過的真實 API）：ToolAlpaca-7B/13B 整體準確率 <strong>55.3% / 61.4%</strong>，同樣遠勝對應的 Vicuna 基線，證明模擬語料訓出的能力可遷移到真實工具，而非只認得「模擬味」的假回應。</li>
+<li><strong>GPT4Tools 測試集</strong>（8 個域外多模態工具）：ToolAlpaca-13B 僅用 3.9k 筆訓練實例，達成整體成功率 <strong>83.7%</strong>，逼近 GPT4Tools 自身模型（用同套生成流程但 71k 筆訓練資料訓出）的 90.6%，凸顯<strong>語料多樣性比語料規模更關鍵</strong>。</li>
+<li><strong>多樣性消融</strong>：固定訓練實例總數，只改變涵蓋工具數（10／40／100／400 個），整體準確率從 10 個工具的 51% 一路升到 400 個工具的 70%——工具集多樣性是決定小模型能否「泛化」而非「死記」的主因。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>論文正文未設獨立「Limitations」章節，以下為文中散見的自陳限制：
+<ul>
+<li><strong>模擬 API 回應非真實回應</strong>——工具執行者代理是 LLM 憑 OpenAPI 規格「編」出合理的假回傳值，真實 API 常有的錯誤碼分布、速率限制、資料噪訊、邊界情況都不在模擬範圍內；真實 API 測試集上準確率（55.3%／61.4%）明顯低於模擬工具測試集（73%／75%），論文承認這反映了模擬與真實資料間的落差。</li>
+<li>訓練語料不含「不需要工具、直接回答」的樣本，導致在 GPT4Tools 測試集上必須先排除 652 筆中的 50 筆非工具使用案例才能公平比較。</li>
+<li>評測高度依賴 GPT-4 當裁判（僅在模擬子集額外做人工評測驗證一致性），真實世界子集無獨立人工複核。</li>
+<li>工具集來源侷限於 public-apis 收錄且可被 LLM 合理擴寫文件的 API 類型，未涉及需真實憑證、金流、複雜狀態機的工具。</li>
+</ul>
+</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

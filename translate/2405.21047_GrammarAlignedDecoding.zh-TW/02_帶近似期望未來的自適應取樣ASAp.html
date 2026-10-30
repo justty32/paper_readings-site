@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_帶近似期望未來的自適應取樣ASAp · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2405.21047_GrammarAlignedDecoding.zh-TW.html">回 2405.21047_GrammarAlignedDecoding.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%B5%90%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-帶近似期望未來的自適應取樣asap">3. 帶近似期望未來的自適應取樣（ASAp）</h2>
+<p><strong>演算法概觀</strong>：GCD 貪婪取樣前綴而不顧 EFG。但在範例 3 中，一旦 GCD 選了 0 當首 token，就必然取樣到 <code>00000</code>——我們能「從中學習」：所有以 0 開頭的合文法串真正的機率質量並非 LLM next-token 機率暗示的 0.45，而是單一字串 <code>00000</code> 的聯合機率（低得多）。ASAp 的關鍵洞見是：可以<strong>反覆取樣、每取一個樣本後就修正轉移權重</strong>，以不斷發現「流失到非文法區的機率質量」。形式上，從 GCD 對每個 EFG 的過近似出發，透過反覆取樣、發現配置給非文法延續的質量，逐步收緊過近似使其更準；在極限下，近似收斂到精確 EFG 與不偏取樣。</p>
+<p>圖 3 描繪 ASAp 前兩次迭代：第一次取樣到 <code>00000</code> 後，回頭改善 <code>00000</code> 各前綴之潛在合文法延續的質量估計（例如前綴 <code>0000</code> 的 EFG 更新為 <code>0.45·10^{-8}</code>，因為「往下只有一個低機率合文法串」）；第二次取樣到 <code>11111</code> 後再更新。GCD 中發展出的技術，讓我們能高效算出「哪些下一 token 會立即導致非文法」。反覆多次即得精確的 EFG 近似、從而更好地從約束 LLM 取樣。</p>
+<p><strong>演算法形式化</strong>：第 <code>m+1</code> 次迭代時，用至今樣本集 <code>S={s_1,…,s_m}</code> 計算 EFG 的過近似 <code>c̃_S(w_{1:i})</code>，歸納定義為：</p>
+<ul>
+<li>若 S 中無字串以 <code>w_{1:i}</code> 為前綴：<code>c̃_S(w_{1:i}) = 1[w_{1:i}∈L_prefix(G)]</code>（即 GCD 用的過近似）；</li>
+<li>否則：<code>c̃_S(w_{1:i}) = Σ_{w_{i+1}} P(w_{i+1}|w_{1:i}) · c̃_S(w_{1:i+1})</code>（用先前取樣時算過的 next-token 機率得到更佳估計）。</li>
+</ul>
+<p><strong>定理 1</strong>：對所有 <code>w_{1:i}</code>，<code>c̃_S(w_{1:i}) ≥ c(w_{1:i})</code>（過近似恆為 EFG 的上界，經 Hölder 不等式與對前綴的歸納證明）。</p>
+<p>取樣程序如 GCD 般自回歸進行，但用迭代更新後的 EFG 估計 <code>c̃_S</code>：</p>
+<blockquote>
+<p><code>Q̃_S(w_i | w_{1:i-1}) = P(w_i|w_{1:i-1})·c̃_S(w_{1:i}) / Σ_{w'_i} P(w'_i|w_{1:i-1})·c̃_S(w_{1:i-1}, w'_i)</code></p>
+</blockquote>
+<p><strong>演算法 1（ASAp）</strong>：初始化 <code>S={}</code>、<code>c̃_S(·)=1</code>。對每次迭代：以祖先取樣抽 <code>w_{1:n} ∼ Q̃_S</code>；把它加入 S；再從序尾往前（<code>i=n-1…1</code>），對每個「會使前綴離開 L_prefix(G)」的 token 令其 <code>c̃_S:=0</code>，並依 Eq. 3 回傳更新各前綴的 <code>c̃_S</code>。回傳最終樣本。整體用過去樣本改善後續樣本。</p>
+<p><strong>定理 2（收斂）</strong>：設 <code>S_m</code> 為前 m 次迭代記錄的樣本集，則對所有 <code>w_{1:i}∈L_prefix</code>，當 <code>m→∞</code> 時 <code>c̃_{S_m}(w_{1:i}) → c(w_{1:i})</code>（假設無約束 LLM 分布 P 幾乎必然終止）。即 ASAp 在無窮迭代下收斂到精確 EFG，從而收斂到約束 LLM 分布的精確樣本。（證明用 Hölder 不等式與「任一 token 被取樣的機率有與 m 無關的正下界」論證幾乎必然收斂。）</p>
+<h2 id="4-實驗">4. 實驗</h2>
+<p>ASAp 實作為 Transformers-CFG（GCD 實作）的擴充：LLM 生成序列時追蹤原始 <code>P(w_i|w_{1:i-1})</code> 與增量剖析器給出的合法下一 token 集合；生成結束後，從序尾往前回傳「1 減去『必然導致非文法之 token 的機率』」以更新 <code>c̃_S</code>（Eq. 3）。</p>
+<p><strong>資料集與模型</strong>：範例 3 的示範 benchmark，加三個結構化解碼任務。其中兩個是 SyGuS（Syntax-Guided Synthesis，語法引導合成）問題——給定邏輯規格與一階項的 CFG，目標是合成滿足規格、且在文法內的項：(1) <strong>SLIA</strong>（字串＋線性整數算術，文法限制可用的常量字串）、(2) <strong>INV-BV</strong>（位元向量算術的迴圈不變量生成，文法限制常量位元向量與運算）。第三個是先前 GCD 工作用過的<strong>成分句法剖析（constituency parsing, CP）</strong>，文法用來幫模型產出括號良好的剖析樹。提示皆為 3 個（規格， 解）in-context 範例（CP 為 8 個）。因需多次推論以衡量 <code>Q̃</code> 是否忠於 Q，隨機選 15 個 SLIA、15 個 INV-BV、6 個 CP 問題。模型選開源 <strong>Mistral-7B</strong>（Instruct-v0.2；Top-P=1、Temperature=1、Top-K=0 以還原原始分布）。</p>
+<p><strong>衡量</strong>：每個 benchmark 跑 2,000 次取樣。用 <code>KL(Q̃‖P)</code> 衡量與理想 GAD 分布的對齊（因理想 GAD 分布正比於 P 在合文法序列上的部分，<code>KL(Q̃‖P)</code> 與「經驗分布對理想 GAD 分布的 KL」僅差一常數）。亦比較 <code>Q̃_GCD</code>、<code>Q̃_ASAp</code>、<code>P</code> 的經驗期望。</p>
+<p><strong>結果</strong>：範例 3 上，ASAp 的 KL 在約 75 次迭代內迅速趨近 0，GCD 則不然。多數 benchmark（圖 5(b)/6(b)）ASAp 快速收斂到目標分布、GCD 不隨時間改善；少數（圖 5(c)/6(c)）ASAp 收斂慢，此時 ASAp 與 GCD 都離目標期望遠，但 GCD 剛好偏向最可能結果，反而 KL 較好。2,000 次後，期望值對 P 的最小平方差總和：GCD 為 2.259（SLIA）、1.852（INV-BV4）、0.109（CP）；ASAp 為 1.242（SLIA）、0.802（INV-BV4）、0.159（CP）——ASAp 在 SLIA、INV-BV4 上明顯更接近 P（CP 點太少不足以下結論）。</p>
+<p>下游正確率（SLIA/INV-BV4「取樣程式是否為正確解」）：GCD 與 ASAp 解出的問題集大致相同（僅一個 SLIA benchmark ASAp 能取到有效解、GCD 從未）。INV-BV4 上 ASAp 產出正確樣本比 GCD 多約 38%（幾何平均，與其收斂較快一致）；但在兩者都能解的 SLIA 上 ASAp 反而少約 73%（幾何平均）。例如圖 5(b) 的 benchmark，ASAp 取到正確解 1,588 次、GCD 僅 12 次；圖 5(c) 則 ASAp 69 次、GCD 363 次。</p>
+<p><strong>討論與局限</strong>：如理論所預測，多數 benchmark 上 ASAp 收斂到目標分布 P，GCD 不隨時間改善（呈現本文所述偏差）。ASAp 對「解下游任務本身」無強效果，但在收斂顯著的實例上取到正確解更頻繁（符合「LLM 已學會如何解該任務」的預期）。<strong>核心局限是 ASAp 目前收斂慢</strong>——某些 benchmark 即使 2,000 次迭代 KL 幾無改善。作者強調本文貢獻是「發現並形式化既有約束解碼的偏差、提出首個收斂演算法」，並指出許多「低垂果實」（如用有目標的 beam search 引導取樣集、避免重複取到相似串）是未來加速方向。</p>
+<h2 id="5-相關工作">5. 相關工作</h2>
+<p><strong>約束解碼</strong>：既有工作廣泛探索在正則語言或上下文無關語言上約束 LLM 解碼；亦有用動態監控/驗證強制硬約束，或改 beam search 施加詞彙約束者。高層次上，這些方法讓 LLM 解碼與監控機制（如 CFG 剖析）並行，遮罩掉會導致無效序列的 token。另有用基於梯度的取樣把序列級軟語意/上下文約束鬆弛為可微者。這些方法雖保證輸出滿足約束，卻常<strong>貪婪運作、對輸出分布引入本文所討論的偏差</strong>；此偏差是否影響下游依應用而定，但本文論證其可能相當顯著、有時損及下游表現。ASAp 則藉分析「先前樣本如何導致非文法」隨時間改善解碼。</p>
+<p><strong>約束對齊解碼（constraint-aligned decoding）</strong>：本文形式定義了「在約束存在下對齊 LLM 輸出分布」的問題；聚焦文法約束，但定義與演算法適用於任何「可左到右評估滿足性」的約束。在某些情境（如用 LLM 生成隨機數或一組好測試案例）需以 LLM 取樣逼近某分布，此時約束解碼會嚴重扭曲 LLM 分布、偏向某些合約束序列——本文的形式化為後續「更快收斂到更好分布」的取樣進展奠基。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

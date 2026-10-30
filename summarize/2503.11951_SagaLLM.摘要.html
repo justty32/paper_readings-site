@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《SagaLLM：多 Agent LLM 規劃的 Context、驗證與交易保證》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Edward Y. Chang, Longling Geng</p><p>日期：2025-03</p><p>arXiv：2503.11951</p><p><a href="https://arxiv.org/abs/2503.11951" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="sagallm多-agent-llm-規劃的-context驗證與交易保證重點摘要">《SagaLLM：多 Agent LLM 規劃的 Context、驗證與交易保證》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>SagaLLM 把長流程拆成 locally atomic transactions，每步註冊 compensating action，以外部 persistent state、GlobalValidationAgent 與 SagaCoordinatorAgent 管 dependency、commit、rollback；概念方向合理，但論文實驗主要展示 standalone LLM 的失敗案例，沒有足夠的 SagaLLM end-to-end 定量結果支持其「guaranteed」措辭。</p>
+<h2 id="設計">設計</h2>
+<p>三個要求是 transactional integrity、independent validation、strategic context preservation。每個 task agent 只執行 domain transaction；GlobalValidationAgent 看完整 history／dependency graph，做 schema、semantic、factual、constraint、temporal 與 inter-agent checks；SagaCoordinatorAgent 維護 active transactions、dependency graph、compensation queue 與 log。</p>
+<p>狀態分 application、operation、dependency 三層。執行依序 pre-validation、transaction、output validation、commit、register compensation。失敗時沿 dependency graph 反向執行 flight／hotel／train 等 compensation，恢復 budget、reservation 與 downstream plan。它採 Saga 的 eventual consistency，不提供 strict ACID isolation／atomic rollback。</p>
+<h2 id="實驗實際做了什麼">實驗實際做了什麼</h2>
+<p>REALM 的 P5/P6 sequential planning、P8/P9 reactive planning；比較 Claude 3.7、DeepSeek R1、GPT-4o、GPT-o1。案例包括 Thanksgiving dinner 與 wedding logistics。</p>
+<ul>
+<li>Claude 在 flight delay 後違反 oven supervision、travel time、side-dish duration 與 6PM deadline。</li>
+<li>Wedding P5 中 Claude 抵達 tailor 時店已關；GPT-o1 能排可行路線但非最佳。</li>
+<li>P8 traffic alert 下 Claude、DeepSeek、GPT-4o 失敗；GPT-o1 給可行但粗粒度方案。DeepSeek 甚至把 1PM 前已完成的歷史重寫。</li>
+</ul>
+<p>論文描述 SagaLLM 如何以 checkpoint、immutable log、constraint validation 與 compensation 修補，但沒有提供多次 runs、成功率、validation accuracy、rollback completion rate、latency 或 baseline statistics；一處更直接寫「成功結果因篇幅不展示」。</p>
+<h2 id="限制與原文問題">限制與原文問題</h2>
+<ul>
+<li>摘要宣稱「significant improvements」，Table 10 寫 SagaLLM <code>Always</code> compensation、physical-temporal consistency <code>Guaranteed</code>，但正文沒有對應定量實驗或形式證明。</li>
+<li>使用 Gödel 不完備定理來推導 LLM 不可靠自我驗證，論證跨度過大；經驗上的 self-validation gap 不需要、也不能由該定理直接建立。</li>
+<li>GlobalValidationAgent 本身仍是 LLM，若沒有 mechanical oracle，只是把 self-validation 轉成 cross-model validation。</li>
+<li>LLM-generated compensation code 可能錯，作者也把 formal verification 列為未來工作。</li>
+<li>PVLDB frontmatter 是 <code>14(1): XXX-XXX</code>、placeholder DOI，不能視為正式出版資訊。</li>
+</ul>
+<p>證據成熟度：<strong>架構概念／案例說明低至中；交易保證與效益實證低</strong>。</p>
+<h2 id="對-freepy-的價值">對 FreePy 的價值</h2>
+<p>值得吸收的是 dependency-aware compensation、external state 與「過去已發生不可任意重寫」。但 FreePy 應將 compensation 定義成 typed operation，有 idempotency、precondition、evidence 與 user authority；不能讓另一個 LLM 的判斷本身構成 transaction guarantee。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《以邏輯張量網路與規則修剪進行預測性流程監測的神經符號學習》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Fabrizio De Santis (Parma)、Gyunam Park (TU Eindhoven)、Francesco Zanichelli (Parma)</p><p>日期：2026-03</p><p>arXiv：2603.26944</p><p><a href="https://arxiv.org/abs/2603.26944" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="以邏輯張量網路與規則修剪進行預測性流程監測的神經符號學習重點摘要">《以邏輯張量網路與規則修剪進行預測性流程監測的神經符號學習》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>LTN + 規則修剪</strong>：將領域知識（控制流／時序／payload 規則）以線性時態邏輯（LTL）與一階邏輯（FOL）嵌入 Logic Tensor Network（LTN），並透過<strong>兩階段優化</strong>——加權公理損失預訓練 + 規則修剪（保留貢獻大、一致性高的規則）——解決 LTN「滿足邏輯公式卻犧牲預測準確度」的根本缺陷，在四個真實事件日誌中顯著提升預測效能，尤其適用於合規訓練樣本極稀少的場景。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>預測性流程監測（predictive process monitoring, PPM）用於詐欺偵測、醫療監測等領域，但純資料驅動方法（LSTM、Transformer）無法嵌入領域約束（如「手術後兩小時內未投抗生素→併發症風險升高」）。既有的知識注入方法僅處理控制流限制（且多為輸入特徵或後處理），忽略時序與 payload 規則，且缺少處理規則衝突或雜訊的機制。核心矛盾：LTN 在最佳化時傾向滿足所有邏輯公式，卻可能犧牲預測準確度（vacuous satisfaction）。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>特徵與規則萃取</strong>：從事件日誌自動萃取三類特徵——控制流（序列先後）、時序（持續時間、等待時間）、payload（案例/事件屬性）——並以 Declare mining 辨識控制流限制、SLA 分析萃取時序規則、統計關聯挖掘 payload 規則。</li>
+<li><strong>知識庫建構</strong>：控制流規則經 LTL→FOL 轉換保留時態語意；時序/payload 規則轉為 IF-THEN 前件→後件公式。知識庫分為<strong>資料公理 K_D</strong>（分類標籤）與<strong>知識公理 K_P</strong>（領域規則）。</li>
+<li><strong>兩階段優化</strong>（核心貢獻）：
+<ul>
+<li><strong>Phase 1（加權預訓練 + 規則選擇）</strong>：以加權損失 L = 1 − (α·SatAgg(K_D) + β·SatAgg(K_P))，α &gt; β 先學資料再引入知識。預訓練 E_p 個 epoch 後，對每條規則 r_i 計算<strong>門控分數</strong> g_i = s̄_i · e^(−λ·Var(s_i))（s̄_i 為平均滿足度、Var 為變異數），保留 g_i ≥ τ 的一致貢獻規則。</li>
+<li><strong>Phase 2（微調）</strong>：在修剪後的知識庫 K_D ∪ K&#x27;_P 上進行標準 LTN 微調。</li>
+</ul>
+</li>
+<li><strong>模型架構</strong>：LSTM（2 層、hidden 128）或 Transformer（2 頭、hidden 128）作為 LTN 謂詞 P 的神經基底；分類特徵用 embedding（dim 32），數值特徵經標準化與線性層。架構無關，重點在知識整合機制。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>Sepsis F1</th>
+<th>BPIC2012 F1</th>
+<th>BPIC2017 F1</th>
+<th>Traffic Fines F1</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LSTM（純資料）</td>
+<td>70.59</td>
+<td>52.44</td>
+<td>69.47</td>
+<td>66.93</td>
+</tr>
+<tr>
+<td>Transformer（純資料）</td>
+<td>73.80</td>
+<td>51.86</td>
+<td>70.74</td>
+<td>67.34</td>
+</tr>
+<tr>
+<td>LTN-NoP（有知識、無修剪）</td>
+<td><strong>18.79</strong></td>
+<td>45.00</td>
+<td>66.27</td>
+<td>46.35</td>
+</tr>
+<tr>
+<td>Two-Stage-L（完整方法）</td>
+<td><strong>75.82</strong></td>
+<td>57.25</td>
+<td>70.67</td>
+<td>68.20</td>
+</tr>
+<tr>
+<td>Two-Stage-T（完整方法）</td>
+<td>75.63</td>
+<td><strong>62.12</strong></td>
+<td><strong>72.16</strong></td>
+<td>67.72</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>知識無控制注入會摧毀效能</strong>：LTN-NoP 在 Sepsis 上 F1 僅 18.79%（邏輯短路——模型學到空洞地滿足公式而非學預測模式）。</li>
+<li><strong>兩階段能恢復並超越</strong>：Two-Stage-L 在 Sepsis 上從 18.79% 恢復至 75.82%（+51.8pp），全面超越純資料基線。</li>
+<li><strong>合規受限場景優勢最大</strong>：合規訓練樣本僅 4%（Sepsis）時，Two-Stage-L F1 達 89.96% vs LSTM 73.26%（+16.7pp）；規則提供關鍵歸納偏誤。</li>
+<li><strong>序列長度影響架構選擇</strong>：短序列（≤13）LSTM 較佳，長序列（≥20）Transformer 較佳。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>規則品質依賴萃取方法（Declare mining / SLA 分析），自動萃取的規則可能帶雜訊。</li>
+<li>僅測二分類 outcome prediction，未擴展至下一事件預測、剩餘時間等更多 PPM 任務。</li>
+<li>規則修剪的 τ 閾值需 validation 選擇，非完全自動。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>約束不是免費的</strong>主題的另一實例：LTN-NoP 證明未加控制的邏輯約束可<strong>毀滅</strong>預測效能（Sepsis 從 70.59% 跌至 18.79%），與 2606.21619（約束器在規格不完整時正確率反輸無約束）形成跨域呼應——神經符號系統必須內建規則品質控制。</li>
+<li>門控分數 g_i = s̄_i · e^(−λ·Var(s_i)) 提供一個<strong>無需可學習參數、可解釋</strong>的規則篩選機制：高平均滿足度 + 低跨樣本變異 = 可靠規則。</li>
+<li>控制流／時序／payload 三維規則架構為將任意領域的結構化知識（法規、SOP、合規要求）轉化為可微邏輯約束提供了可複製的方法論。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2603.26944_LTN_RulePruning.zh-TW.html"><code>../translate/2603.26944_LTN_RulePruning.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

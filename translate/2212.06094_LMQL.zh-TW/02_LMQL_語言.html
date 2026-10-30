@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_LMQL_語言 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2212.06094_LMQL.zh-TW.html">回 2212.06094_LMQL.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E8%A9%95%E6%B8%AC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-lmql-語言">3. LMQL 語言</h2>
+<p><strong>文法（圖 5）</strong>：一支 LMQL 程式有 5 部分——<code>decoder</code>（解碼器）、<code>query</code>（實際查詢）、<code>from</code>（指定模型）、<code>where</code>（約束）、<code>distribute</code>（分佈指令，可選）。decoder 與 model 以字串指定，query 與約束以 Python 語法給出。</p>
+<ul>
+<li><strong><code>query</code></strong>：可想成一個 Python 函式體（限制：不允許宣告內部函式；每個頂層字串被當成對 LM 的直接查詢）。查詢字串有兩種類 f-string 逃脫欄位：<code>{varname}</code> 回填當前 scope 的變數值；<code>[varname]</code> 表示要由 LM 生成的片語（稱 <strong>hole，生成孔</strong>），其生成受 <code>where</code> 約束、依 <code>decoder</code> 指定的程序進行，完成後在 scope 建立同名變數（同名則覆寫）。</li>
+<li><strong><code>decoder</code></strong>：本版支援 <code>argmax</code>、<code>sample</code>、<code>beam</code>。<code>beam</code> 是一種新程序 <strong>scripted beam search</strong>，在所有生成孔與控制流上聯合做 beam search。查詢結果含<strong>互動軌跡（interaction trace，整段把 hole 替換為 LM 答案的文字轉錄）</strong> 與所有 hole 變數；<code>sample</code>/<code>beam</code> 回傳 n 條軌跡。圖 6 展示圖 1(b) 在 argmax 與 sample(n=2) 下的軌跡（THING 在迴圈每次迭代被重新指派，符合 Python 語意）。</li>
+<li><strong><code>from &lt;model&gt;</code></strong>：字串指定 HuggingFace 模型庫或 OpenAI API（如 GPT 家族）的模型，也可擴充到其他本地或 API 後端。</li>
+<li><strong><code>where &lt;condition&gt;</code></strong>：對 <code>[varname]</code> hole 加約束，可為 <code>&lt;</code>、<code>&gt;</code>、<code>=</code>、<code>in</code> 等 Python 運算式的任意合取／析取；允許任何<strong>確定性純 Python 函式</strong>與常數，區分<strong>內建函式</strong>與使用者定義函式。同一變數若被多次生成（如迴圈中的 THING），約束對所有中間值都適用。</li>
+<li><strong><code>distribute &lt;var&gt; over &lt;expr&gt;</code></strong>：對最後一個變數不做解碼，而是對<strong>支持集（support）</strong> 算機率分佈——對集合中每個值評估其輸出似然（圖 7：<code>distribute ITEM over things</code> 得到 sun screen 65% / beach towel 35%）。特別適合分類任務（如情感分析對 {POSITIVE, NEGATIVE} 的機率）。</li>
+</ul>
+<p><strong>3.1 內建函式（圖 8）</strong>：<code>words(var)</code>（切詞）、<code>sentences(var)</code>（切句）、<code>stop_at(var, t)</code>（遇到片語 t 即停止該變數解碼）、<code>len</code>（重載，回傳字串／可迭代物長度）。這些內建函式有額外語意，用於高效輸出驗證與生成解碼遮罩（§5）。</p>
+<h2 id="4-lmql-執行期查詢執行與解碼">4. LMQL 執行期：查詢執行與解碼</h2>
+<p>把 <code>query</code> 當 Python 程式逐行執行（假設函式純粹、無副作用、確定性）。互動軌跡 u 初始化為空字串。遇到頂層字串 s 時執行 <strong>Algorithm 1</strong>：若含 hole <code>[varname]</code>，把 s 拆成 hole 前文 s_pre／變數名／後文 s_post，把 s_pre 併入 u，呼叫 <code>decode(𝒇, u)</code> 生成 v 填 hole、指派給 scope，再把 v 與 s_post 併入 u；若含 <code>{varname}</code> 則從 scope 取值替換；否則直接把 s 併入 u。圖 9 逐步展示圖 1(b) 前 7 行的執行（LM 生成的文字標藍）。</p>
+<p><strong>解碼演算法</strong>：<code>decode</code> 依程式頂端宣告的解碼程序生成 hole 的值，停止於 (i) 產生 eos，或 (ii) 因約束無更多 token 可產。<code>sample(n)</code>/<code>beam(n)</code> 時追蹤 n 條平行執行，以 lockstep 執行以便批次呼叫 𝒇 提升效率。</p>
+<p><strong>Scripted beam search</strong>：遇第一個 hole 時建立並保留 n 條 beam（含估計機率），每條對應一條軌跡 u 並獨立執行查詢函式（不同 u 可能觸發不同控制流）；每步只保留 top n，被丟棄的軌跡被剪枝不再延伸。</p>
+<p><strong>LM 整合</strong>：除了能取得詞表機率分佈外，對 𝒇 不設任何限制；基於 HuggingFace transformers 的 <code>generate()</code> 實作，故已支援其模型庫的大量 LM。</p>
+<p><strong>效能考量</strong>：因假設函式純粹確定性，結果可依參數快取，大減函式呼叫。約束、控制流、遮罩計算可與 LM 預測下一 token 分佈<strong>平行</strong>，只在需要時才套用遮罩——執行期可與 LM 鎖步而不增延遲（除非查詢本身涉及阻塞式互動如網路請求）。LM 遠端執行時，還用<strong>推測式 LM 預測 + 非同步 token 遮罩</strong>降低網路延遲。</p>
+<p><strong>解碼內部（Algorithm 2）</strong>：對單一 sample／beam，逐步建 v：每個新 token 計算詞表遮罩 𝒎（只允許合法 token），若全 0 則停止；否則把 𝒎⊙𝒛 重新正規化，用 <code>pick</code>（依解碼法）選 t；遇 eos 則停。若因無合法 token 提早返回，代表找不到滿足約束的回應。</p>
+<h2 id="5-驗證與約束解碼">5. 驗證與約束解碼</h2>
+<p>本節說明如何從 <code>where</code> 約束<strong>自動高效地為每步解碼算出遮罩</strong>。核心貢獻是一套急切、支援部分求值與前瞻的執行模型。</p>
+<p><strong>Naive 做法（Algorithm 3）</strong>：不假設 <code>compute_mask</code>，改用回溯——生成到 eos 再檢查 uv 是否滿足約束。問題：(1) 回溯搜尋空間爆炸；(2) 每個生成又被丟棄的 token 都是昂貴的 LM 呼叫。</p>
+<p>因此改用<strong>急切、部分求值語意</strong>：不只判斷運算式是否成立，還判斷它是否<strong>保證對任何後續都不可能成立</strong>，得以提早終止並自動算出「保證違反約束」的 token 子集來剪枝。</p>
+<p><strong>5.1 部分求值</strong>：</p>
+<ul>
+<li><strong>Value 語意</strong>：把 e 當 Python 運算式對 scope σ 求值。</li>
+<li><strong>Final 語意</strong>（表 1）：函式 <code>Final[e;σ]</code> 給每個值標註四種標註子之一——<code>fin</code>（隨解碼推進值將固定不變）、<code>var</code>（值可能再變）、<code>inc</code>（單調遞增，數值上或集合／append-only 字串意義上）、<code>dec</code>（單調遞減）。以遞迴規則計算。</li>
+<li><strong>應用（急切驗證）</strong>：對只有部分可得的輸出即可評估 <code>where</code>；依賴未來 hole 的子運算式設為 None、其他運算子容忍之。例如 <code>a∧b</code> 中 b 尚不可定，但若 a 已 <code>fin(⊥)</code> 即可回傳 False——因 <code>fin</code> 表示無論 b 為何、a 都恆為 ⊥。這讓驗證能在每個新 token 上短路，提早偵測非法序列。但 Final 語意本身不能遮罩下一 token，故再引入第三層語意。</li>
+</ul>
+<p><strong>5.2 用 FollowMap 生成 token 遮罩</strong>：</p>
+<ul>
+<li><strong>FollowMap</strong>（表 2）：函式 <code>FollowMap(u,t)</code> 取部分軌跡 u 與 token t，近似「若下一步驗證 ut」時某運算式的未來值。對所有運算子實作規則，遞迴組合成整條驗證運算式的 follow map，據此找出「保證違反」的 token 生成遮罩。</li>
+<li><strong>範例</strong>：約束 <code>TEXT in [&quot;Stephen Hawking&quot;]</code>，目前 TEXT 已生成 <code>&quot;Steph&quot;</code>，則 <code>Follow[...](&quot;Steph&quot;, t)</code> 只在 t 為 <code>&quot;en Hawking&quot;</code> 的前綴時回 <code>fin(⊤)</code>，否則 <code>fin(⊥)</code>——據此推得遮罩只允許 <code>&quot;en Hawking&quot;</code> 的可能首 token。</li>
+<li><strong>子 token 化（Subtokenization）</strong>：子詞詞表對一個字串常有多種切法，故須掃整個詞表找所有可能前綴 token 納入遮罩，以保留合法續接的表達力。</li>
+<li><strong>健全性（Soundness）</strong>：不要求 Follow 遮掉所有將違反約束的 token（即不要求完備性），只要求<strong>健全的過近似</strong>——若 FollowMap 說下一 token t 保證違反 e，則 e 在選 t 後必為 <code>fin(⊥)</code>（式 1）；此舉可能過近似合法集，但<strong>絕不誤刪任何仍可能合法的 token</strong>。無法急切遮罩時退回 backtracking（此侷限與 context-free parsing 的理論結果一致）。</li>
+<li><strong>Brzozowski 導數視角</strong>：以語言 L_𝒬（所有滿足 <code>where</code> 的軌跡）與前綴 u 定義 Brzozowski 導數 u⁻¹L_𝒬（合法後綴集），進而定義「Brzozowski-可容許 token 集」T_𝒬。<strong>定理 5.1（Brzozowski 健全性）</strong>：Follow 導出的允許集 M 滿足 T_𝒬 ⊆ M——即 FollowMap 永遠不會遮掉任何仍能導向合法解碼的 token（附證明）。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

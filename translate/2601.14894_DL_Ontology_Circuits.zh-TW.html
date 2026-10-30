@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《把描述邏輯本體編譯成機率電路，邁向神經符號分類與更多》逐節精要翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>arXiv：2601.14894</p><p><a href="https://arxiv.org/abs/2601.14894" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="把描述邏輯本體編譯成機率電路邁向神經符號分類與更多">把描述邏輯本體編譯成機率電路，邁向神經符號分類與更多</h1>
+<blockquote>
+<p>逐節精要翻譯（非逐字）。原文 arXiv:2601.14894v1。</p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>我們提出一個 NeSy 方法，把描述邏輯（DL）本體與神經網路分類器結合，方式是<strong>把本體表示成一個電路</strong>。展示單一電路表示可用於三類與真實應用密切相關的挑戰任務：(C1) 生成封裝本體語義的合成資料集；(C2) 在 GPU 上高效演繹推理（比可用推理器快達三個數量級）;(C3) 設計神經符號分類器，使其在與神經基線比較時可靠地產出一致預測，同時保持競爭力甚至更佳表現。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>深度學習在語言與影像上表現空前，但其<strong>可靠性</strong>（輸出與背景知識一致的能力）是真實應用的關鍵需求，卻常被忽略。例：自動從傳記文件抽取「藝術家間的創作影響」，若句子是「Fugazi…were a major influence to The Smiths」，而依背景知識「藝術影響」只成立於藝術家之間，則可靠模型<strong>永不</strong>預測「唱片公司 Dischord Records 影響 The Smiths」，不論資訊如何呈現。</p>
+<p>達一致性有兩路：(a) 在「與背景知識一致但內容多樣」的大資料集上訓練——但領域專屬場景常資料稀缺；(b) 把知識直接整合進模型——需解決「表示知識」與「整合進神經網路」兩挑戰。知識表示（KR）領域多用符號方法（邏輯語言）把知識編成知識庫；其中以 DL 定義的本體最廣用（在計算複雜度與表達力間取得好權衡）。</p>
+<p>NeSy 領域研究如何把 KR 方法以「領域專屬約束」形式整合進神經網路，但普遍存在「表達力 ↔ 可處理性 ↔ 保證可靠性」的張力（源於對底層邏輯的模糊/機率詮釋）：基於 FOL 子集的機率法表達力強但推理昂貴；模糊法是約束的近似、需精心設計；命題邏輯法可處理但知識較弱。<strong>DL 語言是 FOL 的子集，推理較可處理又保有足夠表達力</strong>，是 NeSy 的有前途形式；但 NeSy 對 DL 的探索相對不足（既有多為學習本體向量表示、近似推理演算法、或把本體當正規化整合進分類器），且難以理解它們如何增進可靠性。</p>
+<p>本文把 DL 本體當<strong>電路</strong>表示。電路是複雜函數的緊湊計算表示，用於表 Boolean 函數、複雜機率分布、矩陣分解，支援可處理的複雜轉換與查詢（如高效機率推理、加權模型計數）。知識編譯器把命題公式編成可高效求值且保語義的電路。rudolph2011 提議把 DL 本體編成電路作中介、再用 Datalog 做演繹。我們改造此法，展示所得電路可用於 C1/C2/C3。</p>
+<h2 id="2-方法要點">2 方法（要點）</h2>
+<ul>
+<li>把本體 𝒪 編譯成電路 𝒞_𝒪 達成所有計算需求，並因電路性質啟用 NeSy 之外的應用。</li>
+<li>為在訓練期無縫整合模型與本體，需此法<strong>對神經網路輸入完全可微</strong>。</li>
+<li><strong>C1</strong>：從 𝒞_𝒪 生成封裝本體語義的合成資料集（緩解資料稀缺）。</li>
+<li><strong>C2</strong>：電路求值可平行，GPU 實作在大量資料上比現有 DL 推理器快達三個數量級。</li>
+<li><strong>C3</strong>：把 𝒞_𝒪 整合進神經分類器，保證預測與本體一致（可靠），同時可微以利訓練。</li>
+</ul>
+<h2 id="3-實驗要點">3 實驗（要點）</h2>
+<ul>
+<li><strong>演繹推理</strong>：本電路推理器在高資料量下比現成 DL 推理器快達三個數量級。</li>
+<li><strong>神經符號分類</strong>：用 𝒞_𝒪 的兩種整合方式，與神經基線及 DeepProbLog 相比達競爭力或更佳表現，同時更可靠（一致符合本體）。</li>
+</ul>
+<h2 id="相關工作要點">相關工作（要點）</h2>
+<ul>
+<li>DL 推理任務（分類、subsumption 測試）可化約為一致性檢查；另有利用特定片段結構性質、或把 DL 化約到其他邏輯語言（ASP/Prolog/Datalog）再用對應 NeSy 方法（NeurASP、dPASP、DeepProbLog、Scallop 等）。但化約常不保留 DL 片段的可處理性。</li>
+<li>rudolph2012 用「domino 隱喻」把 𝒪 化約成命題公式；本文沿此並以電路實現可微、可平行、GPU 友善的整合。</li>
+</ul>
+<h2 id="結論">結論</h2>
+<p>把 DL 本體編譯成電路是「可擴展演繹推理」的有前途途徑（GPU 上快達三個數量級），且 NeSy 整合是達成「與本體知識一致的可靠模型」的關鍵。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2601.14894_DL_Ontology_Circuits.%E6%91%98%E8%A6%81.html"><code>../summarize/2601.14894_DL_Ontology_Circuits.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

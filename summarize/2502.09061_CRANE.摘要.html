@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《CRANE：以受約束的 LLM 生成進行推理（CRANE: Reasoning with Constrained LLM Generation）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Debangshu Banerjee, Tarun Suresh, Shubham Ugare, Sasa Misailovic, Gagandeep Singh（UIUC，ICML 2025）</p><p>日期：2025-02</p><p>arXiv：2502.09061</p><p><a href="https://arxiv.org/abs/2502.09061" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="crane以受約束的-llm-生成進行推理crane-reasoning-with-constrained-llm-generation重點摘要">《CRANE：以受約束的 LLM 生成進行推理（CRANE: Reasoning with Constrained LLM Generation）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>CRANE（Constrained Reasoning Augmented Generation，受約束推理增強生成）</strong>：先用<strong>複雜度理論證明</strong>「把 LLM 輸出嚴格約束到『只允許合法最終答案』的限制型文法，會把常數層 LLM 的表達力困死在 TC⁰ 電路類、因而無法容納推理鏈」；再證明只要把輸出文法<strong>擴增</strong>成 <code>G_a → R G</code>（R 容納中間推理、G 保證最終答案合語法）就能<strong>同時保住推理力與語法/語義正確</strong>；據此提出一個<strong>在推理時不約束、只在輸出最終答案時才約束</strong>、靠 <code>&lt;&lt;</code>／<code>&gt;&gt;</code> 之類分隔符動態切換的解碼演算法，在 GSM-Symbolic 與 FOLIO 上比 SOTA 受約束解碼與無約束解碼<strong>最多高 10 個百分點</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 常需把輸出餵給下游工具（Python 直譯器、邏輯求解器、定理證明器、Wolfram Alpha 的 DSL），這些工具對輸入有嚴格語法/語義要求。受約束解碼（constrained decoding）能把輸出投影到形式文法上保證<strong>語法正確</strong>，但先前研究（Tam et al. 2024）<strong>實測</strong>發現：嚴格施加約束反而<strong>降低 LLM 的推理能力與功能正確率</strong>。兩個開放問題：RQ1 LLM 在受約束解碼下是否真的失去推理力？RQ2 如何既享受約束減少語法錯誤的好處、又保住無約束時的推理力？作者要的是<strong>不限於特定模型、對任何 LLM 皆成立的形式化解釋</strong>，而非個案實驗觀察。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>理論一（限制型文法傷推理，Prop 3.1）</strong>：對只有有限輸出集的問題（如判定型問題，輸出集 <code>O=L(G_c)</code> 是正則語言），受約束解碼只允許<strong>單一</strong>自回歸步；而常數層 log-precision LLM 的單步只等價於一個 logspace-uniform 常數深度<strong>閾值電路（TC⁰）</strong>。故受約束 LLM 只能解 TC⁰ 內的問題——像 NL-complete 的 st-connectivity（有向圖可達性）除非 TC⁰=NL 否則解不了。</li>
+<li><strong>理論二（無約束/CoT 保表達力，Lemma 3.2）</strong>：任何圖靈機 M，都存在常數層 log-precision LLM 能用 <code>t(n)</code> 個自回歸步模擬 M 的 <code>t(n)</code> 步（即 Chain-of-Thought 式中間步驟大幅提升表達力）。</li>
+<li><strong>理論三（擴增文法救回推理，Prop 3.3）</strong>：把文法固定成 <code>G_a → R_M G</code> 形式，R_M 是能解析圖靈機所有組態編碼 <code>γ̄</code> 的規則（一個定義在組態編碼上的正則語言），G 是原輸出文法。則 LLM 可在 <code>G_a</code> 約束下用 <code>t(n)</code> 步模擬 M，輸出 <code>r·M(x)</code>：推理串 r 自由生成、最終答案 M(x)∈L(G)。約束不再免費致命，只要<strong>留出推理空間</strong>即可。</li>
+<li><strong>CRANE 演算法</strong>：不需要為每個任務造專屬 LLM/文法。作法是<strong>判斷性地施加約束</strong>——推理階段完全不約束，只在最終答案階段約束。用分隔符 <code>S₁</code>（開始）、<code>S₂</code>（結束）標記受約束視窗（實驗用 <code>&lt;&lt;</code>／<code>&gt;&gt;</code>；也對應常見的 ``` 包程式碼），靠 prompt 與 few-shot 誘導 LLM 生成分隔符。遇 <code>S₁</code> 進入受約束模式、遇 <code>S₂</code> 切回無約束（因分隔符可能在中間步驟多次出現）。可搭配任意 LLM、任意受約束解碼器（IterGen、SynCode 等）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>GSM-Symbolic（符號數學，表 1，用 IterGen 做約束、Z3 驗功能等價）</strong>：CRANE 在 9 個開源模型上一致提升功能正確率。Qwen2.5-Math-7B：CRANE <strong>38%</strong> vs 受約束 29% vs CoT 29%；Qwen2.5-1.5B：CRANE <strong>31%</strong>（比 CoT 高 5pp、比受約束高 9pp）；DeepSeek-R1-Distill-Llama-8B：CRANE <strong>31%</strong> vs 受約束 13% vs CoT 21%。CRANE 生成的運算式<strong>零語法錯誤</strong>，而 CoT 無約束有約 10% 帶語法錯。</li>
+<li><strong>FOLIO（一階邏輯推理，表 2，用 SynCode + Prover9 文法/求解器）</strong>：Qwen2.5-7B：CRANE <strong>42.36%</strong> vs 受約束 37.44% vs CoT 36.95%；Llama-3.1-8B：CRANE <strong>46.31%</strong> vs 受約束 39.41% vs CoT 32.02%。CRANE 在所有模型上皆勝過無約束與受約束基線。</li>
+<li>Token 開銷與 CoT 相近（CRANE 保留推理鏈），遠高於純受約束（純約束會壓縮輸出但傷準確率）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>Prop 3.1 只證明「當 L(G_c) 為<strong>有限</strong>語言」時表達力下降；能否推廣到 L(G) <strong>無限</strong>的文法仍開放。</li>
+<li>CRANE 依賴需存取輸出 logits 的受約束解碼工具（如 IterGen/SynCode），對<strong>不開放 logits 的封閉模型不適用</strong>。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>對 ai_core <strong>§5「受約束填碼」是一記重要警示</strong>：你把「程式碼助手」的下層設計成「上層結構化抽取生資產、下層受約束填碼」，很自然會想用嚴格文法把 LLM 鎖死在合法輸出上。本文從複雜度理論證明<strong>約束不是免費的</strong>——過嚴的文法會把 LLM 表達力困在 TC⁰、直接<strong>損害推理</strong>，讓它連本來（無約束/CoT）能解的問題都解不了。這補上已入庫 Outlines/SynCode/GCD 那批（純講「如何高效施加語法約束」）的<strong>理論盲點</strong>。</li>
+<li>正面解法可直接搬進 ai_core 的受約束填碼設計：<strong>不要從第一個 token 就約束，而是「推理時放開、只在填最終結構化答案時才約束」</strong>，並用分隔符（``` / <code>&lt;&lt;&gt;&gt;</code>）動態界定約束視窗——即「擴增文法 <code>G_a→R G</code> 留出推理空間」的工程版。這既守住 §5 下層要的語法/語義正確（生成的東西一定能被下游求解器解析、餵得進確定性節點），又不犧牲貴稀有智能（§2）該有的推理力。</li>
+<li>定位：<strong>理論（複雜度證明）＋演算法＋實證</strong>三合一，歸 I 類。適合做 constrained decoding、structured generation、把 LLM 接邏輯/數學求解器、以及在符號神經計算圖（§1）中設計「LLM 節點如何安全地把輸出交給確定性節點」的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2502.09061_CRANE.zh-TW.html"><code>../translate/2502.09061_CRANE.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

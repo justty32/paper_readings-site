@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《實現基於樹的遺傳編程中的群級並行性以加速 GPU》（EvoGP）重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zhihong Wu, Lishuang Wang, Kebin Sun, Zhuozhao Li, Ran Cheng（南方科技大學 + 香港理工大學）</p><p>日期：2025-01（IEEE 投稿，v7 2026-02），GP 之 GPU 加速框架</p><p>arXiv：2501.17168</p><p><a href="https://arxiv.org/abs/2501.17168" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="實現基於樹的遺傳編程中的群級並行性以加速-gpuevogp重點摘要">《實現基於樹的遺傳編程中的群級並行性以加速 GPU》（EvoGP）重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>EvoGP</strong>：一個把<strong>樹型遺傳編程（TGP）整條演化流程（初始化／評估／交叉變異）全部搬上 GPU、做群級（population-level）並行</strong>的高效框架——靠<strong>張量化表示</strong>（把大小不一的樹編碼成定形、對齊記憶體的陣列）＋<strong>自適應並行</strong>（依資料量在「個體內 vs 個體間」並行間動態切換）＋<strong>把自製 CUDA kernel 嵌進 PyTorch</strong>（無縫接 Gym/MuJoCo/Brax/Genesis）；峰值吞吐 <strong>&gt;10¹¹ GPops/s</strong>，比現有 GPU 版 TGP 快達 <strong>304×</strong>、比最快 CPU 庫快 <strong>18×</strong>，且精度不降、能撐到百萬級族群。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>TGP（符號迴歸／分類／機器人控制常用）算力需求大，但 GPU 高效執行卡在三個核心難題：</p>
+<ol>
+<li><strong>個體結構異質</strong>：每棵樹大小／拓撲／求值邏輯都不同，與張量框架（TensorFlow/PyTorch）天生不合，連 CUDA 也難把變長結構壓成對齊記憶體格式。</li>
+<li><strong>多層並行整合複雜</strong>：資料級並行（SIMD 友善）與群級並行要同時用，須協調記憶體佈局、kernel 融合、排程，避免資源競爭。</li>
+<li><strong>CUDA 高效 vs Python 靈活不相容</strong>：實務部署在 Gym/MuJoCo/Brax 等 Python 生態，要兼顧速度與互通性。</li>
+</ol>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>張量化資料結構</strong>：用<strong>線性前綴編碼</strong>把樹攤平成節點序列（TGP 中每節點子節點數由類型決定，故前綴即可無歧義還原拓撲）；存三個陣列——<strong>節點類型 <code>node_type</code>、節點值 <code>node_value</code>、子樹大小 <code>subtree_size</code></strong>。子樹大小陣列讓子樹邊界 <strong>O(1)</strong> 直接定位（免反覆解析前綴的 O(n)）。再用超參 <strong>最大節點數</strong> 以 <strong>NaN padding</strong> 補成定長 → 整個族群疊成三個批次張量，GPU 可批次處理。</li>
+<li><strong>張量化遺傳操作</strong>：發現多數算子（單點交叉、子樹變異、hoist 變異…）共用同一基元——<strong>子樹交換（subtree exchange）</strong>。把它實作成 GPU primitive，新算子只需改「怎麼選／造子樹」而不動 kernel；超出最大尺寸則判無效、原樹返回。</li>
+<li><strong>自適應並行（fitness 評估）</strong>：
+<ul>
+<li>資料量小至中 → <strong>混合並行</strong>：二維 CUDA grid，多 block 評估同一個體、各算一段資料的部分 fitness，再用原子操作彙總；單次 kernel 啟動省 overhead，用個體間並行填滿閒置核心。</li>
+<li>資料量大 → <strong>純資料級並行</strong>：每個體獨立 kernel 啟動，把樹載入<strong>常數記憶體</strong>（廣播讀取快）。</li>
+<li><strong>執行期自動切換</strong>：以資料點數 vs GPU 總 CUDA 核心數（SM 數 × 每 SM 核心數）為閾值判斷。實測切換點 ≈ 10⁴（恰為 RTX 3090 的 82 SM × 128 = 10,496 核）。</li>
+<li>單個體求值用<strong>前綴編碼反向走訪＝後綴（逆波蘭）堆疊式求值</strong>。</li>
+</ul>
+</li>
+<li><strong>工程</strong>：Python + PyTorch；CUDA kernel 註冊為 PyTorch 自訂算子；**全資料常駐 GPU（zero-copy）**免主機↔裝置搬運；支援 <strong>Modi 節點</strong>做多輸出（樹變 DAG，適配 RL 策略）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>峰值吞吐 &gt;10¹¹ GPops/s</strong>（小資料約 10⁸–10⁹，中大資料達 ~3.5×10¹⁰–10¹¹）。</li>
+<li><strong>加速</strong>：對 GPU 版 SRGPU 峰值 <strong>304×</strong>；對最快 CPU 庫 <strong>Operon 18×</strong>（族群超過某規模時優勢尤明顯）；中大資料時資料級並行已飽和 GPU，故加速倍率收斂但仍領先。</li>
+<li><strong>精度不犧牲</strong>：四個 SR 資料集上 MSE 持平或更優；執行時間隨族群放大近乎平坦（baseline 為線性）。</li>
+<li><strong>三域可擴展</strong>（族群 200→5000 越大越好）：HalfCheetah 控制獎勵翻倍多、Daily Demand 迴歸 MSE 降兩個數量級；Yeast 分類超越 NN 標準準確率（56.87%）、逼近 UCI 最佳 Random Forest（62.80%）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>須預設<strong>最大樹節點數</strong>（padding 換來定形張量，但限制了表達式深度、且 NaN padding 有記憶體浪費）。</li>
+<li>中大資料下 GPU 已被資料級並行飽和，群級並行邊際效益遞減、加速倍率受限。</li>
+<li>仍受單卡 GPU 記憶體（24 GB）約束族群／樹規模；多輸出僅靠 Modi 節點，更進階表達策略列為未來工作。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 <strong>G 類（遺傳編程）的「系統／GPU 工程」代表</strong>——和把 GP 當演算法創新的論文不同，這篇主攻<strong>怎麼讓 GP 在 GPU 上真的快</strong>。可與同批 <a class="paper-reference" href="2504.10253_TinyverseGP.%E6%91%98%E8%A6%81.html">2504.10253</a> TinyverseGP（跨域基準框架）互補：一個談<strong>加速基礎設施</strong>、一個談<strong>統一基準與表示比較</strong>。</li>
+<li>最值得記：<strong>「變長樹 → 前綴編碼 + subtree_size 陣列 + NaN padding → 定形批次張量」</strong> 的張量化套路；<strong>subtree exchange 作為統一 GPU primitive</strong>；<strong>依資料量自適應切換混合／資料級並行（閾值＝CUDA 核心數）</strong>；<strong>CUDA kernel 嵌 PyTorch + 全 GPU 常駐</strong>接 RL 環境。</li>
+<li>定位：<strong>完整系統論文 + 開源（github.com/EMI-Group/evogp）</strong>；適合做 <strong>GP/演化計算 GPU 加速、大規模符號迴歸、GP-based RL／機器人控制、想把不規則樹結構張量化</strong>的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2501.17168_EvoGP.zh-TW.html"><code>../translate/2501.17168_EvoGP.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.09071_REFLECT.zh-TW.html">回 2606.09071_REFLECT.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）agent 現可透過長規劃-執行軌跡解決複雜任務，然而在已完成軌跡中定位錯誤的能力仍遠遠落後，尤其在<strong>靜默失敗（silent failure）<strong>情境。既有方法透過分類器或 LLM 法官預測可疑步，或透過重試恢復正確答案，但</strong>無人將干預結果回饋去精煉歸因本身</strong>。我們提出 REFLECT，一個閉合此缺口的方案：診斷候選錯誤步，以診斷特異修補進行受控重播來測試之，並用<strong>驗證過的結果翻轉作為對比證據</strong>精煉最終歸因。在四個跨域定位基準上，REFLECT 在所有共用 auditor 的方法中達到最高定位準確率，其中結構化 tool-use 軌跡增益最大；即使無預知答案時仍提供可操作的定位。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM agent 雖能完成長軌跡的複雜任務，但審查已完成軌跡、可靠定位錯誤的能力仍遠落後。這直接攸關部署：若人類仍需介入檢查已完成工作、找出失敗根源，AI 就無法可靠提升生產力；agent 若不能定位錯誤，就不可信任於高風險任務。</p>
+<p>此挑戰在<strong>靜默失敗</strong>中尤為尖銳：最先進 agent 完成任務時無 runtime exception、無 malformed JSON、無明顯執行信號——但最終答案是錯的。隨著 agent 能力增長，靜默失敗正成為主導模式：輸出看起來格式正確，只有語義是錯的。反思、重試、更強推理等技術雖能提高任務準確率，卻不解決此問題，因為<strong>修正（correction）不等於歸因（attribution）</strong>——系統可透過重抽樣恢復正確答案，卻仍無法識別原始軌跡的哪一步導致失敗。</p>
+<p>既有工作探索了複雜 agent 軌跡中的錯誤定位，呈現三種反覆出現的缺口：(1) <strong>無執行接地的定位</strong>——分類器與 LLM 法官預測可疑步但無法驗證，且已知會幻覺出自信但錯誤的歸因；(2) <strong>修正不耦合歸因</strong>——重試/回溯法可能恢復正確答案但不識別原始軌跡的哪一步是決定性的，視修正為終點而非證據；(3) <strong>信號檢查無因果測試</strong>——約束與異常檢測器標記可疑步但不驗證修正該步是否真的改變結果。這些缺口的共同根源：<strong>歸因假說被提出，但從未被測試</strong>。</p>
+<p>我們因此識別出忠實錯誤歸因的四項要求：(1) 歸因必須以執行結果為接地，非敘事解釋（R1）；(2) 證據必須透過前綴保留重播從同一軌跡推導，非獨立重試（R2）；(3) 重播必須受診斷特異干預約束，非裸重抽樣（R3）；(4) 歸因必須在推論期對測試軌跡即時計算，非預訓練分類器（R4）。既有方法最多滿足其中兩項。</p>
+<p><strong>貢獻</strong>：(1) 識別四項忠實歸因要求。(2) 提出 REFLECT（Reflective Fault Localization Engine for Agent Correction），第一個將干預結果回饋到步級重定位的方法，閉合修正→歸因迴路。(3) 在四個基準上評估，達到同 auditor 方法中最高的定位準確率，修正成功時顯著改善定位，無預知答案時仍提供可操作定位。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p><strong>推論期修正方法</strong>：Reflexion、self-consistency、self-debug、extended reasoning 提高任務準確率，但不診斷原始軌跡為何失敗；批判附著在新嘗試上，非對原始軌跡的已測試歸因。</p>
+<p><strong>無執行接地的定位（違反 R1）</strong>：TRAIL 評測不驗證的 LLM 法官。AgenTracer 用反事實重播策劃訓練資料、蒸餾到微調 8B 模型，推論時不執行干預（也違反 R4）。TrajAD 在合成干擾軌跡上訓練檢測器（也違反 R4）。ThinkPRM 用訓練驗證器評分，分數反映訓練分佈非測試證據（也違反 R4）。</p>
+<p><strong>信號檢查無因果測試（違反 R1、R2）</strong>：AgentRx 從工具 schema 合成約束、審計每步違規，但從不測試修正標記步是否改變結果。</p>
+<p><strong>修正不耦合歸因（違反 R2、R3）</strong>：Reflexion 產出口語批判並重試，但新軌跡獨立於原始前綴，成功不識別決定性步。ICS 回溯到定位步、從裸前綴重抽樣——未目標化重試混淆隨機變異與因果信號（違反 R3），且不精煉歸因。DoVer 用 LLM 摘要器產生假說、以目標化干預驗證，但重播結果只評估修正，定位從不因回饋精煉。</p>
+<p>REFLECT 是首個將干預結果回饋到步級重定位、組合全部四個屬性的方法。</p>
+<h2 id="3-方法reflect">3. 方法：REFLECT</h2>
+<p>REFLECT 透過三階段定位一條已完成、未崩潰軌跡中最早的決定性錯誤步：</p>
+<h3 id="31-問題設定與歸因記錄">3.1 問題設定與歸因記錄</h3>
+<p>Agent 軌跡 τ = (u₁, …, u_T, y)，每步記錄模型狀態、所採行動與結果觀測。假設執行完成無 runtime exception，但最終答案 y 錯誤。</p>
+<p>定位目標是最早決定性錯誤步 i*：最早的那一步，其修正能在重播下產生驗證過的正確續寫。歸因記錄為 (i*, ∆_i*)：在步 i* 的目標化干預及受控重播，(i) 保留前綴 τ_{&lt;i*} 且 (ii) 將結果從錯誤翻轉為正確。當修正成功時，此記錄提供干預支撐的歸因證據；當修正在所有輪次後失敗，記錄退回到來自迭代診斷過程的最佳可用定位。</p>
+<h3 id="32-階段一診斷">3.2 階段一：診斷</h3>
+<p>Auditor LLM 審計整條軌跡，產出候選最早決定性錯誤步 ℓ₀ = (ı̂₀, c)，其中 ı̂₀ 為暫定候選步，c ∈ [0,1] 為信心分數。自由文字推理與建議修正亦保留供下游使用。在主 oracle 設定中，預期答案可提供給定位器；proxy 設定則不提供。</p>
+<h3 id="33-階段二目標化重播">3.3 階段二：目標化重播</h3>
+<p><strong>誤分類</strong>：將定位步映射到粗粒度錯誤家族（11 類），產生短修正草稿。</p>
+<p><strong>修補計畫</strong>：Diagnostician 產出結構化修補計畫 π = {根本原因， 修正指令， 禁止動作， 預期下一工具}，目的在約束重播朝向目標化測試。</p>
+<p><strong>回溯選擇</strong>：因定位可能偏離一兩步，REFLECT 從 ı̂₀ 附近的 K 個鄰域點（{ı̂₀, ı̂₀−1, …, max(ı̂₀−K+1, 1)}）回溯重播，在保留盡可能多原始前綴的同時容許小幅定位誤差。</p>
+<p><strong>修復迴路（演算法 1）</strong>：每輪診斷中，REFLECT 建構修補計畫、選擇回溯點、從每個前綴注入引導後重新執行 agent。首步重生成經忠實度閘檢查是否跟隨計畫。驗證器判斷重播軌跡是否修正結果。成功時進入階段三的精煉；失敗時從最佳候選軌跡重定位進入下一輪。成功修正僅在與定位步附近的目標化干預相連時才具資訊性。</p>
+<h4 id="331-忠實度閘">3.3.1 忠實度閘</h4>
+<p>檢查首個重生成步是否跟隨修補計畫而非漂移到無關恢復路徑。輕量規則過濾＋必要時 LLM 判斷。軟模式下記錄判決；硬模式下不忠實首步被拒絕、重試時附回饋。此閘操作化 R3：若 agent 忽略修補計畫、透過不相關路徑成功，該成功不構成對假設錯誤步的證據。</p>
+<h3 id="34-階段三驗證回溯歸因與解釋精煉">3.4 階段三：驗證回溯歸因與解釋精煉</h3>
+<p>階段三執行兩個功能：(1) <strong>驗證回溯點歸因</strong>：引發結果翻轉的回溯點被採納為歸因步索引——因對該點存在直接干預證據；步索引完全由哪個回溯點產生結果翻轉決定（機械決定，非 LLM 判斷），非對比比較。(2) <strong>對比解釋精煉</strong>：比較原始與修正續寫，精煉錯誤解釋（錯誤類型、根因、自由文字推理）。輸出為歸因記錄 (ı̂_final, ∆ı̂_final)。若修正失敗，退回到最後一輪的最佳可用定位。</p>
+<p><strong>Proxy 驗證（次要設定）</strong>：無 y* 時，以計畫錨定驗證器取代 oracle——從問題合成任務錨點、審計每個巨集步驟的偏離，輸出校準誤差信號。支援部署時定位，但弱於 oracle 驗證歸因。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

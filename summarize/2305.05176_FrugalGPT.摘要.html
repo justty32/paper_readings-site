@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《FrugalGPT：如何在降低成本並提升效能的前提下使用大型語言模型》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Lingjiao Chen, Matei Zaharia, James Zou（Stanford University）</p><p>日期：2023-05</p><p>arXiv：2305.05176</p><p><a href="https://arxiv.org/abs/2305.05176" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="frugalgpt如何在降低成本並提升效能的前提下使用大型語言模型重點摘要">《FrugalGPT：如何在降低成本並提升效能的前提下使用大型語言模型》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>FrugalGPT</strong>：面對眾多定價相差可達<strong>兩個數量級</strong>的商用 LLM API，作者提出三類降低推論成本的策略——<strong>prompt adaptation（精簡提示）／ LLM approximation（廉價模型近似）／ LLM cascade（LLM 級聯）</strong>；並以「LLM cascade」實作出 FrugalGPT，用一個便宜的 scorer（DistilBERT 迴歸）逐級評分、只在便宜模型答案不夠可靠時才升級到更貴的模型，實驗顯示可在<strong>匹配 GPT-4 效能的同時最多省下 98% 成本</strong>，或在<strong>相同成本下把準確率提升 4%</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>LLM 高吞吐應用<strong>極其昂貴</strong>：論文引用估計 ChatGPT 每日營運成本超過 70 萬美元；用 GPT-4 支援客服，小企業每月可花費超過 2.1 萬美元。</li>
+<li>市場上有大量異質定價的 LLM API：作者比較 <strong>5 家供應商的 12 個商用 LLM API</strong>，成本可差達兩個數量級（例：處理 1000 萬 input tokens，Textsynth 的 GPT-J 只要 0.2 美元，OpenAI 的 GPT-4 要 30 美元）。</li>
+<li>既有 model ensemble／model cascade／FrugalML 等方法是為「已知固定標籤集的預測任務」設計，多需白箱存取且須查詢所有模型，<strong>不適用於黑箱、輸出涵蓋整個自然語言空間的 LLM API</strong>。如何在預算約束下有效且準確地運用整組 LLM，需要新方法。</li>
+</ul>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>問題形式化</strong>：在 LLM marketplace（K 個 API <code>{f_i}</code>）上做「預算感知的 LLM API 使用」——最大化任務表現期望，同時把平均成本約束在使用者定義的預算 b 之內。單次呼叫成本 = 提示長度成本 + 生成長度成本 +（有時）每次固定成本。</li>
+<li><strong>策略一 Prompt adaptation（精簡提示）</strong>：成本隨提示長度線性增加，故縮短提示可省錢。兩種實作——<strong>prompt selection</strong>（只保留少量 in-context 範例）與 <strong>query concatenation</strong>（把多個 query 串接成一次提示送出，避免重複處理相同提示）。</li>
+<li><strong>策略二 LLM approximation（近似）</strong>：若某 API 太貴，就用更便宜的模型／基礎設施近似它。兩種實作——<strong>completion cache</strong>（把回應存進本地快取，遇相似 query 直接取用，不再呼叫 LLM）與 <strong>model fine-tuning</strong>（用昂貴 LLM 的回應微調較小模型，之後用小模型回答，附帶降低延遲）。</li>
+<li><strong>策略三 LLM cascade（級聯，FrugalGPT 主體）</strong>：把 query 依序送給一串 LLM API；若某級回應夠可靠就回傳、不再往下。兩個關鍵元件——<strong>(i) generation scoring function</strong>（<code>g: Q×A → [0,1]</code>，可用一個簡單迴歸模型學習判斷生成是否正確）與 <strong>(ii) LLM router</strong>（選出要放進級聯的 m 個 API 及其閾值向量 τ）。學習 L 與 τ 是一個受預算約束的<strong>混合整數最佳化</strong>問題，作者以「剪枝分歧小的組合 + 少量樣本內插逼近目標」的專用最佳化器高效求解。</li>
+<li><strong>Compositions（組合）</strong>：策略內／跨策略可組合（如 joint prompt and LLM selection），進一步降本增效，但也提高訓練的計算成本。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>HEADLINES 案例研究</strong>：預算設 6.5 美元（GPT-4 成本的五分之一），以 DistilBERT 作 scorer，學到的級聯為 <strong>GPT-J → J1-L → GPT-4</strong>（GPT-J 分數 &gt; 0.96 即接受，否則問 J1-L，其分數 &gt; 0.37 即接受，否則才呼叫 GPT-4）；整體<strong>成本降 80%、準確率反而高 1.5%</strong>（0.857 → 0.872，成本 33.1 → 6.5）。</li>
+<li><strong>匹配最佳單一 LLM 的省本（表 3）</strong>：省幅 50%～98%——HEADLINES 對 GPT-4 省 <strong>98.3%</strong>（33.1 → 0.6）、OVERRULING 省 73.3%、COQA 對 GPT-3 省 59.2%。</li>
+<li><strong>相同成本下增益</strong>：在 OVERRULING 上，相較 GPT-4 準確率增 1% 同時省 73%；整體在相同成本下最多可提升準確率約 4%～5%。</li>
+<li><strong>LLM diversity（MPI）</strong>：便宜模型常與昂貴模型互補——在 HEADLINES 上 GPT-C／GPT-J／J1-L 各能把 GPT-4 表現最多再提升 6%；COQA 上有 13% 案例 GPT-4 錯而 GPT-3 對。也觀察到 API 成本排序不固定、更貴不一定更準（例：HEADLINES 上 J1 比 GPT-3 貴但表現更差）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>訓練級聯策略<strong>需要有標註樣本</strong>，且訓練樣本須與測試樣本同分佈或相似分佈才有效。</li>
+<li>學習級聯本身<strong>需要資源</strong>（視為一次性前置成本；當最終查詢資料集遠大於訓練資料時才划算）。</li>
+<li>論文為<strong>奠基性工作、非窮盡或定案</strong>：仍有其他省本方向（如加速 attention 計算本身）未涵蓋；未納入 latency、fairness、privacy、環境影響、以及風險關鍵應用所需的不確定性量化。</li>
+<li>級聯並非完美：仍存在「所有級都給相同答案卻仍不確定、被迫查完整條鏈」的浪費案例，如何避免屬未解問題。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>ai_core 直接接點（核心）</strong>：FrugalGPT 的 <strong>LLM cascade</strong> 正是 ai_core roadmap §3.3「成本梯度／洞的大小 = f（模型能力）」的學術原型——用一個便宜的 <strong>scorer（reliability score）＋ 閾值</strong>決定「便宜模型的答案是否過關；沒過關才升級給更貴的聰明模型」，與 ai_core「per-request 尺度上先讓笨模型做、驗證沒過再升級」的梯度機制同構。其中 <strong>generation scoring function</strong> 對應 ai_core 的「驗證器」、<strong>閾值 τ</strong> 對應「洞的大小 / 過關門檻」、便宜模型與昂貴模型的分工對應「便宜高頻智能（資產消費者）vs 貴稀有智能（資產工廠）」的分層。</li>
+<li>另兩策略也映射 ai_core 主題：<strong>completion cache</strong> ≈「把 LLM 呼叫包成可記憶／可重用的可靠函數」；<strong>model fine-tuning（用貴模型回應蒸餾小模型）</strong> ≈「逐步剃除對 LLM 依賴、把稀有智能沉澱成便宜資產」。</li>
+<li><strong>可直接借用的工程要點</strong>：scorer 可以很小很便宜（DistilBERT 迴歸即可，遠小於所有 LLM）；閾值與級聯順序可由受預算約束的最佳化學得；便宜模型與昂貴模型具<strong>互補性</strong>（MPI），故級聯不只省錢還可能增準。</li>
+<li><strong>庫內對照</strong>：可與 <a class="paper-reference" href="2406.18665_RouteLLM.%E6%91%98%E8%A6%81.html">2406.18665</a>（RouteLLM，學習式路由）並讀，作為「級聯（逐級升級）」對比「路由（一次性選模型）」的兩種成本控制範式對照。</li>
+<li>定位：<strong>願景／方法論文 + 概念驗證實證</strong>（Stanford，2023-05）。適合做 <strong>LLM 成本最佳化、多模型級聯／路由、驗證器驅動的模型升級、預算感知推論</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2305.05176_FrugalGPT.zh-TW.html"><code>../translate/2305.05176_FrugalGPT.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

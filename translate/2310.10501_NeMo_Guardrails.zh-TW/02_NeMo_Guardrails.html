@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_NeMo_Guardrails · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2310.10501_NeMo_Guardrails.zh-TW.html">回 2310.10501_NeMo_Guardrails.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%AF%84%E4%BE%8B%E8%AD%B7%E6%AC%84%E6%87%89%E7%94%A8.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-nemo-guardrails">3. NeMo Guardrails</h2>
+<h3 id="31-整體架構">3.1 整體架構</h3>
+<p>如圖 3 所示，NeMo Guardrails 扮演使用者與 LLM 之間的代理。它讓開發者可用 <strong>Colang</strong>——一種用來描述事件流程（包括對話）的正式建模語言——定義 LLM 在與使用者互動時應遵循的可程式化護欄。Colang 由 <strong>Guardrails runtime</strong> 解讀，runtime 會套用使用者定義的規則，或由 LLM 自動生成的規則（詳見後文），這些規則即實作了護欄，並引導 LLM 的行為。</p>
+<p>圖 2 展示了一段 Colang 腳本的節錄——這類腳本是 Guardrails 應用配置的核心。Colang 腳本的主要元素為：使用者標準形式（user canonical forms）、對話流程（dialogue flows）、機器人標準形式（bot canonical forms）。這三類定義都會被索引進一個<strong>向量資料庫</strong>（例如 Annoy、FAISS），以便在為提示挑選 few-shot 範例時能有效率地做最近鄰查找。</p>
+<p>LLM 與 Guardrails runtime 之間的互動由 Colang 規則定義。當被適當提示時，LLM 能用 few-shot 上下文學習生成 Colang 風格的程式碼；否則，LLM 以一般模式運作、生成自然語言。</p>
+<p><strong>標準形式（Canonical forms）</strong>（Sreedhar and Parisien 2022）是 Colang 與 runtime 引擎所使用的關鍵機制。它們以自然語言（如英文）表達，用來編碼一段對話訊息的意義，類似意圖（intent）。標準形式與意圖的主要差異在於：意圖是為文字分類任務設計的封閉集合，而標準形式是由 LLM 生成的，因此不受限於任何固定集合，只是受到 Guardrails 應用所定義的標準形式引導。用來定義引導互動的護欄的標準形式集合由開發者指定；這些形式在為新的使用者訊息生成標準形式時，會被用來挑選 few-shot 範例。</p>
+<p>利用這些關鍵概念，開發者可以實作多種可程式化護欄。我們識別出兩大類：<strong>主題護欄（topical rails）<strong>與</strong>執行護欄（execution rails）</strong>。主題護欄用於控制對話，例如引導特定話題的回應或實作複雜的對話政策。執行護欄則呼叫應用開發者定義的自訂動作；本文將聚焦於一組所有 Guardrails 應用皆可使用的安全護欄。</p>
+<h3 id="32-主題護欄">3.2 主題護欄</h3>
+<p>主題護欄運用 NeMo Guardrails 的核心機制：以 Colang 把可程式化護欄描述成<strong>對話流程</strong>，並搭配 runtime 中的 Colang 解譯器來做<strong>對話管理</strong>（對應圖 3 中的「Execute flow [Colang]」區塊）。開發者指定流程，決定使用者對話應如何推進。Guardrails runtime 中的對話管理器採用事件驅動設計（一個處理事件並反過來產生其他事件的事件迴圈），以確定目前對話脈絡下哪些流程是啟用中的。</p>
+<p>Runtime 有三個主要階段（見圖 3）來引導對話流程走向、進而確保主題護欄生效：</p>
+<p><strong>生成使用者標準形式。</strong> 用相似度式 few-shot 提示，為每個使用者輸入生成標準形式，讓護欄系統能觸發任何使用者定義的流程。</p>
+<p><strong>決定下一步並執行。</strong> 一旦識別出使用者標準形式，有兩條可能路徑：<strong>1) 預先定義的流程：</strong> 若標準形式命中任何開發者指定的流程，對話管理器就從該流程中取出下一步；<strong>2) 由 LLM 決定下一步：</strong> 對於未在目前對話脈絡中定義的使用者標準形式，我們利用 LLM 的泛化能力來決定合適的下一步——例如在一個旅遊訂票系統中，若已定義訂公車票的流程，當使用者想訂機票時，LLM 應能類推生成類似的流程。</p>
+<p><strong>生成機器人訊息。</strong> 依據決定好的下一步，提示 LLM 生成回應。因此，若我們不希望機器人回答政治問題，而這類問題對應的下一步是 <em>bot inform cannot answer</em>——機器人就會迴避回答，藉此遵守護欄。</p>
+<p>附錄 B 提供關於 Colang 語言的細節，附錄 C 則含有範例提示。</p>
+<h3 id="33-執行護欄">3.3 執行護欄</h3>
+<p>本工具箱也讓加入「執行」護欄變得容易。這些是自訂動作（以 Python 定義），會監控 LLM 的輸入與輸出，並可在流程中遇到時由 Guardrails runtime 執行。雖然執行護欄可用於各式各樣的任務，我們提供了數個涵蓋事實查核、幻覺、審核的 LLM 安全護欄。</p>
+<h4 id="331-事實查核護欄">3.3.1 事實查核護欄</h4>
+<p>在檢索增強生成（RAG，Wang et al. 2023）的假設下，我們把此任務形式化為蘊涵（entailment）問題。具體而言，給定一段 <em>evidence</em>（證據）文字與一個生成的 <em>bot response</em>（機器人回應），我們要求 LLM 判斷該回應是否根植於（grounded in）且被證據所蘊涵（entailed by）。針對每一組 evidence-hypothesis pair，模型須用以下提示回覆一個二元蘊涵判斷：</p>
+<blockquote>
+<p><em>「你的任務是判斷 hypothesis 是否根植於、且被下方的 evidence 所蘊涵。你只能使用 evidence 的內容，不可仰賴外部知識。請以 yes/no 回答。&quot;evidence&quot;: {evidence} &quot;hypothesis&quot;: {bot_response} &quot;entails&quot;:」</em></p>
+</blockquote>
+<p>若模型判斷 hypothesis 未被 evidence 蘊涵，代表生成的回應可能不正確。可用不同方式處理這種情況，例如選擇不提供答案。</p>
+<h4 id="332-幻覺護欄">3.3.2 幻覺護欄</h4>
+<p>對於不涉及檢索元件的一般性問題，我們定義一個幻覺護欄，協助防止機器人捏造事實。此護欄採用類似 SelfCheckGPT（Manakul et al. 2023）的自我一致性檢查：給定一個查詢，我們先從 LLM 取樣數個回答，再檢查這些不同回答是否彼此一致。對於幻覺陳述，重複取樣很可能會得到彼此不一致的回應。</p>
+<p>在取得同一提示的 n 個 LLM 樣本後，我們把其中 n−1 個回應串接成 <em>context</em>（脈絡），並把第 n 個回應當作 <em>hypothesis</em>（假設）。接著用 LLM 依附錄 D 定義的提示模板，判斷取樣出的回應是否一致。</p>
+<p>取樣機器人回應時，如 SelfCheckGPT 所建議，我們使用較高的溫度（temp=1）以確保回應之間有必要的差異，用來評估答案的自我一致性；而基於 LLM 的幻覺驗證呼叫則使用 temp=0，以取得最可能的回應。本文所述其他所有執行護欄的行為皆與此類似。</p>
+<h4 id="333-審核護欄">3.3.3 審核護欄</h4>
+<p>NeMo Guardrails 的審核流程包含兩個關鍵元件：</p>
+<ul>
+<li><strong>輸入審核</strong>，亦稱為 <em>jailbreak（越獄）</em> 護欄，目標是在惡意使用者訊息進入對話系統前將其偵測出來。</li>
+<li><strong>輸出審核</strong>目標是在 LLM 回應返回給使用者之前，判斷其是否合法、合乎倫理、不具傷害性。</li>
+</ul>
+<p>審核系統以管線（pipeline）方式運作：使用者訊息先經過輸入審核才進入對話系統；對話系統由 LLM 生成回應後，觸發輸出審核護欄。只有同時通過兩道審核護欄，回應才會回傳給使用者。</p>
+<p>輸入與輸出審核護欄都被構框成另一項任務，交給一個強大、已充分對齊的 LLM 來審視輸入或回應。這些護欄使用的提示模板見附錄 D。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

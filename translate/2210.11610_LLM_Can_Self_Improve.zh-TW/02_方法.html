@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2210.11610_LLM_Can_Self_Improve.zh-TW.html">回 2210.11610_LLM_Can_Self_Improve.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-方法">3. 方法</h2>
+<p>給定預訓練 LLM <em>M</em> 與只有問題的訓練集 D^train = {x_i}，以及少量 few-shot CoT 範例。對 D^train 中每題以取樣溫度 T&gt;0 做多路徑解碼，生成 <em>m</em> 條推理路徑與答案，再用多數投票（self-consistency）選出最一致、信心最高的答案。保留所有導向該答案的推理路徑，施以<strong>混合格式</strong>的 prompt 與答案增強，並在這些自產的「推理—答案」資料上微調模型。以下詳述各設計。</p>
+<h3 id="31-生成與過濾多條推理路徑">3.1 生成與過濾多條推理路徑</h3>
+<p>Self-consistency 對推理任務帶來大幅改進（如 GSM8K 測試集 56.5%→74.4%），而貪婪解碼與多樣解碼之間的落差，說明可用「自選的高信心推理路徑」當訓練資料進一步提升 <em>M</em> 的推理能力。</p>
+<p>對每題 x_i 取樣 <em>m</em> 條 CoT 路徑；由於模型是以 Wei et al. 的 CoT 範例提示，沿用同樣以「The answer is」解析答案的方式取得預測答案。以多數投票選出最一致答案 ỹ_i（<strong>不必然是正確答案</strong>），並把所有最終答案為 ỹ_i 的推理路徑收進自訓練資料 D^self-consistent = {x_i, r̃_i}。</p>
+<p><strong>Table 1（範例）要旨</strong>：一題餐廳帳單題（開胃菜 $10、四份主菜各 $20、小費 20%）的三條自產 CoT——輸出 1 與輸出 3 都得到 108（推理過程各異但答案一致），輸出 2 算成 96（錯誤推理路徑）。多數投票保留輸出 1 與 3 作自訓練資料。</p>
+<p><strong>Fig. 2（信心校準）要旨</strong>：橫軸為多數投票答案的信心（導向 ỹ 的路徑數 ÷ 總路徑數 <em>m</em>），縱軸為該信心下 ỹ 的準確率，圓面積與顏色深淺表示該信心區間的題數。由於我們不用任何真值標註來剔除 ỹ_i ≠ y_i 的情形，關鍵在於自產 CoT 路徑大體可靠、錯誤答案不至於傷害自我改進。圖顯示 self-consistency 的預測信心<strong>校準良好</strong>：信心高的答案較可能正確；而 ỹ 錯誤時通常只有較少路徑支持，因此帶進訓練樣本的噪音很小。</p>
+<h3 id="32-以混合格式訓練">3.2 以混合格式訓練</h3>
+<p>為避免語言模型過擬合特定 prompt 或答案風格，我們對每條推理路徑造出<strong>四種格式</strong>混入自訓練資料（Table 2）：</p>
+<ul>
+<li><strong>格式 1</strong>：輸入＝[CoT 提示範例] + 問題 + 「A:」；輸出＝過濾後的完整 CoT 推理路徑。</li>
+<li><strong>格式 2</strong>：輸入＝[標準提示範例（與 CoT 範例同題，但拿掉推理）] + 問題 + 「A:」；輸出＝只有直接答案。</li>
+<li><strong>格式 3</strong>：不給任何範例，輸入尾端接「A: Let&#x27;s think step by step.」以引導模型自行產生逐步推理；輸出＝完整推理路徑。</li>
+<li><strong>格式 4</strong>：不給任何範例，輸入＝問題 + 「A:」；輸出＝只有直接答案。</li>
+</ul>
+<p>格式 3、4 不附問答範例，目的是讓模型學會<strong>在 in-context zero-shot 的情況下自己思考</strong>。混合格式的訓練樣本隨後用於微調預訓練模型 <em>M</em>。</p>
+<h3 id="33-自產問題與提示">3.3 自產問題與提示</h3>
+<p>本法需要一組訓練問題與少量人寫 CoT 範例。當訓練問題或 CoT 範例數量有限時，可能產不出足夠的自訓練樣本；而從網路蒐集問題又需人力。為進一步降低人力，我們研究自產訓練問題與範例提示。</p>
+<p><strong>問題生成</strong>：先前的少樣本資料增強工作多針對分類任務且需要每個少樣本範例的真值標籤。我們採用簡單有效的做法：隨機挑選數個既有問題、以隨機順序串接成輸入 prompt，讓模型續寫出新問題；重複此程序取得大量新問題，再用 self-consistency 只保留具高信心答案者，作為自產訓練問題。</p>
+<p><strong>提示生成</strong>：在沒有人工 prompt 的零樣本設定下，可由模型自行生成 CoT 路徑——依 Kojima et al. 以「A: Let&#x27;s think step by step.」開頭讓模型續寫推理路徑，再把這些生成的推理路徑當作 few-shot CoT 提示的範例。</p>
+<h2 id="4-實驗設定">4. 實驗設定</h2>
+<p><strong>任務與資料集</strong>（GSM8K、ARC、OpenBookQA、ANLI 用測試集；DROP 用 dev 集，因其測試集標註未公開）：</p>
+<ul>
+<li><strong>算術推理</strong>：GSM8K 數學題集；DROP 閱讀理解基準（需數值推理），依 Zhou et al. 把 DROP 切成美式足球相關與非相關兩個子集訓練。</li>
+<li><strong>常識推理</strong>：OpenBookQA；AI2 Reasoning Challenge（ARC），僅用 Challenge 子集（ARC-c）。兩者皆為選擇題。</li>
+<li><strong>自然語言推論</strong>：Adversarial NLI 的 ANLI-A2 與 ANLI-A3（比 A1 更具挑戰性），句對關係為蘊涵／中性／矛盾。</li>
+</ul>
+<p><strong>模型、訓練設定與超參數</strong>：沿用先前研究，在一個 540B 參數的自迴歸 Transformer 語言模型上實驗。每題生成 <strong>m=32</strong> 條推理路徑；因每條路徑會擴成四種格式，最終訓練樣本量最多達 <strong>128×|D^train|</strong>。除 DROP 外均使用完整訓練集；為減輕訓練負擔，DROP 的足球／非足球分割各抽 5k 例，ANLI-A2 與 A3 各抽 5k 例。每個資料集微調 <strong>10k 步</strong>，學習率 <strong>5e-5</strong>，batch size <strong>32</strong>。多路徑解碼在預訓練模型上用 <strong>T=0.7</strong>（依 Wang et al. 建議），自我改進後的模型（LMSI）用 <strong>T=1.2</strong>。最大解碼步數一律 256。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

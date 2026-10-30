@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《InferCept：為增強型 LLM 推論提供高效率中斷支援》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Reyna Abhyankar, Zijian He, Vikranth Srivatsa, Hao Zhang, Yiying Zhang（University of California, San Diego）</p><p>日期：2024-02（v2: 2024-05，ICML 2024），LLM serving × tool/API interception × KV cache</p><p>arXiv：2402.01869</p><p><a href="https://arxiv.org/abs/2402.01869" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="infercept為增強型-llm-推論提供高效率中斷支援重點摘要">《InferCept：為增強型 LLM 推論提供高效率中斷支援》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>當 LLM 呼叫工具後等待外部結果，KV cache 應該留在 GPU、丟棄後重算，還是搬到 CPU？InferCept 不用固定政策，而把三種方案統一換算成 <code>memory × time</code> 的 GPU waste，逐 request 選擇並以分塊重算、分層 pipeline swap 和原始到達時間排序恢復執行；相較 vLLM 可承受 <strong>1.6–2×</strong> 請求率，normalized latency 降低 <strong>1.3–12×</strong>。</p>
+<h2 id="問題">問題</h2>
+<p>傳統 LLM serving 把一次 generation 當作連續工作。Tool/API-augmented request 卻會在中途停下，等待 web search、database、human feedback、diffusion 或其他 agent。現有系統常把中斷當作 generation 結束，工具回傳後組成新 prompt，先前 KV 全部重算。</p>
+<p>論文測得固定策略各有昂貴失誤：</p>
+<ul>
+<li><strong>Discard</strong>：立即釋放 KV，但恢復時重算；混合 workload 中 <strong>37%–40% model forwarding time</strong> 花在重算已見 context，GPU resource waste 為 27%。</li>
+<li><strong>Preserve</strong>：恢復快，卻讓暫停 request 長期占 GPU；實測超過 60% 的時間，有近一半 GPU memory 被 interrupted requests 占用。</li>
+<li><strong>Swap</strong>：搬到 CPU 可回收 GPU memory，但 naive swap 阻塞前景運算；混合 workload 有 26% resource waste，逾 25% workload time 在等 swap。</li>
+</ul>
+<p>因此不存在僅由 API 類型決定的固定最佳策略；context 長度、interception duration、當前 batch、GPU/CPU memory 和 bandwidth 都會改變答案。</p>
+<h2 id="方法">方法</h2>
+<ul>
+<li><strong>Swap pipeline + chunking</strong>：以 transformer layer 為 pipeline stage，把 kernel launch、GPU↔CPU data movement 與前景 forwarding 重疊；每 iteration 只搬能藏在 forwarding time 裡的 tokens。</li>
+<li><strong>Recomputation chunking</strong>：離線找 GPU query-token saturation point；恢復時只把剩餘 compute capacity 填成重算 chunk，和 decode 混批，不讓整條長 context 在單一 iteration 拉長所有 request。</li>
+<li><strong>Min-waste policy</strong>：Preserve waste 近似 <code>interception duration × context KV size</code>；Discard waste包含重算 context 自身及因此延後其他 resident requests 的 memory-time。先依最小 waste 決定 preserve/discard，再把有限 swap budget 優先給 waste 最大者。</li>
+<li><strong>公平恢復</strong>：running、swap、waiting 三個 queue 都保留 original arrival time。Discarded/resumed request 不會被當成全新 request 丟到隊尾，避免漂亮 TTFT 掩蓋舊 request starvation。</li>
+<li><strong>未知工具時間</strong>：以 <code>now - call_time</code> 動態增長 duration estimate；其混合 workload 表現達知道真實時間 oracle 的 <strong>93%</strong>。</li>
+</ul>
+<h2 id="實驗結果">實驗結果</h2>
+<p>InferCept 建於 vLLM，測 GPT-J 6B（1×A100）、Vicuna 13B（1×／2×A100 tensor parallel）與 Llama 3 70B（4×A100），混合六種 augmentation traces。</p>
+<ul>
+<li>6B：同 normalized latency 下承受最高 <strong>1.6×</strong> arrival rate；同 request rate 下 latency 為 vLLM 的 <strong>1/1.9–1/5.7</strong>；在最低 TTFT 條件下 arrival rate 高 1.7×。</li>
+<li>13B 雙 GPU：arrival rate 高至 <strong>1.8×</strong>，normalized latency 改善 <strong>1.6–10×</strong>。</li>
+<li>70B：arrival rate 高至 <strong>2×</strong>，同 RPS latency 改善 <strong>1.3–12×</strong>；相同 TTFT 下 load 高 2.4×。</li>
+<li>相較 improved-discard／swap，分塊與 pipeline 消除逾 <strong>60% recomputation waste</strong> 與 <strong>96% swapping waste</strong>。</li>
+<li>6B、2 RPS ablation 中，完整系統只剩 <strong>0.69% GPU memory waste</strong>。</li>
+</ul>
+<h2 id="局限與閱讀提醒">局限與閱讀提醒</h2>
+<ul>
+<li>研究解決的是 inference-serving resource efficiency，不處理 tool side effect、idempotency、timeout 後效果未知或結果驗證。</li>
+<li>Workload 是記錄後重播／模擬的六類 augmentation；真實工具服務會有 correlated latency、failure burst 與更複雜 arrival pattern。</li>
+<li>Waste model 依離線 profiling 的 saturation point、forwarding time 與 bandwidth；硬體、attention kernel、模型架構改變後需重做 profile。</li>
+<li>論文把 interception time 從 normalized end-to-end latency 扣除，便於隔離 serving 差異，但不是使用者感知的完整 latency。</li>
+<li>v2 官方 arXiv HTML 轉換不完整，只從第 2 節中段開始；本摘要因此以官方 PDF 與官方 e-print TeX 交叉核對，而非依賴該 HTML 頁。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<p>InferCept 為 Agent Machine 的 Step/tool suspension 提供了很清楚的資源模型：logical Step 可以 durable paused，model process 不必 resident；context manifest、GPU KV residency、CPU swap copy 與可重算來源是不同層。快取只影響成本，不可成為 correctness 前提。FreePy 可借用其 memory-time waste 和三 queue 思路，但必須再加上 tool effect journal、attempt ID 與 verify-before-retry，才能從「推論暫停」升到「可靠 agent step」。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2402.01869_InferCept.zh-TW.html"><code>../translate/2402.01869_InferCept.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

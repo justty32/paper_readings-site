@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《CodeT：以生成測試驅動的程式碼生成（CodeT: Code Generation with Generated Tests）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Bei Chen, Fengji Zhang, Anh Nguyen, Daoguang Zan, Zeqi Lin, Jian-Guang Lou, Weizhu Chen（Microsoft Corporation）</p><p>日期：2022-07（ICLR 2023）</p><p>arXiv：2207.10397</p><p><a href="https://arxiv.org/abs/2207.10397" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="codet以生成測試驅動的程式碼生成重點摘要">《CodeT：以生成測試驅動的程式碼生成》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>CodeT（test-driven dual execution agreement）</strong>：用<strong>同一個</strong>預訓練模型（Codex 等）除了生成程式碼解，還自動生成大量測試案例，然後把每個解跑在每個測試上，仿 RANSAC 找<strong>共識集（consensus set）</strong>——「通過完全相同測試集合的解」聚成一組，以 <code>f(S)=|S_x|·|S_y|</code>（解數×通過測試數）<strong>雙重執行一致性</strong>評分排序、從最高分組挑最終解——<strong>零訓練、零標註、零人工測試</strong>，把 code-davinci-002 在 HumanEval 的 pass@1 從 47.0% 拉到 <strong>65.8%</strong>（超越先前 SOTA 20%+）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>大模型生成程式碼「採樣多次總有對的」與「單次答對」差距巨大：code-cushman-001 在 HumanEval 上 pass@100 有 77.4%，pass@1 只有 33.5%——<strong>如何從多候選中挑出正確解</strong>是實用化的關鍵瓶頸。</li>
+<li>執行驗證是天然的把關方式，但依賴人工撰寫測試案例，昂貴費時；Copilot 這類真實場景不可能要求使用者先為每個問題寫好測試。</li>
+<li>既有選解法要嘛需訓練 ranker/verifier（Cobbe et al. 2021 的 GSM8K verifier、Inala et al. 2022 的 fault-aware ranker），要嘛需現成測試或使用者互動。</li>
+</ul>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>測試生成（§2.1）</strong>：在原 context 後接一段指令 prompt（<code>pass</code> 佔位函數體＋「check the correctness of [函數名]」註解＋起頭的 <code>assert</code>），讓同一模型改為補全 input-output 斷言；並<strong>移除題目中的範例輸入輸出</strong>以免洩漏真測試。每題採樣 100 次、每樣本取前 5 條合法 assert（最多 500 條測試）。</li>
+<li><strong>雙重執行一致性（§2.2，仿 RANSAC）</strong>：兩個假設——解與測試是獨立隨機採樣；<strong>錯誤解彼此多樣、碰巧功能一致的機率極低</strong>。把「通過完全相同測試集合」的解分組成共識集，得分＝組內解數 × 該組通過的測試數（實作時解數取平方根，因「通過更多測試」比「更多同功能解」更重要，附錄 C）；取最高分組任一解為 pass@1，取前 k 組各一解為 pass@k。</li>
+<li>簡單高效：不需標註資料、不需額外 ranker；解數不大時可直接枚舉所有 （解， 測試） 配對、一次算出所有共識集。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>五模型 × 四基準全面一致提升</strong>（zero-shot、溫度 0.8）：code-davinci-002 HumanEval 47.0→<strong>65.8</strong>（+18.8，勝先前 SOTA 42.7% 逾 20 點）、MBPP 58.1→67.7（+9.6）、APPS Introductory 27.2→34.6（+7.4）、CodeContests 0.7→2.1；三個 Codex 模型 HumanEval pass@1 增益皆 &gt;10 點；InCoder-6B / CodeGen-16B 增 4.2～13.1 點。<strong>CodeT 的 pass@2 ≈ baseline 的 pass@10</strong>。</li>
+<li><strong>一致優於 AlphaCode-C</strong>（只按輸出聚類、不用測試資訊的複現版）——證明把「測試通過數」納入評分（dual）是關鍵；附錄 I 消融：只看解數或只看測試數都更差。</li>
+<li><strong>測試品質決定增益</strong>：以 canonical solution 檢驗，Codex 系生成測試準確率遠高於 InCoder/CodeGen、「毒性測試」（錯解能過而正解不過）比例更低、覆蓋率 &gt;95%；<strong>用 code-davinci-002 的測試餵給弱模型可再提升</strong>（InCoder/CodeGen +6.2～15.9 點）——好測試可移植。</li>
+<li><strong>測試效率高</strong>：僅 10 條生成測試就能讓 code-davinci-002 pass@1 +9.5%。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>只適用<strong>可執行</strong>的程式碼生成（需能跑），且測試生成引入額外計算成本。</li>
+<li>依賴假設「錯解不會碰巧一致」；code-cushman-001 在 HumanEval 上有 53/164 題「正解已生成但未進 top-1 共識集」，兩成歸因於題意含糊/邊角案例/缺 import，其餘是模型沒讀懂題目——模型能力仍是天花板。</li>
+<li>競賽級難題（APPS Competition、CodeContests）增益有限。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>ai_core §3.4「拒絕為預設＋憑證准入」的可執行範本</strong>：CodeT 展示了一個不需任何訓練的<strong>test-based 確定性把關器</strong>——LLM 產出（解）不被信任，必須經「執行 × 一致性」雙重憑證才被放行。與已入庫的 <a class="paper-reference" href="2110.14168_GSM8K_Verifiers.%E6%91%98%E8%A6%81.html">2110.14168</a>（GSM8K verifier，<strong>訓練式</strong>驗證器）恰成對照：CodeT 用<strong>執行取代訓練</strong>——驗證器本身也由 LLM 即時生成（測試），但<strong>判定是確定性的</strong>（跑得過就是跑得過），沒有第二個模型的校準/漂移問題。代價是只適用可執行資產；這正劃出「執行驗證 vs 學習驗證」的適用邊界。</li>
+<li><strong>§5 程式碼助手第一目標的測試閘門</strong>：受約束填碼層可直接套 CodeT 流程——上層結構化抽取生資產時順手生測試，下層 n 個候選過共識集才交付；「pass@2 ≈ baseline pass@10」意味著閘門能用小 k 換大可靠度，符合成本梯度（§3.3）思路。「好測試可移植」（davinci-002 測試餵弱模型）暗示：**貴模型生測試（資產工廠）、便宜模型生解（資產消費者）**的分工（§2）。</li>
+<li><strong>§3.6 固化引擎的憑證來源</strong>：通過高分共識集的「解＋測試」對，本身就是可結晶入庫的確定性資產——測試集即該資產的准入憑證與回歸防線。也要記住其失效模式：spec 含糊時共識會收斂到錯誤理解（多數決≠正確），固化前仍需 spec 消歧。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2207.10397_CodeT.zh-TW.html"><code>../translate/2207.10397_CodeT.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

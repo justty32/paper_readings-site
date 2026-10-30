@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.10990_SkillDriftContract.zh-TW.html">回 2605.10990_SkillDriftContract.zh-TW 目錄</a>　<a href="02_DRIFTBENCH%EF%BC%9A%E6%8A%80%E8%83%BD%E5%8A%A3%E5%8C%96%E5%9F%BA%E6%BA%96.html">← 上一節</a>　<a href="04_%E5%88%86%E6%9E%90.html">下一節 →</a></p>
+</blockquote>
+<h2 id="5-實驗">5. 實驗</h2>
+<p>評估圍繞三問：(Q1) 角色承載合約是否在不犧牲漂移召回的情況下抑制誤報？(Q2) 相同合約觀點能否在即時條件下浮現過時技能（無已知漂移規格）？(Q3) 失敗合約是否為有用的修復證據，而非僅僅偵測訊號？</p>
+<p><strong>設置。</strong> 評估五個骨幹 LLM，來自四個家族：Qwen3.6-Plus、Qwen3-235B-A22B、DeepSeek-V3.2、DeepSeek-R1、GLM-5.1。偵測基線包括 Grep/diff、無合約 CI 探針、Dependabot 式掃描 [11]、NL2Contract 式單遍提取 [15]、模擬 canary 執行。修復基線包括無定位、純漂移文字、三輪 Self-refine [20]、完整漂移規格改寫。報告精確率、召回、FPR、嚴格修復成功、bootstrap 95% 信心區間（B=10,000），以及修復消融的 Fisher 精確檢定。</p>
+<h3 id="51-q1合約是否改變監控錯誤輪廓">5.1 Q1：合約是否改變監控錯誤輪廓？</h3>
+<p>合約觀點的核心預測不是監控器應找更多漂移，而是<strong>監控單元應改變</strong>：警報應針對違反的作業義務而發，而非每個變更的 URL、版本或配置值。因此我們將已知漂移驗證與無漂移及 hard-negative 控制一起評估——在這些控制中許多值變更，但技能作業合約未違反。</p>
+<p><strong>所有五個骨幹</strong>上 SKILLGUARD 在已知漂移驗證中達 100% 精確率；最強骨幹達 76% 召回（見表 2，Qwen3.6-Plus 的 CI [62%,88%]）。在 599 個無漂移與 hard-negative 案例（49 identity + 300 格式化 + 250 語義）上，SKILLGUARD 零誤報（Wilson 95% CI [0%, 0.6%]）。這些負例非空控制：語義 hard negatives 改變實際值同時保留作業合約，因此通過它們要求方法區分附帶提及與角色承載義務。</p>
+<p><strong>與替代策略對比（圖 3）：</strong> Grep/diff 精確但低召回（30%）。Dependabot 式掃描達 11% 召回、10% FPR。NL2Contract 式提取達 45% 召回、0% FPR。無合約 CI 探針恢復部分漂移（30% 召回），但因驗證裸值（含文件連結、範例、徽章）而產生 40% FPR。Canary 執行達理想角落，但僅在假設完全可執行環境的前提下——因此我們將其視為上界而非可部署監控器。此實證分離支持主要機制：收益來自<strong>在探測變更前決定哪些假設為作業性</strong>。</p>
+<h3 id="52-q2合約監控能否遷移至即時發現">5.2 Q2：合約監控能否遷移至即時發現？</h3>
+<p>已知漂移驗證測試 SKILLGUARD 能否將合約與顯式漂移規格匹配。但維護監控器在這些規格不可用時也應有用。我們因此在預先註冊的開放世界協議下，對 49 個真實技能評估 SKILLGUARD。在運作監控器前凍結技能級漂移標籤；SKILLGUARD 提取合約並對照即時證據（註冊表、URL 回應、生態系慣例）檢查。</p>
+<p>在技能層級，22 個技能包含至少一個確認漂移，27 個為最新。SKILLGUARD 標記 14 個技能，產出 12 TP、2 FP、10 FN、25 TN（圖 4A）。得 86% 保守精確率、55% 召回、7% FPR。兩例表面 FP 事後裁定為真正漂移（dbt 文件重新導向 301 與 MLflow URL 404），但保留仲裁前數值為主要結果。此選擇刻意窄化結論：SKILLGUARD 可在即時條件下以高精確率浮現過時技能，但非執行式檢查的窮盡替代品。</p>
+<h3 id="53-q3失敗合約是否使修復變可操作">5.3 Q3：失敗合約是否使修復變可操作？</h3>
+<p>偵測僅在可指導維護時才有用。合約觀點預測違反應定位失敗假設：哪個值過時、在技能何處、哪個環境條件使其失效。透過比較單輪合約導向修復與無定位修復提示、純漂移文字、三輪 Self-refine、完整漂移規格改寫來測試（圖 4B）。</p>
+<p>僅告知模型「技能過時」成功 10%。純漂移文字達 60%。失敗合約記錄在單輪達 <strong>78%</strong>（p&lt;10^{-5} vs 無定位）。Self-refine 達 80%，但用三輪；完整漂移規格改寫達 78%，但使用更強 oracle 資訊。合約導向修復還使用較少互動——每技能約 10K token，對比三輪 Self-refine 約 18K token。</p>
+<p>支援的主張被刻意限制：SKILLGUARD 在目前樣本中未顯著優於 Self-refine 或純漂移文字。結果顯示的是一一違反合約是<strong>可操作的修復證據</strong>：它們縮小了模糊修復與更強多輪替代方案之間的大部分差距，同時保持偵測失敗與編輯請求間的直接連結。其餘錯誤——特別是認證變更、schema 變更、被字面驗證器拒絕的案例——在 Section 6 分析。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

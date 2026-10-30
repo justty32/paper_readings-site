@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.06877_iFlax_NeSy_Task_Planning.zh-TW.html">回 2606.06877_iFlax_NeSy_Task_Planning.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>當機器人須在複雜邏輯約束（物件 affordance、空間關係、序列動作依賴）下對長程動作序列推理時，任務規劃常有嚴重效率瓶頸。近期神經符號法藉學習<strong>物件重要性分數</strong>剪掉任務無關物件來提升規劃效率，但它們通常依賴<strong>從全搜尋空間離線生成的固定監督</strong>。這造成<strong>訓練-測試不匹配</strong>：部署時規劃器在模型自身不完美預測剪出的空間運作，導致 <strong>exposure bias</strong> 與效能退化。為此，我們把任務規劃的物件重要性學習<strong>形式化為基於模仿學習（imperative learning）的雙層最佳化問題</strong>：上層最佳化神經分數器，下層在分數剪枝的搜尋空間解符號規劃。為穩定此過程，引入 <strong>3R 策略</strong>——在下層規劃用<strong>並行的 Repair、Restart、Rollback</strong> 恢復，為上層學習提供可靠且自適應的回饋。三基準實驗達 SOTA，包含<strong>失敗率降 80.04%、規劃時間降 57.14%</strong>。並在四足移動操作機上於模擬與真實世界驗證，展現高效可部署的神經符號任務規劃潛力。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>長程複雜任務規劃常把環境與目標轉成離散最佳化問題，由符號規劃器或圖搜尋找可行動作序列。但搜尋空間極大：物件增多擴大動作空間、複雜邏輯約束施加長依賴，導致<strong>組合爆炸</strong>；連 SOTA 符號規劃器（如 LAMA）都變慢。</p>
+<p>緩解之道是<strong>在保留可行解所需物件的前提下縮小搜尋空間</strong>。近期神經符號法（<strong>PLOI、Flax</strong>）從規劃資料學物件重要性分數、按預測重要性排序、只用最重要物件漸進擴展問題。此<strong>物件剪枝規劃</strong>可大幅加速（例：同樣 15×15 MazeNamo 約 60 步任務，Flax 把規劃時間從 &gt;100 秒降到 ~24 秒）。但<strong>不完美的重要性分數仍可能漏掉關鍵物件或納入無關物件</strong>，造成不可解或過大的子問題——這仍是長程規劃的主要瓶頸。</p>
+<p><strong>關鍵診斷——訓練-測試不匹配</strong>：既有法用符號規劃器在<strong>全搜尋空間</strong>離線生成的固定監督訓練分數器；但測試時規劃器在<strong>分數器自身預測剪出的空間</strong>運作。這就是著名的 <strong>exposure bias</strong>：模型在一種輸入/狀態分布下訓練，卻在「自身預測誘導的狀態」下運作。</p>
+<p><strong>解法</strong>：引入 <strong>imperative learning</strong>，把物件重要性學習形式化為雙層最佳化——上層學分數器預測物件重要性，下層在分數器當前預測剪出的空間解規劃。不同於前 SOTA（Flax）從固定離線監督學，我們<strong>把符號規劃器整進學習迴圈</strong>，讓規劃器生成的可行計畫提供<strong>自適應偽監督</strong>。直覺上，神經分數器在「它測試時會遇到的同一動態剪枝空間」受訓，降低 exposure bias、把物件重要性學習與真實規劃目標對齊。</p>
+<p>但線上雙層最佳化雖有前景，套到任務規劃仍<strong>脆弱不穩</strong>：早期分數器尚無有意義預測，下層規劃器須在不可靠剪枝空間搜尋（缺關鍵物件、留誤導物件），常找不到可行計畫、無法回饋有意義的監督。為穩定之，設計<strong>並行 3R 策略</strong>（Repair、Restart、Rollback）。</p>
+<p>在三基準 <strong>MazeNamo、SokoMindPlus、LogisticsPlus</strong> 上，方法在大物件集、長程、複雜邏輯約束下達 SOTA：MazeNamo 上相較前 SOTA Flax，<strong>失敗率降 80.04%、規劃時間降 57.14%</strong>。並在自建四足移動操作機上驗證真機與模擬執行。為簡潔，方法稱 <strong>iFlax</strong>（強調穩定 imperative learning 過程、解 Flax 在複雜邏輯約束下的 exposure bias）。</p>
+<p><strong>貢獻</strong>：(1) iFlax——把物件重要性學習形式化為雙層最佳化，透過在分數剪枝空間的自適應偽監督訓分數器，克服既有物件剪枝法的 exposure bias；(2) 下層的並行 <strong>3R 策略</strong>，幫規劃器從不可靠早期剪枝空間恢復可行解、提供更可靠的上層回饋；(3) 三基準 SOTA、失敗率與規劃時間雙降，並在四足移動操作機上驗證可部署性。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>系統層</strong>：前人把符號規劃器嵌入執行框架、或接符號搜尋到取樣式幾何模組，使規劃可部署，但<strong>未除可擴展性根本限制</strong>——物件多時符號-幾何介面本身昂貴（須 ground/取樣/驗證大量候選互動），這促使在完整符號搜尋前先縮小物件空間。</li>
+<li><strong>學習式狀態抽象/剪枝</strong>（最接近本設定，假設符號模型已知、學引導使規劃更快）：能大幅減規劃時間，但<strong>共同弱點＝用全空間離線監督訓分數器</strong>，分數器不在自身預測誤差下學習、exposure bias 仍是核心失敗模式。本文同方向，但以<strong>自適應偽監督</strong>取代固定離線監督。</li>
+<li><strong>神經符號雙層最佳化（BLO）</strong>：上層學預測器、下層解其誘導的決策問題（predict-then-optimize 同理：以決策品質而非離線代理標籤訓練預測）。挑戰在<strong>下層是離散符號規劃器、搜尋空間隨上層預測而變</strong>；連續設定可用可微最佳化層給梯度，離散則靠黑箱微分/擾動代理/可微鬆弛。本設定更特殊：剪枝錯誤會改變活躍物件集本身、進而改變可行性與回饋。<strong>Imperative learning（IL）</strong> 最相近——把神經預測與邏輯推理置於同一回饋迴圈；但早期評分誤差會移除關鍵物件、使下層失敗、留給上層不穩監督。本文保留 BLO 與 IL 閉環精神、改為從自適應偽監督學習並加下層穩定策略。</li>
+<li><strong>計畫修復</strong>：古典規劃用 plan repair 修正失效計畫以免從頭重規劃，但僅當問題本身良定義、只是當前計畫失效時有用；對「不完整問題」幫助小。在物件剪枝設定下，<strong>timeout 的語意曖昧</strong>（可能缺關鍵物件、也可能含太多無關物件）。Flax 只有單一鬆弛計畫式 repair，常不足以穩住訓練——這促成 <strong>3R 設計：Repair 補局部遺漏、Restart 從鬆弛提示重建活躍集、Rollback 退回更小活躍集做保守重擴展</strong>。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

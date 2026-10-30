@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《SkillOS：學習技能策展以實現自我進化代理（SkillOS: Learning Skill Curation for Self-Evolving Agents）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Siru Ouyang（UIUC／Google Cloud AI Research 實習）、Jun Yan, Yanfei Chen, Rujun Han, Zifeng Wang, Bhavana Dalvi Mishra, Rui Meng, Chun-Liang Li, Vishy Tirumalashetty, George Lee, Tomas Pfister, Chen-Yu Lee（Google Cloud AI Research）；Yizhu Jiao, Jiawei Han（UIUC）；Kaiwen Zha, Maohao Shen（MIT）</p><p>日期：2026-05</p><p>arXiv：2605.06614</p><p><a href="https://arxiv.org/abs/2605.06614" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="skillos學習技能策展以實現自我進化代理重點摘要">《SkillOS：學習技能策展以實現自我進化代理》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>技能策展（skill curation）是自我進化代理的瓶頸；SkillOS 用 RL（GRPO）訓練一個技能策展器（skill curator）來管理外部 SkillRepo（增/改/刪 Markdown 技能檔案），透過分組任務流（grouped task streams）與複合獎勵（任務成果＋函式呼叫有效性＋內容品質＋精簡度）把延遲且間接的反饋轉化為策展學習訊號</strong>——8B 策展器在多輪代理與單輪推理任務上全面超越無記憶與記憶基礎基線，甚至打敗 Gemini-2.5-Pro 直當策展器，並跨 executor 與跨任務域泛化。</p>
+<h2 id="核心貢獻">核心貢獻</h2>
+<ol>
+<li>
+<p><strong>模組化雙代理架構</strong>：凍結的 Agent Executor（從 SkillRepo 用 BM25 檢索技能→執行任務）＋可訓練的 Skill Curator（觀察軌跡後產生 insert_skill / update_skill / delete_skill 函式呼叫來修改 SkillRepo）。技能格式為 Markdown（YAML frontmatter + 指令本文），操作介面如同檔案系統 I/O——故名「SkillOS」。</p>
+</li>
+<li>
+<p><strong>分組任務流訓練實例</strong>：每個訓練實例是一組相關任務（用 LLM 標註任務屬性、軟 Jaccard 分組），讓早期任務的技能更新在後續相關任務中被評估——把「這個技能好不好」的訊號從不可觀測變為可觀測。這比先前僅在短任務流內訓練的做法，多了長程技能演化軌跡的學習訊號。</p>
+</li>
+<li>
+<p><strong>複合獎勵設計</strong>：<span class="math inline">\(r = r_{\text{task}} + \lambda_f r_{\text{fc}} + \lambda_u r_{\text{cnt}} + \lambda_c r_{\text{comp}}\)</span>——下游任務成功率＋函式呼叫有效性＋外部裁判（Qwen3-32B）對技能內容的抽象/可重用/可操作/忠實度評分＋SkillRepo 精簡度（壓縮比）。四信號共同解決「延遲反饋歸因」問題。</p>
+</li>
+<li>
+<p><strong>技能演化湧現行為</strong>：訓練初期策展器只會 insert（盲目擴張），後期 update 成主導操作（精煉既有技能），delete 始終少但微增。SkillRepo 從狹窄任務特定技能，演化出驗證、備援規劃、系統性搜尋、策略調整等<strong>高階元技能（meta-skills）</strong>。</p>
+</li>
+<li>
+<p><strong>跨 executor 與跨任務泛化</strong>：Qwen3-8B 策展器在 Qwen3-8B/32B、Gemini-2.5-Pro、Gemini-3.1-Flash-Lite 做 executor 時均一致提升效能；從推理任務訓練的策展器特別容易泛化到代理任務（高階策略跨域有用）。</p>
+</li>
+</ol>
+<h2 id="對讀者的價值與-ai_core-的接點">對讀者的價值（與 ai_core 的接點）</h2>
+<h3 id="36-固化引擎的直接架構參照">§3.6 固化引擎的直接架構參照</h3>
+<p>ai_core §3.6 固化引擎的核心命題是「把 LLM 反覆處理的案例結晶成確定性程式碼／抽象庫」——SkillOS 為這個命題提供了<strong>完整的作業系統層架構</strong>：</p>
+<ul>
+<li><strong>SkillRepo</strong> = 固化引擎的「抽象庫」。技能從初始的任務特定片段演化為可組合的元策略，正是固化引擎追求的「從案例到抽象庫」的演化路徑。</li>
+<li><strong>Skill Curator（增/改/刪）</strong> = 固化引擎的<strong>決策機制</strong>。ai_core 未解決的核心問題是「何時該固化／如何避免庫爆炸」——SkillOS 的 RL 策展器（特別是以 downstream task outcome 為獎勵的設計）直接示範了這個決策該如何被訓練出來。</li>
+<li><strong>複合獎勵的歸因結構</strong>：<span class="math inline">\(r_{\text{task}} + r_{\text{comp}}\)</span> 的張力——既要技能有用又要精簡——精確對應固化引擎的「何時值得固化 vs. 何時該刪除過時／無用抽象」的張力。</li>
+<li><strong>分組任務流</strong>：固化引擎需要「在相關任務上驗證抽象是否值得固化」的評測框架；SkillOS 的分組機制（shared foundation + progression gate）是這種評測框架的實作藍本。</li>
+</ul>
+<h3 id="關鍵素材">關鍵素材</h3>
+<ul>
+<li><strong>與 2605.19576 Library Drift 成對閱讀</strong>：SkillOS 建立固化引擎的架構（如何建庫），Library Drift 診斷其失敗模式（建了之後如何退化）——兩篇是 §3.6 的建構＋維護完整圖譜。</li>
+<li><strong>與 DreamCoder（2006.08381）的對位</strong>：DreamCoder 用 wake-sleep 做程式庫學習，SkillOS 用 GRPO 做技能庫學習——兩條線交會點是「如何把 LLM 執行軌跡壓縮為可重用抽象」。</li>
+</ul>
+<h3 id="一句對-ai_core-的啟發">一句對 ai_core 的啟發</h3>
+<p><strong>固化引擎不只需要「把什麼變成程式碼」，更需要一個 RL 訓練出來的策展器來決定「增什麼、改什麼、刪什麼」</strong>——SkillOS 證明這套機制可以被端到端訓練，且 8B 策展器就能超越 frontier model 的 zero-shot 策展。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

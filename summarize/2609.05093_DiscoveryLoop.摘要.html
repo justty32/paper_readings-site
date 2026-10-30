@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>LLM-Guided Program Evolution for Circle Packing: Breaking 10 Packomania Records for $28 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Wes Sander</p><p>日期：2026-09-04（v1，cs.AI）</p><p>arXiv：2609.05093</p><p><a href="https://arxiv.org/abs/2609.05093" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="llm-guided-program-evolution-for-circle-packing-breaking-10-packomania-records-for-28-重點摘要">LLM-Guided Program Evolution for Circle Packing: Breaking 10 Packomania Records for $28 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>Discovery Loop 用單一 LLM 反覆重寫完整 circle-packing solver，靠 scoreboard、近期嘗試歷史、獨立零容忍 verifier 與逐目標最佳解保存，展示一台消費級電腦也能做出可驗證的程式演化；真正的瓶頸則是固定目標很快進入收益遞減。</p>
+<h2 id="方法架構">方法架構</h2>
+<ul>
+<li><strong>問題</strong>：作者要測試 AlphaEvolve 類型的「LLM 提案、程式執行、客觀評估、保留改進」能否縮到單一模型、單機與低預算，任務是最大化單位正方形內不同半徑圓的半徑總和。</li>
+<li><strong>迭代迴圈</strong>：prompt 放入完整 champion solver、各目標 scoreboard、最近十二個嘗試與結果，以及問題與介面說明。LLM 每輪輸出一份完整 replacement solver，不產 patch；候選並行跑所有目標，總分勝過 champion 才更新。</li>
+<li><strong>逐目標保存</strong>：除了全局 champion，系統另保留每個圓數目標曾出現的最佳結果。因此，某個整體分數較差的 solver 若在單一目標創新紀錄，其 artifact 仍不會遺失。</li>
+<li><strong>獨立驗證</strong>：verifier 與 solver 不共享程式碼，重新檢查所有圓都在邊界內、任兩圓不重疊、半徑總和正確，並用嚴格 feasibility shrink 排除浮點誤差。只有驗證後的結果能進 scoreboard。</li>
+<li><strong>停滯偵測</strong>：滑動視窗同時檢查近期是否全遭拒絕或沒有 code、是否沒有新 champion，以及累積改善是否低於門檻。這讓「繼續呼叫 LLM」也成為需要用實測收益證明的決策。</li>
+</ul>
+<h2 id="作者報告的結果">作者報告的結果</h2>
+<p>系統在十二個目標中改善十個 Packomania 紀錄，改善幅度為 2.43%–5.39%，十項 prior total 由 51.814380 升至 54.406044；這些解由獨立 checker 驗證，並獲 Packomania 接受（作者自報）。完整運行共十五輪，LLM 成本為 27.72 美元，約在配有 Intel Core i7-13700KF 與 32 GB RAM 的消費級電腦上跑八小時（作者自報）。</p>
+<p>收益高度集中在前段。iteration 0–5 花費 4.96 美元，總分由 59.39 升至 59.96；iteration 6–14 再花 22.76 美元，只升至 59.98，單位改善成本相差 130 倍（作者自報）。作者回測的停滯規則會在 iteration 9 停止，以 13.95 美元取代 27.72 美元，僅少 0.006 的總和，也就是 final value 的 0.01%（作者自報）。演化過程依序出現 basin hopping、hexagonal lattice initialization、island-model parallelism、KKT-Newton polish 與 defect migration 等完整演算法改寫，而非只調超參數。</p>
+<h2 id="局限">局限</h2>
+<p>作者自陳，實驗只涵蓋一種 circle-packing 問題，尚未證明能處理評估昂貴或搜尋空間本質不同的任務；系統只保留一個 champion，缺少 population 帶來的多樣探索。方法也仰賴 LLM 產生可執行 Python 的能力，作者的 MIPLIB 實驗曾有 75% code generation failure rate（作者自報）。最後，固定目標上的收益快速停滯，實務上必須擴張目標或接受平台期。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>Discovery Loop 是一個很小但邊界清楚的固化迴圈：生成器可以任意重寫 solver，驗證器卻保持獨立且擁有否決權；每次結果還要綁定具體目標與 artifact。對 ai_core 而言，這比「LLM 自我反省後修改」多了兩個可直接採用的控制點。第一，局部專長應逐目標保存，不要只讓單一 aggregate champion 抹掉 niche improvement。第二，繼續探索也要有成本憑證；當最近視窗的可驗證改善低於門檻，就停止昂貴生成，把資源轉向新目標。本文同時提醒，獨立 verifier 能證明解可行，卻不能單憑一個領域的成功證明搜尋框架已普遍泛化。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2609.05093_DiscoveryLoop.zh-TW.html"><code>../translate/2609.05093_DiscoveryLoop.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

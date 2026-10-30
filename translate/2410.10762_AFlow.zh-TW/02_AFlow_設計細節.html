@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_AFlow_設計細節 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2410.10762_AFlow.zh-TW.html">回 2410.10762_AFlow.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-aflow-設計細節">4. AFlow 設計細節</h2>
+<p>核心是把 LLM 當作 MCTS 變體中的優化器來發現有效工作流。<strong>MCTS 中每個樹節點代表一個完整工作流</strong>（而非單一 LLM 呼叫節點），以發現「一類問題」的通用解。搜尋是「軟性混合機率選擇 → LLM 驅動的優化擴展 → 執行評估 → 經驗反向傳播」的反覆循環，直到達最大迭代數或收斂。關鍵想法是<strong>用 MCTS 的樹結構保存 Nmax 輪工作流優化的探索經驗</strong>：當工作流被再次造訪，精準複用過去的成功經驗、避開失敗，提升搜尋效率。為防局部最優，特設一個<strong>允許任何一輪都能從空白模板重新生成</strong>的選擇機制。</p>
+<ul>
+<li><strong>初始化</strong>：從模板工作流 W₀ 開始（LLM 優化器只需補完呼叫函數即可完成工作流）。資料隨機切成驗證集（20%）與測試集（80%，seed 固定 42）。先把空白模板在驗證集上跑 5 次，挑出「分數變異高」的子集作為最終驗證集。</li>
+<li><strong>選擇（Selection）</strong>：以<strong>軟性混合機率選擇</strong>策略持續選工作流——結合「均勻分布」與「基於分數的加權分布」，從 top-k 工作流與初始工作流中挑選；納入初始工作流可維持持久探索、避免局部最優。公式：P_mixed(i) = λ·(1/n) + (1−λ)·softmax，其中 α=0.4 控制分數影響、λ=0.2 平衡探索與利用。</li>
+<li><strong>擴展（Expansion）</strong>：用 LLM 當優化器，利用被選工作流的<strong>經驗</strong>（含所有修改及其對應的改善或失敗、以及預測與期望輸出的精確日誌）生成新提示或改動節點連接（改程式碼），產出新工作流。</li>
+<li><strong>評估（Evaluation）</strong>：因推理任務有明確評估函數，直接執行工作流取回饋；每個工作流在驗證集上<strong>跑 5 次</strong>取均值與標準差，回饋更準、進而減少所需迭代數。</li>
+<li><strong>反向傳播（Backpropagation）</strong>：記錄（1）工作流表現、（2）優化器對父工作流的修改、（3）相對父的優化成敗，存入經驗傳回父工作流，分數則加入全域紀錄供選擇使用。</li>
+<li><strong>終止條件</strong>：早停——top-k 平均分數連續 n 輪無改善，或達 N 總輪數即停。</li>
+</ul>
+<p>（演算法 1 概述上述迴圈：Select → Expand → Evaluate → Backpropagate → 若改善則更新 W*。）</p>
+<h2 id="5-實驗">5. 實驗</h2>
+<p><strong>設定</strong>：六基準（GSM8K、HumanEval、MBPP 用全集；HotpotQA、DROP 各隨機取 1000 筆；MATH 取難度 5 的四類共 617 題），驗證：測試 = 1:4。基線含人工設計法（IO、CoT、CoT-SC、MultiPersona Debate、Self-Refine、MedPrompt）與自動化法 ADAS。AFlow 用 <strong>Claude-3.5-sonnet 當優化器</strong>，執行器用 DeepSeek-V2.5、GPT-4o-mini、Claude-3.5-sonnet、GPT-4o；迭代 20 輪（ADAS 30 輪）。指標：GSM8K/MATH 用 Solve Rate、HumanEval/MBPP 用 pass@1、HotpotQA/DROP 用 F1，並依 token 用量算成本畫 Pareto front。</p>
+<p><strong>主結果（表 1，皆以 GPT-4o-mini 執行）</strong>：AFlow 平均 <strong>80.3%</strong>，較人工設計法平均勝 5.7%、較 ADAS（67.2%）等自動化法勝 19.5%。各項：HotpotQA 73.5 / DROP 80.6 / HumanEval 94.7 / MBPP 83.4 / GSM8K 93.5 / MATH 56.2。在<strong>更難的任務上優勢更大</strong>：MATHlv5* 與 MBPP 上較 ADAS 提升達 57%，顯示對複雜資料集的穩健性。</p>
+<p><strong>模型無關性（表 2）</strong>：用 GPT-4o-mini 與 DeepSeek-V2.5 搜出的工作流套到其他模型，多數仍勝基線，顯示<strong>可遷移性</strong>。但用 DeepSeek-V2.5 搜出的工作流套到 GPT-4o-mini 時明顯較弱——<strong>不同語言模型需要不同工作流才能發揮最佳表現</strong>。</p>
+<p><strong>成本分析</strong>：AFlow 能在成本效益的 Pareto front 上找到<strong>讓較弱模型勝過較強模型</strong>的工作流。即摘要所述——小模型以 GPT-4o 推論成本的 4.55% 在特定任務上超越 GPT-4o。這既消除了人工設計工作流的人力成本，也以更低成本達更佳表現，利於代理工作流的廣泛採用。</p>
+<p><strong>消融</strong>：算子是人工設計的效率增強。GSM8K 上（圖 5）算子幫助 AFlow 更有效發現更好工作流；但<strong>即使無算子，AFlow 仍達 93.1%</strong>、超越人工設計，且<strong>自主發展出類 ensemble 的結構</strong>，是邁向完全自動化的重要一步。</p>
+<p><strong>案例研究</strong>：AFlow 從空白模板（僅單一無提示節點）逐步演化。每輪僅做<strong>單步修改</strong>（加一個算子，或針對某 prompt 做定向修改）。GSM8K 最佳工作流：生成 5 個解 → SC-Ensemble → 用 Programmer 算子做驗證步驟。失敗探索也有意義（如第 5 輪加一個直接改答案而不再推理的 review 節點使準確率下降；第 14 輪過度聚焦「折扣」資訊致下降）。在 MBPP 上，AFlow 發現了與現有人工設計相似的「由 LLM 生成並執行測試」結構。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>AFlow 全面形式化了自動工作流優化問題，並以 <strong>MCTS ＋ 程式碼表示的工作流</strong>高效導航龐大搜尋空間。六基準實驗顯示其勝過人工設計與既有自動化法；消融顯示即使無預定義算子也能自主發現有效結構；更重要的是，AFlow 讓較弱模型在成本效益 Pareto front 上勝過較強模型，凸顯其在提升 LLM 解題能力的同時優化計算成本的潛力。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2410.10762_AFlow.%E6%91%98%E8%A6%81.html"><code>../summarize/2410.10762_AFlow.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

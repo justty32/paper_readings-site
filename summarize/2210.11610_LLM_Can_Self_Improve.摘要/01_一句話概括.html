@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2210.11610_LLM_Can_Self_Improve.%E6%91%98%E8%A6%81.html">回 2210.11610_LLM_Can_Self_Improve.摘要 目錄</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>LMSI（Language Model Self-Improved）</strong>：對<strong>只有題目、沒有標準答案</strong>的資料集，用 few-shot CoT 取樣 <strong>m=32 條推理路徑</strong>，以 <strong>self-consistency 多數投票</strong>選出「高信心」答案、保留所有導向該答案的推理路徑當訓練資料，再以<strong>四種混合格式（mixed formats）<strong>微調模型自身；PaLM-540B 在</strong>完全無真值標註</strong>下 GSM8K <strong>74.4%→82.1%</strong>、DROP 78.2%→83.0%、OpenBookQA 90.0%→94.4%、ANLI-A3 63.4%→67.9%，並在 ARC-c／OpenBookQA／ANLI 上刷新當時 SOTA。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 要超越 few-shot 基線，過去只能靠大量高品質監督資料微調（FLAN、T0 的數十個 benchmark 資料集；InstructGPT 的群眾外包人工答案），成本極高。作者對比人腦的<strong>後設認知（metacognition）</strong>——人可以在沒有外部輸入下反覆思考、精煉自己的推理能力——提問：LLM 能否只靠<strong>無標註的輸入題目</strong>改進自身推理？相較 STaR（Zelikman et al., 2022）同樣微調自產 CoT，但 STaR 需要真值答案做過濾與 hint 提示，LMSI 完全不用。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>多路徑取樣 + 過濾</strong>：給定僅含題目的訓練集與少量人工 CoT 範例，以溫度 T=0.7 取樣 m=32 條推理路徑；用「The answer is」解析答案，多數投票取出最一致答案 ỹ（<strong>不保證正確</strong>），保留所有導向 ỹ 的推理路徑組成 D^self-consistent。</li>
+<li><strong>信心即接地訊號</strong>：Fig. 2 顯示 self-consistency 的投票信心<strong>校準良好</strong>——信心高的答案多半正確；答案錯時通常只有少數路徑支持，對訓練資料造成的噪音有限。這是全篇唯一的「正確性」訊號。</li>
+<li><strong>混合格式增強（§3.2, Table 2）</strong>：每條推理路徑擴成四種格式，避免過擬合特定 prompt/答案風格——(1) CoT 範例前綴＋輸出完整推理；(2) 標準 prompting 範例＋只輸出答案；(3) 無範例、輸入尾接「Let&#x27;s think step by step.」＋輸出推理（in-context zero-shot）；(4) 無範例、只輸出答案。故訓練樣本量最多達 128×|D_train|。</li>
+<li><strong>微調自身</strong>：同一個預訓練模型上微調 10k 步，lr 5e-5、batch 32。推論時 LMSI 的最佳取樣溫度升為 <strong>T=1.2</strong>（原為 0.7），因微調後輸出分布熵下降。</li>
+<li><strong>進一步減少人力（§3.3）</strong>：<strong>自產題目</strong>（隨機串接既有題目讓模型續寫出新題，再用 self-consistency 只留高信心者）；<strong>自產 few-shot CoT prompt</strong>（用 Kojima 的 Step-by-Step 零樣本生成範例，再拿回來當 few-shot prompt）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>主結果（PaLM-540B，Table 3）</strong>：self-consistency 對比 LMSI+self-consistency——GSM8K 74.4→<strong>82.1（+7.7）</strong>、DROP 78.2→<strong>83.0（+4.8）</strong>、ARC-c 88.7→89.8、OpenBookQA 90.0→<strong>94.4（+4.4）</strong>、ANLI-A2 64.5→66.5、ANLI-A3 63.4→<strong>67.9（+4.5）</strong>。六個資料集增益 1.1%～7.7%，ARC-c／OpenBookQA／ANLI-A2／A3 超越當時 SOTA。</li>
+<li><strong>單路徑逼近多路徑</strong>：LMSI 的單路徑 CoT-Prompting（GSM8K 73.5、DROP 76.2）已接近甚至超過未 LMSI 模型的 32 路徑 self-consistency——<strong>投票的算力被蒸餾進權重</strong>。LMSI 後只用 5 條路徑即可勝過原模型的 32 條路徑。</li>
+<li><strong>跨任務泛化（Table 4）</strong>：混合六個 in-domain 資料集自訓練後，六個 OOD 任務全面提升：AQUA 35.8→39.0、SVAMP 79.0→82.8、StrategyQA 75.3→77.8、ANLI-A1 68.8→79.2、RTE 79.1→80.1、MNLI-M/MM 72.0/74.0→81.8/82.2。</li>
+<li><strong>CoT 格式是關鍵（Table 5）</strong>：GSM8K 上只用「直接答案」格式微調僅到 CoT-Prompting 61.6，四格式全用則 73.5（原 56.5）。</li>
+<li><strong>自產題目 / 自產 prompt</strong>：自產題目自訓練 GSM8K 66.2/78.1（真實訓練題為 73.5/82.1）；自產 Step-by-Step few-shot prompt 在 40 路徑達 <strong>74.2%</strong>，為當時 GSM8K 零樣本 SOTA（對比 Kojima 的 43.0% 貪婪、70.1% 加 self-consistency）。</li>
+<li><strong>蒸餾到小模型（Table 7）</strong>：用 540B 自產資料微調小模型，GSM8K CoT——8B 由 5.0→33.4、62B 由 29.7→57.4，即 <strong>62B 蒸餾後勝過原始 540B（56.5）、8B 蒸餾後勝過原始 62B</strong>。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>接地極弱</strong>：唯一的正確性訊號是「多數路徑一致」。投票錯的題目會把錯誤推理寫進訓練資料，論文只論證噪音「量少」而未消除；本質上模型只能鞏固自己已經傾向相信的東西，無法發現自己系統性的錯誤。</li>
+<li><strong>依賴模型規模</strong>：附錄 A.1 在 UL2 上重跑，增益顯著縮水（GSM8K 6.4→7.9 之類），作者歸因於自我改進須靠模型內隱含的推理能力，容量不足者受益有限——與 Reflexion「自我修正是強模型湧現能力」的觀察一致。</li>
+<li><strong>適用範圍窄</strong>：需要答案可被解析、可做多數投票的任務（算術、選擇題、NLI）；開放式生成無法套用。</li>
+<li>自產題目劣於真實題目；論文未做多輪迭代（只做一輪自我改進），亦未討論反覆自訓練的分布塌縮風險；無獨立的安全/局限章節。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>主題 7「自我改進飛輪」的邊界案例</strong>：ai_core 主張把 LLM 呼叫包成可靠函數、逐步剃除 LLM 依賴，而自我改進飛輪的可信度取決於<strong>接地訊號的強度</strong>。LMSI 是這條光譜的極端下限——<strong>完全無標註、接地只有 self-consistency 的投票一致度</strong>。它的價值是雙面的：正面證明「弱接地也能自我提升」（+4.4~7.7 且跨 OOD 泛化），反面也劃出上限——一致 ≠ 正確，飛輪的天花板就是模型自身的信心校準品質，無法靠自轉突破。</li>
+<li><strong>與庫中對照篇的座標</strong>：<strong>2203.14465 STaR</strong> 有真值答案當外部接地（錯了就給 hint 重生），是「強接地版」；<strong>2203.11171 Self-Consistency</strong> 正是 LMSI 的過濾器本身，LMSI 等於把它從推論期技巧變成訓練期資料引擎；<strong>2312.06585 ReST^EM</strong> 用二元回饋做 EM 式多輪迭代，接地強度介於兩者且明確處理迭代收斂；<strong>2310.01798（LLM 尚不能自我修正推理）</strong> 是反證——沒有外部訊號的自我修正會退步，LMSI 的差別在於它用的不是「自評」而是「多數投票的統計聚合」，這說明<strong>弱接地要靠聚合而非自省</strong>；<strong>2401.10020 Self-Rewarding</strong> 則走到自產獎勵，污染風險最高。把這五篇擺在同一條「接地訊號強度」軸上，是本庫評估任何自我改進提案的量尺。</li>
+<li><strong>§1 可優化計算圖 / §3.3 成本梯度</strong>：LMSI 最實務的一課是「單路徑 CoT ≈ 原模型 32 路徑投票」、「LMSI 後 5 條路徑勝過原本 32 條」——<strong>把推論期的重複取樣算力固化進權重</strong>，正是把計算圖上一個昂貴的高扇出節點折疊成便宜節點。</li>
+<li><strong>§2 資產工廠 vs 資產消費者</strong>：§5.3 的蒸餾結果（62B 蒸餾後 57.4 &gt; 原始 540B 的 56.5）是這個比喻的直接證據——<strong>貴稀有的智能當工廠</strong>（540B 生成高信心 CoT 資料），<strong>便宜高頻的智能當消費者</strong>（8B/62B 承接、線上服務）。資產不是模型權重本身，而是被投票篩過、格式化的推理軌跡語料。</li>
+<li><strong>§3.4 治理（拒絕為預設＋憑證准入）</strong>：LMSI 的過濾器就是一張最粗糙的憑證——「投票一致度」。它可用，但不能當作正確性憑證；若要在 ai_core 內採用自我改進，應把「一致度」降級為候選門檻，真正的准入仍須由確定性驗證器（測試、型別、執行結果）簽發。</li>
+<li><strong>§3.6 固化引擎</strong>：LMSI 的固化媒介是<strong>權重</strong>而非程式碼——經驗被壓進參數後不可稽核、不可局部撤銷、也不能被人讀懂，與 ai_core 想要的「結晶成確定性程式碼/抽象庫」方向相反。它示範了飛輪的動力學，但提醒我們固化到權重是<strong>最不透明</strong>的一種固化。</li>
+<li>歸 <strong>I 類</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../../translate/2210.11610_LLM_Can_Self_Improve.zh-TW.html"><code>../translate/2210.11610_LLM_Can_Self_Improve.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

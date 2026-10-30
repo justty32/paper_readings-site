@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2502.01806_Neurosymbolic_Program_Comprehension.zh-TW.html">回 2502.01806_Neurosymbolic_Program_Comprehension.zh-TW 目錄</a>　<a href="02_V._%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>LLM 的進展催生<strong>大型程式碼模型（LCM）</strong>，自動化程式生成、軟體測試、程序理解等複雜 SE 任務（GitHub Copilot、ChatGPT 已展現實益）。但把模型擴到兆級參數（如 GPT-4）帶來顯著挑戰，限制了大型 DL 模型驅動的 AI 系統之使用：訓練/部署算力暴增，以及可信度、偏差、可解釋性問題——黑箱本質損害透明與問責。本文質疑「只要有足夠新資料，增加參數總是最佳前進路徑」此主流假設。我們主張一個<strong>神經符號（Neurosymbolic）研究方向</strong>：結合既有 DL 技術（如 LLM）與以可靠、快速、確定性著稱的傳統符號方法。為此勾勒核心特徵並給出初步結果，目標是建立<strong>首個神經符號程序理解（NsPC）框架</strong>，協助辨識有缺陷的程式碼組件。</p>
+<p><strong>關鍵詞</strong>：神經符號 AI、漏洞偵測、程序理解、可解釋性。</p>
+<hr />
+<h2 id="i-引言">I. 引言</h2>
+<p>LCM 的興起革新了 SE 自動化，靠兩要素：(i) 大型文字豐富資料集、(ii) DL 架構規模化（兆級參數，如 GPT-4）。Copilot、ChatGPT 等「人工協作者」有效輔助開發生命週期各階段、增進程式碼理解。但「no free lunch」提醒：模型愈大愈複雜，<strong>訓練/維護算力成沉重負擔</strong>；偏差、可信度、可解釋性是重大路障。</p>
+<p>本文質疑「無限擴大模型是每個 AI 領域（含 SE）的前進之路」。Villalobos 等指出社會正逼近「LLM 可學的相關資訊近乎耗盡」之點，預估發生於 <strong>2026–2032</strong>——模型參數量可能超出有意義資料量。於是問：<strong>「現在後退一步，以便日後前進兩步如何?」</strong> 主流範式需重新考量。</p>
+<p>總體目標：發展<strong>利用 LLM 機率能力、同時無縫整合傳統符號規則</strong>的新框架——增進可解釋性、確保確定性推理、克服純機率方法的瓶頸。首個落地任務選<strong>漏洞偵測</strong>（高度依賴程序理解：須分析推理程式碼結構與行為才能辨識安全弱點，也關乎除錯/重構/安全維護）。提出 <strong>NsPC（神經符號程序理解）</strong> 範式：結合 LCM 與符號推理。</p>
+<p><strong>NsPC 框架</strong>：呈現以 <strong>SHAP</strong>（為個別預測生成局部解釋的可解釋方法，如判斷某程式碼組件是否受漏洞影響）為核心的初步分析。藉 SHAP 值揭示底層模式 → 轉成符號規則 → 無縫整合進 LCM。<strong>據作者所知，這是首個把符號層嵌入 LCM 機率框架以做程序理解的記錄嘗試</strong>，優先考量的不只峰值效能、也包括可解釋性與透明性。</p>
+<h2 id="ii-背景">II. 背景</h2>
+<p><strong>SHAP（Shapley Additive exPlanations）</strong>：估計每個特徵對 DL 模型輸出 y=f(x) 之貢獻；根植於合作賽局論的 Shapley 值（公平分配合作賽局報酬）。SHAP 值＝從模型導出的條件期望函數之 Shapley 值，捕捉特徵交互與相依。實務上 SHAP 隔離個別特徵 w_i 對輸出的影響（同時計入其他特徵 x\w_i），算「含 vs 不含該特徵」的平均預測差。適用樹模型與神經網路，是事後可解釋的利器（醫療診斷、金融風險、SE 等需準確 + 可解釋的場景）。</p>
+<p><strong>Probing（探測）技術</strong>：檢視模型的潛在表示以判定特定資訊被編碼的程度——訓練監督模型（如分類器）從神經網路隱藏表示預測感興趣的性質。本框架則訓練分類器<strong>從 SHAP 值分布預測目標類別</strong>，以制定符號規則（圖 1）。</p>
+<h2 id="iii-方法">III. 方法</h2>
+<p>NsPC 框架利用 SHAP 值解讀並引導模型預測。先述如何在 SHAP 值中找模式，再述如何把模式轉成符號規則以改善模型（尤其低信心場景）。</p>
+<h3 id="a-模式識別">A. 模式識別</h3>
+<p>受 NLP/SE 廣用的 probing classifier 啟發，用監督 ML 在「特定預測算出的 SHAP 值」中找分類模式。</p>
+<p>給一組被 LCM 預測為某類 y（如 Secure/Insecure）的輸入 X，對每個 x 算 SHAP 值 ϕ（相對於期望預測類 y=E[f(X)]）。受語法分解啟發，用<strong>對齊函數 δ(w_i): w_i→µ∈M</strong> 把 token 標上由程式語言文法定義的<strong>有意義 AST 型別 M</strong>。產出每個目標類的 <strong>SHAP 張量 (i, w_i, ϕ_i, µ_i)</strong>（位置、token、SHAP 值、AST 型別）（圖 1 區域 1）。</p>
+<p>算完各目標類的 SHAP 張量後合併，按 token 對應的 <strong>AST 標籤分組 ϕ 值</strong>。定義位置區間 [a,b]（0≤a≤b≤max|x|）。每個區間訓練監督模型（邏輯迴歸/決策樹/隨機森林）找「最能捕捉 ϕ 值與特徵位置關係」的曲線。<strong>準確率 &gt;60% 且對目標類有明確決策邊界（與 x 軸交點）</strong> 的曲線，即提供「特定 AST 型別位置上 SHAP 值影響模型決策」的證據——找出某特徵 ϕ 值一致正向/負向影響整體預測的區域與位置區間。</p>
+<h3 id="b-符號規則">B. 符號規則</h3>
+<p>從 SHAP 值分布的已識別模式，導出封裝「與期望預測對齊的特徵結構」之符號規則，兩部分：(i) <strong>與預測標籤正相關</strong>的配置（正確預測模式的規則）;(ii) 連結<strong>較低預測可靠度</strong>配置的<strong>互補規則</strong>（不確定時做針對性模型調整）。導出方式：在各型別 µ 內分組 SHAP 影響特徵，依「特徵存在 + SHAP 值貢獻」制定條件。例：若某 AST 節點相關特徵在輸入起始處對不安全程式碼一致呈高 SHAP 值，可能是規則中「不安全預測」的必要條件。導出的符號規則可在 ML 管線的 <strong>post-training 階段</strong>用（如監督微調、知識蒸餾以促進模型間知識轉移）（圖 1 區域 3）。</p>
+<h2 id="iv-案例研究">IV. 案例研究</h2>
+<p>驗證 NsPC 於不安全程式碼偵測（二元分類）的 SHAP 值模式（Java 程式碼）。</p>
+<blockquote>
+<p><strong>RQ1</strong>：SHAP 值能多大程度定義符號規則?</p>
+</blockquote>
+<ul>
+<li><strong>所選 LCM</strong>：<strong>CodeBERT</strong>（微調於偵測不安全程式碼；BERT 類架構在 SE 分類廣用）。不安全＝正類、無不安全＝負類。訓練自 <strong>Devign（CodeXGLUE-Defect Detection）</strong>；詞彙 50,265、12 隱藏層。硬體 AMD EPYC 7532 / A100 40GB。</li>
+<li><strong>評估資料</strong>：CodeXGLUE Defect Detection 驗證集；按目標類拆兩小集；每資料點限 <strong>500 token</strong>;<strong>300 確認不安全 + 300 無不安全</strong>。</li>
+<li><strong>評估法</strong>：對兩資料集算 SHAP 張量；定 <strong>6 個位置區間</strong>（每片段最大 300 token）；訓練邏輯迴歸算兩類（safe/insecure）的決策邊界。</li>
+</ul>
+<h3 id="a-結果與討論">A. 結果與討論</h3>
+<p><strong>Table I</strong>：只有 AST 型別 <strong>punctuation、operator、literal、type、primitive</strong> 過 60% 準確且有清楚決策邊界。例（圖 2）：</p>
+<ul>
+<li>片段在位置 <strong>[0–43] 含 literal</strong> → 高機率判<strong>不安全</strong>;</li>
+<li>片段在 <strong>[251–280] 含 operator</strong> → 高機率判<strong>安全</strong>。</li>
+</ul>
+<p>這些模式反映底層資料集與程式慣例的有意義相關：<strong>literal 常因硬編碼值/初始化區塊/函數參數出現在前段</strong>（不安全模式常見）;<strong>後段的 operator 多屬邏輯構造/函數運算</strong>（結構化、安全程式碼）。據此支持「實例化 NsPC 框架以為所選 LCM（微調 CodeBERT）識別符號規則」。</p>
+<p><strong>局限</strong>：模式識別依此模型特定算出的 SHAP 值，證據<strong>不足以泛化</strong>到其他模型/任務/資料集，需進一步研究。但這是文獻中<strong>首個支援程序理解（聚焦漏洞偵測）的 NsPC</strong> 之基礎一步。</p>
+<blockquote>
+<p><strong>RQ1 結論</strong>：用 NsPC 框架識別出特定位置區間內有意義的「易不安全」模式，促成定義偵測安全/不安全程式碼的符號規則。模式揭示：某些 AST 型別的 token 在特定位置對模型預測有顯著影響。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

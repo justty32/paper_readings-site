@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>ConfidenceBench：大型語言模型的信心校準評估（2/2） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2607.20526_ConfidenceBench.zh-TW.html">回 2607.20526_ConfidenceBench.zh-TW 目錄</a>　<a href="02_%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）日益部署於流暢但錯誤的答案代價高昂的場景。此類場景中，僅準確度不足——模型必須也<strong>知道自己何時可能出錯</strong>。我們提出 <strong>ConfidenceBench</strong>，一個使用 <strong>Brier score</strong>（proper scoring rule，獎勵誠實機率報告）評估 15 個前沿 LLM 口語化信心估計的校準基準。信心透過提示語誘出，無需模型 logits，使框架同時適用於閉源與開源系統。基準含 200 題私有多選題，四類別：空間推理、高精度數學、文字查找、不可知問題。三輪獨立跑中，<strong>Claude Opus 4.6 與 Gemini 3.1 Pro Preview 達成最低 Brier score（均為 0.103）</strong>，皆大幅勝校準隨機基線 0.1875;Gemini 3.1 Flash-Lite 得 0.367，顯示嚴重失校準。準確度與校準在各模型家族間大幅分歧：<strong>最準確的模型並非最佳校準者</strong>，且數個模型儘管準確度尚可卻劣於校準隨機基線。結果證明口語化信心校準是 LLM 可靠性中<strong>獨特且實務重要的維度</strong>，與標準準確度評估互補。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 在軟體工程、科學輔助、教育、醫療、決策支援等場域日益部署，錯誤代價高昂。然而，即使高能力模型也頻繁產出流暢但錯誤的輸出、幻覺或對該視為不確定的問題給出確定答案。在此情境，以低信心出錯的模型仍有用，而<strong>以高信心出錯的模型可能主動有害</strong>。</p>
+<p>可靠的不確定性估計是安全部署的前置條件。若 LLM 能準確報告自己何時可能出錯，下游系統可將困難查詢路由至更強模型、棄權、請求人類審查、或僅在需要時分配額外計算。這使信心校準不僅是模型評估的核心，也是可靠性關鍵應用中的務實部署決策。</p>
+<p>不確定性量化（UQ）提供原則性框架。對 LLM 而言，兩大類 UQ 方法存在：<strong>白盒方法</strong>從內部 token 層級機率分佈提取不確定性（具理論基礎但需存取模型內部，API 商業模型常不可得）;<strong>黑盒口語化方法</strong>則提示模型明確陳述其信心（普遍適用，代價是依賴模型自我知識）。口語化誘出尤其具吸引力，因為可統一應用於閉源和開源系統，無需 logits、權重或重複採樣。</p>
+<p>儘管對 LLM 校準興趣日增，既有基準仍以準確度為中心。MMLU、BIG-Bench 等告訴我們模型答對什麼，而非其陳述信心是否可靠。近期不確定性基準已開始填補此缺口，但多聚合廣泛資料集或聚焦棄權，而非直接用 proper scoring rule 評估前沿模型的<strong>口語化機率校準</strong>。</p>
+<p><strong>ConfidenceBench</strong> 貢獻三點：一、一個直接評估陳述信心（而非僅準確度）的受控私有基準；二、用 Brier score 評估 15 個前沿 LLM（三次重複跑）；三、人類基線與類別級分析，展示準確度與校準在模型家族間可大幅分歧。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p><strong>信心誘出</strong>：Kadavath et al. (2022) 與 Lin et al. (2022) 早期工作顯示模型在適當提示下能表達校準信心；後續研究證明簡單誘出策略（要求模型報告機率）在黑盒設定中仍有意義。基於 logits 的方法雖有理論基礎，在多數真實部署中不實用。特別注意，RLHF 已被證實會扭曲內部機率估計，進一步支持基於提示而非 logits 的黑盒誘出。</p>
+<p><strong>不確定性估計方法</strong>：除口語化信心外，尚有 logit-based 信心、熵量測、採樣式方法（self-consistency 等）。近期綜述將方法分為內部、採样式、語言學三類，各有可靠性與計算成本取捨。採樣式方法可改善不確定性估計但需多次前向傳播，口語化信心則提供單次、可擴展的訊號。</p>
+<p><strong>校準基準</strong>：UBench 聚合多既有資料集；Yang et al. (2024) 提供口語化信心專用基準，顯示提示設計顯著影響校準品質；LM-Polygraph 提供不確定性估計工程框架；MAQA 研究資料模糊性下的不確定性；AbstentionBench 評估不可回答情境下的棄權行為。ConfidenceBench 的差異在於：緊湊、受控的不確定性區間集合、統一的口語化信心與 Brier-score 框架、含基於經驗上可驗證但不可及事實的「不可知」類別。</p>
+<p><strong>評估指標</strong>：校準常用 ECE，但對分箱選擇敏感。Proper scoring rules 提供更原則性替代方案：Brier score 評估預測機率與結果間的平方誤差，且<strong>唯一最小化於預測反映真實信念時</strong>。近期工作日益偏好 Brier score 免於分箱假象。ConfidenceBench 以此為主指標。</p>
+<h2 id="3-基準設計與方法論">3. 基準設計與方法論</h2>
+<h3 id="31-問題集">3.1 問題集</h3>
+<p>200 題多選（每類別 50 題），保持私有以防訓練資料污染。四類別：</p>
+<ol>
+<li><strong>空間推理</strong>：需要仔細心智模擬多個互動物體或步驟的動態物理場景。例如：大理石放入底部有洞的馬克杯、杯子倒扣在桌上，大理石在哪？</li>
+<li><strong>高精度數學</strong>：多步計算，單一取整誤差或概念失誤即產出貌似合理但錯誤的答案。例如：取 √867 的第三位小數、乘 456、四捨五入到最接近整數。</li>
+<li><strong>文字查找</strong>：從知名文本回憶特定詞彙；錯誤選項皆貌似合理、無法用消去法猜。例如：《哈利波特與密室》第七章第五個單字是什麼？</li>
+<li><strong>不可知</strong>：正確答案無法在未直接接觸特定真實物件或事件的情況下確定。例如：2026 年 4 月 1 日馬德里 Santa Engracia 街與 Ríos Rosas 街轉角的報亭是什麼顏色？</li>
+</ol>
+<p>全部題目由第一作者手工撰寫驗證，未使用 LLM 輔助、未源於任何既有資料集或基準。錯誤選項是需真知識或計算才能排除的貌似合理替代項，非單純消去法可解。四類別隔離的是不同的<strong>知識失敗模式</strong>（而非領域知識廣度）：已知未知的過度信心（不可知）、表面過度猜測（文字查找）、多步誤差累積（數學）、心智模擬缺口（空間）。</p>
+<h3 id="32-信心誘出">3.2 信心誘出</h3>
+<p>每題附加提示要求 JSON 回應：<code>answer</code>（A–D）與 <code>probability</code>（0–100，100=完全確定，25=四選一隨機猜測）。完整提示模板見附錄 C。無法解析的回應與明確拒答者以 25% 信心＋隨機選答計分（非排除），因排除會系統性地膨脹困難題上拒答最多者的校準分數。</p>
+<h3 id="33-評估指標">3.3 評估指標</h3>
+<p>令 pᵢ ∈ [0,1] 為陳述機率（誘出於 0–100 尺度除以 100），yᵢ ∈ {0,1} 為正確性指標。</p>
+<ul>
+<li><strong>Brier score</strong>：B̄ = (1/n)Σ(pᵢ−yᵢ)²，越低越好。四選一均勻隨機猜測（p=0.25）的期望 Brier score 為 0.1875（校準隨機基線）。Brier score 是 proper scoring rule（Gneiting &amp; Raftery, 2007）：<strong>唯一最小化於模型報告真實信念時</strong>，直接將激勵與誠實不確定性報告對齊。</li>
+<li><strong>校準間隙</strong>：G = (1/n)Σ(pᵢ−yᵢ)，無平方項使過度信心（G&gt;0）與不足信心（G&lt;0）直接以帶符號量呈現。</li>
+<li><strong>ECE</strong>：10 等寬分箱（對分箱數敏感）。另附核平滑可靠性圖（smECE; Błasiok &amp; Nakkiran, 2023）於附錄 B，免於分箱邊界不連續、仍可解釋為校準摘要。</li>
+</ul>
+<hr />
+<h2 id="title-confidencebench大型語言模型的信心校準評估part-22實驗與結果-source-httpsarxivorgabs260720526-arxiv_id-260720526-date-2026-07">title: ConfidenceBench：大型語言模型的信心校準評估（part 2/2：實驗與結果）
+source: https://arxiv.org/abs/2607.20526
+arxiv_id: 2607.20526
+date: 2026-07</h2>
+<h1 id="confidencebench大型語言模型的信心校準評估22">ConfidenceBench：大型語言模型的信心校準評估（2/2）</h1>
+<h2 id="4-實驗設定">4. 實驗設定</h2>
+<p>評估 <strong>15 個前沿模型</strong>：GPT-5 High/Standard/Low（同 gpt-5 基礎模型、僅 reasoning_effort 不同——控制同家族內比較）、GPT-5 Mini/Nano（不同較小基礎模型，擴展能力範圍）;Claude Opus 4.6/4.5/4.1、Claude Sonnet 4.6/4.5/4;Gemini 3.1 Pro Preview/Flash-Lite、Gemini 2.5 Pro/Flash。每模型跑全部 200 題三次（溫度 1.0），報告各指標三輪均值與標準差。</p>
+<p><strong>人類基線</strong>：一名外部志願者單次完成全部 200 題（每題一分鐘、可用網路），使用相同 A–D 格式與數值信心估計，使人類基線與模型輸出在相同誘出條件下直接可比。</p>
+<p><strong>計算</strong>：全經商業 API，每模型 600 次查詢（200 題 × 3 輪），共約 9,000 次 API 呼叫。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

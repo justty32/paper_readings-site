@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_GuideX_資料集 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2506.00649_GuideX.zh-TW.html">回 2506.00649_GuideX.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-guidex-資料集">4 GuideX 資料集</h2>
+<p>資料集以 <strong>FineWeb-edu</strong>（FineWeb 中專為教育內容策展的高品質子集）為基礎構建，隨機取樣約 1 萬份文件，文件長度從 194 字到 22.6k 字不等；為保留文本結構的連貫性、最大化脈絡理解，作者保留完整文件而非切成段落或句子。</p>
+<p>資料集涵蓋醫學（Symptom、Cause、Study、Treatment）、經濟（Benefit、Resource、Application、Activity）、歷史（Event、HistoricalEvent、Study）、音樂（MusicOrigin、AttitudesTowardsMusic、MusicStudy）、教育（MOOCDefinition、MOOCDesign、TeachingAndLearning）等多元主題。整體共 <strong>28,677 個唯一標籤</strong>，每份文件平均 5.34 個相異標籤、11.39 筆標註。</p>
+<p>作者將這 28,677 個唯一實體型別名稱與涵蓋 NER、RE、EE、事件論元抽取（EAE）、槽位填充（SF）的 35 個常用 IE 資料集之標籤空間比對：在所有訓練切分中共有 243 個相異金標標籤，其中 103 個（42.4%）已逐字出現在 GuideX 中；測試切分比例相近（235 個標籤中 98 個，41.7%）。換言之，GuideX 未針對這些基準設計，卻已涵蓋約五分之二的已知標籤空間。覆蓋率並不均勻：CoNLL-03、BroadTwitter、HarveyNER、BC5CDR 等通用 NER 資料集達到 100% 型別重疊，CrossNER 系列高於 90%；相對地，ACE05-RE、CASIE、E3C 等事件中心資源含有大量長尾、高度專門化的標籤，GuideX 尚未涵蓋（重疊率 ≤15%）。</p>
+<h2 id="5-實驗設定">5 實驗設定</h2>
+<p><strong>模型</strong>：合成資料生成使用 <strong>Llama 3.1-70B Instruct</strong>（經評估後選定，兼具高品質輸出與可重現性，優於選用專有模型）；所有微調模型均以 <strong>Llama 3.1-8B base</strong>（非 instruct 版本，以避免輸入格式落差）為基底，採用 Sainz et al. (2024) 提出的標準程式碼風格 IE 輸入格式。</p>
+<p><strong>資料集</strong>：除 GuideX 資料集外，也用 Sainz et al. (2024) 相同的人工標註金標資料訓練，涵蓋 NER、EE、EAE、RE、SF 多項 IE 任務（ACE 2005、TACRED 轉為 SF、BC5CDR、CoNLL 2003、DIANN、NCBIDisease、Ontonotes 5、WNUT17）。評測用標準零樣本 NER 基準：CrossNER 多個切分，以及 MIT Movie、MIT Restaurant。</p>
+<p><strong>基線</strong>：以 Llama 3.1 base 及其在人工標註資料上微調的版本（Gold_FT）為兩個主要基線，並與只用 GuideX 合成資料微調（GuideX_FT）、先 GuideX_FT 後 Gold_FT 依序微調（GuideX_FT+Gold_FT）的變體比較；同時對比七個 SOTA 系統：Vicuna、ChatGPT、USM、InstructUIE、GoLLIE、KnowCoder、GLiNER，以及同屬合成資料路線的 UniNER。</p>
+<p><strong>實作細節</strong>：所有模型以 <strong>QLoRA</strong> 訓練，超參數依訓練資料的驗證切分調校；資料生成用 4 張 NVIDIA A100 80GB GPU（Llama 3.1-70B Instruct、bfloat16、溫度 0.7、top-p 0.95、最長 8192 token、批次 32，經 vLLM 批次推論），微調用 2 張同款 GPU（4-bit LoRA，rank 128、α 256，AdamW、餘弦排程、暖身佔總步數 10%；GuideX_FT 序列長度 8192／3 epoch／梯度累積，Gold_FT 序列長度 2048／1 epoch／較大單卡批次，皆用 DeepSpeed Zero-3）。</p>
+<h2 id="6-結果">6 結果</h2>
+<p>表 2（無/有金標資料兩種情境）：<strong>無任何人工標註時</strong>，Llama 3.1 基線七個資料集平均 F1 為 30.08；加上 GuideX 訓練後平均提升 <strong>7.06</strong> 分至 37.14——並非每個任務都進步，但有進步的任務增幅明顯，顯示合成資料能有效教會基礎模型任務本身並注入領域知識。<strong>加入 Gold_FT</strong> 後（句子級標註，與 GuideX 偏文件級資料互補）平均達 62.77；<strong>GuideX_FT 疊加 Gold_FT</strong> 平均再升至 64.15，較純 Llama 3.1 基線累計提升約 34 個 F1 點（較 GuideX_FT 單獨再 +27，較 Gold_FT 單獨 +1.4），且在七個資料集中有五個因疊加 GuideX 而進一步提升。</p>
+<p>表 3（與 SOTA 比較）：GuideX_FT+Gold_FT 平均 F1 <strong>64.2</strong>，超越所有對比系統，較 GoLLIE（CodeLlama 基底，58.0）高 6.2 分，較 KnowCoder（含預訓練階段以強化 schema 遵循，60.1）高 4.1 分；在 Movie（65.3）、Restaurant（55.5）取得單項最佳，並整體最佳；在 Politics 較 GoLLIE（57.2）高 <strong>+12.4</strong>；僅在 Music 略遜於專攻通用 NER 的 GLiNER-L（67.9 對 69.6）。</p>
+<h2 id="7-分析">7 分析</h2>
+<p><strong>指引是否改善領域專屬標籤？</strong> 表 4 顯示基線模型常把 Scientist、Politician 這類領域專屬實體誤判為通用的 Person：GuideX 微調後帶來最多 <strong>12.8</strong> 個 F1 點的提升，PoliticalParty 對 Organization 的區分也提升 <strong>6.75</strong> 分——模型學到明確的脈絡定義後，更準確地套用標籤，減少了「因語言相似而把政黨誤判為一般組織」這類錯誤。對本就通用、與領域無關的標籤（如 Location、Country），模型即使沒有 GuideX 也已表現良好，說明此方法最大的價值在於<strong>細化實體粒度</strong>，而非改善本就穩固的通用類別。</p>
+<p><strong>尚存的挑戰</strong>：Other、Miscellaneous 這類兜底標籤即便用了 GuideX 依然棘手（見表 4）——這些類別本身缺乏清楚定義，難以一致套用；由於 GuideX 產生的是精確指引，對這類缺乏明確標註準則的廣義標籤幫助有限，與既有文獻「指引驅動模型難處理模糊/兜底實體型別」的發現一致。</p>
+<h2 id="8-結論">8 結論</h2>
+<p>本文提出 GuideX，一個面向 IE 的新合成資料生成方法，利用 FineWeb-edu 文件為多種領域生成資料；作為方法示範，作者生成了一個含 1 萬份已標註文件、標籤從通用到高度領域專屬皆備的資料集，並用它訓練出超越現有 SOTA 零樣本 NER 系統的 IE 模型，證明此法能有效生成領域專屬標註、可用於訓練跨多領域的穩健 IE 系統。</p>
+<p>GuideX 開啟兩個關鍵研究方向：(1) 推進文件級 IE 方法論；(2) 開發自動化技術處理 Other、Miscellaneous 這類定義不良/兜底標籤——這些挑戰對 IE 應用至關重要卻仍少有人探索。最後，作者強調四個 prompt、驅動腳本與一致性過濾器都是<strong>即插即用工具</strong>，可套用到任何純文字語料，GuideX 能在數小時內回傳一份可直接用於訓練的資料集。</p>
+<h2 id="局限">局限</h2>
+<p>本文評估未涵蓋此方法所有潛在應用：自動生成的資料集是文件級文本，而評測框架僅聚焦句子級任務，未來擬研究此方法對文件級任務的影響。第二個局限是表 4 中提及的 Other、Miscellaneous 兜底標籤——這類殘餘類別聚合了語意上多樣、邊界不一致的片段，在訓練中引入歧義與雜訊；未來可能方向是把這些 span 編碼進共享嵌入空間、做無監督聚類，再用 LLM 為連貫子集誘導出候選 schema 定義，以此進行第二輪 GuideX 迭代，用更細粒度、與指引相容的型別取代模糊類別。</p>
+<h2 id="附錄-a-實作細節要點">附錄 A 實作細節要點</h2>
+<p><strong>A.1 資料集生成</strong>：合成資料以 Llama 3.1-70B Instruct（透過 vLLM）生成，四步驟生成流程依序為：抽取關鍵重點（減少冗餘、保留核心資訊）→轉為結構化 JSON（統一格式）→生成標註指引（定義預期屬性與結構，確保跨標註一致）→依指引抽取實例（確保最終資料集格式一致）。詳細超參數見正文表 5（模型 Llama 3.1-70B Instruct、bfloat16、最長序列 8192、tensor parallel size 2、溫度 0.7、top-p 0.95、最長新生成 1024 token、批次 32、4×A100 80GB）。</p>
+<p><strong>A.2 GuideX_FT 與 Gold_FT 超參數</strong>：兩者皆用 Llama 3.1-8B、4-bit LoRA（rank 128、α 256）、AdamW、餘弦排程、10% 暖身步數、bfloat16、2×A100 80GB＋DeepSpeed Zero-3；差異在於 GuideX_FT 支援較長序列（8192 token，適配文件級輸入）、搭配梯度累積（有效批次 8）、訓練 3 epoch，Gold_FT 用較短序列（2048）、較大單卡批次（16，無梯度累積）、訓練 1 epoch。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2506.00649_GuideX.%E6%91%98%E8%A6%81.html"><code>../summarize/2506.00649_GuideX.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.24639_ExperientialReflection.zh-TW.html">回 2603.24639_ExperientialReflection.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="3-實驗">3 實驗</h2>
+<p><strong>實驗設定</strong>：我們在 Gaia2 上評估 ERL 與現有方法。Gaia2 是一個評估長時程智能體能力的近期基準，在包含 12 個應用和 101 個工具的模擬行動環境中進行。我們專注於 Search 和 Execution 分割，分別包含資訊檢索和多步驟執行能力的任務。我們使用 Gaia2 的默認 ReAct 智能體腳手架作為基線。ERL 在執行前將檢索到的啟發式注入智能體系統提示來增強該基線，無需修改核心 ReAct 循環。除非另有說明，我們以 LLM 檢索的 k=20 條啟發式評估 ERL。所有方法均使用 GPT-5-mini 作為智能體骨幹。</p>
+<p>Gaia2 的一個關鍵特性是其 universe 組織：隔離的資料分區暴露相同的應用和工具，但包含完全不相交的資訊（例如不同的聯絡人、檔案和日曆事件）。此結構支持無知識污染的評估：我們在 8 個 universe（112 execution / 132 search 任務）上累積啟發式，並在 2 個保留的測試 universe（48 / 28 任務）上評估。此設置反映了智能體在固定工具集內運行但遇到持續變化資料的真實部署。</p>
+<p><strong>主要結果</strong>：ERL 實現 56.1% 整體成功率，相對於 ReAct 基線提升 +7.8%，相對於最強先前方法（ExpeL 50.9%）提升 +5.2%。增益在不同任務類型間一致：Execution +8.3%、Search +7.1%（相對於基線）。先前方法在不同分割上表現不均——AutoGuide 在 Search 上表現強勁（61.9%）但在 Execution 上低於基線（39.6%），而 ExpeL 在兩者上均表現溫和改進。Few-shot 提示原始軌跡示範同樣未能改進（46.4%，低於基線 -1.9%）。</p>
+<p><strong>ERL 提升智能體可靠性</strong>：ERL 在 pass^3（三輪執行全部成功）上取得顯著增益：Execution +8.3%、Search +10.6%，表明跨輪次的性能更加穩定。pass@3（三輪中至少一次成功）的改進相對較小，表明新解的場景僅有邊際增加。換言之，ERL 主要讓已能解的任務變得更可靠，而非大幅擴展可解任務範圍。</p>
+<p><strong>啟發式比軌跡泛化更強</strong>：將原始軌跡作為 few-shot 示範附加到上下文是一種從經驗進行上下文學習的簡單方法，但這種方法未能提升性能（-1.9% vs 基線），表明原始軌跡缺乏智能體在新場景上改進所需的可執行洞察。相反，啟發式提供了可在任務間泛化的蒸餾策略原則，且在上下文效率上更優。此優勢在不同的 token 預算下均成立：啟發式在控制上下文長度時仍持續優於軌跡（Search 上 +23.8% @約 40 場景）。</p>
+<p><strong>檢索品質重於數量</strong>：ERL 使用基於 LLM 的選擇機制檢索任務相關啟發式。為驗證此選擇的價值，我們與隨機選擇比較。性能呈非單調模式，約在 40-60 條啟發式處達到峰值後隨過度包含而下降。這證明了需要一個能從大池中識別最相關啟發式的選擇機制，而非僅依賴數量。LLM 檢索 k=20 達到 56.1%，優於嵌入檢索（Qwen3-Embedding-0.6B，53.3%）和最佳隨機配置（53.8%），確認檢索品質比啟發式數量更重要。</p>
+<p><strong>失敗啟發式利於 Search；成功啟發式利於 Execution</strong>：先前方法探索了專門從過往失敗或成功中學習。我們檢驗了來源經驗的結果是否影響啟發式品質（見表 2b）。失敗衍生的啟發式整體上顯著優於成功衍生的（58.9% vs 49.9%）。但效果因任務分割而異：失敗啟發式在 Search 上表現最佳（+14.3% 超越基線），通過提供剪枝無效策略的負面約束；而成功啟發式在 Execution 上最佳（+9.0%），通過強化已驗證的動作序列。雖然純失敗檢索獲得最高總分（58.9%），這反映了以 Execution 任務為代價的強 Search 表現。在任務分佈未知的實際部署場景中，從兩個來源同時檢索提供穩妥的折衷。</p>
+<p><strong>τ²-bench 評估</strong>（附錄 A）：在三個客服領域（Airline、Retail、Telecom）上，ERL 整體略微優於基線（38.0% vs 36.7%），在單控制領域（Airline、Retail）的可靠性增益與 Gaia2 發現一致。Telecom 的下降歸因於其組合式子任務結構降低了啟發式匹配機率，以及雙控制領域中用戶行為的不可預測性。</p>
+<p><strong>無獎勵訊號</strong>（附錄 C）：在無環境驗證獎勵、僅靠自我評估時，智能體僅 70% 正確識別成敗，ERL 成功率降至 51.2%（-4.8%），但仍優於基線（48.3%），表明即使獎勵訊號不完美，ERL 仍提供價值。</p>
+<h2 id="迭代-erl附錄-e在邊累積邊檢索的迭代版本中來源任務成功率更高但測試泛化更差-54可能原因引導改進後失敗模式收窄導致啟發式覆蓋面不足且引導軌跡衍生的啟發式遷移性較低"><strong>迭代 ERL</strong>（附錄 E）：在邊累積邊檢索的迭代版本中，來源任務成功率更高但測試泛化更差（-5.4%）。可能原因：引導改進後失敗模式收窄導致啟發式覆蓋面不足，且引導軌跡衍生的啟發式遷移性較低。</h2>
+<h2 id="part-44-parent_file-260324639_experientialreflectionzh-twmd">part: 4/4
+parent_file: 2603.24639_ExperientialReflection.zh-TW.md</h2>
+<h2 id="4-結論">4 結論</h2>
+<p>我們提出了經驗反思學習（ERL），一個讓 LLM 智能體通過累積經驗進行改進的框架。通過將軌跡蒸餾為可重用啟發式並在測試時檢索相關指導，ERL 優於先前經驗學習方法，並在 Gaia2 上提升了任務完成可靠性。我們的分析揭示：（1）啟發式比原始軌跡遷移性更強，（2）基於 LLM 的檢索優於隨機和基於嵌入的選擇，（3）從失敗中學習 vs. 從成功中學習因任務類型而異。未來工作可以通過合成任務生成來引導啟發式累積，或解決擴展啟發式池的挑戰，如解決衝突指南和維持檢索品質。</p>
+<h2 id="附錄要點">附錄要點</h2>
+<p><strong>附錄 C.1</strong>：Token 匹配比較——在相同 token 預算下，啟發式始終優於 few-shot 軌跡，驗證蒸餾為啟發式而非堆積原始軌跡才能提供最強學習訊號。</p>
+<p><strong>附錄 C.2</strong>：檢索細節——嵌入檢索（Qwen3-Embedding-0.6B，餘弦相似度）能有效檢索使用相同工具的相似任務，但未必優先處理相似錯誤模式的啟發式。LLM 檢索（GPT-5.2）考慮錯誤模式和啟發式內容，在各 k 值下均優於嵌入檢索。</p>
+<p><strong>附錄 D</strong>：Token 與成本分析——ERL 的場景 rollout 輸入 token 近乎翻倍（因 ~20k token 啟發式附加到 ~12k token 系統提示），但得益於提示緩存（88% vs 82% 緩存命中），成本僅適度增加 15%。計入啟發式生成和檢索後，總 API 成本增加 40%。</p>
+<p><strong>附錄 F</strong>：啟發式與軌跡示例——展示了來自失敗任務的範例啟發式（日曆重排時忘記刪除原始事件→應先創建新事件再刪除原始），以及智能體在全新任務（替換而非重排）中多次明確引用該啟發式完成安全事件替換的軌跡摘錄。</p>
+<p><strong>附錄 G</strong>：啟發式生成提示——引導智能體進行「事後分析」：對失敗任務定位確切中斷點並推導修正規則；對成功任務識別「致勝動作」並推導最佳實踐。檢索提示引導 LLM 按任務相似度、經驗多樣性和指南資訊量三維度評分選擇 top-k。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

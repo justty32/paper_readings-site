@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Compiled AI：LLM 工作流自動化的確定性程式碼生成》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Geert Trooskens、Aaron Karlsberg、Anmol Sharma、Lamara De Brouwer、Max Van Puyvelde、Matthew Young、John Thickstun、Gil Alterovitz、Walter A. De Brouwer（XY.AI Labs / Stanford / Cornell / Harvard）</p><p>日期：2026-04，系統架構（編譯式 AI）</p><p>arXiv：2604.05150</p><p><a href="https://arxiv.org/abs/2604.05150" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="compiled-aillm-工作流自動化的確定性程式碼生成重點摘要">《Compiled AI：LLM 工作流自動化的確定性程式碼生成》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Compiled AI</strong>：把 LLM 當<strong>編譯器而非直譯器</strong>——LLM 只在<strong>一次性編譯階段</strong>被呼叫，在經過模板約束生成窄域業務邏輯函式後，通過<strong>四階段驗證管線</strong>（安全→語法→執行→準確度）部署為<strong>確定性靜態程式碼</strong>，執行時<strong>零 token、零 LLM 呼叫、零隨機性</strong>。在 BFCL 函式呼叫上達 96% 任務完成率、僅 17 筆交易就攤平編譯成本、1,000 筆時節省 <strong>57× token</strong>（vs Direct LLM）和 <strong>84×</strong>（vs AutoGen）;DocILE 文件智慧的 Code Factory 變體在 KILE 欄位抽取上<strong>匹配 Direct LLM（80.0%）</strong>、LIR 行項辨識<strong>最高（80.4%）</strong>。安全評估：135 測試案例 96.7% 準確率偵測 prompt injection、87.5% 靜態程式碼安全分析、<strong>零誤報</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM agent 架構（AutoGen、LangChain）每筆交易都呼叫 LLM → 高 token 消耗、可變延遲、非確定性行為（即使 temperature=0 仍有 18–75% 輸出變異）、攻擊面大（每筆交易都暴露 prompt）、難以審計。醫療等合規場景（CMS 決策時限、HIPAA、FDA 審計）<strong>不能接受</strong>這種不確定性。79% 的多代理失敗源於規範與協調問題（非基礎設施），agent 成功率從單輪 58% 降到多輪 35%。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>編譯式 AI 三要素</strong>：① LLM 僅在生成時呼叫一次（非交易時）、② 部署後零 token 確定性執行（生成碼是靜態的）、③ 必須通過多階段驗證（安全/語法/執行/準確度）。</li>
+<li><strong>Code Foundry 架構</strong>：YAML 工作流規範→Orchestrator 選模板/模組/合規約束→LLM 一次性生成業務邏輯（20–50 行）→四階段驗證管線→部署為 Temporal activity（失敗時帶錯誤上下文重新生成）。</li>
+<li><strong>四階段驗證</strong>：Security（Bandit+Semgrep+自訂規則檢查 SQL injection/command injection/path traversal/secrets）→Syntax（AST 解析+mypy 型別檢查+ruff lint）→Execution（沙箱執行對測試 fixtures）→Accuracy（對 golden dataset 按任務特定閾值比對輸出）。</li>
+<li><strong>Bounded Agentic Invocation</strong>：當純確定性方法因語意複雜度失敗時，生成碼可以封裝<strong>聚焦的 LLM 呼叫</strong>（如從模糊臨床筆記中抽取結構化欄位），但整體流仍是確定性的——搭配 schema 定義、fallback 邏輯、漂移監控、人類升級閾值。</li>
+<li><strong>安全架構（三閘門）</strong>：Input Gate（DeBERTa-v3 prompt injection 偵測+Presidio PII 掃描）→Code Gate（CWE-94/89/502/78/328 靜態分析）→Output Gate（密碼學 canary token 注入偵測 prompt 洩漏）+ Dual LLM 分離特權與隔離模型實例。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>BFCL（n=400）</strong>：Compiled AI 達 96% 任務完成率、100% 執行可靠性（16 個失敗全發生在編譯階段、部署前可偵測）、4.5ms P50 延遲（vs 2,004ms Direct LLM，450× 改善）、100% 再現性（vs runtime inference 95%）、1M 筆/月 TCO $555（vs $22,000 Direct LLM，40×）。</li>
+<li><strong>DocILE（5,680 張發票）</strong>：Code Factory 在 KILE 欄位抽取匹配 Direct LLM（80.0%）、LIR 行項辨識最高（80.4%）、延遲 2.3× 低於 Direct LLM（2,695ms vs 6,339ms）。純 regex 僅 20.3% KILE（差 80pp 來自語意欄位：客戶名 10.1%、幣值 9.2%）。</li>
+<li><strong>安全</strong>：prompt injection 偵測召回 95.8% / 精確 100%（30 對抗輸入，零誤報）；程式碼安全閘召回 75% / 精確 100%（20 漏洞+20 良性，零誤報）。跨 135 案例整體精確 96.1%。</li>
+<li><strong>驗證管線</strong>：語法/執行階段首過率 100%；準確度閘首過率 96%（16 失敗＝編譯時可偵測的語意錯誤，部署前攔下，轉為 100% 部署可靠性）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>規範品質依賴</strong>：假設使用者能準確指定 YAML 工作流；規範本身需要迭代細化。</li>
+<li><strong>有限適用性</strong>：非所有工作流可簡化為確定性程式碼；需要真正創造力或適應新情境的任務仍需 runtime inference。僅評估兩種任務類型。</li>
+<li><strong>生成失敗率</strong>：4% 編譯失敗（BFCL 16/400），雖全部語法有效且可於部署前偵測。</li>
+<li><strong>模型依賴</strong>：生成碼品質取決於底層 LLM；模型更新可能需要重新驗證。</li>
+<li><strong>基準覆蓋</strong>：評估框架尚未被其他系統採用，跨系統可比性有限。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>「LLM 節點→確定性程式退化」方向二的生產級實作</strong>：把 DSPy/LLM+P 的編譯理念推到企業合規場景（醫療），給出一套可操作的四階段驗證藍圖＋經濟學帳本（攤平點 n*≈17、57–84× 節省）。</li>
+<li>與 <a class="paper-reference" href="2310.03714_DSPy.%E6%91%98%E8%A6%81.html">2310.03714</a> DSPy（宣告式→優化 pipeline）、<a class="paper-reference" href="https://arxiv.org/abs/2304.11477">2304.11477</a> LLM+P（NL→PDDL→經典規劃器）、<a class="paper-reference" href="2605.22148_Ratchet.%E6%91%98%E8%A6%81.html">2605.22148</a> Ratchet（失敗就退役）、<a class="paper-reference" href="2601.16286_SemanticALLI.%E6%91%98%E8%A6%81.html">2601.16286</a> SemanticALLI（意圖簽名快取取代 LLM 節點）並讀：編譯 vs 快取 vs 退役——三種讓 LLM 退出執行迴圈的策略。</li>
+<li><strong>安全架構</strong>可直接對照 ai_core §3.2（前濾網）與 §3.4（接地把關）：Input Gate＝前濾網、安全/語法/執行/準確度四階段＝多層把關、Bounded Agentic Invocation＝「非它不可才留 LLM」的工程實例化。</li>
+<li>定位：系統架構論文＋雙任務實證＋<strong>開源基準套件</strong>（540 YAML 規範＋金輸出＋七類指標度量腳本），適合做 <strong>LLM 工作流自動化、企業 AI 部署、醫療 AI 合規、安全 AI 系統</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2604.05150_CompiledAI.zh-TW.html"><code>../translate/2604.05150_CompiledAI.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>FregeLogic：SemEval-2026 Task 11 混合神經符號三段論有效性預測 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.18328_FregeLogic.zh-TW.html">回 2604.18328_FregeLogic.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%B5%90%E6%9E%9C%E8%88%87%E5%88%86%E6%9E%90.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-系統概覽">3. 系統概覽</h2>
+<p>系統由三個元件組成：(1) LLM ensemble，透過多樣的模型與提示組合提供高準確率預測；(2) 基於 Z3 的形式驗證管線，提供以結構為基礎的邏輯判斷；(3) tiebreaker 決策模組，只在 ensemble 出現狹窄投票差（3–2 split）時才將預測路由至 Z3。</p>
+<h3 id="31-llm-ensemble">3.1 LLM Ensemble</h3>
+<p>Ensemble 由五個分類器組成，每個由（模型， 提示）對定義。使用三個開源模型（透過 Amazon Bedrock 存取）：Llama 4 Maverick（17B active parameters, MoE 架構）、Llama 4 Scout（17B）與 Qwen3（32B）。這三個模型是為了在實用參數量預算（17B–32B active parameters）內最大化架構多樣性（MoE vs. dense、兩個不同模型家族），同時保持單一推論 API 存取。搭配四種提示策略：</p>
+<ul>
+<li><strong>Zero-shot</strong>：直接問有效性問題，無範例。</li>
+<li><strong>Few-shot</strong>：七個有解說的有效與無效三段論範例，含明確有效性規則，在合理性條件間平衡。</li>
+<li><strong>Few-shot CoT</strong>：帶逐步推理軌跡的範例，包含一個明確指出內容偏誤的 believable-invalid 範例。</li>
+<li><strong>Simple CoT</strong>：極簡提示，要求先辨識邏輯結構再回答。</li>
+</ul>
+<p>每 fold 的五個配置是根據在 200 樣本內部子集上的結合分數來選擇的。選擇過程自然地平衡了模型與提示多樣性，遵循 ensemble 準確率受益於成員間不相關錯誤的原則（Bertolazzi et al., 2024）。</p>
+<p>對每個三段論，五個分類器產生二元預測 v_i ∈ {0,1}，1 表示有效。Ensemble 多數決為 ŷ = 1[∑ v_i &gt; 2.5]。所有模型以溫度 0.0 呼叫以最大化輸出的可重複性。回應以多階段正則管線解析，檢查明確答案模式（如 &quot;ANSWER: true&quot;）、最後一行啟發法、以及回退到回應中最後出現的 &quot;true&quot;/&quot;false&quot;/&quot;valid&quot;/&quot;invalid&quot;。解析失敗時預設為 invalid。</p>
+<h3 id="32-z3-形式驗證">3.2 Z3 形式驗證</h3>
+<p>Z3 元件（De Moura and Bjørner, 2008）透過將三段論編碼為一階邏輯（FOL）並測試可滿足性，提供以結構為基礎的有效性檢查。我們選擇 Z3 而非其他證明器的三個理由：(1) 原生支援量詞與未解釋排序，可直接編碼三段論命題，無需轉換為合取範式，不像基於歸結的證明器如 Prover9（Olausson et al., 2023）；(2) 成熟的 Python API 可與 LLM 管線緊密整合；(3) 已在神經符號 NLP 中被證明有效（Pan et al., 2023; Bayless et al., 2025）。管線包含三個階段。</p>
+<p><strong>結構萃取</strong>：提示 LLM 將三段論的邏輯結構萃取為 JSON 物件，包含三個詞項、兩個前提與結論，各自附註命題類型（A: 全稱肯定， E: 全稱否定， I: 特稱肯定， O: 特稱否定）及其主詞與謂詞。使用 Amazon Bedrock 的結構化輸出 API，搭配強制格式正確的 JSON schema，將萃取失敗從約 22%（自由格式提示時）降至接近零。以三模型順序嘗試萃取（Maverick → Qwen → Scout，按個別結合分數排序），採用第一個成功解析的。實務上 Maverick 在跨 fold 的 99.5–100% 案例中成功。</p>
+<p><strong>FOL 編碼</strong>：每個命題編碼為在宣告排序 Thing 上的一階公式，對每個詞項使用一元謂詞。根據對資料集中 Felapton 型三段論的診斷檢查（全標 valid），採用帶存在導入（existential import）的亞里斯多德解釋，為全稱命題的主詞項添加存在公理（∃x: S(x)）：</p>
+<ul>
+<li>類型 A（&quot;所有 S 是 P&quot;）：∀x: S(x) → P(x) ∧ ∃x: S(x)</li>
+<li>類型 E（&quot;沒有 S 是 P&quot;）：∀x: S(x) → ¬P(x) ∧ ∃x: S(x)</li>
+<li>類型 I（&quot;有些 S 是 P&quot;）：∃x: S(x) ∧ P(x)</li>
+<li>類型 O（&quot;有些 S 不是 P&quot;）：∃x: S(x) ∧ ¬P(x)</li>
+</ul>
+<p><strong>可滿足性檢查</strong>：有效性由兩步驟程序決定。首先驗證前提一致性：若 P1 ∧ P2 為 UNSAT，則前提互相矛盾，Z3 返回 ⊥，交由 ensemble 處理——這防範了 ex contradictione quodlibet 的偽陽性（不一致前提可推出任何結論）。否則，以標準方式檢查有效性：valid(S) ⇔ (P1 ∧ P2 is SAT) ∧ (P1 ∧ P2 ∧ ¬C is UNSAT)。若第二步檢查為 UNSAT，三段論有效；若 SAT，無效；若 UNKNOWN（5000ms timeout 時），結果未定義（⊥）。結構萃取失敗或產出格式錯誤時 Z3 也返回 ⊥。</p>
+<p>Z3 求解器在結構上內容中立，因為形式編碼剝除了所有語意內容。但端到端管線的內容獨立性取決於萃取步驟。萃取失敗按合理性子群分解確認了結構化輸出管線內容中立：各子群失敗率均勻分佈。</p>
+<h3 id="33-tiebreaker-決策融合">3.3 Tiebreaker 決策融合</h3>
+<p>決策模組根據投票共識來結合 ensemble 與 Z3 預測，衡量指標為投票差（vote margin）：m(S) = |2∑v_i − n|，n=5。差為 5（一致）、3（4–1 split）或 1（3–2 split）。</p>
+<p>最終預測：m(S) ≤ 1 且 Z3 可用時採用 Z3；否則使用 ensemble 多數決。閾值 τ=1 表示只在 3–2 split 時諮詢 Z3，我們假設這些對應於內容偏誤導致 LLM 之間意見分歧的案例。</p>
+<h2 id="4-實驗設置">4. 實驗設置</h2>
+<p>任務主辦方提供的資料集（Valentino et al., 2026）包含 N=960 個三段論，附有效性標籤與合理性元資料，在四個子群之間平衡：valid-believable (240)、valid-unbelievable (240)、invalid-believable (234)、invalid-unbelievable (246)。無獨立開發集。</p>
+<p>採用嵌套五折交叉驗證將模型選擇與評估分離。每外層 fold 中 768 個三段論用於校準、192 個用於評估。每校準集中隨機抽取 200 樣本內部子集進行第一階段模型選擇，對所有 12 組（3 模型 × 4 提示）組合打分。兩個額外的 OpenAI 模型（GPT-OSS-120B 與 GPT-OSS-20B）在初步實驗中評估後因結合分數過低（14.7–21.0）而排除。每 fold 挑選結合分數最高的五個配置組成 ensemble。所有 LLM 呼叫以溫度 0.0 使用 Amazon Bedrock。Z3 求解器使用 Python API，timeout 5000ms。</p>
+<h2 id="存在導入為決定正確的-fol-編碼檢查資料集中-darapti-型aai-3與-felapton-型eao-3三段論其有效性取決於是否假設存在導入未發現-darapti-候選發現七個-felapton-候選全標-valid這確認了亞里斯多德解釋因此添加存在公理見-32"><strong>存在導入</strong>：為決定正確的 FOL 編碼，檢查資料集中 Darapti 型（AAI-3）與 Felapton 型（EAO-3）三段論（其有效性取決於是否假設存在導入）。未發現 Darapti 候選；發現七個 Felapton 候選，全標 valid。這確認了亞里斯多德解釋，因此添加存在公理（見 §3.2）。</h2>
+<h2 id="title-fregelogicsemeval-2026-task-11-的混合神經符號架構用於內容穩健三段論有效性預測fregelogic-at-semeval-2026-task-11-a-hybrid-neuro-symbolic-architecture-for-content-robust-syllogistic-validity-prediction-source-httpsarxivorgabs260418328-arxiv_id-260418328-authors-adewale-akinfaderin-nafi-dialloamazon-web-services-date-2026-04-note-依論文章節結構精要逐節呈現semeval-2026-summary-summarize260418328_fregelogic摘要md">title: FregeLogic：SemEval-2026 Task 11 的混合神經符號架構，用於內容穩健三段論有效性預測（FregeLogic at SemEval 2026 Task 11: A Hybrid Neuro-Symbolic Architecture for Content-Robust Syllogistic Validity Prediction）
+source: https://arxiv.org/abs/2604.18328
+arxiv_id: 2604.18328
+authors: Adewale Akinfaderin, Nafi Diallo（Amazon Web Services）
+date: 2026-04
+note: 依論文章節結構精要逐節呈現。SemEval-2026。
+summary: ../summarize/2604.18328_FregeLogic.摘要.md</h2>
+<h1 id="fregelogicsemeval-2026-task-11-混合神經符號三段論有效性預測">FregeLogic：SemEval-2026 Task 11 混合神經符號三段論有效性預測</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

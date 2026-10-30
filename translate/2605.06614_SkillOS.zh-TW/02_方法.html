@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>SkillOS（Part 3：實驗、分析、結論） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.06614_SkillOS.zh-TW.html">回 2605.06614_SkillOS.zh-TW 目錄</a>　<a href="01_%E5%BC%95%E8%A8%80.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="31-串流技能策展與模組化多代理設計">3.1 串流技能策展與模組化多代理設計</h3>
+<p>考慮串流測試環境：LLM 代理被部署解決隨時間到達的任務序列 <span class="math inline">\(\mathcal{D} = \{x_1, x_2, \dots, x_T\}\)</span>。在每個時間步 <span class="math inline">\(t\)</span>，代理須先解決當前任務 <span class="math inline">\(x_t\)</span> 才能看到未來任務，產生執行軌跡 <span class="math inline">\(\xi_t\)</span>。此設定捕捉自我進化代理的核心挑戰：系統必須從過去軌跡中蒸餾有用經驗以提升未來表現。</p>
+<p><strong>技能庫（SkillRepo）</strong>：時間步 <span class="math inline">\(t\)</span> 維持外部技能庫 <span class="math inline">\(\mathcal{S}_t = \{s^1_t, s^2_t, \dots, s^{N_t}_t\}\)</span>。每技能以 Markdown 表示：(i) YAML frontmatter（技能名稱＋自然語言使用描述），(ii) Markdown 指令文本（可執行知識、工作流、約束、可重用啟發法）。此格式遵循社群廣泛採用的 SKILL.md 設計。</p>
+<p><strong>Agent Executor</strong>：給定任務 <span class="math inline">\(x_t\)</span>，凍結的 executor <span class="math inline">\(\pi_L\)</span> 以當前環境觀察與檢索到的技能為條件解決任務。使用 BM25 從 SkillRepo 檢索技能子集 <span class="math inline">\(\tilde{\mathcal{S}}_t\)</span>，executor 取樣動作 <span class="math inline">\(a \sim \pi_L(\cdot \mid x_t, o_t, \tilde{\mathcal{S}}_t)\)</span>。</p>
+<p><strong>Skill Curator</strong>：executor 完成任務後，策展器 <span class="math inline">\(\pi_S\)</span> 觀察軌跡 <span class="math inline">\(\xi_t\)</span>、自我判斷的正確性訊號 <span class="math inline">\(\mathbb{1}_{\xi_t}\)</span>（LLM-as-a-judge）、及檢索到的相關技能 <span class="math inline">\(\tilde{\mathcal{S}}_t\)</span>，生成結構化策展操作：</p>
+<div class="math block">
+\[c_t = (u^1_t, \dots, u^{M_t}_t) \sim \pi_S(\cdot \mid \xi_t, \mathbb{1}_{\xi_t}, \tilde{\mathcal{S}}_t)\]
+</div>
+<p>每個操作為 {insert_skill, update_skill, delete_skill} 之一，以函式呼叫實現。操作應用後 SkillRepo 轉變為 <span class="math inline">\(\mathcal{S}_{t+1} = \text{ApplyOps}(\mathcal{S}_t, c_t)\)</span>，供 executor 在後續任務使用，形成任務執行與經驗驅動技能演化之間的閉環。</p>
+<h3 id="32-用-rl-學習技能策展">3.2 用 RL 學習技能策展</h3>
+<p>核心挑戰：策展決策的反饋是<strong>間接且延遲的</strong>——只能透過 executor 在未來相關任務上的表現才能揭示。SkillOS 以兩項設計解決此問題：(1) 分組訓練實例（§3.2.1），(2) 複合獎勵（§3.2.2）。</p>
+<h4 id="321-訓練實例建構">3.2.1 訓練實例建構</h4>
+<p>對每個任務 <span class="math inline">\(x_i\)</span>，先用 Gemini-2.5-Pro 標註一組技能相關屬性：</p>
+<div class="math block">
+\[Z_i = \{T_i, S_i, C_i, R_i, P_i\}\]
+</div>
+<p>五維度分別為：高階主題、所需技能或能力、底層數學概念或定理、適用的啟發策略、常見陷阱。每維度為一組少於 5 字的簡短短語。對於代理任務（ALFWorld），直接使用任務類型註釋（6 類）替代 <span class="math inline">\(Z_i\)</span>。</p>
+<p>然後將資料集劃分為 <span class="math inline">\(M\)</span> 組相關任務。分組使用兩階管線：</p>
+<p><strong>Stage 1</strong>：LLM 標註屬性（Gemini-2.5-Pro，結構化解碼輸出 JSON，要求標準化術語、無任務特定內容、每維度盡量少短語）。</p>
+<p><strong>Stage 2</strong>：基於屬性相似度的群組建構——以軟 Jaccard（combining exact match + sentence-embedding cosine similarity，使用 all-MiniLM-L6-v2）計算短語列表相似度。對每對候選任務應用 <strong>dependency gate</strong> 過濾：(1) shared foundation（共享概念與技能短語數達標）；(2) shared reasoning（共享策略或陷阱短語）；(3) not a near-duplicate（整體相似度在上界以下）；(4) not too unrelated（相似度在下界以上）；(5) progression（候選引入至少一個新概念或技能）；(6) curriculum direction（難度正向遞增）。</p>
+<p>檢索透過預計算 inverted index 加速（以 dependency fields {C, R, P} 為鍵，候選池上限 2,000）。最終選取加權相似度（五維度加權）＋難度獎勵最高的候選。此設計使技能由 curator 在早期任務中衍生後，可透過其是否幫助解決後續相關任務來被評估——提供學習複雜策展操作所需的長程反饋。</p>
+<h4 id="322-訓練迴圈與策略最佳化">3.2.2 訓練迴圈與策略最佳化</h4>
+<p>採用 <strong>GRPO（Grouped Reward Policy Optimization）</strong>。對任務組 <span class="math inline">\(G = (x_1, \dots, x_{|G|})\)</span>，策展器產生一系列決策 <span class="math inline">\(c = (c_1, \dots, c_{|G|})\)</span>。每個訓練步驟的複合獎勵為：</p>
+<div class="math block">
+\[r = r_{\text{task}} + \lambda_f r_{\text{fc}} + \lambda_u r_{\text{cnt}} + \lambda_c r_{\text{comp}}\]
+</div>
+<ul>
+<li><strong>任務成果獎勵</strong> <span class="math inline">\(r_{\text{task}} = \frac{1}{|G|-1}\sum_{i=2}^{|G|} \mathbb{1}(\xi_i)\)</span>：排除首任務（使用空 SkillRepo），平均剩餘任務的成功率——提供 executor 接地信號。</li>
+<li><strong>函式呼叫獎勵</strong> <span class="math inline">\(r_{\text{fc}}\)</span>：有效且成功執行的函式呼叫比例——衡量操作格式的正確性。</li>
+<li><strong>內容品質獎勵</strong> <span class="math inline">\(r_{\text{cnt}}\)</span>：由 Qwen3-32B 外部裁判按四維度評分——抽象性（捕捉可泛化程序，非逐字複製軌跡）、可重用性（原子化與模組化）、可操作性（提供具體指引）、忠實度（所有陳述有軌跡證據支撐）。</li>
+<li><strong>精簡度獎勵</strong> <span class="math inline">\(r_{\text{comp}} = \frac{1}{|G|}\sum_{i=1}^{|G|} (1 - \frac{|\mathcal{S}_i|}{|\chi_i|})\)</span>：SkillRepo token 長度 vs 輸入上下文長度——抑制逐字複製軌跡，鼓勵蒸餾可重用技能。</li>
+</ul>
+<p>每任務組取樣 <span class="math inline">\(N\)</span> 條獨立 rollout，每條 rollout 中 executor 使用不同 SkillRepo 歷史。GRPO advantage：</p>
+<div class="math block">
+\[A^n = r^n - \frac{1}{N}\sum_{n&#x27;=1}^{N} r^{n&#x27;}\]
+</div>
+<p>最佳化 <span class="math inline">\(\pi_S\)</span> 用 clipped surrogate objective：<span class="math inline">\(\mathcal{L} = \mathbb{E}_n[\min(\rho^n A^n, \text{clip}(\rho^n, 1-\epsilon, 1+\epsilon)A^n)]\)</span>，其中 <span class="math inline">\(\rho^n = \pi_S(c^n \mid \chi) / \pi_{\theta}^{old}(c^n \mid \chi)\)</span>。Advantage 統一分配至 <span class="math inline">\(c^n\)</span> 的所有 token，廢棄 KL 項以鼓勵策略探索。</p>
+<h2 id="實作細節qwen3-8b-作為策展器基模型凍結-executor-訓練時亦用-qwen3-8bgrpo-參數學習率-1-times-10-6batch-size-32group-size-8temperature-10獎勵權重-lambda_f--10lambda_u--01lambda_c--00516-張-h100-gpuverl-框架alfworld-訓練約-3-天50-stepsgroup-size-10webshop-約-5-天推理約-25-天測試時使用-top-30-skill-retrieval代理-top-5推理react-用於代理任務cot-用於推理"><strong>實作細節</strong>：Qwen3-8B 作為策展器基模型，凍結 executor 訓練時亦用 Qwen3-8B。GRPO 參數：學習率 <span class="math inline">\(1 \times 10^{-6}\)</span>、batch size 32、group size 8、temperature 1.0。獎勵權重 <span class="math inline">\(\lambda_f = 1.0\)</span>、<span class="math inline">\(\lambda_u = 0.1\)</span>、<span class="math inline">\(\lambda_c = 0.05\)</span>。16 張 H100 GPU、verl 框架。ALFWorld 訓練約 3 天（50 steps，group size 10），WebShop 約 5 天，推理約 2.5 天。測試時使用 top-30 skill retrieval（代理）/ top-5（推理），ReAct 用於代理任務、CoT 用於推理。</h2>
+<h2 id="title-skillos學習技能策展以實現自我進化代理skillos-learning-skill-curation-for-self-evolving-agents-part-3-source-httpsarxivorgabs260506614-arxiv_id-260506614-note-47接續-part-23-方法-summary-summarize260506614_skillos摘要md-parent-260506614_skilloszh-twmd">title: SkillOS：學習技能策展以實現自我進化代理（SkillOS: Learning Skill Curation for Self-Evolving Agents）— Part 3
+source: https://arxiv.org/abs/2605.06614
+arxiv_id: 2605.06614
+note: §4–§7。接續 Part 2（§3 方法）。
+summary: ../summarize/2605.06614_SkillOS.摘要.md
+parent: 2605.06614_SkillOS.zh-TW.md</h2>
+<h1 id="skillospart-3實驗分析結論">SkillOS（Part 3：實驗、分析、結論）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

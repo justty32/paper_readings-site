@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《FlowCompile：結構化 LLM 工作流的優化編譯器》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Junyan Li（UMass Amherst）、Zhang-Wei Hong、Yang Zhang（MIT-IBM Watson AI Lab）、Maohao Shen（MIT）、Chuang Gan（UMass Amherst / MIT-IBM Watson AI Lab）</p><p>日期：2026-05，LLM 工作流編譯器（compile-time optimization + accuracy–latency trade-off）</p><p>arXiv：2605.13647</p><p><a href="https://arxiv.org/abs/2605.13647" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="flowcompile結構化-llm-工作流的優化編譯器重點摘要">《FlowCompile：結構化 LLM 工作流的優化編譯器》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>FlowCompile</strong>：借鑑 ML 編譯器（TVM/Ansor）的「編譯期分解→元件級 profiling→組合式估計→設計空間探索」範式，將結構化 LLM 工作流的優化從執行期路由重新定義為<strong>編譯問題</strong>——在部署前一次性探索工作流設計空間（模型選擇 × 推理預算 × 工作流結構），輸出一個可復用的 accuracy–latency 權衡配置集，無需重訓練或線上適應。四個 benchmark 上全面優於啟發式固定工作流與路由基線，accuracy-priority 配置平均 3.4× 加速（LiveCodeBench 達 6.4×），latency-priority 配置平均 12.7× 加速。</p>
+<h2 id="核心貢獻">核心貢獻</h2>
+<ol>
+<li><strong>工作流編譯範式</strong>：將結構化 LLM 工作流優化重新定義為編譯問題——在部署前 global explore 設計空間，輸出 reusable trade-off set，而非訓練針對單一 trade-off point 的路由策略（§3.1）。</li>
+<li><strong>結構感知組合代理（structure-aware compositional proxy）</strong>：以解析規則將各 sub-agent 的 profiling 結果（accuracy + latency）按工作流圖的 control-flow 語義（sequential/parallel/branching/conditional）組合成工作流層級估計，無需端到端執行完整工作流（§3.3）。理論僅需 frontier consistency + local order preservation 兩項性質即可保證搜尋品質。</li>
+<li><strong>三階段編譯管線</strong>：① sub-agent data induction——以 reference model 執行工作流並以 LLM-as-judge 篩選高品質中間 I/O → profiling 枚舉 model × budget 組合；② 組合估計——解析規則 + 部署執行模型；③ Pareto 非支配排序輸出 compiled set（§3.2–3.4）。</li>
+<li><strong>代理驗證</strong>：HotpotQA 受限空間上 proxy-estimated frontier 與實測 frontier 一致；全局空間 pairwise agreement 達 accuracy 0.90 / latency 0.95；經偏差校正後 accuracy error 僅 2.3 百分點、latency error 4.4 秒（§4.2）。</li>
+<li><strong>設計空間消融</strong>：只搜 model choice（69.7）→ 加入 budget（83.2）→ 再加入 structure（88.4），三個維度皆貢獻顯著（§4.4, HotpotQA 預期效用）。</li>
+<li><strong>路由互補性</strong>：compiled set 可作為 compact candidate pool 供 KNN router 做 per-query selection，GSM8K 上 +2.6、MATH-500 上 +6.3 預期效用；分析顯示 routed 配置的難度敏感性——簡單題選低延遲配置、難題選高計算配置（§4.4）。</li>
+</ol>
+<h2 id="對讀者的價值與-ai_core-的接點">對讀者的價值（與 ai_core 的接點）</h2>
+<ul>
+<li><strong>§1 可優化計算圖的直接實例</strong>：FlowCompile 是 ai_core §1「可優化 LLM 計算圖」概念在 structured workflow 場景的完整工程實現——證明了只要工作流圖形是靜態指定的，就能以編譯器式分解（profiling→組合估計→搜尋）取代昂貴的端到端評估，產出多維 trade-off 配置菜單。與 DSPy（§1 的 prompt 優化編譯）互補：DSPy 優化 prompt/demo，FlowCompile 優化 model selection 與 reasoning budget。</li>
+<li><strong>§3.6 固化引擎的新型產物</strong>：FlowCompile 輸出的是 compiled configuration set——一種新型固化產物：不是技能或程式，而是<strong>執行配置的多目標 Pareto 集合</strong>。這補充了 §3.6 現有技能庫（SPyCE 的 merge-or-add + pruning）、Program Functions（HASP）、技能目錄（SkillCAT）等固化形式，說明「固化」的對象還可以是部署決策本身，且可用 Pareto 非支配排序作為配置庫精簡策略。</li>
+<li><strong>編譯 vs 路由的設計論證</strong>：routing 訓練時只針對單一 trade-off 點，換偏好需重訓練；compiled set 一次性覆蓋整個 Pareto frontier，換偏好只需輕量選擇。這為 ai_core「離線優化 vs 線上適應」的權衡提供清晰的工程論據。</li>
+<li><strong>定位</strong>：LLM 系統優化 / 工作流編譯 / accuracy–latency trade-off / compound AI systems。適合做 <strong>LLM 推理效率、multi-agent 系統架構、工作流優化</strong> 的研究者。</li>
+</ul>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

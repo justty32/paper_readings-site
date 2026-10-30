@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_覆蓋率準確度 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../1901.09192_SelectiveNet.zh-TW.html">回 1901.09192_SelectiveNet.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-覆蓋率準確度">5 覆蓋率準確度</h2>
+<p>以受約束 ERM（式 2）學習時，測試集上出現約束違反（真實覆蓋率 φ(g) 可能小於目標 c）並不意外；即便未違反，也可能得到次優模型（φ(g)&gt;c，因最佳選擇性模型必須讓約束恰好取等號）。深度模型的高容量會放大這種覆蓋率不精確的現象。</p>
+<p>為了讓實測覆蓋率盡量貼近目標，本文提出簡單的<strong>訓練後覆蓋率校準</strong>技術：依賴一個獨立的、含 n 個樣本的無標籤驗證集 V_n。校準時，取 g(x) 在 V_n 上的分布的第 100(1−c) 百分位數作為閾值 τ，決策規則改為 g(x)≥τ 才輸出 f(x)。由於「g(x_i)≥τ」是 Bernoulli 變數，可直接用 Hoeffding 界（Hoeffding, 1963）界定覆蓋率違反機率：Pr{ε-violation} ≤ 2e^{−2nε²}；令右式等於信心參數 δ，則以機率至少 1−δ，實測覆蓋率落在 [c−ε, c+ε] 內，ε=√(ln(2/δ)/(2n))。</p>
+<h2 id="6-實驗設計與細節">6 實驗設計與細節</h2>
+<p>程式碼開源於 github.com/geifmany/SelectiveNet。</p>
+<p><strong>6.1 資料集</strong>：SVHN（街景門牌號碼，73,257 訓練／26,032 測試，10 類，32×32×3）；CIFAR-10（50,000 訓練／10,000 測試，10 類，32×32×3）；Cats vs. Dogs（取自 ASIRRA，25,000 張、隨機切分 20,000 訓練／5,000 測試，重新縮放至 64×64）；Concrete Compressive Strength（UCI 迴歸資料集，1,030 筆、8 個數值特徵＋1 個目標值：混凝土抗壓強度）。</p>
+<p><strong>6.2 基線方法</strong>：<strong>SR</strong>（softmax 最大活化值當信心）；<strong>MC-dropout</strong>（Gal &amp; Ghahramani, 2016；分類用 dropout rate 0.5、100 次前向；迴歸用 dropout rate 0.05、200 次前向，皆依原作者建議設定）。</p>
+<p><strong>6.3 架構與超參數</strong>：影像實驗採用針對小資料集調整過的 VGG-16（Liu &amp; Deng, 2015 建議版本：僅一層 512 神經元全連接層而非原版兩層 4096；加入 batch normalization 與 dropout；標準資料增強：水平翻轉、平移、旋轉）。SGD 最佳化，momentum 0.9，初始學習率 0.1，weight decay 5e-4，每 25 epoch 學習率減半，共訓練 300 epoch；全覆蓋驗證準確率達 SVHN 96.79%、CIFAR-10 93.21%、Cats vs. Dogs 96.42%（接近 VGG-16 已知最佳結果）。SelectiveNet 的 main body 即上述 VGG-16；prediction 與 auxiliary 頭皆為全連接 softmax；selection 頭為 512 神經元的全連接隱藏層（batch norm＋ReLU）後接單神經元 sigmoid 輸出層；α=0.5、λ=32（足夠大以在訓練過程中維持約束）。迴歸實驗（UCI 表格資料）main body 為單層 64 個 ReLU 神經元的全連接網路；prediction／auxiliary 頭為單線性神經元；selection 頭為 16 個 ReLU 神經元隱藏層後接單 sigmoid 神經元；所有模組皆用 batch normalization；Adam 最佳化，學習率 5×10⁻⁴，batch size 256，800 epoch，平方損失＋weight decay 1×10⁻⁴。</p>
+<h2 id="7-實驗">7 實驗</h2>
+<p><strong>7.1 選擇性分類</strong>：</p>
+<ul>
+<li><strong>CIFAR-10</strong>：SelectiveNet（覆蓋率 c∈{0.7,0.75,0.8,0.85,0.9,0.95}）對比在同一 main body 上訓練、以 SR／MC-dropout 做事後拒絕的標準全覆蓋分類器。結果（Table 2）顯示 SelectiveNet 全面優於兩基線，相對優勢在 0.95 覆蓋率約 8.5%（vs SR），在 0.75 覆蓋率最高達 26.8%（vs MC-dropout）；MC-dropout 與 SR 表現相近（與 Geifman &amp; El-Yaniv (2017b) 一致）。</li>
+<li><strong>SVHN</strong>：c∈{0.8,0.85,0.9,0.95}（更低覆蓋率下各法幾乎都已近乎完美，故未測）。結果（Table 3）顯示除 0.95 覆蓋率三法統計無顯著差異外，SelectiveNet 全面顯著更優，最大相對優勢 14.07%（0.8 覆蓋率）。</li>
+<li><strong>Cats vs. Dogs</strong>：以相同架構（適配 64×64 輸入）、相同覆蓋率重複實驗（Table 4），結果與前述一致，SelectiveNet 持續且顯著優於兩基線。</li>
+<li>Figure 2 給出 CIFAR-10 與 Cats vs. Dogs 的 risk-coverage 曲線，直觀呈現 SelectiveNet 全程優於 SR 的一致優勢。</li>
+</ul>
+<p><strong>7.2 選擇性迴歸</strong>：在 Concrete Compressive Strength 資料集上，main body 換成全連接網路、預測頭改線性單元。SR 因迴歸網路無 softmax 層而不適用，故只與 MC-dropout（目前唯一非集成／貝葉斯的深度選擇性迴歸方法）比較。結果（Table 5）顯示：覆蓋率低於 0.9 時 SelectiveNet 明顯優於 MC-dropout，相對優勢介於 26.81% 至 30.48% 之間。</p>
+<h2 id="8-實證觀察">8 實證觀察</h2>
+<p><strong>8.1 覆蓋率校準</strong>：在 CIFAR-10 上訓練 5 個模型（c∈{0.7,0.75,0.8,0.85,0.9}），逐一用 8.1 節技術校準到全部 5 個覆蓋率值，得到一個「覆蓋率混淆矩陣」（Table 6，元素 (i,j) 為模型 i 校準到覆蓋率 j 的選擇性風險）。矩陣對角線始終落在（統計上不可分辨的）最優區間內，代表「以覆蓋率 c 訓練並校準到 c」在該欄中近乎最優；離對角線越遠，選擇性風險通常越差——顯示校準後的 SelectiveNet 確實針對其訓練時的覆蓋率切片達到最佳化，只要校準目標接近訓練時的目標覆蓋率，校準本身不會明顯犧牲效能。</p>
+<p><strong>8.2 學習到的表徵</strong>：用 t-SNE 視覺化 CIFAR-10（c=0.7）上 SelectiveNet 與 SR 表徵層（512 維嵌入）的結構（Figure 3）。SR 的各類別分群在拒絕與否之下都維持良好分離；相對地，SelectiveNet 中<strong>被拒絕的樣本</strong>分離度很差（例如「飛機」「船」「鳥」三類被拒絕點嚴重混雜，其餘動物類別的被拒絕點也未良好分離）。一個合理解讀是：SelectiveNet 不會浪費表徵容量去分離「反正會被拒絕」的樣本，因而能把更多容量留給分離「會被保留」的樣本；此外多數被拒絕點集中在一個中心群集，這種結構讓選擇函數 g 更容易捕捉它們。</p>
+<h2 id="9-結論">9 結論</h2>
+<p>本文提出 SelectiveNet，一個用於選擇性分類與迴歸的有效深度模型，其威力來自在同一網路內對選擇與預測模型做<strong>聯合訓練</strong>，迫使模型聚焦於「量產環境中不會被拒絕」的相關樣本——MC-dropout、SR 這類「在已用全覆蓋訓練好的標準預測模型上外加拒絕機制」的技術，無法享有這個優勢。實證結果顯示，在給定棄權率下，SelectiveNet 目前提供最準確的分類；在選擇性迴歸上，SelectiveNet 提供最佳且唯一快速的解法（唯一另一選項 MC-dropout 效果較差）——這使 SelectiveNet 適合視覺追蹤、偵測等需要快速推論的深度迴歸應用。</p>
+<p>留待未來研究的方向：(1) 深度學習中集成技術普遍能改善基礎模型效能（Lakshminarayanan et al., 2017 顯示 2–15 個模型的集成能改善基本 SR 拒絕法），值得檢驗集成是否也能改善 SelectiveNet；(2) selection head g 的容量／架構選擇對整體效能的影響本文並未嘗試最佳化，不同資料集、不同覆蓋率或許需要不同的 g 架構；(3) 鑑於 active learning 與 selective classification 已知的理論關聯（El-Yaniv &amp; Wiener, 2012; Gelbhart &amp; El-Yaniv），SelectiveNet 額外的能力是否可用於強化 active learning，是一個懸而未決的開放問題。</p>
+<h2 id="致謝">致謝</h2>
+<p>本研究由以色列科學基金會（The Israel Science Foundation, grant No. 710/18）支持。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/1901.09192_SelectiveNet.%E6%91%98%E8%A6%81.html"><code>../summarize/1901.09192_SelectiveNet.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

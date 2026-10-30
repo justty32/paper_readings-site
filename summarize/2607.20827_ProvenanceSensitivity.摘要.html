@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《稽核 LLM Agent 動作選擇的來源敏感性》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Junchi Liao</p><p>日期：2026-07</p><p>arXiv：2607.20827</p><p><a href="https://arxiv.org/abs/2607.20827" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="稽核-llm-agent-動作選擇的來源敏感性重點摘要">《稽核 LLM Agent 動作選擇的來源敏感性》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>動作答對不代表它只根據獲授權的證據：本文逐一稽核工具與 argument target，固定 proposition 與 prompt 位置、只翻轉來源權威；450 個受控任務上，可信／不可信版本在競爭證據情況造成 5.4% 動作差異，且移除有效證據後有 2.4% 比較呈現「完整正確／保留未授權證據時錯／移除後又正確」。</p>
+<h2 id="問題">問題</h2>
+<p>Agent context 混有使用者目標、工具回傳、記憶、retrieval、metadata 與不可信文字。同一資訊可能相關、甚至為真，卻沒有權限決定某個工具或 argument。標準 benchmark 只看動作是否正確，會漏掉「剛好答對、但仍受 stale memory 或別人資料影響」的脆弱決策。</p>
+<p>授權是 target-specific：舊地址會競爭 <code>recipient</code>，未必競爭 <code>send_email</code> 這個工具選擇。作者因此對每個工具 target 與兩個 argument targets 分別標記 factor。</p>
+<h2 id="稽核設計">稽核設計</h2>
+<ul>
+<li><strong>Valid</strong>：有授權且支持 target。</li>
+<li><strong>Invalid</strong>：未授權，並提供同一 decision variable 的具體競爭值／動作／實體／舊狀態。</li>
+<li><strong>Neutral</strong>：其餘可稽核 factor；不等於無關，也可能是未授權但支持 target 的文字。</li>
+<li><strong>Excluded</strong>：不適合當可移除語意 factor。</li>
+</ul>
+<p>三種測試回答不同問題：</p>
+<ol>
+<li><strong>Matched source intervention</strong>：固定任務、proposition、位置與 policy，只將 source frame 改成 trusted/current 或 untrusted/external，測 full-prompt 的 authority response。</li>
+<li><strong>Valid-evidence degradation</strong>：比較 full、只移除某 valid factor 的 mixed、再移除所有 invalid factors 的 clean，測未授權競爭是否真的改變動作。</li>
+<li><strong>Coalition diagnostic</strong>：列舉 context factor subsets，以 Harsanyi／Shapley interaction 找出涉及 invalid factors 的非加性交互；這只描述 partial-evidence 依賴，不是部署失敗率。</li>
+</ol>
+<p>資料有 AgentAudit 250、Tau2Audit 100、BFCLAudit 100，共 450 instances、1,350 targets。主實驗使用 Qwen3-4B／30B、Mistral-Small-3.2-24B、Llama-3.3-70B，部分生成實驗加入 DeepSeek-V2-Lite。</p>
+<h2 id="關鍵結果">關鍵結果</h2>
+<ul>
+<li>同一 competing proposition 只改 source marker，四模型 pooled 的 trusted-minus-untrusted target-score removal gap 為 +1.15 log-odds，95% CI [0.97, 1.33]。模型讀得懂來源標記，但這不代表會完全隔離低權威資料。</li>
+<li>五模型共 6,750 rows，supporting proposition 的 trusted/untrusted generated-action discordance 為 1.7%，competing 為 5.4%，差 +3.8pp [3.2, 4.4]。競爭條件下，trusted→untrusted 有 1.2% 從對變錯、4.0% 從錯變對；降權平均有益，但不完整。</li>
+<li>12,120 個 valid-factor degradation rows 中，mixed 與 clean 動作不同達 24.6%；最嚴格的 full-correct／mixed-error／clean-correct pattern 為 2.4% [2.1, 3.0]，各模型 0.5%–4.1%。</li>
+<li>明示 authority policy 把 untrusted-competition error 從 14.9% 降到 9.5%，改善 5.4pp [4.5, 6.3]；但模型差異很大，DeepSeek 反向 0.9pp 且區間含零。Policy 是改善，不是 invariant provenance filter。</li>
+<li>外部三位博士標記者對 invalid／non-invalid 的一致率 85.4%，Fleiss’ κ 0.626；adjudicated consensus 與作者標記相符 78.9%，顯示授權標記本身有判斷成本。</li>
+</ul>
+<h2 id="解讀界線">解讀界線</h2>
+<ul>
+<li>這些是刻意混合可信／不可信 context 的 stress-set rates，不是部署盛行率。</li>
+<li>Source marker 是文字 proxy，不是 operational retrieval、memory 或 tool transport 上的真 provenance channel。</li>
+<li>Coalition 的 Shapley fractional excess 在 partial evidence 為 +0.027，但 full-context transform 接近 null（-0.004）；strict same-role control 也削弱「純授權」解讀。</li>
+<li>精確 subset enumeration 只適用短 factor sets；12／16 factors 的 pairwise screening 仍不能證明可擴到長 trajectory。</li>
+<li>Score audit 需 open-weight token probabilities；closed APIs 只能做較弱的 generation／forced-choice proxy。</li>
+</ul>
+<h2 id="對-freepy-的價值">對 FreePy 的價值</h2>
+<p>這篇替 FreePy 提供一個比「動作答對率」更嚴格的測試：</p>
+<ul>
+<li>capability decision 應逐 argument 驗證來源，不只允許／禁止整個工具。</li>
+<li>Context manifest 應能做 matched source flip 與 stale-memory deletion test。</li>
+<li>Goal verifier 可判結果是否正確；provenance audit 則判結果是否以獲授權的依賴鏈得到。兩者不能互相取代。</li>
+<li>文字寫著 <code>UNTRUSTED</code> 只會降低影響，不能形成安全邊界；真正隔離要由 reducer／capability layer 強制。</li>
+</ul>
+<p>最重要的思想是：正確性是結果屬性，授權接地是產生路徑屬性。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>FregeLogic：SemEval-2026 Task 11 混合神經符號三段論有效性預測 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.18328_FregeLogic.zh-TW.html">回 2604.18328_FregeLogic.zh-TW 目錄</a>　<a href="02_%E7%B3%BB%E7%B5%B1%E6%A6%82%E8%A6%BD.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>我們提出 FregeLogic，一個用於 SemEval-2026 Task 11（子任務 1）的混合神經符號系統，目標是三段論有效性預測同時減少內容效應對預測的影響。我們的作法結合五個 LLM 分類器的 ensemble（涵蓋三個開源模型——Llama 4 Maverick、Llama 4 Scout、Qwen3-32B——搭配不同的提示策略）與一個 Z3 SMT 求解器，後者擔任形式邏輯的決勝仲裁（tiebreaker）。核心假設是：ensemble 內的 LLM 意見分歧，代表該案例很可能受到了內容偏誤——也就是真實世界的可信度干擾了邏輯判斷。在這些有爭議的案例上改由 Z3 以結構為基礎的形式驗證來裁決，我們的系統在資料集（N=960）的嵌套五折交叉驗證中達到了 94.3% 的準確率、內容效應 2.85、以及 41.88 的結合分數（combined score）。這比純 ensemble（39.12）在結合分數上提升了 2.76 點，準確率提高 0.9%，驅動力來自內容效應 16% 的下降（3.39 → 2.85）。採用結構化輸出 API 呼叫進行 Z3 萃取，將失敗率從約 22% 降到接近零；包含存在公理的亞里斯多德編碼也經過了任務標註的驗證。我們的結果顯示，在 ensemble 共識最低的地方精確地應用形式方法，可以有針對性地改善這個任務所採用的結合準確率與內容效應的複合指標。</p>
+<h2 id="1-導論">1. 導論</h2>
+<p>三段論推理是演繹推論的基本形式，在邏輯學與認知科學中受到廣泛研究（Eisape et al., 2024; Bertolazzi et al., 2024）。評估語言模型推理能力時的一個關鍵挑戰是內容效應（content effects）：真實世界的可信度干擾純粹邏輯判斷的傾向（Dasgupta et al., 2022）。機制分析顯示語言模型在預訓練期間發展出了推理電路，但這些電路容易被世界知識污染（Kim et al., 2025）——此現象在任務、模型系列與領域中都有記錄（Wysocka et al., 2025; Ozeki et al., 2024）。SemEval-2026 Task 11（Valentino et al., 2026）將這個挑戰形式化，以一個同時獎勵高準確率與低內容效應的結合指標來評估系統的三段論有效性預測。</p>
+<p>本文描述 FregeLogic，一個利用 LLM ensemble 與形式邏輯求解器互補優勢的混合神經符號系統。我們以三個開源模型家族（Llama 4 Maverick、Llama 4 Scout、Qwen3-32B）搭配多樣化提示策略構建五成員 ensemble，然後在 ensemble 出現狹窄的 3–2 投票分裂時以 Z3 SMT 求解器（De Moura and Bjørner, 2008）作為 tiebreaker。此設計的動機來自一項經驗觀察：ensemble 中的接近投票與內容偏誤錯誤不成比例地重合——這正是內容中立的形式驗證器可以增加價值的地方（Bayless et al., 2025; Ranaldi et al., 2025）。在嵌套五折交叉驗證（N=960）中，這種選擇性介入將內容效應降低了 16%（3.39 → 2.85），同時準確率提升 0.9%，結合分數達 41.88，而純 ensemble 為 39.12。</p>
+<h2 id="2-背景">2. 背景</h2>
+<h3 id="21-任務描述與指標">2.1 任務描述與指標</h3>
+<p>SemEval-2026 Task 11（Valentino et al., 2026）在解開邏輯結構與語意內容的前提下評估三段論推理。我們參與子任務 1：將三段論二元分類為有效或無效。資料集包含 960 個三段論，附有效性標籤與合理性（believable/unbelievable）元資料，在四個子群之間平衡。</p>
+<p>任務使用一個結合分數（combined score），同時獎勵高準確率與低內容效應（CE）。內容效應衡量系統預測被合理性（而非邏輯結構）影響的程度：Score = Accuracy / (1 + ln(1 + CE))。內容效應為零表示預測不受合理性影響。</p>
+<h3 id="22-相關工作">2.2 相關工作</h3>
+<p>LLM 中的內容效應：Dasgupta et al.（2022）證明大型語言模型在三段論有效性判斷及其他推理任務上展現了類人的內容效應。Eisape et al.（2024）證明即使是 PaLM 2 家族中最大的模型也存在系統性偏誤。Bertolazzi et al.（2024）發現預訓練 LLM 的行為可以用認知科學的啟發法來解釋。</p>
+<p>機制解釋：Kim et al.（2025）發現了三段論推理的三階段推理電路，涉及中項抑制以及透過移動頭傳播資訊。關鍵的是，這個電路容易受到編碼在額外注意力頭中的信念偏誤污染，為內容效應提供了機制證據，也支持我們使用形式驗證的動機。</p>
+<h2 id="神經符號方法ranaldi-et-al2025提出-quasi-symbolic-chain-of-thought-提示來提升推理任務的穩健性bayless-et-al2025提出了以-smt-求解器驗證邏輯正確性的神經符號框架我們的工作有別於純-llm-方法在於引入了以結構為基礎的形式驗證有別於純形式方法在於優雅地處理改寫與萃取失敗有別於-bayless-et-al2025在於只在-ensemble-共識低時選擇性應用驗證有別於-activation-steering-方法valentino-et-al-2025-maraia-et-al-2026在於無需存取模型內部表徵">神經符號方法：Ranaldi et al.（2025）提出 quasi-symbolic chain-of-thought 提示來提升推理任務的穩健性。Bayless et al.（2025）提出了以 SMT 求解器驗證邏輯正確性的神經符號框架。我們的工作有別於純 LLM 方法在於引入了以結構為基礎的形式驗證；有別於純形式方法在於優雅地處理改寫與萃取失敗；有別於 Bayless et al.（2025）在於只在 ensemble 共識低時選擇性應用驗證；有別於 activation-steering 方法（Valentino et al., 2025; Maraia et al., 2026）在於無需存取模型內部表徵。</h2>
+<h2 id="title-fregelogicsemeval-2026-task-11-的混合神經符號架構用於內容穩健三段論有效性預測fregelogic-at-semeval-2026-task-11-a-hybrid-neuro-symbolic-architecture-for-content-robust-syllogistic-validity-prediction-source-httpsarxivorgabs260418328-arxiv_id-260418328-authors-adewale-akinfaderin-nafi-dialloamazon-web-services-date-2026-04-note-依論文章節結構精要逐節呈現semeval-2026-summary-summarize260418328_fregelogic摘要md">title: FregeLogic：SemEval-2026 Task 11 的混合神經符號架構，用於內容穩健三段論有效性預測（FregeLogic at SemEval 2026 Task 11: A Hybrid Neuro-Symbolic Architecture for Content-Robust Syllogistic Validity Prediction）
+source: https://arxiv.org/abs/2604.18328
+arxiv_id: 2604.18328
+authors: Adewale Akinfaderin, Nafi Diallo（Amazon Web Services）
+date: 2026-04
+note: 依論文章節結構精要逐節呈現。SemEval-2026。
+summary: ../summarize/2604.18328_FregeLogic.摘要.md</h2>
+<h1 id="fregelogicsemeval-2026-task-11-混合神經符號三段論有效性預測">FregeLogic：SemEval-2026 Task 11 混合神經符號三段論有效性預測</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

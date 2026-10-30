@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Let&#x27;s Verify Step by Step（讓我們逐步驗證）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Hunter Lightman, Vineet Kosaraju, Yura Burda, Karl Cobbe 等（OpenAI）</p><p>日期：2023-05</p><p>arXiv：2305.20050</p><p><a href="https://arxiv.org/abs/2305.20050" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="lets-verify-step-by-step讓我們逐步驗證重點摘要">《Let&#x27;s Verify Step by Step（讓我們逐步驗證）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>過程監督 PRM（process-supervised reward model）＝對思路鏈每一步標正確性訓練的獎勵模型</strong>，在難題數學 MATH 上以 best-of-N 搜尋顯著勝過只看最終答案的結果監督 ORM（78.2% vs 72.4%，且 N 越大差距越大）；配合「只呈現有說服力的錯誤答案給人標」的主動學習（資料效率 ×2.6），並釋出 80 萬筆步級人類標籤 PRM800K。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>多步推理中<strong>一個邏輯錯誤就足以毀掉整個解答</strong>，而 reward model 是 RL／rejection sampling 系統可靠度的上限。前作 Uesato et al. (2022) 在 GSM8K 上發現結果監督與過程監督最終表現相近，兩者孰優未決。本文以更強基礎模型（GPT-4）、多得多的人類回饋、更難的 MATH 資料集重做比較。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>ORM</strong>：沿 GSM8K verifier（Cobbe et al. 2021, arXiv:2110.14168）方法，只以最終答案對錯訓練——但「推理錯、答案對」的偽陽性會被誤標為正確。</li>
+<li><strong>PRM</strong>：人類對生成器逐步解答的每步標 positive/negative/neutral（PRM800K：12K 題／75K 解答／800K 步級標籤）；PRM 在每步末 token 預測該步正確機率，<strong>一次前向傳播得全部步級判定</strong>；解答分數＝各步正確機率乘積。刻意<strong>只標到第一個錯誤步</strong>，使兩種監督資訊量可比。</li>
+<li><strong>主動學習資料收集</strong>：只呈現「當前最佳 PRM 評分高、但最終答案錯」的 convincing wrong-answer 解答給標註者（已知 PRM 至少錯判一步、資訊量最大），收集中迭代重訓 PRM。</li>
+<li><strong>小規模合成監督</strong>：用大規模 PRM_large 代替人類監督小模型，在完全同資料條件下直接比較三種監督形式，排除大規模實驗中訓練集不可比的混淆。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>大規模（best-of-1860, MATH 500 題測試）</strong>：PRM 78.2% ＞ ORM 72.4% ＞ 多數決 69.6%；差距隨 N 擴大。</li>
+<li><strong>小規模同條件比較</strong>：過程監督在 1～200 樣本/題的所有規模都顯著勝過兩種結果監督；PRM_large 式結果監督又優於最終答案核對（偽陽性之害）。</li>
+<li><strong>主動學習</strong>：比均勻標註<strong>資料效率高 2.6 倍</strong>。</li>
+<li><strong>OOD 泛化</strong>（最新 AP 考題＋AMC，保證無污染）：PRM 72.9% vs ORM 63.8% vs 多數決 61.3%。</li>
+<li><strong>負對齊稅</strong>：過程監督更安全（直接獎勵人類認可的思路、信用分配更容易）同時<strong>更強</strong>——罕見的雙贏。</li>
+<li>與 Uesato et al. 的表面衝突可由規模解釋：少量過程監督≈大量結果監督，但<strong>規模放大後過程監督勝出</strong>。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>只研究 reward model 訓練，<strong>刻意不碰用 RL 改進生成器</strong>；領域限於數學（答案可自動核對），能否推廣到更複雜領域未知。</li>
+<li>過程監督無法自動化、依賴昂貴人類標註（主動學習只是緩解）；PRM 仍有偽陽性（微妙計數錯誤等仍騙得過）。</li>
+<li>MATH 測試集可能有輕微污染（但相對比較結論不受影響）；迭代重訓 PRM_selector 出現未能診斷的不穩定。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>對 ai_core §3.4「拒絕為預設＋憑證准入」的把關粒度直接背書</strong>：本文是「步級驗證 ＞ 結果級驗證」的最強實證——結果級把關讓「推理錯、答案對」的偽陽性混入（ORM 被自動判分污染正是此害），步級把關則指明錯誤精確位置、信用分配容易。ai_core 的驗證器設計若只在資產產出後做結果級裁決，等於自建一個 ORM；每個生成步驟都設可裁決檢查點，才是 PRM 式治理。</li>
+<li><strong>對 §5 下層受約束填碼的「每步都可裁決」</strong>：PRM 的關鍵工程性質是「解答分數＝各步正確機率乘積、任一步低分即可提前否決」——映射到受約束填碼即<strong>每步生成完就裁決、錯了立即截斷回退</strong>，不必等整段程式碼跑完測試才知道錯在哪。且 PRM「只標到第一個錯誤步」的設計哲學同構於「拒絕為預設」：第一步不過關，後面不必看。</li>
+<li><strong>成本梯度（§3.3）視角</strong>：best-of-N ＋ PRM 就是「便宜高頻生成 × 貴稀有驗證」的資產工廠原型；主動學習「只把最有說服力的錯誤送給貴監督源標註」，正是把昂貴智能（人類／大模型）用在資訊量最大處的成本梯度操作，可借鑑於固化引擎（§3.6）挑選「該結晶哪些案例」。</li>
+<li><strong>演進對照</strong>：GSM8K verifier（arXiv:2110.14168）奠定結果級 verifier；本文把驗證粒度推進到步級並證明其在難題與規模下的優勢——「驗證粒度越細、搜尋與治理越可靠」這條線是 ai_core 驗證器設計的直接依據。</li>
+<li>定位：<strong>實證比較＋資料集釋出論文</strong>（PRM800K 開源：github.com/openai/prm800k），是後續一切 PRM／步級驗證／process reward 研究的奠基之作。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2305.20050_VerifyStepByStep.zh-TW.html"><code>../translate/2305.20050_VerifyStepByStep.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

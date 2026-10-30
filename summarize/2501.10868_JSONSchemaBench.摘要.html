@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《從語言模型生成結構化輸出：基準與研究（Generating Structured Outputs from Language Models: Benchmark and Studies，即 JSONSchemaBench）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Saibo Geng, Hudson Cooper, Michał Moskal, Samuel Jenkins, Julian Berman, Nathan Ranchin, Robert West, Eric Horvitz, Harsha Nori（EPFL / Microsoft / JSON Schema）</p><p>日期：2025-01</p><p>arXiv：2501.10868</p><p><a href="https://arxiv.org/abs/2501.10868" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="從語言模型生成結構化輸出基準與研究jsonschemabench重點摘要">《從語言模型生成結構化輸出：基準與研究（JSONSchemaBench）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>JSONSchemaBench</strong>：用 <strong>10K 條真實世界 JSON Schema</strong>（分 10 個難度／領域各異的子集）作為基準，對 Guidance、Outlines、XGrammar、llama.cpp、OpenAI、Gemini 六個「受約束解碼（constrained decoding）」框架，沿<strong>效率（efficiency）、覆蓋率（coverage）、品質（quality）</strong> 三軸做系統化評測——填補了「受約束解碼被廣泛採用卻沒有橫向比較」的空白；核心結論是<strong>受約束解碼不但不拖慢反而能加速生成、還能提升下游任務準確率</strong>，且六個引擎在真實 schema 上的可靠度差距巨大（最好的引擎支援的 schema 數是最差的兩倍）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 越來越多被用在輸出「給機器讀」的場景（工具呼叫、資料抽取、web 導航），輸出必須嚴格符合預定格式。受約束解碼（在每步 decode 時把不合語法的 token 遮罩掉）已成主流技術，並以 JSON Schema 為事實標準規格語言。但實務上有三個一直沒被系統回答的問題：<strong>Q1 效率</strong>——約束會拖慢還是加速生成？誰最快？<strong>Q2 覆蓋率</strong>——JSON Schema 特性龐雜且持續演進，各框架到底支援多少？<strong>Q3 品質</strong>——約束保證了結構，會不會反而傷害輸出的語意品質？既有評測要嘛只針對單一任務、要嘛用「人造形式文法」設定，與真實用例關聯不明。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>基準（§3）</strong>：以 Baazizi 等人從 GitHub 收集的 6K schema 為底，再納入 JSON Schema Store、GlaiveAI 函數呼叫資料集、Kubernetes 設定、Snowplow、Washington Post 等來源，過濾非法 schema 並依 <code>$schema</code> 標準化版本，最終 9558 條，分 10 個子集（GlaiveAI 函數簽名、Kubernetes API、Github 依欄位數分 Trivial/Easy/Medium/Hard/Ultra 等）。</li>
+<li><strong>效率（§4）</strong>：拆成三指標——<strong>GCT（文法編譯時間）、TTFT（首 token 時間）、TPOT（每 token 時間）</strong>。關鍵在<strong>消除覆蓋率偏差</strong>：只在「所有引擎都能處理的交集實例」上算指標，避免低覆蓋率引擎因只吃簡單 schema 而被高估。</li>
+<li><strong>覆蓋率（§5）</strong>：定義三層——<strong>Declared（宣稱：不報錯即算）、Empirical（實測：實際生成出的輸出通過 schema 驗證）、True（真值：約束與 schema 語義完全等價，實務不可測）</strong>；並導出 <strong>Compliance Rate = Empirical / Declared</strong>（框架接受 schema 後真能保證合規的可靠度）。另以官方 <strong>JSON Schema Test Suite</strong>（45 類特性、正例須生成／反例須阻擋）做互補評測，區分 <strong>over-constrained（過嚴，擋掉合法輸出）</strong> 與 <strong>under-constrained（過鬆，放行非法輸出）</strong> 兩種失敗。</li>
+<li><strong>品質（§6）</strong>：沿用並擴充 Tam 等人與 Will Kurt 的三個推理任務（Last Letter、Shuffle Objects、GSM8K），輸出統一為 <code>{&quot;reasoning&quot;:…, &quot;answer&quot;:…}</code> 的 JSON，比較受約束 vs 無約束的任務準確率。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>效率</strong>：受約束解碼相對無約束<strong>最多可加速 50%</strong>。Guidance 的 TPOT 最佳（靠 guidance acceleration 跳過某些生成步），GCT 幾近 0；Outlines 因把 schema 轉成正則，編譯時間顯著偏高（Table 2 中 GCT 達 3–8 秒）。</li>
+<li><strong>覆蓋率</strong>：Guidance 在 8 個資料集中的 6 個實測覆蓋率最高，且在<strong>所有</strong>資料集中 Compliance Rate 最高（最可靠）；閉源引擎（OpenAI/Gemini）覆蓋率最低但合規率近 1.0（採保守策略，只實作能穩定支援的子集）。<strong>最好的框架支援的 schema 數約為最差的兩倍。</strong> Test Suite 上 Guidance 在 13 類達 100% 覆蓋、19 類單獨最佳；XGrammar 編譯錯誤最少但 under-constrained 失敗最多（偏寬鬆的取捨）。</li>
+<li><strong>品質</strong>：<strong>所有框架、所有任務都優於無約束</strong>；Guidance 全面最佳，每個任務約比 LM-only 高 3%（GSM8K 80.1%→83.8%，Last Letters 50.7%→54.0%），可能得益於其 token-healing。下游任務<strong>最多提升 4%</strong>，即便像 GSM8k 這種結構極簡的任務也受益。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>開源引擎（跑 Llama-3.2-1B）與閉源 OpenAI/Gemini（專有模型）的實測覆蓋率<strong>不可直接比較</strong>，因底層模型不同。</li>
+<li>Empirical Coverage 受所用 LM 與取樣方法影響，非框架能力的純淨度量；True Coverage 因 JSON 實例無限多而無法實測。</li>
+<li>Test Suite 表現與真實 schema 覆蓋率<strong>無直接對應</strong>——特性在真實 schema 中出現頻率不均，且 under-constrain 等於把責任丟回給 LM（LM 可能碰巧生出合法輸出）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>直接對應 ai_core §5「受約束填碼」的選型基準</strong>：ai_core 把程式碼助手拆成「上層結構化抽取生資產／下層受約束填碼」，而本篇正是「下層填碼要用哪個引擎才可靠」的實證答案。結論很明確：<strong>在真實 schema 上 Guidance 於效率、覆蓋率、品質三軸皆領先且最可靠</strong>，XGrammar 偏寬鬆（under-constrained）、Outlines 編譯慢且硬 schema 覆蓋率低、閉源 API 保守但支援面窄——這是把「LLM 呼叫包成可靠函數」時挑選約束引擎的一手依據。</li>
+<li><strong>強化 ai_core 的核心信念</strong>：本篇證明受約束解碼<strong>不是效能稅</strong>而是<strong>淨收益</strong>（既加速又提準確率），這替「把 LLM 輸出約束成確定性可解析的資產」提供了經驗背書——與「貴稀有智能生資產、便宜高頻智能消費資產」的分工相容：用小模型（Llama-1B）＋強約束就能在函數簽名這類 schema 上達到高合規率。</li>
+<li><strong>對接 §3.4 治理（拒絕為預設）與 §3.6 固化引擎</strong>：三層覆蓋率／Compliance Rate 的框架，本質上是一套「憑證准入」的量化語言——一個 schema 能否被引擎可靠保證，就是要不要放行 LLM 輸出的憑證。而 over/under-constrained 的區分，提醒「固化」時必須驗證約束與規格<strong>語義等價</strong>，否則過鬆的約束會把不可靠性偷渡進確定性節點。</li>
+<li>定位：<strong>基準 + 實證研究論文（歸 I 類）</strong>，開源於 github.com/guidance-ai/jsonschemabench。適合做結構化生成、工具呼叫、受約束解碼引擎選型的人直接參考。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2501.10868_JSONSchemaBench.zh-TW.html"><code>../translate/2501.10868_JSONSchemaBench.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

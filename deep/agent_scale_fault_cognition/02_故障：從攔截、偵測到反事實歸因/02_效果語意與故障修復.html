@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_效果語意與故障修復 · 論文閱讀</title><link rel="stylesheet" href="../../../html/_shared.css"><link rel="stylesheet" href="../../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../../html/index.html">總覽</a><a href="../../../index/README.html">論文索引</a><a href="../../../html/deep.html">深掘綜述</a><a href="../../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../02_%E6%95%85%E9%9A%9C%EF%BC%9A%E5%BE%9E%E6%94%94%E6%88%AA%E3%80%81%E5%81%B5%E6%B8%AC%E5%88%B0%E5%8F%8D%E4%BA%8B%E5%AF%A6%E6%AD%B8%E5%9B%A0.html">回本章目錄</a>　<a href="01_%E6%94%94%E6%88%AA%E9%87%8F%E6%B8%AC%E6%AD%B8%E5%9B%A0%E8%88%87%E9%9A%94%E9%9B%A2.html">← 上一子節</a>　<a href="03_%E4%BE%86%E6%BA%90%E6%AC%8A%E9%99%90%E8%88%87%E5%8F%AF%E4%BF%A1%E5%AE%8C%E6%88%90.html">下一子節 →</a></p>
+</blockquote>
+<h2 id="五把失敗拆成效果語意">五、把「失敗」拆成效果語意</h2>
+<p>Verified Tool Calls 指出最容易被 agent runtime 誤判的一格：timeout-after-dispatch 只代表回應通道失敗，不代表效果通道沒有改變。它以唯讀 postcondition verifier、<code>True / False / Unknown</code> 三值結果、verify-before-retry 與 idempotency key 包住工具；兩個合成工作流的高故障設定中，把 duplicate side effects 從 72%／76% 降到 20%／20%。但每格只有 25 runs，baseline 刻意不去重，verifier 又是手寫，所以應吸收其語意，不宜直接外推 production 效果量。<a class="paper-reference" href="../../../summarize/2608.02645_VerifiedToolCalls.%E6%91%98%E8%A6%81.html">2608.02645</a></p>
+<p>這要求錯誤狀態至少分成：</p>
+<pre><code class="language-text">rejected before dispatch
+definitive execution failure
+effect committed
+effect outcome unknown
+postcondition false
+postcondition unknown
+goal claim unverified
+</code></pre>
+<p>只有 definitive failure 才能直接重試。<code>effect outcome unknown</code> 應先查 operation status 或 postcondition；無法確認時要等待、補償或升級人工，而不是讓 LLM 猜。</p>
+<p>FLARE 在具身操作中再加入「環境是否仍在原任務的可恢復邊界內」這條效果語意：姿態偏離但任務狀態仍有效時由主策略 Retry；環境前提已遭破壞時，則切換物件中心的 Reset 專家。 <a class="paper-reference" href="../../../summarize/2608.26645_FLARE.%E6%91%98%E8%A6%81.html">2608.26645</a> 它不是推翻前述 verify-before-retry，而是指出效果已知失敗之後仍要依可恢復性選路，不能把所有 definitive failure 都送回同一重試迴圈。（本檔補註，非作者自陳）目前未知 OOD 失敗仍超出預建技能庫，而且人類指示路由優於線上 MLLM，顯示「會恢復」與「何時切換」仍是兩份能力。 <a class="paper-reference" href="../../../summarize/2608.26645_FLARE.%E6%91%98%E8%A6%81.html">2608.26645</a></p>
+<h2 id="六偵測驗證修復不是同一個模型">六、偵測、驗證、修復不是同一個模型</h2>
+<p>Agent Trajectory Sentinel 以只看健康軌跡的 ESN+CUSUM 偵測序列偏移。它每步約 200 微秒，對長 horizon 的 loop、tool cascade 有用，跨 deployment 卻需要重校：qwen 的 healthy null 直接搬到 llama，AUROC 只有 0.527；錯誤在 onset 後三步內結束時也來不及累積。相對地，能寫成規格的 deterministic checks 在 held-out 120 episodes 上，重算加 required coverage 抓到 93% failures，且 0/64 false positives。偵測後回滾並只提示「哪種檢查失敗」，修復率由 resampling 的 16% 提到 45%。<a class="paper-reference" href="../../../summarize/2608.02464_AgentTrajectorySentinel.%E6%91%98%E8%A6%81.html">2608.02464</a></p>
+<p>Vera 把同一原則擴到安全測試：每個 case 有 safety goal、可重播 initial state 與 deterministic predicate；agent 在 sandbox 中執行，驗證證據優先讀環境狀態，其次 tool-call record，最後才是文字自述。它的 1,600 個 base scenarios 揭露四套 production agent 在受控多通道攻擊下平均 ASR 93.9%，但這是刻意攻擊情境，不是部署事故率。<a class="paper-reference" href="../../../summarize/2607.01793_Vera.%E6%91%98%E8%A6%81.html">2607.01793</a></p>
+<p>穩健的順序應是：便宜 telemetry 提早預警，確定性 contract 作高精度裁決，無法形式化者才交給 probabilistic judge 或人類。修復策略再依故障類型選 rollback、retry、compensation、circuit break 或停止。</p>
+<p>FARM 正面支持這個分工。它只從凍結世界模型的內部預測狀態讀出逐步失敗分數，再以截至當下的最高分累積軌跡風險，沒有把分數冒充介入或恢復策略。 <a class="paper-reference" href="../../../summarize/2609.11445_FARM.%E6%91%98%E8%A6%81.html">2609.11445</a> 這補上「便宜 telemetry」可由小型 readout 常駐實作的證據。（本檔補註，非作者自陳）但其泛化範圍有限：未見任務的零樣本轉移較弱，門檻、校準與介入後端到端效益仍要各自驗收。 <a class="paper-reference" href="../../../summarize/2609.11445_FARM.%E6%91%98%E8%A6%81.html">2609.11445</a></p>
+<blockquote>
+<p>← <a href="../02_%E6%95%85%E9%9A%9C%EF%BC%9A%E5%BE%9E%E6%94%94%E6%88%AA%E3%80%81%E5%81%B5%E6%B8%AC%E5%88%B0%E5%8F%8D%E4%BA%8B%E5%AF%A6%E6%AD%B8%E5%9B%A0.html">回本章目錄</a>　<a href="01_%E6%94%94%E6%88%AA%E9%87%8F%E6%B8%AC%E6%AD%B8%E5%9B%A0%E8%88%87%E9%9A%94%E9%9B%A2.html">← 上一子節</a>　<a href="03_%E4%BE%86%E6%BA%90%E6%AC%8A%E9%99%90%E8%88%87%E5%8F%AF%E4%BF%A1%E5%AE%8C%E6%88%90.html">下一子節 →</a></p>
+</blockquote>
+<footer class="site-footer"><a href="../../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

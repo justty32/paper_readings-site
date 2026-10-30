@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2207.10342_LM_Cascades.zh-TW.html">回 2207.10342_LM_Cascades.zh-TW 目錄</a>　<a href="02_%E7%B4%9A%E8%81%AFCascades.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>提示式（prompted）模型已展現亮眼的少樣本學習能力。在測試期<strong>重複與單一模型互動</strong>、或<strong>把多個模型組合在一起</strong>，能進一步擴展其能力。這些組合本質上是<strong>機率模型</strong>，可用圖模型（graphical models）的語言表達——只是其中隨機變數的值是<strong>字串</strong>這類複雜資料型別。一旦涉及<strong>控制流與動態結構</strong>，就需要<strong>機率程式設計（probabilistic programming）<strong>的技術，好在</strong>同一種語言</strong>裡實作各異的模型結構與推論策略。我們從這個視角形式化了數種既有技術，包括 scratchpad／chain of thought、驗證器（verifiers）、STaR、selection-inference 與工具使用。我們把由此得到的程式稱為 <strong>language model cascade（語言模型級聯）</strong>。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>語言模型（LM）已展現亮眼的少樣本學習能力，催生了一批把 LM 當作「非形式推理」基礎的做法：scratchpad、chain-of-thought 提示、learned verifiers、selection-inference、bootstrapping（STaR），也被用於形式數學中引導定理證明器。這些方法都涉及<strong>用提示鼓勵逐步推理</strong>、<strong>與單一 LM 重複互動</strong>、或<strong>把多個 LM 串接起來</strong>，模型以不同方式被微調或提示。</p>
+<p>本立場論文主張：理解與擴展這一批各自為政的工作，有一個有用的<strong>統一框架</strong>——就是把<strong>機率程式語言（PPL）擴充到字串上</strong>（而非整數、浮點數這種更原子的資料型別）。也就是：用 PPL 對<strong>字串值隨機變數</strong>定義一個聯合機率模型（以 LM 參數化），再把此模型<strong>條件在字串值的觀測上</strong>，以計算對字串值未知量的後驗、進而推論。我們稱這種機率程式為 <strong>language model cascade（語言模型級聯）</strong>。此框架能涵蓋許多近期做法，也讓我們能處理更複雜的多步推理問題。透過在單一框架裡實作各異的模型結構與推論策略，我們希望級聯能促成一套<strong>通用程序</strong>：做推論、調參、並依端到端目標選擇提示。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>機率程式語言（PPL）</strong>：PPL 擴充機率圖模型，支援更複雜的聯合分布，其<strong>規模與「形狀」本身可以是隨機的</strong>（例如展開隨機次數的迴圈，直到某個依資料而定的停止準則被滿足）。PPL 在傳統程式語言上加了兩種能力：從分布<strong>取樣（sample）</strong>、以及依資料**觀測／條件（observe）**變數。sample／observe 的語意取決於所用的推論演算法。</li>
+<li><strong>大型語言模型</strong>：GPT-3、PaLM 等。零樣本問答把問題 Q 當提示、從 <code>p(A|Q,θ)</code> 取樣答案（θ 為預訓練參數），或取 MAP 答案 <code>Â=argmax p(A|Q,θ)</code>。給一小組 (Q,A) 對放進提示即 <strong>few-shot prompting</strong>（<code>p(A|Q,D,θ)</code>）；也可在 D 上微調得 θ′ 再取樣。</li>
+<li><strong>引入思考變數</strong>：加入輔助「思考」變數 T 得 <code>p(A,T|Q)=p(A|T,Q)p(T|Q)</code>，每個條件分布都用 LM 計算（把條件變數當輸入的一部分）。scratchpad 與 chain of thought 即此形，會微調或提示 LM 在作答前先產生思考。對測試問題的答案分布為 <code>p̂(A|Q)=Σ_T p̂(A|Q,T)p̂(T|Q)</code>（<code>p̂</code> 是先驗預測分布：Scratchpad 靠微調造出、CoT 靠把 DS 加進提示造出）。實務上無法對所有字串 T 求和，最常見是用 beam search 取 MAP <code>T̂</code> 近似，或用 <strong>Self-Consistency</strong>（對 (A,T) 前向取樣多個、取最常出現的 A）。</li>
+<li>其他相關工作：<strong>PromptChainer</strong> 提供組合 LM 的視覺介面（節點可查詢 LM 或外部系統）；<strong>Socratic models</strong> 把模型串接擴到多模態、對「沒有單一模型能做」的任務展現零樣本能力；<strong>ELK（Eliciting Latent Knowledge）</strong> 主張把隱變數顯式化（用貝氏網路建模）以提升可解釋性與安全；<strong>Ortega et al.</strong> 用因果圖模型形式化 LM 微調（分析 RL 互動情境下的自迴歸動作預測）。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

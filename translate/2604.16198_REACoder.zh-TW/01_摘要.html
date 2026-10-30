@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.16198_REACoder.zh-TW.html">回 2604.16198_REACoder.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97%E8%A8%AD%E8%A8%88.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>程式碼生成旨在從使用者需求自動產生可執行程式。近期研究探索以先進 LLM 提升生成程式碼的正確性，但既有方法專注於設計推理策略或後處理精煉，且共享一個假設：LLM 能正確理解給定的需求。然而此假設並不總是成立。為填補此缺口，本文提出 REA-Coder，一種以需求對齊增強 LLM 程式碼生成的方法。REA-Coder 先標定與 LLM 不對齊的需求內容並對齊，再基於對齊需求生成程式碼，然後驗證生成碼是否對齊需求，迭代至正確或達最大次數。實驗結果：四 LLM 五基準上超越所有先進基線，平均提升 7.93%–30.25%。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>程式碼生成旨在將使用者需求自動轉換為可執行程式。LLM 的快速進展使自動化程式碼生成受到學術界和產業界的高度關注，但 LLM 仍難以處理複雜需求——例如 Qwen3-Coder 在競賽程式基準 CodeContests 上僅達 15.15% Pass@1。</p>
+<p>既有方法大致分兩類：推理策略強化（SCoT、ICoT、迭代計劃-編碼-測試）；後處理修復（Self-Repair/𝜇Fix 基於執行回饋修復、SpecFix/Specine 偵測需求與程式碼不一致後精煉）。然而，所有方法共享一個未經檢驗的假設：<strong>LLM 能正確理解給定的需求</strong>——無一驗證模型是否真正理解了需求內容。</p>
+<p>本文分析揭示此假設並不總是成立。LLM 可以從根本上誤解需求，而不僅是在推理或寫碼時犯錯。當誤解發生時，模型基於錯誤的任務解釋工作，此時更強的推理策略或輸出層修補都無法修復根本原因——它們皆建立在同一錯誤理解的基礎上。</p>
+<p>為此，本文提出 <strong>REA-Coder</strong>，一種以需求對齊為核心的程式碼生成方法。其工作流程為：(1) 建構需求導向的問題清單與參考答案，覆蓋核心需求要素，比較模型回答與參考答案以標定誤解的需求項，並對齊需求；(2) 基於對齊後的需求生成程式碼；(3) 驗證生成碼是否對齊需求——若未通過公開測試案例，則遮罩需求關鍵語意跨度、要求 LLM 基於生成碼恢復被遮罩內容、比較恢復與原始需求以標定並修正偏差；(4) 迭代此過程直到程式碼通過所有公開測試或達最大迭代次數。</p>
+<p>實驗結果顯示 REA-Coder 在四個 LLM（DeepSeek-v3.2、Qwen3-Coder、GPT-5-mini、Gemini-3-Flash）與五個基準（APPS、CodeContests-raw、CodeContests、xCodeEval、LiveCodeBench-Lite）上全面超越 8 個最先進基線。</p>
+<p>主要貢獻：(1) 論證「LLM 能正確理解需求」的假設並不總是成立；(2) 提出 REA-Coder，通過精細的需求對齊增強 LLM 程式碼生成；(3) 在全部 20 個（4×5）模型與基準組合上取得最先進性能。</p>
+<h2 id="2-動機範例">2 動機範例</h2>
+<p>來自 APPS 的範例：輸入兩整數 a 和 b，需求為重複執行以下過程——若 a=0 或 b=0，或 a&lt;2b 且 b&lt;2a 則終止；否則若 a≥2b 則反覆減去 2b 直到 a&lt;2b；若 b≥2a 則反覆減去 2a 直到 b&lt;2a；最後輸出 a 和 b。零樣本 Qwen3-Coder 直接生成錯誤程式碼：未實現必要迴圈、僅用減法執行導致超時。SCoT 與 Self-Repair 仍無法修正核心邏輯——因為所有後續推理與修復都建立在同一錯誤理解之上。</p>
+<p>REA-Coder 則在生成程式碼之前顯式對齊需求：首輪標定對輸入輸出範例的誤解並提供範例解釋；次輪進一步加入提示（如「使用歐幾里得演算法求解」）。對齊後的需求最終引導模型生成正確程式碼。這說明 LLM 可能從根本上誤解需求、推理與修補方法不足以解決需求誤解導致的錯誤。這些觀察驅動 REA-Coder 的設計：在生成前系統性地進行需求對齊、在生成後進行對齊驗證。</p>
+<h2 id="3-方法">3 方法</h2>
+<p>REA-Coder 包含三個主要階段。</p>
+<h3 id="31-需求對齊requirement-alignment">3.1 需求對齊（Requirement Alignment）</h3>
+<p>為防止模型基於錯誤理解生成程式碼，REA-Coder 首先對模型的需求理解進行校驗。為使理解過程顯式且可測試，定義一組建基於需求工程既有基礎 [11, 12] 與 IEEE 軟體需求規格推薦實務 [7] 的核心需求維度（圖 3）：</p>
+<ul>
+<li>需求背景（Requirement Background）</li>
+<li>需求目的（Requirement Purpose）</li>
+<li>術語解釋（Terminology Explanation）</li>
+<li>值得注意的功能（Noteworthy Functionalities）</li>
+<li>API</li>
+<li>輸入需求（Input Requirement）</li>
+<li>輸出需求（Output Requirement）</li>
+<li>錯誤處理需求（Error Handling Requirement）</li>
+<li>不變量/全局約束（Invariants/Global Constraints）</li>
+<li>範例說明（Explanations of Examples）</li>
+<li>邊界/角落案例（Edge/Corner Cases）</li>
+<li>提示或技巧（Hints or Tips）</li>
+</ul>
+<p>流程：LLM 先分析原始需求，基於這些維度建構問題清單與參考答案（輔以少量手寫 few-shot 範例引導高品質輸出——這些範例是典型程式碼生成任務的高品質問答對，嚴格對齊需求，明示格式、具體性要求與對齊標準）。然後 LLM 基於當前需求回答這些問題，將回答與參考答案比對，標定模型是否正確理解每個問題所對應的需求內容。正確回答的問題從清單移除；錯誤回答的問題記錄問題本身、參考答案、模型回答、並產出差異回饋。</p>
+<p>收到需求理解偏差的評估回饋後，REA-Coder 進行系統性整合與歸因分析：使用 LLM 將回饋映射回預定義的核心需求維度體系，在此基礎上建構補強後的對齊需求——完整保留原始問題描述，同時顯式補充模型未能正確對齊的需求要素。</p>
+<h3 id="32-程式碼生成code-generation">3.2 程式碼生成（Code Generation）</h3>
+<p>基於對齊後的需求進行程式碼生成。REA-Coder 不替換既有的推理策略或後處理方法，而是堅持「先對齊需求、再生成程式碼」的核心原則——修正模型對需求的誤解後，再基於與目標意圖完全對齊的需求進行生成。生成碼由公開測試案例進行功能正確性驗證：通過所有測試則終止並輸出；失敗則進入需求對齊驗證階段。</p>
+<h3 id="33-需求對齊驗證requirement-alignment-verification">3.3 需求對齊驗證（Requirement Alignment Verification）</h3>
+<p>儘管問答式需求對齊可橋接模型理解與使用者意圖之間的缺口，仍不足以保證生成碼與目標需求之間的深層邏輯一致性。為此引入<strong>語意遮罩恢復驗證</strong>機制。</p>
+<p>遮罩規則：(1) 內容優先原則——聚焦核心需求維度內的語意要素；(2) 語意連貫原則——每段遮罩覆蓋完整語意單元不切割個別詞彙、相鄰遮罩間保留足夠連續未遮罩上下文、限制每句遮罩數量、不破壞需求整體框架（保留提示關鍵詞如 input/output/constraint 但可遮罩其值）。</p>
+<p>LLM 基於生成的程式碼恢復被遮罩的需求內容：若程式碼忠實體現需求邏輯則應能準確推斷；系統性偏差表示程式碼仍基於不完整的需求理解。REA-Coder 對恢復內容與原始需求進行多維度語意比對，對每個遮罩產生回饋——包含恢復準確性判斷、差異分析、仍缺失的核心需求語意元素。此回饋轉換為補充的需求對齊訊號，回傳至需求對齊階段。</p>
+<p>最後，REA-Coder 更新問題清單：移除已通過驗證的問題、保留先前未過的問題、將新暴露的需求理解偏差轉為新問題項。迭代重新啟動，直到程式碼通過所有公開測試或達到最大迭代次數。</p>
+<h3 id="34-約束-規格對齊度量">3.4 約束-規格對齊度量</h3>
+<p>需求對齊的核心量化機制：對於每個需求維度產生的問題清單，以模型回答與參考答案的一致率度量該維度的<strong>約束-規格對齊程度（constraint-specification alignment）</strong>。跨迭代追蹤此度量可觀察模型對需求各面向的理解改善軌跡，並引導對齊資源優先分配到對齊度最低的維度。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

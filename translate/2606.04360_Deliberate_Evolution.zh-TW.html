@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Deliberate Evolution：以代理式推理達成樣本高效的 LLM 符號迴歸（Deliberate Evolution: Agentic Reasoning for Sample-Efficient Symbolic Regression with LLMs） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Xinyu Pang、Zhanke Zhou、Xuan Li、Fangrui Lv、Shanshan Wei、Sen Cui、Bo Han、Changshui Zhang（清華大學 BNRist 自動化系 + 香港浸會大學 TMLR Group + Lenovo Research）</p><p>日期：2026-06，ICML 2026</p><p>arXiv：2606.04360</p><p><a href="https://arxiv.org/abs/2606.04360" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="deliberate-evolution以代理式推理達成樣本高效的-llm-符號迴歸">Deliberate Evolution：以代理式推理達成樣本高效的 LLM 符號迴歸</h1>
+<p>清華大學 + 香港浸會大學 + Lenovo Research（ICML 2026）</p>
+<h2 id="摘要">摘要</h2>
+<p>SR 從資料發現緊湊數學式，但近期 LLM 演化式方法仍<strong>樣本低效</strong>，因為主要倚賴純量回饋（如 MSE）。我們辨識核心限制：既有方法<strong>把候選提議與搜尋引導混為一談</strong>，要 LLM 從單一分數同時推斷「如何演化式子、診斷其錯誤、重用過去經驗」。為解此，我們提出 <strong>Deliberate Evolution（DE）</strong>——一個<strong>把符號生成與搜尋控制解耦</strong>的代理式框架：以<strong>自適應運算子</strong>給搜尋方向、<strong>分析工具</strong>做結構診斷、<strong>反思記憶</strong>累積軌跡級經驗。在 <strong>LLM-SRBench</strong> 上，DE 跨多個科學領域一致勝過代表性 LLM-SR 基線，且只用標準取樣預算的 <strong>40%</strong>。程式碼：github.com/Xinyu-Pang/Deliberate-Evolution。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>SR 尋求解釋觀測資料的緊湊數學式，是可解釋科學發現的關鍵工具。近期 LLM 方法把 SR 構為演化迴圈：LLM 提議符號候選，數值最佳化器擬合常數，外部評估給完成式打分。此範式結合 LLM 的數學先驗與可驗證的數值回饋，但實用性受限於<strong>樣本低效</strong>——既有系統每題常需 10³ 個評估候選。</p>
+<p>我們把此低效歸因於根本設計問題：<strong>當前方法把候選提議與搜尋引導混為一談</strong>。只給親代式 + 一個 MSE 純量，卻要 LLM 一次推斷三件事——該如何改、為何現在失敗、過去嘗試的教訓如何指引下一步。此純量驅動迴圈缺三關鍵訊號：</p>
+<ul>
+<li><strong>方向（Direction）</strong>：純量分數不指明該做哪種符號移動。模型得瞎猜該精修有望結構、引入更大突變、重組有用子式、還是放棄當前區域重啟。</li>
+<li><strong>診斷（Diagnosis）</strong>：MSE 量「離資料多遠」，卻不揭示「為何失敗」——無法分辨誤差來自缺週期性、變數交互錯、量綱無效、漸近錯、或其他局部結構缺陷。</li>
+<li><strong>記憶（Memory）</strong>：每次提議多被當近乎獨立的試驗。搜尋缺顯式機制記住哪些編輯反覆失敗、哪些符號母題在好候選間反覆出現、哪些變換帶來大改善。</li>
+</ul>
+<p>缺方向則搜尋在無效編輯間漂移；缺診斷則無法瞄準誤差的結構源頭；缺記憶則反覆重蹈失敗。於是大量評估浪費在「貌似合理卻無資訊」的候選上（重複的局部變體、結構無效的突變、或只擬合觀測卻沒回復底層定律的代理式）。</p>
+<p><strong>核心洞察</strong>：把「提議什麼式子」與「搜尋如何演進」分開。純量演化把發現當弱引導的試誤；深思演化則讓搜尋軌跡顯式化——方向引導決定符號移動、診斷引導從資料與殘差局部化結構證據、歷史引導重用前次教訓。此分離把 SR 從純量驅動生成轉為<strong>引導式科學搜尋</strong>。</p>
+<p>我們在 <strong>LLM-SRBench</strong>（涵蓋 LSR-Transform 與 LSR-Synth，橫跨物理/材料/化學/生物）以 Llama3.1-8B-Instruct 與 Qwen3-4B-Instruct 評估。DE 一致勝過 LLMDirect、LLM-SR、LASR、SGA。如圖 2：只用標準取樣預算的 <strong>40%</strong>，平均 NMSE 在 Llama3.1-8B 降 <strong>55%</strong>、Qwen3-4B 降 <strong>37%</strong>。進一步在域外泛化、噪聲觀測、真實應力-應變量測與消融上，證明深思引導改善擬合準確度、穩健性、樣本效率。</p>
+<h2 id="2-預備知識">2. 預備知識</h2>
+<p><strong>問題形式化</strong>：給未知目標 f⋆:ℝᵈ→ℝ 與資料 D={(xᵢ,yᵢ)}，SR 在可容許表達式空間 F 搜尋擬合觀測的式子，損失 ℓ(f) 通常為 MSE。目標不只最小化經驗誤差，還要式子緊湊、能泛化到未見輸入。</p>
+<p><strong>LLM 演化式 SR 的標準工作流</strong>：LASR、LLM-SR、SGA 等多採演化最佳化——維護候選族群 Pₜ（有時分多島嶼以保多樣、緩解早熟收斂），每輪以「選擇-變異-評估」更新。選擇階段依適應度相依分佈 psel 抽親代 fp。</p>
+<h2 id="3-方法">3. 方法</h2>
+<p>DE 是讓 LLM 搜尋更「深思」的演化框架，關鍵原則是<strong>解耦候選提議與搜尋引導</strong>：LLM 提議符號骨架，顯式引導決定搜尋如何進行。具體：</p>
+<ul>
+<li><strong>Adaptive operators（自適應運算子）</strong>：依當前搜尋狀態與停滯行為，顯式選擇是 <strong>refine（精修簡化）/ mutate（功能變異）/ crossover（重用有望子式）/ regenerate（更廣探索）</strong>（圖 3 示四運算子由親代式產生新式）。</li>
+<li><strong>Tool-augmented proposal（工具增強提議）</strong>：藉分析<strong>資料統計、殘差樣式、量綱一致性</strong>診斷當前失配，把純量誤差轉成給 LLM 的局部化結構回饋。</li>
+<li><strong>Reflective memory（反思記憶）</strong>：彙總成功母題、失敗編輯、停滯軌跡，助未來提議重用有望結構、避免冗餘探索。</li>
+</ul>
+<p>三機制合力解耦符號生成與搜尋控制，使每次提議都由「顯式意圖 + 局部證據 + 累積經驗」告知。</p>
+<h2 id="4-實驗精要">4. 實驗（精要）</h2>
+<p>在 LLM-SRBench（LSR-Transform、LSR-Synth）以 Llama3.1-8B 與 Qwen3-4B 為骨幹：DE 一致勝 LLMDirect、LLM-SR、LASR、SGA;<strong>只用 40% 取樣預算，NMSE 降 55%（8B）/37%（4B）</strong>；在更少評估下達更低誤差，樣本效率顯著。另測域外泛化、噪聲、真實應力-應變資料與消融，皆支持「深思引導」的價值。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>DE 把「提議」與「引導」解耦，以方向（自適應運算子）、診斷（殘差/量綱工具）、記憶（反思）三訊號，治本地解 LLM-SR 的樣本低效，把符號發現從弱引導試誤轉為引導式科學搜尋。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2606.04360_Deliberate_Evolution.%E6%91%98%E8%A6%81.html"><code>../summarize/2606.04360_Deliberate_Evolution.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

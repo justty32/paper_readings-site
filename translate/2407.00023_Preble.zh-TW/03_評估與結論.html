@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_評估與結論 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><p>← <a href="../2407.00023_Preble.zh-TW.html">回母檔</a></p>
+<h2 id="4-實作與評估">4. 實作與評估</h2>
+<p>Preble 是 standalone layer，目前支援稍作修改的 vLLM 與 SGLang backend。Global radix tree 讀取多、更新少；request handlers 非同步執行，少數 node assignment／counter update 用 atomic instructions。Rebalance 與 eviction bookkeeping 放背景 threads。</p>
+<p>Workloads 是 tool calling、embodied agent、program generation、video QA、long-document QA。一般測試用 Poisson arrivals，另用 Azure trace 測 mixed workload。模型為 Mistral 7B 與 Llama 3 70B；硬體是一個 4×A6000 cluster 與 8×H100 server，70B 使用 4-GPU tensor parallel 再加 data parallel。Baselines 是多個單 GPU SGLang／vLLM instance 前接 round-robin load balancer。Metrics 是 RPS、average end-to-end latency、p99 latency。</p>
+<h3 id="41-end-to-end">4.1 End-to-end</h3>
+<p>所有設定下 Preble 都優於 distributed SGLang。Average latency 改善 1.5–14.5×，p99 改善 2–10×；換句話說，在相同 latency target 可承受更高 RPS。</p>
+<p>ToolBench、embodied agent、video QA、LooGLE 改善比 programming 大。Programming 的 output 最長，decode 成為主要成本，而 Preble 不加速 decode；即使如此 average 仍改善 1.56–1.8×，p99 3–4×。</p>
+<p>從兩張到四張 A6000 時，相對改善近似；RPS 加倍仍保持類似 latency，顯示 placement 能隨 GPU 增加。Azure arrival pattern 下的 tool + video mixed workload，在 average、p99、TTFT 與 TPOT 也都改善。</p>
+<h3 id="42-deep-dive">4.2 Deep dive</h3>
+<p>Ablation 從 round-robin SGLang 起步。加入 per-request E2 後，dynamic placement 改善 average 與 p99；加入 global rebalance/autoscale 後，p99 尤其改善；再加 prefill/decode-aware policy，兩者續降；最後 local priority quota 主要降低 p99、average 幾乎不變，符合它是 fairness／tail 機制的設計。</p>
+<p>為測 global scheduler 上限，作者一次送入 50,000 requests。ToolBench radix tree 最複雜，達 245 requests/s；VideoQA tree 較簡單，達 2,931 requests/s。依 Mistral 7B 在 A100 的 30–150 token/s decode speed 與各 workload output length，作者推估一個 scheduler 可供至少 70–391 張 concurrent A100 使用。這是容量推算，不是 391-GPU 實機實驗。</p>
+<h2 id="5-相關工作">5. 相關工作</h2>
+<p>Chunked prefill 與 prefill/decode disaggregation 解決兩階段 compute/memory 不平衡，但不處理跨 request prompt sharing。SGLang、vLLM prefix cache 是 single-GPU；Preble 補上 cluster-level placement 與 fairness。Prompt Cache 可共享任意子序列，但會改 positional encoding／attention，屬可能降低品質的 lossy reuse；Preble 只重用 exact prefix KV。Hydragen 改善 shared-prefix attention kernel，與 Preble 的 scheduler 可互補。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>長且共享的 prompt 讓 distributed serving 不再只是平均分配 requests。E2 在 reuse 與 load balance 間做 exploitation/exploration，Preble 再以 global/local hierarchy、prefix autoscaling、prefill-decode balancing 與 quota-based local priority 控制 tail latency與公平。實驗顯示它在目標 workload 顯著超過不看 prompt 的 distributed baselines。</p>
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2407.00023_Preble.%E6%91%98%E8%A6%81.html"><code>../summarize/2407.00023_Preble.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

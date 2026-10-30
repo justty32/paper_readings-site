@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>KAPPA: Checking the Proofs in Statistics Papers with Lean 4 and Language Model Agents 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zihua She、Xiao Wang</p><p>日期：2026-10-26（v1，stat.CO）</p><p>arXiv：2610.35596</p><p><a href="https://arxiv.org/html/2610.35596v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="kappa以-lean-4-與語言模型代理檢查統計論文證明">KAPPA：以 Lean 4 與語言模型代理檢查統計論文證明</h1>
+<h2 id="摘要與第-12-節問題">摘要與第 1～2 節：問題</h2>
+<p>統計論文可能依賴長而細的證明，形式化後可由 Lean 4 核心檢查，但形式命題不一定忠實表達原文。KAPPA 使用多個語言模型代理，逐個編號結果將論文命題及其原有證明路徑轉成 Lean／Mathlib；另一代理先比對命題與原文、記錄指紋，證明後再審核並執行機械檢查。作者目標是檢查論文<strong>所給的論證</strong>，不以另找一個新證明取代。（<a href="https://arxiv.org/html/2610.35596v1#S1">§1～2</a>）</p>
+<h2 id="第-3-節四種結論與可信邊界">第 3 節：四種結論與可信邊界</h2>
+<p>每個編號定理、命題、引理或推論得到一種結論：（<a href="https://arxiv.org/html/2610.35596v1#S3">§3，表 2～3</a>）</p>
+<ul>
+<li><strong>無條件驗證</strong>：形式命題經原文審核且未變更，按論文路徑完成證明；乾淨建置、只使用 Lean 三個標準公理，依賴閉包無 <code>sorry</code>，沒有剩餘外部前提，最終審核通過。</li>
+<li><strong>有條件驗證</strong>：其他要求相同，但引用結果、未證事實或前序結果的特定部分等以具名假設列出，需讀者另行檢查；人檢查後仍標為有條件。</li>
+<li><strong>記錄問題</strong>：命題或論證中的問題經另一代理確認，最好附經審核的 Lean 反例；錯誤結論與真結論的證明缺口分別分類。</li>
+<li><strong>未完成</strong>：例如 pinned Mathlib 缺少所需介面；不算作論文的錯誤。</li>
+</ul>
+<p>Lean 核心檢查的是<strong>形式命題從其列出假設得到的證明</strong>。形式命題是否忠於論文，仍依賴前置及最終審核並須供人複核；有條件結論也不自動驗證列出的假設。編碼錯誤或形式化受阻歸於形式化側，不算成原文錯誤。（<a href="https://arxiv.org/html/2610.35596v1#S9">§3、§9</a>）</p>
+<h2 id="第-45-節檢查流程">第 4～5 節：檢查流程</h2>
+<p>架構代理先列結果、依賴與引用；草稿代理將原命題及各證明步驟寫成 Lean 義務。獨立 gate 對照原文的量詞、定義域、假設、常數和步驟；通過後記錄宣告類型、定義值及 binder 的指紋。prover 沿論文路徑證明，不能支持的步驟保留為缺口；最終 auditor 重新建置並比對指紋。疑似論文問題由另一 issue checker 判斷，再由 auditor 審核。（<a href="https://arxiv.org/html/2610.35596v1#S5.SS2">§5.1～5.2</a>）</p>
+<p>外部引用或未證事實寫為 Lean 定理的具名假設，而非悄悄加入公理；對尚未完成的前序結果，可先把所需部分列為參數，待前序結果通過後重接。機械稽核檢查建置、公理、<code>sorry</code> 依賴閉包、指紋及實際使用的假設；紀錄驗證器檢查結論是否有相應證據。報告另由獨立代理對照紀錄核事實。（<a href="https://arxiv.org/html/2610.35596v1#S5.SS3">§5.2～5.4</a>）</p>
+<p>修訂版只重做陳述、證明或所用定義有變化的結果；若重審後所依賴的陳述指紋不變，下游結果重建並機械核查，若變更則沿依賴關係重做。舊問題必須經新最終審核才關閉。無人值守 driver 把每個短 session 的狀態留在檔案，可在額度重置後繼續；角色限制與權限 hook 防止操作失誤，但作者不將其視為安全邊界。（<a href="https://arxiv.org/html/2610.35596v1#S5.SS5">§5.5～5.6、§9</a>）</p>
+<h2 id="第-6-節案例設計與結果">第 6 節：案例設計與結果</h2>
+<p>作者寫了四篇短例題與事前答案鍵，並挑選三篇事後有公開更正的統計論文，對更正前版本盲測。各執行目錄不含答案鍵與更正，且禁止網路；作者檢查 443 個逐字紀錄、11,341 次工具呼叫，未發現存取禁止位置或網路工具。作者在執行後人工檢查答案鍵未預期的發現。（<a href="https://arxiv.org/html/2610.35596v1#S6.SS1">§6.1</a>）</p>
+<p>四篇例題的 19 個結果中，作者報告 17 個 verdict 符合或屬答案鍵可接受的分類；其餘一個經人工核查比鍵更好，另一個揭露工具規則的歧義。這些例題專為測試工具設計。（<a href="https://arxiv.org/html/2610.35596v1#S6.SS2">§6.2、§10</a>）</p>
+<p>三篇發表論文的更正涉及：停止時間下 e-value 的錯誤命題；凸組合隨機支配證明中的不等式方向；Hamiltonian Monte Carlo 證明在部分參數範圍缺少條件。作者自報工具在三篇都找出更正指出的步驟：第一篇附 Lean 反例，另兩篇駁斥證明步驟，並未因此宣稱後兩篇的結論為假。工具還提出更正未提及的問題，作者稱經人工核查成立。（<a href="https://arxiv.org/html/2610.35596v1#S6.SS3">§6.3</a>）</p>
+<p>三篇是研究者<strong>知道更正後刻意選取</strong>、且 Mathlib 大多能表達的案例；前兩篇完整檢查，第三篇因較長而按已知更正選擇局部結果，測試力較弱。前兩篇更正可能出現在模型訓練資料中；第三篇更正日期在作者所述模型訓練截止之後。七篇共 42 個結果各檢查一次，樣本不足以估計一般錯誤率。（<a href="https://arxiv.org/html/2610.35596v1#S9">§6.3、§9</a>）</p>
+<h2 id="第-7-節直接使用模型的比較與成本">第 7 節：直接使用模型的比較與成本</h2>
+<p>作者對同三篇發表論文比較 KAPPA、直接使用 Lean 的單代理，以及無工具的直接聊天。按作者事先制定的評分規則，三種方式正確分類結果分別為 23/23、20/23、21/23；分別有 0、6、13 個 verdict 存在隱藏前提、陳述縮窄或缺少 Lean 證據。直接代理也找出三篇公開更正，並在部分地方額外證明了工具依設計保留為條件的引用事實。此為少量案例比較，不能推廣為模型的一般準確率。（<a href="https://arxiv.org/html/2610.35596v1#S7.SS1">§7.1，表 12</a>）</p>
+<p>成本測試在一篇三結果基準上比較兩次舊設計與兩次 1.3 版：作者報告依定價估算的平均費用降低 77%，四次 verdict 都符合答案鍵；該小測試較少涉及研究論文中成本較高的證明與審核。論文摘要其案例首次檢查成本為每篇約 10～65 美元、活動時間約一至三小時；修訂費用為首次的 23～86%。這些是當時模型及標價的估算，活動時間不含等待使用額度重置。（<a href="https://arxiv.org/html/2610.35596v1#S7.SS2">§7.2、§7.4、§10</a>）</p>
+<h2 id="第-810-節重現與限制">第 8～10 節：重現與限制</h2>
+<p>作者提供 pinned Lean／Mathlib、形式檔、稽核結果、答案鍵、報告與比較紀錄；已有 Lean 證據可不依賴語言模型重新建置及執行機械稽核。作者也明述兩個問題是經審閱的推理判斷，沒有 Lean 檔可重建；完整逐字紀錄由作者保留。首次重建前需下載編譯後的 Mathlib，作者報告約 5 GB。（<a href="https://arxiv.org/html/2610.35596v1#S8">§8</a>）</p>
+<p>新一輪代理輸出、時間與費用可能變動；模型審查無法取代人核對形式陳述及外部前提。缺少函式庫介面時結果可未完成，權限規則與 hook 防的是代理失誤，並非隔離惡意行為的安全機制。（<a href="https://arxiv.org/html/2610.35596v1#S9">§9～10</a>）</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2610.35596_KAPPA.%E6%91%98%E8%A6%81.html">KAPPA 摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

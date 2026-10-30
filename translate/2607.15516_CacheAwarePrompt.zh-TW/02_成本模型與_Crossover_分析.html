@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Part 3: 實驗（LongBench-v2 至 graphify RAG） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2607.15516_CacheAwarePrompt.zh-TW.html">回 2607.15516_CacheAwarePrompt.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-成本模型與-crossover-分析">4. 成本模型與 Crossover 分析</h2>
+<h3 id="41-記號與策略分類">4.1 記號與策略分類</h3>
+<p>|D| = 文件大小（token）、r = 壓縮比、N = 查詢數、Dq = 每查詢動態區塊、O = 輸出大小。</p>
+<ul>
+<li><strong>A — Vanilla</strong>：完整文件，無 cache、無壓縮。</li>
+<li><strong>B — Cache-only</strong>：完整文件標記 cache_control，無壓縮。</li>
+<li><strong>C — Query-aware compress</strong>：每查詢壓縮前綴，無 caching。</li>
+<li><strong>D — CAPC</strong>：Query-agnostic 壓縮至 |D|/r，以 cache_control 快取。</li>
+</ul>
+<h3 id="42-每策略成本表達式">4.2 每策略成本表達式</h3>
+<p>cost_A = N (|D|+Dq) pin + O pout
+cost_B = N [(1−ρ_B)|D| cw + ρ_B|D| cr + Dq pin] + O pout
+cost_C = N (|D|/r+Dq) pin + O pout
+cost_D = N [(1−ρ_D)(|D|/r) cw + ρ_D(|D|/r) cr + Dq pin] + O pout</p>
+<p>其中 ρ_B=ρ(N,|D|), ρ_D=ρ(N,|D|/r)。</p>
+<h3 id="43-crossover-閾值一般形式">4.3 Crossover 閾值（一般形式）</h3>
+<p>消去共同開銷、令 cache 與 compressed 成本相等，得到 provider-agnostic crossover ρ 閾值：</p>
+<p>ρ_cross(r) = (cw − pin/r) / (cw − cr)</p>
+<p>無因次形式：令 α=cw/pin（write 費率溢價）、β=cr/pin（read 費率折扣），則：</p>
+<p>ρ_cross(r) = (α − 1/r) / (α − β)</p>
+<p>任何 write/read 費率比接近 Anthropic（α≈1.25, β≈0.1）的 provider，其 crossover 閾值將接近下文數值。OpenAI 自動 caching 結構類似（α=1.0, β=0.5）。</p>
+<p><strong>Sonnet 4.6 實例</strong>（pin=3.00, cw=3.75, cr=0.30, α=1.25, β=0.10）：</p>
+<p>r=2: ρ_cross=0.652 （B 勝 C 若 ρ&gt;0.65）
+r=3: ρ_cross=0.797 （B 勝 C 若 ρ&gt;0.80）
+r=4: ρ_cross=0.870 （B 勝 C 若 ρ&gt;0.87）
+r=6: ρ_cross=0.942 （B 勝 C 僅若 ρ≥0.94）
+r=8: ρ_cross=0.978 （B 勝 C 僅若 ρ≥0.98）
+r=10: ρ_cross=1.000 （ρ&gt;1 不可能→B 永遠不敵 C）</p>
+<p><strong>定價敏感度</strong>：固定 β=0.1，將 write 溢價從 α=1.25 減半至 α=1.1 會將「B 永遠不敵 C」的 regime 從 r≥10 下移至 r≥4。若 α=2.0（如 1 小時 TTL），則上移至 r≥16。定性發現——存在有限 crossover ratio 使 cache-only 敗給 compression——只要 β&lt;1&lt;α 就成立，這是所有現有 cache API 的標準定價結構。</p>
+<h3 id="44-從兩層-ρ-的實證-crossover-n">4.4 從兩層 ρ 的實證 crossover N</h3>
+<p>將 crossover ρ 閾值轉換為 crossover N 值：在實證兩層模型下，r≥6 時 crossover 在實務上永遠不會發生（∞ in practice）。</p>
+<h3 id="45-對定價與基礎設施變化的穩健性">4.5 對定價與基礎設施變化的穩健性</h3>
+<p>分析四種情境：(1) cache_read 更便宜——CAPC 優勢擴大；(2) write 溢價收窄——更多工作負載進入「B 不敵 C」regime；(3) 兩層架構消失——tier-preserving bound 失去閾值基礎，但 CAPC 的 token 減少優勢不受影響（即使 ρ=1.0，CAPC 仍勝基線 50–65%）；(4) 引入語義前綴匹配——query-aware compression 部分恢復 cache hit，縮小與 CAPC 差距。跨所有情境的三個不變量：(i) 壓縮至少匹配 CAPC（相等時為 ρ=1 且語義 caching 完美）；(ii) 成本模型保留其函數形式；(iii) RUN_NONCE 隔離的 ρ 特徵化方法直接轉移。</p>
+<h2 id="5-capc-演算法">5. CAPC 演算法</h2>
+<h3 id="51-核心-capc-程序">5.1 核心 CAPC 程序</h3>
+<p>設 D 為靜態文件、Q1...QN 為查詢流、r 為壓縮比、Compress 為任意 query-agnostic 句子選擇壓縮器。</p>
+<pre><code>def CAPC(D, queries, r):
+    D_prime = Compress(D, r)  # 一次，off the request path
+    for q in queries:
+        api.messages.create(content=[
+            {&quot;type&quot;: &quot;text&quot;, &quot;text&quot;: D_prime,
+             &quot;cache_control&quot;: {&quot;type&quot;: &quot;ephemeral&quot;}},
+            {&quot;type&quot;: &quot;text&quot;, &quot;text&quot;: q},
+        ])
+</code></pre>
+<p>關鍵設計選擇：(i) D′ 計算一次並在所有 N 查詢間重用；(ii) cache_control marker 放在壓縮文件區塊上，但不在查詢區塊上。</p>
+<h3 id="52-tier-preserving-ratio-bound">5.2 Tier-Preserving Ratio Bound</h3>
+<p>增加 r 減少 |D|/r 降低每查詢成本——直到 |D|/r 跌破 persistent-tier 閾值 T≈3500 token，此時 ρ 從 1 降至約 0.85，大量呼叫支付 write 費率 cw=12.5cr：</p>
+<p>r_max^safe(|D|) = floor(|D| / T), T=3,500 token (Sonnet 4.6)</p>
+<p>實證展示：12,191-token 文件在 r=3 時壓縮前綴 4,067 token（persistent）每查詢成本 $0.0057；r=4 時降至 3,119 token（hot），成本反彈至 $0.0101——單一 ratio 增量導致 77% 成本增加。</p>
+<h3 id="53-adaptivecacheboundary處理演變中的-prompt">5.3 AdaptiveCacheBoundary：處理演變中的 Prompt</h3>
+<p>當文件跨呼叫演變時，CAPC 擴展 AdaptiveCacheBoundary 子程序，基於觀察到的 K 版本突變率將每個句子位置分類為 STATIC、QUASI 或 DYNAMIC。</p>
+<p>對每個句子位置 p，計算指紋集合 {h(norm(D_p^(k))) : k=1...K}，其中 norm 是基於 regex 的正規化器（日期→[DATE]、大數→[NUM]、金額→[AMOUNT]）。突變率 μ_p = 1 − max_h count(h)/K。閾值 ε_static=0.05, ε_quasi=0.30 劃分位置為三類。cache 前綴是最大連續 STATIC-or-QUASI 前綴。</p>
+<p><strong>空白正規化</strong>：第 3 節的發現——Claude 的 tokenizer 正規化前導和尾隨空白——意味著僅有空白的段差從 cache 角度看不是真正的突變。演算法在指紋化前正規化空白。</p>
+<h3 id="54-adaptivecacheboundary-實證驗證">5.4 AdaptiveCacheBoundary 實證驗證</h3>
+<p>在三個 LongBench-v2 文件（~6k, 12k, 24k token）上評估，合成但現實的版本漂移，K=25 版本，四種突變率 μ∈{0.05, 0.10, 0.20, 0.40}。12/12 配置全部實現正向節省（savings +73–86%）。</p>
+<p><strong>真實 Git 歷史追蹤驗證</strong>：在生產倉庫三個工程師驅動文件（main.py, orchestrator.py, analysis_module.py）上運行，每個文件 25+ commits。結果：adversarially 編輯的生產文件中 DYNAMIC 佔 44–80%，adaptive prefix 僅 12–749 token，但仍產生 −62.6% 至 −70.5% 的節省 vs naive cache-all——演算法正確拒絕 cache 動態多數。</p>
+<h3 id="55-實務指南">5.5 實務指南</h3>
+<ol>
+<li>靜態單版本文件：使用核心 CAPC 程序，選擇 r_target 與 r_max^safe 中的較小值。</li>
+<li>演變中文件：觀察 K≥3 版本，運行 AdaptiveCacheBoundary，使用 adaptive prefix 作為 cache block。</li>
+<li>低於 persistent-tier 閾值的文件：CAPC 不是正確策略；改用 cache-only（策略 B）。</li>
+</ol>
+<hr />
+<h2 id="title-part-3--實驗longbench-v2-至-graphify-rag-arxiv_id-260715516-parent-translate260715516_cacheawarepromptzh-twmd">title: Part 3 — 實驗（LongBench-v2 至 graphify RAG）
+arxiv_id: 2607.15516
+parent: ../translate/2607.15516_CacheAwarePrompt.zh-TW.md</h2>
+<h1 id="part-3-實驗longbench-v2-至-graphify-rag">Part 3: 實驗（LongBench-v2 至 graphify RAG）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

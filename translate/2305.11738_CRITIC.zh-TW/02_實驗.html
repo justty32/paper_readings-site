@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.11738_CRITIC.zh-TW.html">回 2305.11738_CRITIC.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E9%99%84%E9%8C%84%E6%93%87%E8%A6%81.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<p>任務：<strong>自由形式問答</strong>（開放事實知識與多跳推理的真實性）、<strong>數學程式合成</strong>（生成程式的正確性與可執行性）、<strong>毒性降低</strong>（開放輸出空間的安全性）。兩種設定：<strong>CRITIC</strong> 對所有樣本套用修正；<strong>CRITIC*</strong> 為 oracle 設定，只修正錯誤樣本。模型：text-davinci-003、gpt-3.5-turbo（ChatGPT）、開源 LLaMA-2（7B/13B/70B），各 LLM 用相同 prompt。</p>
+<h3 id="41-自由形式問答">4.1 自由形式問答</h3>
+<p><strong>實作</strong>：不依賴任務特定檢索器（避免過擬合），改建基於 Google 的網頁搜尋工具：搜尋 LLM 生成的查詢、抓取 top-1 網頁、以模糊比對 Google 摘要截取最多 400 字元；最大互動次數 7。以 CoT 產生初始答案，最多修正 n=3 輪，答案連續兩輪不變即提前停止；驗證面向為<strong>合理性（plausibility）與真實性（truthfulness）</strong>；全程貪婪解碼。為解決 Google API 的時間不一致性，對網頁搜尋採<strong>快取機制</strong>確保穩定、公平與可重現。
+<strong>資料集</strong>：AmbigNQ、TriviaQA、HotpotQA 各隨機抽 500 驗證例，報告 EM 與 F1。
+<strong>基線</strong>：Vanilla few-shot、CoT、Self-Consistency、ReAct（用本文搜尋 API 重製、表現更好）、ReAct→CRITIC（對 ReAct 初始結果套 CRITIC）、CRITIC w/o Tool（移除搜尋 API、由 LLM 自行生成證據）、Rejection Sampling、各資料集的監督式 SoTA。
+<strong>結果（表 1、表 8）</strong>：(1) CRITIC 在所有資料集、設定與 LLM 上大幅超越初始 CoT，只需三輪修正，且多數情況勝過 self-consistency。(2) 模型越強增益越大：CRITIC / CRITIC* 在 text-davinci-003 上 F1 提升 5.6 / 10.3，在 ChatGPT 上提升 7.7 / 12.4。(3) 結合參數化知識與外部回饋的 CRITIC 顯著優於只靠檢索的 ReAct（兩 LLM 平均 F1 各 +5.1、+8.2），且多數情況勝過 ReAct→CRITIC。(4) <strong>工具互動是關鍵：模型自己的批判貢獻甚微（兩 LLM 各 −0.03 與 +2.33 F1），甚至不如初始輸出</strong>。(5) CRITIC 亦能進一步強化檢索式結果。(6) 附錄 E 展示 CRITIC 能修正不實事實、矯正錯誤推理軌跡、偵測過時知識。</p>
+<p><strong>表 1 擇要（ChatGPT，F1）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>AmbigNQ</th>
+<th>TriviaQA</th>
+<th>HotpotQA</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CoT</td>
+<td>64.3</td>
+<td>79.2</td>
+<td>42.8</td>
+</tr>
+<tr>
+<td>Self-Consistency</td>
+<td>65.4</td>
+<td>81.3</td>
+<td>47.0</td>
+</tr>
+<tr>
+<td>ReAct</td>
+<td>64.8</td>
+<td>69.8</td>
+<td>50.2</td>
+</tr>
+<tr>
+<td><strong>CRITIC</strong></td>
+<td><strong>74.9</strong></td>
+<td><strong>81.7</strong></td>
+<td><strong>52.9</strong></td>
+</tr>
+<tr>
+<td>CRITIC w/o Tool</td>
+<td>67.3</td>
+<td>79.9</td>
+<td>46.1</td>
+</tr>
+</tbody>
+</table>
+<h3 id="42-數學程式合成">4.2 數學程式合成</h3>
+<p><strong>實作</strong>：以 Python 直譯器為工具，取得兩類回饋——<strong>錯誤訊息</strong>（如 NameError、Time out，表示為「Execution: {error message}」）與<strong>執行結果</strong>（執行後變數 answer 的值）。以 program-of-thought（PoT）生成初始程式，最多 n=4 輪修正，執行結果連續兩輪不變即停止；初始結果貪婪解碼、修正時以 p=0.5 取樣避免迴圈。
+<strong>資料集</strong>：GSM8k、SVAMP、TabMWP 官方測試集，報告 exact match。
+<strong>結果（表 2、9、10）</strong>：(1) CRITIC 在兩種修正策略（全修 / 只修錯的 oracle）下均明顯優於 PoT。(2) 模型越強效果越好。(3) 擴展性佳：TabMWP 上 LLaMA-2 7B/13B/70B 的增益分別 +4.7、+9.4、+16.0。(4) <strong>沒有直譯器執行回饋時，LLM 修正程式的能力有限且不穩定</strong>：text-davinci-003 上出現 −1.8 的劣化；Codex 上的 Self-Refine 更因 LLM 對程式正確性的回饋不可靠而劣化（PAL 71.3 → Self-Refine 26.7，−44.6）。</p>
+<p><strong>表 2 擇要（ChatGPT，solve rate）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>GSM8k</th>
+<th>SVAMP</th>
+<th>TabMWP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PoT</td>
+<td>72.5</td>
+<td>82.0</td>
+<td>75.0</td>
+</tr>
+<tr>
+<td><strong>CRITIC</strong></td>
+<td><strong>78.2</strong> (+5.7)</td>
+<td><strong>83.3</strong> (+1.3)</td>
+<td><strong>89.0</strong> (+14.0)</td>
+</tr>
+<tr>
+<td>CRITIC w/o Tool</td>
+<td>77.0 (+4.5)</td>
+<td>82.0 (+0.0)</td>
+<td>87.0 (+12.0)</td>
+</tr>
+<tr>
+<td>CRITIC*（oracle）</td>
+<td>83.9 (+11.4)</td>
+<td>89.0 (+7.0)</td>
+<td>94.0 (+19.0)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="43-毒性降低">4.3 毒性降低</h3>
+<p><strong>實作</strong>：以 <strong>Perspective API</strong> 為工具取得細粒度毒性資訊（整體毒性分數＋侮辱、褻瀆、身分攻擊等六種屬性分數），取最高分屬性表示為批判「The text has {score} toxicity of {attribute}」。最多迭代 n=4，整體毒性低於 10% 即終止；nucleus sampling p=0.9。
+<strong>資料集</strong>：RealToxicityPrompts 非毒性 prompt 隨機抽 1k，度量 25 次生成的最大毒性與毒性機率（≥50% 至少一次），以 text-davinci-003 計算流暢度 perplexity，另報 dist-2/dist-3 多樣性。
+<strong>結果（表 3）</strong>：(1) CRITIC 大幅降低毒性生成、同時保持與原始 LLM 相當的流暢度與多樣性（ChatGPT 最大毒性 0.325→0.173、毒性機率 0.192→0.040）；(2) 無需額外資料或訓練即達到與監督式 SoTA（PPO、Quark、Self-Correct 等）相當的減毒能力；(3) 再次凸顯外部回饋的重要性——僅靠 LLM 自身難以有效減毒（w/o Tool 幾乎無改善：0.325→0.339）。</p>
+<h3 id="44-額外消融與分析">4.4 額外消融與分析</h3>
+<ul>
+<li><strong>迭代修正的效果</strong>：迭代通常帶來持續改進，oracle 設定（只修錯的）躍升顯著；多輪修正邊際效益遞減，<strong>通常 2–3 輪就取得多數增益</strong>；缺乏可靠回饋時，只靠模型自身迭代改進的報酬較差且低效。</li>
+<li><strong>與 Rejection Sampling 比較</strong>：CRITIC* 對比 best-of-n 拒絕採樣（重新生成 n 條 CoT 取最高分者），在兩個 LLM 上 EM 各高出 4.5 與 3.3——顯示批判不只指認錯誤，還提供<strong>可行動建議與可信依據</strong>，引導新生成避免相似錯誤。</li>
+</ul>
+<h2 id="5-結論">5. 結論</h2>
+<p>CRITIC 是即插即用（plug-and-play）框架，讓凍結的 LLM 藉與外部環境互動自我驗證與自我修正，無需進一步訓練。跨任務跨模型的實驗一致顯示其有效性、通用性與可互操作性。此外，本文揭示 <strong>LLM 自我驗證的不可靠性</strong>，凸顯外部工具互動解決此問題的潛力。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

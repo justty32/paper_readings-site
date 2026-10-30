@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Advancing Multimodal Agent Reasoning with Long-Term Neuro-Symbolic Memory》繁體中文翻譯（續） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.15280_LTNeuroSymbolicMemory.zh-TW.html">回 2603.15280_LTNeuroSymbolicMemory.zh-TW 目錄</a>　<a href="02_NS-Mem_%E6%95%B4%E9%AB%94%E6%A1%86%E6%9E%B6.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）的快速進展推動了在開放世界、多模態環境中運行的智慧型 Agent 的出現。為了支援長期推理，此類 Agent 通常配備外部記憶系統。然而，現有的多模態 Agent 記憶大多依賴神經表示和向量式檢索，這些方法適合歸納式、直覺推理，但在支援現實世界決策所需的分析性、演繹推理方面存在根本限制。為了解決這個限制，我們提出了 NS-Mem——一個長期神經符號記憶框架，旨在通過將神經記憶與顯式符號結構和規則相結合，推進多模態 Agent 的推理能力。具體而言，NS-Mem 圍繞記憶系統的三個核心組件運作：（1）三層記憶架構，包含情節層、語義層和邏輯規則層；（2）由 SK-Gen 實現的記憶構建與維護機制，能自動從累積的多模態經驗中固化結構化知識，並增量更新神經表示與符號規則；（3）混合記憶檢索機制，結合相似度搜尋與確定性符號查詢函數以支援結構化推理。在真實世界多模態推理基準上的實驗表明，神經符號記憶在整體推理準確率上平均提升 4.35%，在受限推理查詢上提升幅度高達 12.5%，驗證了 NS-Mem 的有效性。</p>
+<p>關鍵詞：神經符號 AI、記憶系統、知識表徵、開放世界 Agent、結構化推理</p>
+<h2 id="1-導論">1. 導論</h2>
+<p>LLM 的快速進展已從根本上重新定義了智慧型 Agent 的格局，使其成為感知環境、對觀測進行推理、並執行動作以達成複雜目標的精密系統。在真實世界場景中，環境本質上是多模態的，跨越文字和視覺資料等模態。因此，開發多模態 Agent 已成為實現通用自主性的主要前沿。然而，成功部署這類 Agent 需要從異質觀測流中持續積累知識、有效組織這些資訊，並在不同約束條件下檢索上下文相關的洞察以支援靈活決策。這一能力的核心在於記憶模組——將原始多模態流轉化為持久、可操作知識的基本基質。</p>
+<p>近期記憶增強的多模態 Agent 取得了顯著進展。MemGPT 為基於 LLM 的 Agent 引入顯式記憶管理，使其能處理超出上下文視窗限制的資訊。MovieChat 和 MA-LMM 為長影片理解建構持久記憶結構。M3-Agent 通過引入 VideoGraph 進一步推進這一方向，將記憶組織為代表具體事件的情節節點和捕捉抽象概念的語義節點，靈感來自人類認知系統。這些方法的核心理念是使用基於向量相似度搜尋的檢索增強生成（RAG），在事實回憶和語義匹配任務上取得出色表現。</p>
+<p>**動機。**儘管如此，大多數多模態 Agent 記憶是以向量為中心的，主要依賴神經嵌入進行儲存和檢索。此類設計適合 System 1 風格推理，能通過語義相似度進行聯想推理——包括從過去經驗中泛化的歸納推理、跨相關上下文轉移知識的類比推理、以及連結語義相近概念的聯想回憶。這些能力在開放環境的模糊匹配和常識檢索中非常有效。然而，它們在支援對現實世界決策至關重要的 System 2 風格推理方面存在根本限制——包括對依賴關係的演繹推理（理解前置條件和順序）、從部分觀測中進行溯因推理、以及涉及約束滿足或違反約束時的替代方案發現的約束感知推理。</p>
+<p>**範例。**考慮一個幫助 Jack 製作水果沙拉的 Agent。Agent 知道水果沙拉需要水果、碗和湯匙，步驟為：切、混合、上菜。從記憶中，它知道 Jack 已經切好了水果（ID 798），家裡的碗破了（ID 2341），樓下商店有碗賣（ID 5231）。當被問「Jack 下一步該做什麼？」時，純向量式檢索系統可以根據語義相似度識別出提到「水果沙拉」或「切好的水果」的記憶片段。但它無法考慮到家裡的碗破了或附近商店有碗。因此，它只會建議混合水果，忽略了實際約束。</p>
+<p>**我們的方法。**NS-Mem 是一個結合神經表示與符號規則的神經符號記憶系統，旨在橋接 System 1 直覺推理與 System 2 確定性推理。NS-Mem 提供了一個包含三個整合模組的綜合框架：（1）一個統一原型；（2）一個可擴展的構建與更新機制；（3）一個協同的檢索過程。</p>
+<blockquote>
+<p>繼續閱讀 <a href="../2603.15280_LTNeuroSymbolicMemory.zh-TW.html">Part 2：NS-Mem 框架、實驗與結論</a>。</p>
+</blockquote>
+<hr />
+<h2 id="title-ns-mem以長期神經符號記憶推進多模態-agent-推理繁體中文翻譯part-2框架實驗與結論-source-httpsarxivorgabs260315280-parent-260315280_ltneurosymbolicmemoryzh-twmd">title: 《NS-Mem：以長期神經符號記憶推進多模態 Agent 推理》繁體中文翻譯（Part 2：框架、實驗與結論）
+source: https://arxiv.org/abs/2603.15280
+parent: 2603.15280_LTNeuroSymbolicMemory.zh-TW.md</h2>
+<h1 id="advancing-multimodal-agent-reasoning-with-long-term-neuro-symbolic-memory繁體中文翻譯續">《Advancing Multimodal Agent Reasoning with Long-Term Neuro-Symbolic Memory》繁體中文翻譯（續）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

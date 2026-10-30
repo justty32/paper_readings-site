@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2509.07569_uGMM_NN.zh-TW.html">回 2509.07569_uGMM_NN.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<p>三個實驗：(1) <strong>Iris 生成式學習</strong>——訓練 uGMM-NN 建模特徵與標籤的聯合分佈、做簡單後驗推論；(2) <strong>MNIST 判別比較</strong>——同深度同隱藏大小的 MLP vs uGMM-NN；(3) <strong>卷積架構</strong>——把 CNN 的全連接層換成 uGMM 神經元（CNN-uGMM）對比 CNN-MLP。MNIST 一律施 dropout 防過擬合，超參依驗證表現選取以求公平。</p>
+<h3 id="41-資料集">4.1 資料集</h3>
+<ul>
+<li><strong>MNIST</strong>：7 萬張 28×28 灰階手寫數字（6 萬訓練/1 萬測試），10 類。</li>
+<li><strong>Iris</strong>：150 樣本、4 數值特徵、3 類。</li>
+</ul>
+<h3 id="42-訓練設置">4.2 訓練設置</h3>
+<ul>
+<li><strong>生成式（Iris）</strong>：建模聯合分佈 p(x, y)，2 層 10/5 個 uGMM 神經元，輸出單一對數密度（輸入的對數似然）。最大化平均對數似然，Adam，無 dropout，300 epochs。</li>
+<li><strong>判別式（MNIST）</strong>：Adam + 交叉熵，100 epochs，MultiStepLR 排程。全連接設置比較等深度等隱藏大小的 MLP 與 uGMM-NN；混合參數隨機初始化，一致施 dropout。卷積設置比較 CNN-MLP 與 CNN-uGMM。表 1 列各模型最佳化超參；uGMM-NN 用較大初始學習率與調整後的里程碑（反映混合參數需更快適應），各模型一致 dropout 率以求可比正則化。</li>
+</ul>
+<h3 id="43-性能表-2">4.3 性能（表 2）</h3>
+<ul>
+<li><strong>Iris 生成式</strong>：經後驗推論 argmax p(y|x) 得到分類，達<strong>完美準確率</strong>，示範由生成式訓練的機率模型也能做判別推論。</li>
+<li><strong>MNIST 全連接</strong>：MLP 測試準確率 <strong>98.15%</strong>；uGMM-NN <strong>97.8%</strong>（略低，因對數密度激活動態範圍更廣、變異更高，傳遞比 MLP 確定性純量更豐富的統計資訊）。施 <strong>Layer Normalization</strong> 穩定激活尺度後，雖初期學習變慢，最終達<strong>更高更穩的 98.34%</strong>——顯示妥善管理機率激活的統計特性時，uGMM-NN 可匹配甚至略勝 MLP，並額外提供不確定性量化與更佳可解釋性。</li>
+<li><strong>MNIST 卷積</strong>：CNN-MLP <strong>99.35%</strong>；把最後全連接層換成 uGMM 神經元的 CNN-uGMM <strong>98.77%</strong>，加同樣正則化後 <strong>99.12%</strong>——顯示 uGMM 層可整合進卷積架構並保持競爭力，且為標準密集層提供透明、機率、結構可解釋的替代。圖 3(b)：CNN-uGMM 早期損失更陡、振盪更大（前 20 epochs，源於分佈式激活的隨機性），最終準確率相近。</li>
+</ul>
+<h2 id="5-討論與限制">5. 討論與限制</h2>
+<p>uGMM-NN 把機率建模整合進深度學習，經混合成分提供可解釋的不確定性量化。代價是每神經元多了 μ/σ²/π → <strong>模型變大</strong>。把均值綁定到對應輸入激活（μ = 輸入）可降參（只學 π、σ²），但降表達力（無法獨立於輸入平移子模態）。一個遺留限制：用於<strong>生成式推論</strong>時，計算完整網路的最大機率解釋（MPE）非平凡，目前<strong>無高效演算法</strong>；發展 SPN/PC 那種 Viterbi 式（前向-後向）程序仍是開放挑戰。但相較傳統圖模型，uGMM-NN <strong>免去組合爆炸的貝氏結構學習</strong>——架構只需選層數/神經元數、端到端反傳，免專家引導的結構發現。故主要貢獻在於：以機率單元取代確定性神經元，做可解釋的判別推論。</p>
+<h2 id="6-結論與未來工作">6. 結論與未來工作</h2>
+<p>uGMM-NN 把機率推理直接整合進神經網路的計算單元，提供更豐富的激活參數化，捕捉多模態並量化不確定性。初步實驗顯示判別訓練下與標準前饋網路競爭，且機率結構暴露內省訊號（不確定性、混合擴散），可能支撐更高層的反思與自適應學習。未來方向：(1) 擴展到 RNN、Transformer；(2) 發展高效 MPE 推論（含 Viterbi 式程序）以利生成式應用；(3) 擴大到更大、多模態資料集；(4) 研究<strong>稀疏 uGMM 層</strong>（每神經元只維持受控的連接子集，而非完整成分展開），結合 Transformer 可實現注意力引導的機率表徵。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2509.07569_uGMM_NN.%E6%91%98%E8%A6%81.html"><code>../summarize/2509.07569_uGMM_NN.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

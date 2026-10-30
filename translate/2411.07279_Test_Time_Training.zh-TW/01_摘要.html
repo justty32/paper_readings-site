@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2411.07279_Test_Time_Training.zh-TW.html">回 2411.07279_Test_Time_Training.zh-TW 目錄</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>語言模型（LM）對訓練分布內任務表現亮眼，但即使給少量 in-context 範例，面對<strong>結構新穎</strong>的任務仍常失敗。本文研究 <strong>測試時訓練（TTT）</strong>——推論時用 in-context 範例導出的損失<strong>暫時更新模型參數</strong>——作為提升 LM 推理與少樣本學習能力的機制。在 <strong>ARC</strong> 上，以 in-context 範例做 TTT 較微調基線<strong>高出最多 27.5 個百分點</strong>，用 8B LM 達公開驗證集 <strong>53.0%</strong>，與程式合成法集成後達 <strong>61.9%</strong>，<strong>追平人類平均</strong>。在 <strong>BIG-Bench Hard（BBH）</strong> 上，TTT 在 10-shot 設定比標準少樣本提示高 <strong>7.3 個百分點（50.5%→57.8%）</strong>。本文揭示 ICL 對新穎任務的侷限，並展示 TTT 提升模型適應力的潛力。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LM 對「與預訓練相關」的任務少樣本學習很成功，但能否<strong>真正獲得未訓練過、需非平庸推理/規劃/抽象的新技能</strong>仍是開放問題（此即 Chollet 提出的智慧度量核心）。近期透過增加<strong>測試時計算</strong>可大幅改善：思維鏈、多數投票（self-consistency）、程式碼執行、搜尋等。</p>
+<p>「用實例專屬資料於測試時更新參數」源自 local learning（Bottou &amp; Vapnik 1992）與 transductive learning（Joachims 1999），現代深度版稱 <strong>TTT</strong>：推論時僅用當前測試實例（或一小批）做顯式梯度更新。其與 ICL 的交互作用此前較少被理解。本文研究在 <strong>ICL 之上疊加 TTT</strong>。</p>
+<p><strong>貢獻</strong>：(1) 系統分析有效 TTT 的關鍵組件（推論時選資料、訓練目標、TTT 與預訓練參數及 ICL 的交互）；(2) 在 <strong>ARC</strong> 與 <strong>BBH</strong> 兩硬 benchmark 上應用。ARC：TTT 後 8B 達 53.0%、集成程式合成達 61.9%（≈人類）；BBH：比少樣本提示 +7.3 點，在 Dyck 語言、Ruin names 等結構規則/分布偏移任務上高出 <strong>20–50 點</strong>。</p>
+<h2 id="2-預備知識">2. 預備知識</h2>
+<ul>
+<li><strong>2.1 In-context Learning（ICL）</strong>：足夠規模的 LM 可只靠條件化於範例/指令而不更新參數來適應新任務；但 ICL 對 ARC 等新穎任務開箱即用效果差。</li>
+<li><strong>2.2 Test-Time Training（TTT）</strong>：從初始參數 θ 出發，對每個測試輸入（或批）產生暫時訓練集 D_TTT，最小化損失得暫時參數 θ&#x27; 用於預測。先前工作（Sun 等 2020）多用「僅對輸入施無監督目標（如遮罩自編碼）」；本文擴展到<strong>少樣本設定</strong>、視為<strong>傳導學習</strong>，利用少樣本示範對改進預測。聚焦<strong>直接傳導</strong>（示範為輸入輸出對、無中間推理步或函式描述）。關鍵洞見：少樣本範例可用來建構<strong>更穩健、可擴張的合成 ICL 任務集</strong>以利測試時適應。</li>
+</ul>
+<h2 id="3-ttt-設計圖-2-三軸">3. TTT 設計（圖 2 三軸）</h2>
+<h3 id="31-資料生成">3.1 資料生成</h3>
+<ul>
+<li><strong>留一法（Leave-One-Out）任務</strong>：對每對 (x_j,y_j)，把它排除當「合成測試例」、其餘當「in-context 示範」，組成新合成任務；再<strong>排列示範次序</strong>增加任務數。</li>
+<li><strong>Direct I/O 任務</strong>：把每對獨立當單一訓練實例、無 in-context 示範；較省算力，但結果顯示<strong>遜於用 in-context 示範</strong>。</li>
+<li><strong>資料增廣</strong>：對結構化輸入（如 ARC）施<strong>可逆變換</strong>（翻轉、旋轉、換色）。因變換保留核心關係（圖樣相同只是旋轉），有效擴張訓練訊號。</li>
+</ul>
+<h3 id="32-損失函式">3.2 損失函式</h3>
+<p>標準 LM 損失，三種取法：(a) <strong>僅測試輸出</strong>；(b) <strong>All Outputs</strong>——同時對示範輸出與測試輸出取損失（鼓勵模型在看過前面示範後正確預測示範輸出）；(c) <strong>輸入與輸出全 token</strong>（類似既有無監督 TTT 目標）。結果（§4.3、§5.3）：<strong>對示範與測試輸出皆取損失（All Outputs）最佳</strong>。</p>
+<h3 id="33-參數化">3.3 參數化</h3>
+<p>測試時對<strong>每題訓獨立的 LoRA 適配器</strong>（task-specific，N 題即 N 組），高效且保留模型通用能力。另試<strong>共用單一 LoRA</strong>（meta-ICL 的測試時版）：在 <strong>ARC 上共用會降效、BBH 上共用反而提升</strong>（詳 §5.3）。</p>
+<h2 id="4-arcabstraction-and-reasoning-corpus">4. ARC（Abstraction and Reasoning Corpus）</h2>
+<ul>
+<li><strong>背景</strong>：每題為 2D 網格（最大 30×30、最多 10 色）輸入輸出對，套用直覺且共享的變換規則；每題 2–7 示範例、1–3 測試例。</li>
+<li><strong>實驗設定</strong>：消融用 Llama-3.2-1B、最終結果用 Llama-3-8B；LoRA 做參數高效 TTT。<strong>TTT 前先在合成任務上初始微調</strong>（與 TTT 互補，微調任務與測試題不同）。評測用 <strong>pass@2</strong>、需所有測試輸出完全相符（無部分分）。為效率多在隨機抽的<strong>平衡 80 題子集</strong>（含 easy/medium/hard/expert）上做。</li>
+<li><strong>推論（增廣推論 + 階層投票）</strong>：ARC 直接預測網格，無法用一般 self-consistency。改用多個幾何變換版本貪婪解碼，兩段投票：(1) <strong>變換內投票</strong>——各變換組內取 top-3 高頻預測；(2) <strong>全域投票</strong>——跨變換取 top-2。逼近 oracle。</li>
+<li><strong>§4.3 設計影響</strong>：TTT 把微調模型準確率提升約 6 倍量級。<strong>ICL 格式至關重要</strong>：改用 Direct I/O 顯著掉分；移除變換亦掉分；<strong>每題獨立 LoRA 優於共用</strong>；<strong>對示範輸出取損失</strong>有穩定小幅增益。</li>
+<li><strong>§4.4 模型大小</strong>：FT 效能隨尺寸升（8B 最高）；但 <strong>TTT 後縮放不明顯</strong>（1B 與 3B 經 TTT 後準確率幾乎相同——TTT 有效填平小模型差距）。</li>
+<li><strong>§4.5 增廣推論</strong>：單一變換各自效果普通（Transpose 最差），但<strong>聚合後大幅提升</strong>；<strong>階層投票勝過扁平投票</strong>並逼近 oracle。</li>
+<li><strong>§4.6 與其他系統比較（表 1，pass@2）</strong>：
+<ul>
+<li>微調 8B：無 TTT <strong>18.3%</strong> → 加 TTT+增廣推論 <strong>47.1%</strong>。</li>
+<li>套到 <strong>BARC</strong>（Li 等 2025）神經模型 → <strong>53.0%</strong>（較其原 TTT 相對提升 35%）。</li>
+<li>與程式合成（PS）集成 → <strong>61.9%</strong>，追平人類平均 <strong>60.2%</strong>（最佳人類 97.8%）。</li>
+<li>對照：GPT-4o 9.0%、Claude 3.5 Sonnet 21.0%、o1-preview 21.0%。</li>
+<li><strong>程式生成 vs 端到端</strong>：BARC 發現兩者高度互補（純神經只解 PS 所解題的一部分）；但<strong>加上本文 TTT 後</strong>，BARC 純神經模型能解出更多 PS 所解之題，顯示 TTT 顯著提升神經模型「學系統性推理模式」的能力。</li>
+<li><strong>半私有評測</strong>：官方 ARC-AGI 半私有集集成解達 <strong>47.5%</strong>（較公開集下降，歸因更大分布偏移）。</li>
+</ul>
+</li>
+</ul>
+<h2 id="5-big-bench-hardbbh">5. BIG-Bench Hard（BBH）</h2>
+<ul>
+<li><strong>背景</strong>：27 個挑戰任務、23 類，評推理/組合/泛化。與 ARC 不同，BBH 為廣域自然語言、無共享輸入格式（<strong>不適用可逆變換</strong>）；但仍能驗證 TTT 在更一般設定的效果。</li>
+<li><strong>設定</strong>：Llama-3.1-8B，每題訓獨立 LoRA（對多個打亂的示範排列做留一法 ICL 任務）。BBH 零樣本已有非平庸表現，故<strong>不另做合成任務初始微調</strong>。10-shot 設定，五個隨機種子取平均。無可逆變換故推論用<strong>貪婪解碼</strong>。</li>
+<li><strong>§5.3 設計影響（圖 8）</strong>：<strong>TTT 比標準 ICL 高 7.3 絕對百分點（50.5%→57.8%）</strong>；零樣本 40.9%。用留一法 in-context 任務勝過 Direct I/O；不取示範損失或對輸入取損失皆降效。與 ARC 相反，<strong>BBH 用共用適配器反而提升</strong>。</li>
+<li><strong>§5.4 任務分析</strong>：在涉及結構規則/分布偏移的任務（如 Dyck 語言、Ruin names）TTT 較 ICL 高 20–50 點。</li>
+</ul>
+<h2 id="6-相關工作">6. 相關工作</h2>
+<p>測試時訓練（視覺 Sun 等 2020、序列架構 Sun 等 2024 等）；ARC 挑戰（程式合成與神經方法路線）。</p>
+<h2 id="7-結論">7. 結論</h2>
+<p>TTT 大幅提升 LM 對分布外任務的少樣本學習能力：ARC 上 8B 達 53.0%、集成程式合成達 61.9%（≈人類平均）；BBH 上比 ICL +7.3 點。關鍵組件：留一法 ICL 任務 + 範例/變換增廣、對示範輸出取損失、每題獨立 LoRA、階層投票增廣推論。並提醒須留意<strong>優化偏差</strong>與<strong>資料洩漏</strong>風險。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2411.07279_Test_Time_Training.%E6%91%98%E8%A6%81.html"><code>../summarize/2411.07279_Test_Time_Training.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

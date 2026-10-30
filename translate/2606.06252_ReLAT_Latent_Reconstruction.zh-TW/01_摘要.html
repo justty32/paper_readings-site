@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.06252_ReLAT_Latent_Reconstruction.zh-TW.html">回 2606.06252_ReLAT_Latent_Reconstruction.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>近期工作把中間推理從自然語言軌跡搬進<strong>潛在或快取級表示</strong>，以降 token 開銷、避開離散通訊瓶頸。但此轉移也移除了文字推理的一大優勢：中間狀態<strong>不再可檢視</strong>，難以判斷潛在狀態是否仍保有原查詢的約束。結果潛在推理通常<strong>開環</strong>運作——潛在狀態被產生與消費，卻無輸入錨定的忠實度檢查。我們提出 <strong>ReLAT（Reconstruction-Guided Latent Reasoning At Test Time）</strong>，一個用<strong>查詢本身當參照</strong>閉合此迴圈的自監督測試時訓練法。核心觀察：若潛在狀態忠實代表查詢，則查詢應可從中還原；若不能還原，潛在狀態已丟失任務相關資訊。ReLAT 把此原則操作化為可微的 <strong>問題→潛在思考→問題</strong> 循環，在生答案前優化「查詢重建損失」（透過潛在思考），把不透明的潛在計算錨定到它應代表的問題規格。跨數學推理、知識 QA、程式生成基準（Qwen 家族），ReLAT 一致勝過單模型推理、文字協作、開環潛在協作、與其他測試時訓練目標。在 <strong>Qwen3-8B</strong> 上把 AIME 2024 從 <strong>56.7% 提到 73.3%</strong>，較最強開環潛在基線 <strong>+16.6 分</strong>。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>傳統推理把中間計算外化為自然語言（CoT、自我精修軌跡、文字 agent 通訊），可讀可檢視，但有可觀 token 開銷、且對中間計算強加離散瓶頸。一條成長中的研究線因此把中間推理搬進<strong>潛在/快取級表示</strong>（latent collaboration、cache-to-cache 通訊、thought communication、潛在空間推理），以保留更豐富內部表示、實現更高效連續計算。</p>
+<p>但潛在推理<strong>開環</strong>運作：中間態被產生與消費，卻無檢查它是否仍代表其衍生的查詢。要閉合此迴圈，需要一個方法測試「不透明的潛在狀態是否仍保有指定原查詢所需的資訊」。</p>
+<p><strong>核心觀察</strong>：查詢本身就是此測試的天然參照。潛在狀態裡有風險的資訊，正是這道查詢表達的約束集。若潛在狀態忠實代表查詢 → 查詢應可從中還原；若不能還原 → 已丟失任務相關資訊（無論它多自信/內部一致）。既有方法不提供此<strong>輸入錨定</strong>的忠實度檢查。我們把此想法實例化為 <strong>ReLAT</strong>：一個在測試時、生答案前優化的可微 <strong>問題→潛在思考→問題</strong> 循環。</p>
+<p><strong>貢獻</strong>：</p>
+<ul>
+<li><strong>把潛在推理視為閉環問題</strong>：把「中間忠實度的喪失」辨識為「把推理從自然語言搬進潛在空間」的核心代價，形式化為輸入忠實度問題。</li>
+<li><strong>重建作為天然忠實度訊號</strong>：主張原查詢是測潛在狀態忠實度的天然參照；實例化為可微的 Q→潛在思考→Q 循環、測試時於生答案前優化。</li>
+<li><strong>系統性評測</strong>：在數學推理、知識密集 QA、程式生成上對比單模型、文字級通訊、靜態潛在態通訊、與其他 TTT 目標。</li>
+</ul>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>自然語言推理與通訊</strong>：CoT、自我反思、critic 精修、辯論、口語回饋使中間推理可見易檢視（ReAct、Reflexion、Self-Refine）。但顯式文字通訊 token 密集且離散，每個中間態須先解碼成語言才傳遞，形成<strong>有損的通訊瓶頸</strong>。</li>
+<li><strong>潛在推理與通訊</strong>：為繞過文字瓶頸，近期探索潛在/快取級表示。ThoughtComm 用學到的潛在前綴橋接 agent 狀態；Cache-to-Cache 在異質模型間同步 KV 表示；LatentMAS 顯示傳播 KV-cache 思考可串接多階段推理。但多數潛在法聚焦<strong>如何傳輸</strong>內部態而非<strong>如何驗證</strong>——狀態一旦生成即被當可靠中間態往前傳；因不透明，<strong>語意漂移可能未被偵測並沿推理鏈傳播</strong>。</li>
+<li><strong>測試時訓練</strong>：潛在推理的不透明引出驗證問題，也引出適應問題——若潛在態漂離原查詢約束，模型需在推理時無真值答案地校正。既有 TTT 多優化熵最小化、perplexity 最小化、一致性正則、回饋精修、或查詢特定參數更新（Anti-CF、SYTTA、COME、QTTT 等），但這些目標<strong>主要瞄準信心/一致/脈絡適應，不提供「潛在思考是否保有原查詢約束」的結構檢查</strong>。</li>
+<li><strong>缺口與動機</strong>：自然語言可見但 token 密集；潛在高效但不透明且常開環；TTT 能實例級適應但既有目標不直接驗證潛在推理態的忠實度。ReLAT 引入可微 Q→潛在思考→Q 循環當自監督忠實度訊號——有用的潛在思考應保有足夠資訊以還原原問題的核心約束。此重建準則<strong>非正確性的充分條件，但是過濾/校正無效潛在態的必要結構錨</strong>；測試時優化此訊號即把開環潛在推理轉成閉環忠實度檢查。</li>
+</ul>
+<h2 id="3-預備">3. 預備</h2>
+<h3 id="31-開環潛在條件化">3.1 開環潛在條件化</h3>
+<p>潛在推理法用連續中間態取代顯式自然語言軌跡。給定查詢 <span class="math inline">\(Q\)</span>，上游計算產生潛在思考序列 <span class="math inline">\(\mathcal{E}\)</span>。<strong>開環潛在條件化</strong>：<span class="math inline">\(\mathcal{E}\)</span> 一旦產生，下游即消費它當中間推理態，<strong>不檢查其內容是否仍匹配產生它的查詢</strong>。不同於單次前向內的普通隱藏表示，潛在推理中 <span class="math inline">\(\mathcal{E}\)</span> 被顯式重用為後續計算的條件訊號，故任何缺失/失真約束都能影響後續推理軌跡。</p>
+<h3 id="32-測試時訓練ttt">3.2 測試時訓練（TTT）</h3>
+<p>逐查詢精修的直接做法：對每個測試實例經臨時參數更新適應、無真值標籤。給定測試查詢 <span class="math inline">\(Q\)</span>，TTT 在產出最終答案前最小化無監督輔助損失 <span class="math inline">\(\mathcal{L}_{aux}\)</span>。</p>
+<h2 id="4-重建引導的測試時潛在推理">4. 重建引導的測試時潛在推理</h2>
+<h3 id="4142-忠實度與可微鬆弛">4.1–4.2 忠實度與可微鬆弛</h3>
+<p>給定測試查詢 <span class="math inline">\(Q\)</span>，令 <span class="math inline">\(\mathcal{E}_\phi(Q)\)</span> 為臨時 LoRA 參數 <span class="math inline">\(\phi\)</span> 下產生的潛在思考序列；若它保有 <span class="math inline">\(Q\)</span> 表達的查詢特定約束則稱「忠實」。忠實度測試時不可直接觀測（<span class="math inline">\(Q\)</span> 的約束未被分別標註），故 ReLAT 用 <span class="math inline">\(Q\)</span> 自身當可觀測代理：<strong>能否從 <span class="math inline">\(\mathcal{E}_\phi(Q)\)</span> 重建 <span class="math inline">\(Q\)</span></strong> 即自監督訊號。為可微優化，用<strong>連續鬆弛</strong>取代離散 token 選擇：把潛在思考序列表為 <span class="math inline">\(\mathcal{E}=(\hat{e}_1,\dots,\hat{e}_K)\)</span>，每個 <span class="math inline">\(\hat{e}_j\in\mathbb{R}^d\)</span> 是「模型詞彙分布下的期望 token 嵌入」（用嵌入矩陣 <span class="math inline">\(W_{\mathrm{emb}}\)</span> 加權）。此鬆弛把每個潛在向量綁在模型嵌入空間，同時保持從 ReLAT 重建損失到潛在思考生成的可微路徑。</p>
+<h3 id="43-relat-演算法">4.3 ReLAT 演算法</h3>
+<p>單一 backbone（凍結 <span class="math inline">\(\theta\)</span>）+ 臨時 LoRA（<span class="math inline">\(\phi\)</span>）構造可微 Q→潛在思考→Q 循環，當生答案前的輔助適應訊號：</p>
+<ol>
+<li><strong>生潛在思考</strong> <span class="math inline">\(\mathcal{E}_\phi(Q)\)</span>（soft embedding 鬆弛，不解碼成離散文字、不脫離計算圖）。</li>
+<li><strong>重建問題</strong>：要同一模型從潛在思考序列重建原問題（凍結 <span class="math inline">\(\theta\)</span> + 臨時 <span class="math inline">\(\phi\)</span>）。重建損失帶 loss mask <span class="math inline">\(\mathcal{M}(Q)\)</span>——只選原問題 token、排除模板/padding/格式 artifact，鼓勵潛在思考保有重建輸入所需的問題特定約束。</li>
+<li><strong>只更 LoRA</strong>：backbone 凍結，僅更新 LoRA <span class="math inline">\(\phi\)</span>。重建問題<strong>只用來定義訓練損失、不用來生最終答案</strong>。推理後 LoRA 重置再處理下個實例，確保實例級訓練不跨樣本攜帶資訊。</li>
+</ol>
+<p>重建是<strong>適應訊號而非解題替代</strong>，把開環潛在推理轉成「生答案前先把潛在態錨定到當前輸入規格」的閉環過程。</p>
+<pre><code class="language-mermaid">flowchart LR
+  Q[&quot;測試查詢 Q&quot;] --&gt; LT[&quot;潛在思考 E_φ(Q)&lt;br/&gt;（soft embedding, K=16, 可微）&quot;]
+  LT --&gt; Rec[&quot;重建 Q̂&lt;br/&gt;（同模型, 凍結 θ + LoRA φ）&quot;]
+  Rec --&gt;|重建損失 + loss mask| Upd[&quot;只更 LoRA φ&lt;br/&gt;(AdamW, N=16 步)&quot;]
+  Upd -.錨定.-&gt; LT
+  LT --&gt; Ans[&quot;最終答案（貪婪解碼）&quot;]
+  Ans --&gt; Reset[&quot;LoRA 重置 → 下個實例&quot;]
+</code></pre>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>從資料序列上的神經網路抽取穩健的暫存器自動機（Extracting Robust Register Automata from Neural Networks over Data Sequences） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Chih-Duo Hong（國立政治大學）、Hongjian Jiang、Anthony W. Lin、Oliver Markgraf、Julian Parsert（凱澤斯勞滕-蘭道大學／MPI-SWS）、Tony Tan（利物浦大學）</p><p>日期：2025-11</p><p>arXiv：2511.19100</p><p><a href="https://arxiv.org/abs/2511.19100" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="從資料序列上的神經網路抽取穩健的暫存器自動機">從資料序列上的神經網路抽取穩健的暫存器自動機</h1>
+<p>Chih-Duo Hong、Hongjian Jiang、Anthony W. Lin、Oliver Markgraf、Julian Parsert、Tony Tan</p>
+<h2 id="摘要">摘要</h2>
+<p>自動機抽取是一種為黑箱神經模型合成<strong>可解釋代理（surrogate）</strong>、使其能被<strong>符號化分析</strong>的方法。現有技術假設<strong>有限輸入字母表</strong>，因此無法直接用於來自連續域的資料序列。我們以<strong>確定性暫存器自動機（DRA）<strong>應對此挑戰——DRA 在有限自動機之上加入可儲存與比較數值的暫存器。主要貢獻是一個</strong>從黑箱模型穩健抽取 DRA 的框架</strong>：我們發展出對固定暫存器數量 DRA 的<strong>多項式時間穩健性檢查器</strong>，並與被動／主動自動機學習演算法結合，產出帶<strong>統計穩健性與等價性保證</strong>的代理 DRA。關鍵應用是用抽取出的自動機<strong>評估神經網路的穩健性</strong>：給定一個序列與距離度量，DRA 要嘛<strong>認證局部穩健</strong>，要嘛<strong>給出具體反例</strong>。在 RNN 與 Transformer 上的實驗顯示，框架能可靠學到精確的自動機並支援有原則的穩健性評估。整體而言，穩健 DRA 抽取在<strong>不需白箱存取</strong>下有效橋接了神經網路可解釋性與形式化推理。</p>
+<p><strong>關鍵詞</strong>：RNN、Transformer、穩健性、暫存器自動機、邏輯、自動機學習、統計模型檢驗、可解釋 AI。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>序列建模網路（尤其 RNN 與 Transformer）已主導 NLP、視覺、語音、時序分析等領域；它們預測準確，但<strong>可解釋性有限</strong>。一個核心的可解釋性問題是：模型在輸入 I 上的預測是否<strong>穩健</strong>——即在 I 的微小擾動下標籤不變（附近不存在使標籤翻轉的對抗樣本 I′）。此穩健性概念與<strong>反事實</strong>、<strong>最小變更解釋</strong>密切相關，但對 RNN／Transformer 這類<strong>圖靈完備</strong>的序列模型而言一般<strong>不可判定</strong>。</p>
+<p>過去十年有大量工作試圖從訓練好的網路<strong>抽取有限狀態自動機</strong>以求可解釋。但這些方法都假設<strong>有限字母表</strong>，因此無法處理「資料序列」（每個位置可能帶連續數值）。本文以<strong>暫存器自動機</strong>填補此缺口。</p>
+<h2 id="2-動機範例">2. 動機範例</h2>
+<p>以一個帶數值的序列分類任務說明：標準有限自動機因字母表無限而無法表達；而 DRA 可用暫存器記住先前看到的數值並做比較（如「當前值是否大於先前最大值」），自然刻畫此類正規資料語言。本節同時點出兩個要件：<strong>穩健性</strong>（擾動下不變）與<strong>學習</strong>（如何只憑黑箱取樣得到正確的 DRA）。</p>
+<h2 id="3-預備知識">3. 預備知識</h2>
+<ul>
+<li><strong>暫存器自動機（RA）</strong>：有限控制 + 有限多個暫存器；轉移可讀入資料值、與暫存器比較、並更新暫存器。</li>
+<li><strong>帶累加器的 RA（RAA）</strong>：暫存器可做累加等運算，便於編碼如 Hamming／Manhattan／編輯距離／DTW 等距離度量（附錄給各度量的 RAA 構造）。</li>
+<li><strong>DRA 語言的穩健性</strong>：以距離度量定義「序列鄰域」，穩健即鄰域內標籤一致。</li>
+</ul>
+<h2 id="4-驗證-dra-的穩健性">4. 驗證 DRA 的穩健性</h2>
+<p>核心理論結果：對<strong>固定暫存器數量</strong>的 DRA，存在<strong>多項式時間</strong>演算法判定給定序列的局部穩健性，否則回傳一個反例（鄰域內被判不同類的具體序列）。論文給出對應引理與證明（細節從略），並指出一般 RA 語言下覆蓋見證可能有<strong>指數下界</strong>（附錄 C）。</p>
+<h2 id="5-學習暫存器自動機">5. 學習暫存器自動機</h2>
+<p>從黑箱模型抽取 DRA 的三條路線：</p>
+<pre><code class="language-mermaid">flowchart LR
+    NN[&quot;黑箱神經網路&lt;br/&gt;(LSTM / Transformer)&quot;] --&gt;|取樣正負序列| S[&quot;平衡樣本集 S&lt;br/&gt;(每類 369 條, ε=γ=0.05)&quot;]
+    S --&gt; A[&quot;L_SMT: SMT 精確合成&quot;]
+    S --&gt; B[&quot;L_LS: 局部搜尋 (突變候選自動機)&quot;]
+    S --&gt; C[&quot;L_ACT: 主動學習 (成員/等價查詢)&quot;]
+    A --&gt; D[&quot;候選 DRA 𝒜&quot;]
+    B --&gt; D
+    C --&gt; D
+    D --&gt;|等價檢查| E[&quot;與模型行為一致?&quot;]
+    E --&gt;|是| F[&quot;穩健性檢查器&lt;br/&gt;(多項式時間)&quot;]
+    F --&gt; G[&quot;認證局部穩健 / 給出反例&quot;]
+</code></pre>
+<ul>
+<li><strong><code>L_SMT</code>（SMT 合成）</strong>：把 DRA 結構編碼為 SMT 約束，求精確解。</li>
+<li><strong><code>L_LS</code>（局部搜尋）</strong>：迭代突變候選自動機，以「在樣本上正確分類比例」為評分函數，逐步逼近高準確度 DRA；通常比 SMT 快很多。</li>
+<li><strong><code>L_ACT</code>（主動學習）</strong>：以成員查詢與等價查詢建構假設；內建<strong>分佈外（OOD）成員查詢</strong>會在某些需暫存器的語言上使假設樹無限膨脹而發散。</li>
+<li><strong>抽取與保證</strong>：以統計模型檢驗給出 PAC 式統計正確性（目標一致度 p、錯誤機率 ε、準確度容忍 γ）；每個學習器目標是在 30 分鐘內合成準確度 ≥ 95% 的 DRA。</li>
+</ul>
+<h2 id="6-實驗評估">6. 實驗評估</h2>
+<ul>
+<li><strong>基準</strong>：18 個資料語言；架構為 LSTM（N_LSTM）與 Transformer（N_T）；序列最長 50；訓練到驗證集連續三 epoch 100% 為止。</li>
+<li><strong>RQ1（神經網路與 DRA 學習器能多有效辨識正規資料語言）</strong>：
+<ul>
+<li>LSTM 幾乎所有語言近完美；<strong>Transformer 學不起 L5、L6</strong>（精確計數類，印證已知侷限）。</li>
+<li><code>L_SMT</code>／<code>L_LS</code>／<code>L_ACT</code> 對可學語言多達 <strong>100% 準確度</strong>;<code>L_LS</code> 在準確度相當下<strong>大幅縮短合成時間</strong>;<code>L_ACT</code> 對 S9–S11 逾時（TO=1800 s）。</li>
+<li><strong>答 RQ1</strong>：神經網路 + DRA 學習能有效辨識正規資料語言，但受架構表達力（Transformer 計數）與學習器（主動學習對某些語言發散）兩面限制。</li>
+</ul>
+</li>
+<li><strong>RQ2（學到的 DRA 評估黑箱網路穩健性的效果）</strong>：對可成功抽取 DRA 的網路，能逐序列<strong>認證局部穩健或給具體反例</strong>；對 Transformer 無法學的 L5/L6、以及 <code>L_ACT</code> 在 S9–S11、S8（oligomorphic 性質無法捕捉）等案例，穩健性驗證無法進行。
+<ul>
+<li><strong>答 RQ2</strong>：在 DRA 能忠實代理模型之處，穩健性評估<strong>有原則且可操作</strong>；邊界即代理失真之處。</li>
+</ul>
+</li>
+</ul>
+<h2 id="7-相關工作">7. 相關工作</h2>
+<p>延續 RNN→有限自動機抽取的長線（WGY18、OWSH20、merrill2022extracting 等），本文擴展到<strong>連續字母表 + 暫存器</strong>，並引入<strong>形式化穩健性驗證</strong>與<strong>統計保證</strong>；與反事實／最小變更解釋、神經網路驗證等相連。</p>
+<h2 id="8-結論">8. 結論</h2>
+<p><strong>穩健 DRA 抽取</strong>把「神經網路可解釋性」與「形式化推理」接起來：只用黑箱存取，學出帶統計與等價保證的暫存器自動機代理，並對序列穩健性給可判定答案。侷限在 DRA 表達力與某些網路／語言上的學習發散，指向更強的暫存器模型與圖構造策略。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2511.19100_Register_Automata_Extraction.%E6%91%98%E8%A6%81.html"><code>../summarize/2511.19100_Register_Automata_Extraction.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

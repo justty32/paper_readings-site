@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>將軌跡提升為邏輯——§6–§8 及附錄 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.01293_LiftingTraces.zh-TW.html">回 2605.01293_LiftingTraces.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="42-透過節點發明誘導執行邏輯">4.2 透過節點發明誘導執行邏輯</h2>
+<p>符號工作流 Gω = (V, E) 結構為共享內部作用域 C 的有向圖。C 作為調用參數與中間變數的集中記憶體，節點透過定義介面消費並更新。不同於組裝預定義節點的傳統工作流生成，本文透過發明每個節點的內部執行邏輯來構建技能。節點分為四類邏輯接地運算子：</p>
+<p><strong>資料運算（DataOp）——發明動態變數綁定</strong>：DataOp 代表動作前的推理步驟，合成顯式變數轉換程式 fv : C × Z → C，從符號世界狀態 Z 查詢並將解析結果寫回 C。這強制執行「先想再做」邏輯，確保必要引數在執行前被嚴謹解析。框架利用任務相關謂詞詞彙（如 locates, contains）與邏輯文法（如 and, or, select one），自適應組合原語來發明特定綁定表達式（如 <code>target = select one(x, is_type(x, 'apple') ∧ contains(loc, x)) where loc = select one(y, locates('agent', y))</code>），使智能體能表達複雜狀態依賴並自主發現穩健執行所需精確變數。</p>
+<p><strong>控制運算（CheckOp, LoopOp）——發明決策邊界</strong>：這些節點支配執行流程，決定何時分支或迭代。合成顯式條件表達式 pv : C × Z → {True, False} 來捕捉執行分支。利用相同謂詞詞彙與邏輯文法，組合判別式邏輯表達式（如 <code>is_closed(y) ∧ locates('agent', y)</code> 作為關鍵條件），顯式將環境資訊整合到控制流中，使技能適應動態狀態變化。</p>
+<p><strong>原始運算（PrimitiveOp）——接地動作執行</strong>：PrimitiveOp 作為環境介面，執行由共享作用域 C 參數化的原子動作 A(var)。引數 var 是由前置 DataOp 顯式綁定的動態參考（如 <code>pick(target)</code> 中 target 由 C 動態解析），確保物理動作嚴格接地下前置推理步驟。</p>
+<p><strong>終端運算（TerminalOp）——執行回饋</strong>：Success 節點返回完成訊號；Failure 節點在終止時自動生成基於執行語境的診斷（如「Target not found after navigation: ∄ x, is_type(x, &#x27;apple&#x27;)」），將技能執行邏輯失敗歸因以利有效重新規劃。</p>
+<p>此細粒度模組化節點設計是局部精煉的關鍵——智能體可迭代精煉特定節點（如修正 DataOp 綁定邏輯）而無需重新生成整個技能。</p>
+<h3 id="43-具控制流的互動式執行語意">4.3 具控制流的互動式執行語意</h3>
+<p>執行形式化為對 Gω 的動態遍歷，由顯式狀態 ξt = (vt, Ct, Zt) 維持，嚴格分離控制邏輯與知覺接地：(1) <strong>神經狀態追蹤（Perceive）</strong>——LLM 作為語義狀態追蹤器 ϕω，解析觀察 ot+1 以更新 Zt 中特定謂詞；(2) <strong>符號解析（Think）</strong>——解譯器決定性地評估節點 vt 基於 Ct 與 Zt，執行變數綁定或分支以決定下一步；(3) <strong>接地互動（Act）</strong>——在 PrimitiveOp 處發出物理動作 at，其引數精確來自 Ct。</p>
+<h2 id="5-邏輯接地的技能誘導">5. 邏輯接地的技能誘導</h2>
+<h3 id="51-經驗程式一致性">5.1 經驗程式一致性</h3>
+<p>在部分可觀察環境中，完美重實例化環境以驗證技能假設通常不可行。因此以歷史執行軌跡為基礎進行一致性檢查：驗證誘導技能邏輯在對記錄狀態執行時，是否忠實再現專家動作序列。定義<strong>經驗程式一致性</strong>為技能生成的動作 â 匹配專家 a*（跳過內部推理步驟的 null 動作）。誘導目標為最大化經驗一致性與最小化程式複雜度（MDL 原則）：<code>max Στ R̂(πω, τ) − λ|πω|</code>。</p>
+<h3 id="52-從經驗漸進技能誘導">5.2 從經驗漸進技能誘導</h3>
+<p>鑑於程式空間的組合與不可微性質，提出漸進的專業化到泛化流程（先從原始軌跡以 LLM 萃取子目標 ω(θ) 並分段軌跡為子軌跡 τω）：</p>
+<p><strong>階段一：軌跡內邏輯鞏固（Intra-Trajectory Consolidation）</strong>：合成局部專家 πτ 最大化單條參考軌跡內的一致性。以迭代一致性檢查與精煉循環運作——掃描軌跡尋找當前策略失敗的狀態 serr，類似程式合成中的反例識別；偵測到後觸發結構化鞏固，通常引入條件分支（CheckOp）來處理分歧。關鍵：即使從單條線性軌跡也能發現潛在分支邏輯（如「只在門關著時才開門」），透過識別需要不同動作的狀態條件來改善泛化。</p>
+<p><strong>階段二：軌跡間技能鞏固（Inter-Trajectory Merging）</strong>：以貪婪迭代最大化全局經驗一致性。每輪識別當前全局技能覆蓋最差的軌跡對應的局部專家 πhard，合成候選技能 πcand = Consolidate(πglb, πhard)（透過 LLM 程式合成引入抽象變數與控制流來統一不同邏輯路徑），僅在滿足<strong>可行性支配</strong>——嚴格擴展覆蓋且維持一致性——時更新。</p>
+<p>四種結構化運算子：(1) <strong>條件分支（Branching）</strong>——對齊兩個程式圖的共同結構，對分歧路徑透過謂詞發明合成判別謂詞（如 <code>if is_closed(fridge)</code> 作為守衛條件）；(2) <strong>模組化交叉（Crossover）</strong>——利用圖表徵的模組性，將 πhard 中由變數介面定義的獨立模組子圖嫁接至 πglb，僅透過重綁定輸入參數適應，無需重新合成；(3) <strong>變數提升（Lifting）</strong>——將軌跡中的硬編碼常數轉換為顯式輸入參數，發現實體間共享的排列不變屬性（如「可清洗站點」而非具體的 sink/basin），使智能體在運行時自主選擇任何有效資源；(4) <strong>迴圈折疊（LoopFold）</strong>——將作用於不同目標的重複子結構（如 check(A), check(B), ...）抽象為迭代控制流 LoopOp。</p>
+<h3 id="53-線上技能演化反思式規劃">5.3 線上技能演化——反思式規劃</h3>
+<p>LLM 作為規劃器，動態選擇調用誘導技能或執行原始動作。技能透過函數簽名與總結可行性區域的 docstring 暴露給規劃器。</p>
+<p><strong>具狀態感知回饋的反思式規劃</strong>：邏輯接地技能提供的不僅是二元成功訊號。當技能執行失敗時，終止於特定 Failure 節點並返回診斷性符號回饋（如「冰箱仍關閉無法確認內部物件：is_closed(fridge)」）。此診斷驅動反思式規劃——生成包含替代技能或原始動作（如 open(fridge)）的修正計劃。</p>
+<h2 id="技能打磨skill-honing閉合自我演化的迴路若修正計劃成功系統將恢復軌跡視為新發現的邏輯分支以邏輯鞏固算子將其嫁接到失敗節點使技能圖增長以處理先前未建模的例外新子圖初標為暫定tentative以維持策略穩定性僅在後續持續成功後永久固化若修正失敗表示子目標從當前狀態基本不可達成系統則更新技能-docstring-顯式排除此類不可行語境使技能描述與實際可行區域對齊"><strong>技能打磨（Skill Honing）</strong>：閉合自我演化的迴路。若修正計劃成功，系統將恢復軌跡視為新發現的邏輯分支，以邏輯鞏固算子將其嫁接到失敗節點，使技能圖增長以處理先前未建模的例外。新子圖初標為暫定（tentative）以維持策略穩定性，僅在後續持續成功後永久固化。若修正失敗，表示子目標從當前狀態基本不可達成，系統則更新技能 docstring 顯式排除此類不可行語境，使技能描述與實際可行區域對齊。</h2>
+<h2 id="title-將軌跡提升為邏輯lifting-traces-to-logic-68-實驗結論附錄-source-httpsarxivorgabs260501293-arxiv_id-260501293">title: 將軌跡提升為邏輯（Lifting Traces to Logic）— §6–§8 實驗、結論、附錄
+source: https://arxiv.org/abs/2605.01293
+arxiv_id: 2605.01293</h2>
+<h1 id="將軌跡提升為邏輯68-及附錄">將軌跡提升為邏輯——§6–§8 及附錄</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

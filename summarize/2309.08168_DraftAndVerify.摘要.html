@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Draft &amp; Verify：透過自我推測式解碼實現無損的大型語言模型加速（Draft &amp; Verify: Lossless Large Language Model Acceleration via Self-Speculative Decoding）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jun Zhang, Jue Wang, Huan Li, Lidan Shou, Ke Chen, Gang Chen（浙江大學）, Sharad Mehrotra（UC Irvine）</p><p>日期：2023-09（ACL 2024）</p><p>arXiv：2309.08168</p><p><a href="https://arxiv.org/abs/2309.08168" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="draft--verify透過自我推測式解碼實現無損的大型語言模型加速重點摘要">《Draft &amp; Verify：透過自我推測式解碼實現無損的大型語言模型加速》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Self-Speculative Decoding（自我推測式解碼）</strong>：<strong>用同一個 LLM 身兼「便宜草稿」與「昂貴驗證」兩角</strong>——草稿階段「選擇性跳過部分中間層」快速吐出 K 個草稿 token，驗證階段用「完整的原模型」一次前向平行檢查並接受／覆寫；因為驗證由原模型把關，<strong>輸出與未改動的原模型完全一致（無損）</strong>，且<strong>不需訓練額外 draft 模型、不佔額外顯存</strong>，即插即用；在 LLaMA-2 系列上端到端加速最高 <strong>1.99×</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>自迴歸解碼逐 token 串行、每步都受記憶體頻寬限制（memory bandwidth-bound），是 LLM 推論的主要瓶頸（在 A100 上逐 token 解碼 128 個 token 可比同長度的序列級前向慢達 100×）。既有 <strong>speculative decoding</strong> 雖能加速，卻須<strong>另找／另訓一個高品質 draft 模型</strong>去模仿目標模型的輸出分佈——當目標是已微調模型（如 LLaMA-2-Chat、CodeLLaMA）時尤其棘手；且額外 draft 模型會<strong>增加 GPU 顯存負擔</strong>。模型壓縮（量化／剪枝／蒸餾）雖有效卻要改架構、重訓，且<strong>不保證輸出一致</strong>。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>自我推測（self-speculative）</strong>：草稿與驗證共用同一組參數。草稿＝原 LLM 選擇性跳過某些中間層（依 Liu et al. 觀察，跳層不顯著損害生成品質）；驗證＝原 LLM 全層一次前向並平行校驗；不符者用原模型預測覆寫並從該處重啟草稿 → 數學上保證無損（貪婪時輸出相同，取樣時同分佈）。</li>
+<li><strong>挑戰一：跳哪些／跳幾層</strong> → 建模為最佳化問題：以「<strong>每個已驗證 token 的平均推論時間</strong>」為目標（兼顧草稿的 effectiveness＝acceptance rate 與 efficiency＝層數），用 <strong>Bayesian optimization（貝氏最佳化）</strong>（高斯過程代理 + acquisition function）離線在模型層級搜出固定的跳層向量 z*（1000 迭代，13B 約 2.5 小時、70B 約 6 小時）。</li>
+<li><strong>挑戰二：何時停止產生草稿</strong> → <strong>Adaptive Draft-Exiting（自適應草稿退出）</strong>：草稿 token 信心（預測機率）低於門檻 γ 就停；γ 依「實測接受率 vs 目標接受率 α」用更新規則動態調整，免逐案手調。</li>
+<li>可與量化（LLM.int8()）、稀疏化（wanda）整合以進一步省資源（附錄 H）。</li>
+</ul>
+<h2 id="結果具體數字">結果（具體數字）</h2>
+<ul>
+<li><strong>文本生成（表 1）</strong>：LLaMA-2-70B 於 CNN/DM 貪婪達 <strong>1.992×</strong>、XSum 1.598×；LLaMA-2-13B CNN/DM 1.572×、XSum 1.429×；ROUGE-2 幾乎無損（如 70B CNN/DM 0.130→0.130）。越大模型冗餘越多、可跳更多層 → 加速越高。</li>
+<li><strong>程式生成（表 2）</strong>：CodeLLaMA-13B HumanEval pass@1 1.456×、pass@10 1.345×，分數持平（pass@1 0.311→0.317）。</li>
+<li><strong>多元任務（附錄 I）</strong>：GSM8K 1.35×、MT-bench 1.27×，皆無損。</li>
+<li><strong>消融</strong>：跳約一半層時加速最高，跳超過 42 層（共 80 層）品質驟降；BO 遠勝「跳頭／中／尾／隨機」等固定策略（後者接受率低、甚至 &lt;1× 反變慢）；自適應門檻（1.57×）≈ 精調靜態門檻上限。跳過的層多集中在後半段、attention 比 MLP 跳更多。</li>
+<li><strong>激進跳層 + 小量續訓</strong>（附錄 F）：跳 75% attention 層，再用 60M token 微調 draft 子圖，可把 13B 從 1.57× 推到 <strong>1.96×</strong>（但 draft 不再共享參數、需額外顯存與訓練）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>BO 搜跳層需數小時（但一次性離線、模型層級）。</li>
+<li>不做訓練 → 可跳層數受限（跳太多接受率崩、加速消失）；欲更激進須續訓 draft 子圖，代價是<strong>失去零額外顯存的優點</strong>。</li>
+<li>尚未針對 batched decoding 最佳化（未來可結合 FlashAttention／vLLM）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>對 ai_core §3.3「成本梯度／級聯路由」的最純粹示範</strong>：本篇把「便宜高頻智能 vs 貴稀有智能」的成本梯度<strong>內化進單一模型</strong>——同一組權重，跳層前向＝便宜 draft、全層前向＝昂貴 verify；不必維護第二個模型即得到「先便宜猜、貴模型只做把關」的級聯效果。這正是把成本梯度做進「符號神經網路計算圖」單一 LLM 節點內部的具體工程手法。</li>
+<li><strong>與已入庫的 Medusa（自帶多預測頭）／EAGLE 對照</strong>：三者都在削減「每 token 的昂貴前向」成本，但本篇最貼合 ai_core「<strong>免額外資產、即插即用</strong>」的胃口——無新參數、無訓練、無額外顯存，且<strong>輸出可證無損</strong>（對「把 LLM 呼叫包成可靠函數」極友善：加速不改變函數語義）。</li>
+<li><strong>對「固化引擎」（§3.6）的側面啟發</strong>：離線用 BO 把「該跳哪些層」結晶成一個固定向量 z*、把「何時停」交給輕量自適應規則——這是「反覆處理 → 一次性離線最佳化 → 固化成確定性配置」的縮影：昂貴的搜尋只做一次，之後推論路徑固定且確定。歸 <strong>I 類</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2309.08168_DraftAndVerify.zh-TW.html"><code>../translate/2309.08168_DraftAndVerify.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

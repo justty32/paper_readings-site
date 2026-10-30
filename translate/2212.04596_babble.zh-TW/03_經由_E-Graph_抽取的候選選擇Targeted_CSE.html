@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_經由_E-Graph_抽取的候選選擇Targeted_CSE · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2212.04596_babble.zh-TW.html">回 2212.04596_babble.zh-TW 目錄</a>　<a href="02_%E7%B8%BD%E8%A6%BD%E4%BB%A5_running_example_%E8%AA%AA%E6%98%8E.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-經由-e-graph-抽取的候選選擇targeted-cse">5. 經由 E-Graph 抽取的候選選擇（Targeted CSE）</h2>
+<p><strong>把選庫看成 e-graph 抽取</strong>：以 G′（代表用候選 P 壓縮初始語料及其等價項的所有方式）為輸入，稱子集 ℒ⊂P 為一個<strong>函式庫</strong>。用 ℒ 壓縮某 e-class 的最優 size ＝「只用 ℒ 中函式、且 λ 不計 size 的最小項」＋「ℒ 中每個 p 的最小版本」之和（定義庫的成本只計一次，且庫內抽象可互相壓縮）。目標：找 ℒ 使根 e-class 壓縮後最小。天真做法（枚舉 P 所有子集）隨 P 增大而不可行。</p>
+<p><strong>cost set 動態規劃（Fig. 11）</strong>：babble 由下而上，替每個 e-node／e-class 關聯一個 <strong>cost set</strong>——一組對 <code>(ℒ, u)</code>，u 是「允許用 ℒ 時該 e-node／e-class 最小項的 size（不含 ℒ 本身）」。base case 是 nullary e-node（size 1、不能用庫）；有 child 的 e-node 取所有 child cost set 的 <strong>cross 積</strong>；應用 e-node <code>(λX̄→a) b</code> 則必須把庫函式 a 納入（use cost 只含 b 的）。e-class 的 cost set 是其所有 e-node cost set 的聯集。</p>
+<ul>
+<li><strong>partial-order reduction（<code>reduce</code>，藍字）</strong>：若 <code>ℒ1⊂ℒ2</code> 且 <code>u1≤u2</code>，則 ℒ2 被 ℒ1 支配、可剔除（ℒ1 用更少函式壓得更好）；只剪可證次優者，不損最優性。</li>
+<li><strong>beam 近似（<code>prune</code>，紅字）</strong>：即使有 reduce 仍可能指數爆炸，故可限制「每個庫的模式數 ≤ N」與「每個 e-class 存的 cost set 寬度 ≤ K」——先濾掉超過 N 個模式的庫，再按總成本（use cost＋庫 size）排序取 top-K。這是一個 <strong>beam-search 式</strong>演算法，以精確度換效率。</li>
+</ul>
+<h2 id="6-評估">6. 評估</h2>
+<p>三個研究問題：<strong>RQ1</strong> babble 能否比最先進工具壓得更好？<strong>RQ2</strong> LLMT 的核心技術（反統合與等式理論）對效能是否重要？<strong>RQ3</strong> babble 學到的函式是否符合直覺？</p>
+<p><strong>基準（Tab. 1）</strong>：兩套。(1) <strong>DreamCoder</strong>（Ellis et al. 2021，公開 repo）分五個領域：List（59 benchmark，14 條等式）、Physics（18，8）、Text（66）、Logo（12）、Towers（18）；作者只為最熟悉的 List、Physics 補了等式理論。(2) <strong>2d CAD</strong>（Wong et al. 2022）：「Drawings」共 1000 個程式，分 Nuts&amp;Bolts／Vehicles／Gadgets／Furniture 四子領域各 250 個，每領域併成一個大 benchmark（分別補 7／9／17／9 條等式）。babble 跑在 AMD EPYC 7702P（2.0 GHz）單核；DreamCoder 結果取自其 repo（跑在 8 核 EPYC 7302 @3.0 GHz）。</p>
+<p><strong>6.1 與 DreamCoder 比較（RQ1）</strong>：DreamCoder 的輸入是「程式群組的集合」（同一合成任務的多個變體）；babble 用 e-graph 表達「群組內的程式變體」（同群組視為等價、放同一 e-class）。結果（Fig. 12）：<strong>babble 在五個領域一致取得更好的壓縮率，且快 1–2 個數量級。</strong></p>
+<p><strong>等式理論的作用（RQ2）</strong>：在 List、Physics 上再跑兩個組態——&quot;BabbleSyn&quot;（忽略等式、純語法）與 &quot;EqSat&quot;（只做等式飽和、不學庫）。EqSat 很快但幾乎不壓縮；BabbleSyn 確能壓縮、且<strong>兩領域都已勝過 DreamCoder</strong>；加上等式理論後<strong>壓縮顯著再升</strong>、額外時間在一個數量級內。</p>
+<p><strong>6.2 大型 2d CAD（Tab. 2 / Fig. 13）</strong>：這些 benchmark 比 DreamCoder 的大約 10–100 倍、DreamCoder 無法處理。加等式理論<strong>四個領域壓縮率全部提升</strong>（Nuts&amp;Bolts CR 9.23→10.90、Vehicles 5.47→6.44、Gadgets 5.25→7.09、Furniture 4.07→4.56），且<strong>有時反而更快</strong>（等式飽和有時把相關 e-class 合併、減少後續運算量）。作者另把 Nuts&amp;Bolts 的冗餘變換全移除再跑：<strong>用等式理論時壓縮與原資料相同</strong>，但不用等式時就變差——印證 LLMT 能在需要處自行引入冗餘、故不再依賴資料中既有的冗餘。</p>
+<p><strong>質性（RQ3，Fig. 14）</strong>：babble 學到符合人類直覺的函式——「縮放正多邊形 ngon」；跨 Nuts&amp;Bolts 與 Vehicles 都出現的「一圈形狀 ring」；Gadgets 中同時學到整體外形 <code>gadget_body</code> 與零件 <code>dial</code>。可用性／可讀性的嚴謹使用者研究留待未來。</p>
+<h2 id="7-相關工作">7. 相關工作</h2>
+<ul>
+<li><strong>DreamCoder</strong>（Ellis et al. 2021）：從相關合成任務的解學函式庫；用 version space 儲存程式、借用 e-matching，但只用於探索重構、<strong>未用來讓學習對語法變異魯棒</strong>。babble 更快找到更優抽象。</li>
+<li><strong>Stitch</strong>（Bowers et al. 2023，與本工作並行、最相關）：核心差異——Stitch 專注<strong>提升純語法學習的效率</strong>，babble 則靠等式理論<strong>提升表達力</strong>。Stitch 把生成與選擇<strong>交錯</strong>成 branch-and-bound top-down 搜尋（從「頂」模式 X 逐步細化，用「各匹配點壓縮量加總」的上界快速剪枝），對單一模式精確搜尋最佳 rewrite strategy；babble 的抽取可視為 Stitch rewrite strategy 的推廣（同時搜「模式子集」與「如何套用」，空間大得多故用 beam 近似）。<strong>兩者取捨</strong>：(1) babble 能做 modulo 等式理論、Stitch 不能；(2) Stitch 對「一次學單一最佳抽象」有<strong>最優性保證</strong>，babble 能一次學多個抽象但犧牲理論最優性。</li>
+<li>其他：Knorf（邏輯程式函式庫學習）、ShapeMod／Wang et al.（受限形式的抽象）；neural program synthesis 的 idiom 學習與 explore-compress；<strong>loop rerolling</strong>（硬體 code-size、CSGNet／Shape2Prog、Szalinski 用等式飽和從 3D CAD 學 map/fold）；<strong>反統合的應用</strong>（ILP、clone 偵測、PBE、學重複程式編輯——這些或可受惠於 babble 的 e-graph 反統合而更魯棒）；<strong>用 e-graph 做合成與最佳化</strong>（Tate et al. 首倡等式飽和；babble 首次在 e-graph 上做反統合，並以 targeted CSE 取代 greedy／ILP 抽取，作者認為此抽取法可廣泛用於等式飽和的其他應用）。</li>
+</ul>
+<h2 id="8-結論與未來工作">8. 結論與未來工作</h2>
+<p>提出 LLMT——依使用者提供的等式理論從程式語料學抽象，實作為 babble：比最先進技術<strong>快數個數量級且壓縮更好</strong>；在更大的 2d CAD 上學到合理函式、壓縮了先前技術難以處理的資料。未來方向：(1) 等式理論目前須領域專家提供，可用 <strong>Ruler／TheSy</strong> 等自動理論合成輔助；(2) e-graph 反統合不完備、會漏模式，可考慮結合 <strong>Stitch</strong> 更高效的 top-down 搜尋——難點是 Stitch 賴以剪枝的「壓縮上界」不易推廣到 e-graph（不同匹配可能來自不同語法變體，需權衡抽象帶來的壓縮與變體間的 size 差）。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2212.04596_babble.%E6%91%98%E8%A6%81.html"><code>../summarize/2212.04596_babble.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

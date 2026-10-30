@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2501.17896_KAN_Airfoil_Lift.zh-TW.html">回 2501.17896_KAN_Airfoil_Lift.zh-TW 目錄</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>資料科學已成為科學探索的<strong>第四範式</strong>（與實驗、解析、計算並列）。然而許多 ML 模型像<strong>黑箱</strong>運作，對其預測推理提供的洞見有限；這種不透明是「從資料生成新知識」的障礙之一。近期提出的 <strong>Kolmogorov-Arnold Network（KAN）</strong> 是一個<strong>內嵌可解釋 AI</strong> 的替代模型。本研究展示 KAN 用於新科學探索的潛力：把 KAN 與另外五個熱門監督式 ML 模型，套用到航太工程著名的<strong>翼型升力預測</strong>問題。使用某早期研究對 <strong>2900 個不同翼型</strong> 產生的標準資料。<strong>KAN 表現最佳，測試資料 R²=96.17%，勝過基線模型與多層感知器（MLP）</strong>。透過對模型<strong>剪枝與符號化</strong>展示 KAN 的可解釋性——得到一條「升力係數對輸入變數」的方程。從 KAN 擷取的可解釋資訊與<strong>已知的翼型升力生成物理一致</strong>，從而展示其輔助科學探索的潛力。</p>
+<h2 id="i-引言">I. 引言</h2>
+<p>近年資料科學興起，被視為科學探索的第四範式。藉 ML 已驅動若干新科學發現，但許多模型是<strong>黑箱</strong>，洞見有限——這是從資料生成新知識的障礙。為此，<strong>可解釋 AI（XAI）</strong> 興起：方法從 <strong>LIME（Local Interpretable Model-Agnostic Explanations）</strong> 到較新的 <strong>SHAP（Shapley Additive explanations）</strong>。但這些方法多聚焦解釋<strong>個別預測</strong>而非整個模型，限制了追溯模型每階段學習因果的能力。</p>
+<p>近期 <strong>KAN</strong> 被提為內嵌 XAI 的替代模型。這得益於 <strong>Kolmogorov-Arnold 表示定理</strong>：任何多變數複雜函數可分解為較簡單函數之和。KAN 結構似 MLP，但有<strong>可學習的激活函數（B-spline 曲線）在邊與節點上，節點只做求和</strong>。這類激活函數比 MLP 更靈活，故 KAN 可更準確且可解釋，可望辨識驅動模型的重要特徵、發現符號公式。</p>
+<p>本研究的<strong>翼型幾何</strong>用 Kulfan 等人提出的 <strong>CST（class shape transformation，類形變換）</strong> 參數法表示（航太常用），以 <strong>Bernstein 多項式</strong> 的形狀函數描述翼型；僅 <strong>8 個 CST 係數</strong> 即可有效涵蓋對稱、非對稱、有彎度、反曲等各種翼型輪廓。</p>
+<p>本研究建立 KAN 模型，展示其解釋與詮釋能力，並與其他傳統 ML 模型（含 MLP）比較；以「預測翼型升力係數 C_L」這一著名問題為應用，再用 KAN 的可詮釋性理解升力、形狀與攻角之間的關係，並在已知翼型空氣動力學物理脈絡下討論結果。</p>
+<h2 id="ii-方法">II. 方法</h2>
+<h3 id="翼型表示">翼型表示</h3>
+<p>以 CST 參數（Bernstein 多項式）表示幾何，8 個 CST 係數涵蓋多種翼型。</p>
+<h3 id="資料">資料</h3>
+<p>取自 Agarwal 等人的研究：對約 <strong>2900 個翼型</strong>（取自著名的 <strong>UIUC</strong> 翼型資料庫與 Airfoil Tools 資料庫）估計並發布 8 個 CST 係數；並對每個翼型在<strong>低雷諾數（10⁵）</strong>、<strong>攻角 −4°～+8°</strong> 下估計升力係數 C_L 與阻力係數 C_D。本研究以 <strong>8 個 CST 係數（c1–c8）+ 攻角</strong> 為特徵預測 C_L。資料 33,705 筆、10 特徵、無缺值；但 9 個關注變數（8 CST + C_L）中有 3,266 筆重複值，去重後 <strong>30,439</strong> 筆，按 <strong>75%:25%</strong> 切分為訓練 <strong>22,829</strong> / 測試 <strong>7,610</strong>。</p>
+<h3 id="機器學習模型">機器學習模型</h3>
+<p>為預測 C_L，開發六個模型：(1) 多元線性迴歸 LR、(2) 決策樹 DTR、(3) 隨機森林 RFR（以線性迴歸為基估計器）、(4) AdaBoost ABR（以線性迴歸為基估計器）、(5) MLP、(6) <strong>KAN</strong>。</p>
+<p><strong>KAN</strong> 由 Liu 等人提出，建於 Kolmogorov-Arnold 表示定理、結構似 MLP，但三大差異：</p>
+<ol>
+<li>MLP 激活在<strong>節點</strong>、權重在邊；<strong>KAN 激活（B-spline 曲線）在邊上，節點只求和</strong>。</li>
+<li>MLP 激活固定（sigmoid/ReLU）只學權重；<strong>KAN 學激活函數（B-spline）的參數</strong>，更靈活。</li>
+<li>因此 KAN <strong>可解釋</strong>，兼作 XAI 工具。</li>
+</ol>
+<p><strong>KAN 開發步驟</strong>：(1) 選網路架構——隱藏層數、各層寬度 w、grid size g、樣條多項式階數 k（皆為可調超參）;(2) <strong>稀疏化與剪枝</strong>——依節點/邊重要度分數保留重要者，辨識最主導關係；(3) <strong>符號化（symbolification）</strong>——把每條邊上經驗擬合的激活函數，換成 KAN 套件函數庫中<strong>擬合 R² 最佳</strong>的已知數學函數；(4) 得到連接輸入與輸出的<strong>封閉形式方程</strong>。</p>
+<p>每個模型以兩指標評估：<strong>MSE</strong> 與 <strong>R² 分數</strong>；並與 Agarwal 等人提出的<strong>基線 ANN</strong> 比較。除 LR 與 KAN 外，超參用五折交叉驗證調整。LR 中凡兩變數高相關（&gt;50%）只留其一（故排除 c2、c5、c8 以避免多重共線性）;KAN 則試多組 (w, g, k) 後選定。</p>
+<p><strong>超參（Table I 摘要）</strong>：MLP＝全連接 [9,9,6,3,2,1]、LeakyReLU、Adam(lr=0.001)、HuberLoss;<strong>KAN＝width=[9,9,1]、grid=6、k=2、seed=2024、base_fun=&#x27;silu&#x27;</strong>；基線 ANN＝[9,12,6,2] 含 BatchNorm1d、ReLU、HuberLoss。</p>
+<p><strong>剪枝細節</strong>：調好的全連接 KAN 有 <strong>19 節點、90 邊</strong>；剪枝保留重要度 &gt; 75 百分位者（node_score&gt;0.2537、edge_score&gt;0.0426）。即使只留全網 25%，測試 R² 仍達 <strong>95.60%</strong>，接近基線 ANN。剪枝後網路為 <strong>11 節點、10 邊</strong>。完整 KAN 與最終剪枝符號化 KAN 見 Figure 1（輸入層在底、輸出層在頂，邊粗細表重要度）。</p>
+<h2 id="iii-結果與討論">III. 結果與討論</h2>
+<p><strong>效能（Table II，測試 R²）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>訓練 %</th>
+<th>測試 %</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>KAN</strong></td>
+<td>96.14</td>
+<td><strong>96.17</strong></td>
+</tr>
+<tr>
+<td>MLP</td>
+<td>95.88</td>
+<td>96.00</td>
+</tr>
+<tr>
+<td>ANN（基線）</td>
+<td>95.60</td>
+<td>95.66</td>
+</tr>
+<tr>
+<td>ABR</td>
+<td>95.11</td>
+<td>95.35</td>
+</tr>
+<tr>
+<td>RFR</td>
+<td>96.04</td>
+<td>95.07</td>
+</tr>
+<tr>
+<td>LR</td>
+<td>93.83</td>
+<td>94.13</td>
+</tr>
+<tr>
+<td>DTR</td>
+<td>96.26</td>
+<td>93.91</td>
+</tr>
+</tbody>
+</table>
+<p>KAN 測試 R²=<strong>96.17% 最佳</strong>，勝基線與 MLP;MLP 次佳（96.00%）；其餘皆遜。令人意外的是 <strong>LR 雖簡單卻勝 DTR</strong>。</p>
+<p><strong>可解釋性</strong>：由物理知，翼型幾何（8 CST 係數）與攻角對升力生成的空氣動力學很重要；且不論形狀，攻角顯著影響 C_L。這些被<strong>特徵重要度分數（Figure 3）</strong> 良好捕捉，清楚展示 KAN 的可解釋性——可揭示最重要變數，引導正確方向的科學探究。</p>
+<p><strong>符號化</strong>：對剪枝模型每個激活函數選最佳擬合數學函數，得<strong>式 1</strong>（C_L 對 CST 係數與攻角的方程，Figure 2）。方程呈現<strong>複雜非線性關係</strong>，與先驗知識一致：翼型即使單一截面形狀改變也影響整個流場與 C_L；此非線性也由 Figure 1 網路圖中「一條連結所有輸入變數與 C_L 的中間邊」呈現。可驗證該方程斜率符合理論預期、與資料一致。</p>
+<p><strong>封閉方程的價值</strong>：可對任一或所有主導輸入變數求導以估<strong>敏感度</strong>——對許多科學工程探索極有用，也能建立「輸出不確定性源於輸入不確定性」的關係；對翼型而言可用於求<strong>最佳形狀</strong>。剪枝與符號化清楚帶出 KAN 內嵌的可解釋性，可輔助科學發現。</p>
+<h2 id="iv-結論">IV. 結論</h2>
+<p>本研究示範以「內嵌可詮釋性」的模型驅動資料科學的科學探索，並在航太工程應用上展示。五個傳統 ML 模型與內嵌可解釋性的 KAN，套用於預測翼型升力係數。<strong>KAN 測試 R²=96.17% 最佳</strong>，勝基線 ANN 與 MLP。剪枝與符號化以網路圖帶出內嵌可解釋性，最終得一條連結升力、CST 係數與攻角的<strong>封閉形式方程</strong>。KAN 的可詮釋性被用來導出翼型空氣動力學的有意義資訊，其預測與解釋皆與已知升力物理一致。結論：<strong>KAN 具輔助科學探索的潛力</strong>。</p>
+<p><strong>局限</strong>：僅建模 <strong>C_L</strong>，C_D、C_L/C_D 比有待探索；資料僅低雷諾數（10⁵），其他雷諾數範圍的模型表現亦可探。</p>
+<p><strong>致謝</strong>：感謝導師 Keshav Shrinivas Malagi（CSIR-國家航太實驗室，印度班加羅爾）。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2501.17896_KAN_Airfoil_Lift.%E6%91%98%E8%A6%81.html"><code>../summarize/2501.17896_KAN_Airfoil_Lift.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

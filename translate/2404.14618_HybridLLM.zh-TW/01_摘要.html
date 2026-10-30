@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2404.14618_HybridLLM.zh-TW.html">回 2404.14618_HybridLLM.zh-TW 目錄</a>　<a href="02_%E6%B7%B7%E5%90%88_LLM_%E6%8E%A8%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）在多數 NLP 任務上表現優異，但因體積龐大而需昂貴的雲端伺服器部署；能部署在低成本（如邊緣）裝置上的小模型，回應品質則往往落後。因此本文提出一種<strong>混合推論（hybrid inference）<strong>方法，結合兩者長處以省成本並維持品質。方法用一個</strong>路由器（router）</strong>，依「預測的查詢難度」與「期望的品質水準」把查詢指派給小模型或大模型。期望品質水準可在測試時<strong>動態調整</strong>，依情境需求無縫地以品質換成本。實驗中我們的方法可對大模型<strong>少呼叫達 40%</strong>，且回應品質不下降。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 近年主導 NLP，尤其在生成應用（創意寫作、翻譯、程式補全等）大放異彩，且以自然語言互動、無需專門資料或程式碼，造就跨地區/職業的廣泛需求。但頂尖 LLM 多為數百億參數的 transformer，自回歸生成使其運算與記憶體需求高、只能靠昂貴雲端伺服器，對開發者/使用者成本巨大。業界因此推出更小的 LLM（如 Llama-2 最小 7b 可跑在筆電、Palm-2 最小版可跑手機），但經驗評估（含本文圖 1(a)）顯示<strong>小模型品質普遍較差</strong>。</p>
+<p>面對「品質 vs 推論成本」的取捨，本文提出混合推論兼得兩者。動機觀察：LLM 有用的任務都含不同難度的查詢，總有一批「easy」查詢，小模型回應可媲美甚至勝過大模型。圖 1(b) 畫出 Llama-2 (13b) 與 GPT-3.5-turbo 之間品質差的尾端——<strong>約 20% 查詢</strong> Llama-2 不輸 GPT-3.5-turbo。利用此洞見，訓練一個路由器：輸入一大一小兩模型，學會把「easy 查詢」辨識為「期望品質水準」的函數，同時考慮任務的生成本質、LLM 回應的內在隨機性、兩模型品質落差。測試時路由器無縫適應不同品質需求，把對應的 easy 查詢指派給小模型，大幅降推論成本而品質幾乎不掉（圖 1(c)：22% 查詢送 Llama-2 13b，BART score 掉不到 1%）。</p>
+<p>在 MLaaS（機器學習即服務）情境下，本方法能同時省下消費者與平台成本：a) 消費者把 easy 查詢路由到自家邊緣裝置（筆電/手機）的小模型，只有複雜查詢才呼叫 API（圖 2）；b) 平台在後端自動把查詢導向低成本模型而不影響體驗。</p>
+<p><strong>主要貢獻</strong>：a) 首度探索具成本效益且品質感知的混合 LLM 推論；b) 設計依「兩模型回應品質差估計」路由的新查詢路由器（§3.1）；c) 將 LLM 回應隨機性帶來的不確定性納入路由器設計（§3.2）；d) 指出小模型遠弱於大模型時的難題，並提出新的<strong>資料轉換</strong>解決（§3.3）；e) 在大型真實查詢基準上提供廣泛實驗（§4）。</p>
+<h2 id="2-問題定式">2. 問題定式</h2>
+<h3 id="21-相關工作">2.1 相關工作</h3>
+<ul>
+<li><strong>大型語言模型</strong>：LLM 帶來 NLP/CV/IR 的範式轉移，但驚人效果的代價是體積劇增、訓練與部署開銷高昂。</li>
+<li><strong>高效 ML 推論</strong>：LLM 屬基礎模型（訓練一次、服務多種任務），推論成本主導總成本。常見降本法為模型壓縮：(i) 剪枝、(ii) 量化（如 FP32→INT8）、(iii) 知識蒸餾（小學生模型模仿大教師）、(iv) 神經架構搜尋。但這類<strong>靜態</strong>優化產出固定的低成本低準模型，未必滿足「同一模型服務多任務、各有自己準度/成本約束」的基礎模型前提——需要更動態的優化。</li>
+<li><strong>混合 ML 推論</strong>：近期用「兩個不同大小模型」而非單一模型推論；核心是辨識 easy 查詢送小模型，並用「查詢難度門檻」動態換取品質/成本。既有工作針對影像分類且把小/大模型與路由器<strong>從頭訓練</strong>——但 LLM 重訓極貴且違背「用預訓練基礎模型」前提，且文字生成比影像分類更模糊困難，需新技術。</li>
+<li><strong>多 LLM 推論</strong>：有些工作用 ensemble（每查詢叫多個 LLM，成本正比於模型數）或 cascade（依序生成直到某模型信心超過門檻）。本文則<strong>對每條查詢永遠只叫一個 LLM</strong>，平均計算成本遠低於兩者。另有 speculative decoding（用小解碼器加速 easy 解碼步）目標不同（本文是查詢路由而非解碼加速），兩者可結合為未來工作。</li>
+</ul>
+<h3 id="22-問題設定">2.2 問題設定</h3>
+<p>把 hybrid ML 範式延伸到 LLM 推論：在兩個成本/準度不同的模型間路由查詢。設輸入查詢空間 X、輸出回應空間 Z，大模型 <code>L:X→Z</code>、小模型 <code>S:X→Z</code>。目標是學一個路由器 <code>r:X→{0,1}</code>：<code>r(x)=0</code> 把查詢 x 送小模型 S(x)、否則送大模型 L(x)。<strong>每條查詢一律只路由到單一 LLM</strong>（有別於 ensemble/cascade 的多次呼叫）。</p>
+<h3 id="23-評估指標">2.3 評估指標</h3>
+<ul>
+<li><strong>回應品質</strong>：文字生成的自動評估困難。傳統 BLEU/ROUGE 與人類判斷一致性低。GPT-ranking 雖與人類感知高相關但計算貴、且無法區分同排名的例子。本文改用 <strong>BART score</strong>：(1) 比 LLM 式指標便宜，(2) 前人證實與 ground truth 相關良好。以 <code>q(z)</code> 表回應 z 的 BART score（品質）。</li>
+<li><strong>成本優勢（cost advantage）</strong>：模型絕對成本（延遲、FLOPs、能耗等）受 prompt 模板、硬體、網路等混淆因素影響，各平台在意的指標也不同。但共同假設是「小模型比大模型高效」，故把查詢多送小模型即可改善各項指標。因此定義<strong>成本優勢＝路由到小模型的查詢百分比</strong>（此概念在先前 hybrid ML 中稱 coverage）。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

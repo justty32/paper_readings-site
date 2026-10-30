@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>2. 邏輯圖度量 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2607.16868_LogicalGraphsUQ.zh-TW.html">回 2607.16868_LogicalGraphsUQ.zh-TW 目錄</a>　<a href="02_%E6%B6%88%E8%9E%8D%E7%A0%94%E7%A9%B6.html">下一節 →</a></p>
+</blockquote>
+<h2 id="11-llm-的不確定性量化">1.1 LLM 的不確定性量化</h2>
+<p>LLMs 在問答、文本生成、推理與程式碼合成等任務上表現傑出，但存在嚴重的限制：產出具有不同程度的不確定性，卻在表面上維持同等信心。不確定性表現在事實不準確、不一致推理模式與幻覺內容上。可靠的不確定性量化（UQ）為人類與下游系統提供更明智的決策依據，也是幻覺檢測的基礎組件。</p>
+<p>當前 SOTA UQ 分三類：(1) token 層級——利用 softmax 機率或 token 熵；(2) 序列層級——聚合 token 不確定性或集成；(3) 語意層級——關鍵方法為 Semantic Entropy (SE) 與 Kernel Language Entropy (KLE)。SE 將答案分入 k 個語意等價簇 C = {c₁,…,c_k}，每簇獲機率 p(cⱼ|x)，計算 SE(x) = −∑ p(cⱼ|x) log p(cⱼ|x)。KLE 以核矩陣取代語意分組，用 von Neumann 熵計算。</p>
+<p><strong>語意相似度的限制</strong>：SE 只判斷是否改寫等價，忽略邏輯關係。開放式問題可有多個正確答案不是改寫但彼此邏輯相關——有些藴含另一些，有些相容精化，有些真正互斥。如圖 1 所示，問&quot;X 的反思是何時？&quot;，&quot;1920s&quot; 邏輯上藴含&quot;20 世紀初&quot;，但 SE 將其算為兩個獨立簇而雙重計數機率質量——正是 LGU 要解決的核心失敗。</p>
+<h2 id="12-邏輯圖不確定性框架">1.2 邏輯圖不確定性框架</h2>
+<p>我們提出兩個量：<strong>Implication Graph Entropy (IGE)</strong> 與 <strong>Logical Graph Uncertainty (LGU)</strong>。</p>
+<p><strong>Implication Graph (ImG)</strong>：有向邊編碼候選答案間的邏輯藴含。沿藴含鏈將機率質量從較一般陳述推向更具體精化，在邏輯最大、非冗餘的假設（根）上計算熵。根分數經正規化成為有效分佈。IGE 量測機率質量如何分佈在不同高層假設上。</p>
+<p><strong>Incompatible Graph (InG)</strong>：在 ImG 根之上建構。LGU 懲罰根間的密集互斥——模型可能在粗粒度&quot;安全&quot;陳述下，將機率分散到互斥的細粒度時間線（1920 vs 1926 vs 1929）。IGE 可以低，但 LGU 看到根之間密集互斥後會很高——暴露 NE/SE 看不到的認知衝突。</p>
+<p>InS 以圖密度指標定義：(i) 邊密度（含加權版）—歸一化 [0,1]；(ii) 平均出入度；(iii) Estrada 指數—譜泛函。邊密度在實驗中提供強 AUROC 與最低 ECE。</p>
+<p>LGU 不僅修改熵泛函——它重新定義了底層隨機變數，改變計算不確定性的假設空間。LGU = (1+InS) × IGE。</p>
+<p>表 1：特徵比較（演算法複雜度 O(n²)、含邏輯關係、無超參、值域 [0,(1+InS) log n]）。</p>
+<p><strong>四項貢獻</strong>：邏輯圖重整、無超參圖不確定性、4 資料集+8 模型廣泛評估、SOTA（+7.1% AUROC / +3.5% AUARC）。</p>
+<h1 id="2-邏輯圖度量">2. 邏輯圖度量</h1>
+<h2 id="21-圖論預備">2.1 圖論預備</h2>
+<p>有向圖 G=(V,E)，無自環。DAG 無有向環。有限 DAG 必存在根（d⁻(r)=0，Remark 2.1 證明）。</p>
+<h2 id="22-邏輯圖">2.2 邏輯圖</h2>
+<p><strong>Implication Graph (ImG)</strong>：兩答案 a,b 邏輯等價（a≡b）當且僅當在所有與查詢 x 相容的情境下，a 與 b 互相藴含。等價類形成簇 cᵢ。ImG(x/L) = (V,E)，其中 V 為等價簇，有向邊 (cₛ,cₜ)∈E 當且僅當 cₛ ⇒ cₜ。</p>
+<p>Proposition 2.2：藴含關係自反且傳遞。Theorem 2.3：ImG(x/L) 必為 DAG，且有非空根集 R（Remark 2.1）。</p>
+<p><strong>Incompatible Graph (InG)</strong>：兩答案相容若存在至少一個情境兩者同時為真，否則互斥。InG(x/L) = (V,E)，V=R(ImG(x/L))，邊為對稱互斥關係（同時包含兩個方向）。Proposition 2.4：互斥關係對稱、非自反、非傳遞。</p>
+<h2 id="23-圖基礎不確定性">2.3 圖基礎不確定性</h2>
+<p><strong>IGE</strong>：對每根 rᵢ，匯聚其可達簇的機率質量 p&#x27;(rᵢ) = ∑_{cⱼ∈Reach(rᵢ)} pⱼ。正規化後計算熵 IGE = −∑ p(rᵢ) log p(rᵢ)。離散版 DIGE 以經驗頻率估計。</p>
+<p><strong>InS</strong>：</p>
+<ul>
+<li>邊密度：InS_dens = |E| / [|V|(|V|−1)] ∈ [0,1]；加權版以總權重取代邊計數。</li>
+<li>平均出入度：InS_in = InS_out = |E|/|V|。</li>
+<li>Estrada 指數：EE = ∑ e^{λᵢ}，A 為對稱鄰接矩陣、特徵值全為實數。</li>
+</ul>
+<p><strong>LGU</strong> = (1+InS) × IGE。</p>
+<p>Theorem 2.6（極值）：LGU ≤ (1+InS)log|V(ImG)|，等號成立於均勻分佈＋ImG 為空＋InG 為完全圖；LGU ≥ 0，等號成立於只有單一根（|R|=1）。此界定範圍有助標準化校正（ECE 評估）。</p>
+<p>Theorem 2.7：LGU 計算複雜度 O(n²)。</p>
+<h1 id="3-實驗">3. 實驗</h1>
+<p><strong>資料集</strong>：TriviaQA、SQuAD、BioASQ、NQ（分別代表一般知識、專業領域、搜尋查詢）。</p>
+<p><strong>模型</strong>：Llama、Falcon、Mistral、Qwen、Gemma 系列（7B–32B）。以 DeBERTa-Large-MNLI 作為 NLI 模型建構邏輯圖與語意簇。GPT-3.5 作為參考裁判。</p>
+<p><strong>基線</strong>：語意方法（SE、KLE）、token 層級（MSP、PPL、Avg/Max(−log p)）、監督式嵌入回歸。</p>
+<p><strong>評估指標</strong>：AUROC（判別）、AUARC（選擇性預測實用性）、ECE（校準）。</p>
+<h2 id="31-結果">3.1 結果</h2>
+<p><strong>量化優勢</strong>：Falcon-7b-instruct 上，LGU 在所有四個資料集中 AUROC 與 AUARC 均為最佳。NQ 上 AUROC 達 0.752、AUARC 達 0.533。</p>
+<p><strong>跨模型穩健性</strong>：圖 2（雷達圖）展示六種模型架構上的排名表現——LGU 在 AUROC 與 AUARC 中均佔據最外層，確認其跨規模（7B–13B）與跨架構（Llama/Mistral/Gemma/Falcon）的普遍穩健性。</p>
+<p><strong>校準優越性</strong>：圖 3a 的可靠性圖顯示 LGU 最接近完美校準線；Falcon-7b-SQuAD 上 ECE 為 0.071（NE 0.087、KLE 0.270、SE 0.206）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

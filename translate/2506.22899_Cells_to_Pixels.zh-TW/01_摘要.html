@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2506.22899_Cells_to_Pixels.zh-TW.html">回 2506.22899_Cells_to_Pixels.zh-TW 目錄</a>　<a href="02_%E6%90%8D%E5%A4%B1%E5%87%BD%E6%95%B8.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>神經細胞自動機（NCA）是受生物啟發的動力系統：相同的細胞反覆套用一條學得的局部更新規則，自組織出複雜圖樣，展現再生、穩健與自發動態。儘管在紋理合成與形態發生上成功，NCA 仍<strong>多侷限於低解析度輸出</strong>，原因是：(1) 訓練時間與記憶體隨格點數<strong>二次成長</strong>；(2) 嚴格局部的資訊傳播<strong>阻礙長程細胞通訊</strong>；(3) 高解析度即時推論的<strong>沉重算力需求</strong>。本文克服此限——把在粗格上演化的 NCA 與一個<strong>輕量隱式解碼器</strong>配對，後者把細胞狀態與局部座標映射成外觀屬性，使同一模型能以<strong>任意解析度</strong>渲染輸出。又因解碼器與 NCA 更新皆為局部，推論高度可平行化。為高效監督高解析度輸出，我們為形態發生（從種子生長）與紋理合成設計任務專屬損失，幾乎不增記憶體與計算。橫跨 2D／3D 格與網格域的實驗顯示，混合模型能<strong>即時產生高解析度輸出</strong>，且保留 NCA 的自組織行為。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>複雜自組織系統由眾多簡單元件經簡單<strong>局部規則</strong>互動，無中央控制卻產生連貫的宏觀行為（粒子成原子分子、單一受精卵分化成個體、神經元同步支撐認知）。NCA 讓此原則<strong>可學習</strong>：一條跨細胞共享的小神經更新規則，能從種子生長影像與形狀、合成紋理。因 NCA 學的是迭代自組織過程而非直接映射，自然展現穩健與再生、跨離散化與域泛化、湧現自發運動，且以輕量高效網路編碼此過程。</p>
+<p>但現有 NCA 多訓於至多數萬細胞的格／網格（對應約 64²–128² 的空間解析度），再擴展即困難：記憶體與計算快速上升、資訊仍只局部傳播（每步一鄰域跳）、長程協調需更多步。如何在不放棄局部性與效率下取得高解析度高品質輸出，尚不明朗。</p>
+<p>我們以<strong>解耦動態與外觀</strong>解決：NCA 在粗格上演化，但用輕量座標式解碼器 <strong>LPPN</strong> 渲染連續高解析度輸出——LPPN 作為<strong>以局部 NCA 狀態為條件的神經場</strong>（從生物視角，NCA 給出「結構該在哪湧現」的高階藍圖，LPPN 略過繁複的生化精修、單次渲染那些細節）。LPPN 把局部插值的細胞特徵與格內座標映射到任意查詢位置的外觀，<strong>把渲染解析度從 NCA 格大小解耦</strong>。NCA 與 LPPN 端到端訓練，LPPN 僅增極少參數；因所有遞迴更新發生在低解析度（呼應現代視覺模型於精簡 token／latent 上做昂貴計算的策略），訓練省記憶體又快、推論即時。在四種設定（形態發生、2D PBR 紋理、網格紋理、3D 體積紋理）評估，並提供完全在瀏覽器端執行的互動 demo。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<h3 id="21-神經細胞自動機">2.1 神經細胞自動機</h3>
+<p>自組織的早期探索可溯及 Turing 的反應-擴散形態發生模型與 von Neumann 的細胞自動機。手刻 CA 與反應-擴散規則雖能重現 2D/3D 形態與紋理，但費力的手動規則搜尋長期限制發展。Gilpin（2019）證明古典 CA 更新可寫成淺層 CNN 並以反向傳播訓練；Mordvintsev 等（2020）以 MLP 參數化更新規則、用固定卷積核建模細胞互動，催生 NCA。NCA 已用於形態發生（2D 從種子生長並再生、3D 體素、條件式多目標）、紋理合成（範例式合成 + 湧現運動、可控動態、噪聲初始化改善穩定與尺度控制、推廣到網格的非參數訊息傳遞、推廣到 3D 體積紋理），以及生成與判別任務（分類、分割、穩健表徵）。然多數 NCA 仍用較少細胞數，限制解析度；本文以「粗 NCA + 輕量局部神經場解碼器」於任意解析度渲染細節來克服。</p>
+<h3 id="22-神經場">2.2 神經場</h3>
+<p>神經場（隱式神經表徵）把訊號建模為連續座標式函數（DeepSDF、NeRF、SIREN）。其解析度自由，但語義結構嵌於密集權重、難解釋與操作。本文混合設計兼取兩者之長：<strong>NCA 產生顯式、局部、可編輯的特徵格</strong>，<strong>LPPN 以這些特徵為條件渲染連續高解析度場</strong>——保住局部性與互動性，同時抬升解析度瓶頸。</p>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="31-前置nca">3.1 前置：NCA</h3>
+<p>NCA 建模格上一組細胞的時間演化。每步含 <strong>Perception（感知）階段</strong>（細胞蒐集局部鄰域資訊，2D/3D 格常用卷積、網格用類卷積算子）與 <strong>Adaptation（適應）階段</strong>（依資訊更新狀態，常由 MLP 參數化、有時含隨機項）。演化 T 步後取出所有細胞狀態，前送給 LPPN 把低解析度 NCA 特徵轉成高解析度細節輸出。</p>
+<h3 id="32-局部圖樣產生網路lppn">3.2 局部圖樣產生網路（LPPN）</h3>
+<p>LPPN 在每個取樣點 x 評估一個小 MLP 解碼器，把粗 NCA 格轉成高解析度場。取樣點可為 2D 影像或 3D 網格的光柵化像素中心，或 NeRF 式體積渲染的 3D 位置。對每個 x，解碼器接收：(1) <strong>局部插值細胞狀態</strong>（聚合 x 所在 primitive 內各細胞狀態）；(2) <strong>局部座標向量</strong>（編碼 x 在 primitive 內的相對位置）。</p>
+<ul>
+<li><strong>3.2.1 Primitive</strong>：由取樣點周圍細胞 + 其位置決定的幾何形構成（2D 四方格→矩形）。對 primitive 的頂點，定義滿足三條件的 <strong>λ-座標</strong>：單位分割（權重和為 1）、非負、線性精度（加權重建位置）。三角形有唯一 λ-座標（重心座標），高階 primitive 有多種選擇（矩形可用雙線性插值權重）。據此把 primitive 內細胞狀態加權平均得第一個 LPPN 輸入。</li>
+<li><strong>3.2.2 局部座標</strong>：不直接餵完整 λ-座標，而轉成更精簡、解碼器易消化的局部座標。矩形／立方體用軸對齊笛卡兒座標；三角網格與一般多邊形保留 λ-座標。每分量重縮放到 [-1,1]（原 λ-座標在 [0,1]），此零中心範圍移除解碼器輸入偏差、經驗上改善學習。</li>
+<li><strong>3.2.3 確保連續與均勻</strong>：原 λ-座標逐段平滑但在 primitive 邊界一般不連續。為給 LPPN 平滑良態的位置線索：<strong>矩形／立方體</strong>保留笛卡兒座標但以<strong>前幾階正弦基編碼</strong>（跨邊界連續、內部單射）；<strong>三角／多邊形</strong>因鄰面以任意順序列頂點而不連續，先把 λ-座標（重心／均值座標）<strong>降序排序</strong>使最大權重恆為首分量、令跨邊界座標場連續，但排序會使各分量動態範圍偏斜（紅色主導），故再對每個排序分量做<strong>單調重映射</strong>使其在 [0,1] 上更均勻散布（附錄推導）。排序雖使座標非單射，但 LPPN 同時以局部插值狀態為條件、補足缺失脈絡，使聯合輸入足以高品質解碼。</li>
+<li><strong>3.2.4 MLP 解碼器</strong>：LPPN 是輕量 MLP，吃局部平均狀態與局部座標，輸出取樣點屬性（如僅 RGB；或基色 + 表面法線、高度、環境遮蔽、粗糙度共 9 通道）。因 LPPN 只在算損失時評估，所有遞迴 NCA 更新仍跑在粗格，故加 LPPN 幾乎零訓練開銷。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

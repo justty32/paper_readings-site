@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_語料庫引導的自頂向下搜尋 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2211.16605_Stitch.zh-TW.html">回 2211.16605_Stitch.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-語料庫引導的自頂向下搜尋">3. 語料庫引導的自頂向下搜尋</h2>
+<h3 id="31-問題設定">3.1 問題設定</h3>
+<ul>
+<li><strong>文法</strong>：λ 演算表達式，變數用 de Bruijn 索引（<code>$i</code> 指上方第 i 近的 λ）；β 歸約需上移（upshift）自由變數，逆 β 歸約需下移（downshift）。</li>
+<li><strong>抽象</strong>：文法擴充<strong>抽象變數</strong>（α、β…）；抽象以其體（body）表示，如 <code>λα.λβ.(+ α β)</code> 記為 <code>(+ α β)</code>。</li>
+<li><strong>部分抽象</strong>：再擴充洞 <code>??</code>（未完成子樹）。</li>
+<li><strong>λ 感知統一（Lambda-Aware Unification）</strong>：<code>LambdaUnify(A, e)</code> 回傳抽象變數與洞到表達式的映射，使代入後經 β 歸約得到 e。與傳統統一不同處在於 e 可能深埋在 de Bruijn 索引程式中，需做索引算術：把子樹提出 λ 時須下移其變數。特殊語法 <code>&amp;i</code> 表示「被下移超過傳統允許程度」的變數——代表對抽象體內 λ 的引用，允許出現在洞綁定的表達式、不允許出現在抽象變數綁定的表達式。修改後的 β 歸約以與 ↓ 互逆的 ↑ 運算子把負索引 <code>&amp;i</code> 移回正索引；無洞時等價於傳統 β 歸約。正確性有紙筆證明（附錄 B）與 Coq 證明（stitch.v）。LambdaUnify 是先前「含綁定子統一」（Huet、Miller、Dowek 等）工作中一個可高效求解的語法驅動子集。</li>
+<li><strong>匹配位置</strong>：<code>Matches(P, A_??)</code>＝語料中 LambdaUnify 成功的極大 context-表達式對集合；捨棄「抽象變數綁定的表達式含 &amp;i」的位置。</li>
+<li><strong>重寫策略</strong>：引入新終端符號 t_A 代表抽象，在匹配位置以 <code>t_A e_0 … e_k</code> 替換得語義等價表達式。匹配位置可能重疊互斥，<strong>重寫策略 R</strong> 負責選出互不排斥的子集。</li>
+<li><strong>效用</strong>：CTS 最佳化使用者定義的 U_{P,R}(A)，形式無嚴格限制（§4 聚焦壓縮型效用）。</li>
+</ul>
+<h3 id="32-演算法">3.2 演算法</h3>
+<ul>
+<li><strong>展開（expansion）</strong>：從單洞 <code>??</code> 出發，用文法規則逐步展開洞；任何抽象皆可從 <code>??</code> 導出。</li>
+<li><strong>樸素法</strong>：維護佇列窮舉所有抽象、回報最高效用者——正確但極低效。</li>
+<li><strong>嚴格支配剪枝（strict dominance pruning）</strong>：若部分抽象 A&#x27; 被 A&#x27;&#x27; 嚴格支配（A&#x27; 可導出的每個完整抽象都被 A&#x27;&#x27; 可導出的某抽象覆蓋、即效用更高），可安全丟棄 A&#x27;——即使 A&#x27;&#x27; 本身之後也被剪掉或尚未列舉。<strong>引理 1</strong>：樸素搜尋加嚴格支配剪枝仍找到最優抽象（歸納證明：最優者永不被剪）。這保證多種支配剪枝可安全組合。</li>
+<li><strong>上界剪枝</strong>：泛用於任何滿足「A_?? 的所有後代 A 之效用 ≤ Ū(A_??)」的上界函數。<strong>引理 2</strong>：Matches(P, A_??) 是所有後代重寫位置集的上界（展開→更精確→匹配子集）。推論：匹配位置為零的分支可整枝剪除。</li>
+<li><strong>搜尋順序</strong>：以上界作優先佇列的排序鍵（best-bound search，等同以可容許啟發式做 A* 搜尋），不犧牲最優性。初步實驗顯示對總時長影響小，但在限時預算下有中等幫助。</li>
+<li><strong>高效增量匹配</strong>：展開後的匹配位置必為父抽象匹配位置的子集，只需檢查各位置的相關子樹，無需全語料重掃。展開為既有抽象變數 α（同變數多處使用，如平方 <code>λα. * α α</code>）時，限縮到「所有 α 實例綁定語法相同子樹」的位置。可選最大 arity 限制。</li>
+<li><strong>要點</strong>：所有剪枝皆可靠、不犧牲最優性。CTS 可<strong>平行化</strong>（共享優先佇列＋鎖；工作者偶爾同步最佳解即可，上界只會偏鬆仍可靠）；因隨時維護目前最佳抽象，是<strong>anytime 演算法</strong>可提早終止；重複執行即得抽象庫（一次學一個、學後重寫、再跑）。</li>
+</ul>
+<h2 id="4-cts-應用於壓縮">4. CTS 應用於壓縮</h2>
+<h3 id="41-效用">4.1 效用</h3>
+<p>U_{P,R}(A) ≜ −cost(A) + cost(P) − cost(Rewrite_R(P,A))，cost 為結構遞迴的成本函數（λ、app、$i、基元、α 各有非負常數成本）。效用可分解為各重寫位置的局部效用之和：U_local(A,e) = 抽象體大小（cost_{α=0}(A)）−應用開銷（新基元成本＋arity×app 成本）＋ <strong>multiuse 效用</strong>（同一參數在體內多次使用時只需傳一份：Σ (usages(α)−1)·cost(e&#x27;)）。此形式<strong>無需實際執行重寫即可高效計算</strong>，且與原始定義嚴格等價。</p>
+<h3 id="42-效用上界">4.2 效用上界</h3>
+<p>自 Eq.10 出發，丟掉 −cost(A) 與和式中的負項（等於假設每個位置壓縮到 0），再以引理 2 用 Matches(P, A_??) 界住重寫位置集，得 Ū_{P,R}(A_??) ≜ Σ_{e∈Matches(P,A_??)} cost(e)。</p>
+<h3 id="43-嚴格支配剪枝壓縮版的兩個實例">4.3 嚴格支配剪枝（壓縮版的兩個實例）</h3>
+<ol>
+<li><strong>冗餘參數消除（redundant argument elimination）</strong>：若兩抽象變數 α、β 在<strong>所有</strong>匹配位置都取相同引數，則該抽象被「以 α 取代 β」的版本嚴格支配，可棄。</li>
+<li><strong>引數捕獲（argument capture）</strong>：若某抽象變數在所有匹配位置都取同一引數，則被「把該引數內聯進體內」的版本支配，可棄（引數含自由變數時不適用）。註：當 α 在體內出現次數多於重寫位置數時，內聯版效用略低——採用此剪枝意味著找到的是「所有可能引數捕獲皆已發生」約束下的最優，偏差以 cost(A&#x27;) 為界；作者在所有實驗資料集上從未見此邊角案例改變選出的抽象。</li>
+</ol>
+<h3 id="44-重寫策略">4.4 重寫策略</h3>
+<p>線性時間、最優的<strong>自底向上動態規劃</strong>：對每個節點 e 計算「拒絕在此重寫」（子節點最優值之和）、「接受在此重寫」（U_local ＋各引數子樹最優值之和）、取兩者較大者；再從根遞迴向下，在接受優於拒絕處執行重寫並遞迴進引數。引數的 de Bruijn 索引偏移不改變可匹配性與效用，只需簿記。歸納論證可證最優。</p>
+<h2 id="5-結合-cts-與演繹方法">5. 結合 CTS 與演繹方法</h2>
+<p>複雜領域中好的庫可能不只靠語法模板匹配；有時需先重構暴露共同結構（例：從 <code>(* 2 8)</code>、<code>(* 7 2)</code>、<code>(right-shift 3 1)</code> 學「加倍」抽象 <code>λα.(* 2 α)</code>，需要乘法交換律與位元性質改寫——CTS 原生不支援）。核心想法：先在語料上跑改寫系統、把重構集存成 <strong>version space</strong>，再於其上跑 CTS。演繹式方法之痛在改寫成本隨迭代次數指數增長（抽出高 arity 抽象常需長改寫鏈），而<strong>少量改寫通常已足以暴露共性</strong>：只做一小撮改寫、再用 CTS 抽庫，既避免指數爆炸又保留表達力增益。</p>
+<p>以 DreamCoder 的 β-inversion（Iβ(e) 回傳「反演一步 β 歸約」的所有等價表達式之 version space）為例，把 LambdaUnify 推廣為 <strong>RewriteUnify</strong>（對 version space 統一，產生多組候選代入），據此定義展開進 version space 後重寫的成本與近似效用（每支程式至多一個重寫位置時精確），並可對部分抽象界住此近似效用。<strong>例：從 fold 學出高階函數 map</strong>——把「加倍列表」「遞減列表」程式各做一輪 β-inversion 重表述，即可與 <code>map = λα.(fold (λx.λℓ.(cons (α x) ℓ)))</code> 匹配。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

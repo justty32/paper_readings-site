@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Towards Zero-Shot Task Transfer with Neurosymbolic World Models 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Isidoro Tamassia、Lennert De Smet、Giuseppe Marra</p><p>日期：2026-08-18（v1，cs.AI）</p><p>arXiv：2608.17959</p><p><a href="https://arxiv.org/abs/2608.17959" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="towards-zero-shot-task-transfer-with-neurosymbolic-world-models">Towards Zero-Shot Task Transfer with Neurosymbolic World Models</h1>
+<h2 id="摘要與第-1-節問題">摘要與第 1 節：問題</h2>
+<p>現行 model-based RL 的世界模型（如 Dreamer 系列）學到的潛在表徵與訓練任務的獎勵函式糾纏在一起，任務一換，學到的表徵便失去對齊，通常得重新學習獎勵預測器或重貼標訓練軌跡。但獎勵函式往往是使用者或任務設計者的意圖表達，常用高層語意抽象定義（如「agent 到達目標位置」），而非環境的內在屬性。作者主張：只要把獎勵相關的狀態屬性顯式暴露成符號介面，同一套學到的動態模型就能服務定義在同一組符號上的新獎勵函式，不需要替換整個表徵學習流程。</p>
+<h2 id="第-3-節方法">第 3 節：方法</h2>
+<p><strong>兩條假設</strong>：(A1) 訓練與測試的獎勵函式都定義在有限、使用者給定的高層符號屬性上；(A2) 所有任務共享同一套底層動態。</p>
+<p><strong>神經符號世界模型（NeSy-WM）</strong>：在 DreamerV3 的 RSSM 骨架（序列模型 h_t、編碼器 z_t、動態預測器 ẑ_t、解碼器 x̂_t）上，額外加入符號瓶頸的獎勵與 continue 預測器。具體做法是先用簡單 MLP 預測符號屬性分布 p(s_t|z_t,h_t)，獎勵/continue 函式只吃符號狀態 s_t 而非直接吃 z_t、h_t，再對符號狀態邊際化算出 p^sym(r_t|z_t,h_t)——離散符號用加權模型計數（WMC），連續符號用加權模型積分（WMI），兩者在機率神經符號 AI 領域皆有高度最佳化的推論演算法。文中以離散/連續導航為例：符號狀態是座標（x,y），獎勵函式判斷座標是否落在目標格或目標矩形內，邊際化後化簡為各維度落在目標範圍的機率乘積。</p>
+<p><strong>模型學習</strong>：損失函式沿用 DreamerV3 的重建、動態（KL）、表徵（KL）損失，但預測損失改用神經符號預測器的負對數似然；整個推論過程端到端可微分（延續 DeepProbLog 一脈的神經符號推論），梯度可從符號狀態一路傳回潛在狀態。作者比較三種符號監督強度：<strong>全監督（S1）</strong>——每一步都對符號狀態給真值監督，是一種比既有 privileged-information 訓練更弱的假設（不需要完整馬可夫狀態，也不需要足以重建影像觀測）;<strong>部分監督（S2）</strong>——只在訪問到關鍵子集狀態時監督（如模擬「感測器只裝在部分區域」），另加熵正則避免預測器塌縮成永遠預測已監督符號，否則獎勵介入後可能對錯誤匹配的符號發出虛假獎勵而導致遷移失敗；<strong>無監督（S3）</strong>——完全不給符號監督，符號預測器只被獎勵訊號間接塑形，但保留的結構仍可能穩定訓練並利於後續微調。</p>
+<p><strong>測試時介入</strong>：訓練完的 NeSy-WM 可直接替換 p^sym(r_t|s_t) 與 p^sym(c_t|s_t) 成新任務的定義，無需碰觸測試環境。**純規劃適應（O1）**用 MCTS 直接在想像中規劃，不做任何進一步學習——這對純神經模型（如原版 Dreamer）是做不到的，因為它們無法在不微調的情況下替換已學好的獎勵/continue 預測器。**想像中微調（O2）**凍結潛在動態模型，只在世界模型的想像軌跡裡訓練新的 actor-critic，不需蒐集新的任務專屬資料，也不需既有 Dreamer 適應方法所需的、耗時的重播緩衝重貼標。</p>
+<h2 id="第-34-節局限">第 3.4 節：局限</h2>
+<p>主要局限在符號預測 p(s_t|z_t,h_t) 與真實屬性的對齊程度：若預測分布與符號語意錯位，替換獎勵函式時會依錯誤的符號解讀發放獎勵，導致適應失敗。符號監督能對齊符號與預期語意、支撐可靠遷移；純靠獎勵訓練則可能學出僅夠應付訓練任務的「符號捷徑」。另一層局限是符號詞彙的涵蓋範圍——若新任務的獎勵依賴詞彙外的屬性，潛在 RSSM 狀態或許仍含有用資訊，但沒有可解釋機制把新獎勵函式接上去；遷移能力被限定在獎勵能被既有符號詞彙充分表達的任務範圍內。</p>
+<h2 id="第-4-節實驗">第 4 節：實驗</h2>
+<p>在 MiniGrid 2D-FourRooms、MiniWorld 3D-FourRooms、Sokoban 五個訓練配置（各含難度變體）上測試三項主張：(C1) 樣本效率、(C2) 零樣本規劃適應、(C3) 零樣本想像中微調適應。</p>
+<p><strong>訓練樣本效率（C1）</strong>：有符號監督（全或部分）的 NeSy-WM 在大多數任務上比 DreamerV3 更穩定、收斂更快，在 MiniGrid-large 與 Sokoban 上 Dreamer 甚至不收斂；無符號監督時 NeSy-WM 表現與 Dreamer 相當，在 MiniGrid-small 上更優，在 Sokoban 與 MiniGrid-large 上與 Dreamer 一同失敗。附錄消融顯示拿掉重建梯度後，有符號監督的 NeSy-WM 表現不受影響，Dreamer 則嚴重失效——暗示符號預測本身可能就是強學習訊號。</p>
+<p><strong>零樣本規劃適應（C2）</strong>：測試任務把目標換到訓練時的對角房間（或 Sokoban 換目標配置），依起點到目標的距離分 Easy/Medium/Hard。同樣 256 次樹展開預算下，全監督模型在 Easy、Medium 任務多接近最優步數；Hard 任務（如 MiniGrid-large、MiniWorld、Sokoban 的困難版）純規劃不足以穩定解出。彙總所有難度，全監督與部分監督分別達 75.6% 與 69.6% 成功率，對比完美模擬器規劃的 79.3%（作者自報）。</p>
+<p><strong>零樣本想像中微調（C3）</strong>：Dreamer 系列（不論凍結或解凍世界模型）在四個測試任務上基本適應失敗，僅 MiniGrid-small 的解凍版本例外。全監督 NeSy-WM 幾乎立即適應所有測試任務，部分監督版本只在 MiniWorld-large 上較吃力；即使無監督，NeSy-WM 也在五個挑戰中的四個成功適應，顯著優於 Dreamer 的重貼標基線——即使沒有符號監督，神經符號預測器的結構本身仍讓想像中微調更可靠。</p>
+<h2 id="第-5-節結論">第 5 節：結論</h2>
+<p>作者主張以符號瓶頸重新設計獎勵與 continue 預測，能在不犧牲（甚至提升）訓練樣本效率的前提下，換來零樣本規劃與零樣本想像中微調兩種測試時任務轉移能力。未來方向包括長horizon 規劃下更穩健的動態學習、時間一致性等其他符號對齊形式，以及能主動探索到任務轉移所需符號狀態的探索策略。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2608.17959_NeSyWorldModelTransfer.%E6%91%98%E8%A6%81.html"><code>../summarize/2608.17959_NeSyWorldModelTransfer.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

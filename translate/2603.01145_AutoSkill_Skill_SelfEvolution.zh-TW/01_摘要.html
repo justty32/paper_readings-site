@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.01145_AutoSkill_Skill_SelfEvolution.zh-TW.html">回 2603.01145_AutoSkill_Skill_SelfEvolution.zh-TW 目錄</a>　<a href="02_%E7%B6%93%E9%A9%97%E5%88%86%E6%9E%90.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>在實際 LLM 應用中，用戶反覆表達穩定偏好與要求——如減少幻覺、遵循機構寫作慣例、避免過度技術性措辭——然而這類互動經驗鮮少被固化成可重用知識，導致 LLM agent 常無法跨會話累積個人化能力。我們提出 <strong>AutoSkill</strong>，一個經驗驅動的終身學習框架，使 LLM agent 能從對話與互動軌跡中自動推導、維護、重用技能。AutoSkill 從用戶經驗抽象技能、支援其持續自我演化、並在不重訓底層模型的前提下動態把相關技能注入未來請求。它被設計為<strong>模型無關的 plug-in 層</strong>，相容既有 LLM，並引入標準化技能表示以利跨 agent/用戶/任務的分享與遷移。如此，AutoSkill 把易逝的互動經驗轉成顯式、可重用、可組合的能力。本文描述其動機、架構、技能生命週期與實作，並相對於記憶、檢索、個人化、agentic 系統的先前工作定位之。AutoSkill 凸顯一條通往終身個人化 agent 與個人數位替身的務實可擴展路徑。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 已催生新一代互動 agent。當系統從受控基準走向真實部署，一個反覆模式日益明顯：<strong>用戶跨會話反覆重述穩定偏好與操作要求</strong>（如要求避免幻覺、遵循官方寫作風格、減少術語、遵守偏好工作流）。近期記憶增強 agent 與長視野對話研究已凸顯保存用戶特定資訊的重要性，但當前實務中這類重複互動經驗鮮少被轉成可重用能力，導致每個新會話都要從頭重建用戶習慣與任務期望。</p>
+<p>既有方案只提供部分解：<strong>參數更新與自我演化</strong>能透過自反思、回饋驅動優化或自訓練改善模型行為，但在需頻繁細粒度個人化的場景往往昂貴或難控；<strong>記憶式方法</strong>透過檢索與長期儲存保存事實/偏好/對話內容，卻通常把過去互動當「待檢索的文字」而非「待操作化的行為」；<strong>agent 框架與技能學習方法</strong>展示了可重用策略對推理/工具使用/任務執行的價值，但許多情況下技能仍隱含在 prompt、軌跡或 policy 裡。<strong>仍缺的，是把重複互動經驗轉成顯式、可重用、可維護技能的機制。</strong></p>
+<p>AutoSkill 的核心想法是把重複互動經驗<strong>不僅當記憶、而當技能形成的來源</strong>：不只存對話片段或偏好記錄，而是從用戶互動抽象可重用行為、結晶成顯式技能工件（捕捉風格約束、回應策略、工具使用程序、領域操作慣例）。因以結構化形式表示，技能可被檢視、編輯、合併、版本化、跨會話重用。AutoSkill 支援完整技能生命週期：從對話與互動事件辨識候選技能、總結成標準化 SKILL.md 工件、透過迭代精煉更新、推理時注入相關技能——<strong>在不重訓底層模型下達成持續能力累積</strong>，並提供人類監督介面（開發者/用戶可直接檢視修訂）。</p>
+<p>超越實用個人化，AutoSkill 提供一個關於語言 agent 終身學習的獨特視角：<strong>把累積單位從原始記憶記錄上移到顯式行為知識</strong>，並把 agent 改進框定為技能抽取、維護、重用的過程。</p>
+<p><strong>貢獻</strong>：(1) 形式化「把互動經驗轉成顯式可重用技能」問題並提出 AutoSkill；(2) 提出涵蓋抽取、結構化表示、迭代精煉、檢索、重用的技能生命週期，在不改基模參數下持續演化技能；(3) 把技能設計成可編輯、可版本化的工件，相對隱含記憶或 policy 方法改善透明度、可控性、長期可維護性；(4) 以開源可部署系統實作，支援與既有 LLM 與 agent 流水線整合。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>分四線：(1) <strong>經驗驅動終身學習（ELL）</strong>——研究 agent 如何從持續互動累積可重用知識/策略，核心問題是「何時抽取、保留什麼、如何控制噪聲累積與遺忘」；ELL 形式化這些目標並引入 StuLife 等基準。AutoSkill 共享「從真實互動持續累積能力」目標，但<strong>把知識結晶成顯式 SKILL.md 工件並版本化演化</strong>，而非保留為潛在記憶或隱式 policy 適應，改善可解釋性與人工修訂。(2) <strong>自我演化</strong>（SELF、Large Language Models Can Self Improve、RISE、SEC、UPO）——AutoSkill 互補：不更新參數、不依賴隱式 policy 漂移，而是把可重用行為外化成結構化技能工件並透過顯式修訂、合併、版本控制演化。(3) <strong>長期記憶</strong>（MemoryBank、MemGPT、Mem0、A-MEM、生成式 agent）——AutoSkill 建於「檢索能重新激活有用過去經驗」洞見，但<strong>把記憶從文字記錄上提到行為單元</strong>。(4) <strong>技能學習</strong>（ReAct、Toolformer、Voyager 的組合技能庫、Reflexion）——多數技能仍隱含在 prompt/軌跡/潛在 policy，缺統一的檢視、編輯、遷移、長期維護機制；AutoSkill 把技能當<strong>第一類工件</strong>處理。</p>
+<h2 id="3-方法">3. 方法</h2>
+<p>提出<strong>免訓練</strong>終身學習框架，透過顯式技能自我演化（而非參數更新）改善對話品質。核心想法：把可重用解題模式外化成版本化技能、檢索以協助未來回應、用新觀察的用戶互動持續精煉。框架含兩個耦合迴圈：</p>
+<pre><code class="language-mermaid">flowchart TB
+  subgraph 回應迴圈[技能增強回應生成 · 線上服務路徑]
+    q[用戶查詢 q_t] --&gt; rw[查詢改寫] --&gt; ret[混合技能檢索&lt;br/&gt;dense + 關鍵詞]
+    ret --&gt; inj[帶門檻 Top-K 技能注入] --&gt; gen[技能條件化生成 r_t]
+  end
+  subgraph 演化迴圈[技能演化 · 背景學習路徑]
+    qe[僅用用戶查詢 q1..qt] --&gt; ext[技能抽取] --&gt; judge[最近鄰技能管理&lt;br/&gt;新增/更新/合併判斷]
+    judge --&gt; merge[版本化合併] --&gt; bank[(技能庫 SkillBank)]
+  end
+  bank --&gt; ret
+  gen -.用戶互動信號.-&gt; qe
+</code></pre>
+<p><strong>技能表示</strong>：技能 = <code>&lt;n 名稱, d 描述, p 可執行指令 prompt, τ 觸發集, γ 標籤集, ξ 範例集, v 版本&gt;</code>。</p>
+<p><strong>免訓練實作</strong>：部署中不更新任何模型參數，以六個提示驅動模組實作——查詢改寫 M_rw、對話回應 M_chat、技能抽取 M_ext、技能管理裁判 M_judge、技能合併 M_merge、嵌入向量化 M_emb；每模組＝通用 LLM + 對應 prompt，框架是模組化的推理時組合。給定當前查詢與對話歷史，系統從技能庫檢索相關技能生成回應，同時用用戶側互動信號更新技能庫。<strong>重要：技能抽取階段只用用戶查詢 {q₁…q_t}、不用模型回應 r_t 當抽取證據</strong>（避免自我確認）。</p>
+<p>整體：回應迴圈用查詢改寫、混合檢索、帶門檻 Top-K 技能注入、技能條件化生成改善當前輸出；演化迴圈用「僅查詢抽取、最近鄰技能管理、版本化合併」在每輪後更新技能。<strong>全程不優化模型參數，所有改進來自顯式技能構建、檢索、精煉</strong>——是一個免訓練、提示驅動、顯式技能的終身學習框架。</p>
+<h2 id="4-系統與技能生命週期">4. 系統與技能生命週期</h2>
+<p>AutoSkill 是 LLM 助理的終身學習層，把互動不僅當暫態上下文，而把復現的偏好、約束、工作流轉成顯式技能、存為持久工件、重用以改善未來回應。系統清楚分離<strong>線上服務路徑</strong>（回應生成時檢索相關技能）與<strong>背景學習路徑</strong>（持續從互動經驗抽取與維護技能）。可置於上游模型前當外部記憶與適應層、不改客戶端呼叫模式；歷史對話/文件/agent 軌跡可處理以<strong>啟動初始技能庫</strong>、再於線上使用中精煉。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

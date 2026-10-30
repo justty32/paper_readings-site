@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《快取感知 Prompt 壓縮：LLM API 快取的兩層成本模型》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yan Song（PayPal Inc.）</p><p>日期：2026-07</p><p>arXiv：2607.15516</p><p><a href="https://arxiv.org/abs/2607.15516" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="快取感知-prompt-壓縮llm-api-快取的兩層成本模型重點摘要">《快取感知 Prompt 壓縮：LLM API 快取的兩層成本模型》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>CAPC（Cache-Aware Prompt Compression）</strong>：對 Anthropic Sonnet 4.6 的 prompt cache 進行系統性實證特徵化，發現其為兩層架構（hot tier ≤~3.5k token、ρ≈0.83；persistent tier 以上 ρ≈1.0），提出成本模型與 crossover 分析，證明 query-agnostic（而非 query-aware）壓縮配上顯式 cache_control 是成本最優策略——LongBench-v2 16/16 配置全勝，τ-bench retail 上 CAPC 是四策略中最便宜且任務完成率與 vanilla 無差異（z=0.00）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>生成式 LLM API 有兩個成本節省手段——<strong>prompt caching</strong>（對重複前綴的 cache hit 僅收低價讀取費）和 <strong>prompt compression</strong>（壓縮 prompt 減少 token 數）——但文獻中兩者被分開研究，且存在隱含的錯誤假設。主流 query-aware 壓縮方法（LLMLingua 家族）為每個 query 產生不同的壓縮前綴，這恰好破壞了 caching 所需的 prefix-strict 約束——每次呼叫都是 cache miss，壓縮省下的 token 被反覆 cache write 成本吃掉。文獻中隱含假設 cache hit rate ρ=1.0，實務上遠非如此。本文填補了「caching 與 compression 的聯合最佳化」這一空白。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>系統性實證特徵化（§3）</strong>：以 RUN_NONCE 隔離的獨立試驗，測量 Sonnet 4.6 的累積 cache hit rate ρ(N, |P|) 作為後續呼叫數 N 與前綴大小 |P| 的函數——發現兩層架構（hot tier 僅在 ~3.5k token 以下、ρ 平台值 ≈0.83；persistent tier 以上 ρ=1.0），且前綴失效是 token-strict 的（tokenizer 例外：前導/尾隨空白被正規化）。</li>
+<li><strong>成本模型與 crossover 分析（§4）</strong>：推導四種策略（vanilla / cache-only / query-aware compress / CAPC）的每呼叫成本公式。導出 provider-agnostic 的 crossover ρ 閾值：ρ_cross(r) = (cw − pin/r) / (cw − cr)，寫成無因次形式 ρ_cross(r) = (α − 1/r) / (α − β)。在 Sonnet 4.6 定價（α=1.25, β=0.10）下，r≥6 時 ρ_cross&gt;0.94 超過實測平台值，cache-only 永遠打不贏 query-aware 壓縮——這挑戰了常規直覺。</li>
+<li><strong>CAPC 演算法（§5）</strong>：query-agnostic 壓縮（D′=Compress(D, r) 只做一次、off the request path）+ 對壓縮後文件加 cache_control marker + 對 query 不加 marker。附帶 <strong>tier-preserving ratio bound</strong> r_max^safe(|D|) = floor(|D|/T)，T=3500 token——防止過度壓縮將前綴推入 hot tier 導致成本反彈（實證：12k doc 從 r=3→4，成本反彈 77%）。<strong>AdaptiveCacheBoundary</strong> 子程序處理演變中的文件：以正規化句子指紋 + 突變率閾值（ε_static=0.05, ε_quasi=0.30）將位置分類為 STATIC/QUASI/DYNAMIC，提取最大連續 STATIC-or-QUASI 前綴。</li>
+<li><strong>生產級驗證矩陣</strong>：四個獨立的 prompt 結構驗證——(1) LongBench-v2 合成文件 16/16 dominance grid；(2) 94k token tools= schema 的企業工具使用助手（51.7% 成本節省）；(3) graphify 知識圖譜 RAG 在 FastAPI/httpx 兩個 codebase（9.3× / 2.4× vs cache-all）；(4) τ-bench retail 公開基準（50 任務、確定性 DB-state reward）。</li>
+</ul>
+<h2 id="關鍵發現數據">關鍵發現/數據</h2>
+<ul>
+<li><strong>兩層 cache 架構</strong>：|P|=2k 時 ρ(N=30)=0.83（σ=0）；|P|≥4k 時 ρ=1.0 從 N=2 開始。閾值約 T≈3500 token。</li>
+<li><strong>16/16 dominance</strong>：CAPC 在四文件 × 四壓縮比全部 16 個配置中都是最便宜策略。平均節省 vs vanilla 89.6%、vs cache-only 48.5%、vs query-aware 64.4%。品質方面 r=2 時四策略相差 ≤0.04。</li>
+<li><strong>成本反彈效應</strong>：12,191 token 文件從 r=3→4，壓縮後前綴從 4,067（persistent）降到 3,119（hot），每查詢成本從 $0.0057 反彈到 $0.0101（+77%）——驗證 tier-preserving bound 的必要性。</li>
+<li><strong>企業驗證</strong>：CAPC r=3 在 94k-token tools= schema 上節省 51.7% vs vanilla；發現隱含 tools= caching 現象（即使無 cache_control 也部分命中）。</li>
+<li><strong>τ-bench retail 公開基準</strong>：CAPC 最便宜（$0.1145/任務），任務完成率與 vanilla 完全相等（36/50，two-proportion z=0.00, p=1.00）。query-aware 壓縮反而比 vanilla 貴 +40.1%——首次在公開基準上證實 §4 的 negative-ROI 預測。</li>
+<li><strong>graphify RAG</strong>：CAPC 在 FastAPI（9.3× vs cache-all）和 httpx（2.4× vs cache-all）上實現 ≥85% cache hit rate。CAPC 的品質貢獻與模型對 codebase 的 prior 成反比：Familiar codebase 主要提供成本節省，unfamiliar codebase 同時提供大幅品質提升（httpx +142%）。</li>
+<li><strong>總 API 花費</strong>：全論文僅 $98.96，含 6300+ Haiku 4.5 judge calls。可在一個週末重現。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>所有結果來自單一模型（Sonnet 4.6）與單一 TTL（5 分鐘 ephemeral cache）；跨 provider（OpenAI、Google）與跨模型（Opus、Haiku）的量化參數待測。</li>
+<li>LLM-as-judge 品質評分（Haiku 4.5 self-consistency ×3）雖是成本受限的標準做法，但可能引入 judge 偏誤（與 reference 答案共享架構家族）。τ-bench 的 DB-state reward 部分緩解此問題。</li>
+<li>AdaptiveCacheBoundary 的大部分驗證使用合成版本漂移；Git 歷史驗證顯示演算法在高度動態的生產文件上仍保持 62–70% 節省，但真實對話軌跡測試仍缺失。</li>
+<li>20k token 文件在 r≥6 時出現無法完全解釋的品質斷崖。</li>
+<li>尚未與 model routing 或 reasoning budget control 聯合評估。</li>
+</ul>
+<h2 id="對讀者的價值ai_core-接點">對讀者的價值（ai_core 接點）</h2>
+<ul>
+<li>本文是 <strong>ai_core §3.3 成本梯度</strong> 的直接延伸文獻：它將「快取感知 prompt 壓縮」定位為兩層成本模型的第四條路線——前有 cascade（FrugalGPT）、routing（RouteLLM）、speculative decoding（token 級草稿-驗證），現在加入 <strong>cache-aware compression（快取層成本梯度）</strong>。核心洞察：caching 的實際 hit rate ρ 是有結構的、可量測的函數（非隱含的 ρ=1.0），成本梯度在此表現為「前綴大小決定落在 hot tier 還是 persistent tier，進而決定每 token 的實際支付價格」——這與 speculative decoding 中「便宜 draft / 貴 target」的兩級成本結構同構。</li>
+<li><strong>§3.6 固化引擎的 cache 策略指導</strong>：CAPC 的 AdaptiveCacheBoundary（觀察 K≥3 版本後自動標記 STATIC/QUASI/DYNAMIC 區段）可作為固化引擎中「哪些 prompt 區段可以預先壓縮+快取」的自動判定工具。當一段行為的 prompt 模板被歸類為 STATIC，即可用 CAPC 預先壓縮後以 fixed cache prefix 部署——這正是 §3.6「行為退化成確定性程式碼」的 token 經濟實現。</li>
+<li>與 RouteLLM（2406.18665）、FrugalGPT（2305.05176）、SemanticALLI（2601.16286）構成 §3.3 成本梯度三聯：路由決策（呼叫誰）、快取策略（何時重複使用）、壓縮策略（送多少 token）——三者聯合優化是 ai_core 治理層的完整成本控制平面。CAPC 給出了形式化的 crossover 條件，可用於治理層的自動策略切換。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2607.15516_CacheAwarePrompt.zh-TW.html"><code>../translate/2607.15516_CacheAwarePrompt.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

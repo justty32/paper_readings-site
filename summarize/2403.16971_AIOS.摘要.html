@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《AIOS：LLM Agent 作業系統》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Kai Mei, Xi Zhu, Wujiang Xu, Mingyu Jin, Wenyue Hua, Zelong Li, Shuyuan Xu, Ruosong Ye, Yingqiang Ge, Yongfeng Zhang</p><p>日期：2024-03</p><p>arXiv：2403.16971</p><p><a href="https://arxiv.org/abs/2403.16971" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="aiosllm-agent-作業系統重點摘要">《AIOS：LLM Agent 作業系統》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>AIOS 把 LLM、工具、短期記憶、持久儲存與權限從 agent application 抽到 kernel，將 agent query 拆成 syscalls 排程；單張 RTX A5000 上最高得到 2.1× throughput，並以 snapshot／restore 支援 LLM context switch。</p>
+<h2 id="架構">架構</h2>
+<p>三層分工為 application、kernel、hardware。AIOS kernel 並不直接管 GPU driver，而是與傳統 OS kernel 並列，透過既有 OS 取得硬體資源。其模組包括：</p>
+<ul>
+<li>LLM Core：統一 OpenAI、HuggingFace 等 backend；處理 generation、function calling 與 structured output。</li>
+<li>Scheduler：把 agent query 分解為 AIOS syscalls，採 FCFS 或 round-robin 分派，避免以 CUDA OOM 作 trial-and-error admission control。</li>
+<li>Context Manager：到達 time limit 時保存 generation context，稍後恢復，讓長請求不壟斷 core。</li>
+<li>Memory／Storage Managers：分別處理 runtime memory 與持久資料。</li>
+<li>Tool Manager：載入工具、驗證 arguments，並以 conflict map 控制並行衝突。</li>
+<li>Access Manager：檢查 agent 對工具與資料的權限，必要時要求使用者介入。</li>
+<li>SDK：讓 ReAct、Reflexion、AutoGen、Open Interpreter、MetaGPT 等框架透過一致 API 使用 kernel。</li>
+</ul>
+<h2 id="實驗">實驗</h2>
+<p>GPT-4o-mini 的 agent quality 實驗涵蓋 HumanEval、MINT-Code、GAIA、SWE-bench-Lite。AIOS 後多數 SR 持平或小幅增加；例如 ReAct GAIA 5.5%→7.3%，AutoGen GAIA 7.3%→9.7%。作者把提升歸因於 wrapper 的結構化 prompt、工具 argument regex 與衝突控制，不是純排程效果。</p>
+<p>效率使用 Llama-3.1-8B、Mistral-7B 與單張 24GB RTX A5000；Reflexion＋Llama-3.1-8B 最高 2.1× throughput，平均等待時間也下降。Scalability 實驗把 HumanEval 164 題複製成 250–2,000 個 active agents，總執行時間與等待時間約隨 agent 數線性增長，AIOS 與 baseline 的差距逐步擴大。</p>
+<h2 id="限制與成熟度">限制與成熟度</h2>
+<ul>
+<li>2,000 agents 是複製 benchmark requests 的 concurrent load，不是 2,000 個持久、異質、會休眠的 agent records。</li>
+<li>排程實驗只在單 GPU、兩個小型 open models 上；沒有 crash recovery、durable queue、lease 或 side-effect semantics。</li>
+<li>Access Manager 描述了權限與人工介入，但安全性沒有攻擊 benchmark 或形式化驗證。</li>
+<li>Agent SR 的改變混入 prompt wrapper 與工具驗證，因此不能歸因於 OS abstraction 本身。</li>
+</ul>
+<p>證據成熟度：<strong>中等的 serving prototype 證據，低度的持久 agent OS／安全證據</strong>。</p>
+<h2 id="對-freepy-的價值">對 FreePy 的價值</h2>
+<p>AIOS 是很好的 syscall surface 與 module decomposition 先例，但 FreePy 的研究層次更偏 control plane：Bot／Round／Step identity、event journal、lease、effect unknown 與 verifier。可借用其 LLM Core adapter、context preemption、tool conflict map；不能把 process-level concurrency 當成 durable agent lifecycle。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

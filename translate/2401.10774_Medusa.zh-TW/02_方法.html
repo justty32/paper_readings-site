@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2401.10774_Medusa.zh-TW.html">回 2401.10774_Medusa.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="2-方法">2. 方法</h2>
+<p>Medusa 沿用推測解碼的框架，每一解碼步含三個子步：(1) 生成候選、(2) 處理候選、(3) 接受候選。對 Medusa 而言：(1) 由 Medusa 頭達成、(2) 由樹狀注意力實現、(3) 可用 rejection sampling 或典型接受；且因頭位於原模型之上，(2) 算出的 logits 可直接供下一步的 (1) 使用。</p>
+<h3 id="21-關鍵元件">2.1 關鍵元件</h3>
+<h4 id="211-medusa-頭medusa-heads">2.1.1 Medusa 頭（Medusa Heads）</h4>
+<p>推測解碼靠一個輔助 draft 模型預測後續 token，該模型須夠小又夠有效，難以兼顧；既有做法常需<strong>另行預訓練</strong>一個小模型（如某工作用了 275 個 A100 GPU 小時），且獨立預訓練可能造成 draft 與原模型的<strong>分佈偏移（distribution shift）</strong>，並帶來分散式服務多模型的複雜度。</p>
+<p>Medusa 頭是<strong>附加在原模型最後隱藏狀態上的解碼頭</strong>。給定位置 t 的隱藏狀態 h_t，加入 K 個頭，第 k 頭預測第 (t+k+1) 個 token（原 LM 頭預測 t+1）。每頭為<strong>單層前饋網路加殘差連接</strong>：<code>p_t^(k) = softmax(W2^(k) · (SiLU(W1^(k) · h_t) + h_t))</code>，其中 W1 為 d×d、W2 為 d×V（V 為詞彙量）。<strong>W2 初始化為與原 LM 頭相同、W1 初始化為零</strong>，使頭的初始預測對齊原模型。此簡單設計即足夠。</p>
+<p>與 draft 模型不同，Medusa 頭與主幹<strong>一起訓練</strong>（主幹可凍結＝Medusa-1，或一起訓＝Medusa-2），既能借用主幹已學的表徵、又確保頭的分佈與原模型對齊、緩解分佈偏移；且頭僅單層、不增服務系統設計複雜度、對分散式友善。</p>
+<h4 id="212-樹狀注意力tree-attention">2.1.2 樹狀注意力（Tree Attention）</h4>
+<p>多頭給出後續 K+1 個 token 的機率預測，可構成長 K+1 的候選延續。用<strong>多條</strong>候選能提升單步的期望接受長度，但也增加算力。為取平衡，採<strong>樹狀結構注意力</strong>同時處理多候選。</p>
+<p>作法：第 k 頭取其 <strong>top-s_k</strong> 預測，對各頭做<strong>笛卡兒積（Cartesian product）<strong>形成候選。例（圖 2）：第一頭 s1=2、第二頭 s2=3，共 2×3=6 條候選，各對應樹中一條分支。用特製 attention mask 使</strong>每個 token 只能注意到它在同一延續上的前驅（predecessors）</strong>，並相應調整位置編碼——如此可<strong>不擴大 batch size 就同時處理眾多候選</strong>。新增 token 總數為 Σ_{k=1..K} Π_{i=1..k} s_i。</p>
+<p>此法與傳統因果注意力不同：只有同一延續上的 token 才算歷史脈絡。與 Miao et al.、Spector &amp; Re 等獨立工作相比，他們是「自底向上」由 draft 模型合併候選建樹，Medusa 則「自頂向下」借頭的結構建樹。更精巧的樹構造見 §2.3.3。</p>
+<h3 id="22-訓練策略">2.2 訓練策略</h3>
+<p>最基本可凍結主幹只訓頭；但把主幹與頭一起訓可顯著提升頭的準確率。依算力與需求提供兩級策略。本節先假設有一份與目標模型輸出分佈相符的訓練集（如目標模型的 SFT 資料），§2.3.2 再談如何用自蒸餾免除此需求。</p>
+<h4 id="221-medusa-1凍結主幹">2.2.1 Medusa-1：凍結主幹</h4>
+<p>主幹凍結，用頭預測與真值的交叉熵損失訓頭。第 k 頭損失 <code>L_k = -log p_t^(k)(y_{t+k+1})</code>。觀察到 k 越大 L_k 越大（越遠的預測越不確定），故對各頭加權 λk 平衡：<code>L_Medusa-1 = Σ_k -λk log p_t^(k)(y_{t+k+1})</code>。實務取 λk = 常數（如 0.8）的 k 次方。因主幹只用來提供隱藏狀態，可用<strong>量化主幹</strong>降低記憶體——類 QLoRA，單張消費級 GPU 即可為大模型訓 Medusa；訓練僅需數小時（Vicuna-7B、單張 A100 PCIE、60k ShareGPT 樣本約 5 小時）。</p>
+<h4 id="222-medusa-2聯合訓練">2.2.2 Medusa-2：聯合訓練</h4>
+<p>為進一步提升頭準確率，可頭與主幹一起訓，但需特殊配方保住主幹的次一 token 預測能力與輸出品質。三項策略：</p>
+<ul>
+<li><strong>合併損失（Combined loss）</strong>：加回主幹 LM 交叉熵損失 <code>L_LM = -log p_t^(0)(y_{t+1})</code>，以權重 λ0 平衡：<code>L_Medusa-2 = L_LM + λ0 · L_Medusa-1</code>。</li>
+<li><strong>差異化學習率（Differential learning rates）</strong>：主幹已訓練充分、頭需更多訓練，故給兩者不同學習率，使頭快速收斂而不破壞主幹能力。</li>
+<li><strong>頭預熱（Heads warmup）</strong>：訓練初期頭損失大、梯度大，可能扭曲主幹參數。採兩階段：第一階段只訓頭（如 Medusa-1）；第二階段頭與主幹一起訓並用預熱策略（可先訓主幹幾個 epoch，或漸增 λ0）。兩種做法實務皆佳。</li>
+</ul>
+<p>三者合用即可頭與主幹聯合訓而不傷主幹能力；此配方亦可與 SFT 合用，得到<strong>原生支援 Medusa</strong> 的模型。</p>
+<h4 id="223-如何選頭數">2.2.3 如何選頭數</h4>
+<p>經驗上<strong>至多 5 個頭</strong>已足。建議訓 5 個頭，再依 §2.3.3 決定樹狀注意力的最佳配置；配上最佳化樹後，有時 3–4 個頭即足供推論，可忽略多餘頭而無開銷。</p>
+<h3 id="23-擴展">2.3 擴展</h3>
+<h4 id="231-典型接受typical-acceptance">2.3.1 典型接受（Typical Acceptance）</h4>
+<p>推測解碼用 rejection sampling 產出與原模型同分佈的多樣輸出，但後續實作發現此策略<strong>隨採樣溫度上升效率變差</strong>。直覺上（極端情形 draft 模型＝原模型）：greedy 解碼下 draft 全被接受、效率最大；而 rejection sampling 因 draft 與原模型獨立採樣、即使分佈完全對齊 draft 輸出仍可能被拒，帶來額外開銷。</p>
+<p>但真實場景採樣本就是為了多樣性，溫度只是調節「創意」；故我們主張<strong>不必匹配原模型分佈</strong>，改採<strong>典型接受</strong>選出「合理」候選。靈感取自截斷採樣（truncation sampling）：目標是選「典型」的候選——即並非極不可能由原模型產生。用原模型的預測機率當量尺，設一閾值：候選 token 的原模型條件機率須大於 <code>min(ε, δ·exp(-H(p_original)))</code>，其中 H 為熵、ε 為硬閾值、δ 為與熵相關的閾值。此準則基於兩觀察：(1) 相對高機率的 token 有意義、(2) 分佈熵高時多種延續都合理。逐候選評估、接受滿足條件的前綴；為保證每步至少產一 token，第一個 token 用 greedy 無條件接受，其後才用典型接受，最終取所有候選中最長被接受的前綴。</p>
+<p>洞見：溫度 0 時退化為 greedy 解碼；溫度 &gt; 0 時 greedy 結果在適當 ε、δ 下必被接受（機率最大），得最大加速；一般情況溫度越高接受序列越長。實驗證實典型接受能在維持品質下取得更佳加速（圖 5）。</p>
+<h4 id="232-自蒸餾self-distillation">2.3.2 自蒸餾（Self-Distillation）</h4>
+<p>若無與目標模型輸出分佈相符的資料（如只釋出模型不釋出資料、或模型經 RLHF 使輸出分佈偏離訓練集），提出自動自蒸餾管線：用模型自己生成訓練集。作法：取一份與目標領域相近的公開種子資料集（如聊天模型用 ShareGPT），把 prompt 餵給模型讓它回覆；多輪對話可循序餵入，像 Zephyr-7B 這類同時在對話雙方角色上訓練的模型能「自問自答」，餵第一個 prompt 即生成多輪。</p>
+<p>Medusa-1 用此資料集訓頭即可。但 Medusa-2 若僅用此資料集訓主幹與頭，品質通常會下降（甚至只訓主幹也退化）——故主幹需改用原模型的機率預測當標籤（而非真值 token），即 KL 蒸餾損失 <code>L_LM-distill = KL(p_original,t^(0) || p_t^(0))</code>。為免同時維護兩個模型增加記憶體，用 <strong>LoRA</strong> 微調主幹——原模型即「關閉 adapter」的模型，蒸餾幾乎不增記憶體。提示：此情形宜用<strong>不量化的 LoRA</strong>，否則 teacher 變成量化模型、可能降低品質。</p>
+<h4 id="233-搜尋最佳化樹構造">2.3.3 搜尋最佳化樹構造</h4>
+<p>§2.1.2 的笛卡兒積是最簡樹構造，但在固定總節點預算下未必最佳——不同頭的不同 top 預測準確率不一。可用<strong>校準資料集（calibration dataset）<strong>算各頭 top-i 預測的準確率 a_k^(i)（定義為單一 top-i token 的準確率，即 top-i 減 top-(i-1)）。假設各頭獨立，候選序列 [i1,…,ik] 的準確率為 Π_j a_j^(ij)，而</strong>期望接受長度</strong>為對樹中所有節點求和 Σ Π a。</p>
+<p>由於逐一加節點時，新節點對期望的貢獻恰為該節點的準確率，故可<strong>貪婪地</strong>每次把「與現有樹相連且準確率最高的節點」加入，直到達到目標節點數，即得最大化期望接受長度的樹。細節見附錄 C。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

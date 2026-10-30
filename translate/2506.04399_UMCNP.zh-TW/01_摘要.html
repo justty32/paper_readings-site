@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2506.04399_UMCNP.zh-TW.html">回 2506.04399_UMCNP.zh-TW 目錄</a>　<a href="02_%E6%8F%90%E5%87%BA%E6%96%B9%E6%B3%95%EF%BC%9AUMCNP.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>提出 <strong>UMCNP（Unsupervised Meta-Testing with Conditional Neural Processes）</strong>，一個新穎的<strong>混合 few-shot 元 RL</strong> 方法，<strong>獨特地結合卻又明確分離</strong>「<strong>參數化策略梯度（PPG）式</strong>」與「<strong>任務推論式</strong>」兩種 few-shot 元 RL。針對<strong>元測試時獎勵訊號缺失</strong>的設定，本法在<strong>不增加元訓練樣本</strong>下提升樣本效率。UMCNP 借助 <strong>條件神經過程（CNP）</strong> 的效率與可擴展性，降低元測試所需的線上互動次數：元訓練時把先前由 PPG 元 RL 收集的樣本<strong>離線重用</strong>來學任務推論；UMCNP 從<strong>單一條測試任務 rollout（含未知參數）</strong> 推論轉移動力學模型的潛在表徵，再藉由與學到的動力學模型互動<strong>生成自適應 rollout</strong>。在 2D-Point Agent、cartpole（未知角度感測偏差）、walker（隨機動力學參數）等連續控制元 RL benchmark 上，UMCNP 用<strong>遠少於基線的樣本</strong>即適應到未見測試任務。</p>
+<p><strong>索引詞</strong>：強化學習、深度學習方法、遷移學習。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>深度 RL 雖成就斐然，卻苦於樣本效率差與泛化有限。<strong>Few-shot 元 RL</strong> 在元訓練學一個任務分布、元測試時用新任務的少量樣本適應同分布的新任務。真實世界資料收集昂貴，<strong>最小化線上互動</strong>對實用至關重要。</p>
+<p>快速適應在自駕、拆解操作機器人、醫療診斷、通風機器人等有諸多應用。真實世界非平穩，agent 須對變動的環境動力學（感測器/致動器故障）魯棒。但元 RL 需測試任務樣本來適應，受採樣量限制；當<strong>測試任務獎勵訊號不可用或不可靠</strong>（感測器故障）時更甚。要在無獎勵下提升元測試樣本效率，須在訓練時學一個<strong>表達力強的元模型</strong>以低成本生成樣本。</p>
+<p>本文研究的設定：<strong>轉移函數隨任務分布變化、元測試時無獎勵</strong>；每個轉移函數依賴一個<strong>隱藏動力學參數</strong>（元訓練與元測試皆然）。例如：agent 在不同力場參數化的環境中移動到目標，不同力場朝不同方向推 agent，要求其以少量試錯魯棒移動；又如感測器故障引入未知偏差。<strong>No-reward Meta Learning（NORML）</strong> 是用學到的 advantage 函數、無獎勵適應的無監督元測試演算法。<strong>CaDM</strong> 與 <strong>RMA</strong> 也能在一個 episode 內無獎勵適應，但訓練/測試用<strong>固定長度</strong>轉移。</p>
+<p>提出新的混合元 RL 形式，<strong>把任務推論從 PPG 元 RL 解耦</strong>。與前作（PEARL/VariBAD）不同，本法以<strong>模組化</strong>方式針對元測試樣本效率、且元測試不需獎勵——藉由「給定目標狀態與動作查詢、預測下一狀態」從元模型生成<strong>低成本樣本</strong>，取代昂貴的線上互動。UMCNP 還能把 PPG 元訓練收集的樣本<strong>離線重用</strong>於任務推論，不犧牲元訓練樣本效率；此解耦提升了「無法用線上互動重訓元策略」場景的彈性。</p>
+<p><strong>四大貢獻</strong>：(1) 改善樣本效率（只需未見測試任務的<strong>單一 rollout</strong>，對比前作的 25 條）；(2) 在<strong>無測試任務參數與獎勵</strong>下生成並學習元動力學模型，且<strong>置換不變、與樣本數無關</strong>；(3) 用<strong>離線資料集</strong>做元 RL 無監督元測試的任務推論；(4) 解耦 PPG 與任務推論，提供應用彈性並增強資訊性軌跡生成。在 point agent、cartpole（感測偏差）、Walker（變動力學）上驗證，樣本效率顯著勝無監督元測試基線。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>元學習用過往任務知識更高效地從有限經驗學新任務，已在回歸/分類/深度 RL 見效。本文建於「任務分布共享結構、僅轉移動力學不同」的元 RL 框架——共享結構的假設讓「在未知轉移參數的新任務上做無監督元測試」成為可能。</p>
+<p><strong>A. 黑箱 few-shot 元 RL</strong>：假設較少結構但犧牲泛化。Mishra et al. 用時序卷積+soft attention 學上下文表徵；Duan et al.（元模仿學習）把專家示範編碼成上下文嵌入。</p>
+<p><strong>B. 參數化策略梯度（PPG）式 few-shot 元 RL</strong>：內層用策略梯度。<strong>MAML</strong> 從同分布採訓練/測試任務。<strong>NORML</strong>（Yang et al.）是 MAML-RL 的無監督元測試擴展——動力學模型（非獎勵函數）跨任務變，用少量無獎勵樣本快速適應。這些方法元測試樣本效率不足；本文用 <strong>CNP</strong> 減少適應所需經驗。</p>
+<p><strong>C. 帶任務推論的 few-shot 元 RL</strong>：在內層推論未知測試任務的底層 MDP。Zintgraf et al.（VariBAD）用 RNN 編碼有序轉移的後驗、augment 狀態。FOCAL 用確定性 encoder + 逆冪損距離度量學習（假設任務確定性、轉移到 (T,R) 一對一）；PEARL/VariBAD 用隨機 encoder 並優化 ELBO。UMCNP 雖也在內層辨識潛在任務參數，但<strong>目標是無監督元測試（獎勵缺失）</strong>，且<strong>解耦任務推論與 PPG</strong>，即使訓練結束、只要元訓練樣本可取就能改善元測試樣本效率。</p>
+<p><strong>RMA</strong>（model-free 任務推論）先訓 base policy（吃環境因子 encoder 編的 latent extrinsics + 狀態 + 前動作），再訓 adaptation module 從狀態-動作歷史預測 latent extrinsics；部署時隱藏環境因子。RMA 可在 episode 內適應，但<strong>訓練需環境參數</strong>；UMCNP 不需、只用轉移訓練。</p>
+<p><strong>CaDM</strong>（model-based）編碼<strong>固定數量</strong>轉移、可 episode 內適應，預測前向+後向動力學。UMCNP 與之不同：以<strong>置換不變、與觀測數無關</strong>方式處理前向/後向狀態預測，測試時不需為不同未來/歷史長度重訓。</p>
+<p><strong>D. 條件神經過程（CNP）</strong>：CNP（Garnelo 2018）在<strong>置換不變的先驗資料 + 目標輸入</strong>條件下預測機率分布參數，用貝氏推論 + 神經網路高表徵力表示一族函數，已用於高維軌跡生成、長視界多模軌跡預測、草圖生成。</p>
+<h2 id="3-預備知識">3. 預備知識</h2>
+<h3 id="31-記號">3.1 記號</h3>
+<p>任務＝MDP <code>(S, A, 初始狀態分布, R, γ)</code>，轉移動力學 <code>s' ~ P(·|s,a)</code>。RL 目標＝學策略 π_θ 最大化期望累積折扣獎勵。Advantage 函數 <code>A(s,a)=Q(s,a)−V(s)</code> 估「在該狀態取該動作」相對該狀態估值的優勢。</p>
+<h3 id="32-maml">3.2 MAML</h3>
+<p>元 RL 學適應任務分布 ρ(T)，各任務為獨特 MDP 但共享結構（通常同 S/A，異 R 與轉移）。<strong>MAML</strong> 元訓練學元策略 π_θ；快速適應新任務只需少量樣本（式 1：<code>θ' = θ + α∇J</code>，α 為適應學習率）。對一批任務在內層各做此適應得 θ&#x27;，再於外層用各任務的 θ&#x27; 計算元目標（式 2）對 θ 優化。元測試時 agent 採少量樣本、用式 1 適應。</p>
+<h3 id="33-no-reward-meta-learningnorml">3.3 No-Reward Meta Learning（NORML）</h3>
+<p>若動力學變化可由 <code>(s, a, s')</code> 元組集表示，NORML 學一個 <strong>pseudo-advantage 函數</strong>（目的是引導式 1 的元策略適應，而非擬合真 advantage）。逐任務梯度更新（式 3）用不含獎勵的 <code>(s,a,s')</code> 集計算內層任務參數；pseudo-advantage 引導策略梯度。為鼓勵元策略與內層任務策略解耦，端到端學一個<strong>對所有任務相同的 offset 參數</strong>（加進式 3）。pseudo-advantage 在外層優化，並額外更新 offset（式 4）。</p>
+<h3 id="34-條件神經過程cnp">3.4 條件神經過程（CNP）</h3>
+<p>CNP 由<strong>參數共享 encoder</strong> 與一個 decoder（query network）組成。先從函數採一組輸入-輸出對，經共享 encoder 編成潛在表徵，<strong>取平均</strong>（確保對置換與輸入數不變），再與目標輸入查詢拼接送 query network，輸出查詢輸入的預測均值與標準差。</p>
+<p><strong>圖 1（元訓練）</strong>：從離線資料集取某任務的隨機樣本→編碼成定長表徵→平均模組得均值表徵 r̄→與同任務的狀態查詢、動作查詢拼接送 decoder→輸出下一狀態的均值與標準差。</p>
+<p><strong>圖 2（元測試）</strong>：元策略從測試任務採少量樣本→(I) 編碼+平均成測試任務動力學的共享表徵→(II) 元策略在初始狀態查詢上採動作查詢、與均值表徵拼接送 decoder→decoder 預測的下一狀態用來採下一動作查詢→<strong>序列地構造完整軌跡</strong>（利用模型的動力學建模能力）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

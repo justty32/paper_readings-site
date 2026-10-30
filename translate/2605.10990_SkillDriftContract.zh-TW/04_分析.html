@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>04_分析 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.10990_SkillDriftContract.zh-TW.html">回 2605.10990_SkillDriftContract.zh-TW 目錄</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">← 上一節</a></p>
+</blockquote>
+<h2 id="6-分析">6. 分析</h2>
+<p>主要實驗建立了 SKILLGUARD 的錯誤輪廓：高精確率、有用但不完整的召回、以及來自定位的修復增益。我們現在問系統的哪些部分產生這些行為，以及目前合約觀點的邊界在哪。</p>
+<h3 id="61-什麼解釋精確率-召回輪廓">6.1 什麼解釋精確率-召回輪廓？</h3>
+<p>SKILLGUARD 精確率穩定但召回不完整，因為精確率與召回由不同階段控制。精確率主要是<strong>角色門</strong>的結果：只有當變更值為技能的 OPERATIONAL 義務時才被監控。召回則受相關義務是否被提取及是否有驗證器能檢查它限制。</p>
+<p>獨立的角色標籤審計支持此分解。兩位標註者對 200 個環境提及獨立標註，分歧於評估前仲裁。以 OPERATIONAL 為正類，SKILLGUARD 達 89.5% 精確率、83.4% 召回、86.3% F1。分割級模式與端到端行為匹配：在語義 hard negatives 上角色精確率達 100.0%（保守於值變更但合約保留的案例），同分割角色召回 72.7%（指出被錯過的作業假設來源）。</p>
+<p><strong>提取敏感性</strong>指向取捨的另一面。將確定性提取器從 7 擴至 15 類正則家族，受控分割純 regex 召回從 13% 升至 33%，真實世界從 45% 升至 78%，FPR 保持 0%。新增模式涵蓋 Docker 映像、GitHub Actions 版本、環境變數、雲端區域、分支名稱、CLI 旗標及配置檔名。因此目前召回差距非精確率需要棄權的證據：覆蓋率可在不削弱角色承載合約過濾器下提升。</p>
+<h3 id="62-修復證據實際顯示什麼">6.2 修復證據實際顯示什麼？</h3>
+<p>修復實驗應解讀為<strong>定位結果</strong>，而非 SKILLGUARD 支配所有修復方法的主張。失敗合約識別哪個作業假設被失效、在技能何處、什麼證據觸發了違反。這將偵測轉換為受限的編輯請求而非開放式重寫。</p>
+<p>此定位訊號遠強於模糊過時技能提示（從 10% 升至 78% 單輪）。然而更強基線仍具競爭力：純漂移文字 60%，三輪 Self-refine 80%。SKILLGUARD 與純漂移文字或 Self-refine 的差異在目前樣本中不顯著。支援的結論因此更窄且更有用：違反合約是可操作的修復證據，縮小模糊修復與更強多輪替代方案之間的大部分差距，同時使用較少互動。</p>
+<h3 id="63-目前合約觀點在何處破裂">6.3 目前合約觀點在何處破裂？</h3>
+<p>兩個邊界保留。</p>
+<p><strong>測量邊界。</strong> 嚴格的字面驗證器僅在所需新值出現且過時值消失時接受值替換修復。這避免許多虛假修復成功，但非語義技能正確性證明。類型感知驗證器接受 168/174 案例，對比字面驗證器的 165/174，留下約 2% 保守拒絕差距。此差距主要出現在依賴更新——語義上有效的編輯可能滿足新依賴約束而不保留精確字面形式。</p>
+<p><strong>機制邊界。</strong> SKILLGUARD 最強時為漂移使可定位環境假設失效（URL、版本、API 路徑、配置值）。當修復需要改變互動機制時較弱。Qwen3.6-Plus 逐類型分解中，URL 變更與版號躍升達 100% 偵測；配置、廢棄與 schema 變更落至 60-67%。認證漂移是此切片中最難案例：偵測 67%，但三個範例的修復全失敗（0%）。這些失敗不與合約框架矛盾；它們標誌表面合約應以 schema 感知驗證器、執行支撐檢查或更豐富修復計畫補足之處。</p>
+<h3 id="逐類型偵測與修復qwen36-plus診斷用">逐類型偵測與修復（Qwen3.6-Plus，診斷用）</h3>
+<table>
+<thead>
+<tr>
+<th>漂移類型</th>
+<th>n</th>
+<th>偵測</th>
+<th>SG 修復</th>
+<th>完整規格修復</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>URL 變更</td>
+<td>4</td>
+<td>100%</td>
+<td>100%</td>
+<td>75%</td>
+</tr>
+<tr>
+<td>版號躍升</td>
+<td>4</td>
+<td>100%</td>
+<td>100%</td>
+<td>100%</td>
+</tr>
+<tr>
+<td>API 遷移</td>
+<td>6</td>
+<td>83%</td>
+<td>83%</td>
+<td>100%</td>
+</tr>
+<tr>
+<td>依賴更新</td>
+<td>5</td>
+<td>80%</td>
+<td>40%</td>
+<td>80%</td>
+</tr>
+<tr>
+<td>配置變更</td>
+<td>9</td>
+<td>67%</td>
+<td>56%</td>
+<td>89%</td>
+</tr>
+<tr>
+<td>廢棄</td>
+<td>6</td>
+<td>67%</td>
+<td>50%</td>
+<td>67%</td>
+</tr>
+<tr>
+<td>認證變更</td>
+<td>3</td>
+<td>67%</td>
+<td>0%</td>
+<td>0%</td>
+</tr>
+<tr>
+<td>Schema 變更</td>
+<td>5</td>
+<td>60%</td>
+<td>40%</td>
+<td>80%</td>
+</tr>
+</tbody>
+</table>
+<p>失敗模式：認證漂移常需替換互動機制而非值；schema 變更常嵌在散文或範例輸出中使提取困難；行為耦合出現於多個相依欄位須一起變更時。這些失敗反映提取與修復定位的限制，非角色承載驗證本身導致誤報的證據。</p>
+<h2 id="7-結論">7. 結論</h2>
+<p>長期存在的 agent 技能不會只因環境變更而失敗；它們在那些變更使技能在作業上依賴的假設失效時失敗。本文將技能漂移框架化為合約違反，並引入 SKILLGUARD：提取環境合約、僅驗證角色承載假設、並用失敗合約定位修復。此粒度改變了監控錯誤輪廓：無合約 CI 探針產生 40% FPR，而 SKILLGUARD 在 599 個無漂移與 hard-negative 案例中零誤報；在開放世界發現中，以 86% 保守精確率浮現即時漂移。相同違反使修復局部化，將單輪修復從無定位的 10% 提升至 78%。與 DRIFTBENCH 一起，這些結果使技能劣化可作為維護問題被量測，同時將窮盡語義驗證留給互補的執行式方法。</p>
+<h2 id="附錄要點">附錄要點</h2>
+<p><strong>附錄 B：記號與範圍。</strong> r_i 角色變數是核心區分——OPERATIONAL 提及作為合約監控，INCIDENTAL 提及在驗證前被抑制。範圍：SKILLGUARD 是環境合約違反的精確優先監控器，非技能正確性的完整語義驗證器。</p>
+<p><strong>附錄 C：限制。</strong> 保證僅在提取覆蓋與可用驗證器內適用。隱含、行為性、或僅透過執行才可觀察的假設可能被錯過。即時驗證基於套件註冊表與 URL 回應，提供有用的發現訊號但不取代執行式 canary。</p>
+<p><strong>附錄 D：演算法。</strong> 關鍵排序為角色過濾先於驗證（Algorithm 1）。無合約探針驗證每個提取的 URL/版本/路徑而對附帶提及過度警報；SKILLGUARD 先決定提及是否為作業義務，才進行驗證。</p>
+<p><strong>附錄 E：匹配正規化規則。</strong> 匹配器刻意保守：使用精確匹配→雙 token 重疊→類型相容單 token 退路。更積極的語義正規化可恢復 schema 重命名或 API 行為變更，但可能在附帶範例中產生近碰撞。</p>
+<p><strong>附錄 F：DRIFTBENCH 建構細節。</strong> 受控漂移以 Qwen3.6-Plus 生成、DeepSeek-R1 跨家族驗證、作者仲裁（有效性 99.6%）。真實世界分割從 PyPI、npm、GitHub Actions、Docker Hub 收集，無 LLM 參與生成。</p>
+<p><strong>附錄 G：人類審計結果。</strong> 176/880 對審計（20%），14 對需修正：值正規化 5、證據跨度 4、hard-negative 措辭 3、來源元資料 2。無一審計漂移標籤翻轉，驗證 DRIFTBENCH 作為技能劣化（非裸文字變更）基準。</p>
+<p><strong>附錄 H：角色標籤獨立審計。</strong> 200 個提及的雙人標註：總體 OPERATIONAL 判定達 89.5% 精確率、83.4% 召回、86.3% F1。語義 hard negatives 上精確率 100%、召回 72.7%——支持精確優先機制，同時標誌召回邊界。</p>
+<p><strong>附錄 J-K：負控制統計與基線。</strong> 合計 599 負控制（49 + 300 + 250），零誤報 Wilson 95% CI [0%, 0.6%]。無合約 CI 探針 40% FPR；NL2Contract 式 0% FPR 但召回僅 45%；S KILL G UARD 達 76% 召回、0% FPR。</p>
+<p><strong>附錄 L-N：即時發現與修復補充。</strong> 標記的 14 個技能清單包含 analyze-ci、distributed-tracing、gitops-workflow、rag-implementation 等。修復消融嚴格驗證合約的定位價值；字面 vs 類型感知驗證器差距約 2%（主要在依賴更新）。</p>
+<p><strong>附錄 O：實作與可重現。</strong> 確定性遍歷 15 類 regex；語義遍歷進行角色分類；合併去重後驗證。已知漂移用字串匹配+token 重疊+類型退路。統計：bootstrap 95% CI（B=10,000）、Fisher 精確檢定、Wilson/Clopper-Pearson 區間。附帶匿名化重現套件含基準對、合約記錄、結果 JSON、提示詞與重現腳本。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

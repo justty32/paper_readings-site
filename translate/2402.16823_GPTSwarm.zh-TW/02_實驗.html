@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2402.16823_GPTSwarm.zh-TW.html">回 2402.16823_GPTSwarm.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E9%99%84%E9%8C%84%E6%93%87%E8%A6%81.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-實驗">3. 實驗</h2>
+<h3 id="31-mmlu">3.1 MMLU</h3>
+<p><strong>3.1.1 對抗設定</strong>：驗證邊優化能有效<strong>從 swarm 中過濾對抗性智能體</strong>——對應多智能體系統中部分智能體有害而非有益的情境。在 4 選 1 的 MMLU 上，初始化含 k 個 Input-Output（IO）智能體與 k 個<strong>對抗智能體（adversarial agents）</strong>（被刻意編程去操縱 LLM 給出錯誤答案）的 swarm，以多數決（majority voting）產生最終答案（不經額外 LLM 查詢、排除任何可能對抗干擾的糾錯智能）。基線為單一 IO 智能體。以 REINFORCE 跑 200 次迭代（每次評估 4 個圖樣本），使用 GPT-4-Turbo（溫度 0.2）。結果（圖 2）：優化後的 swarm 分數漸近對齊基線，成功<strong>保護 swarm 免受有害對抗者影響</strong>；消融比較「全連接圖」與 θ=0.5 隨機圖都明顯較差。附錄圖 11 顯示 2T2A 案例：優化後<strong>未連接的（對抗）智能體與邊被剪除</strong>。</p>
+<p><strong>3.1.2 協作設定</strong>：對抗設定中所有 IO 智能體提示相同，故無法超越基線。改用 7 個被指示扮演不同角色的 IO 智能體後，優化後的 swarm 比基線提升 <strong>2.1% ± 1.1%</strong>（5 個訓練種子平均）。</p>
+<h3 id="32-mini-crosswords迷你填字遊戲">3.2 Mini Crosswords（迷你填字遊戲）</h3>
+<p><strong>動機</strong>：檢驗邊優化能否改進文獻中的標準智能體。此任務凸顯求解器的演算法結構（如 TOT 的樹搜尋）對表現影響顯著；假設是<strong>邊連接能有意義地決定演算法結構</strong>，期待透過邊優化自動發現並實作高效能演算法。</p>
+<p><strong>設定</strong>：三個相異智能體組成 swarm——TOT 智能體（迭代分支候選解，每步處理一個單詞）、Reflexion 智能體（先貪婪提出解，再依 LLM 批評者的回饋生成替代解）、三節點 COT 智能體（每節點對 LLM 生成的候選做內部暴力搜索）。效用函數取所有圖回傳解中的最佳單詞正確率（同 TOT 論文）。以 REINFORCE 優化（初始邊機率 θ=10%、學習率 0.4、每迭代取樣 M=20 個圖），用 GPT-3.5-Turbo（溫度 0）。</p>
+<p><strong>結果</strong>：十次迭代後平均準確率 <strong>0.575 (±0.0275)</strong>，超過初始分佈的 0.465 (±0.0509)；三智能體 best-of-three 僅 0.320。圖 3 以鄰接矩陣視覺化機率參數演化：前期混沌變化，第 6 次迭代後幾乎單調收斂。<strong>控制計算量的消融</strong>：與學到的分佈期望邊數相同（約 32.8 條）的均勻 θ=12.5% 分佈只達 0.510——改進不能僅歸因於邊變多。把已優化的邊分佈換用 <strong>GPT-4-Turbo</strong> 評估達 <strong>0.800 (±0.0616)</strong>，顯著超越先前最先進的 TOT（GPT-4 為 0.675；以 GPT-4-Turbo 重跑 TOT 為 0.668）。</p>
+<h3 id="33-humaneval">3.3 HumanEval</h3>
+<p>以<strong>節點優化</strong>簡化對 prompt 設計敏感的程式碼生成任務（過往靠人工精心設計 prompt）。優化一個 ReAct 式智能體：先生成 Python 程式，若通過題目內附的測試案例即回傳，否則依執行回饋重新生成。節點優化透過挑選「作為示範例（demonstration examples）最有效」的輸入-輸出對加入 prompt（以節點最近十次輸入上的單元測試通過數評選，最多保留 4 個示範例，UCB1 式選擇；詳附錄 E.3.1）。結果：前五次迭代準確率顯著上升；線上學習設定下從 <strong>0.76（無優化）提升到 0.88 (±0.007)</strong>。</p>
+<h3 id="34-gaia">3.4 GAIA</h3>
+<p>GAIA 是測試 AI 助理<strong>通用性</strong>的基準（真實世界問題，需推理、多模態處理、網頁瀏覽與工具使用）。用本框架構建多個同型智能體的 swarm，以 self-consistency（基於提示的多數決）做最終決策。<strong>注意：此實驗僅展示框架的通用模組能力，不含邊或節點優化</strong>（留待未來）。</p>
+<p>結果（表 1，7×TOT swarm + self-consistency，5 次運行平均）：Level 1 達 <strong>30.56 ± 3.25</strong>（GPT-4-Turbo 為 20.75，+47.3%）、Level 2 達 <strong>20.93 ± 1.27</strong>（GPT-4-Turbo 為 5.81，<strong>+260.2%</strong>）、平均 <strong>18.45</strong>（GPT-4-Turbo 9.70，+90.2%；AutoGPT 4.85；GPT-4 with plugins（需人工逐題選工具）14.6）。表 2 消融顯示：智能體數量增加，耗時近似線性成長但表現明顯提升；<strong>節點操作種類愈多樣表現愈好</strong>（DirectAnswer / GenerateQuery / WebSearch / FileAnalyzer / CombinedAnswer 等操作組合）。43.9% 的任務需要網頁瀏覽，而目前實作僅下載題目 URL 或查 Google 搜尋，強化網頁能力應能進一步大幅提升表現。</p>
+<h2 id="4-相關工作">4. 相關工作</h2>
+<ul>
+<li><strong>LLM 自主智能體</strong>：COT/ReAct/Reflexion/TOT 改進提示策略與結構；AutoGPT/LangChain/LlamaIndex/XAgent 展示外部函數與工具的問題求解；多智能體系統中 NLSOM 用各種社會結構做任務特定應用但<strong>未探索對智能體社會結構的優化</strong>；CAMEL、Generative Agents、ChatDev、AutoGen 專注角色式溝通但受幻覺所苦；MetaGPT 引入標準作業程序。與這些框架相比，本文<strong>在自組織的智能體社會中自動優化節點與邊</strong>。</li>
+<li><strong>語言智能體與圖</strong>：GOT 只涵蓋 LLM 提示方案、未建模工具使用等基本能力；LangGraph 是同期開源框架（多角色狀態式、可含循環操作）但實用性尚未被系統研究。本文強調透過智能體圖的構建與多圖組成 swarm 來發展<strong>層級式智能</strong>，且圖表示天然支持兩層自動優化：節點層（prompt 優化）與邊層（REINFORCE 優化潛在連接）。</li>
+<li><strong>優化 LLM 推論與自我改進</strong>：把 LLM 推論結構與 prompt 的優化視為 LLM 中的<strong>元學習（meta-learning）</strong>。prompt 優化方面，OPRO 以迭代 LLM 查詢生成更好的 prompt；PromptBreeder 以突變演化 prompt。<strong>DSPy</strong> 同樣把 LLM 管線實作為計算圖（模組化 LLM 查詢為節點），但其兩階段優化要在各節點候選解集合的笛卡兒積上搜尋（組合爆炸）；本文以<strong>迭代式</strong>優化因應——藉由把解分解為具預期功能的節點，每次迭代在「當前各節點 prompt 下的圖執行歷史」條件下個別改進每個節點。推論結構優化方面，DyLAN 用固定啟發式選擇智能體與溝通輪數；STOP 以自我套用的改進程式同時優化 prompt 與推論結構；本文則以 RL 技術優化給定圖的潛在邊。</li>
+</ul>
+<h2 id="5-結論">5. 結論</h2>
+<p>GPTSwarm 是一個開源框架，從圖構建語言智能體、從圖組合構建智能體社會。此做法讓既有方法可由基本節點操作輕鬆實作，並實現圖的自動優化——節點層級改進與邊層級 REINFORCE 優化。實驗在多個基準上展示了語言智能體圖與自動優化的優勢。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

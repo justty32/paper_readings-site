@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_V._實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2501.17168_EvoGP.zh-TW.html">回 2501.17168_EvoGP.zh-TW 目錄</a>　<a href="02_III._%E6%96%B9%E6%B3%95.html">← 上一節</a></p>
+</blockquote>
+<h2 id="v-實驗">V. 實驗</h2>
+<p><strong>設定</strong>：高效能工作站（Intel Xeon Gold 6226R 32 核；<strong>RTX 3090</strong> 用於 §V-B、<strong>RTX 4090</strong> 用於 §V-C/D；512 GB RAM、24 GB 顯存；Ubuntu 22.04）。採文獻常見 TGP 參數，系統性變動族群大小與資料點數、其餘固定（表 III）。每實驗用不同隨機種子獨立重複 10 次，報告均值與 95% 信賴區間。</p>
+<h3 id="v-b-自適應並行的閾值分析">V-B 自適應並行的閾值分析</h3>
+<p>於 <strong>Pagie 多項式</strong> SR 任務測。圖 7 給四個族群（100/1k/5k/10k）下執行時間對資料點數的曲線：一致趨勢是<strong>資料小時混合並行較快、資料大時資料級並行較快</strong>（交叉行為印證 §III-C）。實測交叉點 ≈ <strong>10⁴</strong>，恰等 RTX 3090 的 CUDA 核心總數（82 SM × 128 ＝ 10,496）——資料量足以填滿 GPU 時，資料級並行更有效、再受惠常數記憶體廣播。佐證以「資料量 vs 總 CUDA 核心數」為硬體感知閾值的切換機制。</p>
+<h3 id="v-c-與既有-tgp-實作比較">V-C 與既有 TGP 實作比較</h3>
+<p>比較對象：CPU 版 DEAP、gplearn、<strong>Operon</strong>（用 Eve backend）；GPU 版 <strong>SRGPU</strong>；另加 <strong>PySR</strong> 參考；TensorGP 比較見補充。四個 SR 任務（Daily Demand Forecasting、Auto MPG＝UCI；California Housing＝scikit-learn；Feynman I.9.18＝Feynman 資料庫；資料量 60～100,000），各跑 100 代、僅取一小時內完成者。</p>
+<p>圖 8：執行時間（對數軸）對族群大小——EvoGP <strong>一致明顯更低</strong>；baseline 近線性擴展（對數軸下顯指數），EvoGP 曲線<strong>平坦</strong>得多（小族群近乎常數、到數十萬族群也僅中度增）。MSE 解品質：EvoGP <strong>持平或勝過</strong>對手，證明大幅加速不犧牲品質。</p>
+<p><strong>吞吐（GPops/s）</strong>：Langdon 提出的「每秒 GP 基元操作數」更精確反映吞吐，計 ＝ 代數 × 族群 × 平均樹大小 × fitness case 數 ÷ 總執行時間。EvoGP 小資料約 <strong>10⁸–10⁹</strong>、中大資料達 <strong>3.49×10¹⁰ ～ 10¹¹</strong>（表 V）。對比（圖 9、10）：小問題上對 SRGPU 峰值 <strong>304×</strong>、對 Operon <strong>18×</strong>；中大資料時資料級並行飽和 GPU 使加速倍率收斂，但 EvoGP 對 SRGPU 仍至少領先一截、對 Operon 約維持一個數量級優勢（族群超大時尤明顯）。即便假設換 7nm CPU 約 +40%，EvoGP 吞吐優勢仍明顯。</p>
+<h3 id="v-d-多任務--可擴展族群效能">V-D 多任務 + 可擴展族群效能</h3>
+<p>三域（SR／分類／機器人控制），族群 200/1k/5k。分類用 UCI 四集（Wine、Chronic Kidney Disease、Breast Cancer Wisconsin、Yeast）；控制用 Brax 四環境（Swimmer、Hopper、Walker2d、HalfCheetah）。表 VIII 結果（同時間下）：<strong>族群越大越好</strong>——HalfCheetah 獎勵從 5781→13863（200→5000 翻倍多）；Daily Demand MSE 從 374.6→1.96（降兩個數量級）；<strong>Yeast 分類</strong>準確率隨族群增至 0.591，<strong>超越 NN 標準（56.87%）、逼近 UCI 最佳 Random Forest（62.80%）</strong>。大族群效能關鍵在 EvoGP 的 GPU 群級並行——可擴展而不需等比增計算時間，故大族群能在更短 wall-clock 達更高品質解。</p>
+<h2 id="vi-結論">VI. 結論</h2>
+<p>提出 <strong>EvoGP</strong>——首個<strong>全 GPU 加速</strong>的 TGP 框架，解決結構異質、多層並行整合、CUDA 高效 vs Python 彈性三大挑戰。<strong>張量化表示</strong>把各異樹轉成定形對齊陣列、利群級 GPU 執行；<strong>自適應並行</strong>依資料量動態融合個體內／間並行；以 PyTorch 自訂 CUDA 算子無縫接 Gym/MuJoCo 等。實驗：峰值 <strong>&gt;10¹¹ GPops/s</strong>、對 GPU 版加速達 <strong>304×</strong>、對最快 CPU 庫 <strong>18×</strong>，且保品質、大族群擴展性更佳。</p>
+<p><strong>未來</strong>：擴展更複雜多樣應用（機器人控制／自主決策）；現支援多輸出，未來探索更進階策略提升表達力與泛化。願景：成為推進可解釋／演化 AI 前沿的穩健可擴展框架。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2501.17168_EvoGP.%E6%91%98%E8%A6%81.html"><code>../summarize/2501.17168_EvoGP.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

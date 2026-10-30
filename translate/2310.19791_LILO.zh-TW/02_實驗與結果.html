@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗與結果 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2310.19791_LILO.zh-TW.html">回 2310.19791_LILO.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E9%99%84%E9%8C%84%E6%93%87%E8%A6%81.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-實驗與結果">4. 實驗與結果</h2>
+<p><strong>領域</strong>（皆出自 LAPS，是 DreamCoder 原版領域的較難版本，結果可直接比較；主實驗用合成語言描述，B.4 另測人類標註）：</p>
+<ul>
+<li><strong>REGEX</strong>（字串編輯，訓練 491／測試 500 題）：程序生成的正則式字串變換（如「若字尾為子音接 s，替換為 b」）；基礎 DSL 為 map/fold/cons/car/cdr 等函數式基元＋字元常數。</li>
+<li><strong>CLEVR</strong>（場景推理 VQA，191/103）：以程式合成建模視覺問答，含需「想像新場景」的新任務型（如「移除所有藍圓柱後還剩幾個金屬物？」）；輸入為符號化場景圖。</li>
+<li><strong>LOGO</strong>（2D 海龜繪圖，200/111）：組合式繪圖程式（如「七邊雪花、短線與小三角形為臂」），DSL 含迴圈、畫筆狀態堆疊、角度距離運算，涉及複雜對稱與遞迴。</li>
+</ul>
+<p><strong>設定</strong>：實驗模擬「終身學習（lifelong learning）」：從小型種子例子出發泛化到複雜度不一的訓練任務，成績為 i.i.d. 測試集解題率（3 個隨機種子）。兩段實驗：</p>
+<ul>
+<li><strong>線上合成（online synthesis）</strong>：固定迭代數、持續更新函式庫並嘗試解測試任務——語言引導合成能力的總體基準。</li>
+<li><strong>離線合成（offline synthesis）</strong>：凍結各模型最終函式庫 L_f，<strong>無語言引導</strong>下做固定時間預算的枚舉搜尋；搜尋超參數全固定，效能完全取決於 L_f——受控比較各函式庫「開箱即用」的價值。</li>
+</ul>
+<p><strong>實作</strong>：LLM 搜尋用 OpenAI Codex（code-davinci-002），每任務至多 4 個提示、每提示取 4 個補全；AutoDoc 用 gpt-3.5-turbo / gpt-4。所有函式庫學習模型（含 DreamCoder 基線）統一用 Stitch 做壓縮以公平比較。Stitch 超參數：iterations=10（控制函式庫上限）、max-arity=3。</p>
+<h3 id="41-合成效能評估表-1-擇要測試集平均解題率-">4.1 合成效能評估（表 1 擇要，測試集平均解題率 %）</h3>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>REGEX</th>
+<th>CLEVR</th>
+<th>LOGO</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DreamCoder（語言引導變體）</td>
+<td>43.93</td>
+<td>94.50</td>
+<td>28.53</td>
+</tr>
+<tr>
+<td>LLM Solver（無函式庫學習）</td>
+<td>76.13</td>
+<td>88.67</td>
+<td>32.13</td>
+</tr>
+<tr>
+<td>LLM Solver（+ Search）</td>
+<td>76.60</td>
+<td>96.44</td>
+<td>37.84</td>
+</tr>
+<tr>
+<td>LILO（✂ Search / AutoDoc）</td>
+<td>53.20</td>
+<td>85.76</td>
+<td>21.02</td>
+</tr>
+<tr>
+<td>LILO（✂ Search）</td>
+<td>62.93</td>
+<td>88.03</td>
+<td>21.02</td>
+</tr>
+<tr>
+<td><strong>LILO（完整）</strong></td>
+<td><strong>77.07（max 93.20）</strong></td>
+<td><strong>96.76（max 99.03）</strong></td>
+<td><strong>48.95（max 73.87）</strong></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>LLM 能有效搜尋 λ 演算程式</strong>：無函式庫學習的 LLM Solver 對 DreamCoder 在 REGEX +32.20（主因：能直接生成 vowel/consonant 這類先驗概念）、CLEVR −5.83、LOGO +3.60。</li>
+<li><strong>LILO 整體最強</strong>：對 DreamCoder +33.14（REGEX）/+2.26（CLEVR）/+20.42（LOGO）；對 LLM Solver +0.94/+8.09/+16.82。枚舉搜尋在 LOGO 幫助最大——「雪花」「階梯」等領域特定程式結構難以僅憑語言推斷。</li>
+<li><strong>AutoDoc 解鎖抽象的上下文使用</strong>：只加 Stitch 不加 AutoDoc 時，給 LLM 抽象<strong>反而有害</strong>——相對 LLM Solver 解題率 −30.60（REGEX）/−2.91（CLEVR）/−11.11（LOGO）；GPT 難以在恰當上下文部署匿名抽象。引入 AutoDoc 後回升 +9.73（REGEX）/+2.27（CLEVR）；LOGO +0.00（歸因於語義錯誤，見 4.2）。</li>
+<li><strong>計算效率可匹敵符號搜尋</strong>：LLM 搜尋樣本效率高出數個數量級、總體 wall clock 更快；估算一輪 LLM 合成的成本 ≈ 48 CPU-小時的 DreamCoder 搜尋。</li>
+<li><strong>離線合成：無語言時 LILO 函式庫仍泛化良好</strong>：相對基礎 DSL（L0），DreamCoder 的 L_f 提升 +19.6/+62.46/+29.73，而 <strong>LILO 的 L_f 提升 +42.27/+63.43/+43.24</strong>，也勝過從 LLM Solver 基線事後（post-hoc）壓縮出的函式庫——顯示<strong>在迴圈內</strong>做壓縮與文件化的好處。</li>
+</ul>
+<h3 id="42-函式庫抽象的質性分析">4.2 函式庫抽象的質性分析</h3>
+<p>三個領域的函式庫都展現<strong>組合式與層級式重用</strong>：LOGO 函式庫頂端是通用多邊形繪製方法，被多個更高階抽象呼叫；CLEVR 函式庫有兩層——下層對尺寸/顏色/形狀/材質做 filter，上層是計數與過濾的特化抽象。這延續了 DreamCoder「自舉概念層級」的強項，同時以文件化提升豐富度與可解讀性。但 GPT 也會產生不清楚甚至錯誤的文件：LOGO 兩個多邊形函數得到偏實作、不反映行為的名稱；AutoDoc 循序運作會「加倍下注」——某敘述在一個上下文正確、換個上下文卻含糊（fn_31 的「角度」指哪個？）或錯誤（fn_34 長度是常數而非加倍）。這些語義錯誤除影響可解讀性，也可能拖累下游 LLM 引導搜尋；未來可用自我一致性（self-consistency）與驗證技術改善。</p>
+<h2 id="5-討論與結論">5. 討論與結論</h2>
+<p>LILO 的優勢多來自<strong>神經與符號組件的協同</strong>：LLM 引導搜尋學到枚舉搜尋難以企及的概念；壓縮把這些解整併成符號搜尋也能用的可重用抽象；AutoDoc 讓抽象對人類與 LLM 皆清晰可讀。值得注意的是 LLM-only 基線也能隨時間自舉效能——<strong>transformer 注意力可視為一種「非壓縮式函式庫學習」</strong>：任務相關資訊累積在提示裡。但此路徑難以擴展到大型軟體庫：上下文變長後關鍵資訊會「迷失在中間（lost in the middle）」。檢索、自我反思等長期記憶策略目前都面臨「該保存什麼資訊」的共同難題，充斥臨時性啟發式；<strong>LILO 為終身學習中的知識固化提供了有原則的方法</strong>——把程式壓縮加入 LLM 與符號計算整合的工具箱。鑑於 Stitch 演算法的通用性，把 LILO 延伸到現代命令式語言（如 Python）已縮減為一個當下可解且技術上引人入勝的 PL 研究問題。LILO 展示了 ML 與 PL 社群協作的藍圖，通往「學習可解讀軟體庫」的長期目標。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

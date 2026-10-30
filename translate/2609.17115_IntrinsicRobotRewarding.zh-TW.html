@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Intrinsic Robot Rewarding: Reusing VLA Representations for Autonomous Evaluation and Policy Improvement 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Tobias Schaffer、Mohab Elkhayat、Daniela Nicklas、Mustafa Almohamad、Elham Al-Fuqara</p><p>日期：2026-09-15（v1，cs.RO）</p><p>arXiv：2609.17115</p><p><a href="https://arxiv.org/abs/2609.17115" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="intrinsic-robot-rewarding-reusing-vla-representations-for-autonomous-evaluation-and-policy-improvement">Intrinsic Robot Rewarding: Reusing VLA Representations for Autonomous Evaluation and Policy Improvement</h1>
+<h2 id="摘要與問題">摘要與問題</h2>
+<p>視覺語言動作模型（VLA）在工業任務上微調時，通常已擁有兩種昂貴資源：可表徵場景的視覺編碼器，以及展示成功操作的示範資料。作者主張，不必另訓練獎勵模型，這兩項資源也能拿來判斷新嘗試是否成功。Intrinsic Robot Rewarding（IRR）把成功示範的終點建成任務專屬參考庫，再以凍結的 VLA 視覺表徵比較新結果，產生供政策改進使用的回饋。</p>
+<p>這裡的 intrinsic 並非以新奇度或預測誤差為獎勵。任務仍由人透過文字規格與成功示範指定；所謂內在，是獎勵在機器人既有的感知與學習管線內計算。作者期待減少反覆人工評分、額外感知骨幹與獎勵模型維護，但也強調委派、獨立驗證與復原仍是整體成本的一部分。</p>
+<h2 id="相關工作與研究定位">相關工作與研究定位</h2>
+<p>視覺目標獎勵、影片語言獎勵與 VLM 評分器已證明，學得的視覺表徵可支援控制回饋。IRR 的差別在於重用同一套政策編碼器與既有模仿資料，不另建評估網路。它也不同於以成功 rollout 為參考、仍需稀疏成功訊號的自指式方法；IRR 要檢驗的是，成功示範終點能否直接為線上實體學習提供可靠的終端獎勵。</p>
+<p>現有硬體基礎是一套工業手臂、夾爪、第三人稱相機、VR 遙操作與 ROS 控制堆疊。基線政策以 OpenVLA 配合 LoRA 與 OFT 適配，任務是把綠色方塊放入容器。作者自報：資料含 245 條示範；實體評估成功 28／50 次；成功試驗的平均完成時間為 39.16±9.50 秒。這些只是既有模仿政策的基線，不能視為 IRR 已改善政策的證據。</p>
+<h2 id="方法成功參考相似度與校準">方法：成功參考、相似度與校準</h2>
+<p>對任務 <code>g</code>，凍結視覺編碼器 <code>phi</code>，固定影像前處理、取層、token pooling 與正規化方式。每條成功示範的終點影像被映成單位向量，組成參考庫 <code>Z_g+</code>。保留多個終點而非單一原型，可容納多種合格物件姿態；任務指令同時決定使用哪一個參考庫，避免一項任務的視覺終點誤獎勵另一項任務。</p>
+<p>候選結果以最近鄰參考的平方距離計分，再用任務專屬溫度轉成落在 <code>(0,1]</code> 的相似度。這個分數不是成功機率。初始版本只在嘗試結束時給終端獎勵，也可對一小段觀察窗取最低分，避免短暫視覺吻合；遺失、過期或違反協議的觀察會由有效性旗標拒絕，安全中止則直接終止並給零分。</p>
+<p>系統以閾值把分數轉成成功或失敗。正例限定版只用成功示範建立參考與選閾值，失敗及 near-miss 留給獨立測試；校準版才用少量已標記成敗資料選閾值，或在凍結表徵上訓練小型獎勵頭。兩者都必須另量測誤判，不能把視覺相似直接當成物理完成。</p>
+<h2 id="政策改進與驗證設計">政策改進與驗證設計</h2>
+<p>第一階段保留模仿訓練的 VLA，只學有界的笛卡兒殘差控制器。基礎動作與隨機殘差相加後，還要經固定的執行限制層；初期夾爪命令仍由基礎政策決定。因此成果應表述為組合控制器的改善，而非完整 VLA 權重更新。回放資料需記錄取樣動作、實際執行動作、介入、時間戳與真實終止原因，不能把裁切後的實體命令冒充政策取樣。</p>
+<p>研究將分別回答四件事：政策表徵能否區分成功與逼真的近失敗；IRR 能否提高獨立核驗的實體成功率；重用可省下多少運算、整合與人工評分；換物件、光線、視角與任務時如何調整參考庫。核心比較包含固定模仿政策、人工二元獎勵的同款殘差學習器、正例限定 IRR，以及外部視覺獎勵基線。消融則比較單一與多參考、全域與空間特徵、不同視覺核心、單幀與持續觀察，以及有無標記校準。</p>
+<h2 id="結論與研究邊界">結論與研究邊界</h2>
+<p>IRR 的價值主張很直接：示範不只教機器人怎麼做，其終點也描述了做到之後應該長什麼樣；政策視覺編碼器不只服務動作，也可能服務結果判定。若這個共用介面可靠，工業系統便可少維護一套評估器，並降低反覆人工給分的需求。</p>
+<p>但本文尚未展示 IRR 帶來的實體政策改善。作者把獎勵可靠度、真正任務成功與總監督成本列為後續必須共同量測的證據，也明言單一視角未必能辨認遮擋、隱藏插入深度、接觸力或產品狀態；這些任務仍須多視角、本體感覺、觸覺或外部品質量測。密集進度塑形與完整 VLA 更新也只是後續方向。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2609.17115_IntrinsicRobotRewarding.%E6%91%98%E8%A6%81.html"><code>../summarize/2609.17115_IntrinsicRobotRewarding.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

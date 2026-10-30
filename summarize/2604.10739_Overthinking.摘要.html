@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《When More Thinking Hurts：LLM 測試時運算擴展中的過度思考》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Shu Zhou, Rui Ling, Junan Chen, Xin Wang, Tao Fan, Hao Wang</p><p>日期：2026-04</p><p>arXiv：2604.10739</p><p><a href="https://arxiv.org/abs/2604.10739" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="when-more-thinking-hurtsllm-測試時運算擴展中的過度思考重點摘要">《When More Thinking Hurts：LLM 測試時運算擴展中的過度思考》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Overthinking</strong>：測試時運算擴展（test-time compute scaling）存在<strong>遞減邊際報酬</strong>——超過任務特定閾值後，追加推理 token <strong>準確度反降</strong>：模型因遞迴自我懷疑、過度複雜化、幻覺邊界案例而<strong>放棄正確答案、轉向錯誤答案</strong>。作者提出<strong>成本感知評估框架</strong>與<strong>自適應早期停止</strong>策略，以少量 token 匹配或超越全預算準確度。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>當今 LLM 推理範式（o1 類模型、CoT 推理引擎）的核心假設為「更長思考＝更好表現」，但實際部署中面臨三個問題：（1）<strong>均勻預算分配</strong>對簡單題浪費 token、對難題不足，缺乏動態分配機制；（2）<strong>「翻轉事件」（flip events）</strong>——模型從正確狀態因過長推理鍵而轉為錯誤狀態，被系統性忽略；（3）現有 TTS（Test-Time Scaling）研究多關注如何擴展，卻不問「何時該停止」。本論文系統性量化推理 token 的邊際效用曲線，並證明「知道何時停止」本身就是一種能力。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>邊際效用分析</strong>：在不同運算預算（token 數量）與任務難度下，繪製準確度-vs-token 曲線，定位邊際報酬歸零、甚至轉負的<strong>過度思考閾值</strong>。</li>
+<li><strong>翻轉事件追蹤</strong>：記錄模型從正確→錯誤（correct→incorrect flip）的軌跡切點，歸因為遞迴自我懷疑（&quot;Wait, let me reconsider...&quot;→推翻正確答案）、過度複雜化（為簡單題構造不存在的邊界案例）、幻覺條件（虛構的例外情境誘導錯誤最終答案）。</li>
+<li><strong>成本感知評估框架</strong>：提出以 Brier-like cost-adjusted accuracy 取代純準確度，將 token 消耗計入評估——最優策略非「最準確」，而是「每單位成本準確度最高」。</li>
+<li><strong>自適應早期停止</strong>：基於推理軌跡內部信號（共識穩定性、信心飽和）訓練 gating layer 判斷何時停止生成，在適中預算提前終止。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>邊際報酬曲線</strong>：簡單題在極少量 token 即達峰值準確度，此後追加 token 準確度單調下降；難題的峰值滯後但最終亦出現過度思考。<strong>沒有一個任務類別的準確度是無限單調遞增的</strong>。</li>
+<li><strong>翻轉事件頻率</strong>：在擴展推理鍵尾部，correct→incorrect 翻轉比例顯著上升，模型「說服自己犯錯」的頻率高於「糾正錯誤」。</li>
+<li><strong>自適應停止效果</strong>：以 gating 提前終止的推理預算僅為全預算的 40–60%，但準確度匹配或超越全預算；在簡單/中等題上 token 節省最顯著（70%+）。</li>
+<li><strong>難度依賴性</strong>：最優 token 預算與任務難度呈非線性關係——均勻策略（固定預算）在簡單題上浪費 50%+ token 並損害準確度，在難題上又可能分配不足。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>研究集中於特定模型架構與推理格式（CoT），對 tree-search / beam-search 等替代擴展策略的過度思考現象未充分探索。</li>
+<li>翻轉事件的因果歸因（自我懷疑 vs. 幻覺 vs. 過度複雜化）為事後人工標註，缺乏自動化分類方法。</li>
+<li>自適應停止的 gating 機制需額外訓練，其實作開銷與跨任務泛化性尚未全面驗證。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>§3.3 成本梯度的直接實證</strong>：本論文為「知道何時停止花費運算」提供了邊際效用曲線——ai_core 中每個 LLM 呼叫都是成本，overthinking 現象精確刻畫了「追加呼叫反而降低品質」的條件。與 <a class="paper-reference" href="2512.02008_ArtOfScalingTTC.%E6%91%98%E8%A6%81.html">2512.02008</a> TTS 擴展藝術、<a class="paper-reference" href="2503.24235_TTC_Survey.%E6%91%98%E8%A6%81.html">2503.24235</a> TTS 綜述並讀，三篇共同構成「何時擴展、何時停止」的決策知識。</li>
+<li><strong>§3.4 憑證准入的治理視角</strong>：過度思考翻轉事件（正確→錯誤）是「模型自我否決正確答案」——這比不回答更危險：它給出的是<strong>自信的錯誤答案</strong>。自適應早期停止作為治理機制：不是阻止 LLM 輸出，而是在推理鍵已收斂時阻止它「繼續想下去推翻自己」。這是 §3.4「憑證准入」的對偶命題——憑證控制「誰能回答」，過度思考控制「回答後不該繼續想」。</li>
+<li><strong>「何時停止呼叫 LLM」的鏡像</strong>：ai_core 的 LLM 呼叫循環面臨相同問題：何時停止迭代呼叫？何時追加呼叫會導致 agent 推翻正確決策？本論文在推理 token 層面的發現是 agent 層面呼叫停止策略的微觀基礎。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2604.10739_Overthinking.zh-TW.html"><code>../translate/2604.10739_Overthinking.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>InfoGAN：資訊最大化生成對抗網路的可解釋表徵學習（InfoGAN: Interpretable Representation Learning by Information Maximizing Generative Adversarial Nets） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Xi Chen, Yan Duan, Rein Houthooft, John Schulman, Ilya Sutskever, Pieter Abbeel（OpenAI / UC Berkeley）</p><p>日期：2016-06</p><p>arXiv：1606.03657</p><p><a href="https://arxiv.org/abs/1606.03657" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="infogan資訊最大化生成對抗網路的可解釋表徵學習">InfoGAN：資訊最大化生成對抗網路的可解釋表徵學習</h1>
+<p>Xi Chen, Yan Duan, Rein Houthooft, John Schulman, Ilya Sutskever, Pieter Abbeel</p>
+<h2 id="摘要">摘要</h2>
+<p>本文提出 <strong>InfoGAN</strong>——生成對抗網路（GAN）的資訊理論擴充，能以<strong>完全無監督</strong>的方式學到<strong>解耦（disentangled）表徵</strong>。InfoGAN 在生成器的輸入中分出一小組<strong>潛在編碼 c</strong>，並<strong>最大化 c 與生成觀測 G(z,c) 之間的互資訊（mutual information）</strong>。此互資訊項雖不易直接最大化，但可推導出一個<strong>有效可最佳化的變分下界（variational lower bound）</strong>。實驗顯示 InfoGAN 能學到可解釋的表徵，且與既有全監督方法所學者具競爭力：在 MNIST 上自動分離出書寫風格與字形，在 3D 影像上分離出姿態與光照，在 SVHN 上分離出中央數字與背景數字，並在 CelebA 上發現髮型、眼鏡有無、表情等視覺概念。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>無監督表徵學習的核心目標，是從大量未標註資料中萃取出<strong>可用於眾多下游任務的表徵</strong>。一個特別有用的性質是<strong>解耦（disentanglement）</strong>：讓表徵中不同的維度分別對應資料中不同、獨立的變化因子（例如人臉的姿態、光照、表情各佔一維）。</p>
+<p>標準 GAN 使用一個雜訊向量 z，但 z 的各維度可被生成器以<strong>高度糾纏（entangled）、任意的方式</strong>使用——沒有任何機制迫使 z 的某一維對應到某個語意上有意義的因子。本文的想法是：把輸入拆成兩部分——<strong>不可壓縮的雜訊 z</strong> 與<strong>結構化的潛在編碼 c</strong>（可含離散與連續變數）——並加入一個目標，<strong>鼓勵 c 與生成結果之間保有高互資訊</strong>，使 c 承載觀測中顯著且有結構的變化因子。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>回顧無監督表徵學習與解耦表徵的既有路線：堆疊自編碼器、變分自編碼器（VAE）、半監督學習，以及以 hossoftmax／逆向圖形（inverse graphics）等監督或半監督訊號強加因子分解的方法。多數既有解耦方法<strong>需要監督</strong>（例如已知變化因子的標籤），或<strong>明確設計特定因子</strong>。相對地，InfoGAN 的貢獻是：<strong>完全無監督、且對因子的種類不作特定假設</strong>，僅靠互資訊正則化即可讓網路自行發現變化因子。</p>
+<h2 id="3-以互資訊誘導的表徵學習">3. 以互資訊誘導的表徵學習</h2>
+<h3 id="31-互資訊正則化項">3.1 互資訊正則化項</h3>
+<p>InfoGAN 把生成器輸入拆為兩塊：不可壓縮雜訊 <strong>z</strong> 與潛在編碼 <strong>c</strong>（例如若干離散類別變數 + 若干連續變數），生成器記為 G(z, c)。</p>
+<p>問題是：普通 GAN 不會理睬 c——生成器大可直接忽略 c（使 P(c | x) = P(c)，即 x 與 c 相互獨立）。為避免此退化，作者要求 c 與生成分布 G(z, c) 之間的<strong>互資訊 I(c; G(z, c)) 要高</strong>。直覺上，互資訊衡量「觀察到 x 後，關於 c 的不確定性減少了多少」；若 I 高，則從生成影像可回推出 c，代表 c 的資訊被「寫進」了影像的可觀察結構。因此把它當作正則項加進 GAN 目標：</p>
+<ul>
+<li><strong>InfoGAN 目標（極小極大形式，見 Eq. 1 附近）</strong>：<code>min_G max_D  V(D, G) − λ · I(c; G(z, c))</code>，其中 V(D,G) 是標準 GAN 的極小極大值，λ 為權衡係數。生成器一方面要騙過判別器，一方面要讓 c 與生成結果高互資訊。</li>
+</ul>
+<h3 id="32-變分互資訊最大化變分下界">3.2 變分互資訊最大化（變分下界）</h3>
+<p><strong>困難</strong>：互資訊 I(c; G(z, c)) 涉及後驗 P(c | x)，而此後驗不可解析取得，難以直接最大化。</p>
+<p><strong>解法（變分資訊最大化，Variational Information Maximization）</strong>：引入一個<strong>輔助分布 Q(c | x)</strong> 來近似真實後驗 P(c | x)。由互資訊定義展開並利用 KL 散度非負，可得下界：</p>
+<ul>
+<li><strong>變分下界（見 Eq. 4）</strong>：<code>I(c; G(z, c)) ≥ E_{c∼P(c), x∼G(z,c)}[ log Q(c | x) ] + H(c) = L_I(G, Q)</code>。</li>
+</ul>
+<p>其中 H(c) 是 c 的熵（先驗固定時為常數）。此下界之所以「有效」，是因為期望只需對可直接取樣的量（先驗 P(c)、生成分布 G(z,c)、以及 Q）作蒙地卡羅估計，無需真實後驗；論文並指出當 Q 逼近真後驗時此界收緊（下界趨近真互資訊）。於是最佳化變成同時對 G 與 Q 最大化 L_I。</p>
+<ul>
+<li><strong>最終目標（見 Eq. 5 / 4）</strong>：<code>min_{G,Q} max_D  V(D, G) − λ · L_I(G, Q)</code>。此形式可用<strong>一般的 GAN 訓練流程再加一項幾乎零成本的正則項</strong>來最佳化。</li>
+</ul>
+<h2 id="4-實作">4. 實作</h2>
+<p>輔助網路 <strong>Q 與判別器 D 共享所有卷積層</strong>，只在最後多接一個小的輸出頭來預測 c 的條件分布（因此新增參數與計算量微乎其微）。</p>
+<ul>
+<li>對<strong>離散潛在碼</strong>，Q 的輸出頭以 softmax 給出類別分布，L_I 對應項即標準的<strong>交叉熵</strong>。</li>
+<li>對<strong>連續潛在碼</strong>，Q 以因子化高斯建模，實作上常固定或另學其變異數。</li>
+<li><strong>λ 選擇</strong>：離散碼因 L_I 尺度較易掌握，λ = 1 通常足夠；連續碼則需調小 λ 以免壓過影像品質。作者也指出加入此互資訊項會<strong>加速並穩定 GAN 訓練</strong>（相較無此項的基線收斂更快），幾乎無額外開銷。</li>
+</ul>
+<h2 id="5-實驗">5. 實驗</h2>
+<p>實驗兼顧兩目的：(1) 驗證互資訊確實能被有效最大化；(2) 檢視 InfoGAN 是否能無監督地發現可解釋、解耦的變化因子（以「固定其一潛在碼、掃描其值、觀察生成影像如何連續變化」來檢視）。</p>
+<ul>
+<li><strong>互資訊最大化驗證</strong>：L_I 在訓練中快速上升並逼近其上界 H(c)，代表 c 確實被生成器所用；無正則項的基線則 L_I 停在低點。</li>
+<li><strong>MNIST</strong>：以 1 個 10 類離散碼 + 2 個連續碼建模。離散碼自動對應到<strong>數字類別（0–9）</strong>；兩個連續碼分別捕捉<strong>旋轉／傾斜角度</strong>與<strong>筆畫寬度（粗細）</strong>——全程未用任何標籤。</li>
+<li><strong>3D 人臉（渲染）</strong>：連續碼分別發現<strong>方位角（左右轉頭／pose）</strong>、<strong>仰角（上下）</strong>、<strong>光照方向</strong>與<strong>臉寬</strong>等。</li>
+<li><strong>3D 椅子（渲染）</strong>：碼對應到<strong>椅子的方位／旋轉</strong>與<strong>椅型的寬度／粗細</strong>等幾何變化。</li>
+<li><strong>SVHN（街景門牌）</strong>：碼分離出<strong>光照／背景</strong>與<strong>中央數字對背景數字</strong>等因子。</li>
+<li><strong>CelebA（名人臉）</strong>：在完全無監督下，碼自動對應到<strong>方位角（pose）</strong>、<strong>眼鏡有無</strong>、<strong>髮型</strong>與**表情（情緒）**等高層視覺屬性。</li>
+</ul>
+<p>上述因子皆非事先指定，而是 InfoGAN 在最大化互資訊的過程中<strong>自行發現</strong>的。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>InfoGAN 證明：只要在 GAN 目標上加入一個<strong>幾乎零成本的互資訊正則項</strong>（透過輔助網路 Q 給出的變分下界最佳化），就能<strong>完全無監督</strong>地學到<strong>解耦、可解釋</strong>的表徵，其品質可與需要監督的既有方法相比。此互資訊最大化的思路不限於 GAN，可推廣至其他生成模型與階層式表徵學習；所發現的可解釋潛在碼也為<strong>可控生成</strong>開啟方向。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

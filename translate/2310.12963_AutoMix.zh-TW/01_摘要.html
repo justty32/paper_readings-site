@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2310.12963_AutoMix.zh-TW.html">回 2310.12963_AutoMix.zh-TW 目錄</a>　<a href="02_AutoMix.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>雲端 API 供應商如今提供各種尺寸與配置的大型語言模型（LLM）。這種多樣性提供了廣闊選擇空間，但要有效利用這些選項以最佳化計算成本與效能仍具挑戰。本文提出 <strong>AutoMix</strong>：依據<strong>較小 LM 輸出的近似正確性</strong>，策略性地把查詢路由給更大 LM。AutoMix 的兩個核心技術貢獻：其一是 <strong>few-shot 自我驗證（self-verification）<strong>機制，不需大量訓練即可估計自身輸出的可靠度；其二是鑑於自我驗證有噪音，採用 <strong>POMDP（部分可觀察馬可夫決策過程）路由器</strong>，依答案信心有效選擇合適尺寸的模型。在五個語言模型、五個高難度資料集上的實驗顯示，AutoMix 一致超越強基線，在同等表現下</strong>降低超過 50% 計算成本</strong>。程式碼：github.com/automix-llm/automix。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 生態快速演變，各種尺寸、能力與計算需求的模型並存。大模型雖普遍表現更佳，但高昂計算成本使其對許多簡單任務不划算；而真實任務的複雜度變異極大——從簡單（可分資料的二元分類）、複雜（程式碼生成）到<strong>可能無解（unsolvable）</strong>（某些多步推理）。這使**模型切換（model switching）**技術益發重要：把查詢分派給尺寸與能力不同的模型，更有效配置計算資源。</p>
+<p>既有模型切換策略多依賴<strong>針對固定任務集訓練的獨立路由模型</strong>（FrugalGPT、HybridLLM）；且現代 LLM 常只能透過黑盒 API 存取，無法微調、拿不到權重，還預期有大量任務專屬資料——既有路由方法無法妥善應對。AutoMix 讓使用者在<strong>只有黑盒 API 存取</strong>下混用各種模型，分三步：1) <strong>解答生成</strong>——小模型先產生初始答案；2) <strong>自我驗證</strong>——同一個小模型評估答案；3) <strong>選擇性路由</strong>——驗證建議升級時才路由到更大模型。此流程呼應人類解題的多步過程：先解、再驗、據驗證結果精煉。</p>
+<p>理想路由器須具備：(1) 能從小模型答案的信心評估辨識<strong>查詢難度</strong>；(2) 能路由到<strong>合適尺寸</strong>的模型——簡單查詢留給小模型（SLM）、困難查詢給大模型（LLM），且與先前工作不同：<strong>無解查詢誰都解不了，不應路由給任何模型</strong>，以省成本；(3) 能從<strong>少量資料</strong>學習；(4) 能泛化到模型數量、成本、能力各異的場景。自我驗證雖是提供信心評估的自然選擇，但先前研究顯示它對推理任務<strong>噪音大、校準差</strong>——這是必須解決的挑戰。</p>
+<p>對此本文提出兩個創新：第一，把自我驗證表述為<strong>蘊涵（entailment）問題</strong>——評估生成答案與上下文的一致性來估計信心（如上下文講「茶」、答案講「蘋果」即高度不一致）；第二，引入 <strong>POMDP 路由器</strong>：POMDP 把標準 MDP 擴展到「觀察（自我驗證機率）不可靠、只是狀態（問題難度）的噪音估計」的決策問題，能以原則性方式在模型數量、成本、能力各異的場景學出穩健路由策略，且<strong>只需 50 個樣本</strong>即可學習。</p>
+<h2 id="2-背景與相關工作">2. 背景與相關工作</h2>
+<ul>
+<li><strong>自我驗證</strong>：既有方法多依賴 LLM 自身知識，對推理問題有困難；AutoMix 改<strong>利用上下文</strong>驗證，並引入 POMDP 路由器緩解驗證噪音。先前研究發現自我驗證不足以「修復」模型輸出（self-correction 不可靠），本文則證明它提供的<strong>訊號用於路由</strong>是有價值的。</li>
+<li><strong>混用模型</strong>：FrugalGPT、HybridLLM 等透過模型切換降本，但需<strong>專門訓練驗證器</strong>；AutoMix 用 few-shot 提示免除昂貴的驗證器訓練、不需預先看到全部查詢，50 個樣本訓練的路由器即勝過專門模型。</li>
+<li><strong>自適應計算</strong>：early-exit 等方法需改架構或取中間表徵；AutoMix 不改架構、只需黑盒 API。AdaptiveConsistency 只優化單一 LLM 內的推理，AutoMix 靈活優化兩個以上模型。</li>
+<li><strong>POMDP 背景</strong>：POMDP 是 MDP 在「狀態觀察不完整或有噪音」下的擴展，定義為元組 ⟨S, A, T, R, Ω, O⟩；代理維護 belief（狀態上的機率分佈），依動作與觀察更新，目標是找出把 belief 映射到動作、最大化期望累積報酬的策略。曾用於機器人、自駕、群眾外包工作流等。AutoMix 以新穎方式用 POMDP 在 LM 間路由：噪音的自我驗證輸出＝觀察，據以評估問題難度並路由，最大化成本與效能的報酬函數。</li>
+</ul>
+<h2 id="3-問題表述">3. 問題表述</h2>
+<p>假設可存取 N 個語言模型 LM₁…LM_N（依參數量遞增），各有成本 Cᵢ 與（未知的）單題效能 Pᵢ。目標：在任何總成本下最大化總效能，對每個測試點動態呼叫合適的 LM。實驗以成本—品質曲線及新提出的 IBC 指標評估。任務為<strong>上下文錨定推理</strong>（context-grounded reasoning）：給定上下文 C（故事、新聞、對話歷史）與問題 q，生成與上下文一致的準確答案。選這類任務的動機：(1) 長查詢計算負擔重，更需要在成本—準確率間權衡；(2) 上下文可供<strong>交叉檢核</strong>初步答案（自我驗證的基礎）。只假設黑盒 API 存取；訓練路由器只需小型訓練/驗證集 D_train（⟨C, q, ŷ, y_LMᵢ⟩ 三元組）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

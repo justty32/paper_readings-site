@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《ReGAL：透過重構程式來發現可泛化的抽象（Refactoring Programs to Discover Generalizable Abstractions）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Elias Stengel-Eskin, Archiki Prasad, Mohit Bansal（UNC Chapel Hill；ICML 2024）</p><p>日期：2024-01</p><p>arXiv：2401.16467</p><p><a href="https://arxiv.org/abs/2401.16467" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="regal透過重構程式來發現可泛化的抽象重點摘要">《ReGAL：透過重構程式來發現可泛化的抽象》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>ReGAL（Refactoring for Generalizable Abstraction Learning）</strong>：一個<strong>無梯度</strong>方法——用凍結的 LLM 把一小批既有的「原語程式」<strong>分批重構</strong>成共享的 helper functions，每個候選函數都以<strong>執行結果等價</strong>（p̂() = p()）驗證後才入庫（Code Bank + Demo Bank），並在訓練過程中<strong>週期性編輯與修剪</strong>過度特化或錯誤的函數；測試時代理檢索這些抽象來寫程式，在 LOGO／Date／TextCraft／MATH／TabMWP 五域一致提升多個開源與閉源 LLM 的準確率——CodeLlama-13B 靠 ReGAL 抽象在 LOGO 上反超 GPT-3.5 達 19.2%。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 程式合成的主流範式是「每個 query 獨立生成一支一次性程式」，缺乏跨例的全域視野，導致：1) <strong>無重用（reusability）</strong>——同一子程序反覆重寫、時對時錯（同樣畫九邊形，這次角度算對、下次算錯）；2) <strong>無抽象（abstraction）</strong>——模型每次都要從 query 推理到一長串原語，而非從函式庫「選名字」。人類開發者會從一次性解法逐步長出共享函式庫，且<strong>函數一經測試即可信賴</strong>；但抽象也有過擬合風險（<code>draw_9gon_snowflake()</code> 太特化 vs <code>draw_small_9gon()</code> 可泛化），需要機制去平衡。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>輸入</strong>：少量（約 66～200 筆）（query, 原語程式） 對＋一個執行環境（Python）；程式可以是 LLM 生成的 silver programs（Date/MATH/TabMWP 皆如此），<strong>不需人工標註</strong>。</li>
+<li><strong>前處理</strong>：（可選）加註解對齊 query 與程式；用 Ada embedding + Ward 階層聚類把相關例子<strong>分批</strong>（抽象須跨例共享，故需 multi-instance scope）；按 query 長度排<strong>課程</strong>（短易程式的抽象可重用於長難程式）。</li>
+<li><strong>訓練迴圈</strong>（GPT-3.5 當重構器，無梯度）：
+<ol>
+<li><code>refactorBatch</code>：LLM 對一批例子提出新 helper functions＋改用它們的重構程式；</li>
+<li><code>verify</code>：執行重構程式、比對與原程式輸出是否一致，通過者函數入 Code Bank、程式入 Demo Bank；</li>
+<li><code>retry</code>：失敗例附<strong>環境回饋</strong>（輸出/錯誤訊息）重試一次；</li>
+<li><code>editCodeBank</code>：每隔 editEvery 批，拿通過/失敗的單元測試讓 LLM 改函數（如把寫死的 size 參數化），改後通過更多測試才替換；</li>
+<li><code>pruneCodeBank</code>：按分數 s = |通過程式數| − Σ（1/該失敗程式的函數數） 修剪劣質函數（閾值 θ=0）。</li>
+</ol>
+</li>
+<li><strong>測試</strong>：代理按 query 相似度檢索至多 20 個 helper＋10 個 ICL 範例（原語/重構示範混合），用 ReAct 式「先想哪些函數相關再寫碼」的提示誘導函數使用；測試代理可換成任意 LLM（CodeLlama-7/13/34B、Lemur-70B、GPT-3.5）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>五域全面勝過同資料同 ICL 預算的原語基線</strong>：CodeLlama-13B 絕對增益 LOGO +11.5%（45.6→57.1）、Date +26.1%（42.8→68.9）、TextCraft +8.1%（18.8→26.9）；GPT-3.5 在 MATH +12.2%（43.2→55.4）；CodeLlama-7B 在 TabMWP +11%（16.7→27.7）。</li>
+<li><strong>小開源模型反超大閉源模型</strong>：僅用約 200 例訓練，CodeLlama-13B+ReGAL 在 LOGO 勝 GPT-3.5 基線 19.2%；也全面勝過外部基線（LILO 41.1、Faithful-CoT 83.3、ReAct 25.6）。</li>
+<li><strong>消融</strong>：retry 與課程排序最關鍵（去掉課程 LOGO 掉 18.7%）；edit/prune 皆有貢獻。</li>
+<li><strong>資料效率</strong>：TextCraft 上 25 例示範即 +2.56%，半量訓練集 +8.45%。</li>
+<li><strong>分佈移轉</strong>（TextCraft 未見物件）：基線 7.8 → ReGAL 11.4 → 在未標註 dev 上僅修剪 14.9 → 完整再訓一輪 17.2（共 +9.4%）——<strong>修剪與增量再訓可讓函式庫適應新分佈</strong>。</li>
+<li>學到的抽象確實被跨例重用，且形態隨域而異：LOGO＝形狀子程序、Date＝命名可讀的單一操作、TextCraft＝<strong>編碼環境動態</strong>（先查 inventory、缺料先採集再合成的前置條件邏輯）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>抽象是程式碼函數，比神經參數化技能<strong>缺乏彈性</strong>，在環境動態變化的域（如導航）可能學不到函數（驗證式修剪會把它們全剪掉）；</li>
+<li>並非每個域都有可重用抽象——若原語本身已是良好 DSL，收益有限；</li>
+<li>學到的抽象不必然等同人類會選的抽象；數學域（無天然 domain language）增益較不穩（Lemur 在 MATH/TabMWP 與基線相當）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>直接命中 ai_core §3.6 固化引擎的「增量/線上」版本</strong>：ReGAL 就是「把 LLM 反覆處理過的案例（既有程式）結晶成確定性抽象庫」的一個可運作實作——無梯度、只靠重構＋執行驗證，且 propose→verify→edit→prune 的迴圈是<strong>邊做邊長抽象的線上固化</strong>，分佈移轉實驗（§6.4）更示範了固化庫如何用「先修剪、再增量再訓」跟上新案例流。</li>
+<li><strong>執行正確性＝接地過濾器</strong>：每個候選抽象必須通過 p̂()=p() 的執行等價驗證才入庫，失敗者被 edit/prune——這正是 §3.4「拒絕為預設＋憑證准入」在資產庫層面的翻版：抽象的「憑證」就是它通過的單元測試紀錄，且分數公式把失敗責任按程式內函數數攤分，是可借用的信用分配細節。</li>
+<li><strong>與 Stitch／TroVE 構成固化光譜</strong>：Stitch＝離線符號壓縮（對整個語料一次性找最優抽象）；ReGAL＝<strong>增量重構</strong>（分批、課程排序、驗證入庫、週期編輯修剪）；TroVE＝使用中成長修剪（解題當下即產生並淘汰工具）。三者對應固化引擎「批次結晶／滾動結晶／即時結晶」三檔，ReGAL 的中間位置最貼近 ai_core 想要的常駐引擎形態。</li>
+<li><strong>經濟論證直通 §2 與 §3.3</strong>：作者明言 ReGAL 把「每次推論的變動成本」轉成「一次性學函式庫的固定成本」，且讓便宜開源模型反超 GPT-3.5——即「貴稀有智能（GPT-3.5 重構器）當資產工廠、便宜高頻智能（CodeLlama）當資產消費者」的實測案例，抽象庫本身就是可沿成本梯度下放的資產。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2401.16467_ReGAL.zh-TW.html"><code>../translate/2401.16467_ReGAL.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

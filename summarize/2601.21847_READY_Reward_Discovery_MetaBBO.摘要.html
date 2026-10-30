@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《READY：為元黑箱最佳化（MetaBBO）做獎勵發現》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：（含 Yue-Jiao Gong / Zeyuan Ma 等 — MetaBBO 研究群;ICML 投稿）</p><p>日期：2026-01，LLM 獎勵發現／元黑箱最佳化</p><p>arXiv：2601.21847</p><p><a href="https://arxiv.org/abs/2601.21847" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="ready為元黑箱最佳化metabbo做獎勵發現重點摘要">《READY：為元黑箱最佳化（MetaBBO）做獎勵發現》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>READY</strong>：用 LLM 當自動獎勵發現工具，替<strong>元黑箱最佳化（MetaBBO）</strong>——一個用 RL meta-learn 黑箱優化器設計策略的雙層 paradigm——自動合成「即插即用」的獎勵函數，取代既有 MetaBBO 全靠人類專家手刻、帶設計偏差與 reward hacking 風險的獎勵。效率上引入<strong>多任務演化架構</strong>：替多個 MetaBBO 任務各維護一個獎勵程式種群（niche），平行搜尋並透過<strong>跨任務知識遷移</strong>加速收斂；效果上借「演化啟發式（evolution of heuristics）」思路做五個 reflection-based 程式級演化算子 + 嚴格 rejection sampling（新個體 fitness 須勝過人類設計的獎勵才入種群）。實證：READY 一致提升多個 MetaBBO 的最佳化效能，勝過原始獎勵設計與 Eureka/EoH/ReEvo 等最新 baseline；且驚人地——為某 MetaBBO 發現的獎勵能<strong>直接遷移去 boost 未見的 MetaBBO</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>MetaBBO 用 meta-level RL 策略指揮 low-level BBO 優化器，獎勵函數把「優化器與環境互動」翻成 RL 的反饋訊號，直接影響 RL 的效能與泛化。但現有 MetaBBO 的獎勵全<strong>靠人類專家手刻簡單啟發式</strong>，帶來：設計偏差與 reward hacking 風險；新架構都得費力重刻獎勵；手刻獎勵常遠非最優、遮蔽各 MetaBBO 架構的真實能力、使公平比較幾乎不可能。因此需要一個<strong>自動獎勵發現框架</strong>。</p>
+<h2 id="核心方法承-funsearcheohalphaevolveeureka-的-llm-程式演化-paradigm">核心方法（承 FunSearch/EoH/AlphaEvolve/Eureka 的 LLM 程式演化 paradigm）</h2>
+<ul>
+<li><strong>問題形式化</strong>：MetaBBO 任務 <code>T={D,O,π}</code>＝MDP（D 含 train/test 問題分布、O 為 low-level BBO 優化器、π 為 meta 策略）；每步從 low-level 抽優化狀態 s_t、π 輸出演算法設計動作 ω_t、O 優化一步、獎勵 R 評估此設計動作的效能增益；目標最大化折扣累積獎勵。test 上用正規化目標指標 F（越小越好）評分。</li>
+<li><strong>個體表示</strong>（承 EoH）：每個 reward 個體＝⟨Thought（LLM 摘要的自然語言描述）, Code（獎勵函數程式碼）⟩。</li>
+<li><strong>三大設計</strong>：
+<ol>
+<li><strong>多任務程式演化（multitask niche）</strong>：替每個 MetaBBO 任務開一個獨立種群（niche），讓它們各自做種群內演化 + 種群間知識遷移 → 共享方法論洞見與架構、加速搜尋。</li>
+<li><strong>細粒度演化算子</strong>：五個 reflection-based 程式級算子保證搜尋多樣性（如 M1「debug 反思」找 top-K 最差實例、LLM 診斷獎勵邏輯為何與策略失準再修；M2「全域反思」回溯過去 L 代演化軌跡、找哪些改動歷史上帶來 fitness 增益再外推下一步；另有 exploitative/exploratory prompts）。</li>
+<li><strong>知識遷移</strong>：顯式跨任務知識共享 scheme 加速收斂。</li>
+</ol>
+</li>
+<li><strong>效能式 rejection sampling</strong>：新個體先按 F 評估，<strong>只有 fitness 勝過人類設計的獎勵個體才入 niche</strong> → 確保初始種群即支配 baseline；搭配 diversity 約束（與既有獎勵差異 ≥95%）+ quality 約束（須優於既有）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>一致提升</strong>：READY 在 DEDQN、RLEPSO、RLDAS 三個 MetaBBO 上一致改善最佳化效能，勝過它們的原始獎勵設計，也勝過最新 baseline Eureka、EoH、ReEvo。</li>
+<li><strong>單 run 多任務</strong>：READY <strong>一個 run 同時替三個 MetaBBO 發現獎勵</strong>（baseline 須各自獨立最佳化），靠多任務 niche + 知識遷移。</li>
+<li><strong>可解釋</strong>：產出隨獎勵程式共同演化的清晰、可解釋設計洞見（Thought）。</li>
+<li><strong>零樣本遷移（驚人）</strong>：為某 MetaBBO 設計的獎勵能<strong>直接適配去 boost 未見的 MetaBBO</strong>。</li>
+<li>測試函數上報 51 獨立 run 的 mean 最小成本 ± std（越低越好），含 Avg. Rank。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>焦點在 MetaBBO 這個特定 niche（BBO 演算法設計），非通用 RL 獎勵設計；泛化到其他 RL 領域未驗。</li>
+<li>每個獎勵候選都要在 MetaBBO 上完整評估（雙層 + 完整優化 run）→ 成本高（多任務 niche 部分緩解）。</li>
+<li>依賴 LLM 程式生成品質與 rejection sampling 守衛；仍是「LLM 當演化算子」家族共通的可重現性/成本問題。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 D 類**「LLM 演化發現 RL 元件」中專攻『MetaBBO 的獎勵函數』<strong>——填補「自動獎勵設計 × MetaBBO」這個此前無人碰的交叉（作者自稱 first）；與 <a class="paper-reference" href="2603.28416_Evolutionary_Discovery_RL_Algos_LLM.%E6%91%98%E8%A6%81.html">2603.28416</a>（發現 update rule）、<a class="paper-reference" href="2606.26327_EVOM_MetaEvolution_ActorCritic.%E6%91%98%E8%A6%81.html">2606.26327</a> EVOM（發現架構）、<a class="paper-reference" href="2606.20858_Developmental_Reward_Schedules.%E6%91%98%E8%A6%81.html">2606.20858</a>（發現 reward 的時間排程）形成「LLM 演化發現 RL 不同元件」完整光譜，READY 打的是</strong>「meta 層 RL 的獎勵」**這層。</li>
+<li>最值得記：<strong>「多任務 niche + 跨任務知識遷移」讓一個 run 同時替多個 MetaBBO 找獎勵且互相加速</strong>;<strong>「rejection sampling 強制每個入種群個體都支配人類 baseline」</strong> 的乾淨守衛；以及反直覺的 <strong>零樣本跨 MetaBBO 獎勵遷移</strong>（暗示存在 MetaBBO 通用的良好獎勵結構）。</li>
+<li>與 Eureka（控制任務的 LLM 獎勵）、<a class="paper-reference" href="2505.20881_MoH_Meta_Optimization_Heuristics.%E6%91%98%E8%A6%81.html">2505.20881</a> MoH（meta 啟發式）相鄰，但 READY 攻的是 MetaBBO 這個「優化器設計策略」層的獎勵，且強調 reward design 對公平比較 MetaBBO 架構的重要性。</li>
+<li>定位：方法 + MetaBBO 實證論文（ICML 投稿，匿名 repo），適合做 MetaBBO、AutoML、LLM-as-evolutionary-operator、reward design 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2601.21847_READY_Reward_Discovery_MetaBBO.zh-TW.html"><code>../translate/2601.21847_READY_Reward_Discovery_MetaBBO.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

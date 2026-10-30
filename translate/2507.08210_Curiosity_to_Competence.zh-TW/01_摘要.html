@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2507.08210_Curiosity_to_Competence.zh-TW.html">回 2507.08210_Curiosity_to_Competence.zh-TW 目錄</a>　<a href="02_%E8%A8%8E%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>是什麼驅動 agent 探索世界、同時維持對環境的掌控？從玩耍的孩子到實驗室的科學家，智能體須平衡 <strong>curiosity（好奇：求知之驅力）</strong> 與 <strong>competence（勝任：精熟並掌控環境之驅力）</strong>。我們橋接內在動機的認知理論與 RL，探問<strong>演進中的內部表徵如何中介 curiosity（novelty 或 information gain）與 competence（empowerment）之間的權衡</strong>。比較兩個 model-based agent：用手工狀態抽象的 <strong>Tabular</strong> vs 學習內部世界模型的 <strong>Dreamer</strong>。Tabular agent 顯示 curiosity 與 competence 以不同模式引導探索、而同時優先兩者改善探索；Dreamer agent 揭示探索與表徵學習的雙向互動，呼應 curiosity 與 competence 的發育共演化。我們把適應性探索形式化為「追求未知與追求可控之間的平衡」。</p>
+<p>關鍵詞：內在動機、探索、表徵學習、世界模型、好奇心。</p>
+<h2 id="引言">引言</h2>
+<p>想像孩子玩兩個新玩具：一個按鈕就可預測地亮、另一個無視動作隨機閃爍。哪個讓孩子著迷更久？答案不只取決於 novelty 或 control，而是兩種根本驅力的深層互動：<strong>curiosity</strong>（驅使求新知）與 <strong>competence</strong>（驅使運用所知影響環境）。</p>
+<p>人類探索的更廣謎題：我們同時被<strong>未知</strong>（為減不確定）與<strong>可預測</strong>（為施加影響）吸引。Curiosity 類（novelty、information gain）推我們減不確定、建更好心智模型；Competence 類（empowerment、技能學習）推我們預測並掌控結果。乍看似序列（先好奇學習、後勝任行動），但實則遞迴：孩子學走路——唯有發展移動的 competence 才能進入新環境滿足 curiosity；反之對遠處的 curiosity 又燃起其精熟移動的堅持。</p>
+<p>既有 RL agent 難拿捏此平衡：<strong>好奇心驅動者易陷「noisy TV 問題」——被隨機、不可控、無精熟機會的刺激分心</strong>；<strong>勝任驅動者常假設固定世界模型、忽略探索如何重塑模型</strong>。人類則動態調整焦點：被困嬰兒床的幼兒鉅細靡遺檢視每個玩具，一旦能移動就轉廣度優先衝去探索新房間。</p>
+<p>關鍵在 agent 的<strong>世界模型</strong>：不確定高時 curiosity 主導、驅探索精煉模型；信心增長時 competence 接管、運用模型達標。但這非單向——competence 解鎖 curiosity 新疆界（會走路擴展探索視野），curiosity 又生出高階 competence 所需知識（懂物理才能用工具），形成回饋環：世界模型塑造探索策略、探索又重塑模型。</p>
+<p><strong>目標與範圍</strong>：探問 agent 在學習探索中如何平衡 curiosity 與 competence、這些優先序如何隨世界模型演進而轉移。在稀疏獎勵環境比較三內在動機（novelty、information gain、empowerment）× 兩 agent（Tabular Q-learning 手工表徵 / Dreamer 學 latent 表徵），分析各動機如何驅動不同探索模式（既非功能冗餘、也非普遍最優）。</p>
+<h2 id="方法">方法</h2>
+<p><strong>環境</strong>：基於 MiniGrid 設計異質 playground——<strong>lava</strong>（不可逆懲罰、終止 episode）、<strong>ice</strong>（隨機轉移）、<strong>barrier/wall</strong>（限制移動，如牆或移動的球）。agent 從右上角出發，須先穿越牆與岩漿的 bottleneck，成功後可選「經冰面/隨機捷徑 vs 較長可靠路」探索右下更大區域。POMDP，agent 面向四方、有前進/左轉/右轉三動作；初期全靠內在獎勵建立環境模型。</p>
+<p><strong>Agents</strong>：核心挑戰是真實 agent 須同時學「該關注世界哪部分（狀態表徵）」與「世界如何運作（轉移動態）」。先前工作常假設內在動機算在固定手工表徵上、或分別學表徵與策略——迴避了「當『狀態』由經驗形成時 agent 如何有效探索」。故設兩 agent：</p>
+<ul>
+<li><strong>Tabular</strong>：(x,y,θ) 預定表徵、count-based 轉移模型（式1，α=100|Z| 快速脫離均勻先驗）、prioritized sweeping 學 Q-value（式2，γ 依狀態數定）、greedy 策略。</li>
+<li><strong>Dreamer（DreamerV3）</strong>：從原始像素無監督學離散 latent 狀態（encoder + dynamics predictor），把感官蒸餾成抽象變數（如門「鎖/未鎖」），用 MiniGrid 部分像素觀察。</li>
+</ul>
+<p><strong>內在動機</strong>（皆算在 latent z 上）：</p>
+<ul>
+<li><strong>Novelty</strong>（好奇，式3）：state surprise <code>−log N(z)/Σ_z̃ N(z̃)</code>，只看訪問頻率、對 state-action 動態不可知。</li>
+<li><strong>Information gain</strong>（好奇，式4/5）：減少世界模型不確定——Tabular 用「觀察轉移後模型不確定減少」的預測 KL 期望；Dreamer 用後驗（encoder 看到觀察的 latent）vs 先驗（dynamics predictor 未看觀察的 latent）的 KL（回溯式算，避免對所有未來狀態前向傳播的不可解）。</li>
+<li><strong>Empowerment</strong>（勝任，式6–8）：<code>𝔈(s)=max_{ω(a|s)} I(S';A|s)</code>，動作對未來狀態的掌控度。鼓勵 agent 去「對未來結果影響最大」的狀態（結果多樣 + 動作→結果映射隨機性低 → empowerment 高），與不確定/訪問頻率無關。Tabular 用 Blahut-Arimoto 算 1-step empowerment；Dreamer 為可解性假設隨機策略 ω=𝒰、算 I(Z&#x27;;A|z)=H(Z&#x27;|z)−H(Z&#x27;|A,z)。</li>
+<li><strong>混合</strong>：把 information gain 與 empowerment 以 <strong>sum 或 product</strong> 結合。理由：（理論） information gain 改善動態模型——而動態模型正是算 empowerment 所需，novelty 只獎勵看罕見狀態；（經驗） information gain 在兩 agent 都比 novelty 探索更徹底。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<h3 id="sim-1tabular-agentmixed-playground">Sim 1：Tabular agent（mixed playground）</h3>
+<p>每 agent 跑 10,000 步 × 5 random rounds，測 novelty / information gain / empowerment / （IG+Emp 之 sum、product）。能否區分可約（epistemic）與不可約（aleatoric）不確定——優先「有用未知（可控地板格）」勝「無用不可預測（隨機冰格）」。</p>
+<ul>
+<li>最徹底發現＝純 <strong>information gain</strong>（Fig.3a），但<strong>代價是常為求完美預測冰面隨機動態而滑入岩漿致死</strong>（Fig.3b）。</li>
+<li><strong>empowerment 完全不探索、留在起點避死</strong>。</li>
+<li><strong>IG + Emp 相加最平衡、發現/死亡比最高</strong>（Fig.3c）：既探索大半環境、一認出不可控性就避開。</li>
+</ul>
+<h3 id="sim-2dreamer-agent學表徵">Sim 2：Dreamer agent（學表徵）</h3>
+<p>內在動機源於動態演進的 latent，雙向互動。mixed playground（Fig.3d-f）：empowerment 單用探索差（能探完起始角落房間、但過不了 bottleneck，與 Tabular 不同）；IG+Emp 混合協同呼應 Tabular 但較不顯著。</p>
+<p><strong>Unary-state grid（正交分解）</strong>：把 Sim 1 環境拆成 4 變體（harmful×harmless × deterministic×stochastic）。兩階段：(1) 預訓練——只用內在獎勵在四環境學；(2) 泛化——在新環境（屬性同但 layout/動態不同）只用外在獎勵測。</p>
+<ul>
+<li><strong>泛化（Fig.4）高度 context-specific</strong>：novelty/information gain 在確定性環境出色、empowerment 在隨機環境出色；<strong>混合（sum/product）普遍 ≥ 任一單一動機</strong>。</li>
+<li><strong>行為剖析（Fig.5）</strong>：<strong>novelty</strong> 觀察/動作熵最低——滿足於「世界模型每次微調幾維 latent」的廉價主觀 novelty、不轉成實際探索。<strong>information gain</strong> 在確定性改善探索、隨機則受困——<strong>實務上常把可約 epistemic 與不可約 aleatoric 不確定性混為一談</strong>（固著「隨機移動的牆」、在 stochastic+harmless 雖觀察熵高卻最少抵達目標）。<strong>empowerment</strong> 優先掌控未來：確定性環境裡 maladaptive、卡「遠離牆/岩漿、保留多條未來路徑」的舒適區（wall-distance 分析與 heatmap 證實）；隨機環境裡轉為適應性——放棄舒適區、四處遊走維持影響力，與固著不可約噪聲而困在起點的 information gain 形成鮮明對比。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

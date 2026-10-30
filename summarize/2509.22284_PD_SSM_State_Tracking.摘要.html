@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《以結構稀疏轉移矩陣讓狀態空間模型具備狀態追蹤（PD-SSM）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Aleksandar Terzić、Nicolas Menet、Michael Hersche、Thomas Hofmann、Abbas Rahimi（IBM Research Zurich／ETH Zürich）</p><p>日期：2025-09，狀態空間模型／有限狀態自動機表達力</p><p>arXiv：2509.22284</p><p><a href="https://arxiv.org/abs/2509.22284" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="以結構稀疏轉移矩陣讓狀態空間模型具備狀態追蹤pd-ssm重點摘要">《以結構稀疏轉移矩陣讓狀態空間模型具備狀態追蹤（PD-SSM）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>PD-SSM</strong>：把狀態空間模型（SSM）的轉移矩陣參數化為 <strong>A=P·D</strong>（P 是逐列 one-hot 的稀疏置換型矩陣、D 是複數對角矩陣），讓<strong>單層 SSM 就能精確模擬任意 N 狀態有限自動機（FSA）</strong>——包括對角 SSM 做不到的非可解群 A₅／S₅，同時保住與對角 SSM 相同的 <strong>Θ(LN) 平行掃描複雜度</strong>（而非稠密矩陣的 Θ(LN³)）。在 FSA 模擬、狀態追蹤、時間序列上一致勝過可平行基線。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>現代 SSM 面臨<strong>表達力 vs 效率的根本取捨</strong>：<strong>對角</strong>轉移矩陣高效但<strong>無法模擬所有 FSA</strong>（尤其非可解群如 A₅、S₅）；<strong>稠密</strong>矩陣表達力最優卻要 Θ(LN³) 算力，不切實際。PD-SSM 要在<strong>可平行</strong>前提下取得<strong>通用 FSA 表達力</strong>。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>PD 參數化</strong>：A(uₜ)=P(uₜ)·D(uₜ)。
+<ul>
+<li><strong>P 矩陣（逐列 one-hot）</strong>：對可學字典 {Mᵢ} 用 softmax 軟選，再逐列 hardmax 強制稀疏；反傳時用 softmax 近似 hardmax 梯度（surrogate gradient）。</li>
+<li><strong>D 矩陣（複數對角）</strong>：兩個 MLP 分別產生幅值 |D|∈(0,1)ᴺ（sigmoid 正規化保 BIBO 穩定）與相位 ϕ∈(0,2π)ᴺ。</li>
+</ul>
+</li>
+<li><strong>代數框架</strong>：逐列 one-hot 矩陣在乘法下構成<strong>單群（monoid）</strong>（封閉、保稀疏），使 Θ(LN) 平行掃描成立；矩陣乘積降為 Θ(N) 的 gather-scatter（靠列索引組合）。</li>
+<li><strong>理論保證</strong>：
+<ul>
+<li><strong>命題 2（表達力）</strong>：任何 N 狀態 FSA 可由「狀態維度 N + N×N 線性讀出」的單層 PD-SSM 精確表示。</li>
+<li><strong>命題 1（穩定）</strong>：‖Aₜ‖∞ ≤ 1−ε 時系統 BIBO 穩定。</li>
+<li><strong>命題 3（最優）</strong>：近最小狀態維度——某些 N 狀態自動機，任何具唯一狀態編碼的單層 SSM 都不能少於 N−1 維。</li>
+</ul>
+</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>FSA 模擬</strong>（4 任務）：PD-SSM <strong>98.8±0.9%</strong>，次佳可平行模型 D-DE-SLiCE 85.1±8.2%，複數對角基線 73.6±7.1%。</li>
+<li><strong>非可解群 A₅</strong>（2 生成元）：PD-SSM 單層 <strong>100%</strong>；Gated DeltaProduct 單層 97.9%、雙層在 12 生成元的 A₅ 仍僅 68.4%。</li>
+<li><strong>多變量時間序列</strong>（UEA 6 資料集）：PD-SSM 67.0±2.02%，最佳基線 LinOSS-IM 67.8±2.00（相當）。</li>
+<li><strong>Long-Range Arena</strong>：時變模型中 PD-SSM 平均 74.4% vs Mamba 73.9%。</li>
+<li><strong>自然語言狀態追蹤</strong>：凍結 Qwen-2.5 1.5B + 單層 PD-SSM，成功追蹤編碼在變長英文句中的 A₅ 自動機轉移；<strong>對角 SSM 完全失敗</strong>。</li>
+<li><strong>執行時間</strong>：D=5632 時比稠密 SSM 快 <strong>71×</strong>；比對角 SSM 慢 7×（主要是 P 矩陣生成開銷）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>P 矩陣生成有額外開銷（比純對角慢約 7×）。</li>
+<li>在真實基準（LRA、時間序列）上的提升邊際或落在標準差內。</li>
+<li>需調字典大小 K。</li>
+<li>hardmax→softmax 的 surrogate 梯度仍屬啟發式。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 <strong>F 類</strong>的「<strong>讓現代序列模型獲得真 FSA／狀態追蹤能力</strong>」代表——直擊近兩年「Transformer／SSM 無法做狀態追蹤、模擬有限自動機」的熱點問題，與 <a class="paper-reference" href="2408.11042_GraphFSA.%E6%91%98%E8%A6%81.html">2408.11042</a>（GraphFSA）、<a class="paper-reference" href="2505.11694_NN_as_Universal_FSM.%E6%91%98%E8%A6%81.html">2505.11694</a>（NN 作為通用 FSM）同談「神經模型 vs 有限自動機表達力」，但本文給的是<strong>可平行、可訓練、近最優維度</strong>的工程解。</li>
+<li>最值得記：<strong>A=P·D 參數化</strong>（稀疏置換×複數對角）；<strong>逐列 one-hot 矩陣構成單群 → Θ(LN) 平行掃描</strong>；<strong>單層即可精確表示任意 N 狀態 FSA</strong> 的命題；以及「對角 SSM 連 A₅ 都做不到、PD-SSM 100%」這個乾淨的對照。</li>
+<li>與 <a class="paper-reference" href="2602.18508_P_NTM.%E6%91%98%E8%A6%81.html">2602.18508</a>（P-NTM 用外部記憶體獲得狀態追蹤）走不同路：PD-SSM 改的是<strong>轉移矩陣的代數結構</strong>。</li>
+<li>定位：<strong>IBM/ETH 的理論＋實證論文</strong>（含開源），適合做 SSM／Mamba 表達力、形式語言、狀態追蹤、長序列建模的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2509.22284_PD_SSM_State_Tracking.zh-TW.html"><code>../translate/2509.22284_PD_SSM_State_Tracking.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

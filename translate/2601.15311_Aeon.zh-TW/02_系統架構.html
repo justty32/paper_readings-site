@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_系統架構 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2601.15311_Aeon.zh-TW.html">回 2601.15311_Aeon.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-系統架構">3. 系統架構</h2>
+<p>Aeon 實作一個混合的認知核心架構，在高效能系統程式設計與高階 AI 推理之間架橋。</p>
+<h3 id="31-設計哲學core-shell-模型">3.1 設計哲學：Core-Shell 模型</h3>
+<p>核心設計哲學是 Core-Shell 分離：</p>
+<ul>
+<li><strong>Core（Ring 0）</strong>：以 C++23 實作，負責所有高頻、低延遲操作——向量相似搜尋、樹遍歷、記憶管理、WAL flush、EBR。直接操作原始記憶體頁並利用硬體加速（ARM NEON SDOT／x86-64 SIMDe）。</li>
+<li><strong>Shell（Ring 3）</strong>：以 Python 實作，管理高階控制邏輯——LLM 互動、提示工程、圖拓撲管理。</li>
+<li><strong>零拷貝約束</strong>：Core 與 Shell 間在正常操作期間永不序列化資料。Shell 透過 nanobind 操作共享記憶體頁的唯讀視圖。</li>
+</ul>
+<h3 id="32-the-atlas空間記憶核心">3.2 The Atlas：空間記憶核心</h3>
+<p>Atlas 是 Aeon 長期記憶的基礎資料結構，作為語義向量的空間索引。記憶節點定義為 N = {id, v, C, meta, sq}，其中 id 為唯一識別碼，v 為嵌入向量（FP32 或 INT8），C 為子節點指標集，meta 為固定大小的元資料區塊，sq 為量化比例因子（僅在 v 為 INT8 時使用）。Atlas 位於持久儲存但透過 mmap 映對至處理程序虛擬位址空間，避免標準堆積配置以確保連續性。</p>
+<p><strong>3.2.1 INT8 對稱純量量化</strong>：Aeon 引入對稱 INT8 量化作為一級儲存格式。對向量 v ∈ R^D，比例因子 sq = max_i|v_i| / 127，量化值 q_i = clamp(round(v_i / sq), -127, 127)。若 max_i|v_i| = 0，比例預設為 1.0 且輸出全零。所有輸入嵌入必須為嚴格的 L2 歸一化（∥v∥_2 = 1），使內積等價於餘弦相似度。</p>
+<p>磁碟節點步幅：FP32 每節點 3,392 B、100K 節點 440 MB；INT8 每節點 1,088 B、100K 節點 141 MB——<strong>3.1x 壓縮比</strong>。</p>
+<p><strong>3.2.2 Greedy SIMD Descent</strong>：檢索使用 greedy SIMD descent。FP32 儲存時直接計算餘弦相似度；INT8 儲存時先以 NEON SDOT 指令計算 raw_dot = Σ(q_i^(query) · q_i^(node))，再解量化得 sim = raw_dot × sq^(query) × sq^(node)。複雜度為 O(log_B M)，B 為有效分支因子，M 為總節點數。
+<strong>3.2.3 動態維度</strong>：嵌入維度因模型而異（MiniLM 384、e5-large 768、OpenAI v3 1536）。Aeon 透過動態步幅計算解決——AtlasHeader 儲存 D、M、Q，核心載入時計算 node_byte_stride = align_up(64 + payload(D,Q) + M, 64)，使單一編譯二進位可服務任意嵌入模型與精度，防止模型鎖定。</p>
+<h3 id="33-write-ahead-logwal">3.3 Write-Ahead Log（WAL）</h3>
+<p>為確保崩潰可復原性而不犧牲插入吞吐量，Aeon 實作解耦的 WAL 搭配三步鎖定協定：(1) 序列化（無鎖）——節點編碼為位元組緩衝區，含 16 位元組 WalRecordHeader（記錄型態標籤、payload 大小、CRC32 校驗）；(2) WAL Flush（僅 wal_mutex_）——序列化記錄寫入 WAL 檔案並透過 fdatasync() 刷入磁碟，此時 delta_mutex_ 未被持有，delta buffer 的並行讀寫不阻塞；(3) 寫入 RAM（僅 delta_mutex_）——wal_mutex_ 釋放後，節點 memcpy 至 delta buffer。核心洞察：磁碟 I/O（步驟 2）與 RAM 變異（步驟 3）永不競爭同一 mutex，將磁碟 flush 延遲隱藏在插入操作之後。復原時依序重播 WAL、CRC32 驗證、丟棄 torn records。</p>
+<h3 id="34-sidecar-blob-arena">3.4 Sidecar Blob Arena</h3>
+<p>情節 Trace 將事件儲存為固定 512 位元組的 TraceEvent 結構體（O(1) 隨機存取）。先前版本將文字直接嵌入 440 字元欄位，不足以儲存 LLM 筆錄。Aeon 以 BlobRef 間接取代：一個 64 位元組 text_preview（前 63 字元對齊單一快取線）+ blob_offset/blob_size 指向附加型 mmap 支援的 sidecar 檔案（trace_blobs_genN.bin）。Sidecar 檔案使用 2x 倍增增長策略（ftruncate → munmap → mmap），提供零拷貝讀取（mmap 區域上的 std::string_view）。世代垃圾回收期間建立新世代 blob 檔案，僅複製非墓碑事件參照的 blob，舊世代檔案在所有 EBR reader 推進後刪除。</p>
+<h3 id="35-double-buffered-shadow-compaction">3.5 Double-Buffered Shadow Compaction</h3>
+<p>為支援即時應用（如 60 FPS 遊戲引擎），Aeon 實作受 Redis BGSAVE 啟發的零卡頓垃圾回收機制：(1) 微秒級凍結——獲取鎖、交換 active delta_buffer 與 frozen_delta_buffer、快照當前狀態，&lt;10 µs；(2) 背景複製——背景執行緒迭代 mmap 檔案與 frozen delta buffer 中的活節點，連續寫入新世代檔案（atlas_gen2.bin），主執行緒繼續服務讀取並接受寫入；(3) 熱交換——背景複製完成後短暫鎖定以交換 MemoryFile 控制代碼；(4) 清理——關閉並刪除舊世代檔案，截斷 WAL。主執行緒僅在步驟 1 與 3 被阻塞（總計 &lt;10 µs）。</p>
+<h3 id="36-the-trace情節脈絡圖">3.6 The Trace：情節脈絡圖</h3>
+<p>Trace 提供時間與因果脈絡，結構化為一個有向無環圖 G = (V, E)。頂點集合 V 包含異質 TraceEvent 節點（V_user、V_system、V_concept）。邊集合 E 定義時序邊（E_next）與參照邊（E_ref），將情節節點連接至 Atlas 中的語義基礎。此神經符號架構的精髓在於：神經嵌入使節點可被相似性搜尋（語義檢索），符號邊（因果鏈）使每條記憶的來源與影響可被追溯與審計。這正是 ai_core §3.6「神經符號記憶管理 = 固化引擎記憶」所刻畫的雙重表徵——固化引擎既需要語義相似性來召回相關經驗，也需要符號因果鏈來保證每條固化產出可被問責。</p>
+<h3 id="37-trace-block-indextbi">3.7 Trace Block Index（TBI）</h3>
+<p>樸素的 Trace 線性掃描為 O(|V|)，對 10⁵ 事件不可行。Aeon 實作 Trace Block Index：將事件分組為固定大小 B = 1024 的 TraceBlock，每區塊維護一個增量更新的質心（來自其組成事件嵌入）。檢索採兩階段 SIMD 掃描：(1) Phase 1（區塊掃描）——SIMD 搜尋區塊質心以識別前 K 個最相關的時間窗口，成本 O(|V| / B)；(2) Phase 2（事件掃描）——僅對前 K 個區塊內的事件進行深度掃描，成本 O(K·B)。總搜尋複雜度 T_search = O(|V|/1024 + K×1024)，K 典型值 3–5 時對大型 trace 仍 sub-50 ms。</p>
+<h3 id="38-零拷貝介面">3.8 零拷貝介面</h3>
+<p>Aeon 使用 nanobind 向 Python 暴露 C++ 記憶體結構。介面將原始 C++ 指標包裝進 Python Capsule，重新解譯為唯讀 NumPy 陣列緩衝區。Shell 端任何修改底層記憶體的嘗試皆引發執行期例外。</p>
+<h2 id="4-語義旁視緩衝slb">4. 語義旁視緩衝（SLB）</h2>
+<p>SLB 是利用對話局部性達成 sub-5µs 檢索延遲的高效能快取機制。</p>
+<p><strong>4.1 理論：語義局部性</strong>：傳統快取依賴位址透明性；在向量資料庫中精確相等罕見。引入「語義慣性（Semantic Inertia）」概念：連續對話中，第 i 輪的主題向量 t_i 與 t_{i+1} 高度相關——P(dist(q_{i+1}, q_i) &lt; ε) ≈ 1。</p>
+<p><strong>4.2 架構</strong>：SLB 為固定大小 K = 64 的小型連續環形緩衝，調校至容納於 L1/L2 快取。每個條目 e_k ∈ B 儲存質心 c_node ∈ R^D 與指向 Atlas 中完整節點的直接記憶體指標。關鍵架構決策——<strong>FP32-Only Cache</strong>：SLB 一律儲存 FP32 向量，無論 Atlas 量化格式為何；若 Atlas 為 INT8 量化，向量在插入 SLB 時解量化為 FP32，以 3.56 µs 快取命中延遲避免每次掃描的解量化開銷。因 K 小（64），採用 AVX-512/NEON 指令的窮舉線性掃描，其牆鐘時間低於 O(log N) 樹遍歷的數步（完美硬體預取、零指標追逐）。</p>
+<p><strong>4.2.1 多租戶隔離</strong>：多代理人部署時 SLB 分片為 64 個獨立環形緩衝，各受其專屬 mutex 保護，路由為 shard_id = hash(session_id) mod 64。此 lock-striping 架構確保競爭與語義脈絡嚴格隔離，單節點支援 10 萬+ 併行 session。</p>
+<p><strong>4.3 推測提取演算法</strong>：查詢時對 B 中 K 個元素執行向量化 SIMD 內積迴圈，尋找相似度超過閾值 τ_hit 的最佳質心；命中則 LRU-Insert 更新快取並返回節點指標；未命中則退回至 Atlas 樹搜尋。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

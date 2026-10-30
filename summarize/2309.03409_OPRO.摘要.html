@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《大型語言模型作為優化器（Large Language Models as Optimizers，OPRO）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Chengrun Yang, Xuezhi Wang, Yifeng Lu, Hanxiao Liu, Quoc V. Le, Denny Zhou, Xinyun Chen（Google DeepMind）</p><p>日期：2023-09（ICLR 2024）</p><p>arXiv：2309.03409</p><p><a href="https://arxiv.org/abs/2309.03409" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="大型語言模型作為優化器large-language-models-as-optimizersopro重點摘要">《大型語言模型作為優化器（Large Language Models as Optimizers，OPRO）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>OPRO（Optimization by PROmpting）：把優化任務用自然語言寫進 meta-prompt，讓 LLM 讀「歷史解＋分數」的整條軌跡、迭代提出更好的解</strong>——不需梯度、不需程式化求解器，只靠提示就能做黑箱優化；在 prompt 優化這個主應用上，它把「找 prompt」變成一個 LLM 自己迭代的優化問題，並找出名場面 <strong>「Take a deep breath and work on this problem step-by-step.」</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>許多優化問題<strong>沒有梯度</strong>（decision space 離散、目標函數只能查詢黑箱），傳統無導數優化須為每個任務客製演算法。特別是 <strong>prompt 優化</strong>：LLM 對 prompt 格式極敏感、<strong>語意相近的 prompt 準確率可差 20%+</strong>，最佳格式又因模型/任務而異，而 prompt 空間又大又離散、常僅有 API 存取——軟提示微調、梯度搜尋、RL 等在此都失效。作者主張：既然 LLM 懂自然語言，就讓它<strong>直接扮演優化器</strong>。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>meta-prompt（元提示）＝優化器的呼叫</strong>，含兩塊：(1) <strong>優化軌跡</strong>——過往的解及其分數，依分數<strong>升序</strong>排列；(2) <strong>問題描述</strong>（prompt 優化時還含幾個任務範例 exemplar 與插入位置標記 <code>&lt;INS&gt;</code>），加上**元指令（meta-instructions）**說明目標與輸出格式。</li>
+<li><strong>迭代循環</strong>：每步 LLM 讀 meta-prompt 生成新解 → 評估分數 → 加回軌跡 → 下一步；LLM 無需被告知「如何更新解」，它從高分解的相似性自行外推。</li>
+<li><strong>穩定性設計</strong>：每步<strong>生成 8 個解</strong>（類比 mini-batch 降方差）；用<strong>溫度</strong>調節探索/利用（1.0 最佳）。</li>
+<li><strong>prompt 優化專用</strong>：分 <strong>optimizer LLM</strong>（優化器）與 <strong>scorer LLM</strong>（被套用 prompt、算訓練準確率的評分模型），兩者可同可異；指令插入 Q_begin/Q_end/A_begin 三種位置；分數即訓練準確率。</li>
+<li>先在<strong>線性回歸</strong>（連續）與 <strong>TSP</strong>（離散）做動機示例，證明 LLM 能「比較數字、提出下降方向」的黑箱優化。</li>
+</ul>
+<h2 id="結果具體數字">結果（具體數字）</h2>
+<ul>
+<li><strong>GSM8K</strong>：優化後 prompt 勝人工設計達 <strong>8%</strong>——PaLM 2-L-IT 優化器＋PaLM 2-L scorer 找到「Take a deep breath and work on this problem step-by-step.」達 <strong>80.2</strong>（vs「Let&#x27;s think step by step.」71.8、空字串 34.0）。</li>
+<li><strong>BBH（23 個困難任務）</strong>：勝人工 prompt 有時<strong>超過 50%</strong>；勝「Let&#x27;s think step by step.」超過 5% 的任務達 19/23（PaLM 2-L scorer）。</li>
+<li><strong>遷移性</strong>：GSM8K 找的指令遷移到 MultiArith（95.3）、AQuA（54.3）仍勝基準。</li>
+<li><strong>消融</strong>：升序排列、顯示整數分數、3 個範例、每步 8 條、溫度 1.0 為最佳組合；一次生成 50 條（不迭代）明顯較差，證明<strong>善用軌跡</strong>才是關鍵。</li>
+<li><strong>數學優化</strong>：小規模 TSP 上 gpt-4 與手工啟發式相當；但規模一大（n=50）效能急劇退化，非為打敗專用求解器而設計。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>不擴展到大規模</strong>：context 長度塞不下大問題，崎嶇地形使 LLM 提不出正確下降方向；TSP 規模一大即被 Farthest Insertion 超越。</li>
+<li>prompt 優化<strong>仍需訓練集</strong>算準確率（至少數十樣本），且<strong>無法有效利用錯誤案例</strong>（把 error case 放進 meta-prompt 效果與隨機取樣相近）。</li>
+<li>對<strong>初始化敏感</strong>、探索/利用權衡仍是開放問題；存在過擬合（訓練常比測試高 5%–20%）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>ai_core §1「計算圖節點的無梯度優化」的直接工具</strong>：ai_core 把系統看成符號神經網路計算圖（多數確定性節點＋少數 LLM 節點）。OPRO 正是<strong>當某節點的參數（prompt/指令）沒有梯度時</strong>，如何靠「歷史解＋分數軌跡」讓 LLM 迭代逼近更好參數的可操作範式——把「調 prompt」從手工黑魔法變成有目標函數、有收斂曲線的優化流程。</li>
+<li><strong>「prompt＝可優化物」的奠基</strong>：本文是把 prompt 明確當成優化變數、以任務準確率為目標函數的代表作，是 ai_core <strong>主題 10「自動 prompt 工程」的源頭之一</strong>。與 <a class="paper-reference" href="2211.01910_APE.%E6%91%98%E8%A6%81.html">2211.01910</a> APE（生成語意變體）、APO（自然語言回饋編輯）、TextGrad（文字梯度反傳）對照：OPRO 的差異化在<strong>不編輯單一 prompt、不要求保語意，而是餵整條「解-分數」軌跡讓 LLM 自行發現高分模式</strong>——對想在 ai_core 裡實作「節點參數自動調優器」的人，這是最小可行且黑箱友善的設計。</li>
+<li><strong>對「固化引擎」（§3.6）的啟示與警訊</strong>：OPRO 展示 LLM 能把一個模糊任務結晶成一句高效指令（如「深呼吸」名句），呼應「把 LLM 反覆處理的案例固化成可複用資產」；但其<strong>不擴展、需標註訓練集、對初始化敏感、無法用錯誤案例</strong>等局限，也提醒此類自動優化只適合小規模、有明確評分函數的節點——與 ai_core「成本梯度／逐步剃除 LLM 依賴」的務實取向一致。</li>
+<li>定位：<strong>方法論文＋跨領域實證</strong>，Google DeepMind 出品、ICLR 2024、開源。適合做 <strong>自動 prompt 工程、無梯度/黑箱優化、LLM-as-optimizer、agent 自我調優</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2309.03409_OPRO.zh-TW.html"><code>../translate/2309.03409_OPRO.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

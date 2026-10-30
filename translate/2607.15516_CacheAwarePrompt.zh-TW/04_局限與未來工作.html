@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>04_局限與未來工作 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2607.15516_CacheAwarePrompt.zh-TW.html">回 2607.15516_CacheAwarePrompt.zh-TW 目錄</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">← 上一節</a></p>
+</blockquote>
+<h2 id="7-局限與未來工作">7. 局限與未來工作</h2>
+<p><strong>§7.1 隱含 tools= caching</strong>：§3.1 的「無隱含 caching」主張在生產驗證中被 refine——Anthropic 對大型 tools= 陣列進行隱含 caching（即使無顯式 cache_control）。Vanilla 基線在每次呼叫後顯示 cache_read_input_tokens≈106k，表明 provider 管理層面的工具定義重用。</p>
+<p><strong>§7.2 Cache-invalidation 成本取決於 prefix 區域</strong>：τ-bench retail（wiki ~50% prefix，query-aware 全部突變）→ +40.1%；EA（~90% tools, ~10% system，僅突變 system 部分）→ −31%。相同 query-aware compression 在不同工作負載上產生符號相反的效應——由 mutated-fraction-of-cached-prefix 決定。未來：參數化 crossover 模型並驗證預測單調性。Cache-only 的 vanilla 優勢同樣依賴 prefix 大小：LongBench-v2 −90%、EA −18%、τ-bench +0.6%（統計無差異）。</p>
+<p><strong>§7.3 單一模型/單一 TTL</strong>：所有結果來自 Sonnet 4.6 + 5-min ephemeral。預期定性發現轉移；量化參數需重測。未來：複製到 Opus 4.7/Haiku 4.5（估計 $5–10/模型）。</p>
+<p><strong>§7.4 LLM-as-judge</strong>：Haiku 4.5 ×3 是成本受限標準，非人類評估。三個關切：(i) Haiku 與被評分策略及 reference 共享架構家族→可能偏袒文體對齊；(ii) G-B 是最高上下文答案而非 oracle——若 G-B 錯則正確答案被罰；(iii) judge calls 曾觸發 rate limit→現已 throttle 45 RPM + 429-retry。τ-bench DB-state reward 部分緩解。未來：取樣 ~100 組人類評估、交叉 GPT-4.1 judge。</p>
+<p><strong>§7.5 內容依賴品質斷崖</strong>：20,246-token doc 在 r≥6 時出現無法分解的品質斷崖（N=6 查詢太少先驗資訊）。Tier-preserving bound 必要非充分；安全部署需品質監視器。</p>
+<p><strong>§7.6 合成版本漂移</strong>：AdaptiveCacheBoundary 的 bulk 驗證使用合成漂移。Git 歷史驗證確認在高度動態生產文件中保持 62–70% 節省。未來：在真實對話 session traces（LMSys-Chat-1M 單主題過濾）上驗證。</p>
+<p><strong>§7.7 與 routing/reasoning budgets 的可組合性</strong>：CAPC 自然與 model routing（§2）和 reasoning-budget controllers 組合。未來：多模型生產 trace 上聯合 CAPC + cache-aware routing。</p>
+<p><strong>§7.8 跨 provider 推廣</strong>：CAPC 機制應轉移至任何具備 prefix-strict cache_control API 的 provider。未來：在至少一個非 Anthropic provider 上複製 §3。</p>
+<h2 id="8-結論">8. 結論</h2>
+<p>本文起於一個生產工程師會認出的觀察：prompt caching 與 prompt compression 不是獨立槓桿。文獻隱含 ρ=1.0 假設隱藏了 Sonnet 4.6 上 cache_write 與 cache_read 定價 12.5× 差距，而 prefix-strict 失效規則將 query-aware compression 變成每呼叫支付全價的 cache-busting 操作。</p>
+<p>實證特徵化顯示兩層架構（T≈3,500 token）；成本模型預測——實驗驗證——在現實 ρ 下 cache-only vs compression 的排序在高 ratio 反轉。CAPC 配對 query-agnostic compression 與顯式 caching 及 tier-preserving ratio bound；16/16 配置最便宜；28k-token doc 上 dominant Pareto curve。三個生產規模驗證印證：94k-token EA（51.7% 節省）、graphify RAG（9.3×/2.4×, ≥85% hit rate）、τ-bench retail（最便宜且 reward 等於 vanilla, z=0.00）。</p>
+<p>三個更廣泛的意涵：(1) 生產級 caching API 已成為研究級變數——實際價格取決於 cache 狀態、前綴大小和呼叫次數。(2) 「static first, dynamic last」的產業指導是正確但非正式的；CAPC 將其轉化為有實證支持的推導設計規則。(3) 索引器（graphify）與 prompt 是互補而非競爭的抽象——CAPC 是決定如何經濟地將索引交付給 LLM 的正交伴侶。</p>
+<p>全論文 Anthropic API 花費 $98.96。所有原始資料、圖表和重現腳本隨論文釋出。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

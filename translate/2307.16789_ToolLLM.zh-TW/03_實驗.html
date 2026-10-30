@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2307.16789_ToolLLM.zh-TW.html">回 2307.16789_ToolLLM.zh-TW 目錄</a>　<a href="02_%E8%B3%87%E6%96%99%E9%9B%86%E6%A7%8B%E5%BB%BA.html">← 上一節</a>　<a href="04_%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-實驗">3. 實驗</h2>
+<p>本節探討 ToolLLM 框架的表現。§3.1 先介紹評測指標並評估 API 檢索器與 DFSDT 的效能，§3.2 呈現主實驗，§3.3 則是泛化實驗。</p>
+<h3 id="31-前期實驗">3.1 前期實驗</h3>
+<p><strong>ToolEval</strong>：考量 API 在 RapidAPI 上的時效性，以及每條指令潛在解答路徑數量無窮，替每條測試指令標註一條固定的真值解答路徑並不可行；此外比較不同模型時，必須確保它們在評測期間使用相同版本的 API。考量人工評測耗時，我們仿照 AlpacaEval 開發了以 ChatGPT 為基礎的高效評測器 ToolEval，包含兩項指標（細節見附錄 A.5）：(1) <strong>通過率（Pass Rate）</strong>：計算在有限預算內成功完成指令的比例，衡量 LLM 指令的可執行性，可視為理想工具使用的基本要求；(2) <strong>勝率（Win Rate）</strong>：提供一條指令與兩條解答路徑給 ChatGPT 評測器，取得其偏好（即哪一條更好）。我們為兩項指標預先定義一套判準，組織成 prompt 提供給 ChatGPT 評測器；並基於 ChatGPT 多次評測以提升可靠性，再計算平均結果。</p>
+<p>經嚴謹測試（細節見附錄 A.5），ToolEval 與人類標註者在通過率上達 87.1% 一致率、在勝率上達 80.3% 一致率，顯示 ToolEval 能在很大程度上反映並代表人類評測。</p>
+<p><strong>API 檢索器的效能</strong>：API 檢索器旨在為指令檢索相關 API。我們用 Sentence-BERT（基於 BERT-BASE）訓練一個稠密檢索器，將指令與 API 文件分別編碼成向量、以嵌入相似度計算相關性。訓練時，把 §2.2 生成的每條指令的相關 API 當作正例，另採樣若干其他 API 作負例做對比學習。基線選用 BM25 與 OpenAI 的 text-embedding-ada-002，以 NDCG 評估檢索表現。我們分別在單工具指令（I1）、類別內多工具指令（I2）、collection 內多工具指令（I3）上訓練並評估模型。</p>
+<p><strong>表 2 摘要（NDCG@1 / @5）</strong>：BM25 平均 18.5 / 17.0；Ada 平均 49.6 / 45.4；我們的檢索器平均高達 <strong>78.0 / 84.9</strong>，各情境（I1、I2、I3）均一致優於兩個基線；I1 的 NDCG 分數普遍高於 I2、I3，說明單工具指令檢索比多工具情境更簡單。</p>
+<p><strong>DFSDT 相對 ReAct 的優越性</strong>：在解答路徑標註前，我們先驗證 DFSDT 的效能。基於 ChatGPT，用通過率比較 DFSDT 與 ReAct；由於 DFSDT 消耗更多 OpenAI API 呼叫，為求公平比較，我們額外建立「ReAct@N」基線——重複執行 ReAct 直到總花費達到與 DFSDT 相同水準，只要 ReAct@N 找到一條有效解就算通過。</p>
+<p><strong>表 3 摘要（基於 ChatGPT 的通過率）</strong>：ReAct 平均 35.3、ReAct@N 平均 44.5、<strong>DFSDT 平均 63.8</strong>，DFSDT 在所有情境均顯著優於兩個基線。由於我們只保留通過的標註作為訓練資料，在相同預算下用 DFSDT 能標註更多指令，是更有效率、能節省總標註成本的方式。我們也發現 DFSDT 的效能增益在較難的指令（I2、I3）上比簡單指令（I1）更明顯，說明透過擴大搜尋空間，DFSDT 能更好地解決那些無論用 ReAct 跑幾次都無法回答的困難、複雜指令；把這類「難例」納入資料集，能充分激發模型在複雜情境下的工具使用能力。</p>
+<h3 id="32-主實驗">3.2 主實驗</h3>
+<p><strong>ToolLLaMA</strong>：我們用（指令， 解答路徑）配對微調 LLaMA-2 7B 模型。原版 LLaMA-2 序列長度僅 4096，在本設定下不足以容納可能很長的 API 回應，因此使用位置插值（positional interpolation）把脈絡長度擴展到 8192（訓練細節見附錄 A.3）。</p>
+<p><strong>設定</strong>：理想情況下，透過擴大訓練資料中指令與獨特工具的數量與多樣性，ToolLLaMA 應能泛化到訓練時未見過的指令與 API——這很有意義，因為使用者可自訂 API 並期望 ToolLLaMA 僅憑文件即可適應。我們在三個層次評估 ToolLLaMA 的泛化能力：(1) <strong>Inst.</strong>：同一組（訓練時已見）工具下的未見指令；(2) <strong>Tool</strong>：屬於訓練資料中已見類別、但工具本身未見過；(3) <strong>Cat.</strong>：屬於訓練資料中未見類別的工具。我們在單工具指令（I1）、類別內多工具指令（I2）、collection 內多工具指令（I3）三種情境下實驗：I1 評估上述全部三層泛化（I1-Inst.、I1-Tool、I1-Cat.）；I2 因訓練指令已涉及同類別的不同工具，僅評估第一與第三層（I2-Inst.、I2-Cat.）；I3 因已涵蓋跨類別工具組合，僅評估第一層（I3-Inst.）。每條測試指令均把真值（oracle）API 集合 𝕊Nsub 餵給模型，模擬使用者已事先指定理想 API 集合的情境。</p>
+<p><strong>基線</strong>：選用兩個已針對通用對話微調的 LLaMA 變體 Vicuna 與 Alpaca；也選用「教師模型」ChatGPT、Text-Davinci-003、GPT-4、Claude-2，並對每個都套用 DFSDT 與 ReAct 兩種策略。計算勝率時，各模型均與 ChatGPT-ReAct 比較。</p>
+<p><strong>主要結果（表 4 摘要，oracle API 情境）</strong>：</p>
+<ul>
+<li>儘管做了大量 prompt 工程，Vicuna 與 Alpaca 在所有指令上通過率與勝率均為 <strong>0</strong>，顯示它們的指令遵循能力完全未涵蓋工具使用領域，凸顯現有指令微調過度聚焦語言技能的不足；</li>
+<li>各模型使用 DFSDT 均顯著優於 ReAct（通過率與勝率皆然）。值得注意的是 ChatGPT+DFSDT 的通過率超越 GPT-4+ReAct、勝率也相當，凸顯 DFSDT 在決策制定上的優越性；</li>
+<li>使用 DFSDT 時，ToolLLaMA（平均 Pass 66.7 / Win 60.0）明顯優於 Text-Davinci-003（43.1 / 46.3）與 Claude-2（22.6 / 43.5），表現幾乎追平教師模型 ChatGPT（69.0 / 64.8）；儘管要泛化到未見指令與工具，ToolLLaMA+DFSDT 在所有情境下均展現有競爭力的泛化表現，通過率僅次於 GPT-4+DFSDT（71.1 / 70.4）。</li>
+</ul>
+<p>整體而言，這些結果證明 ToolBench 能充分激發 LLM 的工具使用能力，使其能熟練掌握即便未見過的 API 來完成各種指令。</p>
+<p><strong>接上 API 檢索器</strong>：真實場景中要求使用者手動從大型 API 池挑選並不現實。為模擬此實務情境並測試檢索器效能，我們把檢索器推薦的前 5 個 API（而非真值 API 集合）餵給 ToolLLaMA。如表 4 所示，使用檢索到的 API <strong>甚至比使用真值 API 集合表現更好</strong>（通過率與勝率皆有提升）。原因是真值 API 集合中不少 API 其實有功能更佳的替代品，而我們的檢索器成功找出了它們——換言之，檢索器擴大了相關 API 的搜尋範圍，為當前指令找到更合適的選項。這有力證明了我們的 API 檢索器在龐大 API 池（16,000+）中挑選相關 API 的出色能力。</p>
+<h3 id="33-對-apibenchpatil-et-al-2023的分佈外ood泛化">3.3 對 APIBench（Patil et al., 2023）的分佈外（OOD）泛化</h3>
+<p><strong>設定</strong>：我們進一步將 ToolLLaMA 擴展到 OOD 資料集 APIBench，以驗證其泛化能力。為評估 ToolLLaMA 在這些新領域的泛化能力，我們為其配上兩種檢索器：我們訓練的 API 檢索器，以及 oracle 檢索器。我們評測 APIBench 的三個領域：TorchHub、TensorHub、HuggingFace。我們將 ToolLLaMA 與 Gorilla（一個用 APIBench 訓練資料微調的 LLaMA-7B 模型）比較。依循原論文，我們採用 Gorilla 的兩種官方設定：零樣本設定（ZS）與檢索感知設定（RS，即把檢索到的 API 作為 prompt 一部分送入模型）；並採用官方評測指標，報告 AST 準確率與幻覺率。</p>
+<p><strong>結果（表 5 摘要）</strong>：整體而言，儘管訓練於完全不同的 API 領域與指令領域，ToolLLaMA 在三個資料集上均展現出色的 OOD 泛化表現。具體而言，ToolLLaMA + 我們的檢索器在 HuggingFace、TorchHub 上的 AST 準確率均優於 Gorilla-ZS+BM25 與 Gorilla-RS+BM25（兩種訓練設定）；在同樣使用 oracle 檢索器時，ToolLLaMA 相較 Gorilla-ZS 也一致更優。值得注意的是，Gorilla 模型因其設定較簡單（未涉及多工具使用與多步推理），無法泛化到我們的 ToolBench 資料集。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

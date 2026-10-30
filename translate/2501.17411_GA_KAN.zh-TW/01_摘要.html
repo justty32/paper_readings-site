@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2501.17411_GA_KAN.zh-TW.html">回 2501.17411_GA_KAN.zh-TW 目錄</a>　<a href="02_%E7%B5%90%E6%9E%9C%E8%88%87%E5%88%86%E6%9E%90.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>為解決 MLP 的可解釋性問題，2024 年提出了 <strong>KAN（Kolmogorov-Arnold Networks）</strong>。但最佳化 KAN 結構費力、通常需人工介入與調參。本文提出 <strong>GA-KAN</strong>——一個<strong>基於遺傳演算法（GA）自動最佳化 KAN</strong> 的方法，設計過程<strong>完全無需人工介入</strong>。據作者所知，這是<strong>首次以演化計算自動最佳化 KAN</strong>。此外，受 MLP 用稀疏連接有效減參啟發，GA-KAN 進一步探索 KAN 的<strong>稀疏連接</strong>以應對其龐大參數空間。GA-KAN 在兩個 toy 資料集上達到最優結果（無需原 KAN 的手動調參）；在五個分類資料集上全面勝過傳統方法，並對 Wine、Iris 提供<strong>可解釋的符號公式</strong>。GA-KAN 在所有五個資料集上都<strong>大幅降低參數量</strong>。核心貢獻：自動最佳化、新編碼策略、新解碼流程，三者共同提升準確度與可解釋性、並減少參數。</p>
+<p><strong>關鍵詞</strong>：人工神經網路、Kolmogorov-Arnold 網路、遺傳演算法、架構最佳化、可解釋性。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>MLP 強於建模非線性，但有兩大限制：層數/參數增多 → 計算成本暴增；且<strong>缺乏可解釋性</strong>。Mocanu 等用稀疏層替代全連接層，證明可在維持效能下大幅減參 → 探索連接模式成為模型最佳化的有望方向。</p>
+<p>2024 年 Liu 等提出 <strong>KAN</strong> 作為 MLP 的可解釋替代：MLP 只能擬合輸入輸出關係（隱式），KAN 能捕捉<strong>符號表達式</strong>。關鍵差異在架構——<strong>KAN 把可學習激活函數放在「邊」上，節點僅做求和</strong>。原作指出手工 KAN 參數常冗餘、有大量最佳化空間。KAN 用<strong>剪枝</strong>縮小網路，但剪枝需手調參數、跨資料集而異、需專家知識，且限制層數、無法動態調整深度。受 MLP 稀疏連接啟發，本文探索 KAN 的稀疏連接，並用 <strong>GA</strong> 自動化最佳化（GA 計算成本低、最佳化策略有效；GA-based NAS 近年表現亮眼）。</p>
+<p><strong>四項目標/貢獻</strong>：(1) 自動最佳化——GA 同時最佳化 KAN 架構與 grid 值；(2) 新編碼策略——把連接/grid/深度編入染色體；(3) 新解碼流程——退化機制 + 零遮罩，高效探索不同深度；(4) 提升準確度、可解釋性、並減參。</p>
+<h2 id="2-背景與相關工作">2. 背景與相關工作</h2>
+<h3 id="21-遺傳演算法ga">2.1 遺傳演算法（GA）</h3>
+<p>GA 屬演化演算法，模擬「適者生存」：族群以染色體編碼，經選擇、交叉、突變產生新個體，用適應度函數導向選擇（Algorithm 1）。GA 計算資源需求相對低、最佳化策略具說服力，且 GA-based NAS 表現亮眼，故選用。</p>
+<h3 id="22-kolmogorov-arnold-網路kan">2.2 Kolmogorov-Arnold 網路（KAN）</h3>
+<p>KAN 基於 <strong>Kolmogorov-Arnold 表示定理</strong>（1957，回應 Hilbert 第 13 問題）：任何有界域上的連續多變量函數可表為有限多個連續單變量函數及其和的組合（式 1）。Girosi 與 Poggio 曾質疑該定理在神經網路的實用性（式 1 函數可能不光滑）。Liu 等的 KAN 放寬式 1 限制，允許任意寬度與深度。</p>
+<p>典型 KAN（式 2）的激活函數（式 3）由<strong>基函數 b(x)（類殘差連接）+ B-spline 線性組合（式 4）</strong> 組成，含可訓練權重 wb、ws 與 B-spline 係數；<strong>grid 影響曲線解析度與平滑度</strong>。本文固定 spline 階數、把 grid 編入向量做演化最佳化。原 KAN 找可解釋解須剪枝、設參數（隨資料集而異），費力。GA-based NAS 可自動搜尋最優 KAN 結構，減少人工設計、同時提升準確度與可解釋性。</p>
+<h3 id="23-nas-相關工作">2.3 NAS 相關工作</h3>
+<p>NAS 自動化神經架構設計。早期 NASRL、MetaQNN 用強化學習；另一類是演化計算 NAS（ENAS），如 LargeEvo 用 GA 最佳化 CNN。因 KAN 尚無專門架構搜尋法，本文回顧 MLP 架構搜尋相關工作（differential evolution、GA、PSO、NSGA-II、RCGA 等）。但這些<strong>都假設全連接、不顯式處理神經元間連接</strong>。GA-KAN 不同：用 GA 探索 KAN 最優架構，能發現<strong>超越全連接假設的稀疏連接模式</strong>。</p>
+<h2 id="3-提出的方法ga-kan">3. 提出的方法（GA-KAN）</h2>
+<h3 id="31-總體框架圖-1">3.1 總體框架（圖 1）</h3>
+<p>先定義搜尋空間（最大深度、每隱藏層最大神經元數）→ 決定染色體大小（固定）。隨機初始化二進位族群 → 適應度評估 → 進入 GA 迴圈（選擇、交叉、突變、評估）直到停止 → 取最佳個體為最優 KAN。最優結構提供三面向可解釋性：feature importance、feature selection、symbolic formulae。</p>
+<h3 id="32-編碼策略圖-2">3.2 編碼策略（圖 2）</h3>
+<p>搜尋空間由輸入神經元數、輸出神經元數、最大深度、每隱藏層最大神經元數界定。每層相鄰神經元間連接用 0/1 編碼（1=連接，0=無），層 l 的編碼位數 = 該層輸入×輸出。另加 <strong>6 bits 編碼 grid 值</strong>（可表 1–64）、<strong>2 bits 編碼深度</strong>（編 depth−1，最小深度 1，可表 1–4 層）。總位數見式 5。範例：輸入 6、兩隱藏層各 5、輸出 2 → 共 73 bits。</p>
+<h3 id="33-解碼染色體--kan圖-3">3.3 解碼：染色體 → KAN（圖 3）</h3>
+<p>固定長度染色體預設定義最大深度網路；但常需更淺網路（省算、抗過擬合）→ 引入<strong>退化機制（degradation）</strong>：某層全 0 即停用該層、深度−1。但整層隨機全 0 機率極低 → 把深度直接編入編碼，並提出<strong>零遮罩（zero mask）</strong>：把某層所有位主動設 0，使其在解碼時被忽略。兩者結合維持族群多樣性、降低次優收斂風險、能解碼出不同深度與複雜度的 KAN。</p>
+<h3 id="34-交叉與突變圖-4">3.4 交叉與突變（圖 4）</h3>
+<p><strong>交叉</strong>只在兩親代<strong>同層同位置</strong>神經元間以一定機率交換編碼；grid 與 depth 用單點交叉。<strong>突變</strong>作用於所有位置，翻轉 0↔1（含深度與 grid），機率通常低以免過度擾動，但對維持多樣性、防早熟關鍵。兩者平衡探索與利用。</p>
+<h3 id="35-適應度評估algorithm-2">3.5 適應度評估（Algorithm 2）</h3>
+<p>解碼成 KAN → 在訓練集上用 <strong>LBFGS</strong>（同原 KAN 設定）訓練固定步數 → 取各次迭代中<strong>最小驗證損失</strong>為適應度。無效結構（input 到 output 無通路）給 +∞（或最大值）直接淘汰，使搜尋聚焦有效架構、加速收斂。</p>
+<h3 id="36-可解釋性">3.6 可解釋性</h3>
+<p>三面向：(1) <strong>feature importance</strong>——用 feature_score 從輸出層向輸入層逐層反傳算節點/邊分數、跨層平均；(2) <strong>feature selection</strong>——編碼含輸入節點與連接，演化中與資料分布更契合的特徵組合得高適應度，等同 wrapper 式特徵選擇；(3) <strong>symbolic formulae</strong>——先用 auto_symbolic 對每條邊以決定係數（R²）自動選最佳候選公式，再選用人工精修（視覺分析連接函數形狀、固定後再訓練至收斂）。</p>
+<h2 id="4-實驗設計">4. 實驗設計</h2>
+<h3 id="41-基準資料集">4.1 基準資料集</h3>
+<p>兩個 toy 資料集（原 KAN 論文符號公式，式 6，如 exp(sin(πx)+y²)）驗證自動性。分類用五個 UCI 資料集（表 I）：Iris（4 特徵/3 類）、Wine（13/3）、Rice（7/2）、WDBC（30/2）、Raisin（7/2），皆相對低維、類別均衡、無缺失。因 KAN 訓練慢（約 MLP 10×）且 NAS 評估貴，選低維資料集做公平比較。KAN 版本固定 0.2.1。</p>
+<h3 id="42-參數設定表-ii">4.2 參數設定（表 II）</h3>
+<p>最大深度 4、每隱藏層最多 5 神經元、grid 1–64；交叉率 0.9、突變率 0.5、族群 100、世代 20;LBFGS（全批量）、20 epochs；資料切訓練/驗證/測試（測試比例對齊各 peer），除標籤轉換外不預處理。</p>
+<h3 id="43-對比方法">4.3 對比方法</h3>
+<p>SVM、RF、MLP、KNN、DT、LR、LDA、NB 等經典分類器 + 各資料集既有最佳方法 + 兩種手工 KAN（[特徵，2n+1，類別] 與 GA-KAN 最大結構），grid 用 grid extension 決定。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

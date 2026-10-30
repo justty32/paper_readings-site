@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2510.08623_PARSE.zh-TW.html">回 2510.08623_PARSE.zh-TW 目錄</a>　<a href="02_PARSE%EF%BC%9AParameter_Automated_Refinement_and.html">← 上一節</a>　<a href="04_%E9%99%84%E9%8C%84%E8%A6%81%E9%BB%9E.html">下一節 →</a></p>
+</blockquote>
+<h2 id="5-實驗">5. 實驗</h2>
+<p>透過實驗回答三個關鍵問題：(1) ARCHITECT 是否有效為 LLM 消費優化 JSON schema？(2) SCOPE 的反思式護欄系統是否提升抽取可靠性？(3) 兩組件如何協同以實現 Software 3.0 應用所需的可靠結構化抽取？</p>
+<h3 id="51-實驗設置">5.1 實驗設置</h3>
+<p><strong>資料集</strong>（三個測試不同面向的互補資料集）：</p>
+<ol>
+<li><strong>Retail-Conv</strong>：內部精選的 6 種零售對話 schema、每種 40 樣本（共 240），測試從自然商務溝通中抽取——客戶以對話語言描述產品問題、請求與更新；</li>
+<li><strong>Schema-Guided Dialogue（SGD）</strong>：大規模資料集，含 20,000 條標註的任務導向對話，橫跨銀行、活動、媒體、旅遊等 20 個領域；</li>
+<li><strong>Structured Web Data Extraction（SWDE）</strong>：標準基準，含 8 個垂直領域共 1,600 個測試樣本（每領域 200 個），測試從半結構化網頁內容（格式多樣）的抽取。</li>
+</ol>
+<p><strong>Baseline</strong>：以最佳提示實務＋約束解碼、用使用者提供的原始 schema 實作抽取 agent；用清晰指令、few-shot 範例、標準 JSON 格式要求，但<strong>無護欄、無 schema 優化</strong>。跨五個 LLM 變體評估以確保穩健：Claude 3.5／3.7 Sonnet、Claude 3.5 Haiku、Llama 4-Maverick、DeepSeek-R1-671B。</p>
+<p><strong>指標</strong>：測 <strong>field-level accuracy</strong>（所有必填欄位都須正確抽出且格式正確——此嚴格指標反映「部分抽取常無價值」的真實需求）。也追蹤含所有反思迭代與護欄檢查的端到端抽取時間。ARCHITECT 評估則分析 schema 修改樣態並追蹤各迭代的準確率改進。</p>
+<h3 id="52-主要結果表-1-摘要">5.2 主要結果（表 1 摘要）</h3>
+<p>表 1 為各模型在三資料集、原始 schema vs. ARCHITECT schema、Baseline／Agent／SCOPE 三種抽取設置下的準確率。關鍵數字（原始 schema Baseline → ARCHITECT schema + SCOPE）：</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>Retail-Conv</th>
+<th>SGD</th>
+<th><strong>SWDE</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Claude 3.7 Sonnet</td>
+<td>75 → 90.01</td>
+<td>92.3 → 94.8</td>
+<td>24.5 → <strong>93.14</strong></td>
+</tr>
+<tr>
+<td>Claude 3.5 Sonnet V2</td>
+<td>75.5 → 91.7</td>
+<td>90.9 → 94.1</td>
+<td>25.7 → <strong>92.99</strong></td>
+</tr>
+<tr>
+<td>Claude 3.5 Haiku</td>
+<td>72.5 → 87.3</td>
+<td>88.16 → 93.3</td>
+<td>25 → <strong>91.67</strong></td>
+</tr>
+<tr>
+<td>Llama 4 Maverick</td>
+<td>75.5 → 88.4</td>
+<td>83.22 → 91.44</td>
+<td>21.3 → <strong>88.32</strong></td>
+</tr>
+<tr>
+<td>DeepSeek-R1</td>
+<td>76 → 93.7</td>
+<td>87.15 → 92.01</td>
+<td>19.3 → <strong>86.16</strong></td>
+</tr>
+</tbody>
+</table>
+<p>SWDE 增益最為戲劇性（原始 schema baseline 僅約 19-26%）。<strong>表 2</strong> 顯示交叉組合：用模型 X 在 ARCHITECT 優化 schema、再用模型 Y 在 SCOPE 抽取，效能仍佳（如 ARCHITECT-Claude + SCOPE-Llama 達 91.11），佐證 schema 優化具模型無關的遷移性。</p>
+<h3 id="53-組合系統效能">5.3 組合系統效能</h3>
+<p>表 1 顯示 PARSE 在所有資料集都有大幅提升，<strong>ARCHITECT + SCOPE 組合最強</strong>。改進在不同 LLM 間一致，代表本方法讓精密抽取在各種模型規模上更易取得。</p>
+<h3 id="54-architect-分析">5.4 ARCHITECT 分析</h3>
+<ul>
+<li><strong>迭代改進</strong>：schema 優化隨迭代持續改善，多數增益在<strong>前 5-6 次迭代</strong>取得，之後又下降——顯示過程能有效辨識並處理最關鍵的 schema 限制，但迭代過久會<strong>過擬合</strong>（圖 4）。</li>
+<li><strong>schema 修改樣態</strong>（圖 5，跨資料集一致）：(1) 實體描述強化 <strong>34%</strong>（加詳細描述與上下文）、(2) 結構重組 <strong>55%</strong>（扁平化巢狀結構、釐清欄位關係）、(3) 驗證規則新增 <strong>0.08%</strong>（格式約束與列舉值）、(4) pattern 規則新增 <strong>3%</strong>（用嚴格 regex 約束輸出）。</li>
+<li><strong>跨模型泛化</strong>：表 2 顯示用一個 LLM 優化的 schema 套用到不同模型仍保有效益，代表 ARCHITECT 找的是<strong>模型無關</strong>的 schema 改進，而非模型特定優化。</li>
+</ul>
+<h3 id="55-scope-護欄有效性">5.5 SCOPE 護欄有效性</h3>
+<ul>
+<li><strong>反思式改進</strong>：SCOPE 的多階段驗證明顯優於單純重試機制。平均而言，SCOPE 在<strong>首次重試內減少 92% 抽取錯誤</strong>（相比失敗時只重問的 baseline，圖 3）；且 ARCHITECT 優化過的 schema 更少需要重試。</li>
+<li><strong>成本-準確率取捨</strong>：SCOPE 因反思迭代平均增 <strong>10.16</strong> 延遲，但對應 SWDE 上 <strong>+64.7%</strong> 準確率增益，展現巨大實用價值。用 ARCHITECT 優化 schema 可平均減少 <strong>4.05s</strong> 延遲懲罰（需要更少反思輪次，表 3）。表 3 顯示 SWDE 上各模型 Baseline／Agent／SCOPE 在原始 vs. ARCHITECT schema 下的延遲（例如 Claude 3.7 Sonnet：SCOPE 原始 25.58s → ARCHITECT 19.06s）。</li>
+</ul>
+<h3 id="56-定性分析">5.6 定性分析</h3>
+<ul>
+<li>ARCHITECT 一致地把含糊欄位描述轉為精確、上下文豐富的規格。例如泛用的 <code>&quot;price&quot;</code> 欄位變成 <code>&quot;newPriceValue: 產品更新的具體數值價格，不含貨幣符號&quot;</code>，並附格式與範圍約束的驗證規則。</li>
+<li>SCOPE 的反思機制有效辨識並修正常見錯誤。當 baseline agent 混淆相似實體（如「舊價」vs.「新價」）時，SCOPE 的 grounding 驗證抓到錯誤並透過結構化反思引導修正。</li>
+<li><strong>SWDE 資料集複雜度</strong>：SWDE 上的大幅提升（最高 64.7%）源於其 HTML 結構需要精確抽取與特定格式。表 4 為代表案例：輸入 HTML <code>&lt;title&gt;2010 Subaru Legacy 2.5 i 4dr Sedan&lt;/title&gt;</code>，baseline schema <code>{&quot;model&quot;: {&quot;type&quot;: &quot;string&quot;}}</code> 抽出過多細節 <code>&quot;2010 Subaru Legacy 2.5 i 4dr Sedan&quot;</code>；PARSE schema 加上描述 <code>&quot;完整車款名含年份、廠牌與型號&quot;</code> 與 regex pattern 約束，配合 SCOPE 的 grounding 驗證，精確抽出 <code>&quot;2010 Subaru Legacy&quot;</code>。ARCHITECT 的優化 schema 為解析複雜 HTML 提供了足夠指引，SCOPE 的 grounding 則確保抽出值與原文一致、防止 HTML 抽取常見的幻覺。</li>
+</ul>
+<h2 id="結論">結論</h2>
+<p>我們提出 PARSE，透過 schema 優化與反思式護欄處理結構化抽取挑戰。ARCHITECT 自動為 LLM 消費精煉 JSON schema，SCOPE 以多階段驗證確保可靠抽取。三資料集評估展現大幅提升——SWDE 準確率最高增益 <strong>64.7%</strong>、首次重試內減少 <strong>92%</strong> 錯誤，確立 PARSE 為 Software 3.0 應用中可靠 LLM agent 系統的有效方案。</p>
+<h2 id="局限">局限</h2>
+<ul>
+<li>ARCHITECT 的迭代精煉對<strong>屬性眾多的複雜 schema 計算昂貴</strong>：每輪都需合成資料生成、抽取評估、失敗分析，對大規模部署形成擴展瓶頸。</li>
+<li>ARCHITECT 的優化品質<strong>高度依賴種子資料集的可得性與代表性</strong>；全新領域或快速演變的 schema 需求下，難有足量高品質種子資料。此外方法假設 schema 結構相對靜態、可離線優化，對持續演變的 schema 較吃力。</li>
+<li>幾個有前景的方向：<strong>多模態延伸</strong>是自然演進——schema 可同時為文字與視覺內容的抽取而優化；「把 schema 當可優化介面」的原理同樣適用於多模態情境，但需擴充驗證框架以處理跨模態 grounding。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

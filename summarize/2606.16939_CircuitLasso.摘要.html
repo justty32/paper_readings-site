@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《可擴展的電路學習以詮釋大型語言模型（CircuitLasso）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yue Yu 等（Rensselaer Polytechnic Institute／IBM 合作）</p><p>日期：2026-06，從神經網路抽取符號結構（機制可解釋性 × 稀疏迴歸電路發現）</p><p>arXiv：2606.16939</p><p><a href="https://arxiv.org/abs/2606.16939" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="可擴展的電路學習以詮釋大型語言模型circuitlasso重點摘要">《可擴展的電路學習以詮釋大型語言模型（CircuitLasso）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>把「電路發現」從昂貴的干預（activation/edge patching）換成便宜的稀疏線性迴歸（Lasso）</strong>——借用連續因果發現的思路，把 LLM 的非線性計算圖近似成一個線性 SEM 代理，用 ℓ₁ 懲罰找出組件間的<strong>依賴骨架（dependency skeleton）</strong>；不跑反向傳播，因此能<strong>直接擴展到高維 SAE 單義特徵空間</strong>，在準確度與最先進干預法持平的同時把計算成本砍到一小部分，並用學到的電路在下游域泛化任務上以更低成本拿到相當（甚至略好）的表現。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>MI 主流是「在 LLM 組件上學稀疏電路」，但**原始神經元是多義（polysemantic）**的，學出的電路稠密、雜訊多、難解讀。</li>
+<li><strong>SAE 單義特徵</strong>能緩解多義問題，但其<strong>維度極高</strong>，使既有<strong>干預式（intervention-based）電路發現法計算上不可行</strong>（每條邊都要反事實干預 + 反向傳播）。</li>
+<li>目標：一個<strong>可擴展、可直接作用於 SAE 特徵</strong>的電路發現法，既保準確度又大幅省成本。</li>
+</ul>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>CircuitLasso ＝ 把電路發現轉成稀疏線性迴歸</strong>：抽取 N 個組件（MLP 神經元／注意力頭／SAE 特徵）的激活拼成向量 x，目標學一個 N×N 加權鄰接矩陣 A 的 DAG；以 <code>min ‖x − Ax‖²_F + λ‖A‖₁</code> 求解（結構類比連續因果發現裡的線性 SEM）。</li>
+<li><strong>繞過無環約束</strong>：連續因果發現的主要難點是無環性約束；作者用簡化假設<strong>繞過顯式無環約束</strong>，把問題化簡成標準 Lasso，得到可擴展解。</li>
+<li><strong>不是嚴格 SEM 而是代理</strong>：ε 解讀為<strong>線性化誤差</strong>而非外生噪聲（LLM 激活是確定性的）；不訴諸可識別性定理，目標只是<strong>有效率地回復依賴骨架</strong>（哪些組件影響哪些）。ℓ₁ 懲罰過濾弱依賴，得保守的「最強依賴地圖」。也提供非線性擴展（拓撲類似、成本較高）。</li>
+<li><strong>理論成本分析</strong>：CircuitLasso <strong>不跑反向傳播</strong>、只共用一次前向傳播；相對 SOTA 的 <strong>EAP-IG</strong>（每觀測需兩前向一反向），論文給出明確條件下 CircuitLasso 證明更快。</li>
+<li><strong>作用於 SAE 特徵</strong>：把稀疏迴歸直接套到預訓練 SAE 的高維單義特徵 z 上，揭示「人類可解釋概念如何在模型中傳播」；成本為 O(MD/√ε)。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>基準（InterpBench，86 個已知 ground-truth 電路的半合成 transformer，取 16 主合成案例 + 真實 IOI）</strong>：CircuitLasso-線性 mean SHD <strong>3.16</strong>，與 EAP-ig（2.98）<strong>統計上無顯著差異</strong>、優於 EAP（3.61）;mean runtime <strong>16.3 s/案</strong>，比 EAP-ig（49.1 s）<strong>快 3.0 倍</strong>、比 EAP（33.7 s）快 2.1 倍 —— 即「<strong>準確度持平、成本砍一截</strong>」。</li>
+<li><strong>SAE 特徵電路（CoLA 資料集，前所未用於 MI）</strong>：高效揭示 SAE 特徵間關係，給出人類可解釋的概念傳播圖。</li>
+<li><strong>下游域泛化（Bias-in-Bios，Pythia-70M／Gemma-2-2B／Gemma-2-9B，最大 9B 參數）</strong>：利用學到電路的洞見，在「以性別偽相關訓練、平衡測試集評估」的職業預測任務上，以<strong>大幅更低成本</strong>達到與 shift／oracle 等基線<strong>相當甚至略好</strong>的表現。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>線性 SEM 代理只回復<strong>依賴骨架</strong>，非細粒度逐邊因果效應；因果充分性、獨立噪聲、線性形式在 transformer 中僅近似成立。</li>
+<li>聚合跨提示得到**族群層級（population-level）**骨架，不提供逐提示（per-prompt）機制（與 attribution-graph 類方法互補而非取代）。</li>
+<li>仍依賴預訓練 SAE 的品質；非線性擴展成本更高。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本主題（從神經網路抽取符號／可解釋結構）中**「方法效率」的關鍵一塊**：要把「抽取人類可解釋概念電路」做到<strong>大模型 + 高維 SAE</strong> 規模，干預式方法太貴；本文用<strong>經典統計（Lasso）+ 因果發現視角</strong>把它變便宜。與 <a class="paper-reference" href="2602.03506_Explaining_the_Explainer_SR_Circuits.%E6%91%98%E8%A6%81.html">2602.03506</a>（用 CMA-ES 演化找最小 SR 電路）、<a class="paper-reference" href="2605.21303_Circuit_To_ILP_Theory.%E6%91%98%E8%A6%81.html">2605.21303</a>（把電路抽成 ILP 子句）並列，三者都在回答「如何更好地從網路抽出電路／符號結構」，但 CircuitLasso 主打<strong>可擴展性與成本</strong>。</li>
+<li>最值得記：<strong>電路發現 ≈ 稀疏迴歸 / 線性 SEM 依賴骨架</strong>;<strong>不跑反向傳播 → 可上 SAE 高維空間</strong>;<strong>準確度持平、速度 2–3×</strong>；以及「<strong>單義 SAE 特徵 + 可擴展電路</strong>」這個讓概念傳播可讀的組合。</li>
+<li>定位：<strong>機制可解釋性 × 連續因果發現 × SAE</strong>；適合做大模型電路發現、概念傳播分析、低成本可解釋性、模型去偏的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2606.16939_CircuitLasso.zh-TW.html"><code>../translate/2606.16939_CircuitLasso.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

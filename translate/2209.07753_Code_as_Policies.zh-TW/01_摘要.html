@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>if you see an orange, move backwards. · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2209.07753_Code_as_Policies.zh-TW.html">回 2209.07753_Code_as_Policies.zh-TW 目錄</a>　<a href="02_III._%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>以程式碼補全訓練的 LLM 已能從文件字串合成簡單 Python 程式。本文發現這類「會寫程式碼」的 LLM 可被重新利用來撰寫機器人策略程式碼：策略程式碼能表達處理感知輸出（如物件偵測器）的函式或反饋迴路，並為控制原語 API 賦參數。給定若干範例語言指令（格式化為註解）及對應策略程式碼（少樣本提示），LLM 能接收新指令並自主重組 API 呼叫生成新策略程式碼。透過串接經典邏輯結構、引用第三方函式庫（NumPy、Shapely）做算術，這樣使用的 LLM 能寫出 (i) 展現空間幾何推理、(ii) 泛化到新指令、(iii) 依情境為模糊描述（「快一點」）賦精確值（行為常識）的機器人策略。本文提出 <strong>Code as Policies</strong>：一種以機器人為中心、形式化語言模型生成程式（LMP）的方法，能表達反應式策略（阻抗控制器）與路徑點式策略（視覺抓放、軌跡控制），並在多個真實機器人平台上展示。核心是提示<strong>階層式程式碼生成</strong>（遞迴定義未定義的函式），能寫出更複雜程式碼，並把 HumanEval SOTA 推進到 39.8%。程式碼與影片見 code-as-policies.github.io。</p>
+<h2 id="i-引言">I. 引言</h2>
+<p>使用語言的機器人需要語言被接地，以連結詞彙、感知與動作。傳統詞彙分析方法難應對未見指令；端對端「語言到動作」學習則需要大量昂貴的真機資料。近期 LLM 展現的零額外訓練能力（如從指令規劃步驟）可接地於一組固定技能（行為複製/RL 預訓練的策略）的價值函數之上，但這阻絕了 LLM 直接影響感知—動作反饋迴路，難以表達「看到橘子才後退」等反饋耦合、「快一點」等控制常識、「往左一點點」等空間關係。每加一項技能就得重新收資料訓練——資料負擔只是從語言接地轉移到技能習得。</p>
+<p>本文發現<strong>會寫程式碼</strong>的 LLM 能更進一步，協調規劃、策略邏輯與控制。範例：</p>
+<pre><code># if you see an orange, move backwards.
+if detect_object(&quot;orange&quot;): robot.set_velocity(x=-0.1, y=0, z=0)
+# move rightwards until you see the apple.
+while not detect_object(&quot;apple&quot;): robot.set_velocity(x=0, y=0.1, z=0)
+</code></pre>
+<p>程式碼撰寫模型不僅泛化到新指令，還能依情境把「快一點」「往左」轉成精確數值；用 <code>robot.say(text)</code> 作為動作原語即可支援人機對話問答。</p>
+<p>本文提出 <strong>Code as Policies（CaP）</strong>：以機器人為中心、在真實系統執行的 LMP 形式化方法。Pythonic LMP 能用經典邏輯結構（序列/if-else/for-while）在執行期組裝新行為，也能用第三方函式庫（NumPy 插值、Shapely 分析形狀）做空間幾何推理。LMP 可<strong>階層式</strong>：被提示遞迴定義新函式、隨時間累積自己的函式庫、自我架構動態程式碼庫。</p>
+<p><strong>主要貢獻</strong>：(i) code as policies 形式化方法；(ii) 階層式程式碼生成，在機器人與通用程式碼生成上皆推進 SOTA（HumanEval P@1 達 39.8%）；(iii) 新的機器人程式碼生成基準；(iv) 消融分析 CaP 如何改善泛化並符合 scaling law。</p>
+<h2 id="ii-相關工作">II. 相關工作</h2>
+<p><strong>透過語言控制機器人</strong>歷史悠久，近期工作分為高階解讀（語意剖析）、規劃、與低階策略三類。本文專注 LLM 的程式碼生成面向，把生成的程序作為控制表達方式。</p>
+<p><strong>大型語言模型</strong>展現零樣本推理能力（規劃、寫數學程式、解科學問題），可用 Least-to-Most、Chain-of-Thought 等提示法改善。最相關的是不額外訓練模型、把 LLM 用於機器人代理的工作：Huang et al. 用文字補全把指令分解成可執行動作序列；SayCan 用技能可供性加權聯合解碼 LLM 生成可行計畫；Inner Monologue 納入成功偵測器反饋重新規劃；Socratic Models 用視覺語言模型把感知資訊代入語言提示、搭配語言條件式策略執行。以「把可樂罐往右移一點」為例，先前工作假設存在對應該動作的預定義技能；CaP 則直接用 LLM 生成策略程式碼（內含嵌套計畫）在機器人上執行：</p>
+<pre><code>while not obj_in_gripper(&quot;coke can&quot;): robot.move_gripper_to(&quot;coke can&quot;)
+robot.close_gripper()
+pos = robot.gripper.position
+robot.move_gripper(pos.x, pos.y+0.1, pos.z)
+robot.open_gripper()
+</code></pre>
+<p>CaP 免除收集資料、訓練固定技能集或語言條件式策略的需求。</p>
+<p><strong>程式碼生成</strong>方面，先前工作展示程式合成可繪簡單圖形、生成解 2D 任務的策略。本文擴展：(i) 會寫程式碼的 LLM 能靠對第三方函式庫的熟悉編碼空間關係，無需額外訓練；(ii) 受遞迴摘要啟發的階層式程式碼撰寫能改善 SOTA 程式碼生成，並提出新的機器人主題程式碼生成基準。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

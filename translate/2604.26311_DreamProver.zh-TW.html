@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>DreamProver：透過 Wake-Sleep 定理證明智能體演化可遷移的引理庫 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Youyuan Zhang, Jialiang Sun, Hangrui Bi, Chuqin Geng, Wenjie Ma, Zhaoyu Li, Xujie Si</p><p>日期：2026-04</p><p>arXiv：2604.26311</p><p><a href="https://arxiv.org/abs/2604.26311" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="dreamprover透過-wake-sleep-定理證明智能體演化可遷移的引理庫">DreamProver：透過 Wake-Sleep 定理證明智能體演化可遷移的引理庫</h1>
+<h2 id="摘要">摘要</h2>
+<p>DreamProver 是一個定理證明智能體，透過迭代的 <strong>wake-sleep 循環</strong>學習可重用的引理庫：在 <strong>wake 階段</strong>證明問題並發現引理，在 <strong>sleep 階段</strong>抽象並精煉它們。跨多樣數學域，DreamProver 有效重用學到的庫，<strong>顯著增加被證明定理數</strong>，同時產出<strong>更精簡、結構化、token 成本更低</strong>的證明。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 定理證明的核心缺口是缺乏<strong>累積、可重用的知識</strong>。理想的證明者應像人類：解過的問題沉澱為可在新問題反覆套用的技能。DreamProver 以引理庫為載體實現此目標——維護一個存放重要技能的庫，可反覆重用以解新問題。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p><strong>LLM 定理證明</strong>：從整證生成、proof sketch、遞迴分解到 agentic 系統。<strong>庫學習</strong>：DreamCoder 等以 wake-sleep 機制累積抽象；但前人（Berlot-Attwell et al., 2025）指出，先前庫學習法（如 <strong>LEGO-Prover</strong>）的引理<strong>重用率極低</strong>——這正是 DreamProver 要直面的痛點。</p>
+<h2 id="3-方法">3. 方法</h2>
+<p>DreamProver 受 <strong>wake-sleep 演算法</strong>（Hinton et al., 1995；Ellis et al., 2021）啟發，以迭代 wake-sleep 循環模擬人類學習，全程維護一個存放重要技能的庫。<strong>wake 階段</strong>：用當前庫盡量多證訓練集定理，把經驗形成「中間定理」。<strong>sleep 階段</strong>：從經驗學新技能——先聚合抽象中間定理以演化更一般可重用的引理，再優化庫以兼顧簡潔與可重用。</p>
+<h3 id="31-wake-階段">3.1 Wake 階段</h3>
+<p>從空庫開始探索；每次 wake 配備當前庫嘗試解題，過程中發現「中間定理」作為下一 sleep 階段歸納新引理的依據。</p>
+<p><strong>可學習定理識別</strong>：證訓練集定理時，識別並蒐集「可學習」定理——若一個定理能被當前已學引理直接證出，則為可學習。先固定計算預算（證明嘗試與錯誤修正嘗試次數上限）；若 LLM 能在預算內用庫中引理解出，則該定理可學習，且暗示一條建於既有引理之上的更進階引理，收集進 sleep 演化。</p>
+<p><strong>中間定理發現</strong>：難直證者，DreamProver <strong>遞迴生成</strong>足夠易證的中間定理（遞迴定理分解）：若直接 prompt（帶當前庫）失敗，就把目標定理分解為一組更簡單、共同構成完整證明的子定理。分解先生成形式 proof sketch，再從 sketch 中未證部分（<code>sorry</code> 標記的中間目標）抽出中間定理；兩步皆由 LLM prompt 完成。為確保有效，系統嘗試把 sketch 與抽出的中間定理<strong>重組</strong>並驗證能否證出原定理，並用 LLM 對 sketch 做自然語言檢查以高效過濾錯誤分解。早期庫有限、缺抽象時往往須多層分解；隨庫改善，越多訓練定理能直證或僅一層分解即解。</p>
+<h3 id="32-sleep-階段">3.2 Sleep 階段</h3>
+<p>把過去經驗總結為可遷移技能（演化新引理 + 優化庫），依序兩步。</p>
+<p><strong>引理抽象</strong>（cluster-based）：先為每個中間定理標自然語言描述（高層解釋：子域、難度——如僅平凡等價變換或需更進階推理、可用於其證明的相關定理），由 LLM 生成。再計算描述的嵌入（句子 transformer），以餘弦相似度為距離做 <strong>K-Means 分群</strong>（群數以 <strong>elbow 法</strong>決定）。對每群，把組內定理與描述作為脈絡餵 LLM 生候選引理；為驗證候選適用，把候選引理與群內各定理轉為<strong>簡化一階邏輯表達式樹</strong>算<strong>結構相似度</strong>，最大相似度超預設閾值才保留。如此把 wake 蒐集的經驗鞏固為新演化引理，併入庫供未來使用。</p>
+<p><strong>庫更新（三步）</strong>：(1) <strong>遺忘</strong>——移除不太可重用的引理以騰出空間；採 <strong>LRU 策略</strong>追蹤各引理跨過往 wake 的使用頻率，達最大容量時移除最少用者。經驗上維持 <strong>&lt;100 條</strong> 的精簡庫，利穩定高效重用，並避免「整庫作為輸入脈絡」時誤排除重要引理。(2) <strong>儲存新引理</strong>——加入非重複者；以<strong>樹編輯距離</strong>（把一表達式樹轉成另一的成本）算候選與既有引理的相似度，高相似（低編輯距離）視為重複而移除，減冗餘、保多樣。(3) <strong>形式驗證</strong>——每條保留候選用 wake 階段同樣的直接 prompt 策略嘗試證明；這些引理通常是乾淨簡潔的知名定理，小取樣預算即可證。</p>
+<h3 id="33-推論">3.3 推論</h3>
+<p>輕量框架：先帶庫直接 prompt 證；失敗則退回 <strong>sketch-and-prove</strong>（先生 sketch、再逐子目標證，sketch 生成與子目標求解兩處皆用庫）。藉全程用庫，能以更少 token 更有效證未見測試題。</p>
+<h2 id="4-實驗">4. 實驗</h2>
+<p>跨「LLM 訓練資料充分表徵的域（如 mathlib）」與「冷門域」評估，回答四個研究問題（RQ1–RQ4）。</p>
+<p><strong>RQ1（充分表徵域能力）</strong>：基線分三類——專有推理模型（GPT-5.3-Codex、Claude Opus 4.6、Gemini 2.5 Pro、Gemini 3.1 Pro Preview，pass@32 一次性生成）、開源 prover（DeepSeek-Prover-V2-7B、Goedel-Prover-V2-8B/32B，pass@32 + 至多三次自我修正）、agentic 系統（Hilbert，最大分解深度 2；DreamProver 限單層分解）。跨不等式/數論/組合，DreamProver 證明數一致領先（多個域達各列最高，如約 48%/79%/75%）。</p>
+<p><strong>RQ2（推論效率與證明品質）</strong>：產出更精簡、結構化的證明，token 成本更低。</p>
+<p><strong>RQ3（學到引理的有效性）</strong>：前人指出 LEGO-Prover 等的引理重用極罕見；DreamProver 則有強證據顯示有效重用——Table 2 報告總引理使用量、相異重用引理數、被涵蓋定理數。平均而言，相當比例的「訓練集生成引理」在測試集被重用，並貢獻相當比例的成功證明，證實引理可遷移。</p>
+<p><strong>RQ3 消融</strong>（三個不等式 benchmark）：移除庫優化（迭代 wake-sleep 精煉）後，引理演化變單次、庫只抓低階分解定理、產生退化引理、無法在 wake 優化可重用性，解題數 <strong>104→76</strong>；再移除語意分群，系統無法捕捉分解定理間關係、庫過大難檢索，效能再降 <strong>76→53</strong>（甚至低於無庫 vanilla）。另比無庫基線與「單次引理演化 + 語意檢索」（類 LEGO-Prover）——顯示<strong>維持緊湊、抽象、可重用的庫，勝過從龐大低階庫檢索</strong>。</p>
+<p><strong>RQ4（冷門域泛化）</strong>：擴展到 mathlib 未涵蓋、由專門公理/定理定義的兩域——<strong>平面幾何</strong>（LeanGeo-Bench，Lean 4 競賽級，五子集：UniGeo、library、合成、高中競賽、奧林匹亞）與<strong>機器學習理論</strong>（FormalML，涵蓋優化與統計學習理論，源自 Optlib、FoML）。庫分別於幾何 IMO 子集、ML 理論 level-2 子集演化，於 level-3 評估。因開源 prover 未訓練於這些域，主要對比專有推理 LLM（提供額外公理/定理脈絡）。<strong>主結果</strong>：DreamProver 持續受益於學到的庫，跨所有資料集與骨幹 LLM 達 SOTA，相對專有 LLM 基線有顯著相對提升。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>DreamProver 透過迭代 wake-sleep 循環學習可重用引理庫：wake 階段證題並發現引理，sleep 階段抽象並精煉它們。跨多樣數學域有效重用學到的庫，<strong>顯著增加被證定理數</strong>，同時產出<strong>更精簡、結構化、token 成本更低</strong>的證明。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2604.26311_DreamProver.%E6%91%98%E8%A6%81.html"><code>../summarize/2604.26311_DreamProver.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

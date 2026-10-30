@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《深度自迴歸模型的分塊平行解碼（Blockwise Parallel Decoding）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Mitchell Stern (UC Berkeley), Noam Shazeer, Jakob Uszkoreit (Google Brain)</p><p>日期：2018-11（NeurIPS 2018）</p><p>arXiv：1811.03115</p><p><a href="https://arxiv.org/abs/1811.03115" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="深度自迴歸模型的分塊平行解碼blockwise-parallel-decoding重點摘要">《深度自迴歸模型的分塊平行解碼（Blockwise Parallel Decoding）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Blockwise Parallel Decoding（分塊平行解碼）</strong>：在基礎自迴歸模型之上訓練 k−1 個輔助頭平行猜測未來 k 個位置，再用基礎模型<strong>一次平行前向驗證</strong>、只接受「與貪婪解碼完全吻合的最長前綴」——<strong>Predict→Verify→Accept</strong> 三步迴圈保證輸出與貪婪解碼<strong>逐 token 相同</strong>，卻把解碼迭代數從 m 降到最少 m/k+1；這是後世 speculative decoding（推測解碼）「<strong>猜便宜、驗可靠</strong>」draft-and-verify 範式的最早雛形（2018）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>Transformer／卷積 seq2seq 訓練時高度平行，但<strong>生成仍是一次一 token 的序列瓶頸</strong>。既有加速法（機率密度蒸餾、離散潛變數、非自迴歸 Transformer）在機器翻譯上要嘛提速有限、要嘛品質大幅犧牲（NAT 在 WMT14 En-De 只有 ~18-19 BLEU）。需要一個<strong>可疊加在既有模型上、最小改動、且品質有保證</strong>的通用加速法。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>三步迴圈</strong>：(1) <strong>Predict</strong>——p_1（基礎模型）與輔助模型 p_2…p_k 平行各猜一個位置，得到 k 個候選 token；(2) <strong>Verify</strong>——用 p_1 平行對 k 個位置逐一評分，找出「每個 token 都等於貪婪 argmax」的最長前綴 k̂（保證 k̂≥1）；(3) <strong>Accept</strong>——只接受前 k̂ 個 token。一旦分歧就截斷，故<strong>輸出與純貪婪解碼完全一致</strong>。</li>
+<li><strong>合併評分與提議模型</strong>：verify 那次前向同時算出下一輪的 k 個猜測 → 模型呼叫數從 2m/k 再降到 <strong>m/k+1</strong>（除首輪外每輪只呼叫一次）。</li>
+<li><strong>實作極輕</strong>：在既有 Transformer 的 decoder 輸出與詞表投影之間插入一層 k 路輸出的 feedforward（含殘差），共用原投影層；訓練時因記憶體限制每個 minibatch 隨機抽一個子損失（無偏估計）。</li>
+<li><strong>放寬驗證＝換更多速度</strong>：top-k 選擇（在前 k 名內即接受）、距離準則（|u−v|≤ε，用於影像）、最小塊大小（效果差，證明「偶爾只接受 1 個」的彈性很重要）。</li>
+<li><strong>兩個增效旋鈕</strong>：<strong>序列級知識蒸餾</strong>（老師輸出更可預測→輔助頭更容易猜中）與 <strong>fine-tune 基礎參數</strong>（塊更大但品質略降；蒸餾可緩解該退化）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>WMT14 En-De 翻譯</strong>：不動品質可達 ~<strong>2x</strong> 迭代縮減；蒸餾+微調下 k=8 平均接受塊 4.69、BLEU 26.11（僅比蒸餾基線低 0.3）；<strong>牆鐘實測 3.3x</strong>（k=8）。測試集 newstest2014：k=6 時 28.11 BLEU / 3.10x，離原版 Transformer beam-4（28.4）僅差 0.29——同期非自迴歸法（NAT 17-19、迭代精煉 21-22 BLEU）品質損失遠大於此。</li>
+<li><strong>CelebA 8×8→32×32 超解析</strong>：微調+近似驗證（ε=2）下 k=10 平均接受塊 <strong>6.79</strong>（近 7x 迭代縮減）、牆鐘 <strong>4.0x</strong>（k=6）；人評與貪婪解碼無感知差異（偏好率 ~50-57%，甚至略偏好平行解碼版）。</li>
+<li>塊大小過大時迭代數續降但<strong>牆鐘增速回落</strong>（每步計算成本變高）——猜測長度存在最適點。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>驗證要求「與貪婪解碼逐 token 相同」，<strong>只針對貪婪解碼</strong>，未涵蓋 beam search 或抽樣式解碼（後者由 2211.17192 的推測抽樣解決）。</li>
+<li>輔助頭與基礎模型共享主幹，猜測是<strong>各位置獨立</strong>的（非聯合條件），長距猜測命中率受限；fine-tune 提升命中率卻犧牲基礎品質，需靠蒸餾補救。</li>
+<li>需要<strong>額外訓練</strong>（再訓 100 萬步）才能獲得輔助頭，不像後來「獨立小模型當 draft」可即插即用。</li>
+<li>加速比依賴「平行驗證幾乎不比單步貴」的硬體假設；大 k 時計算量（與預測數成平方）侵蝕牆鐘收益。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>draft-and-verify 思想的源頭</strong>（2018）：多個便宜輔助頭平行猜 k 步、主模型一次前向驗證取最長吻合前綴——「<strong>猜測便宜且可錯、驗證昂貴但可靠</strong>」的成本不對稱性在此首次被工程化。這正是 ai_core §3.3「成本梯度」在 <strong>token 尺度的起點</strong>：同一條「先用便宜智能試、貴智能只做驗收」的梯度，從 token（本文）→ 查詢（FrugalGPT 級聯）→ 資產（ai_core 資產工廠）逐級放大。</li>
+<li>與已入庫 <a class="paper-reference" href="2211.17192_Speculative_Decoding.%E6%91%98%E8%A6%81.html">2211.17192</a> 推測解碼直接對照：本文用<strong>同一模型加裝的輔助頭</strong>當 draft（需再訓練、猜測各位置獨立），2211.17192 改用<strong>獨立小模型</strong>自迴歸起草並以拒絕抽樣保住目標「分佈」；本文則保住貪婪「逐 token 等同」。兩者共享的骨架——cheap proposer + expensive verifier + 最長吻合前綴回退——對 ai_core §2「貴稀有智能=資產工廠 vs 便宜高頻智能=消費者」是最乾淨的微觀範本。</li>
+<li>對 §3.6 固化引擎的啟示：驗證準則的<strong>可調嚴格度</strong>（逐 token 等同→top-k→距離 ε）示範了「便宜產物何時可以免驗收直接採納」的光譜；「一旦分歧立即回退到可靠來源」的 Accept 語義，正是固化程式碼與 LLM fallback 之間該有的切換契約。</li>
+<li>定位：方法論文＋強實證，開源於 Tensor2Tensor。適合關心<strong>推測解碼系譜、驗證式加速、便宜/昂貴計算分工</strong>的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/1811.03115_BlockwiseParallel.zh-TW.html"><code>../translate/1811.03115_BlockwiseParallel.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

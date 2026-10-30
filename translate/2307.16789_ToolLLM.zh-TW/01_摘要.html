@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2307.16789_ToolLLM.zh-TW.html">回 2307.16789_ToolLLM.zh-TW 目錄</a>　<a href="02_%E8%B3%87%E6%96%99%E9%9B%86%E6%A7%8B%E5%BB%BA.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>儘管 LLaMA 等開源大型語言模型（LLM）已有長足進展，它們在工具使用能力——即運用外部工具（API）來完成人類指令——上仍明顯受限。原因在於現有的指令微調主要聚焦基礎語言任務，相對忽略了工具使用這個領域。這與 ChatGPT 等頂尖閉源 LLM 出色的工具使用能力形成對比。為彌合此落差，本文提出 ToolLLM，一個涵蓋資料構建、模型訓練與評測的通用工具使用框架。我們首先提出 ToolBench，一個用 ChatGPT 自動構建的工具使用指令微調資料集，其構建可分三階段：(i) API 收集：從 RapidAPI Hub 收集橫跨 49 個類別的 16,464 個真實世界 RESTful API；(ii) 指令生成：提示 ChatGPT 生成涉及這些 API 的多樣化指令，涵蓋單工具與多工具情境；(iii) 解答路徑標註：用 ChatGPT 為每條指令搜尋一條有效的解答路徑（一連串 API 呼叫）。為強化 LLM 的推理能力，我們開發了一種新穎的、基於深度優先搜尋的決策樹演算法，讓 LLM 得以評估多條推理軌跡並擴大搜尋空間。此外，為評測 LLM 的工具使用能力，我們開發了自動評測器 ToolEval。基於 ToolBench，我們微調 LLaMA 得到 ToolLLaMA，並配上一個神經 API 檢索器，為每條指令推薦合適的 API。實驗顯示 ToolLLaMA 展現出執行複雜指令、泛化到未見 API 的卓越能力，且表現可比擬 ChatGPT。ToolLLaMA 在分佈外（OOD）工具使用資料集 APIBench 上也展現強大的零樣本泛化能力。程式碼、訓練好的模型與示範已公開於 https://github.com/OpenBMB/ToolBench。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>工具學習（tool learning）旨在釋放 LLM 有效與各種工具（API）互動以完成複雜任務的能力。透過將 LLM 與 API 結合，可大幅擴展其效用，使其能作為使用者與龐大應用生態系之間的高效中介。雖然 LLaMA 等開源 LLM 已透過指令微調獲得多樣化能力，但在執行「妥善與工具互動以完成複雜人類指令」這類更高層次任務上仍顯粗淺，原因是現有指令微調主要聚焦基礎語言任務，相對忽略了工具使用領域。另一方面，ChatGPT、GPT-4 等頂尖 LLM 雖已展現令人印象深刻的工具運用能力，卻是內部機制不透明的閉源系統，限制了 AI 技術的普及與社群主導的創新發展空間。有鑑於此，作者認為讓開源 LLM 熟練掌握多樣化 API 已刻不容緩。</p>
+<p>已有研究嘗試建構工具使用的指令微調資料，但未能充分激發 LLM 的工具使用能力，且存在固有限制：(1) <strong>API 有限</strong>：要嘛未涉及真實世界 API（如 RESTAPI），要嘛只涵蓋一小範圍、多樣性不足的 API；(2) <strong>情境受限</strong>：既有工作侷限於只涉及單一工具的指令，而真實世界場景常需要多個工具交錯串接、進行多輪工具執行才能解決複雜任務；此外它們常假設使用者會事先手動指定理想的 API 集合，這在面對大規模真實 API 集合時並不可行；(3) <strong>規劃與推理能力較弱</strong>：既有工作採用 CoT 或 ReAct 做模型推理，無法充分激發 LLM 內蘊的能力，因而難以處理複雜指令；部分工作甚至不執行 API 取得真實回應——而這些回應正是後續模型規劃的重要資訊來源。</p>
+<p>為促進開源 LLM 的工具使用能力，本文提出 ToolLLM，一個涵蓋資料構建、模型訓練與評測的通用工具使用框架。如圖 1 所示，我們收集了一個高品質的指令微調資料集 ToolBench，它完全用已升級具備函式呼叫（function call）能力的 ChatGPT（gpt-3.5-turbo-16k）自動構建。ToolBench 的構建具體分為三階段：</p>
+<ul>
+<li><strong>API 收集</strong>：從 RapidAPI（一個托管大量真實世界 API 的開發者平台）收集 16,464 個 REST API，橫跨社交媒體、電商、天氣等 <strong>49</strong> 個多樣類別。針對每個 API，我們爬取 RapidAPI 上的詳細文件，包括功能描述、必要參數、API 呼叫的可執行程式碼片段等。這些豐富詳盡的元資料是 LLM 理解並有效使用 API 的寶貴資源，甚至能支援零樣本情境下的泛化；</li>
+<li><strong>指令生成</strong>：先從整個 API 集合中採樣 API，再提示 ChatGPT 為這些 API 生成多樣化指令。為涵蓋實際場景，我們同時策劃涉及單工具與多工具的指令，確保模型不僅學會如何與個別工具互動，也學會如何組合多個工具完成複雜任務；</li>
+<li><strong>解答路徑標註</strong>：每條解答路徑可能包含多輪模型推理與即時 API 呼叫才能導出最終回答。然而即便是最先進的 LLM——GPT-4——面對複雜人類指令時通過率也偏低，讓標註效率低落。為此我們開發了一種新穎的、基於深度優先搜尋的決策樹（DFSDT），以強化 LLM 的規劃與推理能力。相較傳統 ReAct，DFSDT 讓 LLM 得以評估多條推理路徑，審慎決定是要回溯步驟還是沿有希望的路徑繼續前進。實驗顯示 DFSDT 顯著提升標註效率，並成功完成了那些 ReAct 無法完成的複雜指令。</li>
+</ul>
+<p><strong>表 1（ToolBench 與既有代表性工具學習指令資料集比較，摘要）</strong>：相較 APIBench（Patil et al., 2023）、API-Bank（Li et al., 2023a）、ToolAlpaca（Tang et al., 2023）、ToolBench（Xu et al., 2023b）等既有資源，ToolBench 是唯一同時具備「真實世界 API」「真實 API 呼叫與回應」「多工具情境」「API 檢索」「多步推理」五項特徵者；規模上也遠超其他資源——3,451 個工具、16,464 個 API、126,486 筆實例、469,585 次真實 API 呼叫，平均推理軌跡長度 4.0（僅次於 ToolBench(Xu et al.) 的 5.9，但後者未涉及多工具情境）。</p>
+<p>為評測 LLM 的工具使用能力，我們開發了以 ChatGPT 為後盾的自動評測器 ToolEval，包含兩項關鍵指標：(1) <strong>通過率（pass rate）</strong>：衡量 LLM 在有限預算內成功執行指令的能力；(2) <strong>勝率（win rate）</strong>：比較兩條解答路徑的品質與實用性。實驗顯示 ToolEval 與人類評測具有高度相關性，為機器工具使用提供了穩健、可擴展、可靠的評測方式。</p>
+<p>透過在 ToolBench 上微調 LLaMA，我們得到 ToolLLaMA。基於 ToolEval 評測，得出以下發現：</p>
+<ul>
+<li>ToolLLaMA 展現處理單工具與複雜多工具指令的出色能力：如圖 2 所示，ToolLLaMA 超越 Text-Davinci-003 與 Claude-2，達到與「教師模型」ChatGPT 相當的表現，僅略遜於 GPT-4。此外 ToolLLaMA 對先前未見的 API 展現穩健的泛化能力，僅需 API 文件即可有效適應新 API，讓使用者能無縫納入新穎 API，增強模型的實用性；</li>
+<li>我們展示 DFSDT 是一種通用的決策制定策略，可強化 LLM 的推理能力。DFSDT 透過考量多條推理軌跡拓寬搜尋空間，表現明顯優於 ReAct；</li>
+<li>我們訓練了一個神經 API 檢索器，減輕從大型 API 池中人工挑選的需求。如圖 1 所示，給定一條指令，API 檢索器會推薦一組相關 API，送交 ToolLLaMA 進行多輪決策以導出最終答案。儘管要在龐大的 API 池中篩選，該檢索器仍展現出色的檢索精度，返回的 API 與真值高度吻合；</li>
+<li>ToolLLaMA 在分佈外（OOD）資料集 APIBench（Patil et al., 2023）上展現強大的泛化表現。儘管未在 APIBench 的任何 API 或指令上訓練過，ToolLLaMA 的表現仍可比擬專為 APIBench 設計的 Gorilla 模型。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

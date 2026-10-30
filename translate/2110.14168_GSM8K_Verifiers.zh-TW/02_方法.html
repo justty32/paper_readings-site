@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2110.14168_GSM8K_Verifiers.zh-TW.html">回 2110.14168_GSM8K_Verifiers.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-方法">4. 方法</h2>
+<p>比較兩種方法：<strong>finetuning（基線）</strong>——與 GPT-3 生成式預訓練相同的語言建模目標，測試時取單一低溫樣本、檢查最終答案是否正確；<strong>verification</strong>——取樣多個高溫解答、為每個評分、輸出排名最高者。驗證器的訓練訊號<strong>僅由解答是否達到正確最終答案決定</strong>。兩者皆以 GPT-3 家族模型初始化，主用 175B 與 6B 兩種規模。</p>
+<p>模型常算錯算術。為緩解此弱點，在訓練集注入<strong>計算註記（calculation annotations）<strong>訓練所有模型使用</strong>計算機</strong>：測試時當模型輸出註記格式（<code>&lt;&lt;…&gt;&gt;</code> 內的 <code>=</code> 之後），由計算機（python eval）覆寫取樣。（附錄 C：註記由硬編碼邏輯＋微調語言模型自動生成而非人工標註；原始版計算機有小 bug，故報告的測試表現略被低估，多數實驗差距小於 1%。）</p>
+<h3 id="41-finetuning">4.1 Finetuning</h3>
+<p>以最小化所有訓練 token 的交叉熵損失微調 20 epochs。測試表現由單一低溫（T=0）樣本判定。175B 顯著優於較小模型；但假設 log-linear 趨勢外推：<strong>要用完整 GSM8K 訓練集達到 80% 解題率，需要 10^16 參數的模型</strong>；沿資料維度外推更難（非 log-linear），但 175B 模型看來至少還需<strong>多兩個數量級的訓練資料</strong>才能達到 80% 解題率。</p>
+<p>以 test@N 記「允許 N 次猜測時至少答對一次的題目比例」（test@1 用 T=0、test@100 用 T=0.7）。訓練 100 epochs 期間：test@1 近乎單調上升（儘管測試損失早已過擬合），但 <strong>test@100 隨 epochs 增加劣化得遠比 test@1 陡</strong>——模型反覆看同一批資料後變得<strong>過度自信、失準（uncalibrated）</strong>，導致測試時解答空間覆蓋率變差；此效應只有在考慮多樣本時才顯現。<strong>好的覆蓋率是訓練驗證器的關鍵</strong>：test@100 在前幾個 epochs 即達峰值，故用<strong>訓練 2 epochs 的模型</strong>為驗證器生成樣本。另一重要觀察：<strong>必須讓模型先生成完整自然語言解答再輸出最終答案</strong>——若微調 6B 模型直接輸出答案、不產生中間步驟，表現從 20.6% 暴跌至 5.2%。</p>
+<h3 id="42-verification">4.2 Verification</h3>
+<p>訓練驗證器判斷模型生成解答的正確性，並在測試時對其進行搜尋。驗證器以「題目＋候選解答」為條件，輸出該解正確的機率。訓練標籤僅依最終答案是否正確——實務上有些解<strong>以錯誤推理達到正確答案，造成偽陽性（false positives）</strong>。訓練管線（圖 4）：</p>
+<ol>
+<li>在訓練集上微調 generator 2 epochs；</li>
+<li>對每道訓練題從 generator 取樣 <strong>100 個補全</strong>，逐一標記正確/錯誤；</li>
+<li>在此資料集上訓練 verifier 1 epoch。</li>
+</ol>
+<p>只訓 2 epochs 是因為之後生成解答的多樣性開始崩塌。generator 與 verifier 分開訓練以限制 generator 的訓練量、防止過擬合（原則上可合併）。除預測正確性外，verifier 同時以與 generator 相同的語言建模目標訓練——這是有價值的<strong>輔助目標（auxiliary objective）</strong>。（附錄 E：架構上 verifier 就是語言模型加一個<strong>逐 token 輸出預測的小純量頭</strong>——僅一個 bias 與一個 gain 參數，作用於詞表中一個保留特殊 token 的 logit 上，其餘 token 的 logits 繼續承擔語言建模；verifier 從 generator 初始化略優於從預訓練模型初始化；聯合目標用等量的語言資料與驗證資料混合，且遮蔽題目 tokens、只在解答 tokens 上計算損失。）</p>
+<p>測試時對每道測試題取樣 100 個補全，以 verifier 排名後回傳最高分者。與 finetuning 的比較（圖 5）：<strong>資料集小時 verification 反而不利</strong>——小資料下「過擬合到正確答案」比「學到正確推理的可泛化性質」更快發生；但<strong>資料集夠大後 verification 帶來強力增益</strong>。有趣的是 <strong>175B 驗證器比 6B「起飛」更早</strong>，需要更少訓練題就能超越 finetuning 基線。</p>
+<h3 id="43-verification-消融">4.3 Verification 消融</h3>
+<ul>
+<li><strong>Token-level vs solution-level</strong>：驗證器可只在完整解答後做單一純量預測（solution-level），或<strong>在每個 token 後都預測</strong>（token-level，可視為 token 級<strong>價值函數（value function）</strong>，為預設）。後者任務更難、更吵、初期訓練較慢，但<strong>最終勝出</strong>且訓練後期仍在進步，而 solution-level 很快過擬合。假說：完整價值函數提供有用輔助訊號，促使模型<strong>評判整條解答的推理過程</strong>，而非僅記憶正確答案。</li>
+<li><strong>聯合目標</strong>：加入語言建模目標相對只用驗證目標是<strong>嚴格改進</strong>——更了解該語言分佈只會有助於在樣本間辨別。</li>
+<li><strong>Generator/verifier 規模分拆</strong>：<strong>大 generator＋小 verifier 顯著優於小 generator＋大 verifier</strong>；即便 verifier 遠小於 generator，verification 仍然驚人地有效。這暗示 verifier 常靠<strong>相對粗糙的啟發式</strong>在給定 generator 的解答間辨別，而非進行更徹底的驗證。</li>
+</ul>
+<h2 id="5-附加實驗">5. 附加實驗</h2>
+<h3 id="51-測試時運算test-time-compute">5.1 測試時運算（Test Time Compute）</h3>
+<p>測試時可生成任意多的候選解供驗證器評判。6B 規模下，<strong>表現隨補全數增加而提升、至 400 個達峰後開始下降</strong>——搜尋的收益終將被「找到<strong>騙過驗證器的對抗解（adversarial solutions）</strong>」的風險抵銷。一般評估用 100 個補全（以適度算力捕捉大部分收益）。進一步可讓**驗證器排名最前的數個解按最終答案投票（majority vote）**取代只選第一名：樣本總數越多、可讓越多樣本投票——100 個樣本時最優是讓前 3-5 名投票；3200 個樣本時約前 30 名投票最優。</p>
+<h3 id="52-正則化">5.2 正則化</h3>
+<p>finetuning 與 verification 皆強烈受益於 <strong>residual dropout</strong>（沿每層殘差路徑，全部實驗用 20%）。GPT-3 預訓練不含 dropout，故先以 dropout 做額外預訓練再微調，以緩解分佈偏移。結果：dropout 顯著改善 finetuning；顯著改善 solution-level 驗證器（緩解其過擬合，<strong>加了 dropout 的 solution-level 可達 token-level 的相近水準</strong>）；token-level 本就較不易過擬合，增益較小但仍有。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>Verification 相對 finetuning 基線提供顯著增益：<strong>在完整資料集上，6B verification 略勝微調過的 175B 模型——增益約等於模型放大 30 倍</strong>。Token-level 驗證器比 solution-level 更不易過擬合；所有方法皆受益於 residual dropout。我們預期 verification 能良好擴展到需要更複雜數學推理的問題分佈，並希望 GSM8K 支撐 scaling 更佳的新方法的發展。</p>
+<h2 id="附錄-f驗證器視覺化擇要">附錄 F：驗證器視覺化（擇要）</h2>
+<p>Token-level 驗證器天生可解讀：可視化每個 token 的預測價值以理解其評判方式。五個 175B 案例顯示：驗證器對正確解常「初期不確定、隨解答推進逐漸確信」（因訓練資料含大量錯誤樣本）；能在解答中途出現明顯錯誤後，以高信心轉判為錯；也能對「最終答案對但中間推理錯」的解正確給低分；但偶爾在「數量與其關係的變數綁定」上出錯（偽陽性）。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2110.14168_GSM8K_Verifiers.%E6%91%98%E8%A6%81.html"><code>../summarize/2110.14168_GSM8K_Verifiers.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

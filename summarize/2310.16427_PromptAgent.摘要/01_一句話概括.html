@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2310.16427_PromptAgent.%E6%91%98%E8%A6%81.html">回 2310.16427_PromptAgent.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>PromptAgent</strong> 把提示詞優化重新表述為<strong>策略規劃問題</strong>——狀態＝一版任務提示詞、動作＝依模型錯誤生成的錯誤回饋——並用**蒙地卡羅樹搜尋（MCTS）**在這個狀態空間中有策略地做前瞻與回溯，藉由反覆「收集錯誤→生成回饋→改寫提示詞」把領域專家知識自動注入提示詞，在 12 個橫跨 BIG-Bench Hard、生醫領域、通用 NLU 三大類任務上，較人類手寫提示詞、CoT、以及 APE 等既有優化方法平均勝出約 9–17 個百分點。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>高品質、任務專屬的提示詞往往由專家憑對 LLM 脾性與任務細節的深刻理解手工打磨而成（融入任務描述、術語釐清、解法引導、例外處理等），但自動產生這種「專家級」提示詞至今仍難。既有的無梯度提示詞優化方法（編輯式改寫、回譯、演化算法、蒙地卡羅/Gibbs 取樣、beam search 等）大多只做<strong>啟發式的局部變體</strong>（換詞、改寫），缺乏有原則的探索策略，因此容易停留在普通使用者水準的提示詞局部變體，難以像人類專家那樣透過「反覆修正錯誤＋融入領域知識」的迭代過程逼近專家級提示詞；而人類親自做這件事又昂貴、難以規模化。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>問題形式化為 MDP</strong> (𝒮, 𝒜, T, r)：狀態 s_t = 當前版本的任務提示詞 𝒫_t；動作 a_t = 依模型在訓練樣本上犯的錯誤生成的「錯誤回饋」（而非單純換詞/改寫，這樣才能把具體、可執行的領域洞見注入下一版提示詞）；轉移函數由優化器 LLM（實驗預設 GPT-4）依錯誤回饋改寫出新提示詞；獎勵 r = 新提示詞在留出集上的任務表現（如準確率/F1）。被優化的基底 LLM（預設 GPT-3.5）與負責生成回饋/改寫提示詞的優化器 LLM 是兩個角色。</li>
+<li><strong>狀態轉移兩步驟</strong>：(1) 用基底 LLM 在一批訓練樣本上跑出錯誤案例；(2) 優化器 LLM 依錯誤反思，生成具體、可執行的錯誤回饋（action），再依此回饋把當前提示詞改寫成新提示詞（state transition）。</li>
+<li><strong>MCTS 四步驟操作</strong>，維護狀態-動作價值函數 Q(s,a)：
+<ul>
+<li><strong>Selection</strong>：從根節點（初始提示詞 s₀）沿樹逐層選子節點，用 UCT 公式（Q 值＋探索項）平衡「選高價值節點」與「選較少被造訪節點」。</li>
+<li><strong>Expansion</strong>：對選到的葉節點多次採樣訓練批次、各自生成錯誤回饋與新提示詞，得到多個候選子節點，取其中獎勵最高者送入下一步。</li>
+<li><strong>Simulation</strong>：為簡化計算成本，以「反覆執行 expansion、每層都選當前獎勵最高節點」的方式一路推進到終止狀態（達最大深度或觸發提早停止），估計未來獎勵。</li>
+<li><strong>Back-propagation</strong>：到達終止狀態後，沿路徑把各段未來軌跡的獎勵彙總、回頭更新路徑上每個狀態-動作對的 Q 值。</li>
+<li>迴圈跑滿預設迭代數（實驗設 12 次）後，選「最高獎勵路徑上獎勵最高的節點」當最終輸出提示詞。</li>
+</ul>
+</li>
+<li>三種超參數組合（Standard / Wide / Lite）分別調整樹深度與每次擴展的節點數，依獎勵挑最佳設定。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>BBH（6 題）</strong>：PromptAgent 平均 0.802，優於 CoT 0.707、APE 0.690、人類 zero-shot 0.513，5/6 題最佳（僅 Object Counting 輸給 CoT）。</li>
+<li><strong>生醫領域專屬任務（NCBI/Biosses/MedQA）</strong>：平均 0.655 vs APE 0.582、人類 0.526；NCBI F1 從人類 0.521、APE 0.576 提升到 <strong>0.645</strong>（Table 5/Figure 5 質化展示：從人類初始提示詞出發，經三次錯誤回饋驅動的狀態轉移，逐步注入「排除基因/蛋白質等易混淆術語」「locus 不算疾病名」等領域細節）。</li>
+<li><strong>通用 NLU（Subj/TREC/CB）</strong>：平均 0.868 vs APE 0.778、CoT 0.699。</li>
+<li><strong>搜尋策略消融</strong>：把 MCTS 換成 Monte Carlo（單步隨機採樣）、Greedy（逐層取最優）、Beam search，在同樣探索節點數下，MCTS 平均 0.754 全面勝出（Beam 0.697、Greedy 0.698、MC 0.635），相對最佳消融基線再提升 5.6%——證明「能前瞻＋回溯」的樹搜尋優於純前向的貪婪/beam 搜尋。</li>
+<li><strong>探索效率</strong>：達到同等或更佳表現，PromptAgent 探索的候選提示詞數量遠少於 APE（150 個）或 Greedy-L（72 個）。</li>
+<li><strong>可遷移性</strong>：直接把用 GPT-3.5 優化出的提示詞套到 GPT-4，在 11/12 題勝過人類與 APE 基線（唯一例外 Temporal 已被 GPT-4 解到近滿分）；套到較弱的 PaLM 2 雖整體大幅下降，仍在 7/12 題勝過基線，生醫領域專屬任務尤其明顯。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>搜尋成本高</strong>：MCTS 每次迭代的 expansion/simulation 都要對多個訓練批次跑基底 LLM 推論＋優化器 LLM 生成回饋與改寫，12 次迭代疊加下來是相當可觀的 LLM 呼叫量（論文本身未給美元成本，但探索效率分析承認這是核心限制之一）。</li>
+<li>獎勵定義僅是「留出集上的任務表現」，優化仍需要<strong>帶標籤的訓練/留出樣本</strong>，並非純 zero-shot、無監督地拼湊提示詞。</li>
+<li>優化出的專家級提示詞普遍<strong>更長更複雜</strong>（融合多重面向：術語釐清、解法引導、例外處理等），論文自陳未來需搭配提示詞壓縮技術；且效果依賴基底 LLM 本身有能力理解細膩指令——套到能力較弱的模型（PaLM 2）時性能明顯掉隊，甚至部分任務不如更簡單的基線提示詞。</li>
+<li>MCTS 只保證迭代跑滿後 Q 值趨於穩定，並無「找到全域最優提示詞」的正式保證。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

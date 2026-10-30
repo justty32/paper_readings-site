@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Programmable World Model 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zheng-Hui Huang、Guixu Lin、Jiacheng Lin、Yi-Chuan Huang、Ruihan Yu、Muyao Niu、Siqi Yang、Yu-Lun Liu、Yung-Yu Chuang、Kaipeng Zhang、Zhixiang Wang</p><p>日期：2026-09-09（v1，cs.CV）</p><p>arXiv：2609.10540</p><p><a href="https://arxiv.org/abs/2609.10540" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="programmable-world-model-重點摘要">Programmable World Model 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>這篇論文不要生成式影片模型自己「記得世界發生了什麼」，而是讓 coding agent 將自然語言規則寫成可執行程式，由輕量 engine 維護持續、可查詢的全局狀態，再把狀態編譯成畫素對齊的時空控制訊號，交給影片模型專心做生成式渲染。</p>
+<h2 id="問題與方法架構">問題與方法架構</h2>
+<ul>
+<li><strong>問題</strong>：互動影片世界模型擅長生成連貫畫面，卻缺少三種世界引擎能力：直接操控個別實體、在畫面之外維持離鏡實體與非視覺屬性、把「門何時開」這類規則固化成後續互動都會執行的程式。Prompt 可描述期望結果，但不等於建立可重複執行的狀態轉移規則。</li>
+<li><strong>可執行的 box world</strong>：從單張初始圖像擷取可見實體與其 3D 有向邊界框，coding agent 再根據使用者描述設定實體 ID、類別、位姿、health、faction、實體間關係、允許動作、事件 trigger 與任務目標。輕量 engine 以 <code>s_(t+1)=F(s_t,a_t)</code> 執行玩家動作、檢查有效性、套用效果並觸發事件，連畫面上看不到的 inventory 與任務進度也由引擎顯式保存。</li>
+<li><strong>中間表示的取捨</strong>：文字易寫卻無法強制世界座標幾何，2D box 與 mask 受單一視點綁定，完整 3D scene、關節模型或 G-buffer 雖細緻，卻把高成本幾何與動作實現推回明確狀態系統。本文選擇 state-augmented 3D OBB，只明確控制位置、大小、方向、持續身分、語意類別與動態狀態，將形狀、材質、關節、光照與次級動態留給生成模型。</li>
+<li><strong>決定性狀態編譯器</strong>：將更新後的 OBB 投影到目標鏡頭，光柵化為 identity、semantic 與 direction 三張畫素對齊控制圖。Identity slot 在整段序列中固定，協助離鏡後重新入鏡的實體延續外觀；semantic map 補上類別；direction map 從世界座標速度計算相對相機的物件運動，避免把鏡頭移動誤當物件移動。</li>
+<li><strong>生成式渲染與長程記憶</strong>：渲染器以 LingBot-World-v1 為凍結骨幹，另訓練 Structured Spatial ControlNet 注入三種編譯控制。長序列以 chunk autoregression 產生；近期、中期、長期的多尺度 temporal history 延續局部文脈，geometry-aligned spatial memory 把舊 RGB frame 投影到世界座標，新 chunk 前再依目標鏡頭召回與重投影。</li>
+<li><strong>自動訓練資料管線</strong>：由遊戲影片估計相機軌跡與 metric depth，用 VLM 發現語意類別，再做 instance segmentation、tracking 與 3D OBB 恢復，最後產生與推論時相同形式的 identity、semantic 與 motion control map。</li>
+</ul>
+<h2 id="作者報告的結果">作者報告的結果</h2>
+<p>CombatStateBench 包含 50 段戰鬥片段，Count Accuracy 在每段抽八張的 400 張 frame 上評估，State Accuracy 則涵蓋 50 個 death event，每個事件在轉移後抽三張 frame（作者自報）。本法 Count Accuracy 為 94.00%，LingBot-World-V2 與 YUME 分別為 40.75% 與 32.00%；State Accuracy 為 98.00%，兩個 baseline 分別為 8.00% 與 58.00%（作者自報）。這組結果支持論文的主張：外部 engine 中的明確狀態與結構化空間控制，比用 prompt switching 要影片模型隱式記憶人物生死與數量更可靠。</p>
+<p>視覺品質並未因結構控制而顯著退步。本法的 Imaging Quality、Subject Consistency、Background Consistency 與 Temporal Stability 分別為 67.62、94.74、96.98 與 99.00，均為表中最高（作者自報）。定性實驗還展示大角度轉鏡後重現初始畫面之外的角色，以及長達 897 frame 的 autoregressive 序列，其中多個 NPC 陸續入鏡（作者自報）。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>這篇的核心分工是，可執行、可編輯、可驗證的 engine 決定世界裡什麼為真，生成式模型則決定這些事實如何顯現。State-augmented 3D OBB 是兩者間的有意取捨：明確維持身分、空間與狀態變化，卻不重建一套完整動畫或物理引擎。</p>
+<p>作者在實驗段明言，Count Accuracy 與 State Accuracy 只測粗粒度、全局可觀察屬性，而且不直接獎勵結構控制所支援的 instance-level correspondence。State Accuracy 也只問 death event 之後是否至少有一張畫面出現死者，不要求判斷是哪個角色、事件在哪裡發生。因此目前數字證明的是粗粒度狀態一致性，不是所有細部實體對應的完整驗證。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>它與 ai_core 最強的接點，是「狀態管理」與「生成表現」的權責切割。不要讓 LLM 或生成模型同時負責記住事實、執行規則與產生觀測；前兩者應落在可檢查的 canonical state 與決定性轉移函式，模型只處理難以窮舉的呈現細節。如此一來，系統可以在不解析像素的情況下查詢、改寫與驗證世界事實。</p>
+<p>另一個可借用的原則是「只固化足以約束下游的中間表示」。太粗的文字無法強制幾何，太細的全 3D 狀態又會迫使明確系統處理所有動畫細節。ai_core 的意圖翻譯與程式固化也有同樣問題：中間結構應保留下游必須可驗證的身分、狀態、約束與轉移，其餘細節交給專門生成器。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2609.10540_ProgrammableWorldModel.zh-TW.html"><code>../translate/2609.10540_ProgrammableWorldModel.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

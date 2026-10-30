@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>神經符號代理：無幻覺需求重用（第 3 部分） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.01562_NSRequirementsReuse.zh-TW.html">回 2605.01562_NSRequirementsReuse.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E4%BA%94%E3%80%81%E5%AF%A6%E9%A9%97%E8%A9%95%E4%BC%B0.html">下一節 →</a></p>
+</blockquote>
+<h2 id="三神經符號多代理系統">三、神經符號多代理系統</h2>
+<p>本系統將需求重用重新框架為<strong>以受約束圖遍歷進行的模型驅動引出流程</strong>。透過將 LLM 定位為狀態空間探索的非確定性啟發式，我們利用了模型的語言彈性，同時不犧牲底層確定性領域模型的結構完整性。</p>
+<h3 id="a-晶格表示">A. 晶格表示</h3>
+<p>我們將應用家族需求晶格定義為有向無環圖（DAG），表示為元組 L = (V, E, T, Φ)：</p>
+<ul>
+<li>V = {r1, r2, ..., rn} 為 n 個離散需求節點集合。</li>
+<li>E ⊆ V × V 為有向邊集合，表示階層父子關係。</li>
+<li>T : V → {Core, SA, MA, Op} 為型別函數，為每個節點指派 OOMRAM 重用類別。</li>
+<li>Φ 為一組布林可滿足性約束，治理選取空間 S ⊆ V。</li>
+</ul>
+<p>選取空間 S 若且唯若滿足全域一致性謂詞 Ψ(S) 時被視為結構有效，定義為：</p>
+<p>Ψ(S) = ∧_{v∈S} Valid(v, Φ) ∧ ∀c ∈ S, Parent(c) ∈ S</p>
+<p>其中 Valid(v, Φ) 強制判別式的基數（cardinality）。對於單一調適器（SA）節點 v，約束 ΦSA 為：</p>
+<p>ΦSA(v) ⇒ Σ_{c∈Children(v)} [c ∈ S] = 1</p>
+<p>（XOR：恰選一個子節點）。對於多重調適器（MA），至少選一個（OR）。Core 節點必須全部被選取；Op 節點可選可不選。</p>
+<p>此數學框架使符號 Validator 能夠作為獨立於 LLM 機率輸出的<strong>硬編碼守門人</strong>。圖 1（原文）展示了 eRecordKeeping 晶格的部分子圖與各節點型別：藍色為 Core（必要），橘色為 SA（擇一），灰色為替代選項，綠色為 Op（可選）。</p>
+<h3 id="b-多代理架構與狀態轉移">B. 多代理架構與狀態轉移</h3>
+<p>系統以 LangGraph 實作，這是一個用於構建有狀態、多角色 LLM 應用的框架。四個代理透過共享的 AgentState 字典協調，其中儲存當前需求 ID 選集、對話歷史、專案願景、晶格資料與驗證錯誤日誌。</p>
+<ul>
+<li><strong>Navigator</strong>：選取下一個待展開的判別式節點，根據願景與當前狀態模擬深度優先遍歷。</li>
+<li><strong>Interpreter</strong>（LLM，temperature = 0）：為當前節點提議一組子需求 ID，輸出結構化 JSON 表示。</li>
+<li><strong>Validator</strong>：一個<strong>直接的 Python 函式，不含任何 LLM</strong>。測試 S 是否滿足晶格綱要中定義的所有約束 Φ。它強制執行 (1) 式中的全域一致性謂詞 Ψ(S)：(1) 選取每個可達核心節點；(2) 確保依 (2) 式的 SA 互斥性（恰選一個）；(3) 確保 MA 包容性（至少選一個）；(4) 維護父子結構完整性。若偵測到違規，向 Interpreter 回傳拒收訊息；<strong>Validator 本身永不呼叫 LLM</strong>。</li>
+<li><strong>Scribe</strong>：將最終選集編譯為格式化規格。</li>
+</ul>
+<p>神經層（機率性）與符號層（確定性）之間的轉移透過具型別狀態物件 σ = ⟨V, H, S, E⟩ 來形式化，其中 V 為自然語言願景，H 為對話歷史，S 為當前選集，E 為錯誤日誌。</p>
+<p>Interpreter 代理 AI 實作映射 f: (V, σ) → P(C(v))，P 為當前節點 v 之子節點的冪集。Validator 代理 AV 接著執行確定性檢查 B(σ′)。若 B(σ′) = False，系統在 E 中記錄違規——例如「違規：對 XOR 節點 1.4 選取了多個子節點」——並指示 AI 在更嚴約束下產生修正選取。Interpreter 與 Validator 持續此往返直到所有約束滿足，此時 Navigator 才推進至下一節點。</p>
+<p>為防範無窮迴圈，圖形上限為 250 遞迴步與最多 100 次 LLM 呼叫。持久記憶保護器在每一步記錄狀態，提供完整審計軌跡並支援稍後恢復。框架可完全自主運行（如實驗所示），也可加入人類介入。</p>
+<h3 id="c-以子圖導航處理複雜度">C. 以子圖導航處理複雜度</h3>
+<p>為管理大型工業產品線，系統採用<strong>基於前沿（frontier）的子圖導航策略</strong>。每一步將 Interpreter 限制在晶格的局部子集，確保輸入上下文大小保持常數 O(1)，無論晶格總維度如何。這防止了不受約束 LLM 提示中常見的「lost-in-the-middle」推理失敗，使總遍歷時間與決策點數量呈線性增長 O(N)。</p>
+<h3 id="d-多領域支援的語意路由">D. 多領域支援的語意路由</h3>
+<p>作為邁向完全自動化的初步步驟，我們納入了語意路由器，根據專案願景文字選擇適當的晶格家族。路由器計算輸入願景的 sentence-transformer 嵌入，並與每個可用家族（如 eRecordKeeping、SmartHome、Automotive）的預計算質心進行比對。最接近的質心決定作用中晶格。此機制使單一代理管線能處理多個領域，無需人工選擇。</p>
+<h2 id="四形式化演算法規格">四、形式化演算法規格</h2>
+<p>我們完全透明化系統的內部邏輯，明確指定驅動符號 Validator 與 Navigator 前沿管理的精確演算法規則。</p>
+<p>Validator AV 實作當前選集 S 對照全域謂詞 Ψ(S) 的布林一致性檢查。**演算法 1（符號約束驗證）**詳述在每個狀態轉移時運行的遞迴驗證步驟，確保邏輯不一致的需求無法繼續傳播：</p>
+<pre><code>輸入：選集 S, 晶格 L, 當前節點 v
+輸出：違規集合 E
+1: E ← ∅
+2: if T(v) = SA ∧ |S ∩ Children(v)| ≠ 1 then
+3:     E ← E ∪ {&quot;XOR 違規於 &quot; + v}
+4: end if
+5: if T(v) = MA ∧ |S ∩ Children(v)| &lt; 1 then
+6:     E ← E ∪ {&quot;OR 違規於 &quot; + v}
+7: end if
+8: for all c ∈ S do
+9:     if Parent(c) ∉ S then
+10:        E ← E ∪ {&quot;孤立節點: &quot; + c}
+11:    end if
+12: end for
+13: return E
+</code></pre>
+<h3 id="a-複雜度分析">A. 複雜度分析</h3>
+<p>子圖導航策略使搜尋空間可控。若沒有此策略，不受約束的特徵模型可能呈指數級爆炸。透過讓 Navigator 限制 Interpreter 僅關注當前節點的直接子節點，我們將探索維持在局部。結果是完整引出會話以 O(|D|·K) 時間運行，其中 D 為判別式節點集，K 為平均分支因子。此線性增長意味著系統可處理工業規模的晶格——例如 49 節點的電信模型——而不會降低 LLM 的推理品質。</p>
+<h3 id="b-模型一致性與不變量保持">B. 模型一致性與不變量保持</h3>
+<p>在模型驅動需求工程（MoDRE）術語中，我們的框架確保最終規格是應用家族超模型的一致性實例。Interpreter 執行從非結構化文本到模型元素的語意映射，Validator 則作為約束滿足引擎，保持晶格 L 的所有不變量。</p>
+<h1 id="神經符號代理無幻覺需求重用第-3-部分">神經符號代理：無幻覺需求重用（第 3 部分）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

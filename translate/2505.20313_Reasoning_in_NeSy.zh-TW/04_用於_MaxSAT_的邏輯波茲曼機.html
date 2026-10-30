@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>04_用於_MaxSAT_的邏輯波茲曼機 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2505.20313_Reasoning_in_NeSy.zh-TW.html">回 2505.20313_Reasoning_in_NeSy.zh-TW 目錄</a>　<a href="03_%E4%BB%A5%E8%83%BD%E9%87%8F%E5%9F%BA%E5%BA%95%E7%A5%9E%E7%B6%93%E7%B6%B2%E8%B7%AF%E5%81%9A%E7%AC%A6%E8%99%9F%E6%8E%A8%E7%90%86.html">← 上一節</a>　<a href="05_%E7%B5%90%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-用於-maxsat-的邏輯波茲曼機">4. 用於 MaxSAT 的邏輯波茲曼機</h2>
+<p><strong>MaxSAT</strong>＝找出<strong>最大化已滿足子句數</strong>的賦值（式 20）；比 SAT（找任一滿足賦值）更一般，是組合最佳化、<strong>NP-hard</strong>，常需近似解（平衡準確度與時間）。符號 MaxSAT solver 已能擴展到百萬級變數/子句，應用於軟體分析、硬體驗證、組合最佳化、生資、資料分析。近年興起<strong>連結主義 solver</strong>（利用平行運算、學習能力與 GPU/TPU 加速器，並促成可解釋分類模型與新型 NeSy）。深度學習式 MaxSAT solver 多需從範例解學實值權重（如 [53]）或訓練 GNN，常被批評需監督且不透明。<strong>本文改用 LBM ＋ dual annealing（模擬退火的改良）</strong> 搜尋 RBM 能量地形的全域極小（＝MaxSAT 解）。相關 RBMSAT 用 block Gibbs 在加速器上做啟發搜尋；本文則用<strong>可解釋的 RBM 層</strong>（圖 13，每子句可從二元權重讀出）。</p>
+<ul>
+<li><strong>例 6</strong>：AND-gate 以自由能表示、OR-gate（子句）轉 SDNF 後其自由能對應真值；滿足賦值最大化負自由能。CNF 的能量＝各子句能量和（式 21）;<strong>CNF 的自由能對應已滿足子句數</strong>（式 22）→ 最大化滿足子句數 ⟺ 最小化 LBM 自由能。</li>
+</ul>
+<h3 id="41-lbm-搭配-dual-annealing">4.1 LBM 搭配 dual annealing</h3>
+<p>CNF 表示進 RBM 後，Gibbs 取樣在此情境收斂慢；改用<strong>模擬退火</strong>，具體用 <strong>dual annealing</strong>（無縫整合全域＋局部搜尋）：先以模擬退火找全域最佳可能所在區域，再以局部搜尋精確定位。</p>
+<h4 id="411-maxsat-實驗結果">4.1.1 MaxSAT 實驗結果</h4>
+<p>與頂尖 MaxSAT solver <strong>Loandra</strong>（2023 MaxSAT Evaluations 表現佳）比較，用 <strong>MaxCut</strong>（各 1260 子句）的 6 個實例（取自 MaxSAT 2016 benchmark）、每次 300 秒上限、AMD Ryzen7 5800X / 32GB。指標＝已滿足子句數。圖 11/12：<strong>Loandra 平均滿足 1089、LBM 平均 1078</strong>（6 中 5 略輸但差距小）。未來方向：演化策略等其他全域最佳化、平行運算提升擴展性（如 RBMSAT）、Image Sudoku（物件辨識與推理交織，契合 LBM 整合學習與推理）。</p>
+<h2 id="5-在-lbm-中整合學習與推理">5. 在 LBM 中整合學習與推理</h2>
+<p>NeSy 的關鍵發展是<strong>為既有網路加上「已驗證模組」</strong>：一個可證等價於給定邏輯公式的 RBM 即為此種模組，疊在大網路輸出端可<strong>約束其輸出滿足特定性質</strong>。模組規格可能需比命題邏輯更具表示力的語言——<strong>一階邏輯</strong>（用謂詞表達量化變數間關係，如 ∀x∃y R(x,y)）。例如數獨可用三元謂詞 In(block,position,value) 更精簡，約束含「存在性」與「唯一性」。</p>
+<p>示範把 LBM 當<strong>邏輯層疊在深度網路上</strong>做語意影像詮釋（預測影像中物件與其部件的關係，需一階邏輯）。知識庫含「某物件類型通常是另一類型的部件」之事實（如 isPartOf(Screen,TV)），及連接兩視覺場景的一階規則（式 23）：「給兩視覺場景及其類型分類，前者是後者的部件 ⟺ 前者類型是後者類型的部件」。實作：<strong>Faster-RCNN</strong> 抽物件特徵 → 兩個**神經迴歸器（NNR）**實作謂詞 isOfType（輸出謂詞真值）→ <strong>自編碼器</strong>實作符號變數間 isPartOf 關係 → 規則轉 SDNF → 以 <strong>LBM 當邏輯層</strong>疊在這些網路之上（圖 13）。</p>
+<p>LBM 的推理可<strong>反向傳播</strong>回去更新 CNN/迴歸器/自編碼器的權重（最小化一個含 LBM 推理項的損失函數）。例：若網路告知 isOfType(x1,Screen)、isOfType(x2,TV) 且知識含 isPartOf(Screen,TV)，LBM 可推得 partOf(x1,x2) 應為真，此訊號用於更新對應網路參數。</p>
+<ul>
+<li><strong>結果（表 3）</strong>：與 <strong>DLN、LTN、CNLP</strong> 三個 NeSy 系統比（任務/資料同 [11]，差別是只有 LBM 用該一階規則）。<strong>part-of 關係預測</strong>：LBM 勝 LTN、≈CNLP;<strong>物件類型預測</strong>：LBM 勝 CNLP、DLN、LTN。</li>
+</ul>
+<h2 id="6-神經符號-ai-的挑戰">6. 神經符號 AI 的挑戰</h2>
+<p>與多數 LLM/CoT 路線（推理能力被期待「湧現」、事後用 benchmark 量）不同，本文<strong>用邏輯給推理形式定義</strong>——有了良定義的語意才能談網路與各種推理形式的對應。我們證明了命題邏輯與 RBM 的等價，催生 LBM。未來聚焦擴展到 SAT 與「資料＋知識」學習（加權子句、加權 SAT 平行化、關係學習）。有了「RBM 可實作某類約束」的證明與演算法，便可想像把 RBM 當<strong>可驗證模組</strong>疊上網路施加約束（如公平性/安全性需求）。下文討論它對 AI 三大挑戰——資料效率、公平性、安全性、終至信任——開啟的研究方向。</p>
+<h3 id="61-非單調邏輯">6.1 非單調邏輯</h3>
+<p>常識推理需「基於不完整資訊跳到結論、得新資訊時收回/修正」，因此用<strong>非單調邏輯</strong>建模（部分不可判定）。LLM 在常識 benchmark 上勝過邏輯形式化——<strong>從資料學常識比邏輯形式化更容易</strong>；但理解 LLM 所學極難。理解所學或能反過來幫助釐清「常識邏輯形式化的極限」。隨神經網路用於科學發現，真正理解其過程將要求<strong>解釋網路推理</strong>的能力。</p>
+<h3 id="62-規劃">6.2 規劃</h3>
+<p>AGI 需朝目標規劃、提問。規劃需把目標拆子目標、在部分資訊下隨時間推理；有目標需「當前狀態與目標狀態的描述」＋「縮小兩者差距（某距離函數）的機制」，機制失效時可改目標或改機制本身。AlphaGo/數獨等<strong>封閉環境</strong>可用模擬學會最小化距離函數而不需顯式描述；<strong>開放情境</strong>則難得多——<strong>顯式描述須可被符號操作</strong>（能問「若做此改動會怎樣」而不真做），且須從少數範例<strong>抽象</strong>而來。此種「對抽象描述做符號操作」的推理，本質不同於「以相似度/距離做 pattern matching」的推理。</p>
+<h3 id="63-從錯誤中學習">6.3 從錯誤中學習</h3>
+<p>AGI 應能從錯誤學習、與使用者互動提問、描述其理解、受控地朝目標改進（甚至改目標與改進機制）。在<strong>符號描述層</strong>受控才能保證安全。呼應 Kahneman《快思慢想》——在 pattern matching 與更抽象兩層皆能推理，系統才能從少數範例適應新奇、檢查理解、多任務與跨任務重用知識，提升資料/能量效率。<strong>適應新奇（解長尾與分布外問題）需建立緊湊表示，也需時時改變表示以獲新洞見</strong>（如同 spaghetti code 與 beautiful code 之別）。這正是最新 NeSy 研究的核心挑戰：<strong>從複雜網路抽取對的抽象層級描述</strong>、健全地用多種表示（空間/時間/知識/規範/多模態/非單調）做推理與學習、高效重用與外推。Transformer 本質是「集合映集合」（需位置編碼處理序列），而 NeSy 計算各種邏輯語意也是遞迴地「集合映集合」；多頭注意力類似表示二元關係。某些領域（如蛋白質交互）需表示 n 元關係（如 bond（化合物，鍵型，原子1，原子2），即 Mutagenesis 任務），可用<strong>超圖神經網路</strong>；而 <strong>fibring 神經網路</strong>已被證明為 GNN 與 transformer 提供共同表示基礎（對應到帶 self-fibring 的命題模態邏輯）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

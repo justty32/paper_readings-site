@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_分析 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2401.16467_ReGAL.zh-TW.html">回 2401.16467_ReGAL.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">← 上一節</a></p>
+</blockquote>
+<h2 id="6-分析">6. 分析</h2>
+<h3 id="61-發現了什麼樣的程式">6.1 發現了什麼樣的程式？</h3>
+<p>各域呈現不同趨勢：<strong>LOGO</strong>——封裝各類形狀的函數（符合資料生成邏輯：大形狀由半圓、五邊形、圓等組成）；<strong>Date</strong>——傾向封裝單一操作、以可解釋命名為先（如 <code>get_date_one_year_ago()</code>），呼應 Grand et al.（2023）強調的函數命名重要性；<strong>TextCraft</strong>——函數更複雜、<strong>反映遊戲動態</strong>：含檢查原料的條件式（合成前必須先備齊原料），如 <code>craft_and_get_ingredient()</code>：先查 inventory，缺的原料先從環境取得，再合成目標物。</p>
+<h3 id="62-代理犯什麼錯">6.2 代理犯什麼錯？</h3>
+<ul>
+<li><strong>ReGAL 對、基線錯</strong>（LOGO，CodeLlama-13B，25 例人工歸類）：16 例推理錯誤、9 例形狀內部錯誤。圖 1 實例：基線從零生成時把多邊形內角算錯，ReGAL 直接用已驗證 helper 畫對；且把形狀推理卸載給易匹配的函數後，模型能正確使用 <code>embed()</code>，基線則在形狀外的程式碼上推理失敗。</li>
+<li><strong>基線對、ReGAL 錯</strong>（13 例）：連接碼錯誤（原語或控制流錯，7 例）；呼叫不存在/錯誤函數（4 例）；驗證函式偽陰性（2 例，如六邊形畫在方塊左邊而參考在右邊）。最常見錯誤是原語預測失敗——ReGAL 代理在此處於劣勢，因 ICL 預算同為 10 例但要分一半給 Demo Bank 範例。</li>
+</ul>
+<h3 id="63-需要多少訓練例子">6.3 需要多少訓練例子？</h3>
+<p>TextCraft、CodeLlama-13B 上變動訓練集大小：ReGAL 代理在所有規模下一致勝過基線——<strong>25 例示範即 +2.56%，約半量訓練集即 +8.45%</strong>。兩代理都隨示範增多而進步（檢索到更相似的 ICL 例子）。</p>
+<h3 id="64-如何適應分佈移轉">6.4 如何適應分佈移轉？</h3>
+<p>重切 TextCraft 使 dev/test 含<strong>訓練中從未出現的目標物件</strong>（如測試要合成 fence、訓練集完全沒有 fence），100/20/76。結果（表 4）：基線 7.8；ReGAL 直接用 11.4（+3.6）；在未見 dev 上<strong>僅執行修剪</strong>（不提新抽象）→ 14.9（再 +3.5）；在 dev 上<strong>跑完整一輪 ReGAL 各階段</strong>（學新抽象＋編輯既有）→ 17.2（再 +2.3，共勝基線 9.4%）。</p>
+<h2 id="7-討論">7. 討論</h2>
+<ul>
+<li><strong>固定成本 vs 變動成本</strong>：ReGAL 對 CodeLlama 這類開源 LLM 尤其有效——可把「在測試資料上跑（付費）LLM、隨測試集線性放大的<strong>變動成本</strong>」轉換成「跑一次 ReGAL 學函式庫的<strong>固定成本</strong>」，讓免費開源模型至少追平閉源專有模型。</li>
+<li><strong>與語意剖析的關聯</strong>：可執行語意剖析把 query 映到人工定義的 DSL；ReGAL 可視為<strong>在極通用原語之上自動學出一個 DSL</strong>，五個域都不需人工介入。</li>
+<li><strong>與階層強化學習（HRL）的關聯</strong>：ReGAL 的函數可視為由原語動作組成的低階策略；代理 LLM 是控制器，訓練相負責技能發現（類似 option discovery）。差異在 ReGAL 的技能是<strong>符號的、可解釋、可編輯</strong>的，HRL 策略通常不是。</li>
+<li><strong>局限</strong>：程式碼函數比神經參數化函數缺乏彈性，在環境會動態變化的域（如導航）ReGAL 的驗證式修剪會導致<strong>發現不了任何函數</strong>；不是每個域都有可重用抽象——若原語已構成合適的 DSL，並非每例都受益；且 ReGAL 的抽象不必然與人類會選的相同（§B.1）。</li>
+</ul>
+<h2 id="8-結論">8. 結論</h2>
+<p>ReGAL 是從少量例子學抽象的無梯度方法。實驗顯示其抽象在五個多樣域上提升多種 LLM 的程式預測準確率；抽象可重用且通用，能跨例套用。分析發現 ReGAL 學到的函數<strong>編纂了常用子程序與任務動態</strong>；錯誤分析指出其改善同時來自<strong>函數重用</strong>與<strong>程式預測推理的簡化</strong>。</p>
+<h2 id="附錄擇要">附錄擇要</h2>
+<ul>
+<li><strong>A.2 修剪細節</strong>：函數分數 s = |P| − Σ_{p∈F} 1/n_p；被用過足夠次數且 s &lt; θ（=0）才修剪。</li>
+<li><strong>A.3 測試細節</strong>：ChromaDB + Ada embeddings 做索引/檢索；Code Bank 函數上限 20，按 query 與函數名相似度檢索；測試前先修剪一次 Code Bank。</li>
+<li><strong>A.4 模型</strong>：訓練/重構用 gpt-3.5-turbo-0613；開源代理用 CodeLlama-*-Instruct-hf 與 lemur-70b-v1（HuggingFace checkpoints）。</li>
+<li><strong>B.1 實例</strong>：LOGO 的 <code>draw_semicircle()</code>；Date 的 <code>get_date_one_week_from_today()</code> 等直觀命名函數；TextCraft 的 <code>craft_object_with_ingredients()</code>（查庫存→補齊原料→合成）與 <code>check_and_get_object()</code>。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2401.16467_ReGAL.%E6%91%98%E8%A6%81.html"><code>../summarize/2401.16467_ReGAL.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

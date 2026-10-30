@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>證明程式面試：一個形式驗證程式碼生成的基準（2/2） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2502.05714_FVAPPS.zh-TW.html">回 2502.05714_FVAPPS.zh-TW 目錄</a>　<a href="02_%E9%97%9C%E9%8D%B5%E7%99%BC%E7%8F%BE%E8%88%87%E9%96%8B%E6%94%BE%E6%8C%91%E6%88%B0.html">下一節 →</a></p>
+</blockquote>
+<h2 id="1-引言">1. 引言</h2>
+<p>程式碼生成基準長期仰賴單元測試作為正確性的代理指標。HumanEval、MBPP 與 APPS 等基準以「通過測試案例的數量」衡量模型能力，但單元測試本質上不完整——它們只能驗證特定輸入，無法保證所有邊界案例的行為正確。這在安全關鍵系統中尤為危險：通過 10 個測試案例的程式碼仍可能在第 11 個輸入崩潰。</p>
+<p>FVAPPS（Formally Verified Automated Programming Progress Standards）提出了一條不同的路徑：將 APPS 基準從 Python 單元測試<strong>升級為 Lean 4 形式規格與數學證明</strong>。在 FVAPPS 中，模型不僅要實作所要求的函數，還必須完成形式正確性定理的證明——證明空缺以 Lean 的 <code>sorry</code> 佔位，正確提交需同時包含實作程式碼與使所有定理編譯通過的證明策略。</p>
+<p>核心洞見：信任從「黑箱 LLM 輸出通過幾個測試案例」轉移到「確定性 Lean 4 核心型別檢查器」。這不是漸進式改進，而是<strong>正確性判準的典範轉移</strong>——從取樣式實證到窮盡式機械驗證。</p>
+<h2 id="2-背景apps-基準與形式驗證">2. 背景：APPS 基準與形式驗證</h2>
+<p>APPS（Automated Programming Progress Standards）是一個包含競賽程式設計與程式面試題目的基準，涵蓋從「入門」到「競賽」難度的 10,000 個 Python 問題。每個問題以英文敘述、輸入輸出範例與單元測試構成。APPS 的局限：測試案例由問題作者提供，覆蓋率不均，且對邊界行為無保證。</p>
+<p>Lean 4 是一個依賴型別的函數式程式語言與定理證明器。其核心型別檢查器是信任根基——一個相對小型（約 2,000 行程式碼）的確定性程式，驗證每個定義與定理的型別正確性。<code>sorry</code> 是 Lean 中表示「此處待證明」的佔位符，一個含 <code>sorry</code> 的檔案可以編譯通過但被標記為不完整；完全不含 <code>sorry</code> 的證明被視為完全驗證。</p>
+<p>形式驗證的獨特優勢：<strong>證明一次，永遠信任</strong>。單元測試只對已執行的輸入提供保證；形式證明對所有可能輸入提供保證。這對安全關鍵系統（自動駕駛、醫療裝置、加密協定）不可或缺。</p>
+<h2 id="3-fvapps-基準建構">3. FVAPPS 基準建構</h2>
+<h3 id="31-五階段管線">3.1 五階段管線</h3>
+<p>FVAPPS 的建構經過五個階段，從原始 APPS Python 問題逐步升級為 Lean 4 形式規格：</p>
+<p><strong>Stage 1（預處理與聚合）</strong>：從 APPS 提取問題敘述、函數簽名與輸入輸出範例，聚合為結構化任務描述。</p>
+<p><strong>Stage 2（屬性式測試生成）</strong>：以 Claude 3.5 Sonnet 驅動的 scaffold loop，使用 Pytest 與 Hypothesis 框架從問題敘述自動生成屬性式測試。這些測試比單元測試更強——它們以隨機生成輸入驗證不變量，提供比少數固定案例更全面的覆蓋。</p>
+<p><strong>Stage 3（翻譯為 Lean 4）</strong>：將 Python 函數簽名翻譯為 Lean 4 函數定義，並從屬性式測試推導形式規格定理。每個定理以 <code>sorry</code> 佔位證明。此階段產出 <strong>4,715 個「Unguarded」樣本</strong>——函數定義與定理陳述已就位，但尚未驗證函數是否可解。</p>
+<p><strong>Stage 4（Guarded 單元斷言）</strong>：為每個樣本加上 <code>#guard</code> 內聯單元斷言——在 Lean 中可直接執行的具體輸入輸出測試。這確保函數定義至少對提供的範例是正確的，過濾掉根本不可解的規格。此階段產出 <strong>2,089 個「Guarded」樣本</strong>——已驗證函數可解、定理陳述與函數行為一致。</p>
+<p><strong>Stage 5（Plausible 屬性測試）</strong>：使用 Lean 的 Plausible 框架（類似 QuickCheck 的隨機測試）對定理進行屬性測試。Plausible 以隨機生成輸入執行定理，偵測反例。通過 Plausible 測試的定理具有高度可信度，雖非嚴格證明但大幅降低定理本身錯誤的機率。此階段產出 <strong>1,083 個「Guarded and Plausible」最高品質樣本</strong>。</p>
+<h3 id="32-品質分層">3.2 品質分層</h3>
+<p>FVAPPS 的三層品質分級使研究者可以根據需求選擇難度與可信度：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">層級</th>
+<th style="text-align:center">樣本數</th>
+<th style="text-align:left">保證</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">Unguarded</td>
+<td style="text-align:center">4,715</td>
+<td style="text-align:left">函數定義 + 定理陳述，未經驗證</td>
+</tr>
+<tr>
+<td style="text-align:left">Guarded</td>
+<td style="text-align:center">2,089</td>
+<td style="text-align:left">函數可解，定理與範例一致</td>
+</tr>
+<tr>
+<td style="text-align:left">Guarded + Plausible</td>
+<td style="text-align:center">1,083</td>
+<td style="text-align:left">定理經隨機測試無反例</td>
+</tr>
+</tbody>
+</table>
+<h3 id="33-任務格式">3.3 任務格式</h3>
+<p>每個 FVAPPS 任務包含英文問題敘述與一個 Lean 4 檔案。典型結構如下：</p>
+<ul>
+<li>問題敘述（英文）</li>
+<li>函數簽名（<code>def solve_xxx ... := sorry</code>）</li>
+<li>一組形式規格定理（<code>theorem xxx ... := sorry</code>）</li>
+</ul>
+<p>正確提交需同時移除函數定義與所有定理中的 <code>sorry</code>，使整個檔案在 Lean 核心中編譯通過。證明策略可使用 Lean 的任何合法語法：歸納、案例分析、重寫、自動化策略（<code>omega</code>、<code>arith</code>、<code>simp</code>）等。</p>
+<h2 id="4-基準線評估">4. 基準線評估</h2>
+<h3 id="41-實驗設定">4.1 實驗設定</h3>
+<p>從 4,715 個 Unguarded 樣本中隨機抽樣 100 個問題（共 406 條定理），以兩種前沿 LLM 進行基準線測試：</p>
+<ul>
+<li>Claude 3.5 Sonnet（2024-10 版本）</li>
+<li>Gemini 1.5 Pro</li>
+</ul>
+<p>實驗採用 <strong>agentic scaffold loop</strong>：模型生成程式碼與證明後，以 <code>lake build</code> 編譯 Lean 專案，將編譯器錯誤（stdout/stderr）回傳給模型進行修正，最多迭代 50 輪。</p>
+<h3 id="42-主要結果">4.2 主要結果</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">指標</th>
+<th style="text-align:center">Claude 3.5 Sonnet</th>
+<th style="text-align:center">Gemini 1.5 Pro</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">函數定義完成</td>
+<td style="text-align:center">93 / 100</td>
+<td style="text-align:center">71 / 100</td>
+</tr>
+<tr>
+<td style="text-align:left">至少一條證明通過</td>
+<td style="text-align:center">43 / 100</td>
+<td style="text-align:center">23 / 100</td>
+</tr>
+<tr>
+<td style="text-align:left">總定理證明率</td>
+<td style="text-align:center"><strong>30.0%</strong> (121/406)</td>
+<td style="text-align:center"><strong>18.5%</strong> (74/406)</td>
+</tr>
+<tr>
+<td style="text-align:left">0/1-shot 可解比例</td>
+<td style="text-align:center">~20%</td>
+<td style="text-align:center">~20%</td>
+</tr>
+</tbody>
+</table>
+<h3 id="43-人類基準對比">4.3 人類基準對比</h3>
+<p>一位形式驗證專家被分配 <strong>10 小時</strong>處理單一題目（sample 0023，Crooked Election——一個關於選舉結果計算的演算法問題）。結果：</p>
+<ul>
+<li>成功寫出函數定義（包含複雜終止證明，使用 <code>termination_by</code> 與 <code>decreasing_by omega</code>）</li>
+<li><strong>未能證明任何定理</strong>——遞迴展開導致堆疊溢位</li>
+</ul>
+<p>此人類基準揭示了形式驗證的內在難度：即使對專家而言，為演算法程式碼撰寫形式證明也是極其耗時且容易失敗的任務。10 小時僅完成函數定義（尚未觸及定理證明），對比 LLM 在少數迭代內可完成約 30% 的定理——形式上 LLM 在此任務上已超越單一專家的生產力。</p>
+<blockquote>
+<p>續見 <a href="../2502.05714_FVAPPS.zh-TW.html">part 2</a></p>
+</blockquote>
+<hr />
+<h2 id="title-證明程式面試一個形式驗證程式碼生成的基準-pt2proving-the-coding-interview-a-benchmark-for-formally-verified-code-generation-source-httpsarxivorgabs250205714-arxiv_id-250205714-authors-quinn-doughertyronak-mehta-date-2025-02-note-依論文章節結構精要逐節呈現附錄與部分表格從略本檔為-part-2第-57-節part-1-為第-14-節-summary-summarize250205714_fvapps摘要md-parent-250205714_fvappszh-twmd">title: 證明程式面試：一個形式驗證程式碼生成的基準 pt.2（Proving the Coding Interview: A Benchmark for Formally Verified Code Generation）
+source: https://arxiv.org/abs/2502.05714
+arxiv_id: 2502.05714
+authors: Quinn Dougherty、Ronak Mehta
+date: 2025-02
+note: 依論文章節結構精要逐節呈現。附錄與部分表格從略。本檔為 part 2（第 5–7 節），part 1 為第 1–4 節。
+summary: ../summarize/2502.05714_FVAPPS.摘要.md
+parent: ./2502.05714_FVAPPS.zh-TW.md</h2>
+<h1 id="證明程式面試一個形式驗證程式碼生成的基準22">證明程式面試：一個形式驗證程式碼生成的基準（2/2）</h1>
+<blockquote>
+<p>續 <a href="../2502.05714_FVAPPS.zh-TW.html">part 1</a></p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

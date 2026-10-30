@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2511.17673_StructuredCognitiveLoop.zh-TW.html">回 2511.17673_StructuredCognitiveLoop.zh-TW 目錄</a>　<a href="02_%E8%83%8C%E6%99%AF%E8%88%87%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型智能體面臨根本性的架構問題：推理與執行糾纏、記憶揮發、不可控的行動序列。本文提出<strong>結構化認知迴圈（Structured Cognitive Loop, SCL）</strong>，一種模組化架構，將智能體認知明確分為五個階段——檢索（Retrieval）、認知（Cognition）、控制（Control）、行動（Action）、記憶（Memory），即 <strong>R-CCAM</strong>——透過結構化分解來解決這些脆弱性。</p>
+<p>SCL 的核心是 <strong>Regulation</strong>，一個常駐治理層，施加<strong>軟符號控制（Soft Symbolic Control）</strong>——在機率推理之上施加自適應符號約束——以形塑 Cognition 生成的提案。Regulation 在結構上獨立於 Control 模組：Regulation 治理 Cognition 被允許提出什麼，而 Control 是一個確定性執行引擎，對當前回合的執行歷史施加固化的硬性規則（重複調用防範、錯誤累積上限、終止判定）。兩者共同保留了神經推理的靈活性，同時恢復了經典符號系統的可解釋性與可控性。</p>
+<p>透過多步驟條件推理任務的實證驗證，我們初步證明 SCL 實現了零策略違例、消除冗餘工具調用、並維持完整的決策可追溯性——解決了 ReAct、AutoGPT 及記憶增強方法等既有智能體框架的關鍵缺口。</p>
+<p>貢獻有三：(1) 將 SCL 定位於混合智能分類學中，區別於以提示為中心與僅依賴記憶的方法；(2) 正式定義軟符號控制並與神經符號 AI 對比；(3) 推導出可信任智能體的三條設計原則——模組分解、自適應符號治理、透明狀態管理。我們提供了完整開源實作並部署了以 GPT-4o 驅動的即時旅行規劃智能體展示其應用性。</p>
+<p><strong>關鍵詞</strong>：結構化認知迴圈、Regulation、軟符號控制、LLM 智能體、混合智能、模組化架構、可解釋 AI、可信任 AI、專家系統、R-CCAM</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>人工智慧的軌跡反覆在符號控制與統計學習之間擺盪。專家系統在 1990 年代的衰退標誌了從結構化推理轉向資料驅動方法的決定性轉折，帶來了模式識別與自然語言處理的突破，但代價是放棄了明確的推理鏈、可控的決策與透明的解釋。</p>
+<p>LLM（GPT-3、GPT-4、GPT-5）大幅擴展了生成與推理能力，但基於 LLM 的自主智能體——ReAct、LangChain agents、Reflexion、AutoGPT——仍反覆出現架構脆弱性：推理、記憶與執行在 prompt 驅動的流程中糾纏。評估文獻顯示這導致記憶揮發、控制不一致、冗餘或循環的工具使用、以及難以擴展至可靠的多步驟推理。</p>
+<p>學者日益強調這些問題無法僅靠擴大模型規模解決，而需要<strong>架構層面的重新思考</strong>。Kim (2025) 指出結構化模組迴圈可透過明確分離認知功能來緩解 LLM 的脆弱性。這些主張與混合智能（將符號治理與自適應神經推理結合）的更廣泛運動呼應。</p>
+<p>這些限制的持續存在不僅是工程細節，更反映了 AI 設計的深層張力：適應性與可控性的平衡、統計泛化與結構化推理的平衡、不透明生成力與可解釋決策的平衡。在 LLM 智能體日益被應用於醫療、金融、科學發現等高風險領域之際，解決這些張力刻不容緩。</p>
+<h3 id="11-結構化認知迴圈架構">1.1 結構化認知迴圈架構</h3>
+<p>SCL 將智能體認知組織為五個不同階段——R-CCAM——各自有明確定義的職責與介面。此分離從架構根源解決糾纏問題：SCL 強制結構邊界以預防狀態漂移、啟用驗證、並維持完整審計軌跡。其核心是 <strong>Regulation</strong>，透過它實現軟符號控制：符號約束以「Metaprompt 層」的形式運作，引導而非命令 LLM 的推理過程，保留神經模型的靈活性與泛化能力，同時恢復可解釋性與可控性。Regulation 在設計上與 Control 模組明確區分——Control 是結構上獨立的確定性執行引擎。</p>
+<h3 id="12-貢獻與驗證">1.2 貢獻與驗證</h3>
+<p>三大貢獻：(1) <strong>架構創新</strong>——正式定義 R-CCAM 迴圈結構，展示模組分離如何解決當前 LLM 智能體的根本脆弱性；(2) <strong>Regulation 與軟符號控制</strong>——引入並形式化此常駐治理層，在治理層而非表徵層施加自適應符號約束；(3) <strong>附開源實作的實證驗證</strong>——SCL Core 實驗展示零策略違例、消除冗餘調用、完整可追溯性，另部署 GPT-4o 旅行規劃智能體展示實用性。</p>
+<hr />
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

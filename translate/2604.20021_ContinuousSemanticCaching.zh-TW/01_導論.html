@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>連續語意快取以實現低成本 LLM 服務（2/2） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.20021_ContinuousSemanticCaching.zh-TW.html">回 2604.20021_ContinuousSemanticCaching.zh-TW 目錄</a>　<a href="02_%E7%B7%9A%E4%B8%8A%E8%87%AA%E9%81%A9%E6%87%89%E5%AD%B8%E7%BF%92.html">下一節 →</a></p>
+</blockquote>
+<h2 id="1-導論">1. 導論</h2>
+<p>大型語言模型（LLM）已廣泛部署，ChatGPT 據報達 7 億用戶。然而 LLM 查詢代價高昂：秒級延遲、高能耗與運算成本，且隨查詢量增長而惡化。快取（caching）是自然的解方——對語意相似的查詢直接回傳已快取的回應，免除 LLM 推論。研究發現超過 30% 的 LLM 查詢彼此語意相似。</p>
+<p>然而<strong>快取設計問題</strong>（該快取哪些查詢-回應對？）構成挑戰：快取大小有限，需優先快取高頻率且高成本的查詢，但其成本與到達機率未知且隨機。現有語意快取框架均假設快取候選來自<strong>已知的有限離散集合</strong>——當 LLM 用戶與查詢多樣化後，此假設根本不可行：真實查詢存在於<strong>無限連續嵌入空間</strong>中。</p>
+<p>本文建立首個連續查詢空間下語意 LLM 回應快取的嚴格理論框架。核心技術：<strong>動態 𝜖-net 離散化</strong>搭配<strong>核嶺回歸（Kernel Ridge Regression, KRR）</strong>，使系統能正規量化估計不確定性，並將 LLM 查詢成本的部分回饋泛化到連續語意鄰域。</p>
+<p>作者提出三種設定下的演算法：(1) 預言機（已知參數）——給出 Reverse Greedy 近似保證；(2) 離線學習——CUCB-SC-Cont，用 KRR 從歷史資料估計成本；(3) 線上自適應——CLCB-SC-LS-Cont，動態建構 𝜖-net 並最小化快取切換成本。理論上證明線上演算法對連續 oracle 達成次線性（sublinear）regret，實驗顯示離線次優性改善最高 73.32%，線上 regret 降低最高 72.41%。</p>
+<h3 id="11-相關工作">1.1 相關工作</h3>
+<p><strong>低成本 LLM 服務</strong>：量化、推測解碼減少運算開銷，快取則完全消除冗餘計算。曾在 KV-cache 層級、API 請求路由層級做快取，但查詢層級的快取最直接：早期工作基於精確文字匹配（過於嚴格），後發展為語意快取（允許相似查詢共享回應）。然而現有語意快取系統仍為啟發式，假設已知查詢成本或到達分佈，不泛化到連續空間。本文首次處理連續查詢空間下具不確定性的快取。</p>
+<p><strong>基於學習的快取最佳化</strong>：LFU/LRU 為簡單線上啟發式，成本感知變體如 LEC 估計請求機率與檢索成本指導快取。作者先前工作 [19] 引入語意快取的線上自適應框架，但限於有限離散查詢集。轉向連續域根本改變了問題的數學結構——可建模為一種組合多臂 bandit（CMAB），額外引入&quot;反向回饋&quot;挑戰：從快取提供查詢時，LLM 真實執行成本不可觀測。</p>
+<h3 id="12-貢獻">1.2 貢獻</h3>
+<p>(1) <strong>連續語意快取模型</strong>（§2）：查詢從連續空間的未知機率分佈中抽取，抵達時比較快取不匹配成本與 LLM 推論成本決定來源。引入覆蓋查詢空間的 𝜖-net，劃分為 Voronoi 區域以離散化快取設計問題。(2) <strong>演算法設計</strong>：預言機設定（Reverse Greedy + 離散化保證）、離線設定（CUCB-SC-Cont + KRR 悲觀學習）、線上設定（CLCB-SC-LS-Cont + 低切換自適應）。(3) <strong>理論保證</strong>：預言機近似保證、離線次優性 gap 界、最優 𝜖 選擇、線上 regret 上界。(4) <strong>實驗評估</strong>：合成與真實資料（NQ+TriviaQA）上顯著改善。</p>
+<h2 id="2-系統模型">2. 系統模型</h2>
+<h3 id="21-llm-服務系統">2.1 LLM 服務系統</h3>
+<p><strong>查詢與嵌入</strong>：查詢（自然語言提示）從連續空間 X ⊂ ℝᵈᵉ 上的機率密度函數 𝑓 中獨立抽取。X 透過距離函數 𝑑（如嵌入空間中的歐氏距離）繼承度量結構。𝑝 ≤ 𝑑ₑ 為 X 的內在（度量）維度。</p>
+<p><strong>服務成本與部分觀測</strong>：每個查詢 𝑥 有關聯的未知期望服務成本 𝑐(𝑥) ∈ (0,1]（如延遲或運算成本）。僅當系統實際呼叫 LLM 時才觀測到成本的雜訊實現 𝐶𝑡(𝑥) = 𝑐(𝑥) + 𝜂𝑡(𝑥)，其中雜訊為條件 𝑅-sub-Gaussian。</p>
+<p><strong>語意相似度與不匹配成本</strong>：快取 M 為最多 𝑘 個查詢-回應對 {(𝑢₁, 𝑎(𝑢₁)), ...}。查詢 𝑥 到快取的距離定義為 𝑑(𝑥, M) = minᵤ∈M 𝑑(𝑥, 𝑢)，最近快取項為 𝑠(𝑥, M)。若以快取回應服務 𝑥，產生期望不匹配成本 𝜙(𝑑(𝑥, 𝑢))，其中 𝜙: ℝ⁺→[0,1] 為非遞減函數（如截斷線性：𝜙(𝑑) = min(𝜁𝑑, 1)）。直接呼叫 LLM 則無不匹配成本。</p>
+<h3 id="22-語意快取">2.2 語意快取</h3>
+<p>每回合 𝑡，查詢 𝑥 ∼ 𝑓 到達，系統選擇：快取查找（用 𝑠(𝑥, M) 服務，付出不匹配成本 𝜙(𝑑(𝑥, M))），或 LLM 查詢（呼叫 LLM，觀測並付出成本 𝑐(𝑥)）。最佳決策規則比較兩者成本。</p>
+<p><strong>𝜖-Net 離散化與 Voronoi 區域</strong>：直接在連續空間 X 上最佳化不可行。以 𝜖-net S = {𝑥₁, ..., 𝑥ₘ} ⊆ X 近似，使得任意 𝑥 ∈ X 都有某 𝑥ᵢ ∈ S 滿足 𝑑(𝑥, 𝑥ᵢ) ≤ 𝜖。S 誘導將空間分割為 𝑚 個 Voronoi 區域 𝑉ᵢ。</p>
+<p>定義各區域權重 𝑤ᵢ = ∫𝑉ᵢ 𝑓(𝑥)𝑑𝑥（即該區域的查詢機率質量）。連續空間上的期望損失為：</p>
+<p>L(M; 𝑓, 𝑐, 𝑑) = ∫X 𝑓(𝑥) min{𝑐(𝑥), 𝜙(𝑑(𝑥, M))} 𝑑𝑥</p>
+<p>離散化損失：L̂(M; S, 𝒘, 𝒄) = Σᵢ₌₁ᵐ 𝑤ᵢ min{𝑐(𝑥ᵢ), 𝜙(𝑑(𝑥ᵢ, M))}</p>
+<h2 id="3-已知參數下的近似解">3. 已知參數下的近似解</h2>
+<p><strong>NP-hardness</strong>：連續語意快取問題為 NP-hard（Lemma 3.1），是離散設定的嚴格泛化。若 X 有限且 𝑓 離散，精確還原 [19] 的設定。</p>
+<p><strong>連續到離散的近似</strong>：在 Lipschitz 連續性假設下，Lemma 3.2 證明連續目標可被離散對應項良好近似，誤差上限為 𝐿𝑔𝜖（隨覆蓋半徑線性縮放）。基於此，問題化約為 S 上的有限最佳化。</p>
+<p><strong>Reverse Greedy 演算法</strong>：從完整候選集 S 開始，逐次移除對損失貢獻最小的項目，直至剩 𝑘 個。離散化損失函數是超模（supermodular）且非遞增的。Theorem 3.3：Reverse Greedy 的解 M 滿足 L(M) − 𝛼·L(M*) ≤ [L̂(M) − 𝛼·L̂(M*)] + (1+𝛼)𝐿𝑔𝜖，其中 𝛼 為超模曲率決定的近似比。</p>
+<h2 id="4-未知參數下的離線學習">4. 未知參數下的離線學習</h2>
+<p>當成本函數 𝑐(𝑥) 與密度 𝑓 未知且須從離線資料集 {(Mₜ, 𝑥ₜ, 𝐶ₜ)}ⁿₜ₌₁ 學習時，面臨兩重挑戰：(i) 在連續域上估計 𝑐(𝑥)；(ii) 將估計不確定性納入快取最佳化。</p>
+<p><strong>CUCB-SC-Cont 演算法</strong>（Algorithm 2）：</p>
+<ol>
+<li>在觀測嵌入上構建 𝜖-net S。</li>
+<li>以經驗頻率估計各 Voronoi 區域權重 𝒘̂。</li>
+<li>僅使用 LLM 被實際呼叫的查詢子集，以 KRR 擬合成本函數，得到估計值 ĉ(𝑥) 與後驗變異數 𝜎²(𝑥)。</li>
+<li>構造悲觀成本上界 𝑐̄(𝑥) = ĉ(𝑥) + Δ(𝑥)，其中 Δ(𝑥) 為信心半徑（含 KRR 後驗標準差項）。</li>
+<li>以 (S, 𝒘̂, 𝒄̄) 調用 Reverse Greedy 計算近似最優快取。</li>
+</ol>
+<p><strong>Theorem 4.1（次優性 Gap 界）</strong>：以 ≥1−𝛿 機率，次優性 gap 上界三項分解：(i) 到達估計誤差 O(√(𝑚/𝑛))——與離散 [19] 一致；(ii) 成本估計誤差 O(𝑛^(−1/(2𝑝)))——非參數代價，比離散 O(𝑛^(−1/2)) 慢；(iii) 離散化誤差 O(𝑚^(−1/𝑑ₑ))——連續設定獨有。當查詢空間有限（𝜖=0, 𝑚=|Q|），界退化為離散 CUCB-SC 的 O(𝑛^(−1/2))——本結果是嚴格泛化。</p>
+<p>最優半徑 𝜖* = O(𝑛^(−1/(2𝑑ₑ+𝑝))) 平衡離散化與估計誤差。框架可延伸至 Matérn、Laplacian 等核（僅需更換距離-誤差公式）。</p>
+<blockquote>
+<p>接 <a href="../2604.20021_ContinuousSemanticCaching.zh-TW.html">part 2</a>。</p>
+</blockquote>
+<hr />
+<h2 id="title-連續語意快取以實現低成本-llm-服務part-25-線上自適應學習7-結論-source-httpsarxivorgabs260420021-arxiv_id-260420021-authors-baran-atalar-cmu-xutong-liu-uw-tacoma-jinhang-zuo-cityu-hk-siwei-wang-msra-wei-chen-msra-carlee-joe-wong-cmu-date-2026-04-21-note-acm-2026本部分涵蓋-57線上自適應學習實驗結論-summary-summarize260420021_continuoussemanticcaching摘要md-parent-260420021_continuoussemanticcachingzh-twmd">title: 連續語意快取以實現低成本 LLM 服務（part 2：5. 線上自適應學習–7. 結論）
+source: https://arxiv.org/abs/2604.20021
+arxiv_id: 2604.20021
+authors: Baran Atalar (CMU), Xutong Liu (UW Tacoma), Jinhang Zuo (CityU HK), Siwei Wang (MSRA), Wei Chen (MSRA), Carlee Joe-Wong (CMU)
+date: 2026-04-21
+note: ACM 2026。本部分涵蓋 §5–§7（線上自適應學習、實驗、結論）。
+summary: ../summarize/2604.20021_ContinuousSemanticCaching.摘要.md
+parent: ./2604.20021_ContinuousSemanticCaching.zh-TW.md</h2>
+<h1 id="連續語意快取以實現低成本-llm-服務22">連續語意快取以實現低成本 LLM 服務（2/2）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

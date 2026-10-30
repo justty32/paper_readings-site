@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_引言 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.19576_LibraryDrift.zh-TW.html">回 2605.19576_LibraryDrift.zh-TW 目錄</a>　<a href="02_%E8%BF%BD%E8%B9%A4%E7%B4%9A%E8%A8%BA%E6%96%B7.html">下一節 →</a></p>
+</blockquote>
+<h2 id="1-引言">1. 引言</h2>
+<p>自我演化技能庫（self-evolving skill libraries）由 Voyager（Wang et al., 2023）首創：讓 frozen LLM 代理在不更新權重的前提下持續累積可重複使用的程序性知識。其承諾是複利效應——每個已解決的任務沉積一個技能，加速未來任務的執行。</p>
+<p>然而 SkillsBench（Li et al., 2026）揭示了一個驚人的差距：<strong>LLM 編寫的技能僅帶來 +0.0pp 增益</strong>（相對於無技能基準），而人類策展的技能帶來 +16.2pp。近期一份針對 20+ 此類系統的綜述（Zhang et al., 2026a）指出，生命週期管理（版本控制、衝突檢測、淘汰）「幾乎完全被忽略」。庫在成長，但代理並未進步。</p>
+<p>本文識別出一個具體的、可診斷的故障模式來解釋此差距：<strong>函式庫漂移（library drift）</strong>。隨著技能在無品質關卡下持續累積，庫會退化檢索精度、注入陳舊或有害引導、最終使代理的實際表現停滯或跌破無技能基準。此故障是<strong>沉默的</strong>：終端任務指標緩慢下降，沒有顯式錯誤訊號，因此追蹤級診斷至關重要。</p>
+<p>雖然本文在單次呼叫的程式碼任務上展示漂移，但其機制對多步驟代理更為嚴峻——單一個誤導性注入會通過下游工具呼叫與規劃決策而複合放大。</p>
+<p>本文做出三項貢獻：</p>
+<ol>
+<li><strong>故障定義與可複現觸發器（§3）</strong>：操作性定義庫漂移，並展示兩個框定此故障的消融實驗——一個確立無技能地板（A1, +0.002），一個通過過早退休觸發主動傷害（A4, −0.019），為任何系統提供最小可複現案例。</li>
+<li><strong>超越最終分數的追蹤級診斷（§4）</strong>：一個僅附加的證據日誌，包含逐技能貢獻分數、歸因判決與 Router 參與指標，可在漂移到達聚合 pass@1 之前、以逐技能粒度暴露之。</li>
+<li><strong>經驗證修復與記錄取捨的配方（§5）</strong>：最小治理配方 Ratchet——結果驅動退休、有界 active-cap、meta-skill 寫作先驗——將 held-out pass@1 提升 +0.328。八組消融實驗分解哪些機制是 load-bearing，哪些可安全移除。</li>
+</ol>
+<h2 id="2-背景與相關工作">2. 背景與相關工作</h2>
+<p><strong>與災難性遺忘的類比</strong>：庫漂移是 frozen-weight 版本的災難性遺忘。在權重更新系統中，遺忘發生於新梯度覆蓋舊表徵（Kirkpatrick et al., 2017）；庫漂移中，持久技能 artifacts 取代神經權重成為退化基質，但同樣的根本問題成立：除非生命週期管理主動保護有用知識，累積新資訊會退化系統先前表現。EWC 在參數空間加入正則項，本文的修復在技能空間加入退休與容量上限。</p>
+<p><strong>自我演化技能庫</strong>：Voyager（Wang et al., 2023）在 Minecraft 中開創持續成長的可執行的技能庫；ExpeL（Zhao et al., 2024）從軌跡提取文本洞察但缺乏結果驅動退休；AutoManual（Chen et al., 2024）編譯指導手冊；CASCADE（Huang et al., 2025）配對 meta-skill 與累積創造；AutoSkill（Yang et al., 2026）加入版本控制但不基於逐任務貢獻退休。近期並行工作推進正交軸：EvolveR（Wu et al., 2025）將軌跡蒸餾為策略原則；Trace2Skill（Ni et al., 2026）從追蹤池誘導技能；Strategy Genes（Wang et al., 2026）附加失敗歷史為元數據。一份 2026 年針對 20+ 此類系統的綜述指出生命週期管理「幾乎完全被忽略」——沒有任何系統將結果驅動退休與有界 active-cap 配對，而這正是本文消融分析所識別的防止漂移的 load-bearing 機制。</p>
+<p><strong>診斷訊號</strong>：LLM-as-judge（Zheng et al., 2023）報告與人類偏好的一致性超過 80%；本文將其擴展為從封閉標籤集（HELPED/HURT/NEUTRAL/INAPPLICABLE）產生的逐技能歸因判決，要求 ≥3 個共享正則模式的失敗才能誕生任何技能。這使診斷在聚合指標反映之前就能發現漂移——是早期預警系統而非事後評估器。</p>
+<p><strong>代理故障模式</strong>：先前工作分類了工具使用（Schick et al., 2023）、規劃（Yao et al., 2023）與自我修正（Shinn et al., 2023; Madaan et al., 2023）的故障模式。庫漂移是一種獨特的故障模式，特定於跨任務持久記憶：它僅在累積的 artifacts 通過檢索瓶頸退化未來表現時出現。</p>
+<h2 id="3-函式庫漂移定義與觸發器">3. 函式庫漂移：定義與觸發器</h2>
+<h3 id="31-操作性定義">3.1 操作性定義</h3>
+<p>函式庫漂移發生於自我演化技能庫的累積 artifacts 使代理的期望表現低於其無技能基準。令 S_t 為第 t 輪的 active 技能集，p₀ 為無技能通過率。漂移表現為：</p>
+<p>E[pass@1 | S_t] &lt; E[p₀]      （式 1）</p>
+<p>關鍵洞察：即使每個技能單獨看似合理，漂移仍可發生——故障是系統性的，源於庫層面的檢索稀釋與陳舊注入。</p>
+<h3 id="32-機制">3.2 機制</h3>
+<p>庫漂移以三個複合階段進行：</p>
+<ol>
+<li><strong>無品質訊號下的累積</strong>：技能由失敗模式誕生，但從未根據結果驗證。邊際或有害技能隨每輪稀釋檢索池。</li>
+<li><strong>檢索退化</strong>：Router 以表面相似度選取技能。隨著庫無界增長，近似重複或陳舊的技能擠出有用的技能，在固定召回率下降低精度。</li>
+<li><strong>沉默注入傷害</strong>：陳舊技能被注入 Solver prompt 時主動誤導，但不產生顯式錯誤；Solver 只是更頻繁失敗，與固有的任務難度無法區分。</li>
+</ol>
+<p>實務上，這三個階段根據治理強度產生三種可區分的漂移子模式：</p>
+<ul>
+<li><strong>停滯（stagnation）</strong>：技能累積但未能到達 Solver（無路由訊號，無學習；A1 複現此地板）</li>
+<li><strong>膨脹（bloat）</strong>：無界增長使檢索退化，直到注入變為有害（無 cap 系統的故障模式（Wang et al., 2023; Zhao et al., 2024）；在 Default 中由 active-cap 防止）</li>
+<li><strong>侵蝕（erosion）</strong>：過度激進的治理摧毀有用技能的速度快於累積速度，使庫崩塌（A4 僅保留 2 個 active 技能）</li>
+</ul>
+<h3 id="33-可複現觸發器">3.3 可複現觸發器</h3>
+<p>本文以兩個消融實驗展示庫漂移，均在 MBPP+ hard-100（Liu et al., 2023）上以 Claude Opus 4.7 執行 100 輪：</p>
+<p><strong>A1（無技能注入）</strong>：Router 強制選 NONE——整條管線（合成器、批評者、策展者）仍執行，但無任何技能注入 Solver prompt。結果：+0.002（無技能地板）。隔離了路由效應：技能創造本身、沒有注入，不產生增益。</p>
+<p><strong>A4（嚴苛退休）</strong>：證據地板 Nmin 從 100 降至 20；閾值 τ 收緊至 0.0。結果：−0.019，跌破無技能基準。僅有 20 次試驗時，Hoeffding 偏差 ϵ ≈ 0.44；真實貢獻在 [−0.44, 0] 範圍內的技能可能在運氣不佳時被提前退休，而真正有害的技能可能在累積足夠證據前生存。庫崩塌至 2 個 active 技能，Router 的 18.9% 參與率意味著它很少注入，但當注入時，倖存技能造成傷害。此效應在三組種子間一致（−0.005, −0.027, −0.025），確認嚴苛退休可靠地觸發侵蝕。A4 是一個警示性的負面結果：治理並非均勻有益——基於不充分證據（Nmin=20 vs Default 的 100）採取行動，主動傷害效能而非僅未能幫助。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

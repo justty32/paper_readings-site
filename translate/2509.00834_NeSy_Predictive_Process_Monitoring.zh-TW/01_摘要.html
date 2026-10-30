@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2509.00834_NeSy_Predictive_Process_Monitoring.zh-TW.html">回 2509.00834_NeSy_Predictive_Process_Monitoring.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>本文處理業務流程管理（BPM）中的<strong>後綴預測（suffix prediction）</strong>，提出整合資料驅動學習與時序邏輯先驗知識的<strong>神經符號預測過程監測（PPM）</strong>。近期方法用深度模型做後綴預測，但因訓練時缺乏顯式整合領域知識，常連基本邏輯約束都不滿足。我們提出把<strong>有限軌跡線性時序邏輯（LTLf）<strong>納入自迴歸序列預測器</strong>訓練過程</strong>的新方法：定義一個用 <strong>LTLf 語意軟近似 + Gumbel-Softmax</strong> 的<strong>可微邏輯損失函數</strong>，可與標準預測損失並用，確保模型學會生成<strong>既準確又邏輯一致</strong>的後綴。三個真實資料集顯示本法提升後綴預測準確度與時序約束合規。我們另引入邏輯損失的兩種變體（<strong>局部</strong>與<strong>全域</strong>），並在噪聲、真實設定下展示其效。雖在 BPM 脈絡下開發，框架適用任何符號序列生成任務，推進 NeSy AI。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>PPM 是 BPM 中「基於歷史事件資料預測進行中流程實例的未來事件/結果」的領域。<strong>後綴預測</strong>：給流程至當前步產生的前綴，補全未來事件序列（後綴）→ 利資源分配與決策。</p>
+<p>純資料驅動模型缺領域知識；<strong>領域知識</strong>能刻畫執行脈絡（如客戶特定情境/季節性工作流）、應對 concept drift（流程行為隨時間演化）、<strong>過濾資料噪聲</strong>提升穩健與準確。</p>
+<p>本文把 LTLf 先驗知識納入後綴預測深度生成模型的<strong>訓練</strong>。既有知識約束序列生成多為<strong>測試時推理</strong>；唯一訓練時整合的 <strong>STLnet</strong>（用 student-teacher 把 STL 規格納入訓練）針對連續時間 STL，作者嘗試把符號公式翻成 STL 再用 STLnet，但<strong>記憶體爆炸</strong>（STL 時序運算子作用於稠密時間區間）。</p>
+<p><strong>貢獻</strong>：把 LTLf 表達的流程性質符號知識納入神經序列預測器的<strong>訓練</strong>——定義知識的可微對應 + 用 <strong>Gumbel-Softmax</strong> 可微取樣，組成可與任何損失並用的<strong>邏輯損失</strong>，使網路同時學會「像訓練資料」與「合規時序規格」。實驗顯示：訓練時納入知識使預測後綴與目標的 Damerau-Levenshtein（DL）距離更低、約束滿足率顯著更高。本文擴展先前工作：更嚴謹的形式化、區分 local/global guidance、真實資料集的廣泛評估。</p>
+<h2 id="2-背景與符號">2. 背景與符號</h2>
+<ul>
+<li><strong>符號序列（trace）</strong>：每元素是有限字母表 A 的符號；可<strong>類別接地</strong>（one-hot）或<strong>機率接地</strong>（A 上的機率分布向量）。</li>
+<li><strong>LTLf（有限軌跡線性時序邏輯）</strong>：命題邏輯 + 時序運算子（Next、Until；衍生 Weak Next、Release、Globally G、Eventually F）。採 BPM 慣例的<strong>互斥假設</strong>（每步恰一符號為真）。任一 LTLf 公式可譯為<strong>確定有限自動機（DFA）</strong>:trace 被接受 ⟺ 滿足公式。範例：「a 終將被 b 接續」＝ G(a→F b)（Declare 的 Response 約束）。</li>
+<li><strong>深度自迴歸模型與後綴預測</strong>：用前面元素預測下一個（RNN/Transformer 等）；給前綴貪婪/beam/取樣選下一活動，直到 EOT 或達最大步。</li>
+</ul>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="31-問題形式化">3.1 問題形式化</h3>
+<p>自迴歸神經模型估計「給前序事件下下一事件機率」（model-agnostic）。一般用監督損失 L_task（負對數似然）訓練模仿資料。本文假設流程某些性質已知、可在訓練時注入，表為字母表上的 <strong>LTLf 公式</strong>。目標：讓自迴歸器生成的語言<strong>嚴格落在公式接受的字串語言內</strong>。但網路語言無界（軟分配），故目標改為<strong>最大化取樣軌跡滿足規格的機率</strong>。精確計算需枚舉所有最大長度後綴（指數級）→ 設計快速可微近似當訓練目標。</p>
+<ul>
+<li>提出兩種邏輯損失：<strong>局部（活動級）L_LLL</strong> 與<strong>全域（軌跡級）L_GLL</strong>。GLL 永遠適用但較貴（訓練時需生整條後綴）。</li>
+<li>合規一般只能在<strong>完整軌跡</strong>上評估（部分預測滿足/違反不保證最終亦然）。但某些公式（如 safety）譯成 DFA 後含 <strong>failing state</strong>（從此不可達接受態）；進入即不可逆違反 → 局部損失利用此做逐步引導（但僅限有此結構的公式；預處理階段總會加一個處理 EOT 的 failing state）。</li>
+<li>組合：<strong>L = (1−λ)·L_task + λ·L_logic</strong>（λ∈[0,1]）。</li>
+</ul>
+<h3 id="32-局部引導local-guidance">3.2 局部引導（Local Guidance）</h3>
+<p>公式可永久違反時，DFA 含 failing states F。目標：最小化「下一預測活動不可逆違反知識」的機率。對 ground-truth trace 每步，考慮下一符號分布，對每個符號（含 EOT）模擬 DFA 到達態，若屬 F 則累加其機率 → 得「永久違反機率」（式 12）。<strong>局部邏輯損失 LLL</strong>＝最小化此機率（式 13，各步有效質量負對數的平均）。軌跡三類：(i) 不可逆違反、(ii) 終於非接受非失敗態（不滿足）、(iii) 終於接受態（滿足）。LLL 只針對 (i)；故零損失仍可能 (ii) 違反，但實務上 LLL 對許多資料集仍高效。</p>
+<h3 id="33-全域引導global-guidance">3.3 全域引導（Global Guidance）</h3>
+<p>一般 LTLf 不一定能永久違反 → 無法逐步監督，只能對整條生成軌跡做<strong>全域</strong>監督。<strong>全域邏輯損失 GLL</strong> 適用任何公式：直接用<strong>蒙地卡羅</strong>估計目標機率——按自迴歸器分布取樣完整軌跡集，算經驗平均合規（式 14）。但取樣軌跡是機率性的（每步機率分布）→ 用兩關鍵組件：</p>
+<ol>
+<li><strong>Gumbel-Softmax 取樣</strong>：訓練時生可微的近 one-hot 後綴；</li>
+<li><strong>DeepDFA</strong>：把時序邏輯編成遞迴層，可微地算機率軌跡與知識的合規機率。
+GLL 即最小化「整條軌跡滿足先驗知識」（式 16）。</li>
+</ol>
+<h3 id="34-局部-vs-全域進一步討論">3.4 局部 vs 全域進一步討論</h3>
+<ul>
+<li><strong>訓練程序</strong>：LLL 用 <strong>teacher forcing</strong>（餵真前序 token，梯度穩定低變異）;GLL 用<strong>自迴歸訓練</strong>（餵模型自己預測，損失是模型生成前綴的期望，較吵雜、對早期錯誤敏感；蒙地卡羅取樣求更穩）。teacher forcing 高效穩定；自迴歸訓練更匹配推理但難優化。</li>
+<li><strong>性質範圍</strong>：Declare 約束有 <strong>safety</strong>（某行為絕不發生 → DFA 有 failing state）與 <strong>liveness</strong>（條件終將滿足 → 無內在 failing state，只在終止時判違反）。LLL 利用 failing state 做即時回饋 → <strong>最適 safety</strong>;liveness 唯一可用的 failing state 是預處理引入的（只能經 EOT 到達）→ 違反訊號只能在軌跡末給，類似全域引導。（圖 1：Absence＝safety 有 failing state、Existence＝liveness 無。）</li>
+</ul>
+<h3 id="35-知識預處理與張量化離線一次">3.5 知識預處理與張量化（離線一次）</h3>
+<p>LTLf →（<strong>ltlf2DFA</strong>）DFA（最壞雙指數但實務常高效；<strong>Declare 公式產多項式大小 DFA</strong>）。為事件日誌中所有活動符號加 self-loop（不受約束的符號可被處理而不影響接受）。擴充處理 <strong>EOT</strong>：加 success 終端態 q_acc 與 failure 終端態 q_fail（吸收態）。算 failing states（僅 LLL 需）。衝突知識 → 空自動機無接受態 → 兩邏輯損失為常數不可降 → 只 task loss 驅動學習。<strong>張量化</strong>：用 DeepDFA 把 DFA 轉成神經層（轉移矩陣 T、初始向量 s0、接受向量 sf 的機率接地版）。</p>
+<h3 id="36-可微取樣">3.6 可微取樣</h3>
+<p>Gumbel-Softmax（溫度 τ 控銳度，τ→0 趨 one-hot）生可微完整後綴 → 評估合規。
+（含 running example 逐步算 LLL 與 GLL 的數值示範。）</p>
+<h3 id="37-ppm-之外的應用與局限">3.7 PPM 之外的應用與局限</h3>
+<p>後綴預測只是離散序列生成的特例 → 框架通用（NLP 語言生成、神經機器翻譯、tokenize 後的連續域）。大規模挑戰與緩解：<strong>大詞彙</strong>（把規格無關符號映成單一特殊 token）、<strong>長序列</strong>（分段、概念級詞彙）、<strong>大自動機/複雜規格</strong>（Declare 多項式 DFA、離線一次、把規格拆成子公式合取各自 DFA 平行監測）。PPM 規模適中（活動 10–50、軌跡長 10–100、自動機 6–13 態）故當前實驗不需這些。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2207.01780_CodeRL.zh-TW.html">回 2207.01780_CodeRL.zh-TW 目錄</a>　<a href="02_CodeRL.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>程式合成（program synthesis）／程式碼生成旨在產出滿足問題規格的程式。近期以大規模預訓練語言模型（LM）的做法成果可觀，但有關鍵局限：它們多半只用「自然語言題目描述—標準答案程式」成對資料，走標準的監督式微調，<strong>大量忽略題目規格中重要而有用的訊號，例如單元測試（unit tests）</strong>，因而在解決複雜未見過的程式題時表現不佳。為此我們提出 <strong>CodeRL</strong>：一個結合預訓練 LM 與深度強化學習（RL）的程式合成新框架。訓練時，我們把生成程式碼的 LM 當作 <strong>actor 網路</strong>，並引入一個 <strong>critic 網路</strong>，訓練它<strong>預測生成程式的功能正確性</strong>、給 actor 提供<strong>密集回饋訊號</strong>；推論時，引入一套帶 <strong>critical sampling</strong> 策略的新生成流程，讓模型能依 example 單元測試與 critic 分數的回饋<strong>自動重生程式</strong>。骨幹方面，我們擴充 CodeT5 的 encoder-decoder 架構（更強的學習目標、更大的模型、更好的預訓練資料）。本法不僅在高難度 APPS benchmark 上刷新 SOTA，也在較簡單的 MBPP 上展現強大的零樣本遷移能力並創新高。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>程式合成是設計並建構一支滿足問題規格的可執行程式（圖 1 右為一例）。能自動依人類需求生成程式的 AI 將深刻改變程式工具與工作方式。近期做法用 Transformer 預訓練 LM 把程式合成當 seq2seq 任務（輸入自然語言題目、輸出程式）；在基礎題上成果亮眼，但在競賽級複雜題上仍常失敗。</p>
+<p>問題有兩大局限：</p>
+<ul>
+<li><strong>其一，只用 next-token prediction（NTP）目標</strong>：以 teacher-forcing 最大化下一個標準 token 的概似度，測試時改以先前「自己取樣的」token 為條件生成，會累積誤差；而 BLEU 這類 token 匹配分數雖適合部分程式補全，卻<strong>無法衡量完整程式的功能正確性</strong>。</li>
+<li><strong>其二，沒利用單元測試訊號</strong>：單元測試直接決定程式功能對錯，但現有做法在優化與生成時都忽略它。優化時可把單元測試納入學習目標；推論時 example 單元測試常是題目的一部分，可用來改進輸出。相關做法（如 AlphaCode）僅用 example test 過濾排序最終輸出，<strong>不允許模型據初次測試結果去改寫程式</strong>。</li>
+</ul>
+<p><strong>CodeRL 的做法</strong>：以 actor-critic RL 優化預訓練 LM。把 LM 當 actor，從中取樣程式（含正確與錯誤的），交給一個訓練成<strong>誤差預測器</strong>的 critic 評估功能正確性；用 critic 的 token 級 hidden state 估計輸出 token 的價值／分數，再用這些依 critic 分數加權的合成樣本微調 actor。推論時新增生成流程：對通過 example test 的樣本用 critic 選子序列當「種子」重生新程式；對失敗程式用 critic 選最可能通過者，連同編譯器錯誤資訊送入<strong>程式修復模組</strong>——形成「改進＋修復」的雙策略。骨幹則把 CodeT5 擴為更強的基礎模型。實驗（§4）在 APPS 達 SOTA（pass@1 &gt; 2%、pass@5 &gt; 6%、pass@1000 &gt; 20%）；因 RL 法與模型無關，套到多種大模型都一致增益；MBPP 零樣本 63.0% pass@80 勝過微調 GPT-137B 的 61.4%。並釋出改良版 CodeT5-large（770M）。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p><strong>2.1 程式合成</strong>：早期以輸入輸出範例為規格，方法限於機率法或簡單程式概念；深度學習興起後改用神經模型歸納程式。近期輸出擴到通用語言（Python 等）、規格用完整英文描述，並大量引入預訓練 LM（CodeT5、Codex、GPT-J 等）。儘管基礎題與初步商用（如 Copilot）成果佳，面對 Codeforces 競賽級難題仍表現不佳。另一支「視覺情境的程式合成」（逆向圖學、場景／形狀程式、以 RL 渲染圖像）則限於為視覺物件定義的領域專用語言；本文聚焦從自然語言題目生成 Python 等通用語言程式。</p>
+<p><strong>2.2 序列生成的強化學習</strong>：RL 常被用來優化不可微的任務指標（如 BLEU、ROUGE、CIDEr）。但在程式合成中，token 相似度與功能正確性的相關性極低，優化目標難定；作者主張在<strong>優化與推論兩階段都利用單元測試訊號</strong>。與本文較近的是 RL 式程式合成與執行導引合成，但它們多限於特定應用領域的語言。</p>
+<p><strong>2.3 程式補全</strong>：程式補全依部分程式（如函式簽名、留空碼）生成短片段建議，常以 reranking 或結構化預測改善。相較之下，程式合成需<strong>從零生成完整程式</strong>並以單元測試驗證功能；本文雖聚焦從題目描述做合成，但在生成流程中借用了類似程式補全的策略來改進輸出。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.07642_Helix_Evolutionary_RL_OpenEnded.zh-TW.html">回 2603.07642_Helix_Evolutionary_RL_OpenEnded.zh-TW 目錄</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>具推理能力的 LLM 在複雜科學問題上展現潛力，但這類任務天生 domain-specific、unbounded、open-ended，需在龐大彈性的解空間中探索。現有方法（純學習式或靠精心工作流）常受限於探索效率低、泛化差。我們提出 <strong>HELIX</strong>——<strong>H</strong>ierarchical <strong>E</strong>volutionary reinforcement <strong>L</strong>earning with <strong>I</strong>n-context e<strong>X</strong>periences（帶 in-context 經驗的階層演化強化學習）。HELIX 有兩項關鍵新意：(i) 一個<strong>多樣又高品質的候選解池</strong>，透過 in-context learning 拓寬探索；(ii) <strong>強化學習做迭代策略精煉</strong>，逐步提升解品質。此協同促成更先進解的發現。在圓堆積任務上，HELIX <strong>僅用 14B 模型達到 SOTA，半徑和 2.63598308</strong>；在標準 ML benchmark 上，<strong>平均 F1 超過「配精心工程化 pipeline 的 GPT-4o」5.95 分</strong>（Adult、Bank Marketing）。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 解複雜科學問題（符號回歸、分子生成、難數學最佳化）是熱門方向。但這類問題有三項內在特性：<strong>domain-specific</strong>（各任務環境與約束獨特）、<strong>open-ended</strong>（需探索龐大彈性解空間）、<strong>unbounded</strong>（常無已知或保證的全域最優）。對應地，強 LLM 須具三能力：(1)<strong>從經驗學習</strong>（用過往試驗的回饋做任務特定的策略適應）；(2)<strong>平衡品質與多樣性</strong>（維持多樣 population 徹底探索）；(3)<strong>站在巨人肩上探索</strong>（迭代地在既有高品質解上擴展）。</p>
+<p>現有兩派皆缺：<strong>後訓練派</strong>（SFT、RLVR；AlphaCode、DeepSeek-R1）強於 code/math，但常 entropy collapse、罕能超越基模能力，稀疏獎勵更難發現根本性新解。<strong>工作流派</strong>（LLM×GA、LLaMEA、prompt 演化策略）在窄任務有效，但高度敏感於工作流設計、靠靜態預訓練知識、難複用過往發現。</p>
+<p>HELIX：(1) 用 RL 的 reward 訊號更新 LLM 策略逐步提品質，模型探索出的候選解組成演化 population；(2) 仿多目標演化演算法 <strong>NSGA-II</strong>，用 diversity 與 reward 雙目標排序選樣——多樣性以預訓練語言嵌入模型 + KNN 估計；(3) 把 population 中最佳解構成的 prompt 餵回模型「站在巨人肩上」生成新解。以 in-context learning 範式無縫統一演化學習與強化學習。</p>
+<p>20 任務 × 5 類實驗中，HELIX 對強 task-specific baselines 與 GPT-4o 等先進專有模型，<strong>17 個任務上表現更優</strong>；消融確認各組件關鍵。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>LLM 的強化學習</strong>：RLHF 對齊偏好、RLVR 提推理/數學/coding，可激發工具使用、資訊檢索等新能力。代表方法 <strong>GRPO</strong>（群組內標準化 reward），變體 DAPO、Dr.GRPO 改進取樣與 advantage 估計。但訓練常<strong>熵與多樣性下降</strong>、阻礙探索；KL-Cov 試圖只對高協方差 token 加 KL 懲罰以保熵。然而對複雜科學問題，這些<strong>無記憶 RL（同問題取樣 context 固定）難利用已發現解、難在先前探索上累積</strong>。</li>
+<li><strong>演化演算法</strong>：以「基因」表解、隨機突變探索空間。AlphaEvolve 把程式碼當基因、用 LLM 驅動突變，成功整合 LLM agent 與 EA；後續用於 CUDA 優化、藥物發現等。但<strong>通常需高度問題特定的工作流邏輯與 prompt 設計</strong>，限制泛化。</li>
+</ul>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="31-概覽">3.1 概覽</h3>
+<p>HELIX 是融合 RL 與演化搜尋的混合框架，三模組互補：(1) RL 框架依可驗證 reward 更新策略參數（從經驗學習、提升推理）；(2) 多目標演化機制平衡解品質與多樣性（population 同時保留高表現與多樣候選）；(3) in-context 機制把多筆過往試驗納入 prompt（在既有解上擴展、站在巨人肩上）。</p>
+<p>把任務視為「解空間＝程式碼」的最佳化 <code>max_{s∈𝒮} R(s)</code>。LLM 策略 π_θ 對 s_t 輸出編輯動作 a_t → s_{t+1}=T(s_t,a)。目標 <code>max_θ E_{s_t~𝒫_t, a_t~π_θ(·|q,s_t)}[R(s_t,a_t)]</code>，用 GRPO 更新。候選池 <code>𝒫_t = SelectTop_{NSGA-II}(∪_{s=0}^{t} 𝒟_s)</code>。</p>
+<h3 id="32-與演化搜尋對齊的策略最佳化">3.2 與演化搜尋對齊的策略最佳化</h3>
+<p>隨演化展開，更新模型參數讓策略從成敗試驗學習、產更高品質解、動態適應演化搜尋帶來的分布漂移。開放式科學任務無標準答案、只有稀疏 reward，RL 特別合適。採 <strong>GRPO</strong>：給 prompt q 生成 G 條 rollout，目標函數含 token 級策略比、群組標準化 advantage Â（reward 減群均除群標準差）、clip、對參考策略的 KL 懲罰 β。</p>
+<p>prompt 構造 <code>q = ConstructPrompt({p} ∪ {s_t,R(s_t),F(s_t)} ∪ {f^(k)(s_t),R,F}_{1≤k&lt;n})</code>——p 是問題描述、f^(k)(s_t) 是 s_t 在 <strong>lineage tree（譜系樹，解迭代精煉的歷史軌跡）</strong> 上第 k 個祖先、F 是 evaluator 的輔助回饋。以「沿譜系的回饋與 reward 記憶」構造 prompt，確保模型有效探索挑戰性解空間。</p>
+<h3 id="33-平衡品質與多樣性的演化機制">3.3 平衡品質與多樣性的演化機制</h3>
+<p>無界研究任務須探索多個有前景方向，故最佳化要平衡 <strong>quality</strong>（高 reward 解，作精煉起點）與 <strong>diversity</strong>（維持廣探索）。設計成多目標最佳化：用 <strong>NSGA-II</strong> 在 reward 與 diversity 的 Pareto 前緣選高品質且多樣樣本。</p>
+<p><strong>多樣性度量</strong>：把每個解正規化成標準程式碼格式、以預訓練嵌入模型編碼成 E(s)；<code>Div(s_i) = 1 − (1/k)Σ_{j∈N_k(i)} cos(E(s_i),E(s_j))</code>（與 k 個最近鄰的平均餘弦相似度補數）。值越高越獨特。</p>
+<p><strong>NSGA-II 選擇</strong>：以 R(s) 與 Div(s) 把候選映到二維目標空間；非支配排序分層（s_a 支配 s_b ⟺ 兩目標皆 ≥ 且至少一嚴格大），再用 crowding-distance 在各前緣內選分布良好的代表樣本。結合非支配排序與多樣性保留，使 population 同時高 reward 又多樣——持續利用有前景解、同時跨多條解軌跡維持探索。</p>
+<h2 id="4-實驗">4. 實驗</h2>
+<p><strong>任務（5 類，皆 unbounded/open-ended/domain-specific）</strong>：(1) ML——Adult Income、Bank Marketing、Boston Housing（找/組合 ML 演算法）；(2) 物理模擬——多物理場幾何結構設計最佳化（高自由度、少全域最優）；(3) 圓堆積——最大化形狀內圓半徑和（多可行排列、目前無證全域最優）；(4) 函數最小化——寫程式找全域最小；(5) 符號回歸——對噪聲資料猜底層運算式。</p>
+<p><strong>模型</strong>：DeepSeek-R1-Distill-Qwen 家族；主結果 14B（效率/性能平衡最佳），物理模擬用 32B。</p>
+<p><strong>baselines</strong>：Direct Prompt（測試時擴展，多樣本取最佳，作基模上界）；OpenEvolve（AlphaEvolve 的開源實作，多 LLM 角色演化程式碼）；各任務 task-specific 方法。</p>
+<h3 id="42-主結果table-1皆報所有嘗試中最佳值">4.2 主結果（Table 1，皆報所有嘗試中最佳值）</h3>
+<ul>
+<li><strong>ML</strong>：Adult Income 82.07（↑；勝 LightGBM 80.36、RRL 80.72、GPT-4o+pipeline 76.91）；Bank Marketing 80.65；Boston Housing RMSE 1.747↓（baselines 2.937～3.966）；Transparent Conductors 0.049↓（最佳）。</li>
+<li><strong>圓堆積</strong>：14B 達 SOTA 半徑和 <strong>2.63598308</strong>。</li>
+<li>物理模擬（如 Inductor 等）HELIX 亦領先。整體 <strong>17/20 任務最佳</strong>；ML 平均 F1 超 GPT-4o（配精心 pipeline）<strong>5.95 分</strong>。</li>
+<li>消融確認 RL、NSGA-II 多樣性選擇、in-context 譜系三者互補關鍵。</li>
+</ul>
+<h2 id="結論">結論</h2>
+<p>成功解這些無界開放式任務顯示：<strong>迭代、diversity-aware 的探索</strong>可為其他科學工程問題提供有用洞見。HELIX 把 RL 的品質精煉、EA 的多樣性保持、in-context 的經驗複用統一於一框架，是 AlphaEvolve 路線的「可訓練策略」升級。（附錄另含 RL-EA 整合的方法論挑戰、GRPO 與 HELIX 的漂移-擴散/選擇理論分析、各任務 prompt 與模型輸出範例。）</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

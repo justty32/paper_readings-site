@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_技能與策略共演化 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2607.13854_SPyCE.zh-TW.html">回 2607.13854_SPyCE.zh-TW 目錄</a>　<a href="02_%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">← 上一節</a>　<a href="04_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="33-技能與策略共演化">3.3 技能與策略共演化</h2>
+<p>在此階段，策略優化在每個訓練步上對技能條件化的 rollout 進行，而技能庫每 N 步定期演化。此設計促成了策略與技能庫之間的閉環共演化：檢索到的技能為策略改進提供結構化引導，而改進的策略反過來產生更高品質的 rollout，從中可以蒸餾出更好的技能。</p>
+<h3 id="331-階層式技能檢索">3.3.1 階層式技能檢索</h3>
+<p>我們採用與工作流技能和執行技能階層對齊的兩階段檢索程序。核心思想是首先檢索高層次的工作流先驗，然後以識別出的瓶頸為條件檢索任務相關的執行技能。</p>
+<p>給定任務 T = (q, I)，actor model 首先生成粗略的瓶頸查詢 b̃_T = MLLM(q, I)。此查詢隨後用於檢索瓶頸描述在嵌入空間中最相似的 top-K 工作流技能：H_T^top = TopK_{h=(b,w)∈H} sim(b̃_T, b)。Actor model 然後以檢索到的工作流先驗為條件，進一步將任務分解為細粒度的局部瓶頸描述子：</p>
+<p>B = {b^(1), ..., b^(M)} = π_θ(q, I, H_T^top)</p>
+<p>每個描述子 b^(m) 指定一個局部視覺障礙，如視角不匹配、小目標或密集文字。對於每個描述子，通過與執行技能庫 K 中技能的觸發條件比較，檢索最佳匹配的執行技能：</p>
+<p>k^{*(m)} = arg max_{k=(c,u,e)∈K} cos( E_L(b^(m)), E_L(c) )</p>
+<p>若最佳相似度分數低於門檻 τ_sim，則丟棄該描述子。保留的執行技能集為 K_T^L = { k^{*(m)} | max_{k∈K} S_L(k | b^(m)) ≥ τ_sim, b^(m) ∈ B }。策略然後以檢索到的工作流技能和執行技能兩者為條件選擇動作：</p>
+<p>a_t ∼ π_θ( a_t | o_{≤t}, q, I, H_T^top1, K_T^L )</p>
+<p>其中 o_{≤t} = (o_0, ..., o_t) 表示觀察歷史。產生的技能條件化軌跡使用第 3.1 節定義的獎勵進行評分，並以 GRPO 目標進行優化。此階層式檢索以可重用的工作流層級和執行層級先驗引導 rollout 生成，同時改善策略優化的效率和穩定性。</p>
+<h3 id="332-線上技能演化">3.3.2 線上技能演化</h3>
+<p>從早期較弱的 rollout 中誘導出的技能可能隨著策略改進而變得不夠優化。因此，我們使用新收集的高品質 rollout 定期進行技能庫演化。每經過 N 個策略步，開啟一個演化窗口（索引為 e）。不是從所有成功軌跡更新庫，而是僅保留按 GRPO 相對優勢 A(τ) 排名的頂部軌跡，這保留了多樣但高品質的互動模式以供後續技能演化。對於工作流技能，令 T_e^wf 表示窗口 e 中保留的頂部 ρ_wf 成功 rollout。使用 MLLM_dk 蒸餾新的工作流技能候選：</p>
+<p>ĥ_e = (b̂_e, ŵ_e) = MLLM_dk(q, I, T_e^wf)</p>
+<p>其中 b̂_e 是更新後的瓶頸描述，ŵ_e 是對應的工作流草圖。候選隨後使用第 3.2 節的整併規則合併到或新增至工作流技能庫 H。執行技能以相同方式從保留的頂部 ρ_ex 成功 rollout 中蒸餾。為控制庫增長，在執行技能庫超過其容量時進一步修剪最無用的條目。具體而言，按實證成功率對執行技能進行排序並移除排名最低者，其中執行技能 k 的實證成功率定義為 SR(k) = N_success(k) / max(N_retrieval(k), 1)。此定期演化封閉了迴圈：更強的策略產生更高品質的 rollout，從而產生更好的技能，而更好的技能反過來為後續 rollout 提供更強的先驗。共演化機制正是 SPyCE 與僅在測試時檢索的靜態記憶系統的區別所在。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

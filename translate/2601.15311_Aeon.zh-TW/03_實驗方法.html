@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2601.15311_Aeon.zh-TW.html">回 2601.15311_Aeon.zh-TW 目錄</a>　<a href="02_%E7%B3%BB%E7%B5%B1%E6%9E%B6%E6%A7%8B.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-實驗方法">5. 實驗方法</h2>
+<p>所有實驗重複五次並報告中位數。硬體：Apple M4 Max（16 核 ARM64）、macOS 26.2 Tahoe、L1 資料 64 KiB／指令 128 KiB、L2 統一 4,096 KiB（×16 叢集）、1 TB NVMe SSD。編譯器：AppleClang 17，-O3 -march=native -flto -ffast-math。使用 D = 768 的合成「Dense Forest」資料集，N ∈ {10⁴, 10⁵, 10⁶}。延遲以 std::chrono::high_resolution_clock 量測，使用 Google Benchmark 框架。</p>
+<h2 id="6-評估">6. 評估</h2>
+<p><strong>6.1 微基準：核心效能</strong>：單一 768 維向量比較延遲——INT8 SDOT + 解量化 4.70 ns，FP32 SIMDe→NEON 26.5 ns（5.6x 加速），純量自動向量化 47.8 ns。NEON SDOT 指令每週期處理四個 INT8 乘加運算，相對於 FP32 的單精度 FMA。</p>
+<p><strong>6.2 巨觀基準：樹遍歷與壓縮</strong>：100K 節點下 FP32 遍歷 10.5 µs、檔案 440 MB；INT8 遍歷 3.09 µs（3.4x）、檔案 141 MB（3.1x）。</p>
+<p><strong>6.3 WAL 開銷</strong>：10K 節點 FP32 插入——WAL 關閉 2.24 µs ± 0.006；WAL 開啟 2.23 µs ± 0.008。差異在量測雜訊內（&lt;1%），確認三步鎖定成功將磁碟 flush 解耦。</p>
+<p><strong>6.4 可擴展性（10K–1M 節點）</strong>：Flat 掃描線性增長（0.52 ms → 5.87 ms → 69.8 ms）；FP32 Atlas 對數增長（7.1 µs → 10.5 µs → 10.5 µs）；INT8 Atlas 更降至 1.82 µs（10K）→ 3.08 µs（100K）。在 100 萬節點時 FP32 Atlas 達 &gt;6,500x 加速（10.5 µs vs 69.8 ms）。</p>
+<p><strong>6.5 SLB 快取效能</strong>：SLB 快取命中延遲 3.56 µs（64 元素掃描）。Conversational Walk 工作負載下命中率 &gt;85%，有效延遲 L_eff = 0.85×3.56 + 0.15×10.5 ≈ 4.60 µs。SLB 掃描與首次 Atlas 比較皆為 L1 常駐（僅 0.03 µs 差異）。線性縮放證明（16→32→64 項）確認 SLB 完全容納於 L1/L2。</p>
+<p><strong>6.6 EBR 競爭</strong>：16 硬體執行緒敵意競爭（15 reader + 1 writer）——平均 210.8 ns，P50 167 ns，P99 750 ns，P99.9 1,083 ns。12,353 區域在 1.5M 讀取樣本中退役，無 torn reads。
+<strong>6.7 Beam Search 與 CSLS</strong>：100 萬節點——beam=1（貪婪）25.6 µs P50；beam=3 41.8 µs；beam=3+CSLS 30.2 µs。CSLS 的 27.7% 延遲縮減並非演算法修剪（節點評估數相同），而是 Apple Silicon 上分支預測器因更可預測的分支模式而達成更高準確率。</p>
+<p><strong>6.8 跨語言記憶傳輸</strong>：10 MB 向量資料 C++→Python 零拷貝 ∼334 ns；Pickle（ndarray）132 µs（∼397x 慢）；Pickle（list[float]）32.3 ms（∼96,700x 慢）；JSON 318 ms（∼953,000x 慢）。</p>
+<p><strong>6.9 Trace 垃圾回收</strong>：100K 事件儲存（∼67 MB）——墓碑掃描 ∼100 µs；完整壓縮（GC ratio 0.5）966 ms 牆鐘、312 ms CPU，I/O 差異確認壓縮可作為背景操作。</p>
+<h2 id="7-結論">7. 結論</h2>
+<p>Aeon 展示了長時程 LLM 代理人的認知作業系統。中心論點：LLM 記憶必須被視為主動資源管理任務，受經典 OS 核心原則治理。三項關鍵貢獻：(1) INT8 對稱純量量化達成 3.1x 空間壓縮與 5.6x 數學加速，使邊緣部署可行；(2) 解耦 WAL 以 &lt;1% 開銷提供崩潰可復原性；(3) Sidecar Blob Arena 消除 440 字元文字上限，實現完整 LLM 筆錄歸檔。SLB 在 85%+ 命中率下維持 sub-5µs 有效檢索延遲。未來方向包括多模態向量共置（音訊、視訊、結構化資料）與硬體強制多租戶隔離（Intel SGX / ARM CCA），將 process isolation 推進至完整記憶體保護。</p>
+<h3 id="效能摘要">效能摘要</h3>
+<table>
+<thead>
+<tr>
+<th>指標</th>
+<th>數值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>INT8 dot product</td>
+<td>4.70 ns</td>
+</tr>
+<tr>
+<td>FP32 cosine similarity</td>
+<td>26.5 ns</td>
+</tr>
+<tr>
+<td>INT8/FP32 加速比</td>
+<td>5.6×</td>
+</tr>
+<tr>
+<td>樹遍歷（100K, INT8）</td>
+<td>3.09 µs</td>
+</tr>
+<tr>
+<td>空間壓縮</td>
+<td>3.1×</td>
+</tr>
+<tr>
+<td>WAL 開銷</td>
+<td>&lt;1%</td>
+</tr>
+<tr>
+<td>SLB 快取命中</td>
+<td>3.56 µs</td>
+</tr>
+<tr>
+<td>EBR P99（16 執行緒）</td>
+<td>750 ns</td>
+</tr>
+<tr>
+<td>零拷貝傳輸（10 MB）</td>
+<td>334 ns</td>
+</tr>
+</tbody>
+</table>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

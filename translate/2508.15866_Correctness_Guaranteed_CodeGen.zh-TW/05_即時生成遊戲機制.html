@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>05_即時生成遊戲機制 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2508.15866_Correctness_Guaranteed_CodeGen.zh-TW.html">回 2508.15866_Correctness_Guaranteed_CodeGen.zh-TW 目錄</a>　<a href="04_sLua_%E8%AA%9E%E8%A8%80%E8%88%87%E8%A7%A3%E6%9E%90.html">← 上一節</a>　<a href="06_%E8%87%B4%E8%AC%9D.html">下一節 →</a></p>
+</blockquote>
+<h2 id="6-即時生成遊戲機制">6. 即時生成遊戲機制</h2>
+<h3 id="61-dungeon-crawl-infinite">6.1 Dungeon Crawl Infinite</h3>
+<p>近期把 LLM 整合進電玩遊戲執行期的努力，多半聚焦於敘事生成（如 Inworld 2021），或把 LLM 當作預測結果的黑箱（如 AI Dungeon 2019）。本文改為考慮透過生成遊戲引擎可直接執行的腳本（如 Lua）來即時創造遊戲機制。這種做法有幾項好處：直接與引擎相容、生成一致且可重用的腳本以降低運算成本、以及能準確向玩家描述腳本內容而具備完全透明性。其核心挑戰——確保生成程式碼正確、不會使遊戲當機——正是本文要解決的問題。</p>
+<p>本文建構了一款回合制 roguelike 遊戲 Dungeon Crawl Infinite（DCI），用以展示本文正確性保證程式碼生成框架的能力。DCI 直接受 Casalini（2012）啟發，是一款評價很高的 roguelike RPG，具備回合制戰鬥與進階角色養成機制。在 DCI 中，玩家操控角色探索地牢、戰鬥、並依玩家輸入以程序化生成的天賦（talent）與效果（effect）養成角色（遊戲流程總覽見附錄 C.1）。天賦與效果都以 sLua 腳本實作：</p>
+<ul>
+<li><strong>天賦（Talent）</strong>：包含一個 <code>Do</code> 函式，在玩家或敵人使用該天賦時執行。</li>
+<li><strong>效果（Effect）</strong>：追蹤狀態（如中毒層數），並實作遊戲引擎在特定時機呼叫的鉤子函式（如 <code>OnTurnEnd</code>、<code>OnDamageReceived</code>）。</li>
+</ul>
+<p>兩者都包含一個 <code>GetDescription</code> 函式，回傳反映當前遊戲狀態的動態文字描述，向玩家說明該天賦或效果的功能。腳本之間可透過 API 函式互相參照（如 <code>effect.Apply(actor, param)</code>），使系統儘管本身簡單，仍能組合出複雜且具協同效應的效果。本文為 DCI 設計了一套完整的 sLua API（附錄 C.3），共 55 個函式（每個效果定義還可再擴充），涵蓋豐富的遊戲機制。</p>
+<p>為了用演算法 1 生成天賦與效果的 sLua 腳本，本文在 sLua 解析器節點之上開發了專用的根解析器節點（附錄 C.4），確保生成的程式符合天賦與效果的模板。效果解析器節點示範了如何透過擴充既有的 sLua 解析器節點集合，輕鬆解析使用者自訂類別。</p>
+<p><strong>可證明的執行期不出錯設計</strong>：雖然判定一個圖靈完備語言的程式是否能無錯執行是 NP 困難的（由停機問題可證），本文透過謹慎限制 sLua 的語言特徵、並精心設計 DCI 的 API，達成可證明的無錯執行。做法結合了附錄 C.5 詳述的幾項關鍵策略：消除空指標的安全回呼模式、透過限制迴圈次數與詞法作用域函式參照保證終止、以及為效果鉤子設定遞迴深度上限。這種設計以犧牲部分表達力換取安全性，考量到多數遊戲腳本相對簡單、不需要複雜語言特徵，這是合理的取捨。以下正式陳述此結果（證明見附錄 C.5）：</p>
+<p><strong>定理 6.1</strong>：給定附錄 C.3 的 API、並採用附錄 C.5 描述的技巧，用演算法 1 成功為 DCI 生成的天賦與效果腳本，保證能在遊戲引擎中終止並無執行期錯誤地執行。</p>
+<p>儘管有這項強力的執行期正確性保證，演算法 1 本身<strong>並不保證終止</strong>。不終止是受約束解碼中已知的問題，屬於更廣義的「分布扭曲（distribution distortion）」問題的一部分——LM 可能把約束理解得略有偏差，進而把自己逼進角落，生成重複或無意義的文字。本文在附錄 C.9 進一步討論此挑戰。</p>
+<h3 id="62-實驗與評估">6.2 實驗與評估</h3>
+<p>為評估本文的流程，設計了以下具挑戰性的任務：生成 DCI 中的一個天賦類別。一個天賦類別包含 4 個天賦與最多 4 個效果，主題需符合給定提示；同一類別中的天賦與效果可互相參照，形成複雜的互動網路。本文用一個簡單的 LLM 智能體引導類別生成（附錄 C.6）。</p>
+<p>本文準備了共 8 個天賦類別提示（詳見附錄 C.8）來測試每種方法。效果先生成，接著才生成天賦；生成的腳本會被登記進環境並包含在後續提示中，使後續腳本能參照先前生成的腳本，這也把定理 6.1 的正確性保證延伸到整個天賦類別。用於提示的情境範例，本文手工撰寫了 8 個效果與 6 個天賦，涵蓋各種 API 用法。</p>
+<p><strong>圖 3（各方法天賦類別分數直方圖）</strong>：對每個天賦類別提示，每種方法各跑 10 次，共 80 個資料點；生成失敗計為分數 0。本文方法搭配受約束解碼的成功率與品質分數最高，搭配反思（reflection）時尤其明顯。在 90–100 高分區間，Claude-3.5-Sonnet（搭配反思）有 38 個資料點，本文方法（搭配反思）有 33 個資料點。本文方法的失敗僅出現在生成不終止的情況（見附錄 C.9）。</p>
+<p><strong>表 1（regex 編譯子程序的時間比較，於單一 DCI 天賦類別生成任務、提示為「混合冰與毒之力的魔法」，8 張 A100 GPU 上以 Qwen2.5-32B-Coder 測得，量測時間不含解析器更新——後者穩定維持每秒逾 1500 字元的吞吐量；所有方法皆先編譯出一個 logit processor，再用 vLLM 的 API 進行受約束解碼）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>tokens/sec</th>
+<th>compilation/total</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Unconstrained（無約束）</td>
+<td>18.89</td>
+<td>0%</td>
+</tr>
+<tr>
+<td>Willard &amp; Louf (2023)</td>
+<td>2.04</td>
+<td>73.35%</td>
+</tr>
+<tr>
+<td>Koo et al. (2024)</td>
+<td>1.47</td>
+<td>79.41%</td>
+</tr>
+<tr>
+<td>Ours（本文）</td>
+<td>7.64</td>
+<td>4.98%</td>
+</tr>
+</tbody>
+</table>
+<p>Willard &amp; Louf（2023）的編譯步驟涉及把字元接受 DFA 索引轉換為 token 接受 DFA；Koo et al.（2024）的編譯步驟則是把 regex 的 DFA 與（預先計算好的）字元轉 token 有限狀態轉換器串接，再用 OpenFST 函式庫做行列式化。（本文未實作 Koo et al. 中的萬用字元處理，這或可解釋相較其論文所報告數字的速度落差，因為其萬用字元策略會降低 regex 的靈活度。）本文自適應拒絕採樣的顯著加速，源自 regex 持續變動的事實：既然如此，把 regex 前置編譯成 token 接受 DFA 相較於自適應拒絕採樣的惰性建構，是一種浪費。</p>
+<p>基線方面，本文考慮 Claude-3.5-Sonnet（Anthropic 2024，最佳閉源程式碼 LLM 之一）與 Qwen2.5-32B-Coder（Hui et al. 2024，領先的開源程式碼 LLM 之一）的無約束生成；本文方法（演算法 1）也採用同一個 Qwen2.5-32B-Coder 作為底層 LM。此外每種方法都有一個反思版本：若初次生成失敗（由本文解析器的解析錯誤指出），就用同一個 LM，以錯誤位置與預期的後續 regex 作為提示中的指引，要求它修正生成的程式碼——這種反思策略代表典型的、用 LM 修正生成程式碼的拒絕採樣技巧。品質評估則用 Claude-3.5-Sonnet 為每個天賦的生成程式與 <code>GetDescription</code> 函式回傳的描述之間的吻合度、以及程式碼品質，輸出一個 1–100 的分數。</p>
+<p>結果如圖 3 所示：本文方法若總輸出 token 數超過 1500（通常代表陷入無限重複），即中止生成並計為失敗。附錄 C.10 提供了各方法失敗案例的範例。無約束方法通常因幻覺出不在 scope 內的變數與語法錯誤而失敗；本文方法唯一的失敗模式，是因分布扭曲（附錄 C.9）導致受約束解碼把 LM 逼進輸出無限重複、在達到輸出 token 上限後仍未終止。</p>
+<p>表 1 展示了本文方法搭配自適應拒絕採樣、相較於 regex 編譯替代方案的推理速度。</p>
+<h2 id="7-結論">7. 結論</h2>
+<p>本文提出演算法 1，透過搭配「解析器樹（第 4 節）」建構的上下文相關解析器進行受約束解碼，生成保證正確性的程式，並以 sLua（一種強型別 Lua 版本）及 roguelike 遊戲 DCI 展示。如同結果及附錄 C.9 所討論的，自迴歸受約束解碼可能扭曲分布，導致生成不終止或程式品質欠佳。一個獨特的機會是：上下文相關解析器能為 LM 提供額外的上下文資訊，或許可用於協助恢復分布。探索使用解析器提示來對抗分布扭曲問題的後訓練技巧，是生成高品質、保證正確性程式的一個有前景的未來方向。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

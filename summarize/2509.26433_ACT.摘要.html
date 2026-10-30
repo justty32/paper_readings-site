@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《ACT：代理式分類樹》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Vincent Grari（AXA AI Research / Sorbonne Université）、Tim Arni（EPFL）、Thibault Laugel（AXA AI Research / Sorbonne Université）、Sylvain Lamprier（Université d&#x27;Angers）、James Zou（Stanford University）、Marcin Detyniecki（AXA AI Research / Polish Academy of Sciences）</p><p>日期：2025（preprint April 2026），LLM 分類→確定性決策樹退化</p><p>arXiv：2509.26433</p><p><a href="https://arxiv.org/abs/2509.26433" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="act代理式分類樹重點摘要">《ACT：代理式分類樹》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>ACT（Agentic Classification Tree）</strong>：將非結構化資料上的 LLM 分類呼叫<strong>退化為確定性決策樹</strong>——每個節點是一道二元 NL 問題，透過 Gini 不純度 + LLM 語義回饋（TextGrad）迭代優化分裂品質。訓練完成後，推論只需沿樹回答 yes/no，完全繞過自由形式 LLM 推論。五個 benchmark 上匹配或超越 prompt 類 baseline，同時產出可審計、可解釋的決策路徑。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>傳統決策樹（CART、C4.5）透明、可解釋且可審計，但<strong>僅限於結構化表格資料</strong>，無法直接處理文字或影像等非結構化輸入。另一邊，LLM 雖有強大語義理解能力，但其自由形式推理（CoT、Reflexion、DSPy、TextGrad）仍然難以驗證與審計，幻覺與不一致性構成高風險場景部署障礙。ACT 填補了這個缺口：將決策樹方法論擴展到非結構化輸入，每個分裂點以自然語言問題替換數值閾值，使決策過程既可解釋又能直接操作在文字上。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>節點定義</strong>：每個內部節點是一道二元 NL 問題（yes/no），LLM 根據輸入 x_i 回答後決定走左子樹或右子樹。初始問題是通用中性問題（「Based on the provided example, does it belong to the positive class?」），不包含任務資訊，強制後續問題從資料中浮現。</li>
+<li><strong>分裂優化（Best Split Search）</strong>：每個節點迭代優化 K 步，每步：①用當前 prompt p^(k) 對資料分群，計算加權 Gini 不純度 δ(p^(k))；②分別對 yes/no 分支做<strong>語義純度分析</strong>——對比分類正確與分類錯誤的樣本，讓 LLM（f_purity）抽取區分兩者的關鍵語義特徵，產出回饋 s_DL、s_DR；③將不純度統計與語義回饋合併為損失 L(p^(k)) = f_loss(p^(k), s_DL, s_DR, δ(p^(k)))，透過 <strong>TextGrad</strong> 的 feedback + step 兩階段產生修訂後的 prompt p^(k+1)。最終選擇訓練不純度最低的 p*。</li>
+<li><strong>語義-不純度聯合目標</strong>：TextGrad 的「梯度」是 NL 編輯指令 ∇_p L，由 LLM 根據當前問題的局限診斷生成。ACT 將正確/錯誤分類與 yes/no 分支對齊（yes→正類， no→負類），使 LLM 能以「哪些特徵導致誤分類」的角度提供可操作的回饋。</li>
+<li><strong>樹建構與可解釋性約束</strong>：遞迴自頂向下建樹，直到節點純度達標或滿足停止條件（最大深度 d_max、最小節點大小）。限制每題邏輯算子 ≤ L=2（and/or），樹深限制在 2–4 層（§3.6），確保決策路徑簡短且可理解。</li>
+<li><strong>推論</strong>：輸入從根節點沿樹回答 yes/no 直到葉節點，葉節點以訓練樣本多數類別作為預測。推論階段完全繞過 LLM 自由形式推理——每個節點只做一次 yes/no 查詢。</li>
+</ul>
+<h2 id="與傳統決策樹的對比">與傳統決策樹的對比</h2>
+<table>
+<thead>
+<tr>
+<th>面向</th>
+<th>CART / C4.5</th>
+<th>ACT</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>資料類型</td>
+<td>表格特徵</td>
+<td>非結構化輸入（文字、圖像）</td>
+</tr>
+<tr>
+<td>節點定義</td>
+<td>數值閾值／類別子集</td>
+<td>二元 NL 問題（LLM 回答 yes/no）</td>
+</tr>
+<tr>
+<td>最佳分裂搜尋</td>
+<td>窮舉候選特徵</td>
+<td>TextGrad 迭代問題精煉</td>
+</tr>
+<tr>
+<td>分裂準則</td>
+<td>Gini / Information Gain Ratio</td>
+<td>Gini 不純度 + 語義訊號</td>
+</tr>
+<tr>
+<td>推論</td>
+<td>按特徵值沿樹走</td>
+<td>LLM 在每節點回答 yes/no</td>
+</tr>
+</tbody>
+</table>
+<h2 id="結果五個-dataset四種-llmgemma3-4bgpt-41-nanominiqwen3-4b">結果（五個 dataset，四種 LLM：Gemma3-4B、GPT-4.1 Nano/Mini、Qwen3-4B）</h2>
+<ul>
+<li><strong>整體表現</strong>：最佳 ACT 配置平均測試準確率比 DSPy 高 4.7pp、比 TextGrad 高 5.1pp，同時提供可解釋決策路徑。15/20 的 dataset-model 組合中 ACT 的 F1 勝過所有 LLM baseline。</li>
+<li><strong>與 TF-IDF + CART 對比</strong>：ACT 在多數任務上與之持平或超越，且 ACT 產出的是人類可讀的 NL 問題（如「Does the example mention coughing up blood or fever?」），而非 TF-IDF 的單詞閾值（如「nose ≤ 0.074」），後者無法處理否定、諷刺、改寫。</li>
+<li><strong>醫學有效性</strong>：ACT 在 DIAGNO 結核病診斷中識別的症狀（咳血、發燒、體重減輕、淋巴腫大、疲勞）與 WHO 醫學來源高度對齊（Table 4）。</li>
+<li><strong>消融</strong>：樹深 d 過大導致過擬合（d=6 時測試準確率下降）；優化步數 k 在 10–20 步後增益趨於平穩。</li>
+<li><strong>規模擴展</strong>：GPT-4.1 家族中 ACT 隨模型容量增加持續提升，DSPy 與 TextGrad 則無一致縮放行為，顯示 ACT 更能有效利用更強 LLM 的推理能力。</li>
+</ul>
+<h2 id="計算成本">計算成本</h2>
+<p>ACT 訓練階段向 LLM 發送大量短 prompt（估計 Gini）加少量長 prompt（語義回饋），在最低配置（d=3, k=10）下與 DSPy、TextGrad 成本可比。推論階段 TextGrad 最經濟，ACT 在同一數量級內但提供更可解釋的輸出（§A）。</p>
+<h2 id="局限">局限</h2>
+<ul>
+<li>目前僅限<strong>二元分類</strong>，尚未擴展到多類分類與回歸。</li>
+<li>仍依賴 LLM，可能繼承幻覺與不一致性。</li>
+<li>每節點 TextGrad 迭代需要多次 LLM 呼叫，訓練計算開銷高。</li>
+<li>未探索圖像等其他模態（論文中僅在概念上提及可擴展）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>**「LLM→確定性退化」**是 ai_core 方向二的直接對應：ACT 將非結構化的 LLM 分類呼叫退化為確定性 yes/no 決策樹，推論階段完全繞過自由形式 LLM 推論，僅沿樹回答結構化問題。這正是 §2「決策層退化」的核心範式——訓練時用 LLM 探索語義空間並固化為樹結構，推論時走確定性路徑。</li>
+<li><strong>技能庫視角</strong>：每棵 ACT 樹可視為一個「分類技能」，節點問題是「細粒度執行條件」，樹結構是「工作流草圖」。merge-or-add 的啟發：每道分裂問題可跨任務共用（類似 SPyCE 的技能庫整併），相同語義概念的問題應合併而非重複建立。與 <a class="paper-reference" href="2605.29652_ThinkFastTalkSmart.%E6%91%98%E8%A6%81.html">2605.29652</a> Think Fast, Talk Smart（分割確定性與神經計算）並讀，ACT 提供了具體的「確定性化」演算法。</li>
+<li><strong>與其他方向二論文關聯</strong>：<a class="paper-reference" href="2606.01435_DontAskLLMFreshness.%E6%91%98%E8%A6%81.html">2606.01435</a>（LLM 機率判斷→確定性狀態追蹤）、<a class="paper-reference" href="2602.05874_xListHate.%E6%91%98%E8%A6%81.html">2602.05874</a>（LLM→checklist→輕量決策樹）、<a class="paper-reference" href="2606.03269_ASP_Distillation.%E6%91%98%E8%A6%81.html">2606.03269</a>（推理軌跡→ASP 規則→符號求解器）、<a class="paper-reference" href="2604.23853_ClawTrace.%E6%91%98%E8%A6%81.html">2604.23853</a>（多步軌跡→可檢閱程式碼技能）均為 LLM→確定性退化路徑的不同實例，ACT 貢獻了「決策樹結構」這一特定退化形式。</li>
+<li>定位：適合做 <strong>LLM 可解釋性、AI 治理/審計、確定性退化、決策樹、prompt 優化</strong> 的研究者。</li>
+</ul>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

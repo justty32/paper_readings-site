@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.28500_FunctionalEntropy.zh-TW.html">回 2605.28500_FunctionalEntropy.zh-TW 目錄</a>　<a href="02_%E5%B1%80%E9%99%90.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）在程式碼生成上展現卓越能力，但常產出外觀合理卻功能不正確的程式碼。不確定性量化（UQ）方法已在自然語言幻覺檢測中證明有效，但在程式碼生成上的有效性仍未被充分探索。本文系統性評測 UQ 方法如何移植到程式碼生成：涵蓋 <strong>3 種程式語言、5 個 LLM、超過 1,700 題</strong>。研究發現部分基於 token 機率的方法<strong>無需修改即可有效泛化</strong>；但仰賴 NLI（自然語言推論）語意等價的採樣方法卻失敗——因為 <strong>NLI 模型無法可靠區分功能不同的程式碼</strong>，導致大多數回應塌縮為單一語意群集。為此，本文提出<strong>功能性等價方法</strong>——以 LLM 的功能等價評估取代 NLI 語意等價的程式碼特化方法族群，包括<strong>功能性熵（functional entropy）</strong>——即語意熵的程式碼類比。功能等價方法在 15 組模型-基準中於 11 組拿下最高 AUROC，校準亦在大多數設定中最佳，一致優於 NLI 對應方法及所有其他評測方法。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 已展現卓越的程式碼生成能力，但可能產出外觀合理卻功能錯誤的程式碼。在自主編碼代理、text-to-SQL 直接執行查詢、或以程式碼生成作為中間工具使用的代理流程中，此風險因缺乏人工審查而被放大。因此，<strong>在不執行、不使用測試案例的前提下預測程式碼何時可能錯誤</strong>，是迫切的實務挑戰。</p>
+<p>NLG 領域的 UQ 方法（預測熵、自洽性、語意熵）利用 token 機率或採樣一致性來估計信心，低信心作為幻覺訊號。然而這些方法是否適用於程式碼生成，因三個因素而複雜化：(1) <strong>功能等價</strong>——語法不同的程式可語意相同，表層不一致未必代表不確定；(2) UQ 方法常依賴 <strong>NLG 特定元件</strong>（如 NLI 模型）來評估語意等價，這些元件對程式碼成為瓶頸；(3) 黃金測試案例並非隨時可得，需探討<strong>免執行的 UQ 能否逼近測試套件訊號</strong>。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>簡述 NLG 的 UQ 三類方法：白盒 token 機率、採樣一致性（黑盒／白盒）、自省。程式碼幻覺檢測近作包括分類學與基準、基於符號群集的不確定性估計（Sharma &amp; David 2025）、熵感知自適應解碼（Scalena et al. 2025）、注意力 UQ（Vazhentsev et al. 2025），以及 text-to-SQL 的變形測試（Yang et al. 2025）。本文與先前工作之區別：<strong>跨語言跨模型的系統性評測 + 診斷 NLI 瓶頸 + 提出 LLM 功能等價替代方案</strong>。</p>
+<h2 id="3-方法">3. 方法</h2>
+<p>目標：給定提示 x 與生成的程式碼回應 y，產出信心分數 s(y) ∈ [0,1]，區分功能正確與否（不需執行、不需測試案例）。主要評量指標：AUROC。</p>
+<h3 id="31-token-機率法單次生成">3.1 Token 機率法（單次生成）</h3>
+<ul>
+<li><strong>LNSP</strong>：長度正規化序列機率（幾何平均）。</li>
+<li><strong>MTP</strong>：最低 token 機率。</li>
+<li><strong>PM</strong>：機率邊界（第一與第二高的平均差距）。</li>
+<li><strong>ATN@K</strong>：平均 top-K token 負熵。</li>
+<li><strong>MTN@K</strong>：最低 top-K token 負熵。</li>
+</ul>
+<h3 id="32-採樣一致性法與功能性等價方法">3.2 採樣一致性法與功能性等價方法</h3>
+<p>從同提示以非零溫度採樣 m 個回應 ỹ₁,...,ỹₘ，衡量與原始回應間的一致性。</p>
+<h4 id="321-功能性等價方法核心貢獻">3.2.1 功能性等價方法（核心貢獻）</h4>
+<p>以 <strong>LLM 判斷功能等價</strong>（相同輸入是否產出相同輸出）取代 NLI 語意等價。使用 Gemini-2.5-Flash 作為等價法官，經執行驗證其群集純度 93–97%。</p>
+<ul>
+<li><strong>FER（功能等價率）</strong>：<code>(1/m) Σ I[y ≡ ỹⱼ]</code>，即 m 個採樣回應中與原始回應功能等價之比例。</li>
+<li><strong>FE（功能性熵）</strong>：以貪婪群集後計算 <code>−Σ P(C) log P(C)</code>，歸一化為 <code>NFN = 1 − FE/log(m+1)</code>。此即<strong>語意熵的程式碼特化類比</strong>。群集形成：原始回應初始化第一群集為代表，後續回應與既有代表比較，等價則加入該群，否則創建新群成為代表。</li>
+<li><strong>FSC（功能集合信心）</strong>：<code>(m+1 − |C|)/m</code>，全部同群→1，全部不同→0。</li>
+</ul>
+<h4 id="322-相似度法">3.2.2 相似度法</h4>
+<ul>
+<li><strong>NCS</strong>：以 jina-embeddings-v2-base-code 嵌入後計算歸一化餘弦相似度。</li>
+<li><strong>CBC</strong>：以 CodeBLEU（n-gram + AST + 資料流分析）衡量結構與語法相似度（僅 Python/Java，不支援 SQL）。</li>
+</ul>
+<h3 id="33-自省法">3.3 自省法</h3>
+<ul>
+<li><strong>P(True)</strong>：要求模型回答「正確或錯誤」，取 &quot;True&quot; token 機率為信心。</li>
+<li><strong>VC</strong>：六級 Likert 量表口語信心（0%–100%）。</li>
+</ul>
+<blockquote>
+<p>接續 <a href="../2605.28500_FunctionalEntropy.zh-TW.html">Part 2</a>：4. 實驗 – 局限
+<a href="../2605.28500_FunctionalEntropy.zh-TW.html">← 回到索引</a> ｜ <a href="../2605.28500_FunctionalEntropy.zh-TW.html">← 上一部分</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-設定">4.1 設定</h3>
+<ul>
+<li>基準：LiveCodeBench（Python 1,055 題）、MultiPL-E（Java 386 題）、LiveSQLBench（SQL 270 題）。</li>
+<li>模型：GPT-4o、GPT-4o-mini、Gemini-2.5-Pro、Gemini-2.5-Flash、Gemini-2.5-Flash-Lite。</li>
+<li>貪婪解碼產生原始回應，T=1.0 採樣 m=10 回應。</li>
+<li>Python/Java 正確性 = 通過所有單元測試；SQL = 輸出結果與參考解相同。</li>
+<li>等價法官：Gemini-2.5-Flash（經驗證群集純度 93–97%）。</li>
+</ul>
+<h3 id="42-pythonlivecodebench">4.2 Python（LiveCodeBench）</h3>
+<p>模型 Pass@1 範圍 0.51–0.91。AUROC 整體最高（多數 &gt;0.70）。<strong>功能性等價方法全面最強</strong>：FER 達 0.867（Gem-Fl）、FE/FSC 於各模型達 0.83–0.86。Token-prob 法在 Python 表現穩健（MTN 0.77–0.80），CodeBLEU 亦佳（0.80–0.81）。P(True) 具競爭力（0.77–0.83），但 VC 不一致（0.60–0.80）。</p>
+<h3 id="43-javamultipl-e">4.3 Java（MultiPL-E）</h3>
+<p>Pass@1 範圍 0.49–0.57。整體 AUROC 最低（多數 0.55–0.70），各方法族間差距縮小。功能等價方法仍最強（FE 達 0.701, Gem-Fl-Lt），但領先幅度較小。CodeBLEU 競爭力強（0.69, Gem-Fl），反映語法相似度在 Java 樣板結構中仍有判別力。Token-prob 法中 MTP 0.705（Gem-Fl-Lt）甚至超越部分採樣法。VC 一致較弱（0.55–0.62）。</p>
+<h3 id="44-sqllivesqlbench">4.4 SQL（LiveSQLBench）</h3>
+<p>Pass@1 範圍 0.21–0.45。AUROC 中等（0.55–0.84）。<strong>功能等價方法仍最強</strong>：FSC 達 0.842（GPT-4o-mini），FE 達 0.840。關鍵洞察：GPT-4o-mini 準確率僅 0.21 但 AUROC 0.84——表示<strong>採樣一致性可有效排列正確與否的生成，即使生成器本身很弱</strong>。然而作者明確指出，當基礎準確率過低時，正確干預應是換模型而非依賴 UQ 過濾。Token-prob 法在 SQL 上接近隨機（序列機率、機率邊界於 Gem 模型 AUROC 0.52–0.55），因 SQL 受限語法使 token 級信心無論對錯皆高。</p>
+<h3 id="45-nli-方法-vs-程式碼特化方法">4.5 NLI 方法 vs. 程式碼特化方法</h3>
+<ul>
+<li><strong>群集類（語意熵／語意集合信心）</strong>：NLI 版完全失效——&gt;80% 的 prompt 產生單一群集，AUROC 接近 0.5；功能等價替代後差距 &gt;0.30 AUROC（Python/SQL）。</li>
+<li><strong>非矛盾機率 vs. FER</strong>：NLI 的非矛盾機率在離散信號上仍保留有用的連續值（Python 0.70–0.71，SQL 0.67–0.79），但 FER 在 12/15 組中勝出。SQL 上兩者接近，因 SQL 語法更接近自然語言。</li>
+<li><strong>結論</strong>：NLI 元件是關鍵瓶頸；LLM 功能等價評估是解決方案。</li>
+</ul>
+<h2 id="5-討論與結論">5. 討論與結論</h2>
+<p>功能性等價方法在 11/15 組中 AUROC 最高，校準最佳（無需顯式校準程序）。NLI 群集失敗因無法區分功能不同程式；LLM 功能等價直接克服此限制。</p>
+<p>語言差異假說：Python AUROC 最高（豐富訓練資料 + 表達性解法提供更多訊號）；SQL 對 token-prob 最具挑戰（受限語法導致高 token 信心但無判別力）；Java 居中（樣板結構降低採樣多樣性）。</p>
+<p><strong>實務建議</strong>：(1) 採樣與等價成本可接受時，優先使用功能等價方法；(2) 無法採樣時，MTN 是最佳單次生成替代方案（12/15 組中在 token-prob 族內最高）；(3) m=5 即可捕捉大部分增益。所有方法已開源於 <strong>uqlm</strong>。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

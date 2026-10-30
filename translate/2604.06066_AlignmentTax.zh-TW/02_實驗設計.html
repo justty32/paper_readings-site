@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗設計 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.06066_AlignmentTax.zh-TW.html">回 2604.06066_AlignmentTax.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E9%99%90%E5%88%B6%E8%88%87%E6%9C%AA%E4%BE%86%E5%B7%A5%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-實驗設計">4. 實驗設計</h2>
+<h3 id="41-資料集與預處理">4.1 資料集與預處理</h3>
+<p>本研究使用 HotpotQA 的干擾項設定（distractor setting）：提供模型兩個黃金段落與八個干擾段落，測試資訊提取與聚焦能力。初步對 1,000 筆樣本測試顯示 Qwen3-8B 首次嘗試即正確回答 631 筆——現代 LLM 常繞過多跳推理需求、利用資料集捷徑，高初始成功率代表經典資料集可能已飽和。因此必須清理資料以隔離真正具有挑戰性的樣本。</p>
+<p>傳統問答指標（完全匹配 EM、F1）嚴重脆弱：若標準答案是數字 &quot;4&quot; 而模型輸出單字 &quot;four&quot;，嚴格字串匹配會錯誤標記為失敗。為此作者採用 LLM-as-a-judge 管線（以 Qwen3-8B 作為裁判）評估語意等價與蘊涵，過濾簡單問題、消除表層格式差異造成的偽陰性。</p>
+<h3 id="42-雙池評估策略">4.2 雙池評估策略</h3>
+<p>將過濾後的資料集分為兩個評估池：<strong>Pool A</strong> 含基線 Reflexion 在第 2 至第 5 次嘗試間成功解決的 55 筆樣本，主要指標為平均嘗試次數（AT），衡量結構約束能否以更少步驟引導模型至正確答案。<strong>Pool B</strong> 含基線完全失敗的 45 筆樣本（常陷入持續幻覺迴圈、未在最大允許步數內完成），主要指標為成功率（SR），判斷結構化反思能否打破失敗狀態。</p>
+<h3 id="43-基線與實作細節">4.3 基線與實作細節</h3>
+<p><strong>對照組</strong>使用標準 Reflexion 架構（反射器以自由自然語言生成自我修正反饋），<strong>處理組</strong>使用邏輯引導 Reflexion（第 3.3 節架構）。兩組共享完全相同的檢索設定與驗證機制。為最小化隨機變異，生成溫度設為 0.1、最大生成長度限制為 1024 tokens。因資源限制，Qwen3-8B 同時用於生成與評估任務——統一模型避免能力不匹配與模型內評分偏差。評估器嚴格限制為驗證語意等價，不做主觀品質排名。處理組統一強制上游優先歸因策略。</p>
+<h2 id="5-結果與詮釋">5. 結果與詮釋</h2>
+<h3 id="51-整體效能與內在約束的極限">5.1 整體效能與內在約束的極限</h3>
+<p>邏輯引導約束解碼造成了微小但可觀察的效能懲罰：基線準確率 50.0% 在受約束條件下降至 38.0%。23 筆在自由文本基線中正確回答的樣本，在結構約束下降級為錯誤（TF 組）；McNemar 檢定 p≈0.059，確認此絕對下降為邊際顯著。</p>
+<p>此結果複雜化了「型別化結構化反饋均勻改善推理」的假設。先前研究證明半結構化反饋在由專門訓練的外部批判者生成時顯著提升效能，但當這些結構需求透過解碼約束強加在單一、未微調的模型上時，內在自我修正過程便陷入掙扎。儘管整體退化，嚴格約束並非全然有害：11 筆樣本成功從基線錯誤恢復為正確（FT 組）——對這些恢復案例，FSM 約束成功打斷了自然的左到右生成序列，將模型拖出錯誤的局部最小值，促使其進行刻意的信念修正。</p>
+<h3 id="52-對齊稅與認知超載">5.2 對齊稅與認知超載</h3>
+<p>Token 量化資料揭示結構約束施加了獨特的計算與認知開銷。在兩種條件下皆維持正確的樣本（TT 組）平均消耗 2,850 個思考 token；而退化的 TF 組出現巨量 token 消耗暴增，最終失敗前平均 4,005.5 個 token。此增加的成本是<strong>對齊稅</strong>的實證：當解碼庫嚴格限制輸出詞彙時，模型的注意力權重轉向語法合規而非語意推理。樣本 5a8c7595554299585d9e36b6 體現了此結構性崩潰：連續五次嘗試全部輸出 FORMATTING_MISMATCH 錯誤，token 消耗從 2,075 線性攀升至 3,190。</p>
+<p>此行為支持<strong>錯誤深度假說</strong>（Error Depth Hypothesis）：未引導的模型預設進行淺層錯誤修正而非解決深層邏輯缺陷。過度的 token 使用表明認知超載——模型在表層語法檢查中打轉，留下不足的計算容量來執行必要的多跳推理。</p>
+<h3 id="53-錯誤軌跡與格式陷阱">5.3 錯誤軌跡與格式陷阱</h3>
+<p>反思軌跡中最顯著的發現是：結構化反饋訊號幾乎完全無法引導模型識別檢索或推論謬誤。在 100 次第一輪診斷中，<strong>96 次將失敗歸類為 FORMATTING_MISMATCH</strong>。此表層歸因使 58 筆樣本陷入連續的「死亡迴圈」，在所有允許嘗試中重複完全相同的格式錯誤。</p>
+<p>定性案例顯示格式限制如何掩蓋更深層的認知錯誤：模型在前兩次嘗試中皆診斷為 FORMATTING_MISMATCH，完全聚焦於回應格式；直到最後一次嘗試、語法完美對齊後，才識別出更深層的 RETRIEVAL_FOCUS 錯誤，進而提取正確的橋接實體並成功。</p>
+<p>上游優先歸因策略非但沒有緩解幻覺雪崩，反而無意中創造了<strong>格式雪崩</strong>（formatting snowballing）。因為評估機制依賴嚴格字串匹配，表層符號錯誤觸發立即失敗；受約束的反射器被這些語法錯誤劫持，生成重複、無效的格式修正建議。在沒有訓練過的外部批判者的情況下，強迫 8B 模型遵守嚴格診斷 schema，阻礙了深層邏輯反思，將微小的格式差異轉化為無法跨越的障礙。</p>
+<h3 id="54-定性分析語法對齊器與格式辯證">5.4 定性分析：語法對齊器與格式辯證</h3>
+<p>雖然量化分析突顯了結構約束的陷阱，一個具體案例展示了約束解碼成功的場景——當失敗的根因確實是表層字串匹配問題時。</p>
+<p>問題：&quot;dwelling place of the dead&quot; 建造歷時多少世紀？標準答案：&quot;three centuries&quot;。自由文本基線中，模型檢索到正確上下文、推導出數字答案 &quot;Three&quot;，但環境因完全匹配失敗而拒絕。自由文本反射器給出高度準確的語意診斷——指出答案反映正確的建造時期但需要更好的術語對齊——然而 Actor 在後續嘗試中頑固地重複完全相同的被拒絕序列 <code>Action: Finish[Three]</code>。此失敗展示無約束語言反思的核心局限：語意察覺不保證行為執行。模型展現強烈的自洽慣性，沒有解碼層的硬干預，Actor 直接落回初始 token 分佈的局部最小值，自然語言反思形同虛設。</p>
+<p>邏輯引導設定呈現明顯對比。反射器被迫填入預定義 schema，將失敗歸類為 FORMATTING_MISMATCH，並生成嚴格、可執行的修正規則：&quot;Use the exact format: Action: Finish[Three centuries]&quot;。由於實驗設計嚴格配對錯誤類型與特定修正格式，此約束迫使模型合成確定性的複製貼上解法。傳遞到第二次嘗試時，此剛性指令成功覆寫了模型的生成慣性，產出正確輸出。</p>
+<p>定量資料先前揭示 FORMATTING_MISMATCH 常劫持反射器、使樣本陷入迴圈——因為它掩蓋了更深層認知錯誤。但此案例證明：當失敗根因確實是表層字串匹配問題時，分類法如預期運作。未引導模型預設進行淺層錯誤修正；當被逼入結構化分類法時，8B 模型缺乏挖掘深層邏輯缺陷的認知容量，但在識別與修補表層語法差異上變得異常有效。此動態最終揭露了 HotpotQA 等資料集嚴格字串匹配要求的已知局限——約束解碼對剛性評估指標而言是極高效的語法對齊器，但仍是糟糕的語意深度探針。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Agent2World: Learning to Generate Symbolic World Models via Adaptive Multi-Agent Feedback 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Mengkang Hu、Bowei Xia、Yuran Wu、Ailing Yu、Yude Zou、Qiguang Chen 等</p><p>日期：2025-12-26（v1，cs.AI）</p><p>arXiv：2512.22336</p><p><a href="https://arxiv.org/abs/2512.22336" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="agent2world-learning-to-generate-symbolic-world-models-via-adaptive-multi-agent-feedback">Agent2World: Learning to Generate Symbolic World Models via Adaptive Multi-Agent Feedback</h1>
+<h2 id="摘要與第-1-節問題">摘要與第 1 節：問題</h2>
+<p>符號世界模型（PDDL domain 或可執行模擬器）是 model-based planning 的核心，但訓練 LLM 生成這類模型受限於缺乏大規模、可驗證的監督訊號。既有方法多靠靜態驗證（parser、planner、validator 或固定測試軌跡集），抓不到只有互動執行時才會浮現的行為級錯誤（如狀態更新不一致、目標不可達）。多數既有研究也只針對單一類型世界模型做免訓練方法，沒有真正提升 LLM 本身的世界建模能力。作者提出 Agent2World：工具增強的多智能體框架，靠多智能體回饋評估並改進世界模型，同時把推論期互動過程當成資料引擎，產生可用於監督微調的訓練軌跡。</p>
+<h2 id="第-2-節問題定義">第 2 節：問題定義</h2>
+<p>給定文字描述 x，目標是合成忠實呈現環境動態與限制的可執行程式 WM（PDDL 規格或 Python 實作）。環境由謂詞集合、動作集合、轉移函式定義，任務形式化為映射 F(x) = WM。</p>
+<h2 id="第-3-節方法">第 3 節：方法</h2>
+<h3 id="31-三階段架構">3.1 三階段架構</h3>
+<p>Agent2World_Multi 依序跑三個階段（對應圖 2）:</p>
+<p><strong>Stage I 知識合成</strong>:Deep Researcher agent 用網路搜尋與檢索工具補齊世界模型描述裡缺的常識知識與細節，輸出補完後的中介表示，提升描述的事實可靠性。</p>
+<p><strong>Stage II 世界模型生成</strong>:Model Developer 拿補完後的描述，生成指定形式（PDDL 或可執行程式碼）的具體實作，配沙箱程式碼執行工具多輪測試除錯，直到程式可執行且與規格一致。</p>
+<p><strong>Stage III 評估驅動精修</strong>：不同於依賴標註金軌跡或人類回饋的既有工作，Agent2World 完全自主、無需人工標籤。引入兩智能體 Testing Team:(i) Unit Tester 針對描述裡的謂詞、動作、不變量，自動產生 Pytest 風格單元測試，做系統化程式化驗證；(ii) Simulation Tester 以「試玩」方式在環境裡執行任務、探索動作、發出查詢，用 ReAct 風格迴圈蒐集軌跡供後續行為與獎勵分析，揪出目標不可達、前置條件缺失、狀態更新不一致等執行期才會出現的錯誤。兩者合力產出診斷報告，涵蓋正確性、覆蓋率、邏輯一致性、物理合規性。不同於 Text2World 用固定 PDDL validator、GIF-MCTS 用固定離線軌跡集，Testing Team 依每個世界模型實際暴露的錯誤動態合成測試案例，做精準除錯而非通用檢查。回饋送回 Model Developer 修正，觸發下一輪評估，直到通過檢查或達收斂上限。</p>
+<h3 id="32-訓練範式">3.2 訓練範式</h3>
+<p>推論期的 Agent2World_Multi 由一顆凍結的骨幹 LLM 扮演所有角色。但 Model Developer 與 Testing Team 的互動天然構成一個學習環境。作者把每個角色形式化成帶工具使用的 LLM agent：在步驟 t,agent 維護歷史 h_t（任務規格、工具觀察、過去動作），策略 π_θ 依 h_t 選下一個動作。</p>
+<p><strong>Agent-in-the-loop 形式化</strong>：把 Model Developer 建模成在一個誘導出的 MDP 裡行動的 agent——狀態 s_t 串接世界模型規格與 Testing Team 的診斷；動作 a_t 是新實作或修補；轉移函式由「沙箱執行候選模型 + 重跑 Testing Team 取得新診斷」實現；獎勵聚合測試結果（單元測試通過率、模擬表現），反映局部正確性與下游效用。</p>
+<p><strong>Verifier-guided rejection sampling</strong>：給定規格 x，跑 Agent2World_Multi 得到一串開發者提案與回饋 τ = {(s_t, a_t, o_{t+1})}。定義 verifier 結果 V(τ) ∈ {0,1}：若 τ 的最終模型（i）能在沙箱成功執行，且（ii）通過 Testing Team 合成的單元測試與模擬檢查（適用時），則 V(τ)=1，否則為 0。只保留 V(τ)=1 的軌跡，構成 D_RS = {(x, τ) | V(τ)=1}。Testing Team 扮演過濾器，篩出可執行且行為一致的解，同時保留中間修補步驟，讓 D_RS 教會 Model Developer「在執行回饋下逐步修正」而非一次到位的多輪軌跡。</p>
+<h2 id="第-4-節實驗作者自報數字">第 4 節：實驗（作者自報數字）</h2>
+<p>資料建構：以 LIMA 資料集為靈感語料，用 gpt-4.1-mini 跑 Agent2World 產生涵蓋 PDDL、MuJoCo 風格環境、文字遊戲、MCP 風格工具環境的世界模型規格，記錄完整互動軌跡，套用合法性、可執行性、完整性、合理性、行為多樣性、執行一致性等驗證篩選，得 1526 條高品質軌跡，監督微調 Llama-3.1-8b-instruct（5 epoch、學習率 1e-6）。</p>
+<p><strong>Text2World</strong>（103 個 PDDL domain）:gpt-4.1-mini 下 Direct Generation 相似度最高（82.8）但可執行率僅 45.5，顯示表面文字相似不代表可執行、語意正確的 PDDL。Agent2World_Multi 可執行率 93.1（比對照 Text2World_EC=3 的 78.2 高 14.9 點）、F1_avg 75.4（高 15.3 點）。Llama-3.1-8b 下 SFT 版可執行率 44.6(+16.9)、F1_avg 28.2(+6.4)，相對未訓練的 Multi 版（27.7 / 21.8）。</p>
+<p><strong>CWMB</strong>（18 個 MuJoCo 風格環境，離散/連續動作空間）：所有方法離散空間都優於連續空間。Agent2World_Multi 整體正規化回報 R 達 0.4811，比先前最佳 GIF-MCTS 高 0.132；預測正確率與其相近（0.917 vs 0.914，離散），顯示準確的下一狀態預測不足以支撐好的 planning，模擬式測試帶來的下游效用提升才是關鍵。Llama-3.1-8b 下 SFT 版整體正確率 0.3754(+0.0604)、R 0.3197(+0.0901)。</p>
+<p><strong>ByteSized32</strong>（32 個推理密集文字遊戲）:gpt-4.1-mini 下 Agent2World_Multi 幾乎所有維度優於兩基線，物理對齊分數尤其突出（+0.2848，歸功 Deep Researcher 補齊常識知識）。Llama-3.1-8b 下 SFT 版可運行遊戲分數 +0.0849、關鍵動作合規 +0.2944、可勝率 +0.0388（皆相對未訓練 Multi 版）。</p>
+<h2 id="第-5-節分析節錄作者自報">第 5 節：分析（節錄，作者自報）</h2>
+<p><strong>消融</strong>(CWMB)：拿掉 Unit Tester 影響最大，離散空間正確率降 0.3008、R 降 0.4470；拿掉 Deep Researcher 主要衝擊 R（離散空間降 0.3926）；拿掉 Simulation Tester 影響最小，R 仍降 0.2615（離散）/0.1473（連續）。三元件貢獻互補。</p>
+<p><strong>成對評比</strong>：精修流程（最終輪 vs 首輪）在 CWMB、ByteSized32 上分別 68.8%、93% 勝率且零負率，Text2World 上大致持平（14% 勝、7% 負）。對比既有 SOTA,Multi 版本在 ByteSized32 上 87% 勝率、CWMB 上 66.7% 勝率。</p>
+<p><strong>錯誤分布演變</strong>：以 CWMB 為例，初輪多為簽章元數不符、表示不匹配等表層錯誤，隨精修輪數增加系統性消除，錯誤重心轉向更根本的動態不匹配，三個 benchmark 上一致觀察到這個「表層→實質」轉移。</p>
+<p><strong>多智能體成本</strong>:Multi 版本生成階段 token 消耗高於 Single，因主動測試迴圈需自行生成單元測試與模擬軌跡；但這是一次性投入，換得產出品質永久提升（CWMB 上 R 從 Single 的 0.3419 升到 Multi 的 0.4811）。</p>
+<h2 id="第-7-節結論">第 7 節：結論</h2>
+<p>作者提出 Agent2World_Multi，統一的多智能體框架，用自主 LLM agent 跨 PDDL 與可執行程式碼兩種表示生成符號世界模型，依序經過知識合成、迭代精修的世界模型開發、單元測試與模擬雙軌的評估驅動測試三階段。實驗顯示三個不同類型的世界模型生成 benchmark 上都取得一致最佳表現（作者自報）。整套流程不需人類回饋或人工標註即可運作，作者認為這為能可靠地從自然語言理解並形式化複雜環境的 AI 系統開了新方向。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2512.22336_Agent2World.%E6%91%98%E8%A6%81.html"><code>../summarize/2512.22336_Agent2World.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

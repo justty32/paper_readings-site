@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>透過 Meta-Black-Box Optimization 發現 Quality-Diversity 演算法（Discovering Quality-Diversity Algorithms via Meta-Black-Box Optimization） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Maxence Faldor、Robert Tjarko Lange、Antoine Cully（Imperial College London / Sakana AI）</p><p>日期：2025-01</p><p>arXiv：2502.02190</p><p><a href="https://arxiv.org/abs/2502.02190" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="透過-meta-bbo-發現-quality-diversity-演算法">透過 Meta-BBO 發現 Quality-Diversity 演算法</h1>
+<h2 id="摘要">摘要</h2>
+<p>Quality-Diversity（QD）是一族強大的演化演算法，靠生物演化啟發的<strong>局部競爭</strong>原則產生「多樣又高效能」的解族群。但它們的具體機制都依賴啟發式——MAP-Elites 的網格競爭、unstructured archive 的最近鄰競爭。本文提出一個根本不同的做法：用<strong>元學習自動發現新的 QD 演算法</strong>。我們把競爭規則用<strong>注意力架構</strong>參數化，演化出能捕捉 descriptor 空間中個體間複雜關係的新演算法。發現的演算法相較既有 QD baseline 表現相當或更優，且對更高維度、更大族群與 robot control 等分布外領域有強泛化。值得注意的是，即使<strong>只為 fitness 優化</strong>，這些演算法仍自然維持多樣族群——暗示元學習重新發現了「多樣性對有效優化是基本的」。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>遺傳演算法（GA）複製生物演化原則，但傳統 GA 用<strong>全域競爭</strong>（每個個體與整個族群競爭存活），常導致過早收斂、失去讓自然演化強大的多樣性。自然演化靠<strong>局部競爭</strong>（個體主要與同環境的鄰居競爭），自然產生多樣的特化物種。QD 把局部競爭引入演算法：個體嵌入 <strong>descriptor 空間</strong>，距離決定誰跟誰競爭、什麼算 novel。MAP-Elites（ME）把 descriptor 空間離散成網格，只在同 cell 內競爭；unstructured archive 在相似個體間競爭。但這些機制都靠啟發式（ME 的離散粗糙、archive 超參難調）。</p>
+<p><strong>本文核心</strong>：只要給競爭規則一個夠靈活的參數化，就能用 <strong>Meta-Black-Box Optimization</strong> 發現新 QD 演算法。三大貢獻：(1) <strong>LQD</strong>——用注意力架構參數化競爭規則的靈活框架；(2) 實證學到的演算法匹敵或勝過 ME 與 Dominated Novelty Search;(3) 強泛化——能擴展到更高維、更大族群與 robot control。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>涵蓋 GA 多樣性維持（fitness sharing、NEAT speciation、Novelty Search）、QD（Novelty Search with Local Competition、ME、機器人 behavioral repertoire）、以及<strong>透過 meta-optimization 發現演算法</strong>（學 optimizer、學 RL 目標函數、學超參排程、學完整學習演算法）。最相關的是作者群先前的 <strong>LES</strong> 與 <strong>LGA</strong>，都靠 dot-product self-attention 的不變性泛化到沒見過的 meta-training 設定。本文則 meta-優化一個 Transformer 來發現各種 QD 演算法。</p>
+<h2 id="3-背景">3. 背景</h2>
+<ul>
+<li><strong>黑箱優化（BBO）</strong>：在無梯度/無內部結構下找最佳解。</li>
+<li><strong>遺傳演算法</strong>：每代 reproduction → 加入後代 → evaluation → competition（GA 用 identity，即全域競爭）→ selection（依 f̃ 截斷留 top-N）。</li>
+<li><strong>Quality-Diversity</strong>：每個解有 fitness f 與 descriptor d；關鍵是把 GA 的全域競爭換成 <strong><code>competition(f,d)</code></strong> 局部競爭。
+<ul>
+<li><strong>MAP-Elites</strong>：descriptor 空間離散成網格，每 cell 只留最高 fitness（其餘設 −∞）。</li>
+<li><strong>Novelty Search</strong>：f̃ = 到 k 最近鄰的平均距離（novelty 分數），鼓勵探索遠離他人的區域。</li>
+<li><strong>Dominated Novelty Search（DNS）</strong>：f̃ = 到 <strong>k 個「比自己 fitter」的最近鄰</strong>的平均距離 → 鼓勵遠離更強的解，自然平衡 quality 與 diversity。</li>
+</ul>
+</li>
+<li><strong>集合操作用 dot-product attention</strong>：族群是無序集合，操作須對排序<strong>置換等變</strong>;scaled dot-product attention 天生置換等變，極適合演化演算法。</li>
+</ul>
+<h2 id="4-方法">4. 方法</h2>
+<h3 id="41-learned-quality-diversitylqd">4.1 Learned Quality-Diversity（LQD）</h3>
+<p>把 <code>competition</code> 函數參數化成 Transformer θ（取代 ME 的網格、DNS 的最近鄰）。選 Transformer 因兩性質：(1) 置換等變——每個個體的輸出取決於它與整個族群的關係、與排序無關；(2) inductive bias 極小、極具表達力。流程：<strong>Featurize</strong>（f、d 串接並跨族群標準化）→ <strong>Embed</strong>（投到高維）→ <strong>Transformer</strong>（保持置換等變）→ <strong>Output projection</strong>（投成純量 f̃）。刻意<strong>不預埋</strong>任何演化原則（連保留最高 fitness 都得自己學）。</p>
+<h3 id="42-meta-black-box-optimization">4.2 Meta-Black-Box Optimization</h3>
+<ul>
+<li><strong>Meta-task</strong>：22 個 BBOB 函數（含不同可分性/條件數/多模態），加 uniform/Gaussian/Cauchy 噪音模型；資料增強：維度 2–12、不同噪音參數、隨機旋轉。用<strong>隨機投影</strong> d_i = N·x_i（Johnson-Lindenstrauss 保距）把基因型投到 descriptor 空間，做到 domain-agnostic。</li>
+<li><strong>Meta-objective</strong>：Fitness → LQD(F);Novelty → LQD(N);QD score（最高 fitness × 平均 dominated novelty）→ LQD(F+N)。</li>
+<li><strong>Meta-training</strong>：meta-population M=256，每 meta-gen 抽 K=256 BBO 任務，評估各 θ、正規化聚合成 meta-fitness、用 <strong>Sep-CMA-ES</strong> 更新分布。16,384 meta-gen、內層 256 gen、族群 128。Transformer 4 層 / 16 features / 4 heads。</li>
+</ul>
+<h2 id="5-實驗">5. 實驗</h2>
+<p>JAX + evosax + QDax，8×H100，32 次重複，Mann-Whitney U + Holm-Bonferroni。baseline：MAP-Elites、DNS、GA、Novelty Search、Random。</p>
+<ul>
+<li><strong>5.2 BBO</strong>：三變體訓練一次、不微調用於所有實驗。Pareto front 顯示框架能往三方向（純 fitness / 純 novelty / 兩者）特化。LQD(N) 勝 NS（p&lt;1e-9）;LQD(F) 勝 GA（p&lt;1e-10）;LQD(F+N) novelty 勝 ME（p&lt;1e-7）但接近未超 DNS。OOD 的 6 個複雜函數上 LQD(N) novelty 幾乎全勝。<strong>規模外推</strong>：LQD(F) 在更大族群與更高維幾乎全勝 ME 且 gap 隨規模放大——學到的規則捕捉了超越訓練條件的基本原則。</li>
+<li><strong>5.3 機器人控制（OOD）</strong>：高達 584 維（Ant）、用 foot-contact/velocity 等領域 descriptor（非隨機投影）。LQD(F) 在 Walker2d/HalfCheetah/Ant(feet) 勝所有 baseline、Hopper 匹敵 DNS、Ant(velocity) 匹敵 GA、arm 收斂最快；聚合顯著勝除 GA 外全部（p&lt;0.005）。從沒訓練過 robot 卻泛化良好。</li>
+</ul>
+<h2 id="6-發現演算法之分析">6. 發現演算法之分析</h2>
+<ul>
+<li><strong>6.1 湧現多樣性</strong>：純 fitness 的 LQD(F) 在 Walker2d 維持約 ME <strong>40%</strong> 的 novelty，GA 不到 <strong>10%</strong>。元優化重新發現「維持多樣族群創造關鍵 stepping stone」這個演化基本原則。</li>
+<li><strong>6.2 學到的競爭策略</strong>：視覺化 competition landscape——LQD(N) 學成簡單距離型 novelty;LQD(F)（純 fitness 訓練）學成「在好解周圍製造 fitness-sensitive 獎勵模式」解釋了湧現多樣性；LQD(F+N) 結合兩者做 directed exploration。</li>
+<li><strong>6.3 descriptor 的影響</strong>：給隨機 descriptor 時 LQD 退化成 GA（等於全域競爭）；給有意義的 descriptor 才顯著勝出 → 優勢來自利用 descriptor 結構辨識 stepping stone，而非單純多了輸入特徵。</li>
+</ul>
+<h2 id="7-結論">7. 結論</h2>
+<p>元學習能發現勝過手工 QD 演算法的精巧競爭規則。LQD 用注意力參數化競爭規則，發現的演算法：(1) 表現相當或更優；(2) 強泛化到分布外問題；(3) 即使只為 fitness 訓練仍自發維持多樣性，暗示多樣性是達成峰值效能的工具性目標。限制：同時優化 quality 與 diversity 仍難（LQD(F+N) 接近但未穩定超越既有 QD），平衡兩者仍是演化計算的根本挑戰。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

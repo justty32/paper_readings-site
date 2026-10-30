@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_綜覽 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2510.10216_TyFlow.zh-TW.html">回 2510.10216_TyFlow.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%90%88%E6%88%90%E7%B3%BB%E7%B5%B1.html">下一節 →</a></p>
+</blockquote>
+<h2 id="2-綜覽">2. 綜覽</h2>
+<p>本節以<strong>簡單型別 lambda 演算 λ→</strong> 為例，說明 TyFlow 如何生成 well-typed 程式。</p>
+<h3 id="21-問題定義">2.1 問題定義</h3>
+<p>TyFlow 需要一個語言定義與一組訓練任務。<strong>語言定義</strong>（圖 3）由語法與型別系統構成：語法以歸納資料型別給出（λ→ 用 <code>Prog</code>、<code>Type</code>、<code>Context</code> 三個資料型別，<code>Context</code> 中 <code>(Γ, x:t)</code> 表示以型別 t 綁定最內層變數 x）；型別系統則須提供每條型別規則（如 T-Var、T-Abs、T-App）與一個可執行的型別檢查器，後者為判斷式 <code>empty ⊢ p : t</code> 產生型別推導樹。<strong>訓練任務</strong>：每個任務是「prompt＋期望程式」。範例任務（圖 4）prompt 為「實作一個接受布林輸入並回傳相同值的 identity 函數，然後把它套用到 true」，期望程式 <code>(λx:bool. x) true</code>，其型別推導樹（圖 5）由 T-App 在頂層、左分支 T-Abs→T-Var、右分支對 <code>true</code> 定型構成。</p>
+<h3 id="22-從型別推理到程式合成">2.2 從型別推理到程式合成</h3>
+<p>核心洞見：<strong>型別推導樹的每條規則都限制了程式結構的一部分</strong>——T-App 限定頂層為函數應用、T-Abs 限定函數項為 lambda 抽象，依此類推。因此型別推導樹的結構足以決定整個程式，<strong>型別規則本身即扮演程式合成的角色</strong>。TyFlow 據此直接以型別規則建構合成系統，讓程式合成與型別推理同時進行。</p>
+<p>論文以表 1 詳細演示合成過程（未知變數以紫色標示）。初始合成目標為 <code>empty ⊢ p : t</code>（<code>empty</code> 表尚無變數綁定），系統增量地探索候選型別規則並填入 p、t 的值：</p>
+<ul>
+<li><strong>Step 1（套 T-App）</strong>：LM 選定 T-App。系統先對規則做 <strong>α-更名</strong>（為所有 schematic 參數引入新變數），再把規則結論與當前目標<strong>單一化（unification）</strong>、累積誘導出的等式約束（<code>Γ₁=empty ∧ p₁ p₂=p ∧ t₂=t</code>），解出最一般替換 σ₁，最後把 σ₁ 套到 T-App 的兩個前提，生成兩個子目標 <code>empty ⊢ p₁:t₁→t₂</code> 與 <code>empty ⊢ p₂:t₁</code>。若任一步單一化失敗，該規則應用即被判為非法而丟棄。</li>
+<li><strong>Step 2（套 T-Abs）</strong>：對第一個子目標同法處理（因目標需要箭號型別，LM 高機率選 T-Abs），得替換 σ₂ 與新子目標 <code>empty, x₁:t₃ ⊢ p₃:t₄</code>。</li>
+<li><strong>Step 3（套 T-Var）</strong>：T-Var 的前提是含 <code>∈</code> 運算子的<strong>可執行述詞</strong>判斷。TyFlow 不生成子目標，而是直接呼叫述詞求值；但套 σ₃ 後前提與目標中仍有未知變數（<code>x₂:t₅ ∈ (empty, x₁:t₃)</code> 等），無法求值，於是<strong>向 LM 查詢對這些變數的賦值</strong>——LM 給出 σ₄={x₁↦x, x₂↦x, t₃↦bool, t₅↦bool}。代入後前提變為 <code>x:bool ∈ (empty, x:bool)</code>，完全已知，述詞求值成立，此分支合成完成。</li>
+<li><strong>Step 4（自子目標返回）</strong>：完成子目標後把所得替換套到其餘子目標以同步進度；所有子目標關閉後把各替換組合成最終替換。組合出 <code>empty ⊢ λx:bool. x : bool→bool</code> 後，套到第二個子目標得 <code>empty ⊢ p₂:bool</code>，再解出 <code>p₂↦true</code>，最終組合替換套回原始目標，得最終結果 <code>empty ⊢ (λx:bool. x) true : bool</code>。</li>
+</ul>
+<p>此過程體現兩大原則：<strong>型別顯性</strong>（每步都遵循一條型別規則，使完整型別推導樹在過程中始終顯式）與<strong>上下文局部性</strong>（每步呈現的合成目標是一個帶動態 typing context 的部分實例化型別判斷式）。</p>
+<h3 id="23-把型別規則翻成合成規則">2.3 把型別規則翻成合成規則</h3>
+<p>TyFlow 以兩個設計選擇擴充型別規則：（1）套規則時不用 pattern matching，而是把規則參數當作新變數、以單一化解變數間約束；（2）每當可執行述詞需要某未知變數的值，就直接向 LM 取得。由此，型別規則可機械化地重述為形式合成規則。以 T-App 為例（圖 6），λ→ 的<strong>合成判斷式</strong>形如 <code>Γ° ⊢ p° : t° ↝ σ</code>：左側是一個不完整的型別判斷式（Γ°、p°、t° 各為可能不完整的上下文／程式／型別，例如 t° 可為未知變數 t、部分已知 <code>bool→t</code> 或已知 <code>bool→bool</code>），右側是對左側所有未知變數的賦值 σ，意即「左側判斷式可由右側賦值妥善補全」——套 σ 後 <code>σ(Γ°) ⊢ σ(p°) : σ(t°)</code> 是 λ→ 型別系統中的合法判斷式。S-App 的前提分三部分：Part 1 為每個參數引入新變數、把 T-App 結論與當前不完整判斷式單一化得 σ；Part 2、3 分別對兩個前提逐一補全並沿途組合替換，任一前提無法完成即整條規則應用失敗；最後排除區域變數、只回傳關注變數的賦值。此翻譯確立了型別推導與合成推導間的<strong>同構</strong>：把此映射套到型別推導樹的每條規則，整個型別推導過程即被轉為程式合成過程，且保留原結構。</p>
+<h3 id="24-與語言模型互動">2.4 與語言模型互動</h3>
+<p>合成規則構成一套遞迴填補子目標的搜尋系統，向 LM 提出兩類查詢：<strong>選一條合成規則</strong>、與<strong>為述詞生成變數賦值</strong>。TyFlow 統一以下列 prompt 解析兩類查詢（不刻意區分，假設 LM 能從上下文推斷每步所需資訊）：（1）整體合成任務的自然語言 prompt；（2）目前為止生成的合成決策序列；（3）當前合成目標。圖 7 給出範例任務期望的決策序列：Step 1 只需預測 S-App（無賦值）、Step 2 只需 S-Abs、Step 3 預測 S-Var 並一併生成該規則所需的四個賦值。由於合成決策序列既代表程式合成過程、又透過同構同時涵蓋結果程式與其型別推導，此表示體現了<strong>推導鄰近性</strong>原則。<strong>訓練</strong>：此表示與傳統大不相同，需重訓／深度微調 LM，但它相容於既有程式碼資料集——給定程式語料，先用型別檢查器建型別推導樹，再依規則對應轉為合成推導樹，即可收集「合成查詢＋其 ground-truth 決策」的訓練集（<strong>資料可用性</strong>）。</p>
+<h2 id="3-從型別規則到合成規則的翻譯">3. 從型別規則到合成規則的翻譯</h2>
+<p>本節給出必要的預備知識與形式化翻譯。**約束 Horn 子句（CHC）**是一階邏輯的一個片段，形如「若所有前提 Pᵢ(x̄ᵢ) 可導出且約束 φ(ȳ) 成立，則可導出結論 P(x̄₀)」；其中 φ 是對項的可計算函數，並假設 φ 中變數都出現在前提或結論中（確保約束恆為確定且可檢查）。已知任何圖靈可計算函數都可用 Horn 子句編碼，而 CHC 嚴格比 HC 更具表達力（把所有約束設為 True 時 CHC 退化為 HC），故本框架能表達任意圖靈可計算函數。**單一化（unification）**尋找替換使兩個表達式結構相同；在所有 unifier 中，**最一般 unifier（MGU）**給出最不受限的解。第 3.2、3.3 節形式化了項（terms）、項與替換的類別、型別規則與型別推導樹，並給出把型別規則系統化翻成合成規則（合成判斷式與合成目標）的一般程序，即 2.3 節思路的完整化。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

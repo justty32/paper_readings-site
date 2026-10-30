@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2311.08252_REST.zh-TW.html">回 2311.08252_REST.zh-TW 目錄</a>　<a href="02_%E5%9F%BA%E6%96%BC%E6%AA%A2%E7%B4%A2%E7%9A%84%E6%8E%A8%E6%B8%AC%E8%A7%A3%E7%A2%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>我們提出 <strong>REST（Retrieval-Based Speculative Decoding，基於檢索的推測解碼）</strong>，一個用來加速語言模型生成的新演算法。推動 REST 的關鍵洞察是：<strong>文字生成的過程往往包含某些共通的階段與模式</strong>。與先前依賴一個 draft 語言模型來做推測解碼的方法不同，REST 利用<strong>檢索</strong>的力量來產生草稿 token——它從既有知識的「蓄水池」中，依當前上下文檢索並取用相關 token。其<strong>即插即用（plug-and-play）<strong>的特性讓它能無縫整合並加速任何語言模型，且</strong>完全不需額外訓練</strong>。在單批次（single-batch）設定下對 7B 與 13B 語言模型做基準測試，REST 在程式碼或文字生成上取得 <strong>1.62× 至 2.36×</strong> 的顯著加速。原始碼見 https://github.com/FasterDecoding/REST 。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>基於 Transformer 的大型語言模型（LLM）已成為 NLP 的基礎模型，但實務推論成本巨大。推論時模型自回歸地用前文生成下一個 token，<strong>每一步都得把數十億參數從高頻寬記憶體（HBM）重新載入到加速器的片上快取</strong>，使整個生成低效又耗時。</p>
+<p>一個加速方向是<strong>在保證輸出品質的前提下，減少 LLM 前向次數</strong>。**推測解碼（speculative decoding）**是此方向的典型作法：用一個小 LM 以較低算力先生成一串草稿 token，再讓 LLM 一次前向驗證；若兩者預測一致就接受草稿回傳。實際 token 生成由小 LM 承擔，大 LM 只做驗證（可平行、只需載入記憶體一次），因而降低整體推論成本。</p>
+<p>然而<strong>取得高品質 draft 模型仍具挑戰</strong>：它要在「夠小」與「夠準」間取得平衡，還要與基礎模型詞表相符、能良好整合進分散式服務系統；因此人們常需為自己的模型與使用情境專門訓練 draft 模型。本研究不依賴額外的小 LM，而是<strong>直接用一個資料語料來構造草稿序列</strong>，提出檢索式方法 <strong>REST</strong>。相較先前作法，我們用<strong>非參數的檢索資料庫取代參數化的 draft 模型</strong>，可輕易移植到任何 LLM 並加速其推論。</p>
+<p>使用 REST 的第一步是建資料庫：本文用預訓練語料或指令微調語料建庫，作為草稿序列的來源。推論每一步，先用先前 token（已生成 token 或提示 token）當查詢，在庫中找<strong>精確匹配</strong>；這些匹配的後續 token 即為生成候選。再用候選建一棵 <strong>Trie</strong>，挑出頻率最高的節點當草稿 token。此序列經一棵精心設計的 <strong>tree attention</strong> 遮罩，由 LLM 單次前向驗證。由於生成中的許多子序列很可能出現在庫裡，REST 常能<strong>每步一次生出多個正確 token</strong>。</p>
+<p>實驗涵蓋不同情境：程式碼域用 The Stack 的部分 Python 預訓練碼（270 萬筆）建庫加速 CodeLlama 7B/13B，於 HumanEval 上取得 2.12×～2.36× 加速；一般域用 UltraChat（約 77.4 萬則對話）建庫，於 MT-Bench 上把 Vicuna 7B/13B 加速 1.62×～1.77×。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>提升 LLM 推論效率大致分兩類：<strong>有損加速</strong>與<strong>無損加速</strong>。有損加速學一個更快、行為近似目標 LLM 的高效模型，包括剪枝（pruning）、量化（quantization）、知識蒸餾（knowledge distillation）。無損加速則直接從不同角度加速目標 LLM，如記憶體與 IO 優化（FlashAttention、vLLM 等），以及減少解碼時 LLM 函數呼叫次數的<strong>推測解碼</strong>。本工作屬第二類。</p>
+<p>推測解碼用較小模型生草稿、LLM 單次前向驗證。此框架下，blockwise parallel decoding（Stern 等，2018）與 <strong>Medusa</strong>（Cai 等，2023）是在 LLM 上訓練多個「頭」來生草稿。</p>
+<p>我們的方法透過<strong>從資料庫檢索</strong>草稿 token 而與上述不同。與另一個用檢索加速的相近工作 <strong>LLMA</strong>（Yang 等，2023）的差異有二：(1) LLMA 針對「生成時已提供參照上下文」的情境（如 RAG、快取輔助生成），只從這些參照上下文檢索；我們則從一個<strong>全面的資料庫</strong>檢索草稿，不受限於小範圍上下文。(2) LLMA 檢索到的實例通常僅一個或少數幾個，我們則設計成能處理<strong>大量檢索實例</strong>，可在生成時運用更廣的資訊基礎。</p>
+<p><strong>圖 1（REST 總覽）</strong>：推論時以輸入上下文為查詢，從資料庫檢索出「與輸入最長後綴匹配」的文件；用檢索文件的延續構造一棵 Trie，剪掉低頻（低權重）分支，剩下的子樹當候選；候選以 tree attention 遮罩餵入 LLM 驗證；從頭起所有正確 token 皆接受，第一個錯誤之後的草稿 token 全拒絕。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

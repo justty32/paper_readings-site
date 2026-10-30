@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>4. 為什麼靜態技能庫會失敗（續） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2607.10113_SkillLifecycleSurvey.zh-TW.html">回 2607.10113_SkillLifecycleSurvey.zh-TW 目錄</a>　<a href="02_%E7%82%BA%E4%BB%80%E9%BA%BC%E9%9D%9C%E6%85%8B%E6%8A%80%E8%83%BD%E5%BA%AB%E6%9C%83%E5%A4%B1%E6%95%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>LLM agent 越來越多地把可重用程序存在模型外面。這些可重用程序常被稱為<strong>技能（skills）</strong>：它們可以是程式碼函數、自然語言指令、SKILL.md 套件、工作流圖、或學到的 adapter，供未來的 agent 檢索並調用。這份分類學驅動的綜述問的是：<strong>這類技能庫如何隨時間改變</strong>。橫跨 124 篇 2023–2026 年審計集，我們把動態技能系統合成為<strong>生命週期管理、經驗證、演化的 artifact 儲存</strong>：agent 從互動收集證據、提出技能更新、驗證並准入候選者、組織它們以供檢索與組合、修復或修剪過時條目、並透過溯源與回滾治理共享。我們圍繞三件 survey 工具組織文獻。第一，<strong>六感分類學</strong>區分當前論文中被稱為&quot;技能&quot;的結構上不同的 artifact。第二，<strong>八階段生命週期架構</strong>識別出證據取得、提案、驗證/准入、儲存、檢索/組合、維護、蒸餾/可移植性、與治理背後的重複性設計決策。第三，一個輕量<strong>技能記錄 schema 與十算子詞彙</strong>為比較庫更新提供共同術語而不將其升級為獨立的方法貢獻。使用此結構，我們合成帶有明確附帶說明的證據分級模式：准入與修復被反覆證明重要、驗證器品質實質影響 skill-aware RL、平面檢索在庫增長時可能退化、而當前 benchmark 仍然低報庫軌跡、使用與效益落差、與安全表面。我們以具體的報告標準與開放問題作結，將動態技能作為變化的庫而非靜態 prompt 或工具集合來評估。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM agent 正從聊天式輔助轉向操作工作流。瓶頸不只是模型能否對單一任務推理，而是 agent 能否<strong>跨重複任務、工具、介面與使用者重用程序性知識</strong>，而不是在每個 context window 內重新推導相同策略。</p>
+<p><strong>Agent 技能</strong>被提出作為此重用問題的實用答案。簡單說，技能是一個 agent 之後可以調用的可重用程序。早期可執行庫如 Voyager 與 LATM 儲存程式碼技能；2025 系統將技能擴展到網頁與軟體 agent；2026 系統將生態系擴展到 SKILL.md 套件、電腦使用技能、移動 GUI 技能、多模態技能、benchmark、registry 與安全審計。更廣泛的技能生態系現在包含 SKILL.md 慣例、function-calling schema、MCP/plugin 風格打包、與支援數百至數千個可重用 artifact 的註冊平台。</p>
+<p><strong>&quot;技能&quot;一詞被過載使用</strong>。Table 1（六感分類學）是這份 survey 的概念入口：它區分可執行程式、自然語言教訓、SKILL.md 套件、參數化 adapter、記憶軌跡與能力標籤，然後論文才引入生命週期或更新記號。</p>
+<p><strong>技能庫仍多被當成靜態</strong>：授權一次、偶爾版更、與軌跡弱連結。近期工作拒絕此假設，將庫本身視為學習物件——它增長、縮減、自我修復、改變儲存結構、有時把內容蒸餾回模型權重。方法不同，但共享一個承諾：技能庫應作為<strong>演化系統</strong>來管理。</p>
+<h3 id="11-動態技能庫作為學習系統">1.1 動態技能庫作為學習系統</h3>
+<p>庫是配備檢索或組合機制的技能集合。<strong>動態庫</strong>是其內容或組織可隨 agent 累積證據而改變的庫。這使動態技能成為<strong>學習系統問題</strong>而不僅是軟體打包問題。互動產生證據；證據選擇編輯；編輯改變庫；改變後的庫透過檢索、組合與執行改變未來行為的分佈。因此 Lt 是 agent 狀態的一部分，轉移 Lt→Lt+1 是學習規則，驗證是選擇機制，維護是正則化形式，蒸餾是將外部程序知識移到較慢的參數化或半參數化儲存的固化步驟。</p>
+<p>時間索引重要，因為部署中的庫會隨任務、工具、backbone 與安全約束漂移而過時。</p>
+<h3 id="12-為什麼現在做-survey">1.2 為什麼現在做 survey</h3>
+<p>2025–2026 的三個發展使動態技能變成可 survey 的：(1) 打包與 registry 基礎設施成熟；(2) 方法現在橫跨學習訊號光譜；(3) 部署與 benchmark 論文開始報告失敗模式——檢索退化、技能注入、驗證漂移、技能膨脹、維護關閉崩潰。領域仍缺乏共享詞彙與 benchmark 協定。此 survey 的角色是在排名變得有意義之前提供一個共同語言。</p>
+<h3 id="13-貢獻">1.3 貢獻</h3>
+<p>五項貢獻：(1) 六感分類學澄清技能含義；(2) 將動態技能重鑄為可編輯學習系統 artifact 並引入輕量技能記錄 schema 加庫級轉移記號；(3) 八階段生命週期架構；(4) 十算子詞彙組織機制與系統家族；(5) 審計生命週期感知評估，提煉七個證據分級模式、八個安全表面與八個開放問題。</p>
+<h2 id="2-語料範圍與審查協定">2. 語料、範圍與審查協定</h2>
+<p>工作審計集含 <strong>124 篇現代論文</strong>（2026-05-31 更新）：2 篇 2023、19 篇 2025、103 篇 2026。包含條件：(i) 提出新增／編輯／修剪／蒸餾／路由／轉移／組合 agent 技能 artifact 的機制；(ii) 提供改變技能庫儲存／檢索／評估／治理方式的基礎設施或 benchmark；(iii) 記錄技能 artifact 特有的安全或部署失敗模式。語料由迭代資料庫搜尋與前後向滾雪球組裝，非 PRISMA 式。證據分級：A＝多個受控消融或一個乾淨消融加獨立印證；B＝一個受控研究或強 benchmark/部署測量；C＝收斂性 benchmark 行為無乾淨因果消融；D＝僅架構性印證。</p>
+<h2 id="3-技能記錄與庫更新">3. 技能記錄與庫更新</h2>
+<h3 id="31-六種對技能的詮釋">3.1 六種對「技能」的詮釋</h3>
+<p>六感（依 dynamic 屬性分——是否 executable/edit/portable/inspectable/有 verification handle）：</p>
+<ul>
+<li><strong>可執行程式碼</strong>：Voyager, LATM, SAGE, ASI, SkillOps（支援測試/合約驗證）</li>
+<li><strong>NL 啟發式</strong>：ERL, RetroAgent, EvolveR（僅間接驗證）</li>
+<li><strong>SKILL.md 套件</strong>：MetaClaw, Memento, Trace2Skill, AutoRefine, SkillGrad（L1 路由/L2 指令/L3 程式碼漸進揭露）</li>
+<li><strong>參數化</strong>：SkillsCrafter, SKILL0, SELAUR（訓練時編輯）</li>
+<li><strong>記憶/軌跡</strong>：SimpleMem, MUSE, CASCADE（邊界案例）</li>
+<li><strong>能力標籤</strong>：Co-Evolving, GEA（無強健編輯體）</li>
+</ul>
+<p>區別技能與工具：工具是外部提供的可呼叫資源（agent 決定何時調用但工具的 body/介面/發布過程不是 agent 學的），動態技能是生命週期本身即學習一部分的持久 artifact。</p>
+<h3 id="32-從靜態到可編輯記錄">3.2 從靜態到可編輯記錄</h3>
+<p>SoK-Skills 四元組 ⟨C, π, T, R⟩（適用謂詞／策略／終止條件／介面）對靜態庫足夠但動態庫需要五個缺失物件：(1) 時間索引；(2) 編輯算子；(3) 准入閘門；(4) 譜系；(5) 庫級物件。擴充為七元組：</p>
+<pre><code>St = ⟨Ct, πt, Tt, Rt, φt, νt, ≺t⟩
+</code></pre>
+<ul>
+<li>φt：編輯欄位，記錄如何從當前 artifact 與編輯指令 ut 產生候選修訂</li>
+<li>νt：驗證欄位，記錄准入處理（單元測試／grounded rollout／meta-agent 檢查／靜態分析／Bayesian 前驗）</li>
+<li>≺t：譜系關係，記錄哪個版本取代哪個</li>
+</ul>
+<h3 id="33-庫動態lt--lt1">3.3 庫動態：Lt → Lt+1</h3>
+<pre><code>Lt = {St(1), St(2), ..., St(Nt)} ∪ Mt
+Lt+1 = T(Lt, τt, rt) = Apply(⃗ut(τt, rt), Lt)
+</code></pre>
+<ul>
+<li>τt：演化觸發器（計時器、任務邊界、失敗事件、使用者編輯）</li>
+<li>rt：學習訊號（任務獎勵、NL 批評、自我判斷、跨使用者聚合、教師訊號）</li>
+<li>⃗ut ⊆ {Add, Refine, Merge, Split, Prune, Distill, Abstract, Compose, Rewrite, Rerank} × Instruction</li>
+</ul>
+<p><strong>驗證作為庫級閘門</strong>：ν 雖然以 per-skill record 索引，但驗證在准入時間點作用——編輯產生候選 S*，S* 只有當庫級准入策略用可用的驗證處理接納時才進入 Lt+1。</p>
+<h1 id="4-為什麼靜態技能庫會失敗續">4. 為什麼靜態技能庫會失敗（續）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

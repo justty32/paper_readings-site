@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2402.16823_GPTSwarm.zh-TW.html">回 2402.16823_GPTSwarm.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>人們提出了各種人工設計的 prompt engineering 技術來改進基於 LLM 的問題求解器，導致許多互不相容的程式碼庫。我們透過把基於 LLM 的智能體描述為**計算圖（computational graphs）**來統一這些方法：節點（node）實作處理多模態資料或查詢 LLM 的函數，邊（edge）描述操作之間的資訊流。圖可以遞迴地組合成更大的複合圖（composite graph），表示智能體間協作的層級結構（此時邊連接不同智能體的操作）。我們新穎的自動圖優化器：(1) 精煉節點層級的 LLM prompt（<strong>節點優化 node optimization</strong>）；(2) 透過改變圖的連通性改進智能體編排（<strong>邊優化 edge optimization</strong>）。實驗證明本框架可用於高效地開發、整合並自動改進各種 LLM 智能體。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>早期方法用 zero-shot 或 few-shot 範例提示 LLM；近期方法以結構化方式提示，如 Chain of Thought（COT）、ReAct、Tree of Thought（TOT）、Reflexion、Graph of Thought（GOT）。單智能體應用（AutoGPT、BabyAGI、LangChain、LlamaIndex）利用 LLM 做工具使用、函數呼叫與具身行動；多智能體框架中數個 LLM 扮演不同角色，以自然語言溝通、共同解題，常優於單智能體。但這也導致愈來愈多互異的程式碼庫，需要大量人工工程來定義提示方案與智能體工作流。</p>
+<p>受 Minsky「心智社會（society of mind, SOM）」啟發——高階智能從更簡單、模組化的認知組件之組合中湧現——我們以圖表示描述語言智能體系統：查詢 LLM 並使用外部工具的語言智能體被建模為計算圖，每個節點負責一個特定功能，邊定義輸入如何跨節點處理，映照先前研究的提示方案。**swarm（蜂群）**定義為複合圖，其中每個子圖代表一個協作的智能體，形成更深的智能層級。COT、TOT、Self-Consistency 等方法都可以用我們的圖來表示。</p>
+<p>這種圖表示天然適合用提示、演化或強化學習（reinforcement learning）技術來優化，使智能體能改進其溝通（或編排 orchestration）模式。智能體之間的圖連通性（鄰接矩陣）可以在解題過程中線上自我改進，或將解遷移到另一任務。</p>
+<p><strong>貢獻</strong>：(1) 把語言智能體系統統一描述為<strong>可優化的計算圖</strong>；(2) 開源框架，可用基本操作重組出任意智能體系統（工程細節見附錄 A）；(3) 為節點與邊開發優化方法，實現智能體 prompt 與跨智能體編排的自動改進；(4) 在 MMLU、Mini Crosswords、HumanEval、GAIA 等基準上驗證，重點在自動圖優化的益處。</p>
+<h2 id="2-gptswarm">2. GPTSwarm</h2>
+<h3 id="21-語言智能體作為圖">2.1 語言智能體作為圖</h3>
+<p>以模組化、層級式框架組織智能，由節點、圖、複合圖組成：<strong>節點</strong>表示基本操作，包括但不限於 LLM 推論、工具使用、函數呼叫與各種具身行動；<strong>智能體</strong>概念化為圖，由多個節點構成一個連貫的功能實體；<strong>swarm（複合圖）<strong>表示智能體構成的複雜系統，其集體能力可超越個別智能體。智能體內部的邊定義其</strong>執行拓撲（execution topology）</strong>，智能體之間的邊則建立協作與溝通。</p>
+<h3 id="22-圖定義">2.2 圖定義</h3>
+<p><strong>單一語言智能體作為圖</strong>：將語言智能體建模為有向計算圖 G，由四元組 (N, E, F, o) 定義——N 是計算節點集合、E ⊂ N×N 是有向邊集合、F = {f_n} 是計算例程（computational routine）集合、o ∈ N 是輸出節點。本文聚焦有向無環圖（DAG）。給定輸入 x，圖按拓撲順序迭代執行節點：每個節點 n 接收輸入 x 與其前驅節點的輸出 z_n，套用計算例程 f_n(z_n, x) 後把輸出送給後繼節點；圖輸出 ŷ = G(x) 即輸出節點的 f_o(z_o, x)。本文中輸入輸出皆為自然語言字串，一般化後可為其他資料型別。例程的例子包括：以其他智能體的資料為輸入的 LLM 查詢、生成網路搜尋提示以蒐集任務資訊的指令、或工具使用（演算法 1）。</p>
+<p><strong>語言智能體的 swarm 作為複合圖</strong>：給定 K 個語言智能體 {G_k = (N_k, E_k, F_k, o_k)}，取節點聯集 N′、邊聯集 E′、例程聯集 F′，並選一個輸出節點 o′。考慮一組<strong>連接不同智能體節點</strong>的邊選擇 ℰ ⊂ ∪_{i≠j} N_i×N_j，定義 swarm 的複合圖為 G_ℰ = (N′, E′∪ℰ, F′, o′)，仍限制為 DAG，可按演算法 1 執行。新增的邊代表<strong>智能體間的溝通通道（communication channels）</strong>。</p>
+<h3 id="23-邊優化edge-optimization">2.3 邊優化（Edge Optimization）</h3>
+<p>給定任務 τ 與其效用函數 u_τ（把候選圖映到實數），目標是找出連接 swarm 中各智能體、最大化效用的邊——即為當前任務決定最有效的溝通與資訊交換模式。考慮 d 條潛在邊，共 2^d 種邊配置 ℰ ∈ {0,1}^d（限制為 DAG），形式化為 max_ℰ u_τ(G_ℰ)。</p>
+<p><strong>2.3.1 問題重構</strong>：DAG 的組合複雜度高，且效用函數因 LLM 的 tokenization 而不可微。因此把邊優化重構為<strong>連續優化</strong>：不在離散空間求解 argmax_ℰ u_τ(G_ℰ)，而是在「可行 DAG 上的機率分佈」連續體上優化——求 argmax_{θ∈Θ} E_{G′∼D_θ}[u_τ(G′)]（式 1），其中 D_θ 是參數化分佈。（作者註：透過剪除節點與邊來優化 DAG，早在最早的深度前饋網路「深度學習」工作（Ivakhnenko 1965, 1968）中已出現。）</p>
+<p><strong>2.3.2 解的參數化</strong>：對每條潛在邊 e_i 指定一個實值參數 θ_i ∈ [0,1]。取樣方式：先初始化 G′ ← (N, E)，然後對每條邊迭代取樣是否納入——若納入 e_i 會造成環則不納入，否則以機率 θ_i 加入。</p>
+<p><strong>2.3.3 優化演算法</strong>：對式 1 套用 <strong>REINFORCE 演算法</strong>（Williams, 1992），用不偏梯度估計 ∇_θ E[u_τ] ≈ (1/M) Σ_i û_τ(G_i) ∇_θ log p_θ(G_i)（式 2，M 個獨立取樣圖），配合梯度上升變體（如 Adam）更新 θ（演算法 2）。</p>
+<h3 id="24-節點優化node-optimization">2.4 節點優化（Node Optimization）</h3>
+<p>每個節點實作一個基本操作（查詢 LLM、用工具、呼叫 API 等），語言智能體中多數操作涉及一或多次提示 LLM，優化這些節點的 prompt 對系統整體表現至關重要。不同於多數只優化<strong>單一全域 prompt</strong> 的工作（OPRO、APO、RLPrompt），本框架的節點優化天然涉及多個操作、每個操作有自己的節點級 prompt——prompt 之間會互相影響，問題更複雜。但圖表示帶來<strong>關注點分離（separation of concerns）</strong>：每個節點有特定目的與專屬 prompt。據此假設：每個優化步驟只需<strong>在固定其他 prompt 的前提下逐一更新每個節點級 prompt</strong> 即已足夠。</p>
+<p>形式化：考慮參數化計算圖 G^P = (N, E, F^P, o)，其中每個例程 f_n^{p_n} 由待優化的 prompt p_n 參數化；另需每個例程的<strong>自然語言功能描述</strong> d_n（如「一個 Python 程式碼生成器」）。既有 prompt 優化方法（如 OPRO）可描述為一個函數 I：迭代地把（prompt、功能描述、一組節點輸入-輸出對（可含品質標註））映到改進後的 prompt。方法流程（演算法 3）：為每個節點初始化空歷史集 h_n；迭代地——取樣輸入 x 執行 G^P(x)、把每個節點的（輸入 (z_n, x)、輸出 f_n^{p_n}(z_n, x)）加入 h_n、再以 I(h_n, p_n, d_n) 更新各節點 prompt——持續改進整張圖中節點的操作。</p>
+<h3 id="25-通用適用性">2.5 通用適用性</h3>
+<p>GPTSwarm 的圖式設計進一步簡化模組化組件（節點與智能體）的重用與整合：支援 41 種檔案分析、網路搜尋（如 Google Search）與索引式記憶等模組，使各種語言智能體系統更容易實作。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

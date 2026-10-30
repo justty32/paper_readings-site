@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2402.03744_INSIDE.%E6%91%98%E8%A6%81.html">回 2402.03744_INSIDE.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>INSIDE</strong>：跳過「把 token 級機率彙總成句級不確定性」與「在解碼後文字上比對一致性」這兩層語意流失，直接對同一問題的 K 個取樣回應取<strong>內部隱藏狀態的句嵌入</strong>，用其<strong>協方差矩陣的特徵值算 LogDet</strong>（即 <strong>EigenScore</strong>，等價於嵌入空間中的可微分微分熵）量測語意發散度，再輔以<strong>測試時 feature clipping</strong> 截斷倒數第二層的極端啟動值以抑制「自一致但過度自信」的幻覈，在多個 QA 基準上大幅超越 Perplexity、LN-Entropy、Lexical Similarity 等既有方法。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>既有幻覺偵測分兩條路：<strong>token 級不確定性估計</strong>（Perplexity、Length-Normalized Entropy）需要把逐 token 機率彙總成句級量，但不同 token 對語意的貢獻並不均等，彙總方式本身就會失真；<strong>語言級自一致性評估</strong>（如 Lexical Similarity、對取樣回應做文字/語意相似度比對）則是在<strong>解碼後的文字</strong>上做事後比較，會被「措辭不同但語意相同」（linguistic invariance／paraphrase）干擾——語意等價的兩個回應在字面上可能被誤判為不一致。兩條路徑的共通問題是：LLM 在生成過程中內部保留的稠密語意資訊，在 token 解碼這一步就已經被丟棄了。作者主張改用內部狀態本身做偵測，跳過這層流失。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>INSIDE 框架</strong>：從兩個角度切入——(1) 直接在內部狀態的嵌入空間裡測輸出的自一致性/發散度（EigenScore）；(2) 處理「自一致但過度自信」這類被既有一致性方法忽略的幻覺（test-time feature clipping）。</li>
+<li><strong>EigenScore</strong>：對同一問題以 top-p/top-k 取樣 K=10 個回應（溫度 0.5、top-p 0.99、top-k 5）；每個回應取<strong>中間層（layer index = int(L/2)）最後一個 token 的隱藏向量</strong>作句嵌入 z（d=4096 for LLaMA-7B，5120 for LLaMA-13B）；K 個句嵌入組成矩陣 Z，算中心化協方差矩陣 Σ = Zᵀ·J_d·Z；EigenScore = (1/K)·log det(Σ + α·I_K) = (1/K)·Σlog(λ_i)，α=0.001 作正則化保滿秩，特徵值 λ 由 SVD 求解。作者證明（Remark 1）LogDet(Σ) 即多變量高斯假設下嵌入空間的<strong>微分熵（differential entropy）</strong>：模型有把握時 K 個回應語意相近、嵌入高度相關，多數特徵值趨近 0，EigenScore 低；模型猶豫或幻覺時回應語意發散，EigenScore 高。此設計天然規避了「paraphrase 被誤判為不一致」的問題，也不需要額外的第二個模型抽句嵌入（對比 SelfCheckGPT／Semantic Entropy 需要外部 NLI 或 embedding 模型）。</li>
+<li><strong>測試時 Feature Clipping</strong>：觀察到 LLM 倒數第二層存在大量極端啟動值（outlier neuron），容易誘發「回應彼此高度一致但仍是幻覺」的過度自信生成。做法：用一個動態存取的記憶庫（memory bank，容量 N=3000）在測試時保存 token 嵌入；對每個隱藏神經元，以記憶庫中最大/最小的前 p=0.2 百分位（依三倍標準差法則設定）當作截斷門檻 h_min/h_max；用分段函數把倒數第二層的啟動值截斷在 [h_min, h_max] 內，再據此重算句嵌入與 EigenScore。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>三個模型（LLaMA-7B/13B、OPT-6.7B）、四個 QA 資料集（CoQA、SQuAD、NQ、TriviaQA）上，EigenScore 在 CoQA、SQuAD、NQ 全面大幅超越 Perplexity、Energy、LN-Entropy、Lexical Similarity，相比 Lexical Similarity 最多勝出 CoQA +5.6%、SQuAD +8.9%（AUROC）。<strong>唯一例外是 TriviaQA</strong>——其標準答案多只有一兩個字，token 級 Perplexity 反而表現最佳，各方法差距很小。</li>
+<li>Feature Clipping 對 LN-Entropy、Lexical Similarity、EigenScore 均帶來一致提升，最大 +1.8%（AUROC）。</li>
+<li>附錄實驗：與 Semantic Entropy、SentSAR、SelfCheckGPT 在 CoQA 上比較（LLaMA 用 K=5、OPT 用 K=10），EigenScore 全面勝出；且因不需額外一個 LLM/NLI 模型評估語意相似度，推理速度<strong>約為 SelfCheckGPT 的 10 倍</strong>（feature clipping + EigenScore 本身計算僅約 0.06 秒/題，主要開銷仍是生成 K 個樣本）。TruthfulQA 上 EigenScore 優於 Perplexity/LN-Entropy/LexicalSim/SelfCheckGPT，在 50-shot in-distribution 提示下逼近需訓練 1024 個二元分類器的 ITI（後者疑似過擬合驗證集，泛化性存疑）。LLaMA2-7B、Falcon-7B 上結果同樣穩健。</li>
+<li>消融：K∈{5,10,15,20,30,40}，K&lt;15 時性能隨 K 增加而提升，K&gt;15 後趨於飽和，作者建議 K=20 是性能/成本的較優折衷點（主實驗用 K=10）；句嵌入取「中間層的最後一個 token」優於淺層/末層，也優於對全部 token 取平均。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>依賴內部隱藏狀態，無法用於黑箱模型</strong>——僅能存取 API 的模型（如僅暴露文字輸出的商用模型）拿不到內部狀態，方法本身宣告不適用。</li>
+<li><strong>仍是取樣式方法</strong>：需為每個問題生成 K 個回應（主實驗 K=10，消融顯示效益在 K≈15–20 附近趨於飽和），帶來與黑箱一致性方法同量級的額外推理開銷；EigenScore/feature clipping 本身的計算成本相對這 K 次生成而言可忽略。</li>
+<li><strong>只做偵測、未做緩解</strong>：論文明言僅驗證「偵測」幻覺的能力，尚未用 EigenScore 去主動降低幻覺率，留待未來工作。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

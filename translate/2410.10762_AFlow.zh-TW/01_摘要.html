@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2410.10762_AFlow.zh-TW.html">回 2410.10762_AFlow.zh-TW 目錄</a>　<a href="02_AFlow_%E8%A8%AD%E8%A8%88%E7%B4%B0%E7%AF%80.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）在跨領域解決複雜任務上展現巨大潛力，通常靠遵循詳細指令與操作序列的<strong>代理工作流（agentic workflow）<strong>達成。然而手工建構這些工作流需大量人力，限制了可擴展性與泛化性。近期研究試圖自動化生成與優化工作流，但既有方法仍依賴初始的人工設定，未能達到完全自動且有效的工作流生成。為此，我們</strong>把工作流優化重新表述為「在以程式碼表示的工作流空間中的搜尋問題」，其中呼叫 LLM 的節點（node）由邊（edge）連接</strong>。我們提出 <strong>AFlow</strong>：一個以**蒙地卡羅樹搜尋（Monte Carlo Tree Search, MCTS）**高效探索此空間的自動化框架，透過程式碼修改、樹狀結構的經驗與執行回饋，反覆精煉工作流。在六個基準資料集上的實證顯示 AFlow 有效，較最先進基線平均提升 <strong>5.7%</strong>；更能讓較小模型在特定任務上以 <strong>GPT-4o 推論成本的 4.55%</strong> 超越 GPT-4o。程式碼開源於 github.com/FoundationAgents/AFlow。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 的快速進展高度依賴<strong>人工設計的代理工作流</strong>——帶詳細指令的結構化 LLM 呼叫序列。設計與精煉這些工作流耗費大量人力，限制了 LLM 對新領域的可擴展與可遷移性。近期工作嘗試自動化探索有效工作流以減少人力，但<strong>都未達完全自動</strong>：例如 DSPy（Khattab 等）在自動 prompt 優化前仍需人工設定工作流；TextGrad、GPTSwarm（Zhuge 等）則因優化目標難以涵蓋足夠多樣的工作流結構而受限；ADAS（Hu 等）用程式碼表示工作流、表達較完整，但受其<strong>線性啟發式搜尋</strong>效率所限，難在有限迭代內找到有效工作流。</p>
+<p>我們的核心想法：把工作流建模為一串<strong>相互連接的呼叫 LLM 節點</strong>，每個節點是一個 LLM 動作，邊定義動作間的邏輯、依賴與流程。如此工作流化為一個龐大搜尋空間，目標是<strong>高效地導航此空間、自動生成使任務表現最大化又最小化人工介入的優化工作流</strong>。挑戰在於任務多樣、需求各異難以統一表示，且程式碼結構＋節點配置的搜尋空間近乎無界。</p>
+<p>為此我們提出 <strong>AFlow</strong>：以 MCTS 為基礎、系統性探索最優代理工作流的框架。它用<strong>程式碼形式的邊</strong>連接靈活節點（可表達邏輯流、條件、依賴），使工作流被建模為圖或網路。並引入 <strong>operator（算子）</strong>——預定義、可重用的節點組合，代表常見代理操作（如 Ensemble、Review &amp; Revise），作為建構工作流的基礎積木並納入搜尋空間。AFlow 的 MCTS 搜尋含數項創新：<strong>軟性混合機率選擇</strong>、<strong>LLM 驅動的節點擴展</strong>、<strong>執行評估</strong>、<strong>經驗反向傳播</strong>。</p>
+<p>三項貢獻：（1）<strong>問題形式化</strong>：把工作流優化形式化，將先前方法一般化為特例，統一了節點層級與工作流層級的優化框架；（2）<strong>AFlow</strong>：以 MCTS 自動發現跨領域有效工作流、人工介入極少；（3）<strong>大量評測</strong>：在 HumanEval、MBPP、MATH、GSM8K、HotpotQA、DROP 六基準上，較人工設計法平均勝 5.7%、較既有自動化法勝 19.5%，且讓小模型以更佳性價比超越大模型。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p><strong>代理工作流</strong>：代理工作流（透過預定義流程、多次 LLM 呼叫「靜態」完成任務）與自主代理（透過彈性自主決策「動態」解題）是 LLM 應用的兩種範式。相較須為環境設計特定動作的自主代理，工作流可依既有人類領域經驗與迭代精煉來建構，<strong>更適合自動化建構</strong>。工作流又分通用型（如 CoT、Self-Consistency、Self-Refine）與領域專屬型（程式生成、資料分析、數學、問答）。</p>
+<p><strong>自動化代理優化</strong>分三類：自動 prompt 優化、超參數優化、自動工作流優化。前兩者在固定工作流內優化，泛化受限。自動工作流優化嘗試優化整個工作流結構：<strong>GPTSwarm</strong> 用圖結構＋強化學習，但因圖結構限制難表示帶條件狀態的工作流；<strong>ADAS</strong> 用程式碼結構表示工作流、以線性 list 儲存歷史，與本文目標接近，但受搜尋演算法效率所限、對經驗的表示過於簡化。AFlow 同樣用程式碼，但進一步提供更基礎的**具名節點（named node）**結構（涵蓋各種 LLM 呼叫參數），並引入 operator，且用特製 MCTS 搭配樹狀經驗與執行回饋來高效搜尋。</p>
+<h2 id="3-前置問題形式化與設計考量">3. 前置：問題形式化與設計考量</h2>
+<p><strong>代理工作流定義</strong>：工作流 W 是一串由邊連接、定義執行順序的呼叫 LLM 節點 N = {N₁, N₂, …}。每個節點 Nᵢ 由四個參數刻畫：</p>
+<ul>
+<li><strong>模型 M</strong>：該節點呼叫的語言模型。</li>
+<li><strong>提示 P（Prompt）</strong>：給模型的輸入／任務描述。</li>
+<li><strong>溫度 τ（Temperature）</strong>：控制輸出隨機性。</li>
+<li><strong>輸出格式 F（Output format）</strong>：輸出的結構（xml／json／markdown／raw 等）。</li>
+</ul>
+<p><strong>邊 E</strong> 定義節點關係與執行序，可用三種結構表示：<strong>圖（Graph）</strong>（表達層級／序列／並行、可分支）、<strong>神經網路（Neural Network）</strong>（可表達非線性、依輸入與回饋可學習的自適應轉移）、<strong>程式碼（Code）</strong>（可表達線性序列、條件邏輯、迴圈，並可內嵌圖或網路，對執行控制最精確）。圖須靠 Petri net、BPMN 等複雜擴展才能自然表達並行與條件；神經網路缺乏精確控制；<strong>程式碼天生透過標準程式構造支援全部關係，故 AFlow 採程式碼為主要邊結構以最大化表達力</strong>。</p>
+<p><strong>自動工作流優化</strong>：給定任務 T 與評估函數 G，目標是找出使 G(W,T) 最大化的工作流 W。這是一個搜尋過程：演算法 A 探索搜尋空間 S，S 涵蓋所有節點參數配置 N(M,τ,P,F) 與邊結構 E 的組合。即 W* = argmax_{W∈S} G(W,T)。</p>
+<p><strong>AFlow 概覽</strong>：先前方法的搜尋空間受限；ADAS 雖搜尋較大空間（prompt＋邊組合）但受線性啟發式搜尋效率所限。AFlow 用 <strong>LLM 作為 MCTS 變體中的優化器（optimizer）<strong>搜尋最優工作流。為提升實務效率，AFlow <strong>固定模型 M、溫度 τ、格式 F 等關鍵參數</strong>，把搜尋集中在</strong>程式碼表示的邊 E 與提示 P</strong>。並引入 <strong>Operator</strong>——把節點與邊組合成統一介面的常見代理操作，讓搜尋更有效率。形式化：搜尋空間 S_AFlow = {(P₁,…,Pₙ, E, O₁,…,Oₙ)}，W* = AFlow(S_AFlow, G, T)。</p>
+<p><strong>任務範圍與算子</strong>：本文聚焦<strong>具數值評估函數的推理任務</strong>。從文獻萃取常見操作定義為算子集 O：(1) Generate、(2) Format、(3) Review &amp; Revise、(4) Ensemble、(5) Test、(6) Programmer、(7) Custom（基本節點建構的預設算子）。算子集可輕易擴充；即使完全無預定義算子，AFlow 也能僅用 Custom 算子建構不同工作流節點。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

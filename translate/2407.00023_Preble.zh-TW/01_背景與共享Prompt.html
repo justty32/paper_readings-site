@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_背景與共享Prompt · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><p>← <a href="../2407.00023_Preble.zh-TW.html">回母檔</a>｜<a href="02_%E6%8E%92%E7%A8%8B%E8%A8%AD%E8%A8%88.html">下一節</a></p>
+<h2 id="摘要">摘要</h2>
+<p>今日 prompt 常包含領域指令、工具使用示例、教科書章節等長 context，許多部分會在 requests 間重複。現有研究可 cache 並重用 prompt KV state，但多限於單 GPU，而 production LLM serving 天生是分散式。</p>
+<p>Preble 是針對 prompt sharing 的分散式 LLM serving platform。它以新排程演算法與階層式排程，共同最佳化 KV reuse 與 compute load balancing。兩個 open-source LLM、真實 workloads 與 arrival patterns 的實驗顯示，相較 SOTA systems，average latency 改善 1.5–14.5×，p99 latency 改善 2–10×。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>新 LLM use cases 有兩個共同特徵。第一，prompt 遠長於 generation；long-document QA、video QA、工具 demonstrations 與多步 prompting 都讓 prefill 成為主要成本。第二，requests 部分共享 prompt：同一文件被問多次、同一工具 instructions 被不同呼叫重用、chain/tree reasoning 的後續步驟重用前一步 context。</p>
+<p>Single-GPU systems 能以 prefix tree 保存 KV。分散式系統若只做 round-robin，shared requests 被分到不同 GPUs，prefix 在各卡重算；若一律送到已有 cache 的卡，又會讓 popular prefix 形成熱點。</p>
+<p>作者先研究五類 workload，發現 prompt/output length ratio 是 37–2,494×，shared token ratio 85%–97%。加入 Azure trace 後，prompt/output 最低為 4×，inter-arrival time 從 2 μs 到 217 s。這表示 placement 既要看 prefix，也要跟上時間變動的 load。</p>
+<p>E2（Exploitation + Exploration）在 matched prefix 長過 remaining prompt 時 exploit cache；否則 explore 其他 GPU。Preble 在 E2 外加入 load shift、popular-prefix autoscaling、prefill/decode-aware mixing，以及兼顧 cache hit 與 fairness 的 local queue。</p>
+<h2 id="2-真實世界的長且共享-prompt">2. 真實世界的長且共享 Prompt</h2>
+<p>研究對象包括 ToolBench 類 tool use、embodied agent、program generation、video QA、LooGLE long-document QA，以及 Azure chat/code trace。</p>
+<p>五類 workload 的共同 prefix 並非只有一層。一個 request 可能先與所有 request 共享 system prompt，再與某群共享 tool A demonstration，再與更小群共享 tool A+B examples。每段 common sequence 平均由 8.6–126 requests 使用。</p>
+<p>總結有四點：prompt 相對 output 很長；共享比例高；共享呈多層與不同 fan-out；request rate 隨時間大幅變動。因此 distributed scheduler 不能只問「哪張 GPU 最空」或「哪張 GPU 有 cache」，而要估算兩者合併後的長期成本。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

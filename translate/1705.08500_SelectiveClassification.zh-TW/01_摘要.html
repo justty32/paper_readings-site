@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../1705.08500_SelectiveClassification.zh-TW.html">回 1705.08500_SelectiveClassification.zh-TW 目錄</a>　<a href="02_%E5%85%B7%E4%BF%9D%E8%AD%89%E9%A2%A8%E9%9A%AA%E6%8E%A7%E5%88%B6%E7%9A%84%E9%81%B8%E6%93%87SGR.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>選擇性分類（selective classification，又稱 reject option，拒絕選項）技術此前尚未在深度神經網路（DNN）脈絡中被考慮。這些技術以犧牲覆蓋率（coverage）為代價，可望顯著提升 DNN 的預測表現。本文提出一種方法：給定一個已訓練好的神經網路，構造出一個選擇性分類器，允許使用者設定期望的風險水準（risk level）；測試時分類器按需拒絕實例，以（高機率地）保證該期望風險。在 CIFAR 與 ImageNet 上的實證結果有力地展示了此法的可行性，為在任務關鍵（mission-critical）應用中運用 DNN 開啟了可能。例如，用本法可在 ImageNet top-5 分類上以 99.9% 機率保證前所未有的 2% 錯誤率，同時維持近 60% 的測試覆蓋率。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>「自我覺察」仍是難以定義的概念，但有一種更易掌握的初階自我覺察——<strong>知道自己不知道什麼</strong>，這能讓你更聰明。機器學習中處理此能力的子領域稱為<strong>選擇性預測（selective prediction）</strong>，亦稱<strong>帶拒絕選項的預測（prediction with a reject option）</strong>，已存在約 60 年 [Chow 1957; El-Yaniv &amp; Wiener 2010]。其主要動機是：在存疑時棄權（abstain）以降低錯誤率，同時盡量維持高覆蓋率。選擇性預測的終極型態，是一個配有「旋鈕（dial）」的分類器——能精確控制期望的真實錯誤率（並以高機率保證之），同時讓覆蓋率盡可能高。</p>
+<p>許多由（深度）預測模型執行的當前與未來任務，都能被高品質的選擇性預測大幅強化。以自動駕駛為例：我們無法指望「奇點」降臨、AI 超越人類，只能使用有時會出錯的標準機器學習。但如果深度自駕網路<strong>能知道自己不知道</strong>如何應對某個情境，提前自我脫離（disengage）並警示人類駕駛接手呢？還有大量任務關鍵應用同樣能從有效的選擇性預測中大幅受益。</p>
+<p>拒絕選項的文獻相當豐富，主要討論各種假說類別與學習演算法（SVM、boosting、最近鄰）的拒絕機制；但在神經網路脈絡中很少被討論，且此前從未針對深度神經網路。既有 NN 工作採<strong>基於成本的拒絕模型（cost-based rejection model）</strong>：須先指定誤分類與棄權的成本，再針對這些成本優化拒絕機制；其分類拒絕機制是對 softmax 層的最大神經元響應施加精心挑選的閾值——我們稱之為 <strong>softmax response（SR）</strong>。成本模型在成本可量化時很有用，但許多重要應用中有意義的成本難以構想（想像為自駕系統的脫離設定合適的拒絕／誤分類成本）。本文改採 [El-Yaniv &amp; Wiener 2010] 的<strong>風險—覆蓋率觀點（risk-coverage view）</strong>。</p>
+<p>集成（ensemble）技術也曾用於選擇性（與信心評級）預測，拒絕機制通常基於集成統計量；但在 DNN 脈絡中訓練足夠多的集成成員代價高昂、目前難以實現。Gal 與 Ghahramani 近期提出一種類集成方法量測 DNN 不確定性，免去訓練多個集成成員：對前向傳播做多次 dropout 抽樣以隨機擾動網路預測。這種 <strong>Monte-Carlo dropout（MC-dropout）</strong> 技術原文未提及選擇性預測，但配上閾值即可直接用作可行的選擇性預測方法。</p>
+<p>本文考慮分類任務，目標是學一個<strong>選擇性分類器 (f, g)</strong>：f 是標準分類器，g 是拒絕函數。選擇性分類器須容許對真實風險的完全保證式控制。理想方法應能在生產環境中以任意期望風險水準、最優覆蓋率分類樣本；合理推測唯有 (f, g) 聯合訓練才能達到此最優。但作為第一步，本文考慮較簡單的設定：<strong>（深度） 神經分類器 f 已給定</strong>，目標是學一個拒絕函數 g，以高機率保證期望錯誤率。為此我們考慮上述兩種已知拒絕技術（SR 與 MC-dropout），並設計一個學習方法挑選能確保期望風險的閾值。給定分類器 f、信心水準 δ、期望風險 r*，本法輸出選擇性分類器 (f, g)，其測試錯誤率以至少 1−δ 的機率不超過 r*。</p>
+<p>以知名的 VGG-16 架構，我們在 CIFAR-10、CIFAR-100、ImageNet 上應用本法（ImageNet 上另用 RESNET-50）。SR 與 dropout 都帶來極有效的選擇性分類：兩者在 CIFAR 上幾乎相同，但在 ImageNet 上較簡單的 SR 顯著更優。更重要的是，幾乎任何期望風險水準都能以出乎意料的高覆蓋率獲得保證。</p>
+<h2 id="2-問題設定">2. 問題設定</h2>
+<p>考慮標準多類別分類。設特徵空間 𝒳、有限標籤集 𝒴 = {1,…,k}，P(X,Y) 為 𝒳×𝒴 上的分布。分類器 f: 𝒳→𝒴 對 P 的真實風險為 R(f|P) ≜ E_P[ℓ(f(x),y)]，ℓ 為給定損失函數（如 0/1 錯誤）。給定自 P 獨立同分布抽樣的標註集 S_m，f 的經驗風險為 r̂(f|S_m) ≜ (1/m)Σℓ(f(x_i),y_i)。</p>
+<p><strong>選擇性分類器</strong>是一對 (f, g)：f 為分類器，g: 𝒳→{0,1} 為<strong>選擇函數（selection function）</strong>，作為 f 的二元限定器：</p>
+<blockquote>
+<p>(f,g)(x) = f(x) 若 g(x)=1；「不知道（don&#x27;t know）」若 g(x)=0。</p>
+</blockquote>
+<p>即 g(x)=0 時分類器在 x 點棄權。表現以<strong>覆蓋率</strong>與<strong>風險</strong>量化。固定 P，覆蓋率 φ(f,g) ≜ E_P[g(x)]，即 𝒳 中未被拒絕區域的機率質量。**選擇性風險（selective risk）**為</p>
+<blockquote>
+<p>R(f,g) ≜ E_P[ℓ(f(x),y)·g(x)] / φ(f,g)。　(1)</p>
+</blockquote>
+<p>顯然，選擇性分類器的風險可與覆蓋率互相取捨；其完整表現輪廓由<strong>風險—覆蓋率曲線（risk-coverage curve）</strong>——風險作為覆蓋率之函數——刻畫。</p>
+<p><strong>問題</strong>：給定分類器 f、訓練樣本 S_m、信心參數 δ&gt;0、期望風險目標 r*&gt;0，目標是用 S_m 建構選擇函數 g，使 (f,g) 的選擇性風險滿足</p>
+<blockquote>
+<p>Pr_{S_m}{ R(f,g) &gt; r* } &lt; δ，　(2)</p>
+</blockquote>
+<p>機率取在自未知分布 P 獨立同分布抽樣的訓練樣本 S_m 上。滿足 (2) 的分類器中，最好的是覆蓋率最大者。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

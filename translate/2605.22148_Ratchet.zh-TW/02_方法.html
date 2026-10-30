@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.22148_Ratchet.zh-TW.html">回 2605.22148_Ratchet.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="31-資料模型">3.1 資料模型</h3>
+<p>Ratchet 維護四種核心工件型態（完整綱要見附錄 C）：</p>
+<ul>
+<li><strong>Skill</strong>：結構化 YAML 工件，含 intent（檢索表面）、guidance 區塊（applies_when、key_insight、common_pitfalls、verify_before_returning）、狀態旗標（ACTIVE/DEPRECATED/CANDIDATE）、以及對其序列化形式計算的 Cohere embed-v4 向量。</li>
+<li><strong>Meta-Skill</strong>：每評估套件一個；Markdown 文件，攜帶綱要鎖定（schema lock）與作者先驗，供 Synthesizer 撰寫新技能時使用。</li>
+<li><strong>Capsule</strong>：每 （任務， 技能， 嘗試） 三元組一個；記錄 pass/fail 結果、模型輸出的程式碼、輪次索引。</li>
+<li><strong>Verdict</strong>：每個失敗 capsule 一個；攜帶歸因標籤（HELPED/HURT/NEUTRAL/INAPPLICABLE）、短自然語言模式字串、信心等級。</li>
+</ul>
+<p>Capsule 與 Verdict 形成附加寫入證據日誌（SQLite）。技能永不刪除；退役只改狀態旗標並將技能從檢索中移除，但其證據仍可定址以備未來復職。</p>
+<h3 id="32-每輪迴圈">3.2 每輪迴圈</h3>
+<p>每輪經過五個階段（圖 1）：</p>
+<ol>
+<li><strong>Eval pass</strong>：僅路由 ACTIVE 技能；產出論文報告的留出 capsule。</li>
+<li><strong>Train pass</strong>：在訓練分割上執行相同管線（引導期間 CANDIDATE 技能也被路由以累積初始證據）；失敗成為合成基底。</li>
+<li><strong>Critic</strong>：對每個訓練失敗 capsule，LLM 給出 Verdict（歸因 + 模式標籤），輸入為任務、技能、solver 輸出、grader 軌跡。</li>
+<li><strong>Synthesizer</strong>：讀取最近 W 輪（W = 6）的 verdict，可能產出新技能：
+<ul>
+<li>模式正規化：對成對餘弦相似度（τcanon = 0.85）做 union-find，在群集前合併近重複模式標籤。</li>
+<li>證據群集：verdict 按正規化模式分組；≥ 3 個成員的群集成為合成目標。</li>
+<li>Already-covered guard：正規化模式與既有 ACTIVE 技能餘弦 ≥ 0.85 的群集被跳過。</li>
+<li>合成呼叫：LLM 被提示以活躍後設技能（綱要鎖定 + 作者先驗）與群集的 capsule；輸出 YAML 經驗證、庫去重、長度上限、提升為 ACTIVE。</li>
+</ul>
+</li>
+<li><strong>Curator</strong>：從證據日誌計算每技能貢獻 ĉ(s) := （成功 − 失敗）/試驗次數。技能在累積 n(s) ≥ Nmin 次試驗且 ĉ(s) ≤ −τ 後退役。硬 active-cap C 在合成將超出容量時強制驅逐最低貢獻技能。</li>
+</ol>
+<p>Meta-Synth 階段在獨立的較慢節奏上執行，從近期 verdict 重寫後設技能；Default 中此功能關閉，初始後設技能保持不變。所有角色由同一個凍結 LLM 透過角色特定 prompt 扮演；持久狀態僅存於 SQLite。</p>
+<h3 id="33-router">3.3 Router</h3>
+<p>給定一個任務與 ACTIVE 技能集合，Router 選擇一個技能或 NONE。當庫很小（|ACTIVE| ≤ 20）時，LLM 看到所有技能並做二元選擇。當庫較大時，兩階段檢索（tf-idf top-K ∪ embedding top-K，K = 10）產生短名單，LLM 再進行裁決。</p>
+<h3 id="34-附持久閘門的回滾">3.4 附持久閘門的回滾</h3>
+<p>一輪的留出 pass@1 比運行最佳值下降超過 τrb = 0.10 時標記為回歸。回滾僅在連續五個回歸後觸發，防止單一噪聲輪觸發恢復。回滾時，最佳輪的技能庫快照被恢復，回歸狀態被存檔供審計。</p>
+<h3 id="35-有界容量與門檻退休下的非發散性">3.5 有界容量與門檻退休下的非發散性</h3>
+<p>先前系統（Voyager、ExpeL、AutoManual）不提供任何保證，效能不會隨時間在固定任務分佈上退化。Ratchet 的有界 active-cap C 與退休門檻 τ 產生一個簡單的非發散性質：論證建立了一個地板（非收斂速率）但排除了無界庫增長作為失敗模式。</p>
+<p>令 St ⊆ S 表示第 t 輪開始時的 ACTIVE 技能集合，依構造 |St| ≤ C。對於從固定分佈 D 抽取的任務 x，令 p0(x) ∈ [0, 1] 為基礎 LLM 無技能注入時（NONE 路由）的通過機率，令 p(x | s) 為注入技能 s 時的通過機率。定義每技能貢獻 c(s) := E_{x∼D}[p(x | s) − p0(x)]。我們的 Curator 在累積 n(s) ≥ Nmin 次試驗且 ĉ(s) ≤ −τ 後退役技能 s，其中 ĉ(s) 為經驗估計器。</p>
+<p><strong>命題 1（期望非發散）</strong>：假設 (i) Router 是檢索一致的：條件於任務 x，它選擇 NONE 或某個 s ∈ St，且注入 NONE 產生 p0(x)；(ii) ĉ 是 c 的無偏一致估計器；(iii) Nmin 選擇使得以至少 1 − δ 的機率，每個 ACTIVE 技能在 Nmin 次試驗後 |ĉ(s) − c(s)| ≤ ε（Hoeffding 界限）。則 Ratchet 下的期望 eval pass@1 下界為 E[p0] − (τ + ε) − Cδ。換言之：母體層級的通過率不能跌破無技能地板超過一個固定邊際，該邊際僅取決於退休門檻、估計容忍度、active-cap。</p>
+<p><strong>證明草圖</strong>：以至少 1 − Cδ 的機率（對 |St| ≤ C 技能取聯集邊界），每個存活技能滿足 c(s) ≥ ĉ(s) − ε ≥ −τ − ε。在高機率事件中，任何路由到存活技能的任務期望通過機率至少為 p0(x) − τ − ε；路由到 NONE 的任務期望通過機率為 p0(x)。對 D 取期望得所述邊界。</p>
+<p><strong>數值實例</strong>：以 Default 的 τ = 0.10、Nmin = 100、C = 50、每技能 δ = 10⁻³，Hoeffding 界限給出 ε ≈ 0.20、Cδ = 0.05。結果地板為 E[p0] − 0.35，僅因 C 與 τ 有限才有限。邊際在我們的規模上較鬆（實證系統從不退化），但在更大庫或更噪聲任務上 E[p0] 可能更高，邊界變為約束性。</p>
+<p><strong>備註</strong>：(1) 這是非發散性質，非收斂速率：它限制了庫漂移的程度，而非系統是否會改進。實證 +0.328 增益（第 4.2 節）顯示邊界在實務上較鬆。(2) 具無界 C 與無 τ 的系統（Voyager、ExpeL、AutoManual）無有限類比：邊界坍塌。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2403.12031_RouterBench.zh-TW.html">回 2403.12031_RouterBench.zh-TW 目錄</a>　<a href="02_%E8%B7%AF%E7%94%B1%E5%99%A8%E8%A9%95%E6%B8%AC%E7%9A%84%E6%95%B8%E5%AD%B8%E5%85%AC%E5%BC%8F.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-實驗">5. 實驗</h2>
+<h3 id="51-預測式路由器">5.1 預測式路由器</h3>
+<p>我們提出一組不需事先生成 LLM 輸出的預測式路由器：路由器 R: xᵢ → LLM，對輸入 xᵢ，模型 LLMⱼ 的表現分數計算為</p>
+<p>performance_score_ij = α·P_ij − cost_j</p>
+<p>其中 P 為對 LLMⱼ 在樣本 xᵢ 上表現的預測值，α 為「願付價格（willingness-to-pay, WTP）」參數，界定成本-效能取捨——α 愈高代表愈偏好以更高成本換取更好效能。總成本以每 token 成本估算。路由決策即選出使表現分數最大化的 LLM。</p>
+<p>為估計 P，我們實作兩種監督式回歸方法：<strong>K 近鄰（KNN）<strong>與</strong>多層感知器（MLP）</strong>，靈感取自 Shnitzer et al.。資料集切出一部分訓練效能預測器，其餘用於評估。</p>
+<ul>
+<li><strong>KNN 路由器</strong>：以訓練集 D_train 中與 xᵢ 最近的 k 個樣本，取其在 LLMⱼ 上的表現均值作 P_KNN(xᵢ) 的估計。</li>
+<li><strong>MLP 路由器</strong>：訓練一組 MLP 模型，以 P_MLP(xᵢ) = f(W_n·(...·(W₁·xᵢ+b₁)...)+b_n) 預測表現。</li>
+</ul>
+<p>KNN 與 MLP 路由器皆以多組超參數訓練，論文呈現最優超參數配置下的實驗結果。</p>
+<h3 id="52-非預測式路由器">5.2 非預測式路由器</h3>
+<p>此類路由器從一連串 LLM 依序取得答案，評估這些答案，並依評估結果做路由決策。受 FrugalGPT 等啟發，我們提出一個<strong>級聯路由器（cascading router）</strong>：含一個總成本參數 T，以及按運算成本與期望準確率由低到高排序的 m 個 LLM 序列 LLMⱼ: text→text。核心是一個評分函式 g: text→[0,1]（配合門檻 t，即「judge」）：請求先送 LLM₁，若 g(o₁)≥t 就採用 o₁ 並結束；否則若累積成本仍低於 T，就送下一個 LLM，直到耗盡序列為止。</p>
+<p>論文中的路由器擁有「近乎完美」的最終分數知識（類似 oracle），能穩定選出成本最低且答案合格的模型。為更貼近真實情境，引入誤差參數 ε∈[0,1]，把評分函式調整為：以機率 ε 回傳 1−g(o)，以機率 1−ε 回傳 g(o)，藉此模擬 judge 不完美的現實。</p>
+<p>另一變體是 <strong>overgenerate-and-rerank</strong>：生成 LLM 所有可能結果、逐一評估、依指定獎勵函式輸出最優解。因實務成本過高，本文僅作示範性呈現。</p>
+<h3 id="53-主要結果">5.3 主要結果</h3>
+<p><strong>預測式路由器</strong>：以 KNN 與 MLP 路由器在除 MT-Bench 外的所有任務上呈現結果（各任務資料集隨機切 70% 訓練 / 30% 測試，MT-Bench 因規模過小排除於此類實驗）。結果顯示 KNN 與 MLP 路由器都能以更低或相近的成本達到最佳單一 LLM 的效能水準，證明所提路由方案雖簡單卻有效。<strong>然而，兩者均未顯著超越 Zero router 基線</strong>：僅 MMLU、Winogrande 上 AIQ 較高，HellaSwag、GSM8K 打平，ARC-Challenge、MBPP 反而較差。相對地，Oracle 路由器在所有任務上皆持續大幅超越其他所有路由器與單一 LLM，凸顯路由演算法設計仍有相當進步空間。</p>
+<p><strong>級聯路由器</strong>：在 MMLU、MBPP、GSM8K 上的結果顯示，隨著總成本上限 T 提高，各誤差率下級聯路由器的效能均提升（有更充裕預算選用更合適的模型）。誤差率較低時，級聯路由器優於 Zero router（AIQ 較高）；零誤差率的 judge 能快速逼近 Oracle 在相同成本下的表現，成本進一步提高後也維持相近水準。整體而言，當 judge 誤差率不超過 0.1 時，級聯路由器顯著超越單一 LLM 與 Zero router，展現搭配有效 judge 的路由技術潛力。</p>
+<p>然而，隨誤差率上升，級聯路由器表現可能急遽惡化，尤以誤差率超過 0.2 時明顯。要為特定真實任務打造誤差率足夠低的 judge 具挑戰性；此外，LLM 在序列中的排列順序也對效能有關鍵影響，仍有優化空間。本文結果代表此方法的模擬理論上限，凸顯探索級聯路由器最優實作方式的潛力與必要性。</p>
+<h3 id="54-rag-結果">5.4 RAG 結果</h3>
+<p>在 RAG 資料集上同時比較了預測式與級聯路由器（KNN、MLP 設定與前述相同，級聯路由器選用誤差率 0.2）。RAG 資料集隨機切分 70% 訓練預測式路由器、30% 供所有路由器評估。結果顯示<strong>所有測試路由器都顯著優於 Zero Router</strong>。進一步分析顯示，路由器能辨識查詢中的時效性特徵（如「2024」），並將時效敏感查詢導向具連網能力的模型、時效不敏感查詢導向 GPT-4/GPT-3.5，凸顯模型路由在「複合式 AI 系統」場景中提升 LLM 應用效果的潛力。</p>
+<h2 id="6-局限與未來工作">6. 局限與未來工作</h2>
+<p>ROUTERBENCH 目前僅聚焦效能與經濟成本，納入延遲、吞吐量等更多評測準則將有助更全面理解路由器的能力與侷限。受限於時間，仍有許多 LLM 與任務未涵蓋，未來版本規劃納入更多任務資料集，並持續加入新發布的 LLM。</p>
+<p>目前工作僅評測了預測式與級聯路由器的成效，仍有相當空間探索更多路由器設計，深化路由效率的研究方向十分重要。值得注意的是，本文對 RAG 情境的評測僅限於「本身具備檢索能力」的模型；處理「檢索器＋LLM」的兩階段路由，仍是待解決的關鍵挑戰，日後若能妥善處理，可望在標準 RAG 任務（如 HotpotQA、NaturalQuestions）上進一步提升路由評測的精確度。</p>
+<p>此外，儘管 ROUTERBENCH 的七個資料集（不含 RAG）已涵蓋多元任務，納入需要長尾技能的領域特定任務（如低資源語言翻譯）能揭露 LLM 路由更多有趣面向，讓基準更貼近真實應用場景，未來版本計劃整合此類任務。</p>
+<h2 id="7-結論">7. 結論</h2>
+<p>本文提出 ROUTERBENCH，一個專門用於評估多 LLM 系統路由器的基準。透過填補此領域標準化評測的關鍵缺口，本基準提供完整資料集與理論框架，用以細緻分析路由器的成本效率與效能。研究成果揭示了各種路由策略的成效，並在部分任務上展現出可觀的早期成果。這項工作建立了穩健且可擴展的路由器評測基準，期能促進 LLM 高效、具成本效益部署的未來進展。</p>
+<h2 id="附錄要點">附錄要點</h2>
+<ul>
+<li><strong>A.1 模型細節與成本估算</strong>：專有模型依官方 API 定價計算輸入輸出成本；開源模型透過 Together AI 取得推論結果並以其定價作為成本參考；RAG 實驗成本則參考 You.com 與 Perplexity 的 API 定價。</li>
+<li><strong>A.2 資料集說明</strong>：簡述各資料集性質，包括 MT-Bench 為 3.3K 筆專家層級的成對人類偏好資料（由 GPT-4、GPT-3.5、Claude-v1、Vicuna-13B、Alpaca-13B、LLaMA-13B 六個模型針對 80 題產生回覆），本文僅取用其 80 道題目重新產生模型回覆供 ROUTERBENCH 使用。</li>
+<li><strong>A.3 資料集欄位</strong>：每筆樣本含 sample_id、model_name、eval_name、prompt、model_response、performance、cost、true_label 等欄位。</li>
+<li><strong>A.4 評測指標</strong>：MMLU、HellaSwag、GSM8K、ARC-Challenge、Winogrande 採 5-shot 推論並以精確匹配（exact match）計分；MBPP、MT-Bench、RAG 採 0-shot 推論並以 GPT-4 作答案評測，結果統一轉為 [0,1] 區間。</li>
+<li><strong>B 延伸實驗設定</strong>：KNN 路由器測試了鄰居數（5/10/40）與三種 SentenceTransformers 嵌入模型，最優為 40 鄰居 + all-MiniLM-L12-v2；MLP 路由器測試 1–2 層隱藏層（各 100 神經元、ReLU、學習率固定 0.001），最優為兩層隱藏層。</li>
+<li><strong>C 過度對齊模型的問題</strong>：討論部分模型（如 Claude-2）因對齊行為過度保守，可能拒答或答非所問，影響其在基準上的實測表現。</li>
+<li><strong>D 完整級聯路由器結果</strong>：補充更多誤差率與成本設定下的級聯路由器實驗數據。</li>
+<li><strong>E 訓練資料分布</strong>：說明預測式路由器訓練/測試切分時各任務類別的資料分布狀況。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2403.12031_RouterBench.%E6%91%98%E8%A6%81.html"><code>../summarize/2403.12031_RouterBench.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

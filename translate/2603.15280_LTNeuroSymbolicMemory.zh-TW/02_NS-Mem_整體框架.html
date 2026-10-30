@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_NS-Mem_整體框架 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.15280_LTNeuroSymbolicMemory.zh-TW.html">回 2603.15280_LTNeuroSymbolicMemory.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-ns-mem-整體框架">4. NS-Mem 整體框架</h2>
+<h3 id="41-架構">4.1 架構</h3>
+<p>開放世界環境中的有效推理需要雙重能力：回憶具體經驗的靈活性（System 1）和應用確定性程序規則的嚴謹性（System 2）。為統一這些能力，我們設計了三層記憶架構：</p>
+<p>**（1）情節層（Episodic Layer）。**情節層作為記憶系統的觀測基礎，記錄基於多模態感知的細粒度事件描述。每個情節節點 e = (t, d, v_e) 儲存時間戳 t、文字描述 d 和對應嵌入 v_e = φ(d)。描述是將視覺和聽覺訊號合成為統一的文字表示的原子事件敘述，並通過感知實體錨點（ArcFace 人臉嵌入與 ERes2Net 語音嵌入的聚類結果）顯式引用已識別實體。</p>
+<p>**（2）語義層（Semantic Layer）。**語義層在更高層次上抽象和鞏固知識，維護隨新觀測積累而演進的實體為中心的摘要。每個語義節點 s = (type, attrs, v_s) 編碼特定面向的抽象知識。與情節層不同，語義層採用基於增強（reinforcement）的鞏固政策：當新語義觀測與共享至少一個實體錨點的現有節點嵌入相似度超過正門檻 τ_pos 時，增加現有節點的邊權重而不創建新節點；僅在無足夠相似節點時才插入新節點。</p>
+<p>**（3）邏輯層（Logic Layer）——本系統核心。**每個 Logic Node N = (id, c, I, G, F) 將用於神經發現的 Index Vectors I 與用於符號查詢的 Procedural DAG G 配對。Index Vectors 包括目標級嵌入 i_goal = φ(c) 和步驟級嵌入 i_step = Mean(φ(s) for s in steps)——類似搜尋引擎同時索引文件標題和內容。Procedural DAG G = (V, E, A) 以 START 和 GOAL 為邊界節點，E 編碼有效步驟轉移，A 將每個節點映射到相關屬性。DAG 提供三個優勢：通過並行執行路徑的表達力、用於替代方案發現的約束感知過濾、以及基於吸收馬可夫鏈的機率語義。</p>
+<h3 id="42-記憶構建與維護sk-gen">4.2 記憶構建與維護（SK-Gen）</h3>
+<p>SK-Gen 自動從多模態視訊串流中構建與更新記憶，分為三階段：</p>
+<p>**Phase 1：觀測處理。**視訊流分段後，ArcFace 提取人臉嵌入、ERes2Net 提取語音嵌入，聚類建立持久實體錨點。視覺語言模型處理每個片段，產出兩類文字輸出：原子事件描述（→情節節點）和高層結論（→語義節點）。</p>
+<p><strong>Phase 2：邏輯蒸餾（五步驟）。</strong></p>
+<ul>
+<li>Step 1 動作序列萃取：從情節記憶中按視訊提取時間排序的動作序列。</li>
+<li>Step 2 順序模式挖掘：PrefixSpan 演算法在保留時間順序的條件下發現頻繁程序模式，support(p) ≥ σ。</li>
+<li>Step 3 知識驗證：LLM 評估每個候選模式是否代表完整、可重用的知識，僅 score &gt; τ 的模式通過。</li>
+<li>Step 4 DAG 建構：為通過驗證的模式建構 Procedural DAG，建立 episodic_links 指向支援該模式的具體情節節點。</li>
+<li>Step 5 索引生成：計算雙層 Index Vectors，產出完整 Logic Node。</li>
+</ul>
+<p>**Phase 3：增量維護。**新觀測到來時，先以神經相似度匹配最佳 Logic Node，僅在相似度超過門檻 δ 時進行更新——低於門檻的觀測暫存候選池，待證據足夠時觸發新蒸餾週期。更新分兩路：神經端以 EMA（β=0.9）更新 Index Vectors，保留歷史語義的同時納入新語言變體；符號端以計數式 transition statistics 更新 DAG 邊權重，支援從單路徑演進為多路徑。</p>
+<p>**知識融合。**不同個體以不同變體執行同一流程時，先為每個觀測產生單路徑 DAG，再通過三個操作合併為統一的多路徑 DAG：節點對齊（嵌入相似度 + 匈牙利演算法）、邊聯集（保留所有觀測到的轉移）、統計池化（貝式共軛合併 transition counts）。定理 2（融合一致性）確保融合不引入虛假路徑或破壞統計量。</p>
+<h3 id="43-混合檢索與推理">4.3 混合檢索與推理</h3>
+<p>**查詢分類。**來詢分為三型：Factual（事件回憶/實體屬性）、Constraint（約束滿足，需 DAG 符號操作）、Character（個性/行為模式，需跨流程聚合）。分類採用雙層策略：基於詞法模式的規則預過濾 + 對模糊案例的 LLM 精煉分類。</p>
+<p>**多粒度檢索。**Stage I 神經發現：在全部記憶層進行廣義相似度搜尋，Logic Node 的檢索分數結合目標級與步驟級匹配（α=0.3 平衡兩者）。Stage II 類型感知重排：根據查詢分類 T 加權不同的記憶層，constraint/character 查詢優先 Logic Layer，factual 優先 Episodic/Semantic。</p>
+<p>**符號增強推理。**檢索到 Logic Node 後，直接在 Procedural DAG 上執行三個確定性符號函數：</p>
+<ul>
+<li><code>getProcedureWithEvidence(goal)</code> → 返回步驟 DAG + 支援證據鏈</li>
+<li><code>queryStepSequence(goal, constraints)</code> → 枚舉滿足約束 C 的所有路徑，𝑂(|Π|·𝐿)</li>
+<li><code>aggregateCharacterBehaviors(person)</code> → 跨流程聚合特定人物的所有關聯 Logic Node</li>
+</ul>
+<p>定理 3（確定性保證）：所有符號查詢函數對固定輸入返回相同輸出——無隨機採樣、無 LLM 推理參與計算過程。</p>
+<h2 id="5-實驗">5. 實驗</h2>
+<p>**資料集。**M3-Bench：M3-Bench-robot（100 個真實機器人視角影片）和 M3-Bench-web（920 個網路影片）。問題分五類：Multi-Detail (MD)、Multi-Hop (MH)、Cross-Modal (CM)、Human Understanding (HU)、General Knowledge (GK)。評估使用 50 部影片（703 題）的 Robot 子集和 550 部影片（2,066 題）的 Web 子集。</p>
+<p>**基準方法。**三大類：（1）Socratic Models：Qwen2.5-Omni-7b、Qwen2.5-VL-7b、Gemini-1.5-Pro、GPT-4o 直接查詢，無顯式記憶；（2）Online Video Understanding：MovieChat、MA-LMM、Flash-VStream；（3）Agent Method：M3-Agent（情節+語義雙層記憶，純向量檢索）。</p>
+<p><strong>核心結果。</strong></p>
+<ul>
+<li>整體：NS-Mem 在 Web 上達 53.6%（+4.7 vs M3-Agent），Robot 上達 34.7%（+4.0）。</li>
+<li>查詢類型：Procedural 查詢相對提升 +50.0%，Constrained 查詢 +50.0%，Factual 僅 +3.4%——符號層的價值集中在結構化推理。</li>
+<li>效率：Robot 上平均查詢回合數從 4.01 降至 3.38（-15.8%），時間 -7.4%。</li>
+<li>消融：符號推理是最關鍵組件，貢獻是檢索增強單獨貢獻的 2.5 倍；全模型增益 (+4.7) 超過兩組件單獨增益之和 (+1.1 + +2.8 = 3.9)，驗證了神經與符號間的協同效應。</li>
+<li>增量維護：動態圖優於靜態圖（Robot +0.9% accuracy，-0.14 rounds），EMA 機制有效將新程序變體整合進既有知識而無需全量重建。</li>
+</ul>
+<h2 id="6-結論">6. 結論</h2>
+<p>NS-Mem 提供了一個長期神經符號記憶框架，橋接多模態 Agent 的直覺神經檢索與確定性符號推理。通過將三層層級架構與顯式邏輯規則和 Procedural DAG 相結合，NS-Mem 使 Agent 能處理需要約束滿足和依賴推理的複雜決策任務。SK-Gen 機制確保該記憶可從連續多模態觀測中自動構建和增量維護。對比最先進的純向量記憶方法 M3-Agent，NS-Mem 在真實世界基準上整體提升約 4.35% 準確率，其中在約束式查詢上的相對提升高達 50%（絕對 +12.5%），證明了符號結構在提供嚴謹邏輯基礎方面的價值。</p>
+<blockquote>
+<p>返回 <a href="../2603.15280_LTNeuroSymbolicMemory.zh-TW.html">Part 1：摘要與導論</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

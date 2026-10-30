@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>哪個 Agent 在何時造成任務失敗？LLM 多 Agent 系統的自動錯誤歸因（Which Agent Causes Task Failures and When? On Automated Failure Attribution of LLM Multi-Agent Systems） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Shaokun Zhang, Ming Yin, Jieyu Zhang, Jiale Liu, Zhiguang Han, Jingyang Zhang, Beibin Li, Chi Wang, Huazheng Wang, Yiran Chen, Qingyun Wu</p><p>日期：2025-05</p><p>arXiv：2505.00212</p><p><a href="https://arxiv.org/abs/2505.00212" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="哪個-agent-在何時造成任務失敗llm-多-agent-系統的自動錯誤歸因">哪個 Agent 在何時造成任務失敗？LLM 多 Agent 系統的自動錯誤歸因</h1>
+<h2 id="摘要">摘要</h2>
+<p>失敗歸因要找出造成任務失敗的 agent 與步驟，是多 agent 系統除錯的重要線索，但現有研究很少處理，人工分析又很昂貴。本文提出「自動失敗歸因」問題，建立 Who&amp;When 資料集，收錄 127 種 LLM 多 agent 系統的失敗 log，並把失敗連到特定 agent 與決定性錯誤步。三種基線中，最好只能正確辨認 53.5% 的責任 agent，step 定位只有 14.2%；OpenAI o1、DeepSeek R1 等推理模型也達不到實用水準。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>多 agent 系統的開發通常經歷「跑 benchmark → 失敗 → 人工閱讀 log → 修改系統」的循環。現有精細 benchmark 雖提供更多指標，仍不能回答哪個元件需要改。當 agent、工具與互動步驟增加，從終局分數回推責任元件，需要大量領域知識與人工時間。</p>
+<p>本文主張評估應直接服務改進，並借用 LLM-as-a-judge 的想法，自動把失敗映射到責任 agent 與確切步驟。Who&amp;When 同時包含演算法自動生成的團隊與人工精心設計的系統，每個案例都有人類標註 agent、step 與失敗理由。</p>
+<h2 id="2-自動失敗歸因的形式化">2. 自動失敗歸因的形式化</h2>
+<p>系統含 <code>N</code> 個 agent，離散時間中每一步恰有一個 agent 行動。完整軌跡由狀態與動作交錯組成，終局函式 <code>Z(τ)</code> 表示成功或失敗。</p>
+<p>軌跡中可以有很多錯誤，但作者只把能改變終局者稱為 decisive error。對失敗軌跡，若將 agent <code>i</code> 在時間 <code>t</code> 的錯誤動作換成正確動作，保留此前步驟並讓後續動作相應修正，得到的干預軌跡成功，則 <code>(i,t)</code> 是 decisive error。責任 agent 是 <code>i</code>，決定性錯誤步是 <code>t</code>。若有多組候選，取時間最早者。</p>
+<p>研究任務就是只根據 query、系統資訊與失敗軌跡，自動預測這組 <code>(i*,t*)</code>。</p>
+<h2 id="3-whowhen-資料集">3. Who&amp;When 資料集</h2>
+<h3 id="31-資料內容">3.1 資料內容</h3>
+<p>資料集包含 127 種系統與 184 個不同失敗標註任務。每筆資料有：GAIA 或 AssistantBench query、完整失敗對話、系統 prompt／工具／agent 名稱、責任 agent、錯誤步與自然語言原因。評測分 agent-level accuracy、精確 step-level accuracy，以及容許前後若干步的 step-level accuracy。</p>
+<h3 id="32-系統來源">3.2 系統來源</h3>
+<p>演算法生成部分使用 AG2 的 CaptainAgent。它以 GPT-4o 依每個 query 建立 agent 名稱、prompt 與工具，反覆最佳化配置；資料集保留最後配置仍然失敗的執行紀錄。</p>
+<p>人工系統是 Magnetic-One，由五個專職 agent 組成，例如瀏覽器與檔案操作角色。作者使用 AssistantBench validation set，以及 GAIA 隨機 30 題；其餘 GAIA 因 log 太長、人工標註成本過高而排除。</p>
+<h3 id="33-決定性錯誤標註">3.3 決定性錯誤標註</h3>
+<p>三名 AI agent 專家進行三輪程序。第一輪依共同指南各自標一個主要錯誤 agent、步驟、原因，並區分確定與任何程度不確定的案例。第二輪對不確定案例討論，不採簡單多數決，要求所有人被理由說服並達成共識。第三輪交叉檢查另一人的標註，發現標準不一致時再討論、重標，直到共識。</p>
+<p>三名標註者分別投入 30.9、30.2、23.2 小時。不確定比例約 15%–30%；在正式協商前，彼此投票仍有分歧。人工必須重建每個 agent 的推理，甚至逐一打開瀏覽紀錄確認網站是否真的有資訊，因此成本很高。</p>
+<h2 id="4-llm-能找出誰在何時造成失敗嗎">4. LLM 能找出誰在何時造成失敗嗎？</h2>
+<h3 id="41-三種方法">4.1 三種方法</h3>
+<p>All-at-once 一次讀完整 query 與 log，直接回 agent 和 step。Step-by-step 逐步讀 log，每一步判斷此處是否出錯，首次判定錯誤就停止。Binary search 反覆判斷錯誤位於 log 前半或後半，直到縮成一步。</p>
+<p>實驗分兩種情境。有 ground truth 時，judge 知道 query 的正確答案，對應開發集除錯；無 ground truth 時，只能根據 log 自我反省。主要模型為 GPT-4o，也比較 Llama、Qwen、其他 GPT、OpenAI o1 與 DeepSeek R1。</p>
+<h3 id="42-整體結果">4.2 整體結果</h3>
+<p>找責任 agent 需要跨角色比較，因此 all-at-once 最好。GPT-4o 在演算法生成／手工系統、有／無答案四種組合下為 51.12%–55.17%；binary search 居中，step-by-step 最差。</p>
+<p>找精確 step 的排序相反。all-at-once 在長 log 中難以找針尖，部分平均甚至低於隨機；step-by-step 在四種組合中三種最好。演算法生成系統、有答案時 step-by-step 為 25.51%；手工系統、無答案時為 8.77%。Binary search 多半居中。摘要彙整的最佳 agent-level 與 step-level 分別只有 53.5% 與 14.2%。</p>
+<p>提供正確答案幾乎全面提升歸因，因為答案能揭露系統是否早已走錯方向。跨不同 LLM，方法排序大致不變：全域脈絡有利於找誰，逐步局部判斷有利於找何時。</p>
+<h3 id="43-脈絡長度">4.3 脈絡長度</h3>
+<p>Magnetic-One log 分成 5–17、19–29、31–49、51–91、93–130 steps 五級。三種方法的兩項指標都隨長度下降，step-level 對長度更敏感；最長級別三法幾乎都降到 0%。逐步法雖平均較會抓近確切位置，長 log 中也會因過早誤判而明顯退化。</p>
+<h3 id="44-容許範圍">4.4 容許範圍</h3>
+<p>手工系統容許 ±1 step 時，step-by-step 最好，為 14.66%；容許 ±2 以上，all-at-once 逐漸領先。到 ±5，all-at-once 為 43.10%、binary search 36.21%、step-by-step 33.62%。若需求只是指出可疑區段，全域方法仍有用途；若要精確動作，逐步檢查較合適。</p>
+<h3 id="45-聚合統計">4.5 聚合統計</h3>
+<p>單筆歸因準確率不高，但將 Magnetic-One 的所有案例彙整後，三種方法都找對最常犯 decisive error 的 agent；前三法中有兩法也找對最常出錯的前兩名。自動歸因目前更適合統計系統熱點，而非自動裁決單次事故。</p>
+<h3 id="46-混合法">4.6 混合法</h3>
+<p>混合法先由 all-at-once 選責任 agent，再只讓 step-by-step 檢查該 agent 的動作。手工系統上 agent-level 為 57.02%，step-level 為 12.28%，高於單法的 step 定位；但耗用 149,177 tokens，而 all-at-once、binary search、step-by-step 分別為 17,106、34,659、87,720。精度改善來自縮小候選空間，成本則最高。</p>
+<h3 id="47-推理模型">4.7 推理模型</h3>
+<p>強推理模型不保證改善。手工系統中，all-at-once 的 agent-level：GPT-4o 54.31%、o1 41.38%、DeepSeek R1 56.90%；step-by-step 的 step-level：GPT-4o 7.90%、o1 13.79%、R1 6.90%。R1 四項中三項低於 GPT-4o，o1 也沒有一致領先。作者發現 prompt 中加入推理機制比單純換模型更可靠，但整體仍離實用很遠。</p>
+<h2 id="5-相關工作">5. 相關工作</h2>
+<p>LLM-as-a-judge 已用於對話、摘要與 agent 輸出評分，Reflexion 等也會依回饋自我修正；但這些工作多評估結果，沒有把失敗定位到多 agent 系統中的責任角色與步驟。Process reward model 會標數學推理的首個錯誤步，但對象是單一模型的線性解題，不含工具、角色分工與互相影響。</p>
+<h2 id="6-結論與限制">6. 結論與限制</h2>
+<p>Who&amp;When 建立了自動失敗歸因的第一個明確任務與基線。結果顯示 agent 級與 step 級歸因需要不同視野，且長 log 會令精確定位崩潰。現階段輸出應作為人類除錯的候選線索，不應直接用來處罰 agent、改寫 policy 或執行自動修復。</p>
+<p>形式化只涵蓋輪流行動，無法表示並行競爭與共同責任；每條軌跡只保留最早原因，也忽略多重故障。最重要的是，decisive error 雖以反事實干預定義，標註過程卻沒有逐步重播驗證，而是專家閱讀 log 後達成共識。因此標籤可能是一致的因果判斷，但還不是經干預證實的因果事實。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

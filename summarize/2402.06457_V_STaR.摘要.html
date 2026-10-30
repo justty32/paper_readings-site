@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《V-STaR：為自學推理器訓練驗證器（V-STaR: Training Verifiers for Self-Taught Reasoners）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Arian Hosseini, Xingdi Yuan, Nikolay Malkin, Aaron Courville, Alessandro Sordoni, Rishabh Agarwal（Mila, Université de Montréal / Microsoft Research / University of Edinburgh / Google DeepMind）</p><p>日期：2024-02（ICML 2024）</p><p>arXiv：2402.06457</p><p><a href="https://arxiv.org/abs/2402.06457" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="v-star為自學推理器訓練驗證器重點摘要">《V-STaR：為自學推理器訓練驗證器》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>V-STaR</strong>：在 STaR 式反覆自我改進迴圈中，把每一輪被丟棄的「錯誤解」與保留下來的「正確解」一起收集，用 <strong>DPO</strong> 訓練出一個隨生成器同步迭代升級的驗證器；推論時用它對生成器產出的多個候選解排序、選出最佳一個，在 GSM8K、MBPP 等基準上比既有自我改進法與驗證法提升 <strong>4%–17% 絕對準確率</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>STaR、RFT、ReST^EM 等自我改進方法只把模型自生的「正確解」拿來微調生成器，<strong>丟棄大量錯誤解</strong>——尤其在較難的推理任務上錯誤解常占多數，其中「哪裡錯了」的資訊被白白浪費。另一路線（如 Cobbe et al. 的 GSM8K 驗證器）在推論時用獨立訓練的驗證器做候選重排，但這類驗證器的訓練資料通常只從<strong>一個固定生成器</strong>（僅在原始 SFT 資料上微調過）一次性取樣，不會隨生成器迭代變強而更新。V-STaR 想同時解決「浪費錯誤解」與「驗證器資料來源固定不跟著升級」這兩個缺口。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>Algorithm 1（V-STaR 主迴圈）</strong>：共跑 T 輪。每輪先用目前的 D_GEN 微調出生成器 G^t，對每個訓練題取樣 k 個候選解，用 ground truth／測試案例標出對錯 z；正確解併入 D_GEN 供下一輪生成器訓練用，<strong>所有解（正確＋錯誤）連同標籤併入 D_VER</strong> 供驗證器訓練用。</li>
+<li><strong>驗證器訓練（§3.1）</strong>：用 D_VER 建構偏好對——把同一題的（正確解， 錯誤解）配成 Cartesian product 偏好對，以 <strong>DPO</strong> 目標訓練驗證器 V，使正解相對誤解的隱含 reward r̂(x,y)=β·log(V(y|x)/G_SFT(y|x)) 更高。這把 Cobbe et al. (2021) ORM 驗證器原本「語言建模＋二元分類」的雙目標統一成單一 DPO loss。</li>
+<li><strong>推論</strong>：對測試題生成多個候選解，用驗證器分數排序取最高分者作答（best-of-k）；並提出 <strong>Verifier@k</strong> 公式（仿 Pass@k，從 N 個候選中無放回抽 k 個估計最高分候選為正確的機率）以降低評估變異。</li>
+<li>模型：LLaMA2 / CodeLLaMA 7B、13B + LoRA；GSM8K、MBPP 上訓練，並在 MATH 子集、HumanEval 上做跨領域遷移評估。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>數學（GSM8K）：相對 STaR†（迭代版 STaR）與純驗證法（Verification），絕對準確率提升 <strong>6%–17%</strong>；程式（MBPP）提升 <strong>4%–12%</strong>。</li>
+<li>7B V-STaR 在 GSM8K 上超越未微調的 LLaMA2 70B（8-shot）；在 HumanEval 上表現接近 CodeLLaMA 34B（zero-shot）。</li>
+<li><strong>DPO 驗證器優於 ORM 式驗證器</strong>：候選數 &gt;4（GSM8K）或 &gt;16（MBPP）時 ORM 明顯失效，DPO 仍持續有效；DPO 驗證器同時具備高樣本效率，僅約 2k 訓練步驟 Verifier@64 就顯著提升。</li>
+<li>迭代收集驗證器資料優於一次性收集相同總樣本量（V-STaR[1 Iter] 基線），顯示「跟著逐輪變強的生成器取樣」本身有價值，不只是樣本數的問題。</li>
+<li>消融顯示：把驗證器放進訓練迴圈中篩選正確解再進下一輪（§4.6），在 MBPP 上未帶來明顯增益。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>主要用 LoRA 而非全參數微調（受算力限制），作者推測全參數微調增益可能更大，但未實證。</li>
+<li>「驗證器放入訓練迴圈」的實驗只在 MBPP 做過，未擴及 GSM8K 與其他取樣策略，作者自陳未有定論。</li>
+<li>Verifier@k 在 k 變大（k&gt;64）時相對 majority voting 的優勢略微縮小，與 Cobbe et al. (2021) 觀察到的衰減模式類似。</li>
+<li>僅在 GSM8K / MBPP（及遷移到 MATH 子集 / HumanEval）上驗證，未在更廣泛任務或更大模型規模上系統性驗證。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>對 ai_core <strong>§3.3「成本梯度／級聯升級需品質分數」<strong>與 <strong>§3.4「治理＝拒絕為預設＋憑證准入」</strong>：V-STaR 直接產出這兩者共同缺的東西——一個</strong>隨主模型一起迭代訓練、由（正確，錯誤）解對比學出來</strong>的品質分數 r̂(x,y)=β·log(V(y|x)/G_SFT(y|x))。無論是級聯（用品質分數決定是否升級到更貴模型/更多樣本）還是治理（憑證准入的門檻分數），V-STaR 示範了這個分數可以不是一次性凍結產物，而能跟著生成器同軌成長——本庫跨篇觀察到「品質分數是級聯與治理的共同缺口」，V-STaR 給出「驗證器隨生成器一起長」的一種補法。</li>
+<li><strong>主題 7（自我改進）× 主題 9（治理驗證器）交會點</strong>：V-STaR 的核心洞察是——STaR 系方法在迭代中丟棄的錯誤解，正是驗證器最好的負例來源，於是驗證器與生成器共用同一條資料生產線、零額外生成成本地同軌成長。對比已入庫文獻：
+<ul>
+<li><strong>STaR（2203.14465）</strong>：只保留正確解、丟棄錯誤解去微調生成器；V-STaR 把被丟棄的錯誤解回收再利用當驗證器負例，是同一資料生產迴圈的下游再利用。</li>
+<li><strong>GSM8K verifiers（2110.14168）</strong>：Cobbe et al. 的 ORM 驗證器資料來自單一固定（僅原始 SFT）生成器一次性取樣，訓練用語言建模＋二元分類雙目標；V-STaR 驗證器資料隨生成器逐輪迭代收集、訓練目標統一成單一 DPO loss，且實證 DPO 顯著優於 ORM。</li>
+<li><strong>Let&#x27;s Verify Step by Step（2305.20050，步級 PRM）</strong>：PRM 是步級、需大量人工步驟標註的過程監督；V-STaR 是解級（outcome-level）、標籤全自動來自 ground truth／測試案例，不需人工標註，是更輕量但粒度較粗的路線。</li>
+<li><strong>LEVER（2302.08468）</strong>：LEVER 驗證器把「程式執行結果」當額外接地訊號特徵；V-STaR 驗證器沒有引入額外接地訊號，接地來源仍是任務自帶的正確性標籤 z，而非主動查詢外部執行環境。</li>
+<li><strong>ReST^EM（2312.06585，本輪並行處理中）</strong>：與 STaR 同屬只用正確解的自我改進路線，是 V-STaR 對照的並行基線之一，並非驗證器方法。</li>
+</ul>
+</li>
+<li>歸 <strong>I 類</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2402.06457_V_STaR.zh-TW.html"><code>../translate/2402.06457_V_STaR.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

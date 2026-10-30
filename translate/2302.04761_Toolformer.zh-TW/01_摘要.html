@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2302.04761_Toolformer.zh-TW.html">回 2302.04761_Toolformer.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>語言模型（LM）能僅憑少數範例或文字指令就解出新任務，規模越大越明顯。但弔詭的是，它們在算術、事實查找這類基本功上卻很吃力——這些反而是更簡單、更小的模型就能做好的。本文顯示：語言模型能<strong>透過簡單的 API 自己教會自己使用外部工具</strong>，兼得兩全其美。我們提出 <strong>Toolformer</strong>：一個被訓練來決定「呼叫哪些 API、何時呼叫、傳什麼參數、如何把結果最好地併入後續 token 預測」的模型。這是以<strong>自監督</strong>方式完成的，每個 API 只需一小撮示範。我們納入一系列工具：計算器、問答系統、搜尋引擎、翻譯系統、日曆。Toolformer 在多種下游任務上大幅提升 zero-shot 表現，常能與大得多的模型競爭，且不犧牲其核心語言模型能力。</p>
+<p>（圖 1 示例：模型自主決定呼叫不同 API——問答系統、計算器、機器翻譯、Wikipedia 搜尋——以取得完成一段文字所需的資訊。例如「The New England Journal of Medicine is a registered trademark of [QA（該刊出版者是誰?） → Massachusetts Medical Society] the MMS.」）</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>大型語言模型在許多 NLP 任務上有亮眼的 zero/few-shot 表現，並展現若干湧現能力。但這些模型有一些靠「繼續放大規模」也只能部分緩解的<strong>內在限制</strong>：無法取用近期事件的最新資訊、傾向幻覺捏造事實、對低資源語言理解困難、缺乏做精確計算的數學能力、對時間推進無感知。</p>
+<p>克服這些限制的簡單辦法，是讓模型能使用搜尋引擎、計算器、日曆等外部工具。但既有做法<strong>不是依賴大量人工標註，就是把工具使用限制在特定任務</strong>，阻礙工具使用在 LM 中被更廣泛採用。因此我們提出 Toolformer，它以新穎方式學會用工具，滿足兩項要求：</p>
+<ul>
+<li>工具使用應以<strong>自監督</strong>方式學會、不需大量人工標註。這不只因標註成本高，也因為<strong>人類覺得有用的，未必是模型覺得有用的</strong>。</li>
+<li>LM 不該喪失任何通用性，應能<strong>自行決定何時、如何、用哪個工具</strong>；有別於既有做法，這讓工具的使用更全面、而不綁死於特定任務。</li>
+</ul>
+<p>我們的做法基於「用大型 LM 的 in-context learning 從零生成整個資料集」這個近期想法：只給少量人寫的 API 使用範例，就讓 LM 為一個龐大的語言模型資料集標註可能的 API 呼叫；再用<strong>自監督損失</strong>判斷這些呼叫中哪些真的幫到模型預測後續 token；最後用模型自認有用的那些呼叫來微調它自己。由於做法與所用資料集無關，我們可以套用在「當初用來預訓練模型的同一份資料」上，確保模型不喪失通用性與語言模型能力。實驗顯示：學會用工具後，基於 6.7B 參數 GPT-J 的 Toolformer 取得明顯更強的 zero-shot 結果，在多項任務上清楚勝過大得多的 GPT-3 及其他數個 baseline。</p>
+<h2 id="2-方法">2. 方法</h2>
+<p>目標是讓語言模型 M 具備透過 API 呼叫使用不同工具的能力。要求每個 API 的輸入與輸出都能表示成文字序列，如此便能用特殊 token 標記呼叫的起訖、把 API 呼叫無縫插入任意文本。</p>
+<p>把每個 API 呼叫表示成 tuple c = (aᶜ, iᶜ)（aᶜ 是 API 名稱、iᶜ 是輸入）。給定呼叫 c 與其結果 r，線性化序列為：</p>
+<ul>
+<li>不含結果：<code>e(c) = &lt;API&gt; aᶜ(iᶜ) &lt;/API&gt;</code></li>
+<li>含結果：<code>e(c, r) = &lt;API&gt; aᶜ(iᶜ) → r &lt;/API&gt;</code></li>
+</ul>
+<p>（實作上以 <code>[</code>、<code>]</code>、<code>-&gt;</code> 代表 <code>&lt;API&gt;</code>、<code>&lt;/API&gt;</code>、<code>→</code>，無須改動既有詞表。）</p>
+<p>給定純文字資料集 C，先把它轉成帶 API 呼叫的資料集 C*，分三步（見下），最後再用 C* 微調 M。</p>
+<p><strong>取樣 API 呼叫。</strong> 為每個 API 寫一段 prompt P(x)，鼓勵 LM 為範例 x 標註 API 呼叫（圖 3 為問答工具的 prompt 例）。對每個位置 i，計算 M 在該位置「起一個 API 呼叫」的機率 pᵢ = p_M(<code>&lt;API&gt;</code> | P(x), x₁:ᵢ₋₁)；用取樣門檻 τs 保留 pᵢ &gt; τs 的位置，若超過 k 個只留機率最高的 k 個。對每個保留位置，以 <code>[P(x), x₁,…,xᵢ₋₁, &lt;API&gt;]</code> 為前綴、<code>&lt;/API&gt;</code> 為結束 token，取樣至多 m 個候選呼叫。</p>
+<p><strong>執行 API 呼叫。</strong> 執行 M 生成的所有呼叫、取回結果。如何執行完全取決於 API 本身——可能是呼叫另一個神經網路、執行 Python 腳本、或用檢索系統在大語料上搜尋。每個呼叫 cᵢ 的回應須是單一文字序列 rᵢ。</p>
+<p><strong>過濾 API 呼叫（核心）。</strong> 設呼叫 cᵢ 在序列中的位置為 i、回應為 rᵢ。給定一組權重 (wⱼ)，定義「若以 z 為前綴，M 在 token xᵢ,…,xₙ 上的加權交叉熵損失」：</p>
+<p>Lᵢ(z) = − Σⱼ₌ᵢⁿ w_{j−i} · log p_M(xⱼ | z, x₁:ⱼ₋₁)</p>
+<p>比較兩種取值：</p>
+<ul>
+<li>L⁺ᵢ = Lᵢ(e(cᵢ, rᵢ))：把「呼叫及其結果」當前綴時的損失。</li>
+<li>L⁻ᵢ = min( Lᵢ(ε), Lᵢ(e(cᵢ, ε)) )：取「完全不做呼叫」與「做呼叫但不給結果」兩者損失的較小者（ε 為空序列）。</li>
+</ul>
+<p>直覺上，一個 API 呼叫對 M <strong>有用</strong>，若同時給它輸入與輸出時，比起「完全沒收到這次呼叫」或「只收到輸入」，都更容易預測後續 token。給定過濾門檻 τf，<strong>只保留滿足 L⁻ᵢ − L⁺ᵢ ≥ τf 的呼叫</strong>——也就是「加入這個呼叫與其結果，能讓損失至少下降 τf」。</p>
+<p><strong>模型微調。</strong> 對所有 API 取樣、過濾後，把留下的呼叫與原文交錯合併：對位置 i 有呼叫與結果 (cᵢ, rᵢ) 的輸入，構造新序列 x* = x₁:ᵢ₋₁, e(cᵢ, rᵢ), xᵢ:ₙ。對全部 x 這樣做即得 C*，再用標準語言模型目標微調 M。關鍵：除了插入的 API 呼叫外，C* 與原資料 C 內容完全相同，故微調暴露給模型的內容與在 C 上微調一致；而且因為呼叫只被插在「幫 M 預測後續 token」的位置、且帶著有幫助的輸入，在 C* 上微調就讓模型能<strong>純憑自身回饋</strong>決定何時、如何、用哪個工具。</p>
+<p><strong>推論。</strong> 微調後生成文字時正常解碼，直到 M 產生「→」token（表示它接下來預期一個 API 回應）；此時中斷解碼、呼叫對應 API 取得回應、把回應與 <code>&lt;/API&gt;</code> 插回後再繼續解碼。</p>
+<h2 id="3-工具">3. 工具</h2>
+<p>僅要求工具滿足：(i) 輸入輸出皆可表示為文字序列；(ii) 能取得少量使用示範。具體探索五種工具（表 1 給出各 API 的輸入/輸出示例）：</p>
+<ul>
+<li><strong>問答系統</strong>：基於另一個 LM、回答簡單事實型問題；用檢索增強、在 Natural Questions 上微調過的 <strong>Atlas</strong>。</li>
+<li><strong>計算器</strong>：只支援四則基本運算，結果一律四捨五入到兩位小數。</li>
+<li><strong>Wikipedia 搜尋</strong>：給搜尋詞、回傳維基的短文片段；比問答工具能取得更全面資訊，但需模型自行抽取相關部分。用 <strong>BM25</strong> 檢索器索引 KILT 的維基 dump。</li>
+<li><strong>機器翻譯系統</strong>：基於 LM，把任意語言的片語翻成英文；用 600M 的 <strong>NLLB</strong>（支援 200 語言，含低資源語言），來源語由 fastText 分類器自動偵測、目標語固定為英文。</li>
+<li><strong>日曆</strong>：查詢時回傳當前日期、不需輸入，為需要時間感知的預測提供時間脈絡。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

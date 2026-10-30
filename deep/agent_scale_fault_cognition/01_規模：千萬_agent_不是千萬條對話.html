@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>規模：千萬 agent 不是千萬條對話 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><h1 id="規模千萬-agent-不是千萬條對話">規模：千萬 agent 不是千萬條對話</h1>
+<h2 id="已知上限">已知上限</h2>
+<p>AgentScope 是目前最直接的系統實證：以 actor model、RPC、代理物件與 placeholder 將集中式工作流轉為分散式執行；每個 agent 可獨佔行程，也可多 agent 共用一個行程。它在 4 台設備上完成 100 萬 agent 的猜數遊戲：Llama3-8B 短輸出約 12 分鐘，較重的 Llama3-70B 設定約 10.6 小時；把模型換成一秒 dummy request 時只需 40 秒，對照 Python 非同步約 8.6 小時。這個落差清楚指出：<strong>actor runtime 已能承載百萬實體，真正昂貴的是模型推理</strong>。<a class="paper-reference" href="../../summarize/2407.17789_AgentScopeLargeScaleSimulation.%E6%91%98%E8%A6%81.html">2407.17789</a></p>
+<p>AgentSociety 的重點不同。它跑的是逾一萬個具有 profile、記憶、需求、社交與經濟行為的 agent，以及五百萬次 agent—agent／agent—環境互動。它把城市移動、社交網路與經濟帳本交給確定性環境，LLM 只處理主觀決策。規模較小，單個 agent 的世界卻厚得多。<a class="paper-reference" href="../../summarize/2502.08691_AgentSociety.%E6%91%98%E8%A6%81.html">2502.08691</a></p>
+<p>兩篇合讀後，不能再只報「agent 數」；至少要同時報：</p>
+<table>
+<thead>
+<tr>
+<th>尺度</th>
+<th>問題</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>身分數</td>
+<td>系統保存多少 agent 的狀態與 policy 版本？</td>
+</tr>
+<tr>
+<td>同時活躍數</td>
+<td>某一時刻有多少 actor 正在處理 mailbox？</td>
+</tr>
+<tr>
+<td>LLM 呼叫數</td>
+<td>每個模擬步真正發生多少次、多長的推理？</td>
+</tr>
+<tr>
+<td>互動數</td>
+<td>agent 間與 agent—環境事件總量、扇出與局部性如何？</td>
+</tr>
+<tr>
+<td>狀態厚度</td>
+<td>每個 agent 只有 prompt，還是有記憶、信念、資源與社會關係？</td>
+</tr>
+</tbody>
+</table>
+<h2 id="從百萬推到千萬的架構">從百萬推到千萬的架構</h2>
+<p>合理的系統不會讓每個 agent 常駐一個行程，更不會建立全連接聊天室。應分成五層：</p>
+<ol>
+<li><strong>持久身分層</strong>：agent 主要是狀態、mailbox、policy／memory 指標與租約；休眠時不占推理資源。</li>
+<li><strong>事件與分片層</strong>：按地域、社群、任務或環境局部性分片；事件喚醒 agent，背壓與配額控制洪峰。</li>
+<li><strong>稀疏 actor 層</strong>：只為活躍 agent 配置執行槽；局部 clique 內溝通，跨 shard 經彙總器，避免 O(N²) 訊息。</li>
+<li><strong>能力梯度</strong>：規則／狀態機／快取先處理，SLM 次之，昂貴 LLM 最後升級。AgentSociety 把移動與帳本外包給環境，就是這個分工。<a class="paper-reference" href="../../summarize/2502.08691_AgentSociety.%E6%91%98%E8%A6%81.html">2502.08691</a></li>
+<li><strong>控制面</strong>：生命週期、資源、版本、追蹤、停止、隔離與成本預算由獨立控制面管理；不能讓 agent 自己宣告健康。</li>
+</ol>
+<p>GPTSwarm 把 node 與 edge 變成可優化圖，可剪除無用或對抗 agent，但其實驗仍是小圖，作者也把超過百 agent 的溝通穩健性列為難題。<a class="paper-reference" href="../../summarize/2402.16823_GPTSwarm.%E6%91%98%E8%A6%81.html">2402.16823</a> AutoGen 提供異質節點與動態對話介面，適合表達工作流；它也警告規模增加會造成難以理解與除錯的喋喋不休。<a class="paper-reference" href="../../summarize/2308.08155_AutoGen.%E6%91%98%E8%A6%81.html">2308.08155</a> AFlow 則搜尋以程式碼表示的控制流；它解的是「什麼工作流較好」，不是「如何承載千萬個持久實體」。<a class="paper-reference" href="../../summarize/2410.10762_AFlow.%E6%91%98%E8%A6%81.html">2410.10762</a></p>
+<p>因此，千萬級研究題應寫成：<strong>在稀疏活躍、局部互動、分層推理的前提下，如何讓千萬個有狀態 agent 可重播、可限流、可升級？</strong> 若題目仍是讓更多 LLM 彼此自由對話，規模只是把不可控性乘大。</p>
+<h2 id="三種排程不能混成一個-queue">三種排程不能混成一個 queue</h2>
+<p>新一批系統論文把「agent 排程」拆出三個不同時間尺度。</p>
+<p>HiveMind 管的是多個活躍 agent 對共享模型 endpoint 的競爭。它在 reverse proxy 集中 admission、RPM／TPM、AIMD backpressure、circuit breaker、priority 與 retry；mock contention 中，未協調的 10–50 個 agent 有 72–100% failure，介入後為 0–18%。但 production 驗證使用會自行排隊的 Ollama／MLX，兩邊本來就都是零失敗。因此它證明的是集中協調能壓住受控 stampede，不是已證明能承載千萬 agent。<a class="paper-reference" href="../../summarize/2604.17111_HiveMind.%E6%91%98%E8%A6%81.html">2604.17111</a></p>
+<p>InferCept 管的是單一推論 request 在工具、人類或其他 agent 介入時如何暫停。保留 KV 會佔 GPU，丟棄會重算，swap 又會阻塞；它以 <code>memory × time</code> 衡量 waste，在 preserve、discard、swap 間逐 request 選擇，並保留原始 arrival time 避免恢復後飢餓。相較 vLLM，它把可承受 request rate 提高 1.6–2 倍。這支持「logical Step 可長期 paused，GPU residency 只是可回收 cache」；它沒有處理 tool effect 是否已發生。<a class="paper-reference" href="../../summarize/2402.01869_InferCept.%E6%91%98%E8%A6%81.html">2402.01869</a></p>
+<p>Preble 管的則是跨 GPU 的 prompt/KV prefix reuse。它聯合考慮 cache locality 與負載平衡；若只追快取，熱門 prefix 會把單一 GPU 塞爆，若只平衡負載，又會失去重用。這是 context residency 排程，不是 agent lifecycle。<a class="paper-reference" href="../../summarize/2407.00023_Preble.%E6%91%98%E8%A6%81.html">2407.00023</a></p>
+<p>因此 FreePy 類控制面至少需要四層 queue：</p>
+<pre><code class="language-text">dormant Bot records
+  → durable WakeIntent / queued Round
+    → leased StepAttempt / endpoint admission
+      → GPU request / KV residency
+        → tool job / external effect
+</code></pre>
+<p>這幾層可以互相提供成本訊號，卻不能共用生命週期語意。GPU cache eviction 不得讓 Round 消失；HTTP retry 也不得直接套到可能已扣款的 tool action。</p>
+<h2 id="llm-os要拆成三個平面">「LLM OS」要拆成三個平面</h2>
+<p>把 LLM 類比成 CPU、context window 類比成 RAM、RAG／vector store 類比成 disk、tool 類比成 peripheral，是很好的概念入口；Karpathy 也把 LLM 描述為兼具 utility、fab 與新 OS 特徵的計算層（<a href="https://www.youtube.com/watch?v=LCEmiRjPEtQ">2025 keynote，6:06 起</a>）。但這是概念模型，不是系統保證。真正落地時至少有三個互不等價的平面：</p>
+<table>
+<thead>
+<tr>
+<th>平面</th>
+<th>管理對象</th>
+<th>代表工作</th>
+<th>仍未解的事</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>agent control plane</td>
+<td>身分、生命週期、排程、權限、tool syscall</td>
+<td>AIOS <a class="paper-reference" href="../../summarize/2403.16971_AIOS.%E6%91%98%E8%A6%81.html">2403.16971</a></td>
+<td>durable identity、租約、exactly-once effect、跨日恢復</td>
+</tr>
+<tr>
+<td>model serving plane</td>
+<td>active request、KV cache、batch、preemption</td>
+<td>Continuum <a class="paper-reference" href="../../summarize/2511.02230_Continuum.%E6%91%98%E8%A6%81.html">2511.02230</a></td>
+<td>不知道業務 goal、effect 與權限是否正確</td>
+</tr>
+<tr>
+<td>private state plane</td>
+<td>branch、context、memory、workspace</td>
+<td>Fork–Explore–Commit <a class="paper-reference" href="../../summarize/2602.08199_Fork_Explore_Commit.%E6%91%98%E8%A6%81.html">2602.08199</a></td>
+<td>filesystem 之外的網路、IPC、裝置與資料庫副作用</td>
+</tr>
+</tbody>
+</table>
+<p>AIOS 的 2,000-agent scalability 實驗其實是複製 HumanEval 形成 250–2,000 個 active requests；單張 RTX A5000 的總時間約隨併發線性成長，最高 throughput 增益 2.1 倍。這是集中 syscall、context switch 與排程的 prototype 證據，不是兩千個長期存在、有獨立世界狀態的 agent，更不是千萬級實證。<a class="paper-reference" href="../../summarize/2403.16971_AIOS.%E6%91%98%E8%A6%81.html">2403.16971</a></p>
+<p>Continuum 更清楚地展示 serving plane：工具等待時暫時保留 KV，TTL 到期才釋放，工具返回後再恢復；一般實驗的 delay 改善為 1.12–3.66 倍、throughput 為 1.10–3.22 倍。論文所稱逾 8 倍來自內部 real-SWE 特定場景的 up-to delay，不應外推成通用平均或同幅 throughput。<a class="paper-reference" href="../../summarize/2511.02230_Continuum.%E6%91%98%E8%A6%81.html">2511.02230</a></p>
+<p>Fork–Explore–Commit 則讓 agent 在 COW filesystem branch 內探索，通過驗證後才把 diff commit 回 parent；BranchFS 實作約 3,400 行 Rust，branch 建立為數百微秒。但隔離只涵蓋 filesystem，且 parent 必須凍結；網路呼叫、IPC、device 與外部資料庫仍可能在探索時外洩。<a class="paper-reference" href="../../summarize/2602.08199_Fork_Explore_Commit.%E6%91%98%E8%A6%81.html">2602.08199</a> 因此「OS 級 agent framework」至少要逐項回答：它虛擬化了什麼、誰能 commit、哪些 effect 仍繞過邊界。</p>
+<p>MemGPT 是 memory plane 的經典 userspace prototype：main context 分成 system instructions、可編輯 working/core memory 與 FIFO queue；完整訊息進 recall storage，任意長文件進 archival storage。約 70% context 時插入 memory-pressure warning，接近滿載時摘要並 flush queue；heartbeat 讓 function result 後立即再推理。它在 deep-memory retrieval 上把 GPT-4 accuracy 從 32.1% 提到 92.5%，但未報樣本數與信賴區間。<a class="paper-reference" href="../../summarize/2310.08560_MemGPT.%E6%91%98%E8%A6%81.html">2310.08560</a> 所謂 infinite context 是反覆查外部儲存的介面幻象，不是每一步同時注意全部資料；memory edit 也沒有 factual verifier、capability、transaction 或 crash replay。後來發展為 Letta 不會逆向補足原論文的證據。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗與結論 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><p>← <a href="../2407.17789_AgentScopeLargeScaleSimulation.zh-TW.html">回母檔</a></p>
+<h2 id="4-實驗設定">4. 實驗設定</h2>
+<p>所有實驗使用「猜平均數的 2/3」遊戲。每個 agent 回報 0 到 100 的實數，最接近所有答案平均值乘 2/3 者獲勝。完全理性且反覆消去時，納許均衡為 0；但有限理性與多輪學習會產生更豐富的分布。</p>
+<p>每台裝置有 8 張 A100-80G、64 核 CPU 與 1 TB 記憶體，推論引擎為 vLLM。模型包括 Llama3-8B/70B、Qwen2-7B/72B、MistralAI-8×7B/8×22B，溫度均為 1.0。每個 agent 每輪呼叫模型兩次：第一次生成推理與答案，第二次抽取數字，以降低格式錯誤。</p>
+<h2 id="5-實驗結果">5. 實驗結果</h2>
+<h3 id="51-擴展性與效率">5.1 擴展性與效率</h3>
+<p>固定 4 台裝置，agent 從 100 增到 100 萬。Llama3-8B 搭配只要求回報數字的 prompt，100 萬 agent 在 12 分鐘完成；加入逐步思考後，平均輸出 token 增加超過 150 倍，時間變成 85 分鐘。最重的 Llama3-70B 逐步思考設定約 10.6 小時。</p>
+<p>為排除 LLM 推論速度，作者以睡眠一秒並回傳隨機數的 dummy 請求比較執行層。100 萬 agent 的 actor 方案用 40 秒，循序執行約 12 天，Python 非同步模式約 8.6 小時。固定 10,000 agent 時，Llama3-70B 逐步思考版由 1 台的 22 分鐘降至 4 台的 5.6 分鐘。反過來，每台固定 10,000 agent，裝置和總 agent 同步增加時，時間近乎不變，顯示水平擴展。</p>
+<h3 id="52-模型prompt-與多輪行為">5.2 模型、Prompt 與多輪行為</h3>
+<p>基本 prompt 下，多數模型的答案集中在 50 左右；Mistral 8×7B 與 8×22B 平均較低，分別為 36.63 與 31.69。改用逐步思考後，答案明顯向 0 移動；Qwen2-72B 的勝出數由 33.70 降至 12.76，Mistral 8×22B 有超過 30% agent 回報約 0。</p>
+<p>多輪設定會把前一輪勝出數寫入共享環境。各模型的答案逐輪趨近 0，逐步思考加速收斂。Qwen2-72B 到第五輪，基本 prompt 的平均仍為 25.16，逐步思考版已降到 2.02。</p>
+<h3 id="53-更詳細的行為指令">5.3 更詳細的行為指令</h3>
+<p>作者加入「所有玩家都理性」及「所有玩家會猜測他人策略」等明確指令。這比泛用的逐步思考更能把答案推向均衡。Qwen2-72B 第三輪在四種 prompt 下的平均依次為 35.30、6.11、1.55、1.69；第五輪為 25.16、2.02、0.14、0.15。不過 prompt 對不同模型的作用並不一致，也可能增加輸出長度。</p>
+<h3 id="54-多樣背景">5.4 多樣背景</h3>
+<p>每個背景群組包含 200 個 agent。教育實驗設小學、高中、學士、碩士與博士；整體上教育設定越高，平均答案越低，但不同模型的敏感度不同。教育層級造成的最大平均差，Mistral 8×22B 為 3.49，Llama3-70B 為 5.72，Qwen2-72B 為 8.24。</p>
+<p>職業實驗包含賽局理論教授、經濟學家、心理學家、運動員、藝術家與作家。教授與經濟學家傾向較低答案，個別推理也會引用職業角色。不過角色文字不保證能力真的一致；七歲孩童角色仍會計算並進行多步推理。</p>
+<h3 id="55-混合模型與群組環境">5.5 混合模型與群組環境</h3>
+<p>作者以 Llama3-70B、Mistral 8×22B、Qwen2-72B 各 500 個 agent 混合模擬。第一輪中，Llama 多集中於 33，Mistral 常回 0，Qwen 分布較廣。多輪後多數答案靠近前一輪勝出數，59.7% 低於前一輪勝出數，最後大致趨近 0。</p>
+<p>群組版讓同模型 agent 共用局部環境，群組以成員平均值參賽。第二輪起，每個 agent 會看到三組上一輪的數值。群內行為很快縮到窄範圍，顯示巢狀環境可支援群組資訊同步與集體目標。</p>
+<h3 id="56-延伸討論">5.6 延伸討論</h3>
+<p>LLM 可能記得經典 2/3 遊戲，而非真正依規則推導。將比例改為理應近似的 1/2 與 51/100 時，行為卻顯著不同；在 prompt 明說它是經典遊戲的變體後，51/100 的勝出數才由 11.85 降到 6.46，接近 1/2 設定的 6.21。這顯示訓練語料中的先驗會污染模擬。</p>
+<p>把勝出公式改為「5 加平均值的一半」，均衡改成 10。部分 Qwen2-72B 與 Mistral 8×22B agent 第一輪就推得 10，多輪後群體也趨近 10。但個別軌跡仍出現算錯平均值，或推理出均衡後卻回報 0 等錯誤。</p>
+<p>Qwen2-72B 的溫度由 0.05 增到 1.0 時，答案標準差由 6.50 增至 8.20，平均只小幅變化。大量 agent 下，溫度主要改變分布寬度，未必改變群體平均。</p>
+<h2 id="6-結論與限制">6. 結論與限制</h2>
+<p>本文示範 actor 式分散執行、可巢狀環境、人口背景生成與網頁管理如何組成大型 agent 模擬平台。實驗證明此架構可承載 100 萬個短任務角色，也顯示模型、prompt、背景與既有知識會左右模擬結果。</p>
+<p>論文沒有處理持久 agent 狀態、mailbox 背壓、局部故障、重播與錯誤補償；實驗也主要是稀疏、同質的一輪推理。因此結果應解讀為「大量角色請求的執行層可擴展」，而不是「百萬個長期自治 agent 的協作問題已解決」。角色背景與真人行為的效度同樣仍待外部驗證。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

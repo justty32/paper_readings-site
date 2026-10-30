@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>TreeCoder：實驗與結論（4/4） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2511.22277_TreeCoder.zh-TW.html">回 2511.22277_TreeCoder.zh-TW 目錄</a>　<a href="02_%E7%B4%84%E6%9D%9F%E8%A7%A3%E7%A2%BC%E6%A1%86%E6%9E%B6.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-約束函數實例">5. 約束函數實例</h2>
+<p>框架定義以下可組合約束函數（圖 6）：</p>
+<ul>
+<li><strong>Syntax</strong>：使用 Python codeop 模組檢查已解碼片段是否可編譯。分數：1（有效）或 0（無效）。</li>
+<li><strong>No-Comments</strong>：抑制生成中的 <code>#</code> 或 <code>'''</code> 註解。分數 1（無註解）或 0（含註解）。</li>
+<li><strong>No-Explanations</strong>：強制輸出以 <code>def</code> 開頭且第一行後不含大寫字母，引導模型產生程式碼而非自然語言解釋。</li>
+<li><strong>Unit-Tests</strong>：對完整程式執行測試斷言。僅在序列完全生成後評估（之前回傳 1）。分數 1（全部通過）或 0（失敗）。</li>
+</ul>
+<p>另定義形成限制性階層（圖 5）的約束：Correct-Signature（函數名稱匹配規範、參數數量正確）、Types-and-Syntax（Pyright 靜態分析——型別與語法錯誤，需模型生成型別註釋）、Executes（提供正確參數時函數無錯誤執行——可捕捉無限迴圈與未處理例外）。Unit-Tests 為最強約束，No-Comments 為正交約束。</p>
+<p>這些約束可在解碼期間單獨或聯合作用。形式上位於 product-of-experts 下：總分為個別約束輸出的乘積，任何專家具否決權。此模組化使 TreeCoder 可同時強制語法、風格與功能正確性，無需改動底層解碼邏輯。</p>
+<h2 id="昂貴約束仍能引導搜尋unit-tests-與-executes-僅在完整序列上可應用對簡單策略sampling此資訊完全流失下次迭代同等機率重複相同錯誤mcts-與-asaп-等複雜策略在搜尋樹中保留此資訊降低重複先前錯誤的機率更難的問題上硬約束差異更大"><strong>昂貴約束仍能引導搜尋</strong>：Unit-Tests 與 Executes 僅在完整序列上可應用。對簡單策略（sampling），此資訊完全流失——下次迭代同等機率重複相同錯誤。MCTS 與 ASAп 等複雜策略在搜尋樹中保留此資訊，降低重複先前錯誤的機率——更難的問題上硬約束差異更大。</h2>
+<h2 id="title-treecoderllm-程式生成的解碼與約束之系統化探索與優化part-44實驗至結論-source-httpsarxivorgabs251122277-arxiv_id-251122277-date-2025-11--pldi-2026">title: TreeCoder：LLM 程式生成的解碼與約束之系統化探索與優化（part 4/4：實驗至結論）
+source: https://arxiv.org/abs/2511.22277
+arxiv_id: 2511.22277
+date: 2025-11 / PLDI 2026</h2>
+<h1 id="treecoder實驗與結論44">TreeCoder：實驗與結論（4/4）</h1>
+<h2 id="6-實驗設定">6. 實驗設定</h2>
+<p>AWS EC2 g6.2xlarge（8vCPU、32GB RAM、L4 GPU 24GB VRAM）。資料集：Python（MBPP、LiveCodeBench）、SQL（SQLSpider）、Rust（翻譯版 MBPP）。模型：CodeLlama-7B/13B instruct、Mistral-7B-Instruct-v0.3、deepseek-coder-7b-instruct-v1.5、DeepSeek-R1-7B、Qwen2.5-Coder-1.5B（4B+ 以 fp16 運行）。終止條件 ρ：找到 1 個 complete 節點或達 10,000 節點或無 active 節點或超 256 token。聚合函數 ⊗：top-5（優選 complete 且分數 &gt;0 者，其次為含語法錯誤的 complete 節點）。準確率 = 通過所有公開+私有測試的比例。展開數 = LLM 呼叫次數 × batchsize 作為效率上界。</p>
+<h2 id="7-實驗評估">7. 實驗評估</h2>
+<h3 id="71-在解碼中強制約束表-2">7.1 在解碼中強制約束（表 2）</h3>
+<p>CodeLlama-7B on MBPP：無約束 32.3%，逐步添加約束後：No-Comments 32.8% → Syntax 34.0% → Correct-Signature 36.1% → Types-and-Syntax 47.5% → Executes 47.1% → Unit-Tests 60.0%。Unit tests 產生最大增益；No-Comments 相比無約束降 6.5% 展開數而不損準確率。</p>
+<p>僅在 prompt 中指定時最常違反的約束：Unit-Tests（55.6%）、Executes（39.6%）、Types-and-Syntax（25.9%）。較低頻率：No-Explanations（12.9%）、No-Comments（4.1%）、Syntax（2.4%）、Correct-Signature（1.9%）。突顯自然語言約束被 LM 忽略，需要解碼時強制。</p>
+<p><strong>對齊不良模型（表 3）</strong>：Mistral-7B/DeepSeek-7B 傾向輸出解釋而非程式。No-Explanations 約束（以 <code>def</code> 開頭+無大寫字母，j=25，<code>def</code> 在 allow-list）將合規率從 ~0% 升至 33.7%/42.0%。僅語法檢查不足以修復——觸發時無效前綴已生成。DeepSeek-R1-7B 推理模型（僅在&quot;思考&quot;後強制）：從 ~0% 升至 54.6%，且約束促使更快找到解。</p>
+<h3 id="72-比較解碼策略表-2-rows-8-12">7.2 比較解碼策略（表 2, rows 8-12）</h3>
+<p>所有策略使用所有約束組合（Syntax+Unit-Tests+No-Comments）、width=5：Sampling 60.7%、SMC 61.4%、Beam Search 63.0%、MCTS 65.3%、ASAP 68.9%。ASAp/MCTS 準確率最高（rollout+回溯精煉），但展開數與時間增加。Beam search 比 sampling/SMC 展開更多節點（維護獨立 beam 而非合併相似候選）。</p>
+<h3 id="73-系統化探索設計空間表-4-5">7.3 系統化探索設計空間（表 4-5）</h3>
+<p><strong>為 CodeLlama-7B 尋找最佳配置</strong>：Optuna Bayesian optim 探索五種解碼函數×族群 1-5×Syntax/Unit-Tests/No-Comments 組合（共 200 配置）。MBPP 驗證集 50 題，10 秒/題軟限制。最佳：SMC + Unit-Tests + No-Comments (pop=5)：驗證 66.0%、測試 59.2%；Beam Search + 同樣約束：驗證 66.0%、測試 57.8%。CodeLlama-13B 最佳：Sampling + Unit-Tests + No-Comments (pop=5)：驗證 70.0%、測試 65.0%；Beam Search + Unit-Tests (pop=4)：驗證 70.0%、測試 61.3%。Unit tests 為最具影響力約束，較大族群一致提升準確率。測試集較難但品質趨勢持續。所有優化配置均顯著優於無約束 baseline（CodeLlama-7B: 49.6%、CodeLlama-13B: 54.1%）。Pareto frontier（圖 7）：constrained sampling 和 beam search 主導最佳準確率-效率取捨。</p>
+<p><strong>最佳 LM 配置（表 5）</strong>：同時優化 LM + 解碼策略 + 約束（含 No-Explanations）。最佳整體：CodeLlama-7B SMC + Syntax+Unit-Tests (pop=5)：測試 61.3%——勝過 DeepSeek-7B 14% 與 Mistral-7B 24%。最佳配置因模型而異。</p>
+<h3 id="74-與既有框架比較">7.4 與既有框架比較</h3>
+<p><strong>vs HuggingFace（表 6）</strong>：無約束 MBPP：TreeCoder beam search pass@5=61.0%/pass@1=51.0%（HF: 61.0%/51.7%）；sampling pass@5=62.0%/pass@1=36.7%（HF: 62.0%/38.4%）。Beam search 僅慢 25%（2.79s vs 2.10s），sampling 稍快（2.73s vs 2.76s）。靈活性幾乎無開銷。</p>
+<p><strong>vs IterGen（表 7）</strong>：重現 IterGen SQL 解碼演算法於 TreeCoder 內，Spider 上 87.6% 相同查詢、幾乎相同準確率。TreeCoder 可實例化 IterGen，反向不行——IterGen 僅支援一種與約束緊耦合的單軌跡策略。</p>
+<p><strong>vs 迭代後處理（表 8）</strong>：generate-until-satisfying 與 prompt-refinement（CodeLlama-7B，max retries/width=5）。TreeCoder 批次取樣：60.7% 準確率 / 316 展開 / 3.23s。Generate-until-satisfying：57.6%/162 展開/5.7s。Prompt-refinement 最差：47.5%/276 展開/11.0s（模型做增量編輯而非完全重寫）。</p>
+<h3 id="75-泛化至更複雜任務">7.5 泛化至更複雜任務</h3>
+<p><strong>LiveCodeBench（表 9）</strong>：競賽級題目，Qwen2.5-Coder-7B-Instruct beam search width=5。加入 unit-test 約束（30s 時間限制）後準確率升 41%（22.8% → 32.2%），但時間約加倍（11.4s → 22.4s）。</p>
+<p><strong>Rust（表 10）</strong>：整合 rust-analyzer 為延遲約束（自動閉合未閉合括號、附加 <code>todo!()</code> 以保持型別有效；每次檢查約 1 秒，僅對最高分 frontier 節點調用）。CodeLlama-7B Best-First Search width=10：編譯率升 38%（63.8% → 88.3%），展開數 103→155，時間 4.7s→21.4s。證明 TreeCoder 可納入語言特定工具約束。</p>
+<h2 id="8-相關工作">8. 相關工作</h2>
+<p>多數研究建立在少數核心搜尋範式（sampling、beam search、SMC、MCTS）上進行特化組合。GCD（語法約束解碼）使用解析器遮罩無效 token 確保語法良構性。GAD（語法對齊解碼）使用語法回饋精煉解碼以確保語意對齊而非僅語法有效性：ASAp 序列採樣並調整 token 機率；SMC 維護定期重採樣的約束假設族群；MCMC 通過基於前綴的編輯迭代精煉。三者收斂至真實約束分佈但取捨不同：MCMC 快速收斂、SMC 受益於 GPU 並行化、ASAp 與 MCMC 提供適應性時間預算。</p>
+<p>最密切相關框架：SynCode（語法規則約束 LLM 輸出）與 IterGen（擴展語意約束）。IterGen 限制：(i) 僅支援一種與約束緊耦合的解碼策略；(ii) 本質單軌跡，無法實現族群型演算法。TreeCoder 通過統一抽象去耦合解碼與約束、實現軌跡型與族群型生成、模組化組合與系統化優化來解決這些限制。</p>
+<h2 id="9-結論">9. 結論</h2>
+<p>TreeCoder 將多樣化解碼策略與約束類型統一在單一樹型抽象內，實現自動優化解碼策略、約束與超參數。Python、SQL 與 Rust 實驗顯示在解碼期間強制約束並聯合優化配置可顯著提升開源模型程式生成準確率。原始碼與基準資料集已在 Zenodo 存檔。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

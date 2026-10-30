@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《StructMemEval：評估 LLM Agent 的記憶結構》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Alina Shutova, Alexandra Olenina, Ivan Vinogradov, Anton Sinitsin（HSE University / Yandex / YSDA / New Economic School）</p><p>日期：2026-02（v2: 2026-05），LLM agent × 長期記憶 × 結構評測</p><p>arXiv：2602.11243</p><p><a href="https://arxiv.org/abs/2602.11243" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="structmemeval評估-llm-agent-的記憶結構重點摘要">《StructMemEval：評估 LLM Agent 的記憶結構》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>多數 agent memory benchmark 測的是「能不能撈回一個事實」，StructMemEval 改測「能不能在數百次更新中維持正確的樹、狀態、帳本與偏好統計」；結果是 retrieval-only 在最難主集 overall accuracy 僅 <strong>0.06</strong>，最佳 memory agent 達 <strong>0.66</strong>，但一筆漏記、重複或幻覺就足以讓長期累積結果歸零。</p>
+<h2 id="為什麼需要新-benchmark">為什麼需要新 benchmark</h2>
+<p>LoCoMo、LongMemEval 的 single-hop、multi-hop 與 temporal recall 很重要，但簡單 retrieval 有時已可勝過複雜記憶架構。若 benchmark 不要求改寫、合併、失效或聚合知識，就測不到 memory system 多出來的能力。</p>
+<p>StructMemEval 因而挑選「只要結構正確就不難，沒有結構卻無法隨規模維持」的問題，並只評 final answer，不綁定內部實作。Agent 可以用 Markdown notes、graph database 或其他表示，只要能持續維護等價結構即可。</p>
+<h2 id="四種任務">四種任務</h2>
+<ul>
+<li><strong>Tree-based</strong>：家族或企業關係；需維持階層、隱含關係與雙向邊。</li>
+<li><strong>State tracking</strong>：人物位置、鄰居、KANBAN 或 code refactoring 狀態；新事件會使舊關係失效。</li>
+<li><strong>Count-based</strong>：多人支出與 net settlement；要持續記帳、去重並抵銷環狀債務。</li>
+<li><strong>Recommendation</strong>：由大量觀看／評價事件累積類別偏好與 running statistics，而非找單一評論。</li>
+</ul>
+<p>資料共有 <strong>207 scenarios、2,000+ questions</strong>，每題 10–500 messages；主集取最長的 <strong>51 scenarios</strong>（10 tree、15 count、14 state、12 recommendation，皆至少 250 messages），extended set 用於 scaling analysis。答案以 GPT-4o-mini 對 reference answer 判定 factual correctness。</p>
+<h2 id="核心結果">核心結果</h2>
+<p>固定 Gemini 3.1 Pro controller 的主集結果：</p>
+<table>
+<thead>
+<tr>
+<th>架構</th>
+<th style="text-align:right">State</th>
+<th style="text-align:right">Tree</th>
+<th style="text-align:right">Count</th>
+<th style="text-align:right">Recsys</th>
+<th style="text-align:right">Overall</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Retrieval top-10</td>
+<td style="text-align:right">0.00</td>
+<td style="text-align:right">0.00</td>
+<td style="text-align:right">0.00</td>
+<td style="text-align:right">0.22</td>
+<td style="text-align:right"><strong>0.06</strong></td>
+</tr>
+<tr>
+<td>EMem</td>
+<td style="text-align:right">0.50</td>
+<td style="text-align:right">0.00</td>
+<td style="text-align:right">0.00</td>
+<td style="text-align:right">0.20</td>
+<td style="text-align:right"><strong>0.175</strong></td>
+</tr>
+<tr>
+<td>EMem-G</td>
+<td style="text-align:right">0.57</td>
+<td style="text-align:right">0.00</td>
+<td style="text-align:right">0.00</td>
+<td style="text-align:right">0.19</td>
+<td style="text-align:right"><strong>0.19</strong></td>
+</tr>
+<tr>
+<td>Mem-agent</td>
+<td style="text-align:right">1.00</td>
+<td style="text-align:right">1.00</td>
+<td style="text-align:right">0.13</td>
+<td style="text-align:right">0.52</td>
+<td style="text-align:right"><strong>0.66</strong></td>
+</tr>
+<tr>
+<td>Mem0</td>
+<td style="text-align:right">0.36</td>
+<td style="text-align:right">0.90</td>
+<td style="text-align:right">0.01</td>
+<td style="text-align:right">0.24</td>
+<td style="text-align:right"><strong>0.39</strong></td>
+</tr>
+</tbody>
+</table>
+<p>固定 Mem-agent、替換 backbone 時，overall 從 GPT-5.5 的 0.35、DeepSeek-v4-flash 的 0.46，到 Gemini 3.1 Pro 的 0.66；所有模型在 count-based 都很弱，最高也只有 0.13。</p>
+<p>Human-written organization hints 通常帶來比更換 memory framework 更大的改善，顯示 LLM 常「知道怎麼維護結構，卻沒認出這題需要那個結構」。不過 hints 仍無法解決所有問題，尤其弱模型的 accounting accuracy 仍可能是 0。</p>
+<h2 id="失敗模型">失敗模型</h2>
+<ul>
+<li><strong>結構選錯</strong>：一人一檔或多人混檔沒有一致策略，關係只記 A→B、漏掉 B→A。</li>
+<li><strong>失效傳播不完整</strong>：使用者搬家只更新 user record，沒有讓舊鄰居關係失效。</li>
+<li><strong>漏記／重複</strong>：數百次更新中漏掉一筆交易，或把同一筆飲料／停車費以不同名稱記兩次。</li>
+<li><strong>虛構記憶</strong>：生成不存在的人、公司、職稱或支出；單步機率很低，長序列中至少發生一次的機率仍持續累積。</li>
+<li><strong>結構有了但沒正確使用</strong>：hint 能分離「沒選到演算法」與「執行／讀取演算法失敗」，但不能保證後者消失。</li>
+</ul>
+<h2 id="局限與原文閱讀提醒">局限與原文閱讀提醒</h2>
+<ul>
+<li>主實驗沒有 multiple random seeds；作者承認各 subset accuracy 可能有噪音。</li>
+<li>多個 proprietary LLM 生命週期短，文中甚至因 Gemini 3 Pro 在四個月內下線而跨分析段落換版本，橫向比較需保守。</li>
+<li>評分使用 LLM judge，而非全部機械式 verifier；雖對 reference answer，仍可能引入判定誤差。</li>
+<li>正文稱 Mem0 與 Mem-agent「perform comparably well」，但同一主表 overall 是 <strong>0.39 vs 0.66</strong>，且 state／count／recsys 差距明顯；本摘要以表格數字為準，不採用這句寬鬆定性。</li>
+<li>Benchmark 是合成情境，刻意隔離 programming/design 等能力，適合診斷 memory structure，不直接等於真實長期助理的總體效用。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<p>這篇替 Agent Machine 的 memory correctness 補上一個重要觀點：retrieval recall 不等於記憶正確。真正的持久記憶必須能表達 state transition、dependency invalidation、bidirectional relation、aggregation 和去重，而且每次寫入都需要可驗證的局部 invariant。否則單次 99% 正確的 memory update，跑幾百次後仍會成為幾乎必然壞掉的 ledger。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2602.11243_StructMemEval.zh-TW.html"><code>../translate/2602.11243_StructMemEval.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

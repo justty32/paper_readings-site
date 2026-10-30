@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2505.23612_ARMA_MetaActions.zh-TW.html">回 2505.23612_ARMA_MetaActions.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-實驗">5. 實驗</h2>
+<p><strong>資料</strong>：Waymo Motion Dataset v1.2，依附錄 C 生成幀級元動作標籤。<strong>指標</strong>：用 recall/precision/mAP 評估決策遵循；用 Waymo SimAgents（運動學/互動/地圖指標、realism、minADE）評估軌跡品質。</p>
+<h3 id="51-vs-長時距元動作">5.1 vs 長時距元動作</h3>
+<table>
+<thead>
+<tr>
+<th>元動作</th>
+<th>基礎模型</th>
+<th>Recall</th>
+<th>Precision</th>
+<th>mAP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>長時距</td>
+<td>回歸（UniAD 式）</td>
+<td>0.641</td>
+<td>0.493</td>
+<td>0.567</td>
+</tr>
+<tr>
+<td>長時距</td>
+<td>自回歸</td>
+<td>0.734</td>
+<td>0.537</td>
+<td>0.635</td>
+</tr>
+<tr>
+<td><strong>自回歸</strong></td>
+<td><strong>自回歸（本文）</strong></td>
+<td><strong>0.830</strong></td>
+<td><strong>0.607</strong></td>
+<td><strong>0.718</strong></td>
+</tr>
+</tbody>
+</table>
+<p>回歸+長時距最差；自回歸變體 mAP 升至 0.635；本文聯合建模軌跡與元動作再升至 0.718，印證「自回歸建模降任務複雜度」。<strong>定性（Left Lane Change，圖 3）</strong>：回歸法完全不變道（維持原車道）；長時距自回歸 10 例 4 例違反；<strong>本文 10 例 9 例遵循</strong>指定決策。</p>
+<h3 id="52-消融">5.2 消融</h3>
+<table>
+<thead>
+<tr>
+<th>HistMA</th>
+<th>Finetuning</th>
+<th>Recall</th>
+<th>Precision</th>
+<th>mAP</th>
+<th>訓練時間（時/epoch）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>✗</td>
+<td>✗</td>
+<td>0.815</td>
+<td>0.587</td>
+<td>0.701</td>
+<td>0.9</td>
+</tr>
+<tr>
+<td>✓</td>
+<td>✗</td>
+<td>0.830</td>
+<td>0.607</td>
+<td>0.718</td>
+<td>0.9</td>
+</tr>
+<tr>
+<td>✓</td>
+<td>✓</td>
+<td>0.838</td>
+<td>0.593</td>
+<td>0.716</td>
+<td>0.4</td>
+</tr>
+</tbody>
+</table>
+<p>移除歷史元動作 → mAP 明顯下降（更難定位決策轉換）。分階段微調效能與聯合訓練相當，但<strong>訓練提速約 2.25×</strong>（假設把新決策類型整合進預訓基礎模型）。</p>
+<h3 id="53-整體生成品質waymo-simagents">5.3 整體生成品質（Waymo SimAgents）</h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>REALISM</th>
+<th>運動學</th>
+<th>互動</th>
+<th>地圖</th>
+<th>minADE</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FM（無元動作模組）</td>
+<td>0.7514</td>
+<td>0.4531</td>
+<td>0.7992</td>
+<td>0.8604</td>
+<td>1.3394</td>
+</tr>
+<tr>
+<td>CM（含元動作模組）</td>
+<td>0.7518</td>
+<td>0.4530</td>
+<td>0.8002</td>
+<td>0.8604</td>
+<td>1.3341</td>
+</tr>
+</tbody>
+</table>
+<p>兩者各項幾乎相同 → 整合元動作元件<strong>不降生成品質</strong>，純加可控性，凸顯隨插即用能力。</p>
+<h3 id="54-意圖解讀能力">5.4 意圖解讀能力</h3>
+<p>研究模型以高層意圖解釋生成軌跡的能力（詳見附錄 E）。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>提出基於自回歸元動作的統一可控軌跡生成公式，並設計模組化架構：先預訓通用基礎模型、再微調額外模組注入元動作引導，分階段設計達彈性穩定整合決策遵循。並提出從軌跡導出幀級元動作的標註策略，便於把既有資料集改造到新公式。大量實驗與消融證明本法在決策遵循上效能強。</p>
+<h2 id="附錄要點節錄">附錄要點（節錄）</h2>
+<ul>
+<li><strong>B 模型細節</strong>：agent/map 編碼器、用於空間注意力的 RoPE、從軌跡反推運動學控制動作。</li>
+<li><strong>C 幀級元動作標籤生成</strong>：含幀級元動作的分類準則，使傳統長時距標註可直接轉成幀級。</li>
+<li><strong>D 實驗細節</strong>：benchmark 構建、指標設計、實作細節。</li>
+<li><strong>F 局限與廣泛影響</strong>。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2505.23612_ARMA_MetaActions.%E6%91%98%E8%A6%81.html"><code>../summarize/2505.23612_ARMA_MetaActions.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

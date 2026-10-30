@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_對齊問題 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.21619_Alignment_Constrained_CodeGen.zh-TW.html">回 2606.21619_Alignment_Constrained_CodeGen.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-對齊問題">4. 對齊問題</h2>
+<h3 id="41-模型語言目標語言與約束語言">4.1 模型語言、目標語言與約束語言</h3>
+<p>形式化定義三種語言：L_M＝模型 ℳ 在某 prompt 下、機率高於門檻 ε 會生成的「可能」程式集合；L_T＝符合某語言規格（語法＋型別系統）的合法程式集合；L_C＝約束器施加的增量剖析器 𝒫_I 與型別檢查器 𝒯_I 所允許的完整程式集合，因須定義在程式前綴上，對複雜型別系統而言常無法同時 sound（僅允許 L_T 內程式）與 complete（允許 L_T 全部程式），或誤放非法程式（假陽性），或誤拒合法程式（假陰性）。本文主張：<strong>約束解碼在三者不對齊時對程式生成有害</strong>。</p>
+<h3 id="42-語言不對齊">4.2 語言不對齊</h3>
+<p>定義對齊度為三集合的 Jaccard 相似度：<strong>A = |L_M∩L_C∩L_T| / |L_M∪L_C∪L_T|</strong>；對齊問題即在固定 L_T 下，調整 L_M、L_C 以最大化 A。文中提出四項合理假設排除不相關情形（模型須「有能力」生成目標語言程式、模型須「不完美」也會生成非目標語言程式、約束器須「連貫」接受部分目標語言程式、約束器須「有效」拒絕部分模型語言程式）。</p>
+<p><strong>理想情形</strong>：模型訓練於目標語言、約束器 L_C=L_T（既 sound 又 complete）；此類完美約束器實務上罕見。退而求其次：若約束器 sound（L_C⊆L_T），只要模型不會在 L_C 之外生成合法程式即可恢復最優對齊；若約束器 complete（L_T⊆L_C），只要模型不會在 L_C 內生成非法程式即可恢復最優對齊。</p>
+<p><strong>一般情形</strong>：實務中常見約束器 sound 但不完整（模型能生成合法卻不被約束器支援的程式，如前向引用——在 token 級逐步驗證下難以支援，因合法性可能要到序列後段才顯現，強行支援則需回溯、退化為拒絕採樣）；或約束器 complete 但不 sound（如僅語法約束的強型別語言，會放行語法合法但型別有誤的程式）；最一般情形是約束器既不 sound 也不 complete，此時 L_C 與 L_T 對齊度低，不健全導致生成目標語言之外的程式，不完整則把生成逼向目標語言中受支援的較窄特徵子集。</p>
+<h3 id="43-緩解不對齊">4.3 緩解不對齊</h3>
+<p>從最一般情形走向理想情形，設計者應在完整性與健全性之間先作取捨——本文主張<strong>優先追求 sound（保住約束解碼「輸出必正確」的保證）而非 complete</strong>。之後，sound 約束器的不完整偏誤可透過兩條路徑縮減：(1) 微調語言模型使其生成符合約束器的程式；(2) 擴大約束器以涵蓋更多目標語言特徵。後續各 RQ 即評估這兩條路徑。</p>
+<h2 id="5-實驗評估">5. 實驗評估</h2>
+<h3 id="51-rq1不對齊的代價">5.1 RQ1：不對齊的代價</h3>
+<p>以標準化負對數概似（NLL）量化偏誤：NLL 越高代表約束器迫使模型選擇機率越低的 token，暴露模型學到分布與強制規則間的內在分歧。對每題比較 10 個約束/無約束解出的 NLL 分布（Wilcoxon＋Â₁₂）。結果：低溫（τ=0.1）下偏誤更常見更明顯，最高約三分之一題目顯著偏誤（如 Gemma-2-2B 於 MBPP）；高溫（τ=1.0）下隨機採樣本身削弱此效應，統計等價比例升到八成以上。能力較強模型（Gemma-2-27B、Qwen2.5-32B）對此效應較不敏感。僅限定「兩策略皆生成功能正確解」的子集時，NLL 分布幾乎一致（Â₁₂≈0.502，無顯著差異），說明全資料集上的偏誤主要來自不完整約束器強迫模型使用受限特徵子集。案例分析（Gemma-2-2B、HumanEval 第 107 題）顯示：模型原欲呼叫尚未定義的 <code>isPalindrome</code>（前向引用），約束器阻擋該呼叫後，模型被迫改用已存在的全域函式 <code>isNaN</code>，另起一個從未被呼叫的 helper 函式，最終程式型別安全、語法正確，但功能不正確；其他情形則觸發生成迴圈，直到逾時或觸及 token 上限。</p>
+<p><strong>RQ1 結論</strong>：約束器與目標語言的不對齊有害約束解碼——不完整扭曲了 LLM 學到的分布，生成不太可能的解、把模型推入未知疆域，降低功能正確性。</p>
+<h3 id="52-rq2恢復對齊">5.2 RQ2：恢復對齊</h3>
+<p>針對 RQ0 中表現最差與最好的模型（Gemma-2-2B、Qwen2.5-32B），以「對齊率」（10 個解中通過增量型別檢查的比例）篩出對齊率低於 10% 的困難題（各資料集約佔 23–25%），用 <strong>GRPO</strong>（group size 8、採樣溫度 0.5、二元獎勵＝是否通過增量型別檢查）訓練 <strong>LoRA</strong> 適配器（r=16, α=32，學習率 5e-5，KL 係數 0.04）以降低災難性遺忘風險，之後在完整 HumanEval／MBPP 上以 τ=0.1 重跑 10 次評估。結果：微調前，無約束解碼的功能正確性一律顯著優於約束解碼（差距 3.7–10 個百分點）；微調後，HumanEval 上 Gemma-2-2B 的兩策略趨於相等（約 32%，無約束略降因獎勵偏好型別正確但未必功能正確的解），Qwen2.5-32B 差距也縮小（約束 77.6% vs 無約束 82.0%）；MBPP 上差距同樣縮小但約束解碼仍顯著落後。逾時率在兩資料集皆下降（token 限制降 2–5 個百分點、時間限制降約 2 個百分點）。微調後無約束解出的解通過增量型別檢查的比例，HumanEval 從 72% 升至 92%、MBPP 從 73% 升至 88%，顯示對齊確實提升。</p>
+<p><strong>RQ2 結論</strong>：微調能提升語言模型與約束器的對齊、改善型別語法正確性並降低逾時；但不完整偏誤未被消除，約束解碼微調後仍持平或落後於無約束解碼。</p>
+<h3 id="53-rq3完整對齊">5.3 RQ3：完整對齊</h3>
+<p>以 <strong>TOML</strong> 作案例：語法簡單明確、幾乎上下文無關，同時被 Rust Cargo、Python uv/poetry 等現代建構系統採用。用 GGML BNF 文法（llama.cpp）實作一個對 TOML 語法規格<strong>完整</strong>的約束器（L_T⊆L_C，因語意錯誤如「衝突鍵」不被純語法約束捕捉），並定義四種受限變體：<strong>c-comment</strong>（禁註解）、<strong>c-dotted</strong>（禁點鍵）、<strong>c-space*</strong> （禁所有可選空格）、<strong>c-space=</strong>（僅禁等號前空格，改動最小的文法變體）。基於 JsonModeEval 改編出 <strong>TomlModeEval</strong>（100 題），評測 Gemma-2-2B、Qwen2.5-32B、以及新增的 Qwen-3-Coder-Next-80B，各跑 10 次（τ=0.1，預算 512 token/60 秒）。指標：型別語法正確性（tomllib 剖析）、精確匹配 EM、樹編輯相似度 SIM。</p>
+<p><strong>結果</strong>：完整約束器（c）下，Gemma-2-2B 與 Qwen2.5-32B 顯著優於無約束（分別 EM +53%／SIM +48%，與 EM +2.5%／SIM +4%），Qwen-3-Coder-Next-80B 上二者統計等價——<strong>約束解碼對能力較弱的模型收益更大，收益隨模型能力提升而遞減</strong>。完整約束器仍無法阻止型別/語意錯誤（如衝突鍵）。不完整變體中，<strong>c-space=（僅禁等號前空格）影響最大</strong>：Gemma-2-2B 的 EM 由 48.1% 掉到 28.6%，Qwen-3-Coder-Next-80B 的降幅高達約 97%（62.5%→1.9%）；Qwen2.5-32B 相對不敏感。c-comment、c-dotted 對功能正確性幾乎無影響。</p>
+<p><strong>RQ3 結論</strong>：模型完備時約束解碼顯著優於無約束解碼，但不完整可使功能正確性最多下降 97%；可選空格這類「美觀性」語法對模型的影響甚至大於註解或點鍵，說明模型會把語意附加在所有語法構造上。</p>
+<h2 id="6-效度威脅">6. 效度威脅</h2>
+<p><strong>內部效度</strong>：所有策略在統一硬體與逾時條件下評測，遵循標準實證準則。<strong>結論效度</strong>：為因應 LLM 非決定性，每設定跑 10 次獨立重複，並輔以 Wilcoxon 與 Vargha-Delaney Â₁₂ 統計檢定。<strong>外部效度</strong>：語言、資料集、模型數量有限——語言涵蓋 TypeScript（型別約束）與 TOML（語法約束）兩種不同約束模型；資料集為 HumanEval/MBPP（TypeScript）與改編自 JsonModeEval 的 TomlModeEval（TOML）；模型涵蓋四個家族的六個既有模型（沿用 Mündler et al. 2025b），並新增 Qwen3-Coder-Next-80B 涵蓋更新更強的模型家族，參數規模 2B–80B，是約束解碼相對無約束生成最可能展現可量測效益的中小規模區間。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

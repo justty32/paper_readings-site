@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《EVOM：強化學習中 Actor-Critic 架構的 Agentic 元演化》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：（Xidian University 西安電子科技大學）</p><p>日期：2026-06，元演化／神經架構搜尋／RL</p><p>arXiv：2606.26327</p><p><a href="https://arxiv.org/abs/2606.26327" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="evomrl-中-actor-critic-架構的-agentic-元演化重點摘要">《EVOM：RL 中 Actor-Critic 架構的 Agentic 元演化》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>EVOM</strong>：把 actor-critic 架構搜尋形式化成<strong>雙層最佳化</strong>——內層用低保真 PPO 訓練權重給出便宜的 fitness 估計，外層由<strong>一個純粹當「架構設計師」的 LLM 設計 agent</strong>（完全與策略執行、環境控制解耦）迭代精煉「架構程式（可執行 Python）」做元演化；架構以<strong>開放式可執行程式</strong>表示（不固定拓撲，但受共同介面 PolicyNet/ValueNet 約束），LLM 對 elite 種群做 mutation/crossover 產後代，編譯失敗/非有限輸出/崩潰者罰 fitness −1000。在 MuJoCo Ant-v4、HalfCheetah-v4 上，最終演化出的架構（含殘差 + LayerNorm/SiLU）大幅勝過手工 PPO、LLM-guided random search 與 SOTA 的 MLES；消融證明「元演化迴圈」與「LLM 設計 agent」缺一不可。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>在 actor-critic RL（如 PPO）中，policy/value 網路架構通常<strong>手工設計且當成固定實作繼承自前人</strong>，但架構其實會影響學習穩定性與最終效能。自動化 actor-critic 架構設計有兩難：(1) <strong>每個候選都得先訓練才能評估</strong>，全預算比較極貴；(2) 設計空間<strong>開放式</strong>——policy head、value head、共享 trunk、normalization、activation 等可任意組合，沒有正典固定拓撲搜尋空間。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>雙層最佳化</strong>：外層演化「架構程式」種群，內層用 PPO 在縮減預算 B_low 訓練每個候選的權重 → 提供可行的 fitness 訊號。</li>
+<li><strong>LLM 設計 agent（外層）</strong>：純架構設計師，與 RL 執行完全解耦；輸入 elite 程式 + 演化指令（mutation 改一個 / crossover 融兩個）+ 環境描述，輸出結構化設計描述 + 可執行程式。<strong>agentic 的有限意義</strong>＝維持狀態（current elite + 歷史評估 log）、採取設計動作（程式生成）、觀察反饋（內層 PPO 回報）;prompt 以 current elite 為條件 → 能跨代重用設計樣式而非每步獨立採樣。</li>
+<li><strong>開放式架構表示</strong>：每候選＝generation label + 結構化設計描述 + 可執行 Python；必須定義 <code>PolicyNet(obs_length, act_length)</code> 與 <code>ValueNet(obs_length)</code>，但深度/寬度/activation/normalization/殘差/dropout/初始化/actor-critic 非對稱性全開放搜尋。可執行程式是評估的權威物件。</li>
+<li><strong>驗證守衛</strong>：編譯失敗、非有限輸出、違反 tensor shape、訓練崩潰者 → 罰 fitness <strong>−1000</strong>，使無效架構難以存活 elitist 選擇或當 parent。</li>
+<li><strong>流程</strong>：LLM 初始化種群 → 每代產 N/2 mutation + N/2 crossover 後代 → 各以 B_low PPO 訓練、K 個確定性 episode 評估 → 與 elite 一起排序、選 top-N → G 代後把最佳架構用全預算 B_full 從頭重訓回報。</li>
+</ul>
+<h2 id="結果mujocon16g20b_low100k步b_full5m步3-獨立-run">結果（MuJoCo，N=16、G=20、B_low=100k步、B_full=5M步、3 獨立 run）</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>Ant-v4</th>
+<th>HalfCheetah-v4</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Manual PPO</td>
+<td>2517 ± 366</td>
+<td>1691 ± 495</td>
+</tr>
+<tr>
+<td>MLES（SOTA LLM 程式策略搜尋）</td>
+<td>1185 ± 84</td>
+<td>1046 ± 134</td>
+</tr>
+<tr>
+<td>Random Search</td>
+<td>988 ± 3</td>
+<td>3613 ± 1953（方差巨大）</td>
+</tr>
+<tr>
+<td><strong>EVOM</strong></td>
+<td><strong>4652 ± 747</strong></td>
+<td><strong>5381 ± 1358</strong></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>消融：<strong>mixed reproduction（mutation+crossover）最佳</strong>;crossover-only 次之、mutation-only 較弱（局部編輯與設計樣式重組互補）；增大種群 N∈{8,16,32} 非單調獲益（更大候選池更依賴 noisy 低預算訊號）。</li>
+<li>發現的架構：Ant-v4 用殘差 + normalization;HalfCheetah-v4 用更深的 LayerNorm-SiLU MLP——都與手工 baseline 及初代最佳不同。</li>
+<li>LLM backbone 比較：測 DeepSeek V4、Claude Opus 4.7、Qwen3.6 Plus。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>只測兩個 MuJoCo 連續控制任務（Ant、HalfCheetah），泛化性未廣驗。</li>
+<li>內層用低保真（100k 步）代理訊號 → 與全預算（5M）結果有 gap（故 random search 的 best 曲線高但全預算重訓方差巨大），需靠最終全預算重訓定論。</li>
+<li>增大種群不單調改善，受限於 noisy 低預算 fitness。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 D 類**「LLM-guided 元演化 × RL 架構搜尋」<strong>代表——與 <a class="paper-reference" href="2603.28416_Evolutionary_Discovery_RL_Algos_LLM.%E6%91%98%E8%A6%81.html">2603.28416</a>（演化發現 update rule）、<a class="paper-reference" href="2601.21847_READY_Reward_Discovery_MetaBBO.%E6%91%98%E8%A6%81.html">2601.21847</a> READY（演化發現 reward）形成「LLM 演化發現 RL 不同元件」三件套，EVOM 打的是</strong>架構<strong>層，且明確把 LLM 定位成</strong>可重用設計算子**而非 RL 的替代品（對比 MLES 直接合成控制器程式）。</li>
+<li>最值得記：<strong>「雙層：低保真 PPO 當內層 fitness + LLM 當外層解耦設計師」</strong> 的配方；<strong>「架構＝可執行程式（開放拓撲但受介面約束）+ −1000 罰分守衛」</strong> 讓開放式搜尋與系統化評估相容；以及 <strong>mutation/crossover 互補、種群增大不單調</strong> 兩個演化工程觀察。</li>
+<li>與經典 NAS（vision/NLP）對照：把 NAS 思路引進長期被忽視的 actor-critic 架構設計；與 <a class="paper-reference" href="2101.03958_Evolving_RL_Algorithms.%E6%91%98%E8%A6%81.html">2101.03958</a> 演化 RL 演算法正交（一個演架構、一個演 loss）。</li>
+<li>定位：方法 + MuJoCo 實證論文（開源 github.com/xiaofangxd/EVOM），適合做 AutoRL、NAS-for-RL、LLM-as-design-operator 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2606.26327_EVOM_MetaEvolution_ActorCritic.zh-TW.html"><code>../translate/2606.26327_EVOM_MetaEvolution_ActorCritic.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

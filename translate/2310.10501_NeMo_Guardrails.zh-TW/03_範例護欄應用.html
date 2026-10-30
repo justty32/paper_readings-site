@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_範例護欄應用 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2310.10501_NeMo_Guardrails.zh-TW.html">回 2310.10501_NeMo_Guardrails.zh-TW 目錄</a>　<a href="02_NeMo_Guardrails.html">← 上一節</a>　<a href="04_%E6%9B%B4%E5%BB%A3%E6%B3%9B%E5%BD%B1%E9%9F%BF.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-範例護欄應用">4. 範例護欄應用</h2>
+<p>用 Colang 腳本為對話應用加上護欄十分簡單直接。</p>
+<h3 id="41-主題護欄">4.1 主題護欄</h3>
+<p>主題護欄可與執行護欄搭配使用，決定何時該呼叫特定動作，或定義複雜的對話流程以打造任務導向智能體。</p>
+<p>在圖 2 所示範例中，我們實作了兩條主題護欄，讓 Guardrails 應用能使用 WolframAlpha 引擎回答數學與距離查詢。為此，<code>wolfram alpha request</code> 這個自訂動作（以 Python 實作，於 GitHub 上可取得）呼叫 WolframAlpha API 取得對使用者查詢的回應，LLM 再用這個回應在目前對話脈絡中生成答案。</p>
+<h3 id="42-執行護欄">4.2 執行護欄</h3>
+<p>加入執行護欄涉及以下步驟：</p>
+<ol>
+<li><strong>定義動作</strong>——定義一條護欄需要開發者定義一個指定其邏輯的動作（以 Python 撰寫）。</li>
+<li><strong>在對話流程中呼叫動作</strong>——動作定義好後，可以在 Colang 中用 <em>execute</em> 關鍵字呼叫它。</li>
+<li><strong>在對話流程中使用動作輸出</strong>——開發者可指定應用應如何根據動作的輸出做反應。</li>
+</ol>
+<p>附錄 E 提供動作定義的細節，以及實作輸入、輸出審核護欄的動作範例。</p>
+<p>圖 4 展示一個 Colang 流程範例，呼叫 <code>check_jailbreak</code> 動作。若越獄護欄標記了某則使用者訊息，開發者可決定不顯示生成的回應，改輸出預先定義好的文字。附錄 F 提供更多使用執行護欄的流程範例。</p>
+<h2 id="5-評測">5. 評測</h2>
+<p>本節說明如何量測各類護欄的效能。附錄 G 提供所有任務的更多細節，以及對 NeMo Guardrails 內建自動評測工具的討論。</p>
+<h3 id="51-主題護欄">5.1 主題護欄</h3>
+<p>主題護欄的評測聚焦於本工具箱用標準形式與對話流程引導對話的核心機制。目前的評測實驗採用對話式 NLU 常用的資料集。本節呈現 Banking 資料集（Casanueva et al. 2022）的結果，附錄 G 提供其餘實驗。</p>
+<p>我們從一個 NLU 資料集出發，透過把意圖對映成標準形式並為其定義簡單的對話流程，建立一個 Colang 應用（於 GitHub 公開）。實驗所用的評測資料集是平衡的，從原始資料集中隨機抽樣，每個意圖最多 3 個樣本。測試資料集共 231 筆樣本，橫跨 77 種不同意圖。</p>
+<p>圖 5 呈現表現最好的前三個模型的結果，顯示主題護欄即使搭配 falcon-7b-instruct 或 llama2-13b-chat 這類較小的開源模型，也能成功引導對話。由於 LLM 的表現高度依賴提示，所有結果都有機會透過更好的提示工程再提升。</p>
+<p>主題護欄評測凸顯了幾個重點：第一，Guardrails 所用三步驟方法（使用者標準形式、下一步、機器人訊息）中的每一步都帶來效能提升；第二，向量資料庫中每個使用者標準形式至少要有 k=3 個樣本，才能達到好的效能；第三，某些模型（例如 gpt-3.5-turbo）即使有 few-shot 提示，仍會產生較多樣的標準形式，此時改用相似度匹配而非精確匹配生成標準形式會更有幫助。</p>
+<h3 id="52-執行護欄">5.2 執行護欄</h3>
+<p><strong>審核護欄。</strong> 為評測審核護欄，我們使用 Anthropic 的 Red-Teaming 與 Helpful 資料集（Bai et al. 2022a；Perez et al. 2022）。我們按以下方式抽樣出一組平衡的「有害-有用」評測集：從 Red-Teaming 資料集中抽出有害分數最高的提示，再從 Helpful 資料集中抽出等量的提示。</p>
+<p>我們以「被擋下的有害提示比例」與「被放行的有用提示比例」量化護欄效能。結果分析顯示，同時使用輸入與輸出審核護欄，遠比只用其中一道更穩健。同時使用兩道護欄時，gpt-3.5-turbo 有極佳表現——攔截了近 99% 的有害請求（未加護欄時為 93%），只誤擋 2% 的有用請求——細節見附錄 G。</p>
+<p><strong>事實查核護欄。</strong> 我們使用 MSMARCO 資料集（Bajaj et al. 2016）評測事實查核護欄的效能。此資料集由 <em>(context, question, answer)</em> 三元組構成。為了挖掘負例（未根植於 context 的答案），我們用 OpenAI text-davinci-003 把正確答案改寫成看似相似、但未根植於證據的困難負例。我們以正負例等量抽樣，構建出一個合併資料集。text-davinci-003 與 gpt-3.5-turbo 在事實查核護欄上表現皆佳，整體準確率約達 80%（見附錄 G.2.2 圖 11）。</p>
+<p><strong>幻覺護欄。</strong> 若不採用主觀的人工標註，評測幻覺護欄相當困難。為克服此問題並能自動量化其效能，我們彙整了 20 道基於錯誤前提（沒有正確答案）的問題。任何非迴避性質的生成，都視為失敗。我們接著量化把幻覺護欄當作備援機制的效益：對 text-davinci-003 而言，LLM 無法迴避這些無法回答的提示，加上幻覺護欄後可攔截 70% 的此類提示。gpt-3.5-turbo 表現好得多，本身即能迴避無法回答的提示、或標示其回應可能不正確，比例達 65%；即便如此，加上幻覺護欄仍可把效能提升到約 95%。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>我們提出 NeMo Guardrails，一套讓開發者透過實作可程式化護欄來打造可控且安全的 LLM 應用的工具箱。這些護欄以 Colang 表達，若需要更複雜的邏輯，也可實作為自訂動作。藉由 CoT 提示與能解讀 Colang 程式碼的對話管理器，Guardrails runtime 扮演應用程式與 LLM 之間的代理，強制執行使用者定義的護欄。</p>
+<h2 id="7-局限">7. 局限</h2>
+<h3 id="71-可程式化護欄與內嵌護欄">7.1 可程式化護欄與內嵌護欄</h3>
+<p>打造可控且安全的 LLM 應用（尤其是對話系統）整體而言是個困難的任務。我們承認 NeMo Guardrails 所採用的方法——使用開發者定義的可程式化護欄，以提示與 Colang 解譯器實作——並非完美解法。</p>
+<p>因此我們主張，只要可行，本工具箱就不應被當作獨立的解決方案使用，尤其是安全相關的護欄。可程式化護欄補充內嵌護欄，這兩種方案應搭配使用，共同打造安全的 LLM 應用。本專案的願景是未來也能為部分執行護欄提供更強大的客製化模型，補足目前純靠提示的方法。另一方面，我們的結果顯示，在強大 LLM（例如 ChatGPT）既有的內嵌安全護欄之上再加入審核護欄，能對越獄攻擊提供更好的防護。</p>
+<p>在可控、任務導向對話智能體的脈絡下，要為所有可能的任務與主題護欄開發客製化模型並不容易。因此在此脈絡下，NeMo Guardrails 是打造 LLM 驅動任務導向智能體、且不需額外機制的可行方案。然而即便對主題護欄與任務導向智能體，我們也計畫釋出經 p-tuning 的模型，為部分任務（例如標準形式生成）帶來更好的效能。</p>
+<h3 id="72-額外成本與延遲">7.2 額外成本與延遲</h3>
+<p>Guardrails runtime 所用的三步驟 CoT 提示方法會帶來額外成本與延遲。由於這些呼叫是依序串接的（第二階段生成下一步依賴第一階段生成的使用者標準形式），無法批次化。在我們目前的實作中，所需延遲與成本約為不使用 Guardrails 直接生成機器人訊息之一般呼叫的 3 倍。我們正在研究是否能在某些情況下用單一呼叫生成全部三個步驟（使用者標準形式、流程中的下一步、機器人訊息）。</p>
+<p>使用更複雜的提示與 few-shot 上下文學習，相較一般對話的機器人訊息生成，也會產生些微額外延遲與較高成本。開發者可依需求選擇使用較簡單的提示。</p>
+<p>不過，我們認為應該提供開發者依其需求選擇的各種選項。有些開發者願意為了更安全、可控的 LLM 對話智能體支付額外成本。此外，GPU 推論成本會持續下降，較小的模型也能在部分或全部 NeMo Guardrails 任務上取得良好表現。如本文所示，我們知道 falcon-7b-instruct（Penedo et al. 2023）在主題護欄上已能取得非常好的表現。我們也在其他近期模型上觀察到類似的正面表現，例如 Llama 2（7B、13B）的 chat 變體（Touvron et al. 2023）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

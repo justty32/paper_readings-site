@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.29090_HCLSM_Hierarchical_Causal_WM.zh-TW.html">回 2603.29090_HCLSM_Hierarchical_Causal_WM.zh-TW 目錄</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>從影片預測未來狀態的世界模型，受限於<strong>扁平 latent 表徵</strong>——糾纏物件、忽略因果結構、把時間動力學塌成單一尺度。提出 <strong>HCLSM</strong>，一個建於三條互聯原則的世界模型架構：(1) 經 slot attention + spatial broadcast decoding 的<strong>物件中心分解</strong>;(2) 透過三級引擎（selective SSM 管連續物理、sparse transformer 管離散事件、compressed transformer 管抽象目標）的<strong>分層時間動力學</strong>;(3) 透過 GNN 互動模式的<strong>因果結構學習</strong>。HCLSM 引入兩階段訓練協定：空間重建先逼 slot 特化，動力學預測才開始。在 Open X-Embodiment 的 PushT 機器人操作基準上訓練 68M 參數模型，達 <strong>0.008 MSE</strong> 次態預測損失、浮現空間分解（SBD loss 0.0075）與學到的事件邊界。自製 Triton SSM scan kernel 對 sequential PyTorch 達 <strong>38× 加速</strong>。全系統 8,478 行 Python、51 模組、171 單元測試，開源（github.com/rightnow-ai/hclsm）。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>人不把世界知覺為像素流，而是看見物件、追蹤運動、注意異常、推理因果。孩子看球滾下桌，同時維護個別物件表徵（球/桌/地）、多尺度處理動力學（連續軌跡、離散墜落事件、長期落地後果）、推因果（重力拉它而非桌推它）。V-JEPA 等從編碼器表徵預測未來 latent，但這些 latent 是<strong>非結構化向量</strong>，把所有物件/尺度/因果糾纏進單一預測目標——對影片理解夠用，卻給不了規劃與反事實所需的結構化知識。</p>
+<p>問題三維：<strong>物件</strong>（扁平 latent 無法把杯子位置與桌面分開）、<strong>時間</strong>（毫秒軌跡 / 離散碰撞 / 分鐘級策略需不同機制）、<strong>因果</strong>（無顯式因果結構答不了反事實）。物件中心法（Slot Attention、SAVi）缺時間動力學；SlotFormer 加自回歸但單尺度；DreamerV3 是扁平 latent。<strong>Table 1</strong> 顯示沒有系統統一三者。</p>
+<p>HCLSM 三維全解：物件經 slot attention + SBD 發現；時間經三級層次（selective SSM 管幀間物理、sparse transformer 只在事件邊界觸發、compressed transformer 管目標）；因果由 GNN 邊權浮現。<strong>關鍵洞見：結構必須先於預測</strong>——若所有損失從 step 0 同開，動力學目標會主導（分散 slot 碼比物件專屬碼更易預測），模型走捷徑用 32 slot 當集體分散表徵。兩階段協定（仿視覺皮層發育「先認物、後預測運動」）解此：Stage 1 只重建逼 slot 競爭空間所有權，Stage 2 才在已分解物件上開預測。</p>
+<p><strong>貢獻</strong>：(1) 五層架構統一物件 slot、三級時間層次、GNN 因果互動於單一可微模型；(2) 用凍結 ViT 特徵當重建目標的 SBD（DINOSAUR 式）;(3) 兩階段訓練協定；(4) Triton SSM kernel 38× 加速；(5) 開源實作（8,478 行、51 模組、171 測試）於真機操作資料。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>潛在世界模型（V-JEPA/V-JEPA2/DreamerV3/GAIA-1 皆扁平 latent、無物件分解或顯式因果）；物件中心表徵（Slot Attention、SAVi、DINOSAUR、SlotFormer、Adaptive Slot Attention）；時間建模的 SSM（S4、Mamba 選擇性 SSM、Slot SSM）；神經網路因果發現（NOTEARS 連續優化 + 無環約束、DAG-GNN）；機器人從影片學習（Open X-Embodiment、RT-2、Octo——聚焦 policy，HCLSM 聚焦其可規劃的世界模型）。<strong>Table 1</strong>：HCLSM 是首個同時具物件/層次/因果/SSM/真實資料者。</p>
+<h2 id="3-架構五層">3. 架構（五層）</h2>
+<ul>
+<li><strong>Layer 1 感知</strong>：ViT 把影格 (B,T,C,H,W) 轉成 patch embedding，加時間位置編碼，線性投影到統一維度 d_world。</li>
+<li><strong>Layer 2 物件分解</strong>：<strong>帶動態生滅的 Slot Attention</strong>（N_max slot 從學到的高斯初始化、K 次迭代競爭 patch token、存在頭預測 p_alive、殘差能量超閾值「誕生」休眠 slot）;<strong>SBD</strong>——每 slot 廣播到 14×14 + (x,y) 座標、4 層 CNN 解碼成特徵 + alpha mask，alpha 對 alive slot softmax 形成像素級競爭；重建目標是<strong>凍結 EMA target 編碼器的 ViT patch 特徵</strong>（非像素，DINOSAUR 式語義訊號）;<strong>Relation Graph</strong>（GNN 處理 all-pairs 邊特徵，邊權編碼物件互動；N&gt;32 時分塊算邊省記憶體）。</li>
+<li><strong>Layer 3 分層動力學</strong>：<strong>L0 selective SSM</strong>（每物件一條 track 共享參數，<code>h_t=Ā_t⊙h_{t-1}+B̄_t⊙x_t</code>，輸入相關 Δ,B,C；全域 SSM 條件 per-object;A_log 初始化 [−0.5,0]、clamp ΔA 防 bf16 溢位);<strong>L1 sparse event transformer</strong>（事件偵測器用多尺度幀差 + 因果膨脹卷積，event score 超閾值才 gather 該時步，成本 O(K·N²) 而非 O(T·N²)）;<strong>L2 goal compression transformer</strong>（summary query cross-attend 事件序列壓成 n_summary 抽象 token，可條件語言/目標供規劃);<strong>hierarchy manager</strong> 以向量化 gather/scatter + 可學 per-level 門控合成。</li>
+<li><strong>Layer 4 因果結構</strong>：學鄰接 W∈ℝ^{N×N}，Gumbel-softmax 二元採樣（可微邊決策）+ L1 稀疏 + <strong>NOTEARS DAG 約束</strong> <code>h(A)=tr(e^{A⊙A})−N=0</code>（augmented Lagrangian）；當前版以 GNN 邊權為主因果訊號、顯式 DAG 為正則路徑。</li>
+<li><strong>3.5 兩階段訓練</strong>：若損失全開，JEPA 預測損失主導（分散碼易預測），slot 不特化。<strong>Stage 1（前 40%）</strong><code>ℒ=5.0·ℒ_SBD+0.1·ℒ_diversity</code>（預測損失只監看不回傳）逼 slot 競爭空間所有權；<strong>Stage 2（後 60%）</strong><code>ℒ=ℒ_JEPA+ℒ_SBD+λ_obj ℒ_obj+λ_causal ℒ_causal</code>（SBD 權重降為 1.0）。</li>
+</ul>
+<h2 id="4-實作">4. 實作</h2>
+<p><strong>自製 Triton SSM kernel</strong>（並行 (B, d_inner/block)，H100 上達 4096 並行程式，對 sequential PyTorch 38–39× 加速）;<strong>bf16 數值穩定 4 招</strong>（x*x 代 x**2 避 PowBackward0 NaN、A_log 初始化 [−0.5,0]、activation clamp [−50,50]、關 GradScaler）;<strong>GPU 原生 slot 追蹤</strong>（可微 Sinkhorn-Knopp 取代 CPU scipy Hungarian）;<strong>省記憶體 GNN</strong>（N&gt;32 分塊 16）。</p>
+<h2 id="5-實驗">5. 實驗</h2>
+<ul>
+<li><strong>5.1 設定</strong>：HCLSM Small（68M）訓於 PushT（206 episode、25,650 幀，2D 動作）;16 幀 224×224，H100、batch 4、bf16、50K 步（約 6 小時）;Stage 1 前 20K、Stage 2 後 30K；報 2 個成功 run（4 起 2 存，bf16 seed 依賴 NaN）。</li>
+<li><strong>5.2 量化（Table 3）</strong>：no-SBD 預測 0.002（32 slot 分散編碼整場景、更易預測但無物件結構）;<strong>two-stage 預測 0.008</strong>、SBD 0.008（slot 學到重建特定區域）、多樣性更低（0.132 vs 0.154）。</li>
+<li><strong>5.3 空間分解</strong>：不同 slot 認領不同空間區域（雖不乾淨，32 slot 對 3 物件過多、每物件拆約 10 slot）;no-SBD 版均勻無結構。</li>
+<li><strong>5.4 事件偵測</strong>：每 16 幀偵 2–3 事件（對應夾爪—T-block 接觸等顯著變化）。</li>
+<li><strong>5.5 潛在動力學</strong>：slot 狀態 PCA 軌跡（最佳 run 解釋 57%、two-stage 33.5%）呈結構化時間演化，事件邊界處方向變化。</li>
+</ul>
+<h2 id="6-限制與未來">6. 限制與未來</h2>
+<p><strong>slot 數</strong>（32 全程存活、存在頭學不會殺、降 8 不穩 NaN）;<strong>因果發現</strong>（顯式因果矩陣學不到邊、全塌 0、與動力學聯訓 bf16 NaN、未驗證 GNN 邊是否對應真因果）;<strong>規模</strong>（只 Small/單資料集，Base 262M/Large 3B 有 NaN、多卡 FSDP NCCL 失敗）;<strong>seed 敏感</strong>（40–60% run 前 1000 步 NaN）。未來：V-JEPA2 checkpoint 初始化 ViT、多物件操作資料、整合 CEM/MPPI 閉環控制、解決 bf16 穩定以擴 262M+。</p>
+<h2 id="7-結論">7. 結論</h2>
+<p>HCLSM 建於簡單前提：<strong>世界模型應鏡映其所建模世界的結構</strong>——物件離散故表徵物件中心、時間多尺度故動力學分層、互動有因果故維持顯式互動圖。兩階段協定化解「結構承諾」與「優化壓力塌成扁平碼」的張力。真機資料顯示各元件能協作：0.008 MSE、浮現空間分解、功能性事件偵測、38× SSM kernel 加速。架構是基礎；擴到多物件場景 + 預訓視覺骨幹、解 262M+ 數值穩定、與 model-based 規劃閉環，是從基礎到完整自主 agent 的路。開源全碼（warts and all）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

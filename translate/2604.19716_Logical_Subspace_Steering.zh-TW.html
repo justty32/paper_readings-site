@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>發現共享邏輯子空間：以自然語言與符號視圖對齊來操控 LLM 邏輯推理（Discovering a Shared Logical Subspace: Steering LLM Logical Reasoning via Alignment of Natural-Language and Symbolic Views） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：lei-nlp-lab（ACL 2026 投稿；code/data: github.com/lei-nlp-lab/logical_subspace_acl_2026）</p><p>日期：2026-04</p><p>arXiv：2604.19716</p><p><a href="https://arxiv.org/abs/2604.19716" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="發現共享邏輯子空間以自然語言與符號視圖對齊來操控-llm-邏輯推理">發現共享邏輯子空間：以自然語言與符號視圖對齊來操控 LLM 邏輯推理</h1>
+<h2 id="摘要">摘要</h2>
+<p>LLM 仍在多步邏輯推理上掙扎。既有方法要麼純在自然語言形式上精修推理鏈，要麼外掛符號求解器當外部模組。本文改問：<strong>LLM 內部是否含有一個同時對齊「推理過程之自然語言視圖」與「符號語言視圖」的共享邏輯子空間？</strong> 假設此邏輯子空間捕捉跨視圖共享、且獨立於表面形式的邏輯推理能力。為驗證，我們對配對的（NL 與符號推理鏈的）殘差激活做<strong>典型相關分析（CCA）</strong>，學一個跨視圖相關最大的低維子空間。進一步設計一個 <strong>training-free</strong> 方法，沿此邏輯子空間操控 LLM 推理鏈，藉此利用兩視圖的互補推理訊號。4 個邏輯推理 benchmark 的實驗顯示本方法有效，準確率最多提升 <strong>11 個百分點</strong>，且在 OOD 問題上泛化良好。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>LLM 的邏輯推理指遵循規則、連接前提到結論、執行多步推論的能力，對數學、科學分析、規劃、編碼等需多步決策的應用很重要。儘管自然語言理解進步，LLM 在複雜多步邏輯推理上仍不足。</p>
+<p>既有工作分兩流：<strong>自然語言依賴法</strong>（提示 / 訓練優化 NL 思維鏈，如 CoT）與<strong>神經符號法</strong>（外掛符號 prover / verifier）。前者只在 NL 表面形式精修，後者依賴外掛符號組件。本文提出新框架：<strong>對齊邏輯推理過程的 NL 與符號視圖</strong>，利用兩者互補訊號。</p>
+<p><strong>核心觀察</strong>（圖 1）：每個邏輯題可用同一底層推導的兩種互補表徵求解——(i) NL 證明（逐步口語解釋）、(ii) 對應的符號證明（規則 / 邏輯子句序列）。兩者邏輯過程一致、表面形式不同：符號證明暴露形式結構，NL 證明反映模型如何把該結構口語化。核心研究問題：<strong>LLM 是否含有同時對齊兩視圖的共享內部邏輯子空間？能否利用它增強邏輯推理？</strong></p>
+<p><strong>假設</strong>：LLM 中存在一個低維多視圖邏輯子空間，其中同一實例的 NL 與符號證明的配對激活強烈對齊。用 <strong>CCA</strong> 於兩視圖配對殘差激活，藉最大化跨視圖相關，期望此子空間捕捉跨視圖共享、與表面形式無關的邏輯能力。</p>
+<p><strong>操控（training-free）</strong>：為充分利用共享子空間的互補訊號，設計推論時微調——模型自回歸生成每個 token 時，<strong>線性放大該 token 激活在學到子空間上的投影</strong>，把隱狀態推向共享 NL-符號子空間，權重不變。相較先前工作，本法超越單視圖啟發式、藉跨視圖對齊整合互補訊號，無需額外訓練或外部 solver。</p>
+<p><strong>結果</strong>：4 個 benchmark × 5 個 LLM，準確率最多 +11%；子空間泛化到 OOD。分析揭示：(i) 邏輯子空間編碼語意 + 邏輯結構資訊；(ii) NL-符號對齊在較高層增強；(iii) 子空間內投影能量與推理正確性正相關；(iv) 沿子空間操控增加 since、so 等邏輯連接詞、減少 think、know、assume 等含糊推理動詞。</p>
+<h2 id="2-3-方法">2-3 方法</h2>
+<ul>
+<li>2.3 子空間與投影子：以 CCA 求得跨視圖最大相關的低維投影。</li>
+<li>3.1 學習多視圖邏輯子空間：收集同一題的 NL 證明與符號證明配對，取其殘差激活做 CCA。</li>
+<li>3.2 推論時沿子空間操控：自回歸生成時放大投影。<strong>操控協定</strong>：選定操控層（附錄 F.1）、放大係數等超參（附錄 B.4）。</li>
+</ul>
+<h2 id="4-實驗">4 實驗</h2>
+<ul>
+<li>4.1 設定：benchmark＝<strong>FOLIO、PrOntoQA、ProofWriter、LogiQA 2.0</strong>；模型為 3B-13B 開源模型（含 Phi-3 等）。</li>
+<li>4.2 主結果：相較 greedy CoT 有提升（gains over greedy）；與 <strong>SC-3（self-consistency）</strong> 比較——以更低成本回收大部分好處；與 <strong>few-shot CoT</strong> 比較亦具競爭力。</li>
+<li>4.3 與不同推論方案相容。</li>
+<li>4.4 對操控方向的敏感度；4.5 泛化（OOD）。</li>
+</ul>
+<h2 id="5-分析">5 分析</h2>
+<ul>
+<li>5.1 多視圖子空間編碼什麼：語意 + 邏輯結構。</li>
+<li>5.2 語言與邏輯的對齊如何隨層演化：<strong>較高層對齊更強</strong>。</li>
+<li>5.3 邏輯子空間能否判斷推理鏈是否正確：<strong>投影能量與正確性正相關</strong>（可當探針）。</li>
+<li>5.4 操控如何改變模型推理行為：<strong>邏輯連接詞（since/so）變多、含糊動詞（think/know/assume）變少</strong>，推理鏈更短、更具因果性。</li>
+</ul>
+<h2 id="6-7-相關工作與結論">6-7 相關工作與結論</h2>
+<p>提出<strong>邏輯子空間操控（LSS-CoT）</strong>：用配對 NL 與符號證明在凍結 LLM 中估計多視圖邏輯子空間，推論時操控思維鏈。跨多個邏輯推理 benchmark，LSS-CoT 勝過 greedy CoT，並在不改權重、不靠外部 prover 下回收大部分更昂貴的 self-consistency 與 few-shot 提示之好處。分析顯示操控產生更短、更具因果性的推理鏈與可解釋的邏輯結構，提供模型邏輯推理的<strong>表徵層把手</strong>。</p>
+<p><strong>局限</strong>：聚焦邏輯推理，未必直接泛化到開放域對話、數學解題、長程 agentic、多語、或超大專有 / 專用定理證明模型；主要以最終答案準確率評估，缺中間步驟正確性 / 忠實度的細粒度評測。</p>
+<p><strong>倫理</strong>：研究表徵層方法以操控開源模型內部激活來改善邏輯推理；實驗用公開 benchmark（FOLIO、PrOntoQA、ProofWriter、LogiQA 2.0）與 3B-13B 開源模型，不涉私人資料 / 人類受試者；釋出 code/data 期望負責任使用。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2604.19716_Logical_Subspace_Steering.%E6%91%98%E8%A6%81.html"><code>../summarize/2604.19716_Logical_Subspace_Steering.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

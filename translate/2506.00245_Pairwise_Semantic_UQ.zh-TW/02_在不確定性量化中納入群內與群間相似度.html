@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_在不確定性量化中納入群內與群間相似度 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2506.00245_Pairwise_Semantic_UQ.zh-TW.html">回 2506.00245_Pairwise_Semantic_UQ.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E9%99%84%E9%8C%84%E8%A6%81%E9%BB%9E.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-在不確定性量化中納入群內與群間相似度">4 在不確定性量化中納入群內與群間相似度</h2>
+<p>為緩解 (D)SE 的資訊缺失問題，可同時利用生成答案間的群內與群間相似度，得到更準確的不確定性估計。為降低離群值影響，作者用 LogSumExp 運算聚合相似度。綜合以上，<strong>不需要分群</strong>，定義語意最近鄰熵（SNNE）為：</p>
+<p>SNNE(q) = −(1/n) Σᵢ log Σⱼ exp( f(aⁱ,aʲ|q) / τ )　（式 3）</p>
+<p>其中 f 度量給定問題下兩個答案的相似度。式 3 內層加總不需分群即能同時捕捉群內與群間相似度：當 aⁱ、aʲ 屬於同一語意群時，f 自然捕捉群內相似度；不屬於同一群時則捕捉群間相似度。由於 LogSumExp 運算是最大值函式的平滑近似，SNNE 近似基於最近鄰距離的熵估計（Beirlant et al. 1997），因此相較 LexSim 與圖式方法對離群值較不敏感。</p>
+<p><strong>延伸至白箱情境</strong>：可用生成輸出的 token 機率為式 3 的加總加權，提升方法對模型信心的敏感度，定義白箱版本 WSNNE：</p>
+<p>WSNNE(q) = −Σᵢ P̄(aⁱ|q) log Σⱼ exp( f(aⁱ,aʲ|q) / τ )　（式 4），其中 P̄(aⁱ|q)=P̃(aⁱ|q) / Σⱼ P̃(aʲ|q)。</p>
+<p><strong>相似度函式 f 的選擇</strong>：可用 LexSim 所用的 ROUGE-L（Lin 2004）；也可用圖式方法所用的 NLI 模型預測分數；或用模型輸出的句嵌入之餘弦相似度。</p>
+<p><strong>理論結果</strong>：下述定理顯示，若透過對不同語意群的答案給零相似度來忽略群間相似度、對同群答案給定值來忽略群內相似度，SNNE 會還原成 DSE。</p>
+<p><strong>定理 4.1</strong>：設相似度函式 f(aⁱ,aʲ|q)=τ log(1/n)（若 aⁱ,aʲ∈C_k）、否則 −∞，則 SNNE 等同於式 2 定義的 DSE。</p>
+<p>不用定值、改用僅依序列機率決定的項時，WSNNE 會還原成 SE。</p>
+<p><strong>定理 4.2</strong>：設 f(aⁱ,aʲ|q)=τ log(P̃(aʲ|q)/Q)（若 aⁱ,aʲ∈C_k）、否則 −∞，其中 Q=Σᵢ P̃(aⁱ|q)，則 WSNNE 等同於式 1 定義的 SE。</p>
+<p>定理 4.1、4.2 的證明見附錄 A。如上所述，(D)SE 是 (W)SNNE 在特定相似度度量下的特例：定理 4.1 顯示，當同群給定值相似度且忽略群間交互作用時，SNNE 化簡為 DSE；定理 4.2 顯示，當忽略群內交互作用時，WSNNE 化簡為 SE。這意味著 (W)SNNE 提供比 (D)SE 更具表達力的不確定性度量，善用資訊豐富的相似度度量能讓 (W)SNNE 優於 (D)SE，實驗結果印證了這點。KLE 的框架中也觀察到類似形式的推廣關係。</p>
+<p>此外，當 τ→0 且 f(aⁱ,aʲ|q)=τ P(entail|aⁱ,aʲ) 時，本方法漸近地還原 LUQ-Pair，因此本方法可整合進 LUQ 以找到更好的原子分數；實證上本方法在單句生成情境優於 LUQ-Pair，顯示本方法有更好的原子不確定性估計能力。</p>
+<h2 id="5-實驗">5 實驗</h2>
+<h3 id="51-設定">5.1 設定</h3>
+<p><strong>模型</strong>：Llama-3.1-8B（Dubey et al. 2024）、Phi-3-mini-4k-instruct（Abdin et al. 2024）為主要模型（附錄另補 Llama2-7B/13B、gemma-2-2b、Mistral-Nemo 共 6 個模型的完整結果）。</p>
+<p><strong>資料集</strong>：涵蓋問答（QA）、文本摘要（TS）、機器翻譯（MT）三類任務。QA 依循 SE 論文用五個資料集；TS、MT 採用 LM-Polygraph（Fadeeva et al. 2023）中的兩個摘要、兩個翻譯資料集。細節見附錄 B。</p>
+<p><strong>評估指標</strong>：QA 用 AUROC 與 AUARC（Nadeem et al. 2009），依循 Lin et al. (2024)；TS、MT 用 PRR（Malinin et al. 2017），與 LM-Polygraph 一致。</p>
+<p><strong>基線</strong>：與第 2 節列出的白箱、黑箱 UQ 方法比較。</p>
+<h3 id="52-結果">5.2 結果</h3>
+<p><strong>QA 資料集</strong>：Figure 2 顯示 SNNE、WSNNE 在 Llama-3.1-8B 與 Phi-3-mini 上均以顯著差距持續超越既有白箱與黑箱基線。白箱方法中 KLE_full 在 Llama-3.1-8B 上排名第二，但其黑箱版本 KLE_heat 反而不如更簡單的 DSE。本方法也超越 LM-Polygraph 基準（Vashurin et al. 2025）先前的 SOTA——SAR，尤其在較長、單句輸出的情境下 SAR 表現下滑更明顯。</p>
+<p><strong>TS、MT 資料集</strong>：Figure 3 顯示本方法在 PRR 分數上的優勢。黑箱情境下 LexSim 是亞軍，儘管其 QA 表現遠不如其他基線；對很長的生成而言，LexSim 中重疊字數是語意相似度的良好指標（見附錄 Table 5）。本方法相較 (D)SE 與 KLE 有明顯優勢，凸顯在長生成情境中明確納入群內與群間相似度到熵估計的重要性。</p>
+<p><strong>生成數量與生成溫度的影響</strong>：Figure 4 顯示模型輸出數量與溫度對 SNNE 的 AUROC 分數之影響（以 Llama-3.1-8B 在 SQuAD 上測量）。增加生成數量能提升效能，但推理成本也隨之提高；低溫時效能約在 10 個輸出左右趨於飽和。溫度過低（0.5）或過高（2.0）都會降低效能，因為過於保守或過於多樣的輸出會損害熵估計的品質。作者指出，本文的生成設定（溫度 1.0、10 個生成答案）直接沿用 SE 論文的設定。</p>
+<p>其他模型的結果，以及相似度函式、尺度因子 τ 的消融研究見附錄 C。</p>
+<h2 id="6-結論">6 結論</h2>
+<p>本文提出一個新穎的黑箱不確定性量化方法，解決語意熵在長生成情境下偵測幻覺的限制。本方法有效納入群內與群間相似度並緩解離群值影響，這對現代 LLM 準確的不確定性估計至關重要。本文也展示了本方法可延伸至白箱情境，並提供理論結果證明其對語意熵的推廣性。跨多個 LLM 與文本生成任務的大量實驗顯示，本方法持續優於既有不確定性量化方法。</p>
+<h2 id="7-局限">7 局限</h2>
+<p>本文未探討模型生成多句或整段文字情境下的不確定性估計。一個 naive 做法是分別計算每句的不確定性再彙總成單一純量，作者留待未來工作。此外，對於數學式、LaTeX 方程式、程式碼等不同資料格式，本方法需要進一步考量——設計合適的相似度函式或能將方法推廣至這些資料類型。最後，如同其他既有 UQ 方法，本方法需要取樣多個答案才能估計熵，帶來額外的推理成本。</p>
+<h2 id="致謝">致謝</h2>
+<p>本研究部分獲美國國家科學基金會 CAREER Award 2146492 與 Cisco Systems 支持。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

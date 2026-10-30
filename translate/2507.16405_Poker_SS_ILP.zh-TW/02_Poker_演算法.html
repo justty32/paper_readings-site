@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_Poker_演算法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2507.16405_Poker_SS_ILP.zh-TW.html">回 2507.16405_Poker_SS_ILP.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-poker-演算法">4. Poker 演算法</h2>
+<h3 id="受約束-metarules-與-sonf">受約束 metarules 與 SONF</h3>
+<p>Poker 假設高階背景理論是一個 <strong>SONF</strong>——一組受約束的 metarules，泛化「Herbrand Base 上所有解釋的全部一階定義」。</p>
+<p><strong>受約束 metarule（Definition 2）</strong>：在 metarule 上加一組對二階變數代換的約束。約束形式含：兩變數須相同/不同符號、須來自某符號子集（背景、發明、目標謂詞等）、按字母序高於/低於某變數…等，並可用 ∧、∨、¬ 組合。約束<strong>主要用來控制遞迴</strong>（消除不必要遞迴尤其左遞迴、減少初始假設構造的冗餘），如同 Planning/SAT 中利用問題類共同結構的啟發式，可提升 Poker 效率。</p>
+<p><strong>SONF（Definition 3）</strong>：對所有 Herbrand 解釋 i，令 P(i) 為其全部一階確定程式集，P 為全部 P(i) 之並。一組受約束 metarules M 是目標 T 的 <strong>SONF</strong>，若 M 能（透過代換）構造出 P 的某子集。<strong>strong SONF</strong> 構造出全部 P;<strong>weak SONF</strong> 只構造真子集。SONF 的目的：用一個<strong>最大泛化</strong>的二階背景理論，取代以往 MIL 慣用的任務專屬 metarule 集，足以學 T 在任何解釋下的任何邏輯程式定義。</p>
+<h3 id="兩個範式">兩個範式</h3>
+<p>以實驗用的兩個 SONF 說明：</p>
+<ul>
+<li><strong>C-GNF（Chomsky-Greibach 範式，Table 3）</strong>：學 CFG 的 DCG。基於 Chomsky 範式（CNF）與 Greibach 範式（GNF）的組合；GNF 消除左遞迴及其下推自動機剖析的低效。含 Identity、Chain、Tri-Chain 三條受約束 metarule。約束強制 CNF（每條產生式形如 A→BC 或 A→a）、採 GNF 變體強制反左遞迴假設（允許前終端與發明謂詞），並消除發明謂詞間的「斜向」左遞迴。Tri-Chain 用於第二體文字是目標謂詞文字的產生式（如回文），純為<strong>提升效率非完整性</strong>。附錄證明 C-GNF 是所有「兩字元 CFG」的 SONF（建構式證明：可構造接受所有位元串的最大泛化文法）。</li>
+<li><strong>LNF（Lindenmayer 範式，Table 9）</strong>：學 L-System 文法的 DCG。L-System 是描述碎形/植物等分支自相似結構的文法，可當生成器產生「畫圖命令」字串（送 Turtle 繪圖）。其特性是<strong>所有產生式同時套用到整個字串</strong>、逐代改寫。故 DCG 中每條產生式皆遞迴（除一條展開為空串者），確保字串須被完整消耗才被接受。含 LS-Base、LS-Constant、LS-Variable、Chain、Tri-Chain。LS-Constant 把常數換成自己；LS-Variable 把變數換成任意串（可含發明謂詞，僅允尾遞迴）;Chain/Tri-Chain 組合可推入任意長度輸出串，並用「發明謂詞符號須按字母序遞增」的強約束消除冗餘構造。附錄證明 LNF 是「兩常數兩變數」L-System 的 SONF。</li>
+</ul>
+<p><strong>SONF 的推導目前無法自動化</strong>：C-GNF、LNF 皆由作者手工導出（前者編碼 Chomsky/Greibach 範式規則，後者源自手寫 L-System DCG 的共同結構），約束由實驗調得以提升效率。</p>
+<h3 id="poker-演算法algorithm-1與理論">Poker 演算法（Algorithm 1）與理論</h3>
+<p>輸入：Definition 1 之 E、B（B 為 SONF）、發明謂詞符號集、最大生成例數、初始假設最大子句數。流程：<strong>Generalise</strong>（用 Vanilla 二階 meta-interpreter 構造初始假設集）→ <strong>Generate</strong>（可選，把假設當生成器產生未標記例子）→ <strong>Label</strong>（對每個未標記例子，假設為負並從接受它的假設移除；若殘集拒絕某正例則重標為正）。可分塊學習再取並集（讓 Poker 高效學含多發明謂詞的大程式）。</p>
+<p><strong>Theorem 1（假設正確性）</strong>：Algorithm 1 回傳正確假設的機率隨未標記例子數<strong>單調遞增</strong>。證明（附錄 Lemma 1–4）：(L1) 因二階 SLD-Resolution 的反駁完備性，初始假設集<strong>含全部正確假設</strong>;(L2) 接受某負例的假設皆被正確移除；(L3) 只有非正確假設被移除；(L4) 去除全部非正確假設所需的<strong>最少負例數＝非正確假設數</strong> n−c。隨未標記例子集基數增大，含負例的機會增加，非正確假設數<strong>單調趨向 0</strong>，故回傳正確假設的機率單調遞增。</p>
+<h2 id="5-實作">5. 實作</h2>
+<p>新系統 Poker 以 Prolog 寫成，擴充 <strong>Top Program Construction（TPC）</strong>。Generalise 由呼叫 <strong>Vanilla</strong>（用於 MIL 的歸納式二階 Prolog meta-interpreter）實作；Vanilla 以 SWI-Prolog 開發，用其 <strong>tabled execution（SLG-Resolution）</strong> 控制遞迴、提升效能。</p>
+<h2 id="6-實驗">6. 實驗</h2>
+<p><strong>研究問題 1</strong>：自動生成例子對 Poker 學習效能有何影響？以兩組實驗（學 CFL 與 L-System 文法）回答。</p>
+<p><strong>基線</strong>：據作者所知，除 Poker 外無 ILP 系統會在學習中生成例子。Aleph 與 Popper 無負例皆表現差（Popper 作者私下確認無負例不該期望學會 CFG）。故選同基於 Vanilla、亦接受受約束 metarules 的 SOTA MIL 系統 <strong>Vanilla-Louise（簡稱 Louise）</strong> 當簡單基線（Louise 永遠 k=0，即不生成例子）。誤差棒為各實驗 100 組隨機抽樣訓練/測試集的標準誤。</p>
+<h3 id="實驗-1l-systems">實驗 1：L-Systems</h3>
+<p>訓練 Poker 與 Louise 學 Dragon/Hilbert/Koch/Sierpinski 碎形 L-System 的字串。一階背景理論為一組所有 L-System 共用、但各系統意義未必相同的符號（如符號 F 在 Dragon/Koch 是變數、在 Hilbert 是常數）——測試<strong>抗噪韌性</strong>；二階背景理論為 LNF。當生成器評估（生成準確率、假設規模）。</p>
+<p><strong>結果（Figure 1）</strong>：Poker 生成準確率<strong>隨生成例增加而上升、假設規模下降</strong>;Louise 生成準確率隨標記例增加而<strong>下降、規模膨脹</strong>（過度泛化加劇）。即生成例越多越能提升 Poker 並避免過度泛化。</p>
+<h3 id="實驗-2二進位-cfl">實驗 2：二進位 CFL</h3>
+<p>學六種 CFL：(a) 偶校驗（1 的個數為偶）、(b) aⁿbⁿ、(c) 任意序的 n 個 a 與 n 個 b、(d) aⁿbᵐ、(e) 回文位元串、(f) 平衡括號。符號適當替換為 1、0，使所有實驗共用同一一階（字母表 DCG）與二階背景理論（C-GNF;Tri-Chain 僅回文用）。當接受器評估（TPR 真正例率、TNR 真負例率）。</p>
+<p><strong>結果（Figure 2）</strong>：k=0（無生成例）時 TPR 最大但 TNR 最小（無負例）;k 增大時 <strong>TPR 與 TNR 同步上升</strong>，在最高 k 增量時皆最大化。結論：k 低時 Poker 標記與假設過度泛化，k 夠大時學到正確標記與假設；<strong>Poker 效能隨生成例數提升</strong>。Louise 在所有實驗一致過度泛化。</p>
+<h2 id="7-結論與未來工作">7. 結論與未來工作</h2>
+<p>ILP 系統在「任務專屬背景理論 + 手選負例」下能從少例良好泛化。本文以新的形式設定 <strong>SS-ILP</strong> 與系統 <strong>Poker</strong> 緩解此負擔：從正標記與未標記例子學習，學習中自動生成新正負例，只需最大泛化的 <strong>SONF</strong> 而非任務專屬背景理論。提出兩個 SONF（CFG 與 L-System 的 DCG），給出「準確率隨未標記例子數提升」的理論證明與實證，並展示缺此能力的基線 MIL 系統會過度泛化。</p>
+<p><strong>未來</strong>：擴充理論（不同正/未標記例子量下的正確性、計算效率證明）；實證目前僅限文法學習，應探索更多元領域；SONF 推導自動化。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2507.16405_Poker_SS_ILP.%E6%91%98%E8%A6%81.html"><code>../summarize/2507.16405_Poker_SS_ILP.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

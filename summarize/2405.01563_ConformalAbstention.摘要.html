@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《以共形棄答緩解 LLM 幻覺（Mitigating LLM Hallucinations via Conformal Abstention）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yasin Abbasi-Yadkori, Ilja Kuzborskij（並列一作）, David Stutz, András György, Adam Fisch, Arnaud Doucet, Csaba Szepesvári, Nenad Tomasev 等（Google DeepMind）</p><p>日期：2024-05</p><p>arXiv：2405.01563</p><p><a href="https://arxiv.org/abs/2405.01563" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="以共形棄答緩解-llm-幻覺mitigating-llm-hallucinations-via-conformal-abstention重點摘要">《以共形棄答緩解 LLM 幻覺（Mitigating LLM Hallucinations via Conformal Abstention）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Conformal Abstention（共形棄答）</strong>：用 LLM <strong>自評（self-evaluation）多次取樣回應之間的一致性</strong>作為信心分數，再以<strong>共形預測 / 風險控制（conformal prediction / risk control）<strong>校準一個棄答門檻 λ，讓「不確定就說『我不知道』」這件事帶有</strong>分佈無關（distribution-free）、對幻覺率（錯誤率）的嚴格統計上界 R(λ)≤α</strong>；純靠 prompting、不需微調，只要一個很小的校準集即可保證上界成立。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 會<strong>自信地生成看似合理卻錯誤的幻覺</strong>，而直接用回應序列的（log-）機率當信心度會隨輸出長度變差、與正確性脫鉤。既有以「取樣回應一致性」偵測幻覺的工作面臨兩個未解問題：(i) 如何判斷兩個回應對某問題是否等價；(ii) 一致性低到什麼程度才算幻覺——且這些方法多只報 AUC 類指標，<strong>不給「該如何實際選定棄答策略」的可操作準則，更無統計保證</strong>。本文同時解掉這兩點。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>問題形式化</strong>：以 score-based 棄答策略 <code>a_λ(X)=1[g(X)&lt;λ]</code>（分數低於 λ 就棄答，否則輸出預設回應 f(X)）；風險 <code>R(λ)=E[(1-a_λ)(1-m)]</code>（未棄答又答錯才計損失），在 <code>R(λ)≤α</code> 下最小化棄答率 T(λ)，等價於找滿足上界的最小 λ*。</li>
+<li><strong>信心分數 g（三種）</strong>：對查詢生成 k 個回應，用 <strong>LLM 自我 prompting（conditioned on 問題 X）</strong> 評相似度——**match count（m.c.）**＝與參考回應相似的其他回應數；**expected match count（e.m.c.）**＝一次 prompt 問「有幾個相符」並用計數 token 的 log-prob 取期望（更細緻但非黑箱）；並取 greedy（零溫度）回應當參考、再抽 k−1 個高溫樣本的 greedy 版以省 O(k²) 成本。</li>
+<li><strong>校準 λ（核心保證）</strong>：以 <strong>Conformal Risk Control（CRC, Angelopoulos et al. 2024）</strong> 取 <code>λ̂ₙ = inf{λ : n/(n+1)·Lₙ(λ)+1/(n+1) ≤ α}</code>，保證 <code>E[R(λ̂ₙ)]≤α</code>；證明 CRC ≡ 對 Hoeffding UCB 的 <strong>RCPS</strong>（Bates et al. 2021），但用 <strong>O(1/n)</strong> padding 而非信賴區間法的保守 <strong>O(1/√n)</strong>。另給高機率版：RCPS 三種 UCB（Empirical Bernstein、Hoeffding-Bentkus、Bernoulli-KL）與 CRC 的 Markov 放大（<code>P(R≤e·α)≥1−δ</code>）。</li>
+<li><strong>第二貢獻：校準 match 函數 m</strong>：自動評測需判斷兩回應是否等價；用共形預測選相似度門檻 β̂，保證代理損失 L₂ 為真實錯誤數 C 的近似上界（<code>E[C]≤E[L₂]+α</code>）——作者稱這是文獻首見、可獨立使用。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>模型與資料</strong>：用 <strong>Gemini Pro</strong>；Temporal Sequences（BIG-bench，含長答案，4000 題）與 TriviaQA（短答案，1000 題）；δ=0.05。</li>
+<li><strong>長答案（Temporal Sequences，α=0.05/0.1）</strong>：match count / expected match count <strong>在相同風險下棄答率顯著低於 log-probability 基線</strong>——證實 log-prob 分數對長輸出不可靠；CRC 與 RCPS 差異極小。</li>
+<li><strong>短答案（TriviaQA，α=0.1/0.2）</strong>：log-prob 與 m.c./e.m.c. <strong>表現相當</strong>（各有互勝）——故 match-count 類方法<strong>長短皆宜</strong>、為較穩健之選。</li>
+<li><strong>校準有效性</strong>：未校準的 Baseline 在<strong>小校準集時會違反風險上界</strong>，而 CRC/RCPS 守得住；Empirical Bernstein 因非為 Bernoulli 特化而較差。match 函數校準：TriviaQA 用 recall 門檻 0.5（100 樣本 0 錯），Temporal Sequences 用 LLM 自評 1–10 分門檻 β̂=7（100 樣本 4 錯）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>保證依賴<strong>校準集與測試點可交換（exchangeable / i.i.d.）</strong>——分佈偏移下上界失效；跨領域（out-of-domain）未處理。</li>
+<li>上界是對「棄答後」殘餘幻覺率的保證，<strong>偵測不到 LLM「完全確信卻錯」的情形</strong>（自一致性無法揭露）。</li>
+<li>m.c. 原生需 O(k²) 次額外推論；e.m.c. 需存取 log-prob（非純黑箱）。</li>
+<li>match 函數與棄答策略均需<strong>人工標註的小校準集</strong>；且保證多為期望值版，高機率版更保守（棄答率上升）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>直擊 ai_core <strong>§3.4「治理＝拒絕為預設＋憑證准入」</strong>：本篇把「拒絕（棄答）為預設」升級為<strong>帶分佈無關統計上界的准入門檻</strong>——<code>R(λ̂)≤α</code> 正好可當一張<strong>可驗證的治理憑證</strong>，讓「這個 LLM 節點的殘餘幻覺率 ≤ α（信心 1−δ）」成為讓輸出通過的量化准入條件，而非靠拍腦袋的 confidence threshold。</li>
+<li>與已入庫 <strong><a class="paper-reference" href="1705.08500_SelectiveClassification.%E6%91%98%E8%A6%81.html">1705.08500</a> 選擇性分類</strong>（風險上限下的棄權）同源、更進一步給<strong>共形版分佈無關保證</strong>；與 backlog 的 <strong><a class="paper-reference" href="2402.10978_Conformal_Factuality.%E6%91%98%E8%A6%81.html">2402.10978</a> conformal factuality</strong>（在事實層級做共形校準）成一條「用共形預測給 LLM 可靠性硬保證」的線——歸 <strong>I 類</strong>。</li>
+<li>對「把 LLM 呼叫包成可靠函數」的北極星：本篇示範了<strong>如何在函數邊界上釘一個統計 SLA</strong>（棄答率 vs 保證錯誤率的可調 trade-off），是把不可靠 LLM 節點納入確定性計算圖時的<strong>准入閘門</strong>範本；且純 prompting、小校準集、不動模型，落地成本低。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2405.01563_ConformalAbstention.zh-TW.html"><code>../translate/2405.01563_ConformalAbstention.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《TheoryCoder-2：為程式合成智能體學習階層規劃的抽象》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zergham Ahmed, Kazuki Irie, Joshua B. Tenenbaum, Christopher J. Bates, Samuel J. Gershman</p><p>日期：2026-02，程式合成／抽象（庫）學習（ICML 投稿）</p><p>arXiv：2602.00929</p><p><a href="https://arxiv.org/abs/2602.00929" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="theorycoder-2重點摘要">《TheoryCoder-2》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>TheoryCoder-2</strong> 把「theory-based RL（TBRL）」最大的依賴——<strong>人工手寫抽象</strong>——自動化掉：用 LLM 的 in-context learning，從經驗<strong>合成可重用的 PDDL 抽象運算子</strong>（高層）＋ <strong>Python 謂詞分類器與轉移函數</strong>（低層 grounding），整合進<strong>階層規劃</strong>，並跨環境累積/成長一個<strong>抽象庫</strong>。在 Labyrinth/Maze/Sokoban、BabyAI、Minihack 等多環境上，它比「LLM+古典規劃域構造」「推理式規劃」「WorldCoder 等程式合成智能體」<strong>樣本效率顯著更高</strong>，能解基線解不了的複雜任務，且<strong>只需最少人工 prompt</strong>（不像原 TheoryCoder 須為每個新域手寫抽象）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>人類能形成抽象並用以高效階層規劃、快速跨任務泛化；但 SOTA LLM 智能體與深度 RL 仍難企及。最先進的 TBRL 系統 <strong>TheoryCoder</strong> 雖靠抽象取得遠勝深度 RL/LLM 的樣本效率，卻<strong>重度依賴人工提供的抽象</strong>、迴避了「抽象學習」這個真正難題——進新域得先由人想出相關抽象再寫程式碼，否則只能近乎隨機動作去建低階世界模型，喪失抽象帶來的效率與遷移性。</p>
+<h2 id="核心方法theorycoder-2--tbrl--自動抽象學習">核心方法（TheoryCoder-2 = TBRL + 自動抽象學習）</h2>
+<ul>
+<li><strong>學習抽象（§3.1）</strong>：原 TheoryCoder 靠手寫 PDDL（定義抽象運算子與謂詞），TheoryCoder-2 改用 <strong>LLM in-context learning 自行合成 PDDL 檔</strong>。唯一須人工的輸入是<strong>初始 prompt</strong>——對環境最終目標的自然語言描述 + 幾個與實際環境無關的<strong>極簡示例</strong>（如 <code>eat</code>：前提 <code>not eaten</code>、效果 <code>eaten</code>），作為「抽象該長怎樣、粒度多粗」的模板（讓 LLM 不至於太細或太粗）。</li>
+<li><strong>grounding</strong>：每環境內，零樣本學到運算子後，再像原 TheoryCoder 學一個 <strong>Python 世界模型</strong>；額外學 <strong>Python 謂詞分類器</strong>（作用於原始狀態、回傳布林）來把謂詞語意 ground 到該環境（原本這些由人連同 PDDL 一起給）。</li>
+<li><strong>重用與成長庫（§3.2）</strong>：用一連串「episodes」（每 episode 含一或多個按相似度分組、按難度排序的環境）；從每 episode 第二個環境起，嘗試<strong>重用先前學到的抽象</strong>並按需擴充，逐步累積抽象庫。也做打亂課程順序的消融。</li>
+<li><strong>階層規劃</strong>：用 PDDL 運算子做高層規劃 + 低層 Python 轉移模型做低層規劃（BFS）；骨幹用 GPT-4o。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>簡單環境（Labyrinth/Maze/Sokoban）</strong>：TheoryCoder-2 學到關鍵抽象（如「移動到某位置」運算子）並<strong>在 Maze、Sokoban 兩新環境重用</strong>；效率上僅次於最樸素的 <code>LLM+簡單規劃</code>基線，但勝過 LLM+P 與 WorldCoder 兩個進階 LLM 智能體（所有系統都能解這些簡單題）。</li>
+<li><strong>較難環境（BabyAI、Minihack）</strong>：TheoryCoder-2 能解基線<strong>失敗</strong>的複雜任務，樣本效率（以 token 成本衡量）顯著更高。</li>
+<li>抽象<strong>跨環境可遷移</strong>、即時 grounding、無需領域適配；對比 Oracle（手寫抽象）顯示學到的抽象品質可用。</li>
+<li>消融：去掉可執行抽象與 Python 世界模型（TC-P，退化為 CoT）、去掉課程學習（TC-C，每 episode 從零）皆掉效能，證實各組件必要。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>仍需<strong>最少人工</strong>——初始 prompt 與極簡示例對「抽象粒度」很關鍵（LLM 全自主時難拿捏粗細）。</li>
+<li>抽象 grounding 與謂詞分類器以 <strong>Python 程式</strong>表達，受 LLM 合成正確性限制。</li>
+<li>評估環境多為網格/VGDL 類；對更高維連續域的可擴展性未驗證。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 G 類**「程式合成智能體 + 抽象/庫學習」的代表**——把 DreamCoder 式「學可重用抽象」的精神，落到<strong>世界模型 + 階層規劃</strong>的 RL 智能體，並用 <strong>PDDL 運算子 + Python grounding</strong> 這個 neuro-symbolic 組合表達抽象。</li>
+<li>最值得記：<strong>「LLM 合成 PDDL 抽象（高層）+ Python 謂詞分類器/轉移函數（低層 grounding）+ 跨 episode 重用成長庫」</strong> 的三層結構；以及「只需極簡 prompt 模板控制抽象粒度」的工程訣竅。</li>
+<li>與 <a class="paper-reference" href="2604.26311_DreamProver.%E6%91%98%E8%A6%81.html">2604.26311</a>（DreamProver 學引理庫）、<a class="paper-reference" href="2512.13857_EvoLattice.%E6%91%98%E8%A6%81.html">2512.13857</a>（EvoLattice 累積微算子）同主題（累積可重用抽象），但場景是<strong>互動式 RL/規劃</strong>；與 <a class="paper-reference" href="1911.01547_Measure_of_Intelligence.%E6%91%98%E8%A6%81.html">1911.01547</a>（智能的度量、ARC 強調抽象與泛化）理念呼應。</li>
+<li>適合做 <strong>theory-based RL、世界模型程式合成、PDDL/階層規劃、LLM 智能體抽象學習</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2602.00929_TheoryCoder2_Abstractions.zh-TW.html"><code>../translate/2602.00929_TheoryCoder2_Abstractions.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

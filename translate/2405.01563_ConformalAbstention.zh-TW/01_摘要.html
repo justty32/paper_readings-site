@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2405.01563_ConformalAbstention.zh-TW.html">回 2405.01563_ConformalAbstention.zh-TW 目錄</a>　<a href="02_%E5%85%B1%E5%BD%A2%E6%A3%84%E7%AD%94Conformal_Abstention.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>我們提出一套有原則的程序，用以判定大型語言模型（large language model, LLM）在通用領域下何時應<strong>棄答（abstain）</strong>（例如回答「我不知道」），而非硬去「幻覺（hallucinate）」出無意義或錯誤的答案。承接先前以<strong>自一致性（self-consistency）<strong>作為更可靠信心量度的做法，我們提出</strong>讓 LLM 自我評估（self-evaluate）<strong>它對某查詢所取樣的各個回應之間的相似度；再進一步用</strong>共形預測（conformal prediction）<strong>技術打造一套棄答程序，使其對幻覺率（錯誤率）享有</strong>嚴格的理論保證</strong>。實驗上，此共形棄答方法在多個閉卷、開放領域的生成式問答資料集上<strong>可靠地把幻覺率控制在上界內</strong>；在含長回應的資料集（Temporal Sequences）上，其棄答率明顯<strong>不像</strong>以 log 機率量化不確定性的基線那般保守，而在短答案資料集（TriviaQA）上表現與之相當。為自動評測，需判斷兩回應對某問題是否等價——我們循慣例用門檻化相似度函數判斷是否相符，並額外提供一套<strong>基於共形預測校準門檻</strong>的方法，對「相符判定」的準確度亦帶理論保證，或有獨立價值。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>LLM 擅長下一字預測，卻也容易幻覺——自信地生成表面合理、實則錯誤甚至荒謬的內容。幻覺難以偵測，尤其當使用者無法自行查證其事實性時；在生成任務中，更難把「陳述假事實的幻覺」與「表達正確資訊的眾多合理說法」區分開。因此避免乃至偵測幻覺已成 LLM 研究要題。</p>
+<p>本文提出一個有原則的<strong>棄答策略（abstention policy）</strong>：要嘛輸出一個很可能無幻覺的回應，要嘛乾脆棄答。策略品質由兩量衡量：<strong>棄答率（abstention rate）<strong>與</strong>幻覺風險（hallucination risk）</strong>（未過濾掉的幻覺比例）。</p>
+<p>直接用回應序列的（log-）機率當信心度很誘人，但這些機率<strong>重度依賴輸出長度</strong>、序列一長就與正確性脫鉤。故大量先前工作改以信心估計或更繁複的推論期程序偵測幻覺。一個一致的觀察是：LLM 回應的不確定性、亦即一批取樣回應之間的<strong>一致程度</strong>，是偵測幻覺的合理代理（但顯然抓不到「模型對錯答案完全確信」的情況）。此路有兩個立即挑戰：<strong>如何判斷兩回應對某問題是否一致</strong>、以及<strong>一致性低到何種程度算幻覺</strong>。</p>
+<p>本文同時處理兩者：(i) 設計良好的 prompt，讓 LLM 評估自己對某查詢兩個回應的相似度——關鍵在於<strong>自評 prompt 以問題本身為條件</strong>，明示「相似與否取決於問題」；(ii) 用共形預測與相關風險控制技術（假設有一個小型 holdout 校準集），校準偵測／棄答策略，使其滿足<strong>預先指定、分佈無關（distribution-free）的幻覺風險上界</strong>，同時最小化棄答率。方法<strong>輕量</strong>：只靠 prompting，不需微調 LLM。</p>
+<p>評測用 <strong>Gemini Pro</strong>，在多個閉卷開放領域問答任務上驗證。我們發現指令微調的 LLM 不只能生成候選回應，也能<strong>自評回應間的一致性</strong>；據此選最終回應或棄答。實測顯示：以自評做棄答<strong>優於文獻常用的 log-機率基線</strong>。此外，自動評測需判斷兩回應是否等價，我們提供一套同樣基於共形預測的門檻校準法，對「相符判定」準確度帶理論保證、且適用於須人工標註的小校準集，據我們所知為文獻首見。</p>
+<h2 id="2-問題定義">2 問題定義</h2>
+<p>設 X 為輸入 prompt 空間、Y 為輸出回應空間。定義二元<strong>真值相符函數（match function）</strong> m(X; Y′, Y)∈{0,1}：給定 X 的真值回應 Y，指示 Y′ 是否在給定 X 下與 Y <strong>語意等價</strong>。以 X 為條件使模型極具彈性：最吸引人的定義是「Y 與 Y′ 是否為 X 同樣正確的回應」——例如 X=「說一個歐洲首都」，Y=「倫敦」與 Y′=「巴黎」同樣好，故本法可用於<strong>有多個正確答案</strong>的問題。</p>
+<p>給定分類器 f: X→Y，其在 (X,Y) 上的損失為 1−m(X; f(X), Y)。目標是設計一個<strong>選擇性分類（selective classification）<strong>方案，在 f 會出錯時棄答。以 score-based 棄答函數表示：給定信心分數 g(X) 與門檻 λ，<code>a_λ(X)=1（棄答）若 g(X)&lt;λ；否則為 0</code>。(a_λ, f) 合稱</strong>選擇性分類器</strong>。</p>
+<p>損失 <code>ℓ(X,Y;λ)=(1−a_λ(X))(1−m(X;f(X),Y))</code>：只有「不棄答且答案不符標籤」時才罰。永遠棄答的平凡策略損失為零，但好策略還要棄答率小。策略品質由 (i) 風險 <code>R(λ)=E[ℓ]</code>、(ii) 棄答率 <code>T(λ)=E[a_λ(X)]</code> 控制。我們要在給定風險容忍度 α 下最小化棄答數：<code>argmin_λ T(λ) s.t. R(λ)≤α</code>。因 T(λ) 對 λ 非遞減，此即找滿足 <code>R(λ)≤α</code> 的<strong>最小 λ</strong>，記為 λ*。</p>
+<p>為近似求解，假設有<strong>校準集</strong> <code>D_n={(X₁,Y₁),…,(X_n,Y_n)}</code>（真值問答對），並假設新測試點與校準集<strong>可交換（exchangeable，i.i.d. 的推廣）</strong>；用 D_n 找出 λ̂ 使 <code>R(λ̂)≤α</code> 高機率成立。注意校準集遠小於訓練 LLM 的資料集。</p>
+<h3 id="21-分數函數-g-與分類器-f-的選擇">2.1 分數函數 g 與分類器 f 的選擇</h3>
+<p>對每個問答對，用 LLM 生成 k 個樣本 Y¹,…,Y^k。注意許多 LLM 使用情境本就會生成多個回應再擇一輸出，故要求 k 個回應<strong>不增額外開銷</strong>。考慮兩種分數：</p>
+<ul>
+<li><strong>match count（相符計數）</strong>：以脈絡相似度函數 s（可與 m 不同、預設用 LLM prompting）與門檻 β，回應 Y^i 的分數＝「與其相似的其他回應數」<code>|{j≠i : s(X;Y^i,Y^j)&gt;β}|</code>。預設回應 f(X)＝分數最高者，g(X)＝其分數。</li>
+<li>計算 match count 需 O(k²) 次額外推論、開銷大；較便宜的替代是<strong>一次 prompt 內比對某回應與其餘全部</strong>。更有意思的是 <strong>expected match count（期望相符計數）</strong>：對每個 Y^i，一次 query 問 LLM「其餘回應中有幾個相符」，取分數 <code>g(X)=Σ_i q(&quot;i&quot;|X)·i</code>（q 為 LLM 給計數 token「i」的機率）。此分數可取 [0,k] 連續值、便於更細緻優化且計算便宜，但<strong>需存取 log 機率、非黑箱</strong>。</li>
+<li>最簡替代——<strong>greedy 版</strong>：取 greedy（零溫度）輸出當 f，其分數＝隨機樣本 Y²,…,Y^k 中與之相似者的數目（用上述兩式之一），把比對成本降為 1/k。</li>
+</ul>
+<h3 id="22-相符函數-m-的選擇">2.2 相符函數 m 的選擇</h3>
+<p>m 可由相似度分數自然導出：相似度超過門檻即視為相符。常用的相似度是 <strong>F1 分數</strong>（precision 與 recall 的調和平均）。當標籤是短句（本文實驗即是），只用 <strong>recall</strong> 更可靠——TriviaQA（短答案短標籤）即用 recall。</p>
+<p>但 F1／recall 在<strong>答案較長、表達方式多樣</strong>時是差選擇。Temporal Sequences 資料集含大量長文回應，故改用 <strong>LLM-prompting</strong>：以問題為條件、請 LLM 在 <strong>1–10 分</strong>尺度上評兩文相似度，超過預設門檻即視為相符（正確）。此相符函數之有效性可用下節的共形風險控制程序驗證。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

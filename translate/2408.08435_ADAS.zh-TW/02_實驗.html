@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2408.08435_ADAS.zh-TW.html">回 2408.08435_ADAS.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E8%A8%8E%E8%AB%96%E8%88%87%E7%B5%90%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<p>在三方面做大量實驗：(1) ARC 挑戰；(2) 閱讀理解／數學／科學／多任務四個 benchmark；(3) 數學領域發現的 agent 遷移到留出的數學與非數學任務。所有實驗用相同的演算法實作，唯一差別是 prompt 中「與任務相關的描述文字」。</p>
+<h3 id="41-案例研究arc-挑戰">4.1 案例研究：ARC 挑戰</h3>
+<p>ARC（Abstraction and Reasoning Corpus）透過「習得新技能」的能力來評估 AI 的通用智能：給多組視覺輸入-輸出網格範例，AI 須從中學到轉換規則，再對測試輸入預測輸出網格。每題規則唯一，須以少樣本高效學習，涉及數數、幾何、拓撲。</p>
+<p><strong>設定</strong>：依常見作法，要求 agent <strong>寫出轉換規則的程式碼</strong>而非直接作答；框架提供評估該程式碼的工具函式。資料取自「Public Training Set (Easy)」中網格 ≤5×5 的題目，驗證集/測試集各 20/60 題，每個 agent 在測試集上評估五次以降低 FM 隨機取樣的變異。Meta Agent Search 跑 25 輪，<strong>meta agent 用 GPT-4，被發現的 agent 與 baseline 用 GPT-3.5</strong> 評估以省算力。</p>
+<p><strong>Baseline</strong>：五個 SOTA 手工 agent——CoT、Self-Consistency+CoT（COT-SC）、Self-Refine、LLM-Debate、Quality-Diversity（Intelligent Go-Explore 的簡化版）；這些也用作 archive 的初始種子（空初始化的結果見附錄 I）。所有 baseline 都用與 meta agent 相同的框架實作以求公平。</p>
+<p><strong>結果與分析</strong>：Meta Agent Search 能有效且漸進地發現勝過 SOTA 手工 baseline 的 agent（圖 3a）。關鍵是它像開放式演化/AI-GA 那樣，基於成長中的 archive 一步步累積<strong>踏腳石（stepping stones）</strong>：第 3 輪出現「用多個 CoT 生成可能答案→精修→集成最佳答案」的重要設計模式，成為後續設計反覆沿用的關鍵踏腳石。最佳 agent（圖 3b）採用複雜的回饋機制精修答案；細看搜尋過程可見它並非突然出現——「納入多樣回饋」「用專家評估效率/簡潔等特定特質」「模擬人類式回饋」分別在第 5、11、12 輪冒出，最終機制是這三塊踏腳石的組合創新（類似透過 LLM 進行的演化交叉）。即使這些踏腳石剛出現時效能未必高，後續發現卻能藉組合它們獲益。</p>
+<h3 id="42-推理與問題解決領域">4.2 推理與問題解決領域</h3>
+<p><strong>設定</strong>：在四個 benchmark 上測試——DROP（閱讀理解）、MGSM（多語數學）、MMLU（多任務問題解決）、GPQA（研究生級科學難題）。各領域獨立搜尋，Meta Agent Search 跑 30 輪；meta agent 用 GPT-4，被發現的 agent 與 baseline 用 GPT-3.5 評估。</p>
+<p><strong>Baseline</strong>：沿用 4.1 的全部 baseline，另加兩個著重推理者——Step-back Abstraction（先思考原理）、Role Assignment（給 FM 指派角色）；並與 SOTA prompt 優化法 <strong>OPRO</strong> 比較，以凸顯「學習 agent 全部組件」相對「只優化 prompt」的優勢。</p>
+<p><strong>表 1（擇要，測試集準確率／F1，±為 95% bootstrap 信賴區間）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>Agent</th>
+<th>閱讀理解 (F1)</th>
+<th>數學 (%)</th>
+<th>多任務 (%)</th>
+<th>科學 (%)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Chain-of-Thought</td>
+<td>64.2</td>
+<td>28.0</td>
+<td>65.4</td>
+<td>29.2</td>
+</tr>
+<tr>
+<td>COT-SC</td>
+<td>64.4</td>
+<td>28.2</td>
+<td>65.9</td>
+<td>30.5</td>
+</tr>
+<tr>
+<td>LLM Debate</td>
+<td>60.6</td>
+<td>39.0</td>
+<td>65.6</td>
+<td>31.4</td>
+</tr>
+<tr>
+<td>Role Assignment</td>
+<td>65.8</td>
+<td>30.1</td>
+<td>64.5</td>
+<td>31.1</td>
+</tr>
+<tr>
+<td>Prompt Optimization (OPRO)</td>
+<td>69.1</td>
+<td>30.6</td>
+<td>67.6</td>
+<td>32.9</td>
+</tr>
+<tr>
+<td><strong>Meta Agent Search（本法）</strong></td>
+<td><strong>79.4</strong></td>
+<td><strong>53.4</strong></td>
+<td><strong>69.6</strong></td>
+<td><strong>34.6</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>分析</strong>：Meta Agent Search 在每個領域都勝過手工 agent；<strong>閱讀理解（F1 +13.6/100）與數學（+14.4%）差距尤大</strong>。作者推測：在科學/多任務的高難度題上，FM 本身知識不足以解題，限制了「優化 agent 系統」帶來的增益（此問題會隨 FM 進步而縮小）；而閱讀理解/數學上 FM 知識足夠，錯誤多為幻覺或計算失誤，正可由良好設計的 agent 系統緩解。與 prompt 優化法相比本法一致勝出，佐證「以程式碼定義 agent、學習全部組件」的顯著優勢。</p>
+<h3 id="43-泛化與可遷移性">4.3 泛化與可遷移性</h3>
+<p>把 MGSM（數學） 上搜到的 <strong>top 3 agent</strong> 遷移，測其跨任務泛化：(1) 數學領域 GSM8K、GSM-Hard；(2) 非數學領域 MMLU、DROP。</p>
+<p><strong>表 2（擇要）</strong>：本法一致勝過 baseline。<strong>在數學內遷移時，GSM8K 較 baseline +25.9%、GSM-Hard +13.2%</strong>；更驚人的是，數學領域發現的 agent 遷到非數學領域雖不及專為該領域設計者，但仍勝過 SOTA 手工 baseline。例如 top agent「Dynamic Role-Playing Architecture」在 GSM8K 達 69.5、MMLU 達 62.4、DROP 達 70.4。</p>
+<p><strong>跨模型遷移（表 3，ARC）</strong>：把 GPT-3.5 上搜到的 top 3 agent 遷到 Claude-Haiku、GPT-4、Claude-Sonnet，仍以顯著差距勝過手工 agent。其中 Anthropic 最強的 <strong>Claude-Sonnet 表現最佳，讓最佳 agent 在 ARC 達近 50%（~48.3%）</strong>。這些結果凸顯 Meta Agent Search 能發現<strong>可泛化的設計模式</strong>。</p>
+<h2 id="5-相關工作">5. 相關工作</h2>
+<ul>
+<li><strong>智能體系統</strong>：社群已開發大量建構模組——prompting、CoT 規劃推理、反思、以程式碼為具身 agent 開發新技能、外部記憶與 RAG、工具使用、多角色協作、自我下指令等。這只是已發現模組的一部分，更多仍待挖掘，故本文倡議以自動化方式發明新模組。</li>
+<li><strong>AI-GAs 與 AutoML</strong>：目標是以學習取代 AI 系統中的手工組件，三大支柱為 (1) meta-learning 架構、(2) meta-learning 學習演算法、(3) 生成學習環境與訓練資料。NAS 屬第一支柱，MAML／Meta-RL 屬第二，POET／OMNI-EPIC 屬第三。本文把 ADAS 定位在第一、二支柱：meta-learning agent 架構、並用 in-context learning「學會學習」（如 ARC）。近期 AI-GA/AutoML 也整合 FM 寫程式——FunSearch、EoH（發現最佳化演算法）、DiscoPOP（寫偏好學習損失函式）、Eureka／language-to-reward（寫 RL 獎勵函式）、OMNI-EPIC（造機器人學習環境）；本文類似地讓 FM <strong>以程式碼寫出新 agent</strong>。</li>
+<li><strong>既有 ADAS 嘗試</strong>：分兩類。第一類（多數）用 FM 自動化 <strong>prompt 工程</strong>（OPRO、PromptBreeder 等），但 prompt 常領域特定、難泛化；有些優化 prompt 中的角色定義。第二類（較少）學習 <strong>prompt 以外的組件</strong>（如 workflow），常把 agent 表示成網路或圖：DyLAN 優化網路節點連線，<strong>DSPy 與 Trace</strong> 在「可能節點集合的笛卡兒積」上優化，<strong>GPT-Swarm</strong> 用強化學習優化節點連線；AgentOptimizer 學工具，AutoFlow 提出新語言優化 workflow，<strong>Agent Symbolic Learning</strong> 試圖聯合學 prompt/工具/workflow。這些要嘛未涵蓋 agent 的所有可能設計、要嘛搜尋空間對搜尋演算法更困難。相較之下，<strong>本文把所有組件都表示成程式碼</strong>，允許 agent 系統的一切可能設計，且因「寫程式」是 FM 訓練中最重要的任務之一，形成對 FM 引導搜尋很有利的搜尋空間。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

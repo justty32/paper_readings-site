@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《TroVE：為程式化任務歸納可驗證且高效的工具箱》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zhiruo Wang, Graham Neubig, Daniel Fried（Carnegie Mellon University，ICML 2024）</p><p>日期：2024-01</p><p>arXiv：2401.12869</p><p><a href="https://arxiv.org/abs/2401.12869" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="trove為程式化任務歸納可驗證且高效的工具箱重點摘要">《TroVE：為程式化任務歸納可驗證且高效的工具箱》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>TroVE</strong>：一個<strong>免訓練（training-free）<strong>的方法，讓 code LM 在串流解題過程中</strong>邊用邊長出一個可復用的高階函數工具箱</strong>——每題以 IMPORT／CREATE／SKIP 三模式各採樣 K 個候選，靠<strong>執行結果一致性（execution agreement）＋偏好低複雜度</strong>選出最佳解並沉澱其函數，再<strong>週期性修剪（trim）低使用率函數</strong>；在數學、表格 QA、視覺推理共 11 個資料集上，以比既有工具製造方法<strong>小 79–98% 的工具箱</strong>取得更高正確率，且使人工驗證解答<strong>快 31%、準 13%</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>LM 用 Python 原始函數（primitive functions）寫解答時，程式<strong>冗長、易錯、難驗證</strong>（使用者得逐一檢查每個操作及其交互）；高階函數雖簡潔準確，卻向來<strong>依賴人類專家手工設計</strong>，昂貴且難以擴展到新領域。</li>
+<li>既有 LLM 造工具方法各有代價：CREATOR 產出<strong>數百上千個</strong>難復用、難驗證的工具；LATM／CRAFT 需<strong>額外訓練集與驗證集</strong>、外掛自我驗證或去重模組；Voyager 需迭代自我驗證與課程學習。TroVE 主張<strong>零訓練、零監督、零迭代</strong>，只需測試資料流本身。</li>
+</ul>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>三模式使用與生長工具箱（§3.1）</strong>：維護一個隨時間演進的共享函數庫 F（初始為空），串流式線上處理每個例子；每題同時以三種模式各採樣 K=5 個回應（共 3K）——<strong>IMPORT</strong>（從工具箱匯入既有函數來解）、<strong>CREATE</strong>（創建新函數並入庫）、<strong>SKIP</strong>（只用原始函數）。（初步實驗顯示讓模型自選單一模式會顯著變差。）</li>
+<li><strong>基於一致性的選擇（§3.2）</strong>：執行全部候選解、剔除跑不動的；按<strong>執行輸出的自我一致性（self-consistency）<strong>選最高頻答案的解；同頻者取</strong>操作數最少</strong>（偏好簡單）；再平手取第一個。當選回應的函數入庫、解答定案——<strong>執行共識充當免監督的驗證訊號</strong>。</li>
+<li><strong>週期性工具箱修剪（§3.3）</strong>：每 200 步移除使用次數低於 λ 的函數，λ = ½·log₁₀(n)（n 為已處理例數，因觀察到函數使用頻率與資料量呈對數關係）；被修剪函數波及的舊解（&lt;5%）以 IMPORT＋SKIP 模式重生成。</li>
+<li>主實驗用 <strong>CodeLLaMa2-7b-Instruct</strong>（首次證明開源 LM 能造工具），另用 GPT-4 與 SOTA 公平比較；三個評估指標：正確率（acc）、解答複雜度（# ops，AST 深度總和）、函數庫大小（# lib）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>對比基線（表 2，CodeLLaMa）</strong>：MATH 七科正確率較 Primitive 提升 30–120%；較逐例造工具的 Instance 高 8.7–83.3% 且<strong>少用 60.0–90.2% 的工具</strong>。TableQA／GQA 上 Instance 造出數百到 3,175 個低效函數反而<strong>低於 Primitive</strong>（選項太多干擾模型），TroVE 靠復用＋修剪全面最佳（如 GQA：0.44 vs Primitive 0.37 vs Instance 0.16，僅 7 個函數）。</li>
+<li><strong>對比 SOTA（表 3，GPT-4）</strong>：MATH-algebra <strong>0.72／16 函數</strong>（CRAFT 0.68／282；CREATOR 0.65／875；LATM 0.30）；TabMWP <strong>0.92／38</strong>（CRAFT 0.88／181；CREATOR 0.81／4,595）；GQA 0.44／8（CRAFT 0.45／<strong>525</strong>）——以極簡管線與極小工具箱勝過或追平需額外監督／迭代的方法。</li>
+<li><strong>人工驗證研究（§6，WTQ 100 例 × 6 人）</strong>：TroVE 驗證每例平均 <strong>17.5 秒</strong>（比 Primitive 快 31.4%、比 Instance 快 43.0%），偵錯準確率 0.87（比 Primitive 高 13%）；不可復用的 Instance 工具反使驗證<strong>變慢</strong> 20.4%。</li>
+<li><strong>消融</strong>：去掉修剪 → 函數庫膨脹 74–90%，正確率與複雜度亦劣化；對例子順序穩健（5 種隨機排序結果差異極小）。7B CodeLLaMa 在 GQA 上藉造工具<strong>追平 GPT-4</strong>（皆 0.44）——當原始函數不在預訓練分佈內時，大模型優勢即消失。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>一致性選擇是<strong>弱驗證</strong>：共識答案未必正確，複雜度並列時的仲裁近乎任意；修剪門檻／間隔為手調超參數。</li>
+<li>依賴「答案可自動執行比對」的任務型態；每題需 3K=15 次採樣（報告 5 次重跑的最佳值），推論成本不低。</li>
+<li>GQA 顯示：當有效的可復用函數難以歸納時，多數自創函數無效並拖累解答生成（Instance 掉 0.21）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>對 ai_core §3.6 固化引擎的直接藍圖</strong>：TroVE 就是一個極簡的「案例→工具庫」結晶迴路——LLM 反覆處理的案例流中，共用結構被 CREATE 出來、被 IMPORT 復用、不被復用的被 trim 掉。<strong>使用中生成／復用／修剪</strong>三件套給出了工具資產「沉澱與汰換」的完整生命週期，且證明它可以<strong>免訓練、免額外監督、線上線性時間</strong>運行——固化引擎不必是離線批次工程，可以是常駐的串流過程。</li>
+<li><strong>對 §2 資產治理的啟發</strong>：修剪規則 λ=½·log₁₀(n) 是「<strong>使用頻率＝資產存續憑證</strong>」的具體實作——入庫容易（CREATE 即入）、留下難（不被復用就淘汰），與「拒絕為預設＋憑證准入」精神互補：TroVE 示範的是<em>事後</em>汰換而非<em>事前</em>准入，兩者可疊加。反面教材同樣珍貴：Instance／CREATOR 式「每案例都造工具、從不修剪」直接導致數千個殭屍資產、消費端（解答生成）反被拖垮——<strong>資產庫大小本身是一級治理指標</strong>。</li>
+<li><strong>Agreement-based 選擇＝可用的弱驗證訊號</strong>：在無 ground-truth 處，用「多次獨立生成的執行共識」替代形式驗證，正合 ai_core 把 LLM 呼叫包成可靠函數時「驗證訊號從哪來」的難題；且人工驗證實驗證明<strong>好的抽象讓人審快 31%、準 13%</strong>——固化不只省 LLM 呼叫，還降低治理（人審）成本。</li>
+<li>定位：<strong>方法論文＋充分實證</strong>（11 資料集＋人工研究＋消融），開源（github.com/zorazrw/trove）。適合做<strong>工具歸納、函數庫生命週期管理、免監督驗證訊號</strong>的人；與 <a class="paper-reference" href="2305.05176_FrugalGPT.%E6%91%98%E8%A6%81.html">2305.05176</a> FrugalGPT 的成本梯度互補——FrugalGPT 省在「路由到便宜模型」，TroVE 省在「把重複智能結晶成確定性程式碼」。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2401.12869_TroVE.zh-TW.html"><code>../translate/2401.12869_TroVE.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

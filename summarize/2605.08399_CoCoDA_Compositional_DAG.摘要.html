@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《CoCoDA：為工具增強 agent 共演化的組合式 DAG》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Ziyang Yu, Qiyue Li, Liang Zhao（Emory University、北京師範-香港浸會大學）</p><p>日期：2026-05，庫學習／技能庫（程式碼原生 DAG、policy-memory 共演化）</p><p>arXiv：2605.08399</p><p><a href="https://arxiv.org/abs/2605.08399" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="cocoda重點摘要">《CoCoDA》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>針對工具增強小型語言模型的**「庫成長 vs 上下文預算」耦合難題**：工具庫要隨 planner 演化（把反覆出現的子軌跡抽成可重用工具），但庫一大、扁平文字索引的檢索成本就隨工具數線性膨脹、撐爆固定上下文窗。CoCoDA 用<strong>單一程式碼原生結構——組合式程式碼 DAG</strong>同時解兩問題：節點是 primitive/composite 工具、邊是「呼叫依賴」、每節點存四級紀錄（型別簽章、描述、前/後條件規格、範例）。推論時 <strong>Typed DAG Retrieval</strong> 是個級聯：先用符號簽章合一剪枝、再用描述排序、再用行為規格過濾、最後用範例消歧——昂貴的 LLM 計費紀錄只在逐級縮小的候選集上實體化，使檢索成本對庫大小<strong>次線性</strong>。訓練時把成功軌跡折疊成已驗證的 composite 工具（須保 acyclicity 與規格檢查），並用 <strong>DAG 誘導的「省下呼叫數」獎勵</strong>（composite 按其 primitive 展開大小給信用）訓 planner 偏好可重用 composite。理論證明檢索成本下降、次線性檢索時間、組合優勢、保守更新下單調共演化、DAG 良構。實驗：8B 學生在 GSM8K/MATH 上<strong>匹敵甚至超越 32B 教師</strong>（GSM8K 93.67 vs 93.40、MATH 63.18 vs 61.62），一致優於強工具使用與庫學習基線。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>工具增強讓小模型把計算/符號操作/長程程序卸載到可重用庫，但<strong>擴庫有張力</strong>：一方面庫須隨 planner 成長（否則 planner 反覆重建相同 primitive 計算），另一方面每加一個工具就增檢索負擔——扁平庫讓 planner 提示成本隨工具數成長、上下文預算先被耗盡。既有方法只解部分：靜態工具使用假設固定清單；技能庫/agent 記憶（Voyager、CRAFT、TroVE、ReGAL）存成扁平文字、依賴結構對檢索與訓練不可見；階層記憶/RAG（RAPTOR）按主題相似度聚類而非可執行組合；程式碼庫學習/程式合成（DreamCoder、Stitch）善用組合結構但非為「token 預算下檢索」的 LLM planner 設計。缺的是<strong>同時程式碼感知、檢索高效、可線上學習</strong>的結構。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>組合式程式碼 DAG</strong>：節點 = primitive（原子可執行函式）或 composite 工具；邊 = 從可執行體抽出的呼叫依賴；每節點四級紀錄：①型別簽章 ②描述 ③前/後條件規格 ④input-output 範例。此 DAG 是耦合「庫成長」與「上下文受限檢索」的單一物件。</li>
+<li><strong>Typed DAG Retrieval（推論級聯）</strong>：給 query 誘導的子目標，L1 符號簽章合一剪枝（倒排索引，O(log n)）→ L2 描述語意排序 → L3 前/後條件相容性過濾 → L4 範例消歧。昂貴 LLM 計費紀錄只在存活候選上實體化，故成本逐級收縮而非隨全庫線性；因階層循呼叫依賴而非文字相似度，檢索能浮現「行為上涵蓋某 primitive 子軌跡」的 composite。</li>
+<li><strong>線上共演化（訓練）</strong>：成功軌跡交給固定 teacher abstractor 提出 composite 工具，<strong>僅在保 acyclicity 並通過依賴與規格檢查時才提交</strong>（Add/Merge/Reject）。planner 以 GRPO 更新、獎勵 <code>R = R_res + λ·R_comp</code>：<code>R_comp</code> 是 <strong>DAG 誘導的 saved-call credit</strong>——調用代表多個 primitive 呼叫的 composite 得正信用、調用 primitive 不得；於是在「相同已驗證結果」的行為等價軌跡中，planner 被引導用可重用 composite。<code>flat</code>（展開後 primitive 呼叫數）是 DAG 遞迴展開的結構不變量、非 teacher 標註，故 R_comp 不可被瑣碎利用。</li>
+<li><strong>耦合更新</strong>：<code>π</code> 與 <code>L</code> 同步更新（GRPO step + Fold(InsertTool)），兩者攻同一 gap 訊號；只更新 π 則 planner 過擬合固定檢索面、只更新 L 則 planner 無法調用新 composite。保守步長下目標 <code>J(π,L)</code> 單調非減（Theorem 4）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>六基準三類</strong>（數學/邏輯 GSM8K、MATH；表格 WikiTableQuestions、FinQA；程式 EvalPlus、MBPP），四種 Qwen3 學生（0.6B–8B）+ Qwen3-32B 教師上界；teacher 也作 composite 抽取器。</li>
+<li>CoCoDA <strong>贏每個 (size, benchmark) 格</strong>，比最強工具基線 ReTool 高達 <strong>+2 分</strong>；對 vanilla CoT 的增益在最小規模最大（0.6B 時 GSM8K <strong>+10.7</strong>、MBPP <strong>+10.8</strong>），顯示共演化庫在學生容量稀缺時最能轉移教師能力。</li>
+<li><strong>8B 學生匹敵/超越 32B 教師</strong>：GSM8K 93.67 vs 93.40、MATH 63.18 vs 61.62（約 1/4 參數恢復教師級績效）。</li>
+<li>無緊密師生迴圈的庫建構基線（CREATOR、TroVE）在數學/程式上<strong>反而輸給純 CoT</strong>，證實「工具創建只在庫與學習者共演化時才有用」。</li>
+<li>理論：Typed DAG Retrieval 使檢索成本 <code>C_hier = o(C_flat)</code>、時間 <code>O(τ₁ log n + (τ₂+τ₃+τ₄)k₂)</code> 次線性。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>依賴固定 teacher（Qwen3-32B）做 composite 抽取與冷啟動，學生績效上界仍受教師制約。</li>
+<li>評估限六基準、Qwen3 家族；composite 需通過規格/acyclicity 檢查，規格本身須可表達。</li>
+<li>理論保證（次線性、單調共演化）建於假設（Assumption 1、保守步長），實務 GRPO 步長需調。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 G 類中**「技能庫學習 × LLM agent × 程式碼原生組合結構」的代表**——明確點出 DreamCoder/Stitch（程式碼感知但無 token 預算分層）與 CodeRAG/RAPTOR（為 LLM 但扁平嵌入/文字聚類）之間的「缺失象限」，用 typed DAG 同時佔據程式碼感知 + 上下文預算分層。與 <a class="paper-reference" href="2602.00929_TheoryCoder2_Abstractions.%E6%91%98%E8%A6%81.html">2602.00929</a> TheoryCoder2、<a class="paper-reference" href="2509.04439_ArcMemo_Concept_Memory.%E6%91%98%E8%A6%81.html">2509.04439</a> ArcMemo 等「學可重用抽象/概念記憶」工作同脈。</li>
+<li>最值得記：<strong>「同一 DAG 雙重角色——既把檢索控在上下文預算內、又定義訓 planner 用新抽象的 saved-call 結構訊號」</strong>，以及「policy 與 library 須在同一 gap 訊號上共演化、否則任一單獨更新都失效」。</li>
+<li>與 <a class="paper-reference" href="2606.24245_AutoSpec_ILP.%E6%91%98%E8%A6%81.html">2606.24245</a> AutoSpec（ILP 學符號規則）、<a class="paper-reference" href="2507.16405_Poker_SS_ILP.%E6%91%98%E8%A6%81.html">2507.16405</a> Poker ILP 等符號學習互補（CoCoDA 學的是可組合可執行工具）；對研究 <strong>DreamCoder/Stitch/babble 系庫學習、工具增強 LLM、agent 記憶/技能庫、GRPO 獎勵塑形</strong> 的人很有參考價值。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2605.08399_CoCoDA_Compositional_DAG.zh-TW.html"><code>../translate/2605.08399_CoCoDA_Compositional_DAG.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

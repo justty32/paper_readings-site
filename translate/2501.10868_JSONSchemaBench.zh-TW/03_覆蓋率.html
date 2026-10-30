@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_覆蓋率 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2501.10868_JSONSchemaBench.zh-TW.html">回 2501.10868_JSONSchemaBench.zh-TW 目錄</a>　<a href="02_%E6%95%88%E7%8E%87.html">← 上一節</a>　<a href="04_%E5%93%81%E8%B3%AA.html">下一節 →</a></p>
+</blockquote>
+<h2 id="5-覆蓋率">5. 覆蓋率</h2>
+<p>每個框架在「把 JSON schema 翻譯成能可靠保證 LM 輸出合法的約束集」時都有其限制。定義三種覆蓋率：</p>
+<ul>
+<li><strong>定義 5.1 Declared Coverage（宣稱覆蓋率）</strong>：框架未明確拒絕該 schema、也未發生執行期錯誤（例外、崩潰）即算宣稱覆蓋。</li>
+<li><strong>定義 5.2 Empirical Coverage（實測覆蓋率）</strong>：實驗顯示框架產生的約束確實使 LM 輸出符合 schema，即算實測覆蓋。</li>
+<li><strong>定義 5.3 True Coverage（真值覆蓋率）</strong>：框架產生的約束與原 JSON Schema 定義<strong>精確等價</strong>（放行所有合規生成、拒絕所有不合規生成）。</li>
+</ul>
+<p>理想的是 True Coverage，但因能對某 schema 驗證的 JSON 實例有無限多，缺乏「窮盡比較 schema 語義 vs 框架實作」的形式驗證方法時實務難測。Empirical 是 True 的近似（只檢查實驗中看到的有限輸出）。（附錄另定義 theoretical coverage：特性完全被引擎支援的 schema 比例。）</p>
+<p>Declared 雖非 True 的估計，卻是 Empirical 與 True 兩者的<strong>上界</strong>，並可導出額外指標 <strong>Compliance Rate（合規率）= Empirical / Declared</strong>：估計「框架一旦接受某 schema，真能保證合規」的可靠度。</p>
+<h3 id="51-設定">5.1 設定</h3>
+<p>以 <strong>Llama-3.2-1B-Instruct</strong> 測實測覆蓋率（夠小可高效運行、輸出品質仍佳）。prompt 為簡單指令 + two-shot 範例，驗證用 <code>jsonschema</code> Python 函式庫（JSON Schema Draft 2020-12，開啟 string-format 檢查）。採零溫度貪婪解碼、單次生成，文法編譯限時 40 秒、生成另限 40 秒，超時即視為 schema 處理失敗。</p>
+<h3 id="52-結果table-4">5.2 結果（Table 4）</h3>
+<p><strong>實測覆蓋率</strong>：Guidance 在 8 個資料集中的 6 個最高；其餘兩個（領域專屬的 Washington Post、以及格外難的 JSON Schema Store）由 Llamacpp 領先。閉源文法引擎（OpenAI/Gemini）覆蓋率一貫最低（除一個資料集外都墊底）。LM-only（Llama 3.1 已特別微調以遵守 JSON schema）在易到中等資料集覆蓋率尚可，但在 Github Hard、JSON Schema Store 等難集及 Washington Post 這類領域專屬集<strong>顯著下滑</strong>。實測覆蓋率是真實表現的合理指標，但受所用 LM 與取樣方法影響。</p>
+<p>Table 4 摘要（Declared / Empirical / Compliance）：</p>
+<table>
+<thead>
+<tr>
+<th>資料集</th>
+<th>框架</th>
+<th>Declared</th>
+<th>Empirical</th>
+<th>合規率</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GlaiveAI</td>
+<td>Guidance</td>
+<td>0.98</td>
+<td>0.96</td>
+<td>0.98</td>
+</tr>
+<tr>
+<td>GlaiveAI</td>
+<td>OpenAI</td>
+<td>0.89</td>
+<td>0.89</td>
+<td>1.00</td>
+</tr>
+<tr>
+<td>GitHub Easy</td>
+<td>Guidance</td>
+<td>0.90</td>
+<td>0.86</td>
+<td>0.96</td>
+</tr>
+<tr>
+<td>GitHub Easy</td>
+<td>Outlines</td>
+<td>0.86</td>
+<td>0.59</td>
+<td>0.83</td>
+</tr>
+<tr>
+<td>GitHub Easy</td>
+<td>Gemini</td>
+<td>0.08</td>
+<td>0.07</td>
+<td>0.88</td>
+</tr>
+<tr>
+<td>GitHub Medium</td>
+<td>Guidance</td>
+<td>0.79</td>
+<td>0.69</td>
+<td>0.87</td>
+</tr>
+<tr>
+<td>GitHub Medium</td>
+<td>Outlines</td>
+<td>0.72</td>
+<td>0.29</td>
+<td>0.40</td>
+</tr>
+<tr>
+<td>Kubernetes</td>
+<td>Guidance</td>
+<td>0.98</td>
+<td>0.91</td>
+<td>0.92</td>
+</tr>
+<tr>
+<td>Kubernetes</td>
+<td>XGrammar</td>
+<td>0.12</td>
+<td>0.07</td>
+<td>0.58</td>
+</tr>
+<tr>
+<td>GitHub Hard</td>
+<td>Guidance</td>
+<td>0.60</td>
+<td>0.41</td>
+<td>0.69</td>
+</tr>
+<tr>
+<td>GitHub Hard</td>
+<td>Outlines</td>
+<td>0.47</td>
+<td>0.03</td>
+<td>0.06</td>
+</tr>
+<tr>
+<td>JsonSchemaStore</td>
+<td>XGrammar</td>
+<td>0.76</td>
+<td>0.33</td>
+<td>0.43</td>
+</tr>
+<tr>
+<td>JsonSchemaStore</td>
+<td>Guidance</td>
+<td>0.35</td>
+<td>0.30</td>
+<td>0.88</td>
+</tr>
+</tbody>
+</table>
+<p>（因底層模型不同——開源引擎用 Llama 3.2-1B、OpenAI/Gemini 用專有模型——兩者實測覆蓋率不可直接比較；Gemini 在支援率 &lt; 1% 的資料集省略。）</p>
+<p><strong>合規率</strong>：開源引擎中 Guidance 在所有資料集合規率最高，是保證 schema 合規最可靠的選項。Outlines 合規率偏低，主因是生成期間<strong>超時</strong>——分析發現 <code>minItems</code>、<code>maxItems</code>、<code>enum</code>、<code>Array</code> 等特性雖被支援，Outlines 卻常需 40 秒到 10 分鐘才處理完。LM-only 合規率最低，凸顯其作為獨立方案不可靠。閉源實作雖實測覆蓋率低，但合規率極高，顯示其供應商採更保守策略，<strong>只實作能可靠支援的 JSON Schema 特性子集</strong>。</p>
+<h3 id="53-json-schema-test-suite互補評測">5.3 JSON Schema Test Suite：互補評測</h3>
+<p>官方 Test Suite 原為測試 JSON Schema 驗證實作的正確性與合規性而設，是覆蓋規格眾多特性的完整測試案例集，適合用來評估文法引擎的正確性。它把測試案例組織成 <strong>45 個類別</strong>，每類對應 JSON Schema 的一個特性（通常是特定 keyword 如 <code>required</code>，或緊密相關的 keyword 群如 <code>if-then-else</code>），少數類別測更廣的行為（如 <code>infinite-loop-detection</code>）。每個測試案例含一個 schema 配一組被標為 valid 或 invalid 的 JSON 實例。評估覆蓋時，引擎須能<strong>成功生成每個 valid 實例、並阻擋每個 invalid 實例</strong>才算「通過」。除編譯失敗外，定義兩種失敗模式：</p>
+<ul>
+<li><strong>定義 5.4 Over-constrained（過度約束）</strong>：框架拒絕了依 schema 應為 valid 的實例——過嚴，排除了本應允許的輸出。</li>
+<li><strong>定義 5.5 Under-constrained（約束不足）</strong>：框架允許了依 schema 應為 invalid 的實例——過鬆，放行了本應拒絕的輸出。</li>
+</ul>
+<p>過度約束會限制 LM 的表達力，可能擋掉合法回應、傷害下游表現；約束不足則無法保證所有回應合法，往往需要額外的後處理或重試邏輯。</p>
+<h4 id="531-結果">5.3.1 結果</h4>
+<p><strong>覆蓋分析</strong>（Table 5，統計達各覆蓋門檻的類別數）：</p>
+<table>
+<thead>
+<tr>
+<th>覆蓋門檻</th>
+<th>Outlines</th>
+<th>Llamacpp</th>
+<th>XGrammar</th>
+<th>Guidance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>最小覆蓋（&gt;0%）</td>
+<td>20</td>
+<td>21</td>
+<td>28</td>
+<td><strong>30</strong></td>
+</tr>
+<tr>
+<td>部分覆蓋（&gt;25%）</td>
+<td>11</td>
+<td>11</td>
+<td>16</td>
+<td><strong>25</strong></td>
+</tr>
+<tr>
+<td>中等覆蓋（&gt;50%）</td>
+<td>2</td>
+<td>5</td>
+<td>3</td>
+<td><strong>21</strong></td>
+</tr>
+<tr>
+<td>高覆蓋（&gt;75%）</td>
+<td>0</td>
+<td>2</td>
+<td>1</td>
+<td><strong>17</strong></td>
+</tr>
+<tr>
+<td>完全覆蓋（100%）</td>
+<td>0</td>
+<td>1</td>
+<td>1</td>
+<td><strong>13</strong></td>
+</tr>
+<tr>
+<td>並列最高（&gt;0%）</td>
+<td>4</td>
+<td>6</td>
+<td>14</td>
+<td><strong>25</strong></td>
+</tr>
+<tr>
+<td>單獨最高</td>
+<td>1</td>
+<td>0</td>
+<td>10</td>
+<td><strong>19</strong></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>整體</strong>：Guidance 在所有覆蓋層級都勝出，13 類達 100%、21 類達中等覆蓋；Llamacpp 與 XGrammar 各僅 1 類全覆蓋、中等覆蓋各 5 與 3 類；Outlines 無任何全覆蓋、僅 2 類中等覆蓋。</li>
+<li><strong>單獨最高</strong>：Guidance 在 19 類單獨最高，XGrammar 10 類，Outlines 1 類，Llamacpp 0 類。</li>
+</ul>
+<p><strong>失敗分析</strong>（Table 6，各失敗類型至少出現一次的類別數）：</p>
+<table>
+<thead>
+<tr>
+<th>失敗類型</th>
+<th>Outlines</th>
+<th>Llamacpp</th>
+<th>XGrammar</th>
+<th>Guidance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>編譯錯誤</td>
+<td>42</td>
+<td>37</td>
+<td><strong>3</strong></td>
+<td>25</td>
+</tr>
+<tr>
+<td>過度約束</td>
+<td>16</td>
+<td>18</td>
+<td>5</td>
+<td><strong>7</strong></td>
+</tr>
+<tr>
+<td>約束不足</td>
+<td>8</td>
+<td>7</td>
+<td>38</td>
+<td><strong>1</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Guidance 總失敗最少，尤其把 under-constrained 錯誤壓到最低。Outlines、Llamacpp、Guidance 有一致的失敗型態：多數錯誤發生在編譯階段，且過度約束比約束不足更常見。XGrammar 相反——編譯錯誤最少，但 under-constrained 失敗最多，是<strong>偏向寬鬆的取捨</strong>。</p>
+<p>作者強調：Test Suite 表現與實測覆蓋率<strong>無直接對應</strong>。其一，各特性在真實 schema 中出現頻率不均，特定特性的強弱會依其普及度而有不成比例的影響；其二，under-constrain 實質上把責任下放給 LM，LM 縱使缺乏嚴格約束仍可能產出合法輸出。因此 under-constrain 可以是正當策略，但需謹慎實作與透明揭露才能確保可靠。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

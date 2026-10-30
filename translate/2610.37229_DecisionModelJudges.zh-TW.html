@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Decision Models as Judges for Hallucination Detection 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Haozheng Liu、Zhaoqian Xue、Zhongyin Wang、Junting Mu、Zihui Ma、Shuya Feng、Lingyao Li</p><p>日期：2026-10-27（v1，cs.CL）</p><p>arXiv：2610.37229</p><p><a href="https://arxiv.org/html/2610.37229v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="以決策模型擔任幻覺偵測評審">以決策模型擔任幻覺偵測評審</h1>
+<h2 id="摘要與第-12-節動機">摘要與第 1–2 節：動機</h2>
+<p>生成式語言模型常用來評分回答、檢查指令遵循或偵測幻覺，但評審本身也可能出錯、過度自信，且呼叫成本較高。決策模型直接從預定標籤中選答案，並回傳各標籤機率，可能提供較便宜、較快的替代方式。本文比較五個決策模型在不同幻覺類型的準確度、信心可靠性與集成效益。（<a href="https://arxiv.org/html/2610.37229v1#S1">§1–2</a>）</p>
+<h2 id="第-31-節五種二元任務">第 3.1 節：五種二元任務</h2>
+<p>作者區分事實矛盾（FC）、事實捏造或無充分依據的過度宣稱（FF）、與給定來源不一致或不受其支持（CI）、回答內部或推理步驟相互矛盾（LI），以及違反明示指令（II）。各類分別判定 <span class="math inline">\(H/N\)</span>，<span class="math inline">\(N\)</span> 只表示無目標錯誤，可能有其他錯誤。</p>
+<p>FC／FF 使用 FAVABench 與 HADTest，分別有 1,621／1,616 個實例；CI 的 RAGTruth 有 2,675 個；LI 的 ContraDoc 與 ROSCOE 有 1,646 個；II 的 IF-RewardBench 英文篩選子集有 2,294 個。維持原評估單位與類別比例，不重新平衡。（<a href="https://arxiv.org/html/2610.37229v1#S3.SS1">§3.1，表 1</a>）</p>
+<p>合計 9,852 是按類型計數，包含跨 FC／FF 重用的 268 筆 FAVABench 與 1,124 筆 HADTest；不同「資料集、來源紀錄 ID」組合為 8,460，並非全域文字去重。FAVABench 只含另一事實類型的回答不納入該任務，負例須無六種事實錯誤標籤。ROSCOE 標籤亦包括不連貫推理；IF-RewardBench 以排除指定漢字區段字元作英文篩選，並非官方語言切分。（<a href="https://arxiv.org/html/2610.37229v1#A1.SS2">附錄 A.2–A.3</a>）</p>
+<h2 id="第-3233-節模型指標與信心">第 3.2–3.3 節：模型、指標與信心</h2>
+<p>五個決策模型為 jev、d1、clef、pplx、gpt-6-luna，生成式參考為 gpt-6-sol。記錄版本含 jev 1.13.0、pplx-decider-v1.1-27b；clef 與 pplx 為 27B，其餘參數量未報。只有別名者不能識別確切 checkpoint，d1 也不套用另一公開權重版本的大小。所有模型使用託管 API，OpenRouter 是 pplx 的呼叫介面。（<a href="https://arxiv.org/html/2610.37229v1#A2">附錄 B，表 5</a>）</p>
+<p>模型接收相同判準與完整待評回答、可用指令，CI 另給來源上下文；不給標籤、錯誤跨度或修正答案。決策模型回傳類別機率；sol 依提示輸出結構化判決及自報機率，不寫解釋。取機率較高者為答案，平手保留模型自身判決。比較 BAcc（兩類召回率平均）及 macro-F1，差異以 2,000 次配對項目 bootstrap 衡量。（<a href="https://arxiv.org/html/2610.37229v1#S3.SS2">§3.2</a>）</p>
+<p>若 <span class="math inline">\(p=P(H)\)</span>，判決信心為 <span class="math inline">\(c=\max(p,1-p)\)</span>。偵測 AUROC 衡量 <span class="math inline">\(p\)</span> 區分有無幻覺的能力；conf-AUROC 衡量 <span class="math inline">\(c\)</span> 區分判決正誤的能力。校準另看十個等寬區間的 ECE、平均信心減準確率，以及邏輯校準斜率；不能把「回傳機率」當成「機率已校準」。（<a href="https://arxiv.org/html/2610.37229v1#S3.SS3">§3.3</a>）</p>
+<h2 id="第-34-節三種集成">第 3.4 節：三種集成</h2>
+<p>每種幻覺固定取 BAcc 最高的三個決策模型。多數決每項問三個；仲裁先問兩個，只在分歧時問第三個，所以結果等同多數決而呼叫較少。</p>
+<p>信心串接按 BAcc 由高到低排列，不是按價格。第一階段只把最低信心的 <span class="math inline">\(r_1\)</span> 比例送到第二階段，第二階段再把收到項目中的 <span class="math inline">\(r_2\)</span> 比例交給最後模型。兩率各測 0 至 0.5、間隔 0.1，共 36 種組合；用比例設定閾值，避免模型機率分布差異造成不同轉交量。</p>
+<p>在同一批項目選最高 BAcc 組合是樂觀峰值。作者另做五折交叉擬合：四折選率與閾值、剩下一折測試，重複五個種子；但模型成員與排序仍依全樣本 BAcc，未獨立檢驗整條模型選擇流程。（<a href="https://arxiv.org/html/2610.37229v1#S3.SS4">§3.4</a>、<a href="https://arxiv.org/html/2610.37229v1#A6.SS1">附錄 F.1</a>）</p>
+<h2 id="第-41-節單模型結果">第 4.1 節：單模型結果</h2>
+<p>作者自報各類最佳決策模型與 sol 的 BAcc 分別為：FC 的 pplx 78.93% 對 81.61%；FF 的 luna 82.72% 對 82.05%；CI 的 pplx 82.66% 對 82.65%；LI 的 pplx 73.28% 對 77.14%；II 的 pplx 71.08% 對 78.88%。類型與來源混雜，不能只把差距歸因於錯誤類型。（<a href="https://arxiv.org/html/2610.37229v1#S4.SS1">§4.1，表 2</a>）</p>
+<p>CI 分數相近掩蓋相反的錯誤型態：pplx 的誤報率 3.2%、漏報率 31.5%；sol 的誤報率 28.8%、漏報率 5.9%。選型仍須考慮哪種錯誤代價較高。來源差異也明顯，pplx 的 FF 減 FC 差距在 FAVABench 為 −1.4 個百分點，在 HADTest 為 +17.9 個百分點。（<a href="https://arxiv.org/html/2610.37229v1#S4.SS1">§4.1</a>）</p>
+<p>全部 9,852 類型實例的估計總成本，pplx 為 USD 0.2092、jev 0.5409、d1 0.4084、clef 2.5894、luna 1.0393、sol 30.7962。估算使用評估當時牌價與 token 紀錄，決策模型計輸入、sol 計輸入與輸出；這不是現行報價或每千項價格。按類型的決策模型平均 API 回應時間約 0.22–0.62 秒，sol 約 1.6–2.6 秒。（<a href="https://arxiv.org/html/2610.37229v1#S3.SS2">§3.2</a>、<a href="https://arxiv.org/html/2610.37229v1#A2">附錄 B，表 6</a>）</p>
+<h2 id="第-42-節信心可靠性">第 4.2 節：信心可靠性</h2>
+<p>jev、pplx、clef、d1 的平均信心高於準確率 0.04–0.12，ECE 為 0.083–0.136；luna、sol 的 ECE 為 0.187、0.157。決策模型平均 conf-AUROC 介於 0.67–0.73，只有中等程度的錯誤辨識能力；指令與邏輯不一致尤其不可靠。</p>
+<p>luna 的所有錯誤中，47% 發生在信心至少 0.9 的判決；sol 為 69%。這不是高信心項目的錯誤率：luna 高信心判決本身有 77% 正確。高機率只能協助決定是否尋求第二意見，不能證明答案正確。（<a href="https://arxiv.org/html/2610.37229v1#S4.SS2">§4.2</a>）</p>
+<h2 id="第-43-節串接效益與不確定性">第 4.3 節：串接效益與不確定性</h2>
+<p>FC 的串接順序是 pplx→luna→jev，FF 為 luna→jev→pplx，CI 為 pplx→jev→d1，LI 為 pplx→jev→luna，II 為 pplx→clef→d1。峰值 BAcc 依序為 82.21%、84.61%、84.61%、73.28%、71.80%；交叉擬合後為 81.69%、84.39%、84.24%、73.28%、71.44%。（<a href="https://arxiv.org/html/2610.37229v1#A6.SS1">附錄 F.1，表 10、12</a>）</p>
+<p>FC／FF／CI 交叉擬合比最強單模高 2.76／1.67／1.58 個百分點，配對區間排除零；相對 sol 的差異區間則全部包含零。不能將峰值 FF／CI 對 sol 的顯著優勢當成交叉擬合結果。這三類交叉擬合成本為 sol 的 1.25%／3.33%／1.30%，平均每項呼叫 1.30／1.31／1.23 次，成本與延遲來自既有 API 紀錄的離線重播。（<a href="https://arxiv.org/html/2610.37229v1#A6.SS1">附錄 F.1，表 10–11</a>）</p>
+<p>LI 最佳策略不轉交，等於 pplx 單獨判斷；II 的交叉擬合只高 0.36 個百分點，區間含零。更多轉交不一定有效。集成有益的條件，是其他成員能處理最強模型不確定的項目，而不是單純累積票數。（<a href="https://arxiv.org/html/2610.37229v1#S4.SS3">§4.3</a>）</p>
+<h2 id="第-5-節與限制">第 5 節與限制</h2>
+<p>作者主張按幻覺類型及誤報／漏報代價選評審，先在目標資料驗證信心與轉交率。研究的 CI、II 各只有單一來源，資料構造、領域與長度差異混雜；異質標註映射為二元標籤也可能有落差。每任務只測一套提示，信心取得方式並不完全可比。串接為固定配置的離線重播、來源內交叉擬合，成員選型仍使用全樣本，未證明未見領域或即時部署中的同等準確度與效率。（<a href="https://arxiv.org/html/2610.37229v1#S5">§5</a>、<a href="https://arxiv.org/html/2610.37229v1#Sx1">Limitations</a>）</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2610.37229_DecisionModelJudges.%E6%91%98%E8%A6%81.html">Decision Models as Judges 摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

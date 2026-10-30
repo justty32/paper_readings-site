@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>自我對弈定理證明演算法的理論框架 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Thomas Chen, Zhiyuan Li</p><p>日期：2026-06</p><p>arXiv：2606.01861</p><p><a href="https://arxiv.org/abs/2606.01861" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="自我對弈定理證明演算法的理論框架">自我對弈定理證明演算法的理論框架</h1>
+<h2 id="摘要">摘要</h2>
+<p>Self-play（自我對弈）是一類讓模型自我改進的訓練演算法，近期在用 LLM 做形式定理證明的場景展現亮眼實證結果。Dong &amp; Ma（2025）以兩個合作智能體實例化 self-play：<strong>prover</strong> 證定理、<strong>conjecturer</strong> 生成新定理作為 prover 的課程。本文提供一個理解 self-play 自我改進能力的理論框架。<strong>第一</strong>，把定理集形式化為一張圖，節點為定理、邊連語意相近的定理對；引入一組原語假設刻畫已訓練 prover 的保證、以及 conjecturer 如何取用圖結構。<strong>第二</strong>，證明若底層定理圖<strong>連通性良好</strong>，則一個 conjecturer 演算法基於<strong>可逆隨機漫步</strong>的 prover-conjecturer 系統，足以讓已證定理集<strong>指數成長</strong>。<strong>第三</strong>，針對實測中 conjecturer 傾向生成人為複雜、非基礎定理的問題，提出一個多樣性度量，與一個藉計算定理圖中相鄰定理<strong>擴散相似度</strong>來局部最大化此度量的改良 conjecturer。<strong>最後</strong>，描述用對比學習把節點嵌入歐氏空間、再以嵌入內積計算擴散相似度的方法。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 的形式定理證明與數學推理進展迅速，包括達 IMO 金牌級表現、輔助開放數學研究問題的系統。其中<strong>經由 prover 與 conjecturer 兩模型的 self-play</strong> 是新興有前景的訓練技術。</p>
+<p>Self-play 可視為自動合成資料生成機制：兩模型生成並求解逐漸變難的任務實例，無需人工標註即可同時改進兩者（如 AlphaGo Zero）。在定理證明上，STP（Dong &amp; Ma, 2025）訓練 prover（陳述→證明）與 conjecturer（陳述→稍難陳述，依 prover 自適應），兩者合作讓 prover 漸能證更難定理。</p>
+<p>據作者所知，<strong>這是首篇對形式定理證明 self-play 訓練演算法的理論分析</strong>。本框架以<strong>定理圖</strong>為基礎，主目標是設計一訓練演算法，產出具大「知識集」（prover 能證的定理集）的 prover。框架引入原語假設，刻畫 prover 在某定理分佈上訓練後如何 in-domain 泛化、以及 conjecturer 如何取用定理圖結構。演算法空間含類 STP 的 prover-conjecturer 系統：conjecturer 生成一序列定理分佈，prover 在其上訓練以漸增知識。在圖的連通性條件下，本文證明（Algorithm 1，用基於可逆隨機漫步的簡單 baseline conjecturer）prover 知識集大小在迭代 t <strong>指數成長</strong>（Theorem 4.2）。</p>
+<p>然而僅知識集大小不夠：集合可能含許多相關、非基礎的定理（如愈來愈複雜的算術題）。實測上 STP 用啟發式優雅度過濾器擋掉人為複雜的猜想；Minimo 也遇到 conjecturer 生成更長更複雜而非更深的問題。本文聚焦的問題是：<strong>如何鼓勵 conjecturer 生成基礎證明思路更多樣的定理</strong>。</p>
+<p>為量化 prover 知識集的多樣性並改良 conjecturer，框架的次目標是：給定超參數 τ，最大化知識集在定理圖中 <strong>τ 步擴張</strong>的大小——我們把此量等同於 prover 知識的多樣性。這個 prover-centric diversity 本身有實用意義：它啟發上等於「離 prover 已知定理有 τ 步推理化約」的定理數，即 prover 在推論時花 τ 步「推理」可證者；亦可視為 prover 知識集邊界的大小。我們提出一個對 conjecturer 生成的訓練分佈的多樣性度量，並證明它<strong>下界</strong> prover-centric diversity（Lemma 5.3）。我們提出改良 conjecturer（Algorithm 4），生成局部最大化此度量的訓練分佈，這需計算<strong>擴散相似度</strong>。最後，提出經由對比學習計算擴散相似度的新方法（Theorem 5.7）。</p>
+<h2 id="4-定理圖與指數成長">4. 定理圖與指數成長</h2>
+<p>把 conjecturer 定義為「定理分佈 D∈Δ(V) → 新分佈 D&#x27;∈Δ(V)」的映射。一種 conjecturer 是轉移矩陣 P 的隨機漫步一步：(D&#x27;)⊤=D⊤P。第一個結果假設 |V|=∞ 且隨機漫步 conjecturer P 滿足連通性條件：當 P 為簡單隨機漫步（節點均勻轉移到鄰居）時，該條件等價於 G 的一個性質——存在 κ&gt;0，對任意有限節點子集 A 有 κ·|∂A|≥deg(A)（|∂A| 為一端在 A、另一端在 V−A 的邊數，deg(A) 為 A 中節點度數和）。框架另含兩條統計學習式假設，描述 prover 在有限 i.i.d.（定理，證明）樣本上訓練後如何 in-domain 泛化。</p>
+<p><strong>主結果（Theorem 4.2）</strong>：若定理圖 G 滿足連通性假設，則基於最近鄰型可逆隨機漫步的 conjecturer，使 prover 在每次迭代 t 都能證得<strong>指數於 t</strong> 數量的定理。</p>
+<h2 id="5-多樣性度量與改良-conjecturer">5. 多樣性度量與改良 conjecturer</h2>
+<h3 id="51-多樣性度量">5.1 多樣性度量</h3>
+<p>定義 prover-centric diversity 為知識集 τ 步擴張大小；提出對 conjecturer 訓練分佈的多樣性度量，證明其下界該量（Lemma 5.3）。</p>
+<h3 id="52-改良-conjecturer">5.2 改良 conjecturer</h3>
+<p>Algorithm 4 生成局部最大化此度量的訓練分佈，需計算相鄰定理的擴散相似度。</p>
+<h3 id="53-經對比學習計算擴散相似度">5.3 經對比學習計算擴散相似度</h3>
+<p>用對比學習把定理（節點）嵌入歐氏空間，再以嵌入間內積計算擴散相似度（Theorem 5.7），把圖論量接到可學習表徵。</p>
+<h2 id="結論">結論</h2>
+<p>本文提供首個 self-play 定理證明的理論框架：以定理圖刻畫，證明連通性下可逆隨機漫步 conjecturer 帶來知識集指數成長，並以多樣性度量與對比學習估計的擴散相似度，對治 conjecturer 生成「複雜而非基礎」定理的退化問題。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2606.01861_SelfPlay_TheoremProving_Theory.%E6%91%98%E8%A6%81.html"><code>../summarize/2606.01861_SelfPlay_TheoremProving_Theory.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

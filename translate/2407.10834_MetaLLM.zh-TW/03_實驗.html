@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2407.10834_MetaLLM.zh-TW.html">回 2407.10834_MetaLLM.zh-TW 目錄</a>　<a href="02_MetaLLM_%E6%A1%86%E6%9E%B6.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-設定">4.1 設定</h3>
+<ul>
+<li><strong>LLM 服務</strong>：OpenAI 四模型 text-ada-001 / babbage-001 / curie-001 / davinci-002（價格 $0.40 / $0.50 / $2.00 / $20.00 每 1M tokens）；Together AI 四模型 Gemma / Llama / Mistral / Qwen（$0.10 / $0.18 / $0.20 / $0.30 每 1M tokens，跨家族、異質性更高）。OpenAI 用情感二分類 prompt，Together AI 用多選題（只回 A/B/C/D）prompt。</li>
+<li><strong>資料集</strong>：<strong>SST-2</strong>（電影評論情感二分類，67,439 訓練 / 872 測試）；<strong>MMLU</strong>（57 個多選 QA 子任務，14,042 測試 / 99,842 輔助訓練）。</li>
+<li><strong>訓練 MetaLLM</strong>：以 <strong>Sentence-BERT</strong> 抽 query 嵌入，線性模型映射到 reward 期望，用式 4 真實 reward 以演算法 1 優化。reward 中成本正規化到最大為 1。對每個預算 b，調 p 使驗證集成本 ≤ b。評估三情境：(i) 只用訓練資料離線優化；(ii) 只在推論時線上更新；(iii) 訓練初始化 + 線上更新。報告每 10,000 個 query 的平均成本。</li>
+</ul>
+<h3 id="42-openai-模型上的表現表-3">4.2 OpenAI 模型上的表現（表 3）</h3>
+<p>成本較高的 LLM 準確率較好，但成本差距懸殊：text-davinci-002 比 curie 貴十倍，準確率卻只高 0.4%，故只查最貴模型並不划算。</p>
+<table>
+<thead>
+<tr>
+<th>設定</th>
+<th>方法</th>
+<th>測試成本</th>
+<th>測試準確率</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>單一</td>
+<td>text-ada-001</td>
+<td>0.096</td>
+<td>80.50</td>
+</tr>
+<tr>
+<td>單一</td>
+<td>text-babbage-001</td>
+<td>0.120</td>
+<td>82.80</td>
+</tr>
+<tr>
+<td>單一</td>
+<td>text-curie-001</td>
+<td>0.480</td>
+<td>90.60</td>
+</tr>
+<tr>
+<td>單一</td>
+<td>text-davinci-002</td>
+<td>4.800</td>
+<td>91.51</td>
+</tr>
+<tr>
+<td>Online</td>
+<td>MetaLLM（babbage 預算）</td>
+<td>0.117</td>
+<td>84.06</td>
+</tr>
+<tr>
+<td>Online</td>
+<td>MetaLLM（curie 預算）</td>
+<td>0.455</td>
+<td>90.94</td>
+</tr>
+<tr>
+<td>Online</td>
+<td>MetaLLM（davinci 預算）</td>
+<td>2.046</td>
+<td><strong>92.55</strong></td>
+</tr>
+</tbody>
+</table>
+<p>MetaLLM 能以更低成本取得更高準確率：同 babbage 預算下比 default babbage <strong>高約 2%</strong> 且更省；最關鍵的是——它<strong>勝過 default 到最佳模型 text-davinci-002，卻少花約 60%</strong>。三情境比較顯示：只用訓練資料優化已能勝過 davinci，但不如加上線上更新；且<strong>初始化很重要，只靠線上更新找不到好策略</strong>。</p>
+<h3 id="43-不同-llm-的異質能力">4.3 不同 LLM 的異質能力</h3>
+<p>MetaLLM 能勝過最貴的 OpenAI 模型，意味 LLM 的表現會逐 query 變化、無法只由成本（或模型大小）決定。<strong>圖 2 / 圖 3（混淆式矩陣）要旨</strong>：位置 (i,j) 是「第 i 個模型答對但第 j 個答錯」的樣本數；可見<strong>大量 query 被小模型（ada、babbage）答對、卻被 curie、davinci 答錯</strong>。若 MetaLLM 能利用這種「表現與成本的異質關係」，就能顯著超越單一模型。</p>
+<h3 id="44-帶動態成本的-reward-函數">4.4 帶動態成本的 reward 函數</h3>
+<p>LLM 成本並非每個輸入固定（零樣本分類下主要取決於 query 長度）。實驗用「每個訓練輸入的實際成本」放入 reward（式 4）並與固定成本比較（<strong>圖 3</strong>）：動態成本<strong>未帶來顯著改善</strong>，高預算時甚至準確率更低。推測是動態成本對長 query 施加更大懲罰，逼 MetaLLM 把它們路由到便宜模型，但這些長 query 往往更複雜、便宜模型未必解得好。因此<strong>建議用固定成本訓練</strong>。</p>
+<h3 id="45-together-ai-上的表現表-4mmlu">4.5 Together AI 上的表現（表 4，MMLU）</h3>
+<p>此設定 LLM 更異質（便宜模型在某些 query 上勝過貴的）。</p>
+<table>
+<thead>
+<tr>
+<th>設定</th>
+<th>方法</th>
+<th>測試成本</th>
+<th>測試準確率</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>單一</td>
+<td>Gemma</td>
+<td>866.187</td>
+<td>64.33</td>
+</tr>
+<tr>
+<td>單一</td>
+<td>Llama</td>
+<td>1559.136</td>
+<td>76.69</td>
+</tr>
+<tr>
+<td>單一</td>
+<td>Mistral</td>
+<td>1732.374</td>
+<td>66.68</td>
+</tr>
+<tr>
+<td>單一</td>
+<td>Qwen</td>
+<td>2598.561</td>
+<td>80.24</td>
+</tr>
+<tr>
+<td>Online</td>
+<td>MetaLLM（Llama 預算）</td>
+<td>1540.663</td>
+<td>76.87</td>
+</tr>
+<tr>
+<td>Online</td>
+<td>MetaLLM（Qwen 預算）</td>
+<td>2304.500</td>
+<td><strong>80.90</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Default 單一模型時，<strong>更貴不保證更好</strong>（Mistral 比 Llama 貴卻更差）。以 p=0 訓練 MetaLLM 在 MMLU 上拿到最佳 80.90%。由於輔助訓練集分佈遠離測試集，只做離線優化無法得好策略；而缺少初始化時，拍霸機只會 default 到 Gemma。設正的 p 能大幅降成本、準確率僅略降。MetaLLM 能勝過次佳的 Llama 且成本更低，再次印證其「低成本又高效能」。</p>
+<h3 id="46-成本縮放參數-p-的分析">4.6 成本縮放參數 p 的分析</h3>
+<p><strong>圖 4 / 圖 5（直方圖）要旨</strong>：只優化表現（p=0）時，MetaLLM 確實能學到「某 LLM 是否能準確作答」——如 §4.3 所述有很多 query 可由便宜的 babbage 答對，MetaLLM 選 babbage 的次數多於 curie 或 davinci。加入小正則 p=0.001 後，MetaLLM 幾乎不選最貴的 davinci，卻仍達 90.98% 準確率（仍優於 default 最貴模型）。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>本文研究「從一組 LLM 中為輸入動態選出兼顧表現與成本效益的那一個」，提出多臂拍霸機框架 <strong>MetaLLM</strong>，能學到「以低價查到正確模型」的 reward。它輕量、適用任意現成 LLM 套件、實務通用。實驗顯示 MetaLLM 把最佳 API 準確率再提升約 1%，同時把零樣本文字分類與多選 QA 的成本大幅降低最多 60%。</p>
+<h2 id="6-局限與社會影響">6. 局限與社會影響</h2>
+<ul>
+<li><strong>局限</strong>：(1) 只驗證零樣本文字分類（對錯與 reward 好設定），雖足以展示潛力，但推廣到 QA / 文字生成須設計更複雜的 reward，值得獨立研究；(2) MetaLLM 只訓練「以 query 特徵為輸入」的簡單線性模型，忽略更細粒度特徵；(3) reward 只納入表現與成本兩項，尚可加入推論時間、穩健性、emergent ability、訓練分佈資訊等以打造更可靠的 AI 系統。</li>
+<li><strong>社會影響</strong>：大模型推論成本高、部署昂貴、且高耗電對環境有害。MetaLLM 藉由把輸入路由到「可能答對的較便宜模型」大幅降低查詢成本，甚至能靠多 LLM 組合提升表現，適用於任意現成 LLM，對未來 AI 系統有益。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2407.10834_MetaLLM.%E6%91%98%E8%A6%81.html"><code>../summarize/2407.10834_MetaLLM.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

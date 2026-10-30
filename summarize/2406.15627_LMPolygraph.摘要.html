@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《LM-Polygraph：大型語言模型不確定性量化方法的基準評測》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Roman Vashurin、Ekaterina Fadeeva、Artem Vazhentsev 等（MBZUAI/ETH Zürich/Skoltech/AIRI/University of Melbourne）</p><p>日期：2025（TACL）</p><p>arXiv：2406.15627</p><p><a href="https://arxiv.org/abs/2406.15627" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="lm-polygraph大型語言模型不確定性量化方法的基準評測重點摘要">《LM-Polygraph：大型語言模型不確定性量化方法的基準評測》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>LM-Polygraph 基準</strong>：把 <strong>10+ UQ 方法</strong>（資訊型/取樣多樣性/密度型/自反型/黑箱一致性）放到 <strong>11 個 NLP 任務</strong>（QA/NMT/摘要/fact-checking）上用 <strong>PRR（預測拒絕比）</strong> 統一 PK，同時追問「方法在短/長輸出誰贏」、「白箱 vs 黑箱誰強」、「歸一化後的校準好不好」，給出<strong>成本-效果權衡</strong>的實證路線圖。核心發現：短輸出資訊型（MSP、CCP）殺、長輸出取樣多樣性（SAR、DegMat、語意熵）贏；自反型 P(True) 在 7-12B 規模幾乎無效；Isotonic PCC 歸一化改善校準且不傷排序品質。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM UQ 研究<strong>碎片化</strong>——各篇用自己的評估協定、基準、門檻，無法交叉比較。花俏方法林立但常<strong>漏掉簡單基線（如 MSP）</strong>，也缺少統一的<strong>信心校準評估</strong>。更多 UQ 方法要麼只在 QA 測、要麼只在短文本測，對**文本片段（claim-level）**的幻覺檢測評估更少。本文用 LM-Polygraph 框架統一實作所有方法，建一個可重複、可擴展的基準。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>方法矩陣</strong>（Table 1）：<strong>資訊型</strong>（MSP、perplexity、token entropy、PMI/Conditional PMI、CCP、Rényi Divergence、Fisher-Rao）、<strong>取樣多樣性</strong>（MC-SE/MC-NSE、語意熵、SAR/SentenceSAR、TokenSAR）、<strong>密度型</strong>（MD/RDE/RMD/HUQ）、<strong>自反型</strong>（P(True)）、<strong>黑箱</strong>（NumSet、EigV.Laplacian、DegMat、Eccentricity、Lexical Similarity、BB Semantic Entropy、BB P(True)、Verbalized 1S/2S、LabelProb）。方法也按計算/記憶/需否訓練資料分類。</li>
+<li><strong>評估三區塊</strong>：① <strong>selective QA/generation</strong>——用 PRR（預測拒絕比）測 UQ 排序品質；② <strong>claim-level fact-checking</strong>——GPT-4 自動管線把傳記生成拆成原子主張並標真偽，用 ROC-AUC/PR-AUC 評 UQ 偵測幻覺能力；③ <strong>信心歸一化</strong>——比 linear/quantile/binned/isotonic PCC 在 MSE（校準）與 PRR（排序保持）上的表現。</li>
+<li><strong>品質指標</strong>：不只 n-gram（ROUGE-L），主推 <strong>AlignScore</strong>（LLM-as-judge 語意相似度）+ <strong>COMET</strong>（MT 專用），解決 n-gram 對否定/語意差異失靈的痛點。（PRR 免選品質門檻、直接掃 uncertainty→quality 拒絕曲線面積比。）</li>
+<li><strong>Claim-level 延伸</strong>：對 MSP/perplexity/token entropy/CCP/P(True) 等做 claim-bound 適配（只算 claim 內 token joint prob），並以 GPT-4 語言特定 prompt CoT 標真偽（對人類標註者 Fleiss Kappa 0.85–0.90）。</li>
+</ul>
+<h2 id="結果mistral-7b-v02--stablelm-2-12b--gpt-4o-mini11-任務">結果（Mistral 7B v0.2 / StableLM 2 12B / GPT-4o-mini，11 任務）</h2>
+<ul>
+<li><strong>短輸出（&lt;7 token，如 MMLU）</strong>：資訊型（MSP、CCP、perplexity）最強；MSP 在 MMLU 多數設定第一名或第二，常年被忽略但其實很難打敗。</li>
+<li><strong>長輸出（&gt;200 token）</strong>：取樣多樣性方法（DegMat NLI、語意熵、SAR）壓倒性贏。SAR 跨長度最穩健（短優於資訊型、長僅次黑箱 NLI 法）。</li>
+<li><strong>密度型</strong>：多數差，唯一例外是 HUQ-MD（混和資訊+密度）在 GSM8k 上最強。</li>
+<li><strong>自反型 P(True)</strong>：7B-12B 模型上跟亂猜差不多（驗證 Kadavath 等人的結論：要大模型才有效）。</li>
+<li><strong>黑箱 verbalized UQ</strong>：只在多選題（MMLU）與大模型（GPT-4o-mini）上顯著。取樣多樣性黑箱法（EigValLaplacian NLI、DegMat、Eccentricity）在所有 QA 資料集都最強。</li>
+<li><strong>Claim-level fact-checking（傳記生成，英/阿/俄/中）</strong>：CCP 全面最強（ROC-AUC 0.61–0.80、PR-AUC 0.30–0.68），只有中文 Yi 7B 上 P(True) 近似。</li>
+<li><strong>信心歸一化</strong>：Isotonic PCC → MSE 最低且 PRR 不退化；Binned PCC 校準也好但破壞排序；線性/分位數歸一化校準較差。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>只用 7B-12B 白箱 + GPT-4o-mini 黑箱，更大模型上的結論待驗（尤其自反型方法）。</li>
+<li>Claim-level UQ 評估管線依賴 GPT-4 當 judge，其自身偏誤可能影響基準可靠性。</li>
+<li>未涵蓋語音/影像/多模態生成 UQ。</li>
+<li>Isotonic PCC 需要保有一定規模校準集。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>ai_core §8.1 的直接實證</strong>：本文在「同一 11 個任務」上並行比較<strong>三類品質分數方法</strong>——資訊型（MSP/CCP/logit entropy）、自反型（P(True)）、黑箱一致性（DegMat/EigV）——恰好是本庫 deep/ §8.1 所需的那種「同任務同指標的哪分類器好於哪個」實際基準。CCP（claim-conditioned probability）對長文本幻覺檢測最強、成本低廉，值得納入品質分數候選。</li>
+<li><strong>簡單基線不該跳過</strong>：MSP 在短輸出幾乎是無敵天花板，多次被 UQ 論文忽略但此基準證實其強韌——提醒我們 ai_core 任何品質分數新方案都該先對 MSP 證明增量。</li>
+<li><strong>方法選擇決策樹</strong>：短輸出→資訊型（MSP/CCP）；長輸出→取樣多樣性（SAR/DegMat NLI）；黑箱→NLI-based 圖論法（DegMat/EigV）；校準→Isotonic PCC。</li>
+<li>與 <a class="paper-reference" href="2506.00245_Pairwise_Semantic_UQ.%E6%91%98%E8%A6%81.html">2506.00245</a> Beyond Semantic Entropy、<a class="paper-reference" href="2410.13246_Atomic_Calibration.%E6%91%98%E8%A6%81.html">2410.13246</a> Atomic Calibration、<a class="paper-reference" href="2402.10978_Conformal_Factuality.%E6%91%98%E8%A6%81.html">2402.10978</a> Conformal Factuality 並讀，構成「品質分數+信心校準+選擇性棄權」的技術棧。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2406.15627_LMPolygraph.zh-TW.html"><code>../translate/2406.15627_LMPolygraph.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.27960_LLM_ASP_Self_Correction.zh-TW.html">回 2604.27960_LLM_ASP_Self_Correction.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%B5%90%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<p>四個研究問題：RQ1 整體效能（vs 獨立 LLM、對不同強度 LLM 的助益）、RQ2 in-context 知識影響、RQ3 迭代修正影響、RQ4 與 SMT 的初步比較。</p>
+<p><strong>基準（六個，多樣）</strong>：</p>
+<ul>
+<li><strong>ZebraLogic</strong>（格謎邏輯推理）：取最難的 100 個「XL」題（<strong>ZL-XL</strong>）；自建更難的 <strong>ZL-XXL</strong>（分 5 種尺寸、各 20 題）。</li>
+<li><strong>SudokuBench</strong>：100 個非常規數獨變體，引入新穎互動約束。</li>
+<li><strong>Mystery Blocksworld（MysteryBW）</strong>：100 個規劃域題，刻意混淆要求推理轉換。</li>
+<li><strong>MultiLogicNMR</strong>：非單調推理基準，涵蓋預設推理、例外、規則衝突。區分<strong>懷疑式（skeptical，結論須被所有模型蘊含）</strong> 與 <strong>輕信式（credulous，至少一模型支持即有效）</strong>，各取 200 題。</li>
+<li><strong>BoardgameQA</strong>：對矛盾自然語言資訊的可廢止推理，須用規則偏好解衝突，取 200 題。</li>
+</ul>
+<p><strong>基準 LLM</strong>：Gemini 2.5 Pro、Gemini 2.5 Flash、o4-mini、DeepSeek R1-0528（推理型）+ DeepSeek V3（非推理型/Instruct）。報告 3 次試驗平均準確與標準差。</p>
+<h3 id="41-rq1整體效能">4.1 RQ1：整體效能</h3>
+<p><strong>LLM+ASP 大幅勝過基線 LLM，最難題增益最大</strong>（表 1，用精簡參考）：</p>
+<ul>
+<li>平均準確 <strong>78.0%</strong>，較基線 51.3% <strong>相對提升 52.1%</strong>。強模型 o4-mini 63.4% → 82.3%；弱模型 Gemini 2.5 Flash 43.3% → <strong>86.9%</strong>（戲劇性躍升）。</li>
+<li>最難題增益最明顯：ZL-XXL 基線平均 24.2% → LLM+ASP <strong>71.3%</strong>（相對 +195%）；SudokuBench 基線 8.4% → <strong>59.8%</strong>。</li>
+<li><strong>模型能力仍重要但影響變小</strong>：Gemini 2.5 Pro+ASP 領先 <strong>93.9%</strong> &gt; Flash+ASP 86.9% &gt; o4-mini+ASP 82.3% &gt; DS-R1+ASP 81.9%。非推理型 DS-V3 僅 45.0%，顯示自我修正對推理型模型更有效。</li>
+<li><strong>加 ASP 後模型排名重洗</strong>：基線 o4-mini（63.4%）勝 Flash（43.3%），但 <strong>Flash+ASP（86.9%）反超 o4-mini+ASP（82.3%）</strong>。兩設定獎勵不同能力：基線偏好直接推理，LLM+ASP 更重符號翻譯、程式修復、有效用求解器回饋（Flash 較強於程式生成、o4-mini 強於直接推理）。</li>
+</ul>
+<p><strong>各基準洞見</strong>：</p>
+<ul>
+<li>(i) 約束滿足（ZL-XL/ZL-XXL/SudokuBench）優勢最清晰。ZL-XXL 上 Pro+ASP 達 97.7%（含 12×12 題完美），基線跌至 0%。</li>
+<li>(ii) 規劃（MysteryBW）整體中等改善（72.6% vs 64.2%），但 Flash 從 66.3% → 96.7%、Pro+ASP 達 98.3%。</li>
+<li>(iii) 非單調推理（MultiLogicNMR）展現 ASP 強項：<strong>90.5% 懷疑式 / 81.0% 輕信式</strong>（基線僅 59.0% / 52.9%），Pro+ASP 達 <strong>100% 懷疑式</strong>。BoardgameQA 無整體增益（82.4% vs 84.7%），歸因於其任務結構（單模型推理、輸入直接給優先序，LLM 可靠模式匹配學演算法式衝突解；且 2023 發表可能資料污染）。相對地 MultiLogicNMR 需真正非單調推理（枚舉多個可能世界），對自回歸 token 預測難、但 ASP 穩定模型語意天然處理。</li>
+</ul>
+<p><strong>LLM+ASP 在難題維持努力，基線 LLM 放棄</strong>（圖 2）：ZL-XXL 上基線輸出 token 用量在 8×8 題見頂後下滑、伴隨準確崩塌（基本上放棄）。LLM+ASP 的 token 用量<strong>隨難度單調上升</strong>反映持續投入，且高效——12×12 題上 Pro+ASP 用約 <strong>25,000 token 達 100%</strong>，基線 Pro 用相近 token 卻 <strong>0%</strong>。</p>
+<h3 id="42-rq2in-context-知識影響">4.2 RQ2：in-context 知識影響</h3>
+<p><strong>LLM 有 ASP 盲點，in-prompt 參考可緩解</strong>（表 2，三設定均值）：</p>
+<table>
+<thead>
+<tr>
+<th>設定</th>
+<th>ZL-XL</th>
+<th>ZL-XXL</th>
+<th>SudokuBench</th>
+<th>MysteryBW</th>
+<th>平均</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>無參考</td>
+<td>75.2</td>
+<td>56.2</td>
+<td>60.8</td>
+<td>53.2</td>
+<td><strong>61.4</strong></td>
+</tr>
+<tr>
+<td>標準參考</td>
+<td>88.6</td>
+<td>61.6</td>
+<td>61.0</td>
+<td>68.8</td>
+<td><strong>70.0</strong></td>
+</tr>
+<tr>
+<td>精簡參考</td>
+<td>88.5</td>
+<td>71.3</td>
+<td>59.8</td>
+<td>72.6</td>
+<td><strong>73.1</strong></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>即便無參考，LLM+ASP 已勝基線；但 LLM 在生成 ASP 時有持續錯誤（運算子誤用如 <code>abs</code>、faulty pooling、動作與效果建模有缺），故需 in-prompt 參考。</li>
+<li>加參考整體改善：61.4%（無）→ 70.0%（標準）→ <strong>73.1%（精簡）</strong>。精簡參考雖只 1/8 長卻一致勝過標準參考。</li>
+<li>Gemini 2.5 Flash 改善最大：48.8% → 79.3%（精簡），逼近 DS-R1+ASP（81.0%）、超過 o4-mini+ASP（77.9%）。</li>
+<li><strong>context rot</strong>：精簡參考更有效不是因引入新資訊，而是選擇性強調高頻 ASP 構造。量化——ZL-XXL 上推理模型語法錯誤：<strong>84（無）→ 41（標準）→ 16（精簡）</strong>；語意遺漏（缺約束）：<strong>46（無）→ 66（標準）→ 32（精簡）</strong>。即<strong>冗長文件反而害模型漏掉特定約束</strong>，與「過多脈絡損害 LLM 檢索與推理」的既有研究一致。</li>
+</ul>
+<h3 id="43-rq3迭代修正影響">4.3 RQ3：迭代修正影響</h3>
+<p><strong>迭代自我修正是效能主因</strong>（表 3，精簡參考）：</p>
+<ul>
+<li>平均從<strong>無修正 54.6% → 允許自修正 78.0%</strong>。即便無修正，LLM+ASP 已勝獨立基線（證明 LLM 能從自然語言生合理 ASP），但自我修正迴圈是完整增益的主驅動。平均修正次數 <strong>2.18 次</strong>、平均執行時間僅 <strong>2.3 秒</strong>。</li>
+<li><strong>模型效率階層</strong>：Gemini 2.5 Pro 最高準確 93.9% 且平均 <strong>&lt;1 次修正（0.45）</strong>；非推理型 DS-V3 需 <strong>&gt;5 次（5.43）</strong> 仍低分。強推理模型更能利用自我修正。</li>
+<li><strong>false-accept rate（誤接受率）</strong>（表 4，PASS 決定中實際錯誤的比例）：Pro 5.06%、Flash 8.76%、o4-mini 12.42%、DS-R1 13.86%、<strong>DS-V3 37.33%</strong>。強模型是更可靠的驗證者；DS-V3 接受少卻錯逾三分之一（生成與驗證雙弱）。</li>
+<li><strong>失敗模式分析</strong>（表 5，四類錯誤：Syntax 編譯失敗、Timeout 80 秒未終止、Sat 有答案集但錯、Unsat 不可滿足）：無修正時多數是語法錯（360 例，59.0%）；<strong>允許修正後語法錯驟降到 18 例（7.0%）</strong>。語法解決後剩下多為語意錯（Unsat 40.3% + Sat-but-incorrect 49.2%）。Sat-but-incorrect 隨修正略增（語法解決後先前被掩蓋的語意缺陷浮現）。兩類語意錯可除錯性不同：<strong>Unsat 程式回饋極少（無答案集）難定位邏輯缺陷</strong>（未來可用 unsat-core 萃取或 spock/Ouroboros 等 ASP 除錯工具）；Sat-but-incorrect 給出具體答案集，可對照題述、提供 LLM 更清晰修正資訊。</li>
+</ul>
+<h3 id="44-rq4與-llmsmt-比較">4.4 RQ4：與 LLM+SMT 比較</h3>
+<p>把框架改用 SMT 取代 ASP（同自我修正流水線），稱 LLM+SMT。為隔離「符號形式體系本身」而非工程努力的影響，兩者都在等價零樣本、無參考設定下比較（表 6）：</p>
+<p><strong>(1) LLM+SMT 在約束滿足與規劃基準較好</strong>：ZL-XL（84.0% vs 75.2%）、ZL-XXL（72.2% vs 56.2%）、MysteryBW（60.6% vs 53.2%）；SudokuBench 相當（60.0% vs 60.8%）。歸因於<strong>訓練資料曝光</strong>——LLM 預訓練見過遠多 SMT 程式（Z3 Python 綁定廣用）。但無參考的 LLM+ASP 較易生錯誤程式；加精簡參考後 <strong>LLM+ASP 反超 LLM+SMT（無參考）</strong>。</p>
+<p><strong>(2) LLM+SMT 不適合非單調推理基準</strong>：MultiLogicNMR 上 LLM+ASP 達 <strong>92.9%（懷疑）/ 84.3%（輕信）</strong>，LLM+SMT 僅 <strong>35.8% / 35.0%</strong>（接近隨機 33.3%）；BoardgameQA LLM+ASP 82.1% vs LLM+SMT 60.1%。LLM+SMT 甚至比獨立 LLM 還差。分析顯示 SMT 在 MultiLogicNMR 懷疑題上 94.5% 回「unknown」、BoardgameQA 72.5%。根因是<strong>根本不匹配</strong>：SMT 在單調邏輯下運作，加資訊只能推新結論不能撤回；<strong>預設否定（除非證明為真否則假設為假）無法直接用 SMT 表達</strong>。ASP 反之專為非單調推理而設，預設規則、例外、替代模型皆一等構造，LLM 只需少量指引即能自然表達。</p>
+<p><strong>處理先前法的限制</strong>：神經符號實用化的關鍵障礙是耦合 LLM 與形式求解器的工程努力。先前 Hao et al. (2025) 用 SMT 在約束滿足上成績強，但需大量任務專屬工程（每域達 10+ 手寫 prompt + few-shot + 領域 schema）。把其方法用於零樣本（附錄 G）效能大跌（變數作用域錯、約束畸形）。本文 LLM+SMT 用同一自我修正機制免任務專屬 prompt 工程即達更好結果。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

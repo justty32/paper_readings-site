@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Text2World: Benchmarking Large Language Models for Symbolic World Model Generation 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Mengkang Hu、Tianxing Chen、Yude Zou、Yuheng Lei、Qiguang Chen、Ming Li、Yao Mu、Hongyuan Zhang、Wenqi Shao、Ping Luo</p><p>日期：2025-02-18（v1，cs.CL）</p><p>arXiv：2502.13092</p><p><a href="https://arxiv.org/abs/2502.13092" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="text2world">Text2World</h1>
+<h2 id="摘要與第-1-節問題">摘要與第 1 節：問題</h2>
+<p>本文研究 LLM 能否從自然語言描述產生符號世界模型。這裡的世界模型不是影片預測器，而是以 PDDL 表示的環境動態與限制：模型必須推斷哪些動作可執行、需要哪些前置條件，以及執行後哪些狀態會新增或刪除。</p>
+<p>既有評估有三個缺口。第一，領域通常很少，難以判斷泛化。第二，以另一個 LLM 當裁判會引入隨機性；作者自報，初步實驗中 LLM 與人工對 action dynamics 正誤的 Cohen’s κ 僅 0.10。第三，只看規劃最終是否成功，無法定位錯在語法、predicate、參數、前置條件或效果。Text2World 因而改用多領域資料與可執行的細粒度指標，直接檢查生成出的 PDDL。</p>
+<h2 id="第-2-節任務與指標">第 2 節：任務與指標</h2>
+<p>符號世界模型定義為 fluents 與 actions 的集合。每個 action 含 signature、typed parameters、preconditions 與 effects。輸入自然語言提供領域目標、predicate 的 signature 與說明，以及 action 的 signature 與高階用途；它刻意不明說 action 的前置條件與效果，讓評估真正測量模型能否由常識與描述推斷環境動態，而不是把文字機械轉寫成 PDDL。</p>
+<p>評估分三層。Executability 以標準 validator 檢查生成 PDDL 能否解析與驗證；Structural Similarity 用正規化 Levenshtein ratio 比較生成檔與標準答案；Component-wise F1 則在可執行輸出上，分別比較 predicates、parameters、preconditions 與 effects。這讓相同的總分落差可以被拆成具體失誤類型。</p>
+<h2 id="第-3-節資料集建置">第 3 節：資料集建置</h2>
+<p>資料來自公開 PDDL repository 與 planning competition。作者自報，初始收集 1801 個 raw PDDL 檔，先做語法驗證、TF-IDF 相似度去重、複雜度與 token 長度過濾，再人工排除不適合世界建模或品質不佳的案例，得到 264 個候選 domain。六位電腦科學背景標註者把 formal domain 改寫成高階自然語言描述，並避免直接洩漏前置條件與效果。</p>
+<p>品質檢查由資深 reviewer 重複審核，案例須獲雙方同意才納入。作者自報，最後得到 103 個 gold-standard domain，其中兩個作為 in-context exemplar，其餘 101 個作測試。污染分析以 PDDL 開頭片段續寫與 n-gram 比對估計，作者自報 Text2World 的平均污染率為 0.04；但作者也承認 PDDL 廣泛流通，無法保證完全排除訓練資料污染。</p>
+<h2 id="第-4-節主要實驗作者自報">第 4 節：主要實驗（作者自報）</h2>
+<p>作者自報，評估涵蓋 16 個 LLM、9 個 model family，包括一般聊天或程式模型，以及以大規模強化學習訓練的 reasoning model。所有模型採確定性解碼；zero-shot 設定要求 chain-of-thought 後輸出 PDDL，error-correction 設定則把 validator 的語法錯誤回饋給模型重新修正。</p>
+<p>結果顯示，現有最佳模型仍難完整建出 action dynamics。作者自報，DeepSeek-R1 在不做 error correction 時，precondition 與 effect 的 F1 都低於 60％。reasoning model 整體在可執行性、結構相似度及元件分數上較強，顯示強化學習式推理訓練可能有助於產生結構化世界模型。</p>
+<p>validator 回饋能明顯修正語法。作者自報，gpt-4o-mini 經三次 correction 後，可執行率由 48.5％升至 72.3％。但這類回饋主要指出 syntax error，不能直接補足遺漏或錯誤的世界規則，因此可執行不等於語意正確。</p>
+<h2 id="第-5-節錯誤分析">第 5 節：錯誤分析</h2>
+<p>人工分析把失誤分為 syntax 與 semantics。語法面常見未定義常數、括號錯誤、domain name 或 type 不一致；反覆修正可減少部分錯誤，但有些仍持續。語意面分成四類：直接違反描述、模型缺少必要規則、加入多餘前置條件或效果，以及表面寫法不同但語意等價。</p>
+<p>最關鍵的錯誤是漏掉必要的 precondition 或 effect。LLM 可以產生看似合理、甚至能被 parser 接受的 domain，卻沒有精確描述狀態如何轉移。符號表示的價值正在這裡：錯誤可以定位到 action 的某個構件，而不是只從規劃失敗反推模型「大概不懂世界」。</p>
+<h2 id="第-6-節改善方向作者自報">第 6 節：改善方向（作者自報）</h2>
+<p>增加 test-time correction 預算可持續改善結果，但收益仍受 validator 只懂語法所限。In-context learning 的效果依模型而異，有些模型改善，有些反而退步。以合成 PDDL 與描述做 supervised fine-tuning 能提升開源模型，且較大模型受益更多。</p>
+<p>作者也測試 agent training：將模型以 agent trajectory 做監督微調後，符號世界建模能力隨之提升，支持 agent 表現與內部世界表示有關。最後，把高階 action 說明改成直接列出 precondition 與 effect 的 concrete description，所有模型都更容易完成任務。這反過來說明主要瓶頸不是 PDDL 表面語法，而是由抽象描述推斷 action dynamics。</p>
+<h2 id="第-8-節結論與局限">第 8 節：結論與局限</h2>
+<p>Text2World 的主要貢獻是把符號世界模型生成變成可重現、可細分錯誤的 benchmark。實驗顯示 reasoning、test-time correction、in-context example、領域微調與 agent training 都可能有幫助，但最強模型仍常漏掉關鍵前置條件或效果。</p>
+<p>限制有兩項。公開可用 domain 數量有限，作者沒有建立大型訓練集，領域涵蓋仍可擴張；自然語言描述經人工撰寫與審核，即使流程嚴格也無法完全排除標註者主觀偏差。資料污染同樣只能估計，不能證明不存在。這個 benchmark 因而更適合診斷目前模型，而不是宣稱已完整代表所有符號世界。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2502.13092_Text2World.%E6%91%98%E8%A6%81.html"><code>../summarize/2502.13092_Text2World.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

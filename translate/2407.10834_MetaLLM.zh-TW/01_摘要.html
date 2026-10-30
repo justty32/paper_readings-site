@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2407.10834_MetaLLM.zh-TW.html">回 2407.10834_MetaLLM.zh-TW 目錄</a>　<a href="02_MetaLLM_%E6%A1%86%E6%9E%B6.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>機器學習的快速進展催生了眾多在各種任務與領域皆表現出色的大型語言模型（large language models, LLM）。這些 LLM 在能力與成本（計算或計價）上各不相同。由於每個查詢（query）的需求會變動——例如因所屬領域或其複雜度而異——在應用中一律 default 到單一 LLM 通常不是最佳選擇，無論它是最大的、最貴的、還是平均測試表現最好的那一個。因此，替應用挑出「既準確又划算」的 LLM 有其必要，卻仍是難題。本文提出 <strong>MetaLLM</strong>，一個能為分類與多選題問答（multi-choice QA）任務<strong>動態且聰明地把每個 query 路由到最優 LLM</strong>（於數個可用 LLM 之中）的框架，達成顯著提升的準確率與成本效益。透過把選模問題<strong>構建為多臂拍霸機（multi-armed bandit）</strong>，MetaLLM 在不確定性下平衡預測準確率與成本效益。我們在 OpenAI、Together AI 等主流平台以及開源 LLM 上的實驗，展示了 MetaLLM 在真實場景中的成效，為未來延伸奠定基礎。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 在文字分類、摘要、問答、聊天機器人等眾多任務展現非凡的零樣本（zero-shot）能力。近期研究主張窮盡地擴大模型規模與訓練資料以提升表現並激發湧現能力；例如擁有逾 1.74 兆參數的 GPT-4 在多項任務上表現卓越，卻也帶來高昂的經濟成本。與此同時，近期模型在任務 /（子）領域專精化與計算成本上也日趨多樣化。其結果是：<strong>沒有任何單一模型——即使是最大最貴的——能在所有任務上一致地拿到最佳表現</strong>。對模型使用者而言，辨識「哪個 LLM 最適合我的應用」變得至關重要，尤其在把成本（計算資源或 API 定價）納入考量時更具挑戰。</p>
+<p>設想一個有多家 LLM 供應商（如 OpenAI、Together AI）的世界，每家都提供一整套能力與成本結構各異的 LLM。此時使用者要問：<strong>我該從 k 個 LLM 中選哪一個 i，才能在我的應用中取得最優的表現與使用成本？</strong> 現有選項各有缺陷：(1) <strong>ensemble</strong>（組合多個 LLM）會顯著推高服務成本；(2) <strong>cascade</strong>（在一組 LLM 上級聯）仍須逐一查詢直到找到夠好的那個；(3) <strong>default 到單一 LLM</strong>（藉由預測各 LLM 表現來避免多查的額外成本）也未必最優——對某些 query，較便宜的模型也能給出正確答案。此外，不同 LLM 在不同任務與資料分佈上能力迥異：對某個 query，即使 LLM i 的成本明顯低於 LLM j，i 仍可能表現得比 j 好。</p>
+<p><strong>本文貢獻</strong>：我們提出一個「<strong>包裝（wrap）在一組能力多樣的 LLM 之外</strong>」的框架，替使用者的應用以更划算的成本帶來最佳表現。其底層元件是一個<strong>多臂拍霸機演算法</strong>，會把每個 query 路由到「能給出正確答案且最便宜」的 LLM（針對零樣本分類與問答任務）。本質上，我們把「為 query 選最佳 LLM」構建成<strong>不確定性下的決策問題</strong>：新 query 到來時，框架挑一個 LLM 作答並觀察其是否答對；目標是最大化總 reward——一個介於整體表現與使用成本之間的取捨。直覺上，本方法偏好「以低成本高機率答對某 query」的 LLM。貢獻條列：</p>
+<ul>
+<li>提出 <strong>MetaLLM</strong>，一個包在任意現成 LLM 套件外、用於零樣本文字分類的多功能 wrapper，能為每個 query 聰明選出目標 LLM 以取得最優表現與成本。</li>
+<li>提出以<strong>多臂拍霸機</strong>為基礎的路由演算法；它高效之處在於<strong>做路由決策時完全不需查詢任何 LLM</strong>。</li>
+<li>在 benchmark 資料集與主流 API（OpenAI、Together AI，涵蓋閉源與開源 LLM）上的實驗證明 MetaLLM 能找出成本與表現皆最優的 LLM：具體而言，MetaLLM 把最佳模型的準確率<strong>再提升約 1%</strong>，同時在 OpenAI 與 Together AI 上分別<strong>省下最多 60% 與 10%</strong> 的總價。</li>
+</ul>
+<p>本文聚焦零樣本分類與多選 QA（相關工作常見的評估選擇）；但透過修改 reward 函數以納入合適的品質評估指標，MetaLLM 框架可延伸到任意語言任務（留作未來工作）。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>大型語言模型</strong>：LLM 已改變 NLP、電腦視覺、電商等領域，但其效能與多樣性以規模、計算與資料成本為代價。如今多家服務提供對能力與成本結構各異的 LLM 之存取（例如處理 1000 萬 tokens，Together AI 上 Gemma / Llama / Mistral / Qwen 分別要 $0.1 / $0.18 / $0.2 / $0.3）。這種 API 選項的豐富反而讓使用者背上「我該用哪個 LLM？」的負擔。</li>
+<li><strong>Prompt 優化與 Mixture of Experts</strong>：微調（fine-tuning）是提升特定任務表現的標準做法。<strong>MoE</strong> 在大模型內訓練一個路由算子，把輸入導向最佳「專家」模組；但這些做法需訓練 LLM、且其單模型增益多與模型 / 場景綁定。Chain-of-Thought、Tree of Thoughts 等 prompt 推理能免訓練提升表現，但 <strong>MoE 與 prompt 推理都無法受益於「市面上大量、且部分明顯更便宜」的現成 LLM</strong>。</li>
+<li><strong>模型 Ensemble</strong>：Jiang et al. (2023) 觀察到在 5000+ 條指令上，每個 query 的最優 LLM 差異極大、且不因大小而有單一最優，故建議 ensemble。<strong>FrugalML</strong> 級聯多個 ML 模型、逐一查詢直到得到高信心分數的回應；受其啟發，Chen et al. (2023)（即 FrugalGPT）以 prompt engineering、caching、cascading 等技術挖掘 LLM 潛力。</li>
+<li><strong>模型選擇（Model Selection）</strong>：不同於「組合多模型」，另一路是「為每個任務只查單一 LLM」。Hari &amp; Thomson (2023) 訓練模型預測各 LLM 表現並路由到最高表現者（含 router 高成本）；Šakota et al. (2024) 把成本—表現取捨表述為整數線性規劃（ILP）；Lu et al. (2023) 蒸餾現成 reward 模型的偏好來選最佳模型（<strong>但忽略成本</strong>）；Ding et al. (2024) 訓練 router 把易 query 導向小模型、難 query 導向大模型（<strong>僅適用兩個 LLM</strong>）；Hu et al. (2024) 提出評估路由模型成本與表現的 benchmark（RouterBench）。</li>
+<li><strong>商用基礎模型服務</strong>：OpenAI（text-ada/babbage/curie/davinci 等，2024-01 起已棄用）、Together AI（Llama、Gemma、Mistral、Qwen、Flux 等）讓使用者無需重度技術即可套用甚至微調 LLM。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

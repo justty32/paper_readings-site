@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2602.19260_NeSy_vs_VLA_Manipulation.zh-TW.html">回 2602.19260_NeSy_vs_VLA_Manipulation.zh-TW 目錄</a>　<a href="02_%E8%A8%8E%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>VLA（視覺-語言-動作）模型被提出作為通用機器人策略之路，能解讀自然語言與視覺輸入產生操作動作。但其在<strong>結構化、長程</strong>操作任務上的效果與效率仍不明。本文對微調後的開源 VLA 模型 <strong>π₀</strong> 與一個結合 <strong>PDDL 符號規劃 + 學習低階控制的神經符號架構</strong>做正面對比，在模擬「河內塔」操作任務變體上同時量測<strong>任務表現與能耗（訓練與執行）</strong>。3 塊任務上神經符號模型達 <strong>95% 成功率 vs 最佳 VLA 的 34%</strong>；並能泛化到未見的 4 塊變體（<strong>78%</strong>），而兩個 VLA 皆失敗。訓練時 VLA 微調能耗比神經符號法<strong>多近兩個數量級</strong>。結果凸顯端到端基礎模型 vs 結構化推理架構在長程操作上的重要取捨——<strong>顯式符號結構</strong>對可靠性、資料效率與能耗的作用。程式碼/模型見 https://price-is-not-right.github.io。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>VLA 因能結合語言指令與視覺輸入產生操作動作而受關注，被視為可適配多任務的通用策略。但其在結構化長程問題上的適用性仍不明，尤其考量微調與部署的算力與能耗成本。</p>
+<p>為評估 VLA 是否值得，作者對 SOTA 開源 VLA <strong>π₀（OpenPi）</strong> 與一個近期神經符號架構（高階 PDDL 規劃 + 擴散低階控制）做正面比較，在 Robosuite 設計「河內塔」操作任務做多步操作基準。兩者用<strong>相同觀測與動作模態</strong>、由程式生成的示範訓練。</p>
+<p>評估兩種 VLA 配置：<strong>端到端</strong>（不給顯式規則/符號結構，須自示範推斷約束）與<strong>規劃器引導</strong>（在外部規劃器指引下執行子任務，以隔離執行表現與規劃品質）。聚焦任務表現、能耗、對任務變體的泛化。結果顯示此結構化長程設定下，神經符號模型成功率高得多且能耗低得多。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>2.1 VLA</strong>：端到端機器人基礎模型（OpenVLA、UniVLA、GR00T、π₀）靠大規模機器人示範預訓練，盼提供通用策略。但泛化仍存疑——常在複雜、分布外、多步任務上失敗；且<strong>極少報告部署的算力與能耗</strong>。</li>
+<li><strong>2.2 TAMP 的神經符號法</strong>：把高階符號推理與低階連續控制整合（任務與運動規劃）；符號表徵與動作算子可手寫或從示範學；ASP 等邏輯形式可從原始資料抽符號模型、降監督需求。歷史上這些架構在資料高效設定下展現可解釋規劃控制。本文用 Lorang et al. 的方法——能從極少示範<strong>同時學符號域與低階策略</strong>——作為與 VLA 比較算力/能耗的合適基線。</li>
+<li><strong>2.3 預備：神經符號規劃-擴散模型</strong>：
+<ul>
+<li><strong>符號規劃</strong>：域 σ=⟨ℰ,ℱ,𝒮,𝒪⟩（實體、謂詞、符號狀態、算子）；算子有前置 ψ 與效果 ω；規劃任務從 s₀ 找計畫到 s_g。</li>
+<li><strong>擴散模仿學習（IL）</strong>：從專家示範學策略 π(s̃)，最小化預測與專家動作的 MSE；擴散策略對專家動作加高斯噪、訓去噪網路 ε_θ 還原，推理時迭代去噪生成動作。</li>
+<li><strong>神經符號架構</strong>：規劃器解 STRIPS 任務得計畫，每個算子精煉成神經技能 π_i 與環境互動實現效果——分層執行兼顧連續空間靈活性與高階抽象。</li>
+</ul>
+</li>
+</ul>
+<h2 id="3-對比-sota-vla-與神經符號模型">3. 對比 SOTA VLA 與神經符號模型</h2>
+<ul>
+<li><strong>3.1 微調 VLA</strong>：π₀ 為代表性開源 VLA；用 LoRA 微調出 E2E-VLA 與 PG-VLA 兩 checkpoint，30k 步、官方預設超參。骨幹 PaliGemma 2B LoRA、動作頭 Gemma 300M LoRA。</li>
+<li><strong>3.2 VLA 推理</strong>：在 π₀ docker 內、加入 Robosuite。E2E 指令恆為「Play Towers of Hanoi」；PG 完成當前指令後收下一指令；750 步內無進展則終止。</li>
+<li><strong>3.3 規劃</strong>：E2E 用潛空間規劃；PG 用 VLM（GPT-5、Qwen2.5-7B-VL、PaliGemma-3B）把高階任務拆成 pick/place 語言指令序列（吃初始圖 + 目標圖 + 規則提示）。為隔離執行與規劃，<strong>PG-VLA 評估時用有效最優計畫</strong>。</li>
+<li><strong>3.4 神經符號架構（NSM）</strong>：先符號規劃器生高階計畫，偵測物件姿態，再用訓練好的擴散策略逐步執行；策略操作相對姿態、輸出末端執行器位移；為與 VLA 同模態，NSM 只收影像 + 本體感知。高階域與低階控制皆從示範學、無手寫規則/動作 schema。
+<ul>
+<li><strong>符號抽象</strong>：從示範軌跡抽節點轉移 (n,l,n′) 建圖 G=⟨V,E,L⟩；算最小雙模擬 Ḡ 去冗餘；用 <strong>ASP 求解器</strong>推出 PDDL 形式符號域。</li>
+<li><strong>物件偵測</strong>：訓 <strong>YOLOv8</strong> 邊界框 + 輕量梯度提升回歸，從靜態相機 + 腕部相機兩視角估 3D 姿態（與 VLA 同兩相機）。</li>
+<li><strong>訓練控制</strong>：每算子配神經策略 π_i（受 options 框架啟發再拆動作步子策略 π_{i,j} + 終止條件）；用任務相關特徵選擇器 φ 只選算子相關物件、表為相對末端執行器座標；用擴散模型訓練以捕捉多模態動作分布。</li>
+<li><strong>執行</strong>：使用者指定起點/目標→映射成 PDDL 實例→<strong>MetricFF</strong> 規劃器算抽象計畫→逐算子調用策略執行直到學到的終止條件滿足。</li>
+</ul>
+</li>
+</ul>
+<h2 id="4-評估方法">4. 評估方法</h2>
+<ul>
+<li><strong>4.1 硬體</strong>：單張 RTX 4090（24GB）；W&amp;B 量 GPU 功率、RAPL 量 CPU 功率；閒置 GPU ~25 W、CPU ~2.5 W，皆計入；數值積分功率得能量。</li>
+<li><strong>4.2 環境</strong>：Robosuite 桌面河內塔（方塊 + 矩形區）；三環境：Individual Move、3 塊、4 塊（須遵守「大塊不可疊小塊上」約束）。機器人 Franka Panda（對齊 π₀ 的 LIBERO 訓練平台）。</li>
+<li><strong>4.3 訓練資料</strong>：腳本化抓放原語自動生成。
+<ul>
+<li><strong>VLA 資料集</strong>：300 回合（前 150 為 4 選 3 塊完整河內塔；後 150 從隨機有效配置開始）；方塊位置 x,y 加 σ=1cm 高斯擾動。</li>
+<li><strong>NSM 資料集</strong>：僅 <strong>50 個隨機堆疊（pick-place 對）示範</strong>；<strong>NSM 從未直接觀察河內塔解法</strong>，而是從更簡單的堆疊示範推出規則與符號規劃域。</li>
+<li>兩資料集共享相同感知/動作格式；差別在<strong>NSM 顯式抽符號結構、VLA 須隱式從完整軌跡推斷</strong>。</li>
+</ul>
+</li>
+<li><strong>4.4 基線</strong>：E2E-VLA（單一高階指令、無顯式分解、無外部規劃）、PG-VLA（結構化子任務指令 + 外部規劃器，評估時恆有最優計畫）、NSM。</li>
+<li><strong>4.5 指標</strong>：短程（Individual Move）與長程（3/4 塊）成功率；規劃方面算 50 回合中最優/次優/無效計畫數；超過 750 步視為失敗終止；總成功率（規劃 + 執行）為主指標；另記訓練/推理能耗。</li>
+</ul>
+<h2 id="5-結果">5. 結果</h2>
+<h3 id="51-能耗">5.1 能耗</h3>
+<ul>
+<li><strong>微調訓練（表 I）</strong>：每個 VLA LoRA 微調 &gt;1.5 天，<strong>NSM 僅 34 分鐘</strong>；VLA 平均功率高約 50 W。總能耗：</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>指標</th>
+<th>E2E-VLA</th>
+<th>PG-VLA</th>
+<th>NSM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>時間</td>
+<td>1 天 16 時 26 分</td>
+<td>1 天 15 時 42 分</td>
+<td><strong>34 分</strong></td>
+</tr>
+<tr>
+<td>GPU 能量 (MJ)</td>
+<td>61.7</td>
+<td>58.5</td>
+<td><strong>0.65</strong></td>
+</tr>
+<tr>
+<td>CPU 能量 (MJ)</td>
+<td>6.8</td>
+<td>6.4</td>
+<td><strong>0.2</strong></td>
+</tr>
+<tr>
+<td>總能量 (MJ)</td>
+<td>68.5</td>
+<td>64.9</td>
+<td><strong>0.85</strong></td>
+</tr>
+</tbody>
+</table>
+<p>VLA 比 NSM 多耗<strong>近兩個數量級</strong>能量。</p>
+<ul>
+<li><strong>推理執行（表 II，50 回合均；NSM 不用 GPU）</strong>：</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>設定</th>
+<th>指標</th>
+<th>E2E-VLA</th>
+<th>PG-VLA</th>
+<th>NSM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>全部</td>
+<td>總功率 (W)</td>
+<td>115.2</td>
+<td>114.0</td>
+<td><strong>19.4</strong></td>
+</tr>
+<tr>
+<td>Individual Move</td>
+<td>成功率 (%)</td>
+<td>87.0</td>
+<td>59.6</td>
+<td><strong>99.0</strong></td>
+</tr>
+<tr>
+<td></td>
+<td>能量 (kJ)</td>
+<td>1.59</td>
+<td>1.41</td>
+<td><strong>0.12</strong></td>
+</tr>
+<tr>
+<td>3 塊河內塔</td>
+<td>成功率 (%)</td>
+<td>34.0</td>
+<td>0.0</td>
+<td><strong>95.0</strong></td>
+</tr>
+<tr>
+<td></td>
+<td>推進度 (%)</td>
+<td>49.6</td>
+<td>23.9</td>
+<td><strong>97.3</strong></td>
+</tr>
+<tr>
+<td></td>
+<td>每回合能量 (kJ)</td>
+<td>7.96</td>
+<td>6.94</td>
+<td><strong>0.83</strong></td>
+</tr>
+<tr>
+<td>4 塊河內塔</td>
+<td>成功率 (%)</td>
+<td>0.0</td>
+<td>0.0</td>
+<td><strong>78.0</strong></td>
+</tr>
+<tr>
+<td></td>
+<td>推進度 (%)</td>
+<td>2.5</td>
+<td>3.6</td>
+<td><strong>84.4</strong></td>
+</tr>
+<tr>
+<td></td>
+<td>每回合能量 (kJ)</td>
+<td>5.77</td>
+<td>—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>除 4 塊外，VLA 每回合能量約為 NSM 的一個數量級（4 塊因 VLA 提早觸發 750 步終止、跑得短而能量反低）。VLA 總功率約 5× NSM，且每回合耗時約 2×，進一步放大能量差距。</p>
+<h3 id="52-任務表現">5.2 任務表現</h3>
+<p>NSM 在所有設定全面領先；<strong>4 塊（未見過）僅 NSM 能完成（78%）</strong>，兩個 VLA 皆 0%，顯示 VLA 無法把學到的行為泛化到更長序列；PG-VLA 即使給最優計畫，執行仍頻繁失敗。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

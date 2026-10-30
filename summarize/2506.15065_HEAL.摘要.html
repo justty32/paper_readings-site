@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>HEAL: An Empirical Study on Hallucinations in Embodied Agents Driven by Large Language Models 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Trishna Chakraborty、Udita Ghosh、Xiaopan Zhang、Fahim Faisal Niloy、Yue Dong、Jiachen Li、Amit K. Roy-Chowdhury、Chengyu Song</p><p>日期：2025-06-18（v1，cs.LG）</p><p>arXiv：2506.15065</p><p><a href="https://arxiv.org/abs/2506.15065" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="heal-an-empirical-study-on-hallucinations-in-embodied-agents-driven-by-large-language-models-重點摘要">HEAL: An Empirical Study on Hallucinations in Embodied Agents Driven by Large Language Models 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>HEAL 以受控的 scene–task inconsistency 主動誘發具身 agent 幻覺，發現模型即使看得出環境和指令有矛盾，仍常拒絕不了不可行任務；更麻煩的是，不提不存在物件也不代表規劃正確，模型可能把眼前別的物件硬改成替代方案。</p>
+<h2 id="問題與方法">問題與方法</h2>
+<ul>
+<li><strong>問題</strong>：LLM 被用作具身 agent 的 goal interpreter，將任務描述與場景資訊轉成 LTL node goal 與 edge goal。若這一步引用不存在的物件或不允許的狀態，錯誤會一路傳到 action planner。一般 prompt 很少系統性測試「使用者要求的東西根本不在現場」時，模型是否會拒絕規劃。</li>
+<li><strong>幻覺定義</strong>：模型輸出提到的物件不在觀察場景，或指定的狀態不屬於物件允許狀態，即記為不 grounded 的幻覺。作者用 CHAIR 計算幻覺項目占全部提及項目的比例，也用 POPE 把受控加入的不存在物件改寫成二元探測問題。</li>
+<li><strong>Distractor Injection</strong>：任務描述插入一個不存在、但不該改變核心目標的干擾物。若輸出把它寫進 LTL goal，即屬幻覺。</li>
+<li><strong>Task Relevant Object Removal</strong>：從場景移除完成任務所需物件，保留原任務描述。理想行為是承認任務不可行，而不是繼續引用被移除物件。</li>
+<li><strong>Synonymous Object Substitution</strong>：場景物件改用同義詞，測試模型能否理解語意相同又維持符號名稱一致。這一型不要求拒絕任務，但要求輸出忠於場景採用的新名稱。</li>
+<li><strong>Scene Task Contradiction</strong>：用無關場景物件取代所有任務所需物件，製造整體衝突。這是對「知道何時不要產生計畫」最直接的測試。</li>
+</ul>
+<h2 id="主要實驗與結果">主要實驗與結果</h2>
+<p>探測集取自 VirtualHome 與 BEHAVIOR 的長程任務，共有 <code>2,574</code> 個 scene–task inconsistency 樣本，評估 12 個開源與封閉 LLM；受控改寫最高可把幻覺率推到基礎 prompt 的 40 倍（作者自報）。因此這套資料主要是壓力測試，不宜把其中幻覺率解讀成一般部署環境的自然發生率。</p>
+<p>四種改寫中，Scene Task Contradiction 幾乎普遍誘發最高幻覺，Synonymous Object Substitution 最低；Claude 與 Gemini 整體較抗幻覺，小模型則較常失敗（作者自報）。質性案例顯示，模型並非只照抄指令，而會替不存在物件補出看似合理的 identifier，或理解同義詞後又在 LTL 中換回原名。問題恰在這種「有推理、但不受場景約束」的補洞行為。</p>
+<p>在 VirtualHome 的 distractor 測試中，Qwen-VL-7B-Instruct 使用純影像、純文字與影像加文字時的 POPE 分別為 31.84、30.32 與 24.37；LLaMA vision 版本分別為 46.90、41.49 與 36.44；Gemma vision 版本分別為 36.67、32.99 與 24.14（作者自報）。跨模態輸入在這個小型實驗中最低，但只測一種改寫，不能推論所有矛盾都能靠加影像解決。</p>
+<p>知識回饋與 self-correction 都能減少部分幻覺，Scene Task Contradiction 下仍然偏高（作者自報）。更深的失敗是「沒有幻覺但計畫仍錯」：模型可能在洗衣機不存在時改為打開淋浴，或明知沒有貓，卻自行把目標改成拿衣服。只有 Gemini-2.0 Flash 曾在部分矛盾案例明確拒絕生成，但也不穩定（作者自報）。</p>
+<h2 id="局限">局限</h2>
+<p>探測集聚焦物件層級幻覺，沒有系統涵蓋數量、屬性與空間關係。輸出止於 LTL symbolic goal，未實際執行到物理動作，因此無法量化錯誤計畫的下游傷害。跨模態測試規模小且只做 Distractor Injection；模型樣本也不代表所有 LLM。緩解方法限於 post-hoc self-correction，尚未比較監督微調、不同 decoding 或架構層的 grounded planning 設計。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>HEAL 對 ai_core 最尖銳的提醒，是「輸出沒有捏造欄位」只是一條很低的門檻。意圖翻譯器即使完全使用現有工具與物件，也可能擅自把不可行任務改寫成另一個可行但錯誤的任務。驗收因此不能只做 schema validation 或 entity grounding，還要檢查固化後的目標是否仍與使用者原意等價。</p>
+<p>四種受控改寫也可直接變成 metamorphic test。加入無關條件不應改變核心目標；移除必要資源應觸發不可行回報；同義改名應保持語意但服從當前符號表；整體矛盾則應停止規劃並指出缺件。這些測試比問模型「你有沒有幻覺」可靠，因為預期行為可以事先寫死。對高風險工具調用，能明確說「做不到」應被視為一種成功狀態，而不是 agent 能力不足。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2506.15065_HEAL.zh-TW.html"><code>../translate/2506.15065_HEAL.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

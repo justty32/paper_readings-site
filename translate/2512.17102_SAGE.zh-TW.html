@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>SAGE：基於技能庫的強化學習自進化代理（SAGE: Reinforcement Learning for Self-Improving Agent with Skill Library） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jiongxiao Wang（威斯康辛大學麥迪遜分校）、Qiaojing Yan、Yawei Wang、Yijun Tian、Soumya Smruti Mishra、Zhichao Xu、Megha Gandhi、Panpan Xu（通訊作者）、Lin Lee Cheong（AWS Agentic AI）</p><p>日期：2025-12(v2 2026-03-10)</p><p>arXiv：2512.17102</p><p><a href="https://arxiv.org/abs/2512.17102" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="sage基於技能庫的強化學習自進化代理">SAGE：基於技能庫的強化學習自進化代理</h1>
+<h2 id="摘要">摘要</h2>
+<p>LLM 代理在複雜推理與多輪互動中表現出色，但部署到新環境時難以持續自我改進。一個有前景的方向是讓代理將互動經驗轉化為可重用技能存入技能庫，供未來類似任務使用。然而，既有技能庫方法主要依賴 LLM prompt，難以穩定實作。本文提出 <strong>SAGE</strong>（Skill Augmented GRPO for self-Evolution），一個以 RL 強化技能庫代理自進化能力的新框架。核心組件「Sequential Rollout」讓代理在相似任務鏈中逐步積累技能庫，後續任務可直接取用前置任務產生的技能；「Skill-integrated Reward」在 outcome-based reward 之上疊加技能生成與利用的額外獎勵。實驗於 AppWorld 資料集上，SAGE 應用於以專家經驗做 SFT 初始化的模型後，SGC 提升 8.9%（60.7% vs 51.8%），互動步驟減少 26%，生成 token 減少 59%，全面超越既有訓練方法。</p>
+<h2 id="1-導論">1. 導論</h2>
+<p>既有 RL 方法（如 GRPO）只考慮單一任務的 outcome reward，不獎勵技能生成品質與跨任務重用。此外，純 prompt-based 技能庫極度依賴基礎模型的指令遵循能力，開源模型難以勝任。SAGE 的設計包含三個關鍵：統一格式的技能庫代理（產生即呼叫）、循序任務滾動（讓技能價值在後續任務中顯現）、技能積分獎勵（額外獎勵高品質技能生成與成功利用）。實驗證明 SAGE 讓開源模型（Qwen2.5-32B）在技能庫代理格式下超越專家（Claude 3.5 Sonnet）的表現。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>LLM 代理從 ReAct 的「推理後行動」管線到 CodeAct 的「產生可執行程式碼」框架逐步演進。技能庫代理方面，Voyager（Minecraft）、Agent Workflow Memory（網頁）、Agent Skill Induction（瀏覽）皆在任務完成後才定義技能，存在兩缺陷：(1) 長任務中技能生成進一步延長上下文；(2) 任務執行與技能生成分離造成不一致、不利 RL 學習。本文採用 DynaSaur 的統一格式：代理與 API 互動時先定義技能函式再呼叫執行。</p>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="31-技能庫代理">3.1 技能庫代理</h3>
+<p>代理與環境互動的四種操作：(1) <strong>技能使用</strong>（從庫中取用 aᵢ 處理任務）；(2) <strong>技能生成</strong>（定義新函式 â 並立即呼叫）；(3) <strong>技能更新</strong>（執行失敗時修正並重呼）；(4) <strong>技能儲存</strong>（執行無誤則入庫）。亦允許直接 API 呼叫（不需定義函式時）。</p>
+<h3 id="32-sage-框架">3.2 SAGE 框架</h3>
+<h4 id="321-預備grpo">3.2.1 預備：GRPO</h4>
+<p>基礎 GRPO（Shao et al., 2024）：對每筆 query q 從舊策略抽樣 G 組輸出，以 clip 後的 importance sampling ratio 乘上組內標準化優勢更新策略。</p>
+<h4 id="322-sequential-rollout">3.2.2 Sequential Rollout</h4>
+<p>以任務鏈 (q¹, q²) 取代單任務 rollout。任務 1 產生的技能存於 M² 供任務 2 使用，技能生成品質的獎勵訊號從後續成功回傳至前置任務。任務鏈取自同一場景（AppWorld 每場景含三相似任務），確保技能可跨任務轉移。</p>
+<h4 id="323-skill-integrated-reward">3.2.3 Skill-integrated Reward</h4>
+<pre><code>R₁ = r₁ + 1[r₁=1] × 1[r₂=1] × 1_skill(q²|q¹)
+R₂ = r₂ + 1[r₂=1] × 1_skill(q²|q¹)
+</code></pre>
+<p>即任務 1 成功完成且其技能被任務 2 成功使用時額外 +1；任務 2 成功且使用任務 1 技能亦 +1。無程式碼即終止的回合罰 -1.0。此設計等效於<strong>自動濾除噪音技能建議、只獎勵後續實際驗證的高收益程序性知識</strong>。</p>
+<h4 id="324-sage-目標">3.2.4 SAGE 目標</h4>
+<p>將 GRPO 的期望擴展為任務鏈 (q¹,q²)∼Q，每組 rollout τᵢ 循序處理兩任務，o²ᵢ 來自不同技能庫 M²ᵢ（異於原始 GRPO 的同 query 設定）。無 KL penalty、優勢以組均值計算。</p>
+<h3 id="33-一般化至長任務鏈附錄-b">3.3 一般化至長任務鏈（附錄 B）</h3>
+<p>支援 K 任務鏈，技能生成獎勵：max_{k&lt;i≤K} 1[rᵢ=1] × 1_skill(qⁱ|qᵏ)；技能使用獎勵：1_skill(qᵏ|q¹,...,qᵏ⁻¹)。實驗顯示三任務鏈不如二任務鏈（TGC 70.6% vs 72.0%），原因為獎勵不對稱與梯度變異增大。</p>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-設定">4.1 設定</h3>
+<ul>
+<li><strong>資料集</strong>：AppWorld（750 任務/250 場景，9 模擬 App、457 API）的 Train 集訓練、Dev 集選 checkpoint、Test-Normal/Challenge 集評估。</li>
+<li><strong>基礎模型</strong>：Qwen2.5-32B-Instruct。</li>
+<li><strong>SFT 初始化</strong>：Claude 3.5 Sonnet V2 以 rejection sampling 產專家軌跡，保留三任務全成功或前兩任務成功的場景，得 1,129 有效範例。</li>
+<li><strong>SAGE 訓練</strong>：4×H100 8-GPU、full-parameter、嚴格 on-policy、lr 1e-6、場景級採樣鏈內取兩任務、G=8 共 384 rollout。</li>
+<li><strong>評估指標</strong>：TGC（任務完成率）、SGC（場景三任務全完成率）、Avg. Steps（互動步數）、Avg. Tokens（生成 token 數）。</li>
+</ul>
+<h3 id="42-主要結果">4.2 主要結果</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>Test-Normal TGC</th>
+<th>SGC</th>
+<th>Steps</th>
+<th>Tokens</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ReAct（GPT-4o）</td>
+<td>48.8</td>
+<td>32.1</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>LOOP（RL w/o skill lib）</td>
+<td>71.3</td>
+<td>53.6</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>GRPO（baseline）</td>
+<td>69.2</td>
+<td>51.8</td>
+<td>16.4</td>
+<td>3,613</td>
+</tr>
+<tr>
+<td>技能庫代理（prompt only）</td>
+<td>30.7</td>
+<td>19.6</td>
+<td>13.4</td>
+<td>2,988</td>
+</tr>
+<tr>
+<td>+ SFT（Claude 專家）</td>
+<td>55.2</td>
+<td>41.7</td>
+<td>11.4</td>
+<td>1,340</td>
+</tr>
+<tr>
+<td><strong>+SAGE</strong></td>
+<td><strong>72.0</strong></td>
+<td><strong>60.7</strong></td>
+<td><strong>12.1</strong></td>
+<td><strong>1,475</strong></td>
+</tr>
+</tbody>
+</table>
+<p>SAGE 的 SGC 較 baseline GRPO 提升 8.9pp、token 減少 59%。即使 SFT 初始化已超越 prompt-based 方法，純模仿專家行為仍不足以最佳化；SAGE 的 RL 進一步提升 SGC +19pp。</p>
+<h3 id="43-技能庫使用分析">4.3 技能庫使用分析</h3>
+<p>SAGE 的 Skill Usage Rate 與 Success Skill Usage Rate 皆大幅優於 Base Model 與 SFT。Base Model 雖生成更多技能（Skill Library Size 高），但 Used Skill Num 與成功率低；SFT 僅提升成功率、未提升使用率。SAGE 在技能使用率與成功率兩軸上同時改善，說明 RL 訓練出真正的技能重用能力而非盲目產生。</p>
+<h3 id="44-消融研究">4.4 消融研究</h3>
+<ul>
+<li><strong>無技能評估</strong>：SAGE 空庫時 SGC 從 60.7%→54.8%（-5.9pp），證明技能庫貢獻。Base Model 空庫反而 TGC 更高（34.7% vs 30.7%），因其技能使用能力弱、不當技能使用造成任務失敗。</li>
+<li><strong>檢索方法</strong>：Query N-gram（2-gram Jaccard）在 TGC 72.0% 等同 Same Scenario，Query Embedding 略低但效率更高（11.8 steps），Skill Embedding 最差（TGC 66.3%）因技能檢索需理解工具語意而非純文字相關性。</li>
+<li><strong>獎勵設計</strong>：Skill-integrated &gt; Outcome-based &gt; Chain-based。Chain-based 獎勵全鏈成功但未追蹤技能使用，早期低技能使用率時反而強化「不使用技能」的行為。</li>
+<li><strong>RL 初始化</strong>：Base Model 直訓 RL 僅 TGC 40.7%/SGC 25.6%；RL Warm-Up（無技能庫的 GRPO 初始化）68.3%/55.3%；SFT 初始化 72.0%/60.7% 最佳。證實專家軌跡對技能庫格式學習的必要性。</li>
+</ul>
+<h2 id="5-結論與限制">5. 結論與限制</h2>
+<p>SAGE 是首個將 RL 應用於技能庫代理自進化的框架，在 AppWorld 上取得 SOTA。限制：(1) 僅評估 AppWorld 單一資料集；(2) 三任務鏈不如二任務鏈，獎勵設計仍有改進空間；(3) 尚無技能退役/收斂機制，技能庫只增不減。未來工作將擴展至其他工具使用代理資料集。</p>
+<h2 id="ai_core-接點">ai_core 接點</h2>
+<p>SAGE 的 Skill-integrated Reward 是 §3.6 固化引擎方向最直接的 RL 實作：<code>1_skill(q²|q¹)</code> 作為「高收益程序性知識」的篩選器——<strong>只有被後續任務成功使用的技能才獲得額外獎勵</strong>，等價於自動濾除噪音技能建議、限制庫擴張只收高產出技能。Sequential Rollout 讓技能價值在多任務鏈中自然驗證。缺失：(1) 無技能退役算子——只增不減；(2) 部署中無 critic 閘門做即時准入否決；(3) 技能價值以二元成功為單位，缺乏細粒度效用追蹤。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

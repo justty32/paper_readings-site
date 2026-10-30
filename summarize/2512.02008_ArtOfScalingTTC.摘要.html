@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《測試時計算擴展的藝術》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Aradhye Agarwal (Microsoft Research), Ayan Sengupta, Tanmoy Chakraborty (IIT Delhi)</p><p>日期：2025-12，首個大規模 TTS 實證研究／30B+ tokens／8 模型（7B–235B）／4 推理資料集</p><p>arXiv：2512.02008</p><p><a href="https://arxiv.org/abs/2512.02008" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="測試時計算擴展的藝術重點摘要">《測試時計算擴展的藝術》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>首個大規模實證研究</strong>：在 AIME/GPQA 上用 8 個開源 LLM 生成 300 億+ tokens，系統比較 well-known TTS 策略（FFS/LFS/beam search/MV）在相同條件下的行為。核心發現：(1) <strong>沒有單一策略普遍最優</strong>；(2) 推理模型依 trace-length 行為可分為 <strong>short-horizon</strong>（短 trace 永遠較好）與 <strong>long-horizon</strong>（簡單題短好、困難題長好），差異來自 RL 訓練演算法（GRPO vs GSPO）；(3) 給定模型類型，<strong>最優 TTS 效能隨 compute budget 單調遞增</strong>。最後給出決策矩陣（Table 2）：依模型類型×難度×預算選擇策略。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>TTS（test-time scaling）雖是提升 LLM 推理的關鍵方向，但領域內缺乏：</p>
+<ol>
+<li><strong>公平比較</strong>：known TTS 策略從未在相同條件下系統對比。</li>
+<li><strong>模型類型與難度的交互</strong>：模型訓練方法（GRPO/GSPO/instruction tuning）如何影響推理 trace 的長度-品質關係，缺乏實證。</li>
+<li><strong>實用選型指南</strong>：從業者面對不同模型、不同難度問題、不同預算時，該選哪個 TTS 策略，無數據支撐的決策矩陣。</li>
+</ol>
+<h2 id="核心設計">核心設計</h2>
+<ul>
+<li><strong>模型</strong>：8 個開源 LLM（7B–235B）：推理模型 R1, R1-32B, QwQ-32B, GPT-OSS-120B, Qwen3-32B, DAPO-32B；非推理模型 Qwen3-235B-Instruct, DeepSeek-Chat。</li>
+<li><strong>資料集</strong>：AIME 2024/2025-I/2025-II + GPQA Diamond。</li>
+<li><strong>策略</strong>：FFS-k@N（最短 k 取多數決）、LFS-k@N（最長 k 取多數決）、beam search、MV@N（全部 N 取多數決）。</li>
+<li><strong>度量</strong>：正確率 + 兩種 token 成本（total tokens、sequential tokens）。</li>
+<li><strong>難度指標</strong>：問題級平均正確率（越低越難）與平均 token 數正相關——模型在難題上&quot;想更久&quot;。</li>
+</ul>
+<h2 id="核心發現">核心發現</h2>
+<h3 id="1-beam-search-呈現反向或零擴展31figure-1">1. Beam search 呈現反向或零擴展（§3.1，Figure 1）</h3>
+<ul>
+<li>Short-horizon 與 non-reasoning 模型上 beam size N 增大 → 正確率單調下降。</li>
+<li>Long-horizon 模型上也無法受益（平坦或下降）。</li>
+<li>更多 beam 寬度 = 更多 compute = <strong>更差或持平</strong>：明確的 inverse scaling。</li>
+</ul>
+<h3 id="2-trace-長度-品質相關性與模型分類32table-1">2. Trace 長度-品質相關性與模型分類（§3.2，Table 1）</h3>
+<ul>
+<li><strong>Short-horizon</strong>（R1, DAPO-32B, QwQ-32B）：對給定難度，短 trace 永遠比長 trace 正確——&quot;shorter is always better&quot;。來自 GRPO/GRPO-like 訓練的長度偏差。</li>
+<li><strong>Long-horizon</strong>（GPT-OSS-120B, Qwen3-32B, R1-32B）：簡單題短好、困難題長好——&quot;longer is better for hard problems&quot;。來自 GSPO 等替代 RL 方法，能在長 trace 上維持穩定。</li>
+<li><strong>Non-reasoning</strong>（Qwen3-235B, DeepSeek-Chat）：也呈現 short-horizon 行為，但因訓練範式不同（instruction tuning vs RL）而單獨分類。</li>
+<li><strong>DAPO 無法消除長度偏差</strong>：DAPO-32B 的短偏好程度接近 R1，宣稱的 GRPO 偏差修正在此評估下效果有限。</li>
+</ul>
+<h3 id="3-ffs-與-lfs-的最優參數4figures-4-5">3. FFS 與 LFS 的最優參數（§4，Figures 4-5）</h3>
+<ul>
+<li><strong>LFS 永遠劣於 MV</strong>：在相同 token 量下，LFS 用最長 trace 過濾會一致降低正確率。最優 LFS 就是 k=N 即 MV@N。</li>
+<li><strong>FFS 更細緻</strong>：Short-horizon 模型上 N 越大越好（高效能低 token）、long-horizon 和非推理模型存在效能-計算的權衡但調節方向相反——long-horizon 要縮小 N 換效能（等同 simple decoding）、非推理要放大 N。</li>
+</ul>
+<h3 id="4-最優策略與難度無關5table-2">4. 最優策略與難度無關（§5，Table 2）</h3>
+<p>最終決策矩陣：給定模型類型與 compute budget，最優 TTS 策略<strong>不依賴問題難度</strong>。</p>
+<ul>
+<li><strong>Short-horizon</strong>：低預算 FFS-1@N（N 大）、高預算 MV@N。</li>
+<li><strong>Long-horizon</strong>：低預算 simple decoding、高預算 MV@N。</li>
+<li><strong>Non-reasoning</strong>：低預算 FFS-1@N（N 大）、高預算 MV@N。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>API-based 推論限制（deepinfra.com），只分析 API-friendly 策略，未涵蓋需逐步介入的 sequential/interleaved 方法。</li>
+<li>推理模型僅覆蓋 GRPO/GSPO/DAPO 訓練家族，未來需納入更多 RL 演算法。</li>
+<li>問題難度為資料集級平均，未探討 per-question 粒度自適應。</li>
+<li>未分析不同 TTS 策略在 latency 維度上的差異（僅以 sequential tokens 近似）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>對 <strong>ai_core §3.3 成本梯度</strong> 的直接實證輸入：這篇在 TTS 空間畫出了&quot;更多計算≠更好&quot;的精確邊界——beam search 的 inverse scaling 是最乾淨的反例、FFS 用 1/10 token 近 MV 效能是最乾淨的正例。TTS 的成本-效能曲面（Figure 4/5）對設計 ai_core 的級聯路由/策略選擇器有直接參考價值：不同模型類型的策略最優點不同，意味著路由不能只用一個萬用開關。</li>
+<li>三個最值得記的結論：(1) <strong>Beam search 在推理任務上呈現 inverse scaling</strong>——不能預設&quot;加計算一定好&quot;；(2) <strong>FFS 是最省 token 的策略</strong>，對 short-horizon 模型尤為有效；(3) <strong>模型分類決定策略選擇</strong>——short-horizon 永遠選最短 trace、long-horizon 對難題選最長 trace。</li>
+<li>對照 2605.29940（StreamSynth, 串流固化時機）、2605.31509（MDL 技能重用即壓縮）、2603.23244（認知證據：早期重完整/晚期重成本），本篇提供的是<strong>推理階段的成本-效能曲面</strong>而非學習階段的固化機制——它回答&quot;ai_core 的節點在推論時該用什麼策略跑&quot;而非&quot;何時該把結果固化&quot;。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2512.02008_ArtOfScalingTTC.zh-TW.html"><code>../translate/2512.02008_ArtOfScalingTTC.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

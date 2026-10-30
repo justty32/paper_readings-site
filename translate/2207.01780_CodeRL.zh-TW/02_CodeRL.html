@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_CodeRL · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2207.01780_CodeRL.zh-TW.html">回 2207.01780_CodeRL.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-coderl">3. CodeRL</h2>
+<h3 id="31-程式合成任務">3.1 程式合成任務</h3>
+<p>seq2seq 形式：輸入題目描述 D，輸出程式序列 Ŵ=(ŵ₁,…,ŵ_T)。傳統訓練以最大化標準答案程式概似、最小化交叉熵損失 L_ce（Eq.1）。測試時自回歸取樣，並以對應單元測試（每題含成對的輸入與標準輸出）評估；真實任務中 example 單元測試常屬題目規格的一部分。</p>
+<h3 id="32-在程式碼上預訓練-lm">3.2 在程式碼上預訓練 LM</h3>
+<p>以 Transformer 為骨幹，擴充 <strong>CodeT5</strong>（多語言、encoder-decoder、於 CodeXGLUE 達 SOTA）。改良兩點：</p>
+<ul>
+<li><strong>改良預訓練資料</strong>：用新釋出的大型 GitHub Code 資料集擴充 Python 語料，僅取寬鬆授權碼，得 <strong>GCPY（10.5B tokens，約 CodeSearchNet 的 10 倍）</strong>。</li>
+<li><strong>改良預訓練目標</strong>：在 CodeT5 原有的 masked span prediction（MSP）外，加入 <strong>next-token prediction（NTP）</strong>——隨機取一切點，切點前餵 encoder、之後餵 decoder（切點限在序列 10%–90%），縮小預訓練與程式合成目標的落差。</li>
+</ul>
+<h3 id="33-把程式合成視為-rl-問題">3.3 把程式合成視為 RL 問題</h3>
+<p>把 LM 參數 θ 看成隨機策略：每個 token 預測是一個 action，episode 結束（遇 <endoftext>）時依生成程式的功能正確性得 return r。目標是最小化期望負 return（Eq.2），並用 REINFORCE／policy gradient 定理估計不可微 return 的梯度（Eq.3）。</p>
+<p><strong>3.3.1 以單元測試訊號定義 return</strong>：把生成程式與單元測試交給編譯器，依結果給 return（Eq.4–7）：</p>
+<ul>
+<li>無法編譯（compile error）：<strong>−1.0</strong></li>
+<li>可編譯但執行出錯（runtime error）：<strong>−0.6</strong></li>
+<li>未通過任一單元測試：<strong>−0.3</strong></li>
+<li>通過全部單元測試：<strong>+1.0</strong></li>
+</ul>
+<p>但如 text-to-SQL 領域所見，這種只在終端給值的估計，配 mini-batch 訓練時梯度變異大、訓練不穩。</p>
+<p><strong>3.3.2 帶 baseline 的 return</strong>：引入 baseline 降變異——以 <strong>greedy decoding 當基線</strong>，樣本 return 勝過基線者給正估計、否則給負（Eq.8）。這種相對正規化允許模型探索「不完美但比基線好」的程式；且基線與當前 action 無關，不改變期望梯度。</p>
+<p><strong>3.3.3 以 critic 當誤差預測器給中間 return</strong>（核心）：只用終端 return 太受限（程式常因單一 token 如多一空格就出錯）；而 token 相似度又與正確性相關性差。故引入 <strong>critic 模型</strong>（圖 3）：參數 φ 的神經網路，輸入題目 D 與取樣程式 W^s，訓練它<strong>推斷四類測試結果之一 {CompileError, RuntimeError, FailedTest, PassedTest}</strong>，損失為 L_critic（Eq.9）。critic 用比 actor 小的 Transformer；把 decoder 得到的 token hidden state 沿序列做 max-pooling 後接 softmax 預測整體結果；同時用 <strong>pooling 前的 token 級 hidden state h_t</strong> 算出分布 v̂_t，取真實結果類別的機率當該 token 的價值 q̂_φ(w^s_t)=v̂_t[u]。以此把 return 細化成 token 級中間 return 灌入梯度（Eq.10）。因處於監督式環境，標準答案程式也拿來訓 critic，預設標為 PassedTest。</p>
+<p><strong>3.3.4 用 example 單元測試與 critic 生成程式</strong>（圖 4）：推論時對每題生成 N 支程式，用 example test 篩成<strong>通過集 P</strong> 與<strong>失敗集 F</strong>。</p>
+<ul>
+<li><strong>Program refining（改進，針對 P）</strong>：P 通過 example test 不保證過更嚴格的 hidden test，故再生一輪。用另一個以二分類 {FailedTest, PassedTest} 訓練的 critic（φ_test）給每個 token 打「到此為止子序列會通過」的機率 q̂（Eq.11）；取<strong>價值最高處 t_max</strong> 切分，用左半當 seed；若 seed 內某 token 的 FailedTest 機率大於 PassedTest，就在該 token 進一步右截。以這些 seed 條件化 actor 重生後段（每個 seed 可上採樣 N/|P| 次，維持共 N 支），再對 hidden test 評估。</li>
+<li><strong>Program repairing（修復，針對 F）</strong>：當所有程式都失敗（|F|=N）時先修復再改進。用同一 critic 給失敗樣本打通過機率（Eq.12），選 <strong>top-M</strong> 送入 seq2seq <strong>修復模型 ω</strong>：輸入為「題目 D＋有錯程式 W^fail＋測試結果型別 u＋錯誤子型別 c（如語法錯、越界錯，取自編譯器錯誤追蹤）」，以交叉熵學習輸出正確程式（Eq.13）；訓練時直接把 RL 用的合成樣本當有錯程式、標準答案當目標。每個失敗序列上採樣 N/M 次維持 N 支，修好後再走一遍 refine。</li>
+<li><strong>Critical Sampling（CS）</strong>：即上述「修復＋改進」雙策略，讓模型在推論期同時從**成功案例（refine）<strong>與</strong>失敗案例（repair）**改進程式。實作用 mini-batch 生成與 nucleus sampling、批量 N=200。改進階段只需重生部分程式，比常規生成便宜。</li>
+</ul>
+<h3 id="34-實作細節">3.4 實作細節</h3>
+<p>因軌跡空間巨大（V^T）且 actor-critic 回饋迴圈易不穩，先用 <strong>imitation learning</strong> 僅以 L_ce 暖啟動 LM（至多 10 epochs）；再從此 actor 取樣程式訓 critic（此時凍結 actor）。CodeT5 actor 配 CodeT5-small critic、GPT 變體 actor 配 GPT2-small critic。因處監督式任務，除合成程式外也用標準答案（恆標 PassedTest）訓 critic。訓完 critic 後，以 <strong>L_ce 與 L_rl 等權</strong>微調 actor；每步以單一取樣近似期望梯度（Eq.14）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

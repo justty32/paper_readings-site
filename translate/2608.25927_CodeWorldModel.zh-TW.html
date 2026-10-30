@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Code World Model: Coding Agent as World Brain 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yiwen Chen、Guosheng Lin、Chi Zhang</p><p>日期：2026-08-26（v1，cs.CV）</p><p>arXiv：2608.25927</p><p><a href="https://arxiv.org/abs/2608.25927" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="code-world-model-coding-agent-as-world-brain">Code World Model: Coding Agent as World Brain</h1>
+<h2 id="摘要與第-1-節問題">摘要與第 1 節：問題</h2>
+<p>影片世界模型擅長從觀察學外觀、動作與局部互動，卻只能看到規則執行後的畫面。支配世界演化的知識、實體關係、長期計畫與連鎖後果沒有直接出現在像素中；離開鏡頭的狀態也缺乏連續視覺紀錄。只預測下一段影片，難以讓一次事件在很久以後仍持續改變世界。</p>
+<p>作者提出 Code World Model，把「世界怎麼變」與「變化如何被看見」拆開。coding agent 是世界的大腦，負責理解稀疏但語意複雜的事件，產生或修改可執行程式碼；程式碼高頻執行位置、碰撞、冷卻、數值規則等重複更新；影片模型則將演化後的狀態渲染成高擬真的視覺觀察。這不是讓語言模型逐步模擬所有細節，而是把高階決策編譯成可重用、可檢查、可修改的機制。</p>
+<p>核心介面是 proxy。完整結構化文字雖然彈性高，現有影片模型卻難以從密集文字可靠還原逐影格位置、軌跡與相機運動；完整三維場景又需要昂貴資產與模擬管線，提早限制視覺結果。proxy 只保留當前觀察必須遵守的粗略時空約束，再由輕量確定性 compiler 產生 proxy video，和文字一起條件化影片模型。</p>
+<h2 id="第-31-節agent程式碼與世界狀態">第 3.1 節：agent、程式碼與世界狀態</h2>
+<p>一個複雜世界同時包含兩種工作。coding agent 處理低頻但困難的推理，例如解讀新事件、判斷受影響的實體、改寫派系目標或加入新機制；程式碼處理高頻而規則明確的執行，例如更新實體屬性、排程、碰撞、攻擊距離與連鎖觸發。互動或事件先改變情境，agent 讀取持久世界狀態，選擇呼叫既有機制或局部修改程式；執行結果、測試與新回饋再回到 agent，形成持續的 agent–code 迴圈。</p>
+<p>形式上，完整狀態分成 executable state 與 visual state。前者含世界程式、實體屬性、規則、關係與事件歷史，由 agent–code transition 更新；後者含需要跨時間一致的外觀與運動資訊，由影片模型根據新 executable state 和上一個 visual state 生成。這裡的條件依賴不表示把完整原始碼直接塞進影片網路，而是先選出與當前畫面相關的狀態，再轉成文字與 proxy。</p>
+<h2 id="第-32-節proxy-條件介面">第 3.2 節：proxy 條件介面</h2>
+<p>proxy 將相機、實體位置、姿態、軌跡與空間關係組成粗略可程式化表示，經確定性 rasterization 變成逐影格視覺條件。它不描述材質、細緻光照或完整動畫，這些留給影片模型的生成先驗；它只指定不可違反的空間結構與互動狀態。文字負責身份、外觀、動作語意與未編碼的動態細節，proxy 則提供位置與時間上的 grounding。</p>
+<p>proxy 的設計是條件頻寬取捨。資訊越多，grounding 越強，但 agent 要維護的 primitive 與參數也越多；資訊太少則約束不足。作者主張只提供當前觀察所需的最小充分狀態。作者自報，原型 proxy 的長寬各為目標影片四分之一，因此視覺 token 約為目標的十六分之一。完整系統可由 agent 依任務啟用、關閉或調整 proxy；本文只實作固定設計，自動選擇頻寬仍是未來工作。</p>
+<h2 id="第-33-節成對資料">第 3.3 節：成對資料</h2>
+<p>訓練需要時空對齊的 proxy–observation 配對。遊戲資料可在同一次執行中同步錄製 RGB 影片與 runtime state，再把相機、位置、方向、近似尺度、場景布局及互動關鍵狀態編譯成 proxy。相同紀錄可重編譯成不同細緻度，不必重錄目標影片。</p>
+<p>真實影片則用幾何輔助的離線流程。作者以 KITTI-360 示範，使用校準相機姿態、累積語意三維重建與物件標註，投影深度、表面法向與粗略 primitive，並以共用 depth buffer 保留遮擋與相機運動。這些幾何資訊只用來製作條件，不直接提供給影片模型；介面也不需要額外動作標籤。</p>
+<h2 id="第-4-節實作與結果作者自報">第 4 節：實作與結果（作者自報）</h2>
+<p>作者以 MiniMax-H3 Ref2VA 為 backbone 做 LoRA 適配。作者自報，遊戲資料含 157 段 GTA V gameplay take，約 5.6 小時來源影片，取樣成 9420 段五秒訓練 clip。目標是高解析度 RGB 影片，proxy 與其逐影格對齊。訓練後的質性展示涵蓋多種角色、環境、動作與相機軌跡。</p>
+<p>圖例與專案影片顯示，模型能跟隨 proxy 指定的實體位置、移動、場景布局與相機運動，同時保留較豐富的外觀與局部動態。比較展示主張 proxy 比只用動作或相機條件的影片世界模型提供更直接、細粒度的控制。不過論文沒有報告 FID、使用者研究或控制誤差，也明言比較不考慮推論延遲；因此這些結果只能視為概念驗證，不能解讀成量化優越性。</p>
+<h2 id="第-5-節局限與結論">第 5 節：局限與結論</h2>
+<p>原型受算力限制，訓練規模與生成品質仍有限，也沒有實作自回歸即時生成。現有 coding agent 尚難從零可靠建造高度複雜的遊戲機制，實驗依賴既有場景與 gameplay logic 作模板，沒有展示自主建立完整開放世界或模擬器。影片後端每次產生新觀察都要做生成式推論，邊際運算與延遲也高於傳統 renderer。</p>
+<p>本文的貢獻是一種分工架構，而不是完成版系統：可執行程式碼維持持久、規則一致的世界演化；影片模型負責彈性的視覺實現；proxy 把可檢查的狀態轉成逐影格條件。現有證據顯示這個介面可行，但開放式機制生成、即時互動、擴大資料與量化評估仍待完成。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2608.25927_CodeWorldModel.%E6%91%98%E8%A6%81.html"><code>../summarize/2608.25927_CodeWorldModel.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

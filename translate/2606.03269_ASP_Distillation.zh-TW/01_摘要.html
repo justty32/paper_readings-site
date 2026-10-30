@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>從 LLM 蒸餾答案集程式設計規則用於神經符號視覺問答（Distilling Answer-Set Programming Rules from LLMs for Neurosymbolic Visual Question Answering）（續 1） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.03269_ASP_Distillation.zh-TW.html">回 2606.03269_ASP_Distillation.zh-TW 目錄</a>　<a href="02_%E7%9F%A5%E8%AD%98%E8%92%B8%E9%A4%BE%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>視覺問答（Visual Question Answering, VQA）是回答關於影像的問題的任務，需要整合多模態輸入與推理。將基於邏輯的表示納入推理元件的模組化方法在可解釋性方面提供優於端到端訓練系統的明顯優勢。然而，當任務需求變更時，調整或擴展這些表示可能對開發者構成重大負擔。為解決此挑戰，我們提出一種從大型語言模型（LLM）蒸餾規則的方法。我們的方法提示 LLM 擴展一個初始的 VQA 推理理論——以答案集程式（answer-set program）表達——以滿足任務的新需求。來自 VQA 資料集的範例引導 LLM、驗證結果，並利用 ASP 求解器的回饋協助修正錯誤規則。我們展示此方法在多樣化 VQA 資料集上的有效性。值得注意的是，僅需少量範例即可從 LLM 誘出正確規則。我們的實驗表明，從 LLM 蒸餾規則相較於傳統資料驅動規則學習方法是一種有前景的替代方案。本文正在《邏輯程式設計理論與實務》（TPLP）審查中。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>VQA 需要對視覺場景和自然語言問題的聯合理解，並追隨複雜的推理運算鏈。神經符號方法使用深度學習進行知覺，產生影像和問題的符號表示，然後以純符號方式對該表示進行推理——這些方法可解釋、透明，且因組合結構而可擴展。</p>
+<p>我們特別關注使用答案集程式設計（Answer-Set Programming, ASP）實作推理模組。ASP 的優勢包括：非確定性允許必要時產生多個答案、知覺中的歧義通常可通過推理解決、更容易添加解釋能力。ASP 用於增強 VQA 推理能力正獲得關注（用於醫學影像分割、控制面板合規檢查等）。</p>
+<p><strong>核心問題</strong>：當需求改變時——例如需要回答新型別的問題——維護或擴展 ASP 表示成為開發者的額外負擔。我們通過從 LLM 進行宣告式知識蒸餾來解決此問題。</p>
+<p><strong>前提假設</strong>：我們已有一個神經符號 VQA 系統，其推理元件包含一個初始 ASP 理論。當需求轉移（反映為系統尚未能正確回答的新範例）時，我們的方法提示 LLM 擴展此初始理論以滿足新需求。VQA 資料集的範例用於引導 LLM 產生新規則並驗證結果，包括多重提示策略、利用 ASP 求解器回饋修補錯誤規則，以及對過往範例進行迴歸測試以確保一致性。</p>
+<p><strong>與統計關聯學習（SRL）/歸納邏輯程式設計（ILP）的關鍵區別</strong>：ILP 系統依賴開發者通過模式宣告（mode declarations）明確定義的硬搜尋空間；LLM 則在通過自然語言提示隱式編碼的軟搜尋空間中運作。我們的方法僅以少量範例作為指引條件化蒸餾過程，而非訓練資料。</p>
+<p><strong>評估資料集</strong>：GQA（真實影像、複雜場景圖）、CLEVR（合成幾何物體、組合式問題）、CLEGRV（圖形影像、需要基於圖的推理）。我們採用這些資料集的既有模組化 VQA 系統的表示。</p>
+<p><strong>主要貢獻</strong>：</p>
+<ul>
+<li>提出從 LLM 進行宣告式知識蒸餾的方法，實現 ASP 推理模組的自動擴展，包括從既有規則組合新 ASP 規則的能力。</li>
+<li>為蒸餾方法設計提示策略，包括多重提示、思維鏈與規則修補。</li>
+<li>在三個多樣化 VQA 資料集上進行實驗評估，包含消融研究。</li>
+<li>引入冗餘消除啟發式方法，在不降低準確度的前提下修剪蒸餾出的規則集。</li>
+</ul>
+<h2 id="2-背景">2 背景</h2>
+<h3 id="21-答案集程式設計asp">2.1 答案集程式設計（ASP）</h3>
+<p>ASP 是一種宣告式問題求解方法，解決方案由邏輯規則集描述。高效的 ASP 求解器包括 clingo、dlv 和 wasp。</p>
+<p>ASP 程式是一組有限規則 r，形式為：</p>
+<pre><code>a :- b1, ..., bn, not c1, ..., not cm.
+</code></pre>
+<p>其中 a 為頭部（head）、bi 與 cj 為體部（body）原子，not 表示否定即失敗（negation as failure）。事實（fact）為體部為空的規則。ASP 程式的語義由答案集（answer sets）給出——滿足穩定性條件的 Herbrand 模型。</p>
+<p>ASP 提供進一步擴展建模能力的構造：(i) <strong>選擇規則</strong>：<code>l {a1, ..., ak} u :- body</code>，允許在基數界限內選擇原子子集；(ii) <strong>聚合</strong>：如 <code>#count</code>、<code>#sum</code>、<code>#min</code>、<code>#max</code>，支援對項集進行推理；(iii) <strong>弱約束</strong>：<code>:~ body. [w@l]</code>，可違反但產生懲罰，求解器尋求最小化總懲罰的答案集。</p>
+<h3 id="22-模組化-vqa-與-asp">2.2 模組化 VQA 與 ASP</h3>
+<p>我們採用使用 ASP 進行推理的神經符號系統的邏輯表示，實例化一個通用模組化神經符號架構（如圖 2），包含三個核心元件：</p>
+<ul>
+<li><strong>視覺模組</strong>：神經網路處理視覺場景，產生場景的符號表示——場景圖（scene graph），包含每個物件的結構化表示及其屬性與關係。</li>
+<li><strong>語言模組</strong>：神經網路處理自然語言問題，產生問題的符號表示——功能程式（functional program），為樹狀結構，每個節點定義一個原始函數，邊表示從葉到根的資訊流。</li>
+<li><strong>推理模組</strong>：使用 ASP 求解器推導答案。場景圖和功能程式先被轉換為 ASP 事實集，然後與 ASP 理論（也稱為 ASP 編碼）結合。ASP 理論是一組不隨問題變化的一般性規則，以統一方式編碼原始函數的語義。</li>
+</ul>
+<h4 id="gqa-資料集">GQA 資料集</h4>
+<p>含超過 22M 開放式與二元問題，涵蓋 100k+ 張真實世界場景影像。我們採用一個基於 CLIP 和 OWL-ViT 基礎模型的零樣本系統，其 ASP 理論含 60 條規則。問題表示範例：</p>
+<pre><code>scene(0).
+select(1, 0, helmet).
+relate(2, 1, person, wearing, subject).
+filter_any(3, 2, standing).
+choose_rel(4, 3, umpire, to_the_left_of, to_the_right_of, subject).
+</code></pre>
+<p>數字表示評估計劃的步驟，第一個參數為當前步驟，後接輸入步驟與附加參數。ASP 理論規則定義如何根據場景、選擇條件與屬性過濾來更新候選物件的狀態。</p>
+<h4 id="clevr-資料集">CLEVR 資料集</h4>
+<p>合成場景但以長組合式問題挑戰 VQA 系統。物件在形狀、顏色、大小、材質上變化。問題需要識別物體、計數、屬性過濾、屬性比較與空間推理。ASP 理論含 72 條規則。規則遵循與 GQA 基本相同的模式。</p>
+<h4 id="clegrv-資料集">CLEGRV 資料集</h4>
+<h2 id="影像包含類似交通網路的有標籤圖形任務為回答關於此類圖形的問題視覺模組為多模態結合光學圖形辨識ogr進行圖形解析與預訓練-ocr-神經網路進行文字標籤解析asp-理論含-56-條規則涉及選擇規則遞迴路徑定義約束與最小化語句clegrv-是三個資料集中唯一需使用遞迴規則者">影像包含類似交通網路的有標籤圖形；任務為回答關於此類圖形的問題。視覺模組為多模態：結合光學圖形辨識（OGR）進行圖形解析與預訓練 OCR 神經網路進行文字標籤解析。ASP 理論含 56 條規則，涉及選擇規則、遞迴路徑定義、約束與最小化語句——CLEGRV 是三個資料集中唯一需使用遞迴規則者。</h2>
+<h2 id="part-24-parent_file-260603269_asp_distillationzh-twmd">part: 2/4
+parent_file: 2606.03269_ASP_Distillation.zh-TW.md</h2>
+<h1 id="從-llm-蒸餾答案集程式設計規則用於神經符號視覺問答distilling-answer-set-programming-rules-from-llms-for-neurosymbolic-visual-question-answering續-1">從 LLM 蒸餾答案集程式設計規則用於神經符號視覺問答（Distilling Answer-Set Programming Rules from LLMs for Neurosymbolic Visual Question Answering）（續 1）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.04295_AdaptiveConformalSE.zh-TW.html">回 2605.04295_AdaptiveConformalSE.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97%E8%A9%95%E4%BC%B0.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>LLM 的過度自信——尤其在幻覺時——嚴重限制了其於安全關鍵場景的部署。既有不確定性量化方法多聚焦詞彙或機率層級訊號，卻忽略語意相近回應間的意義變異。本文提出<strong>自適應共形語意熵（ACSE）</strong>：一種模型無關、在連續語意向量空間中自適應度量提示層級語意分散度的不確定性量化方法。ACSE 對同一提示取樣多條回應→句子編碼器嵌入→軟聚類→由軟分配的歸一化熵導出基礎不確定性分數。關鍵創新在於<strong>自適應膨脹機制</strong>：當叢集結構顯現脆度（主叢集內部不一、支持稀疏、邊界模糊）時，以 odds-based 變換調升不確定性，避免語意熵低估幻覺風險。最後以<strong>共形校準</strong>在校準集上學出決策閾值，提供有限樣本、分布無關的形式保證：接受提示的錯誤率以使用者指定的 α 為上界。五個 QA 與摘要基準、四種 LLM 架構的系統性實驗顯示，ACSE 在鑑別力、覆蓋保證與機率校準指標上全面超越 SOTA 基線——TriviaQA 的 AUROC 達 0.88（token entropy 0.65），FPR@95 降至 0.31（CAP 的 0.48），選擇性風險嚴格受 α 約束。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 雖廣泛應用，卻常以高信心產生錯誤輸出（Shanahan 2024），這使醫療、法律、科研等高風險部署極需可靠的<strong>不確定性量化（UQ）</strong>。</p>
+<p><strong>既有方法與限制</strong>：多數依賴 token 層級訊號——如 next-token 熵（Duan 2023）或序列平均對數似然（Yao 2019）。這類方法只捕捉表面詞彙變異，無法區分「近義詞換句話說」與「真正的語意分歧」：token 熵可能在機率質量分散於數個語意互斥的回應時仍顯示低不確定性（虛假信心）。<strong>語意熵（SE, Kuhn 2023）</strong> 向前跨了一步——以 NLI 聚類語意等價回應再算分布熵——但仰賴<strong>硬聚類</strong>（每回應強制歸入單一叢集），忽略重疊語意區，且易陷入<strong>錯誤共識陷阱</strong>：詞彙一致但事實錯誤的回應叢集同樣可能滿足共形閾值。<strong>共形化方法</strong>如 DDCRP-CP（Kaur 2024）與 CAP（Tayebati 2025）提供有限樣本保證，但仍把不確定性當純量訊號，對叢集脆度不敏感。</p>
+<p><strong>ACSE 提案</strong>：(1) 以句子編碼器嵌入 + HAC 軟聚類計算基礎語意熵 u(x)；(2) 定義五項叢集脆度特徵（語意熵、質心距離、主叢集分散度、稀疏性、閾值邊界），經 odds 式膨脹得調整後不確定性 û(x)；(3) 在校準集上演雙層共形校準——提示層級棄權決策 + 回應層級預測集——提供形式保證。範例：&quot;What is the capital of Australia?&quot; 的基礎語意熵 0.55 低於閾值（會輸出錯答 Sydney），但膨脹後升至 0.62 超過閾值→正確棄權。</p>
+<p><strong>貢獻</strong>：(i) 語意層級的熵式 UQ；(ii) 叢集脆度感知的自適應膨脹機制；(iii) 後驗共形校準含形式保證的提示/回應雙層決策規則；(iv) 跨基準與架構的 SOTA 實證。</p>
+<h2 id="2-提示層級不確定性估計">2. 提示層級不確定性估計</h2>
+<p><strong>回應取樣</strong>：對提示 x，以 nucleus sampling（η=0.9）獨立取樣 n 條回應 Y(x) = {y₁,…,yₙ}。當模型自信時，隨機解碼產生詞彙多樣但語意等價的回應；不確定時則分歧為多個衝突語意。n 控制解析度與成本權衡，預設 n=10。</p>
+<p><strong>語意嵌入</strong>：以預訓練句子編碼器 f: Y→ℝᵈ（all-MiniLM-L6）將每條回應 yᵢ 映射為 ℓ₂ 歸一化向量 vᵢ，以 cosine 相似度衡量語意鄰近性。錯誤標籤 e(x,yᵢ) = 1{yᵢ is incorrect} 由與參考答案的 cosine 相似度 ≥ τcos 自動判定。</p>
+<p><strong>軟聚類</strong>：對嵌入集 E 以 HAC（average linkage + cosine 距離，見 Eq. 5）建樹狀圖，於閾值 ϵ 處切出 K 個語意叢集 {C₁,…,C_K}。為避免邊界處的過度自信，採用<strong>軟分配</strong>：對回應嵌入 vᵢ 計算到各叢集質心 c_k 的相似度 a_ik = ½(1+cos(vᵢ, c_k))（參數自由、保留角度幾何，Eq. 7）→跨叢集 softmax 歸一化→軟分配 s_ik（Σ_k s_ik=1，Eq. 8）。s_ik 量化 yᵢ 對叢集 C_k 的支持程度。聚合 n 條回應得提示層級語意分布 P(C_k) = (1/n) Σᵢ s_ik。基礎<strong>語意熵</strong> H_sem(x) = −Σ_k P(C_k) log P(C_k)，歸一化為 u(x) = H_sem/log K ∈ [0,1]（K=1 時 u=0，Eq. 10）。u(x) 低表示強語意共識（模型自信），高表示競爭性語意解讀（模型不確定）。</p>
+<h2 id="3-共形化自適應語意熵">3. 共形化自適應語意熵</h2>
+<p><strong>共形預測（CP）背景</strong>：給定校準集 D_cal = {(xᵢ, yᵢ)} 與測試點 (x_new, y_new) 來自同一分布，CP 保證 P(y_new ∈ C(x_new)) ≥ 1−α。核心是非一致性分數 S: X×Y→ℝ⁺ 與其 (1−α)-分位數。ACSE 將 CP 用於兩目的：提示層級回答/棄權決策 + 回應層級預測集。</p>
+<p><strong>3.1 自適應不確定性膨脹（核心創新）</strong></p>
+<p>基礎 u(x) 不考慮叢集結構脆度，尤其在低樣本、語意異質叢集、弱分離叢集、稀疏支持叢集等情形下會低估不確定性。定義 odds O(u,x) = u/(1−u)（不確定性與信心的比值），以提示層級膨脹因子 λ(x): X→[1,2] 放大 odds：O(û,x) = λ(x)·O(u,x)，得 û(x) = λu / (1+(λ−1)u) ∈ [u(x),1]（Eq. 13）。此變換有界、單調、保序，膨脹在中等 u 值上最大（優先影響敏感邊界決策）。</p>
+<p>λ(x) 由五項歸一化、提示層級叢集脆度特徵的加權平均 B(x) ∈ [0,1] 經<strong>凸映射</strong> λ = 2/(2−B) 定義（B=0→λ=1 無膨脹，B→1→λ→2 最大膨脹，Eq. 17）：</p>
+<ol>
+<li><strong>語意熵 u(x)</strong>：本來就是多模態性主訊號，u 大直接增加 λ。</li>
+<li><em><em>質心距離 ã(x) = 1 − a_{i</em> k</em>}**：主叢集代表回應到質心的距離——大表示該回應不典型，結構不穩。</li>
+<li><em><em>主叢集分散度 d_k</em>(x)</em>*（Eq. 14）：叢集內部平均 cosine 不相似度——高表示內部不一致。</li>
+<li><em><em>主叢集大小稀疏懲罰 g_k</em>(x) = min(1, κ/|C_k</em>|)**（Eq. 15，κ 為校準集最大叢集大小的中位數）——小叢集支持稀疏即脆弱。</li>
+<li><strong>閾值邊界 m(x) = max(0, 1−u/τ_ref)</strong>（Eq. 16）：當 u ≪ τ_ref 表示過度自信，額外懲罰以壓制低不確定性區的虛假信心。</li>
+</ol>
+<p>τ_ref 取校準集 u 分布的 γ-分位數（預設 γ=0.75），κ 同樣一次計算後凍結。五項權重 w 預設均等於 ⟨⅕,⅕,⅕,⅕,⅕⟩，剝離實驗顯示穩健。整條膨脹管線無標籤，共形有效性在 û-空間中保持不變。</p>
+<p><strong>3.2 提示接受與回應預測集</strong></p>
+<p><strong>提示層級決策</strong>：回傳回應 ỹ 取自主叢集 k* 中軟分配最高的成員。提示層級誤差 E(x) = e(x,ỹ) ∈ {0,1}。在 I₀ = {û(x): x ∈ D_cal ∧ E(x)=0} 上取 (1−α)-分位數為接受閾值 τ̂。推論時：û(x) ≤ τ̂ 則接受（回傳 ỹ），否則棄權（Eq. 18）。<strong>定理 1</strong>（提示共形覆蓋）：P(û(x_new) ≤ τ̂ | E(x_new)=0) ≥ 1−α（Eq. 19）。</p>
+<p><strong>回應層級預測集</strong>：定義回應一致性度量 ϕᵢ = s_{i,k̂}·P(C_{k̂})（k̂ = arg max_k s_ik，Eq. 20）——yᵢ 對最佳叢集賦予強支持且該叢集跨樣本支持度高時 ϕᵢ 大。非一致性分數 S(x,yᵢ) = ½(û(x)+1−ϕᵢ) ∈ [0,1]（Eq. 21）——低分數僅在提示不確定性低且回應具語意代表性時出現。在 S₀ = {S(xⱼ,yⱼᵢ): eⱼᵢ=0} 上取 (1−α)-分位數 q̂。預測集 C_α(x) = {yᵢ ∈ Y(x): S(x,yᵢ) ≤ q̂}（Eq. 22），大小提供回應層級不確定性的直接度量。<strong>定理 2</strong>：P(y_new ∈ C_α(x_new) | e_new=0) ≥ 1−α（Eq. 23）。兩定理證明見附錄 A。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

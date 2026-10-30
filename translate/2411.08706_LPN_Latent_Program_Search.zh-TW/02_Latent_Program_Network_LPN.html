@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_Latent_Program_Network_LPN · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2411.08706_LPN_Latent_Program_Search.zh-TW.html">回 2411.08706_LPN_Latent_Program_Search.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-latent-program-network-lpn">4. Latent Program Network (LPN)</h2>
+<p>不同於只訓模型最大化「條件於規格解碼正確輸出」似然的傳導法（無法測試時適應或確保一致性），LPN 把推論<strong>顯式分解為三核心組件</strong>（圖 1）：(1) 引入<strong>瓶頸</strong>鼓勵網路經緊湊潛在空間學顯式程式表示（如 Neural Processes）;(2) 引入<strong>搜尋此潛在空間</strong>以有效解釋資料的方法；(3) 條件於潛在程式與新輸入預測輸出。整體<strong>端到端全可微</strong>。好處：顯式學程式表示是好的泛化先驗；可用程式編碼驗證初猜潛在是否解釋資料、否則測試時精修；移除傳導法對規格長度過擬合的問題。</p>
+<h3 id="41-潛在程式推論">4.1 潛在程式推論</h3>
+<p><strong>編碼器</strong>：機率式，近似程式潛在的貝氏後驗——把 I/O 對映到潛在空間的分布（代表能解釋該映射的可能程式）。用變分法很重要，因任一 I/O 對都有廣泛可能程式（即便限低 Kolmogorov 複雜度）。實務用對角共變數的多元常態。<strong>各 I/O 對獨立平行編碼、用均值聚合 → 對規格順序置換不變</strong>（不像 naive 序列模型串接 I/O 對）。</p>
+<p><strong>解碼器</strong>：機率式，把潛在 z + 輸入映到對應輸出，<strong>逐像素直接預測</strong>（不經 DSL）。即使底層 I/O 映射確定，仍用機率解碼框架以相容最大似然學習。固定輸入、變潛在 z → 解碼器生成不同輸出。此編碼器-解碼器系統旨在學「我們關心的程式空間」的壓縮表示（ARC 即用 Core Knowledge 先驗的程式）。</p>
+<p><strong>潛在優化</strong>：編碼器近似後驗，未必對某 I/O 對編對抽象（尤其任務很新奇時）。故加中間階段：從編碼器預測 z₀ 出發，搜尋更能依解碼器解釋觀測資料的 z*。類比 <strong>System 1 / System 2</strong>：編碼器生直覺初猜（S1），潛在優化執行假設搜尋（S2）。</p>
+<h3 id="42-潛在優化的搜尋方法">4.2 潛在優化的搜尋方法</h3>
+<p>搜尋使解碼器最可能對相應輸入生對輸出的潛在 z；找到能解釋所有 I/O 對的潛在，更可能泛化到新 I/O 對。兩種實作：</p>
+<ul>
+<li><strong>取樣</strong>：從先驗或近似後驗附近採一批潛在，選對給定 I/O 對解碼對數似然最高者。漸近收斂到真最大似然潛在、且適用不可微情況；但效率隨潛在維度<strong>指數變差</strong>，對多數應用不實用。</li>
+<li><strong>梯度上升（主用）</strong>：解碼器可微故其對數似然對 z 可微，用一階法高效搜尋。<strong>從所有對潛在（編碼器採樣）的均值初始化 z₀</strong>，迭代精修（步長夠小則解碼似然遞增）。實務取梯度上升過程中找到的<strong>最佳</strong>潛在（未必是最後一步的）。差初始化會收斂到不同局部極小 → 凸顯編碼器攤銷推論的重要。</li>
+</ul>
+<h3 id="43-訓練">4.3 訓練</h3>
+<p>假設有任務資料集（一任務 = 同一程式生的 I/O 對）。為模擬測試條件，訓練時<strong>用「除了該對之外的所有其他對」重建每個輸出 oₖ</strong>（不用 (iₖ,oₖ) 本身，否則編碼器會抄捷徑直接壓縮輸出而不學程式抽象）。重建 oₖ 時：對所有其他對採編碼器潛在 → 取均值 z₀ → 跑潛在優化（如梯度上升）得 z* → 用 iₖ 與精修後 z* 算負對數似然（解碼器 logits 對標籤的交叉熵）。<strong>損失 = 重建損失 + β·KL 損失</strong>（近似後驗對先驗，類 β-VAE 平衡）；用 reparameterization trick；可對潛在更新做 <strong>stop-gradient</strong>（更省算）。為注入「測試時會做梯度搜尋」的歸納偏置，訓練時也跑<strong>少量 （0–5 步）</strong> 梯度上升。</p>
+<h2 id="5-實驗">5. 實驗</h2>
+<p><strong>設定</strong>：以 ARC-AGI 2024 為測試域。編碼器與解碼器皆為小 transformer。另設更簡單的 <strong>Pattern 任務</strong>研究 LPN 動態：生成 10×10 黑底網格、一個藍像素標示 4×4 程式特定圖案應貼處（圖案跨同規格的對相同、跨規格不同）。<strong>基線</strong>：(1) <strong>In-Context 上下文學習</strong>（編碼各 I/O 對嵌入後串接、條件預測，從不產中間程式嵌入）;(2) <strong>測試時微調 (TTT)</strong>（測試時對 in-context 模型做參數梯度更新）。</p>
+<p><strong>5.2 Pattern 任務</strong>（表 1，1M 模型訓 20k 步）：無測試時適應全爛（LPN 與 in-context 皆 ~3%，攤銷對此規模/訓練量很難）。所有 LPN 變體隨測試時梯度步數<strong>強擴展</strong>（證能測試時適應）。比較訓練策略：<strong>訓 1 步梯度 (Grad 1)</strong> 在 100 步推論下達 <strong>99.5%</strong>，遠勝 Grad 0 訓練的 67.5% → 證「訓練時就感知測試時將做梯度上升」是重要歸納偏置。梯度上升<strong>遠勝取樣</strong>（無梯度訊號的搜尋極低效）。用 <strong>stop-gradient</strong> 反而測試表現更佳且更省算。</p>
+<p><strong>5.3 字串操作任務</strong>（表 2，&gt;1 億唯一程式，由 3–5 條參數化規則組合）：<strong>TTT 過擬合</strong>（梯度微調反使表現退化），LPN 穩健不過擬合；訓練帶 1 步梯度在高推論梯度下略提升。</p>
+<p><strong>5.4 從編碼器起始搜尋</strong>（圖 2）：<strong>編碼器初始化對所有訓練法都至關重要</strong>（從先驗起始遠差於從編碼器起始）→ 驗證「編碼器 S1 快速推理 + 潛在優化 S2 縮窄搜尋」的直覺。</p>
+<p><strong>5.5 OOD 適應</strong>（表 3）：訓 1 步梯度 + 推論 100 步達 <strong>88%</strong>;<strong>In-Context 與 TTT 無法恢復 OOD 模式</strong>（~0–2%）。表 6 細分 in-dist/弱 OOD/強 OOD（圖案密度 50%/75%/100%），結論一致。</p>
+<p><strong>5.6 規格長度擴展</strong>（圖 3，OOD pattern，規格 1→19 對）：<strong>LPN 平滑泛化</strong>到不同規格大小（少資料僅小降、多資料續升）;In-Context <strong>過擬合</strong>訓練規格；TTT 需夠大規格 + 高推論算力才好。LPN 的穩健主要來自<strong>均值池化</strong>（防過擬合特定 context 長度、且使同程式表示結構相似）。</p>
+<p><strong>5.7 ARC-AGI 2024</strong>（表 4，top-2 accuracy）：訓 <strong>178M LPN、256 維潛在、只訓 re-arc 資料集</strong>（刻意 in-dist 於 ARC 訓練集但不訓 ARC、評估集顯著 OOD）、100k 步、TPU v4-32 兩天；Grad 0 訓 95k 步後 Grad 1 微調 5k 步。結果：即便大量攤銷後仍見「擴展測試時梯度搜尋」帶大增益；<strong>In-Distribution LPN 顯著勝 TTT</strong>（如 2e13 FLOPs：80% vs 58.5%）;<strong>OOD 開搜尋翻倍</strong>（FLOPs 2e11→2e15：7.75%→15.5%），2e11–2e13 區 LPN 勝 TTT，極高算力時 TTT 反超（因 LPN 訓練程式多樣性不足、潛在空間不夠平滑表達）。兩者皆勝 <strong>CodeIt (CodeT5, 220M)</strong> 與 <strong>Mirchandani/text-davinci (175B)</strong>——本工作訓練/推論成本遠低、從有限分布泛化更佳。當時最強為 o3-preview(low) 75.7% @ $200/題（成本遠超本工作）。TTT 與 LPN 解的測試子集不同（各有獨解任務）。探索<strong>組合泛化</strong>：潛在搜尋能把訓練見過程式組成新組合（避免無搜尋模型只執行單一程式的過擬合），但<strong>不穩健</strong>（有成功也有明確失敗）。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>提出 <strong>LPN</strong>——用連續潛在空間做高效測試時適應的歸納程式合成新法，把適應直接整合進架構、經梯度式搜尋精修潛在表示。LPN 泛化出訓練分布靠的是<strong>測試時適應</strong>而非擴充合成資料集。<strong>限制與未來</strong>：訓練程式多樣性有限（即便用增強，分布仍窄，限制潛在空間表達力）；只用標準優化器，未來可探演化策略與<strong>離散程式表示</strong>以增強組合泛化。</p>
+<p>（附錄 A–I 含 Pattern/ARC 資料集、擴展實驗、潛在空間分析、FLOPs 量測、序列消融、ARC 解分析、組合性探究、演算法/變分推論/超參/架構/基線/ARC 方法總表等，從略。）</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2411.08706_LPN_Latent_Program_Search.%E6%91%98%E8%A6%81.html"><code>../summarize/2411.08706_LPN_Latent_Program_Search.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

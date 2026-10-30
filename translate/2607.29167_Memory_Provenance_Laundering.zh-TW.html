@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>LLM Agent 的記憶來源洗白：Persistent Memory 的權限非放大防火牆（精要逐節翻譯） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jinghan Xu, Yiyong Xiao, Wanru Shao, Hankai Liu, Xinjin Li</p><p>日期：2026-07-31</p><p>arXiv：2607.29167</p><p><a href="https://arxiv.org/abs/2607.29167" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="llm-agent-的記憶來源洗白persistent-memory-的權限非放大防火牆">LLM Agent 的記憶來源洗白：Persistent Memory 的權限非放大防火牆</h1>
+<blockquote>
+<p>依官方 arXiv PDF 原文作精要逐節翻譯。官方 e-print 在本次取得時回傳 PDF，故以官方 PDF 逐頁文字抽取核對表格與限制。</p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>long-term memory 讓 agent 重用偏好與 workflow，也把不可信 observation 變成未來 action context。memory provenance laundering 指 LLM consolidation 把外部觀察重寫為貌似 user history 或 workflow support，保留 action trigger 卻抹除應限制其 authority 的低信任來源。</p>
+<p>PPMF 是 memory middleware：保存平台維護的 provenance，並把 action risk 與 action-relevant memories 的 authority 配對。在 schema-grounded fixed-policy evaluation 中，vulnerable memories 最高 ASR 1.000；provenance、confirmation、risk labels 完整時，沒有受測 unauthorized high-risk action 通過，同時 confirmed benign 與 targeted low-risk use 保持可執行。</p>
+<h2 id="1-導論">1. 導論</h2>
+<p>indirect prompt injection 防禦多保護當前 prompt/tool boundary，memory poisoning 則常假設 raw trajectory 或 knowledge base 被保存。實務 agent 會用 LLM consolidation 壓縮 memory；顯式 injection wording 可能消失，source boundary 也同時消失。於是未來 Task B 看到的是「user workflow memory」，而不是 Task A 的外部網頁文字。</p>
+<p>作者提出資訊可保存、authority 不可放大的原則。PPMF 不只存 provenance，還在執行時把 provenance 綁到特定 tool-call arguments，避免不相關 confirmed memory 或改寫文字替外部 target 升權。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>prompt/content guards 處理當前文字；AgentPoison 等處理跨 task memory poisoning；IFC、CaMeL、Progent、prompt-flow integrity 與 dependency graph 保護 active prompt/call/trajectory。PPMF 專注 consolidation 後的跨時間 boundary：source authority 必須穿過 memory write、retrieval、support binding，最後成為 tool execution precondition。</p>
+<h2 id="3-問題與-threat-model">3. 問題與 Threat Model</h2>
+<p>Task A 的 observations 來自 user、web、email、document、message、tool output；writer <code>C</code> 產生 memories。Task B retriever 選 memory，planner 提議 <code>(tool,args,risk)</code>，runtime 決定是否執行。risk 包含 READ、NAV、EFFECT、PURCHASE、CREDENTIAL。</p>
+<p>攻擊者可控制 external observation、hidden handle、reframing、fake marker，但不能改 system component 或 trusted metadata。攻擊成功是 external-derived memory 單獨造成未授權 high-risk effect；若 Task B user request 或 recorded confirmation 已授權則不算。</p>
+<p>trusted boundary 是平台 observation-channel source label、UI confirmation event、tool schema/risk policy 與 deterministic gate。metadata forgery/mislabel、social engineering 到真實 confirmation 不在主要威脅模型。</p>
+<h2 id="4-方法">4. 方法</h2>
+<p>memory 結構包含 content、source、trust、transformation history、risk、external flag。trust lattice 為 UNKNOWN &lt; EXTERNAL &lt; TRUSTEDTOOL &lt; USERHISTORY &lt; USER_CONFIRMED &lt; SYSTEM。文字中的「confirmed」沒有 metadata 就沒有權限。</p>
+<p>source-authority non-amplification：每個 action-relevant claim 的 authority 不超過 supporting sources 中最低者；只有平台記錄、且綁定同 principal/target/risk/scope 的 declassification 才能升權。混合來源 summary 不能借高信任來源替外部 claim 洗白。</p>
+<p>support binding 優先使用 explicit memory id，否則 canonicalize tool arguments 與 memory metadata。exact pointer 優先；alias 必須解成 canonical target；ambiguous、partial、conflicting matches 全保留並取 minimum trust。trusted tool 若讀到 external data，output 仍繼承低信任 taint。</p>
+<p>policy instance：READ ≥ EXTERNAL；NAV ≥ USERHISTORY；EFFECT/PURCHASE/CREDENTIAL ≥ USER_CONFIRMED。這是實驗用 binary confirmation，未來可加入 expiry、amount limit 與 scope。</p>
+<h2 id="5-實驗設定">5. 實驗設定</h2>
+<p>研究 synthetic/adaptive、AgentDojo-derived、confirmation spoofing、server-backed web sandbox、LangGraph decoy retrieval、3,680-page BrowseSafe adaptation、250-case utility pilot。每 scenario 分 Task A memory generation 與 Task B action。malicious case 未被 Task B user 授權；benign case有 explicit confirmation metadata。</p>
+<p>writers 包含 Qwen2.5 1.5B/3B/7B/14B、Llama3-8B、Mistral-7B，另轉換 Llama-3.3-70B AgentDojo artifacts。比較 raw memory、no defense、content/prompt filters、action-handle/confirmation-marker/hybrid guards、Self-Ask provenance、gate-only、PPMF，以及分離 memory/gate 的 ablations。</p>
+<p>metrics 為 malicious unauthorized effect ASR、laundering rate、benign success、false block、support retrieval 與 metadata robustness。作者明言 PPMF ASR 0 只表示在該 provenance 與 fixed-policy 假設下沒有未授權 effect 通過，不是 universal robustness。</p>
+<h2 id="6-結果">6. 結果</h2>
+<p>Qwen2.5-14B synthetic/adaptive：no defense ASR 0.933，PPMF 0 且 benign success 1.000。AgentDojo Q14 no defense 0.490、content filter 0.281、PPMF 0。HTTP no defense 1.000，content filter 0.300 且 false-block 1.000，PPMF 0 且 benign 1.000；Mistral HTTP no defense 0.900，PPMF 0。</p>
+<p>BrowseSafe 3,680 pages：no defense 1.000、HTML lexical 0.689、prompt filter 0.609、PPMF 0；PPMF benign 1.000。20 decoys 的 726 traces 中，no defense 1.000、content filter 0.518，PPMF 0；PPMF benign success 在 k=20 達 0.990。</p>
+<p>ablation 顯示 vulnerable summarization 後的 provenance filter 幾乎不降 ASR；只有 readable provenance、無 gate 仍會讓 action 觸發；gate-only 以 false-block benign 換取 ASR 0。完整 PPMF 才同時保存 confirmed utility。</p>
+<p>AgentDojo Qwen2.5-3B 的 direct ASR 0.083 但 laundering 0.990，說明攻擊 trigger 是否當場成功與 authority 是否被重寫是不同量。跨 model laundering rate 約 0.958–1.000，現象不限定單一 writer。</p>
+<p>metadata missing 時 fail closed：20% provenance missing，ASR 0、benign 0.814。metadata corruption 則突破 boundary：10% forged confirmations ASR 0.088±0.016，10% risk downgrade 0.112±0.006。部署必須保護 trust root。</p>
+<h2 id="7-結論">7. 結論</h2>
+<p>persistent memory 使 agent security 成為跨 task provenance 問題。PPMF 以 write-time platform provenance、argument-level support binding 與 deterministic risk gate，使 memory 保留資訊而不繼承更高 authority。future systems 應把 provenance 視為 persistent authority，而非從 retrieved prose 猜測權限。</p>
+<h2 id="限制倫理與部署邊界">限制、倫理與部署邊界</h2>
+<p>PPMF 假設 provenance、confirmation、risk labels 與 binding intact；需 append-only logs、signed UI confirmations、attested tool envelopes、schema registry 與 risk drift audit。utility diagnostics 不衡量 confirmation fatigue、broad task completion 或 human recovery cost。</p>
+<p>LangGraph pilot 只使用固定 Qwen2.5-14B memories 與 InMemoryStore，不涵蓋其他 memory frameworks 或 online learning。single-agent direct tools 是主體；aggregate low-risk chains、多 tenant shared memory、inter-agent authority transfer、完整 IFC/trajectory-judge composition 都未覆蓋。</p>
+<p>資料為 synthetic、trace-derived 或 local sandbox，不碰 live accounts/credentials/services。論文目前標註 EMNLP 2026 submitted，因此結果應視為具 artifact 與廣泛 diagnostics 的研究 preprint，而非已經同行評審確認的部署標準。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

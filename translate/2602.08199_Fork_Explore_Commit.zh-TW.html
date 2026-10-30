@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Fork、探索、提交：用於 Agent 探索的 OS 原語（精要逐節翻譯） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Cong Wang, Yusheng Zheng</p><p>日期：2026-02</p><p>arXiv：2602.08199</p><p><a href="https://arxiv.org/abs/2602.08199" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="fork探索提交用於-agent-探索的-os-原語">Fork、探索、提交：用於 Agent 探索的 OS 原語</h1>
+<blockquote>
+<p>依官方 arXiv TeX 原文所作精要逐節翻譯。BranchFS 是已實作部分；<code>branch()</code> syscall 是提案，兩者在文中須分開理解。</p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>AI agent 日益以平行方式探索多條解法，只 commit 成功者。每條路徑會改檔與 spawn process，因此需要同時隔離 filesystem 與 process state，並提供原子 commit/rollback。本文提出 branch context：以 CoW 提供獨立檔案視圖與 process group，採 fork/explore/commit-or-abort 生命週期、first-commit-wins sibling invalidation，且可巢狀化。</p>
+<p>Linux 上有兩個互補元件：BranchFS 是免 root 的 FUSE filesystem，提供 <code>O(1)</code> branch creation、commit-to-parent 與 sibling invalidation；<code>branch()</code> 則是擬議 syscall，用於可靠 process termination、kernel sibling isolation 與 commit coordination。BranchFS 初步結果為建立 branch 小於 350 μs，小修改 commit 小於 1 ms。</p>
+<h2 id="1-導論">1. 導論</h2>
+<p>software engineering、computer use 與 OS tuning agent 都會執行帶有副作用的 shell、edit、install。多方案並行時需要隔離 filesystem state 與 process execution context。現有 git stash、temporary directory、container clone 或 file snapshot 具有涵蓋不全、開銷或並行能力問題；使用者態組合多個 OS 機制又會產生 race、partial failure cleanup 與 ordering 問題。</p>
+<p>本文貢獻為 branch context 抽象、BranchFS 實作、<code>branch()</code> syscall 設計，以及只針對 BranchFS 的 preliminary evaluation。</p>
+<h2 id="2-動機">2. 動機</h2>
+<p>Tree/Graph-of-Thoughts、Reflexion 與 SWE agents 都可能建立多個會修改 workspace 的候選路徑。作者提出六個要求：R1 平行隔離；R2 single-winner atomic commit；R3 hierarchical nesting；R4 捕捉所有 filesystem 修改；R5 輕量、免 root、跨 ext4/XFS/NFS 等底層；R6 對 compiler、test runner、package manager 等 child processes 做可靠 termination 與 sibling isolation。</p>
+<p>OverlayFS 沒有 native commit-to-parent、nesting 與 sibling invalidation，且 mount 通常需 root；Btrfs/ZFS 綁特定 filesystem；device-mapper snapshot 需 raw block device。VM/CRIU 太重。process group/session 可被 <code>setsid/setpgid</code> 逃逸，<code>/proc</code> PID tracking 有 race；cgroup 通常需預先設定且不阻止 sibling signalling；PID namespace 有 PID 1 複雜度。因此作者認為需要單一新抽象。</p>
+<h2 id="3-branch-contexts">3. Branch Contexts</h2>
+<p>branch context <code>b_i</code> 包含 origin files 上的 CoW delta <code>Δ_i</code> 與 process group。一組 <code>N</code> siblings 從同一 frozen origin 建立並平行執行。成功者 commit delta 到 parent，失敗者 abort 丟棄 delta。</p>
+<p>四個核心語義為：origin 在 branches 存活時 read-only；siblings 平行且相互隔離；第一個 commit 者獲勝並 invalid 其餘 branches；branch 可再建立子 branch，且每層只向 immediate parent commit。這種 competitive resolution 有別於由 owner 事後接受某次 speculation 的模型。</p>
+<h2 id="4-branchfs-設計與實作">4. BranchFS 設計與實作</h2>
+<p>BranchFS 是 file-level CoW FUSE filesystem。檔案第一次被修改時，從 base 或最近修改過它的 ancestor 完整複製到 branch delta；之後從 delta 讀寫。未修改檔沿 ancestor chain 回退到 base，刪除則用 tombstone 避免檔案重新出現。</p>
+<p>commit 收集 modified files 與 tombstones，先套用刪除，再將修改複製到 parent delta，最後增加 parent epoch 使 siblings invalid。invalid branch 的 mmap 會 <code>SIGBUS</code>。abort 只刪 delta，不影響 parent 或其他 siblings。</p>
+<p>standalone 使用時可透過 CLI 或 <code>.branchfs_ctl</code> 控制；各 agent 放入只 bind-mount 自己 branch path 的 mount namespace。Python integration library 提供七個 pattern：Speculate、BestOfN、Reflexion、TreeOfThoughts、BeamSearch、Tournament、Cascaded，並以 <code>fork(2)</code> 搭配 timeout/resource limits 管理程序。</p>
+<h2 id="5-branch-syscall">5. <code>branch()</code> Syscall</h2>
+<p>僅靠 BranchFS 無法保證 process 不逃逸。擬議 syscall 有 <code>BR_CREATE</code>、<code>BR_COMMIT</code>、<code>BR_ABORT</code> 三個 operation，以及選擇 filesystem、memory、sibling isolation、close inherited fd 的 flags。它以 <code>FS_IOC_BRANCH_CREATE/COMMIT/ABORT</code> 三個通用 ioctl 與 filesystem 互動，目標是不把特定 BranchFS 邏輯寫入 VFS。</p>
+<p><code>BR_CREATE</code> 原子建立 <code>N</code> 個 children、各自 mount namespace 與 filesystem branch；同批 branches 成為 exclusive group，只能一個成功 commit。<code>BR_COMMIT</code> 先取得 group winner，再 commit filesystem/memory、終止 siblings；<code>BR_ABORT</code> 丟棄 branch 並結束 process。parent 在 branches 存活時 filesystem 與 memory 都唯讀；所有 branches abort 才恢復。</p>
+<p>作者認為 kernel support 的強理由是 userspace 無法原子組合 cgroup、PID/mount namespace、filesystem branch 與 signal barriers，也難以實作 page-table memory branching。first-commit-wins 本身用 userspace atomics 即可，所以只是便利理由。重要的是本節為 API 與 roadmap，尚非可執行實作。</p>
+<h2 id="6-初步評估">6. 初步評估</h2>
+<p>實驗只測 BranchFS。機器為 Ryzen 5 5500U、8 GB DDR4、240 GB NVMe，Linux 6.17；實作約 3,400 行 Rust/FUSE 3。每個結果是 10 trials median，沒有 dispersion。</p>
+<p>base 為 100、1,000、10,000 files 時，branch creation 分別 292、317、310 μs。修改 1 KB、100 KB、1 MB 時，commit 為 317、514、2,100 μs；abort 為 315、365、890 μs。這支持成本主要隨修改量，而非整個 base 複製。</p>
+<p>50 MB 檔、64 KB block 的 sequential throughput：native 為 read 8,800、write 576 MB/s；regular FUSE 為 1,655/631；passthrough 為 7,236/719。regular FUSE read 只達 native 19%，passthrough 為 82%。BranchFS 把 ephemeral branch 的 <code>fsync</code> 當 no-op、延至 commit 才 durability，因此 write 快於 native 不能視為同語義的純效能勝利。</p>
+<h2 id="7-相關工作">7. 相關工作</h2>
+<p>containers、gVisor、Wasm enclave、lightweight context、Dune、Capsicum 聚焦一般 containment；branch context 聚焦多探索路徑之間的 CoW 與 commit/abort。Speculator 曾為 distributed filesystem 做 output gating，但目標是 latency；TxOS 提供扁平、短期 OS ACID transaction，需要較深 kernel modification。本文主張 branch context 可巢狀且可長期存在，filesystem half 先在 userspace 實作。</p>
+<h2 id="8-討論與未來工作">8. 討論與未來工作</h2>
+<p>目前只隔離 filesystem。network、IPC、device I/O 不會回滾，完整解法需要在 gateway 暫存 external actions。BranchFS 只支援 single winner，不能合併多個 branch；未來才考慮 non-overlap union、conflict detection 與 semantic merge。</p>
+<p><code>branch()</code> 預計在 Linux 6.19 prototype，先做 <code>BR_FS</code> 與 <code>BR_ISOLATE</code>，memory branching 更晚。已知 filesystem 限制包括：absolute symlink 可指向 branch 外；hardlink 的關係在 CoW 後消失；delta 不支援 FIFO/socket/device node；空間不足回 <code>ENOSPC</code>。論文也未測 crash consistency、daemon failure 或 commit 中斷。</p>
+<h2 id="9-結論">9. 結論</h2>
+<p>branch context 是一個適合表示「fork 多個 agent 解法、只保留一個」的 OS 抽象。已完成的 BranchFS 顯示 branch metadata 操作可達次毫秒，Python library 也降低 integration 成本；但 process coordination 與完整效果隔離仍在設計階段。現階段最準確的結論是：filesystem branching primitive 已有早期 artifact，完整 OS transaction 尚未被建造或驗證。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

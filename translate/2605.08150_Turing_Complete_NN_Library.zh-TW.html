@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>一個圖靈完備神經網路的 PyTorch 函式庫（A PyTorch Library of Turing-Complete Neural Networks） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jonathan Bates</p><p>日期：2026-05-03</p><p>arXiv：2605.08150</p><p><a href="https://arxiv.org/abs/2605.08150" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="一個圖靈完備神經網路的-pytorch-函式庫">一個圖靈完備神經網路的 PyTorch 函式庫</h1>
+<p>Jonathan Bates（jonrbates.ai）　程式碼：github.com/jonrbates/turing</p>
+<h2 id="摘要">摘要</h2>
+<p>長久以來，理論計算機科學已證明神經網路可模擬圖靈機，但這些結果僅以<strong>數學證明</strong>形式存在，缺乏可執行的實作。本文提出一個開源 <strong>PyTorch</strong> 套件，能把圖靈機規格<strong>直接編譯成神經網路權重</strong>（無需訓練），實作兩條經典理論結果，並自底向上完整說明 ReLU 網路如何實現布林電路。</p>
+<h2 id="1-引言與動機">1. 引言與動機</h2>
+<p>「神經網路圖靈完備」是計算理論的重要結論，但學界缺少把抽象證明落地成<strong>可跑程式</strong>的橋樑。本套件讓研究者能拿到一個<strong>天生正確</strong>（權重完全指定、不靠訓練）的網路，進而檢視其結構、施加擾動、研究在梯度微調下的行為。</p>
+<h2 id="2-編譯堆疊從邏輯閘到圖靈機">2. 編譯堆疊：從邏輯閘到圖靈機</h2>
+<p>計算被分層建構：</p>
+<pre><code class="language-mermaid">flowchart TB
+  G[&quot;邏輯閘&lt;br/&gt;ReLU 算 AND/OR/NOT/XOR&quot;] --&gt; T[&quot;轉移函式 δ&lt;br/&gt;兩層 DNF 電路（有限查表）&quot;]
+  T --&gt; A[&quot;二進位算術&lt;br/&gt;漣波進位加法器（由閘組成）&quot;]
+  A --&gt; P[&quot;位置查找&lt;br/&gt;硬注意力做二進位 key-query 比對&quot;]
+  P --&gt; S[&quot;符號組裝&lt;br/&gt;前饋層依優先規則選符號&quot;]
+</code></pre>
+<p>每一層都以 ReLU／硬注意力精確實現對應的離散運算，組合起來即可模擬完整的圖靈機計算步。</p>
+<h2 id="3-兩種建構">3. 兩種建構</h2>
+<h3 id="31-wcm21wei-chen--ma-2021-transformer-建構">3.1 WCM21（Wei, Chen &amp; Ma, 2021）—— Transformer 建構</h3>
+<ul>
+<li><strong>架構</strong>：encoder-decoder Transformer。encoder 儲存初始紙帶；decoder 自迴歸地追蹤計算歷史，其狀態向量含機器狀態、當前符號、步數／讀寫頭位置與暫存空間。</li>
+<li><strong>每一模擬步</strong>：轉移（DNF 前饋）→ 二進位加法（漣波進位加法器）→ 已訪位置偵測（self-attention）→ 對步數做二分搜尋（⌈log₂T⌉ 層）→ 符號取回 → 符號組裝。</li>
+<li><strong>資源複雜度</strong>：精度 <strong>O(1)</strong>（定寬二進位）、維度 <strong>O(|Q||Γ|+log t)</strong>、上下文窗 <strong>n+t</strong>，且<strong>不需 chain-of-thought</strong> 額外開銷。</li>
+</ul>
+<h3 id="32-ss95siegelmann--sontag-1995-遞迴堆疊機">3.2 SS95（Siegelmann &amp; Sontag, 1995）—— 遞迴堆疊機</h3>
+<ul>
+<li>把圖靈機重述為<strong>堆疊機</strong>，用 <strong>Cantor 集編碼</strong>把每個堆疊壓成單一有理數：ℰ(a₁…aₖ)=Σ (b−1+4ρ(aᵢ−1))/bⁱ。</li>
+<li>堆疊運算（push/pop/peek）為線性或分段線性函式。</li>
+<li>提供兩版：<strong>4 層顯式管線</strong>（b=4）與 <strong>1 層即時版</strong>（b=40）。</li>
+</ul>
+<h2 id="4-範例與結果">4. 範例與結果</h2>
+<p><strong>平衡括號</strong>（6 狀態、5 符號、T=100）：</p>
+<ul>
+<li>嵌入維度 w=59；轉移模組 59→89→59；加法器前處理 59→66。</li>
+<li>含 <strong>7 個全加器模組、9 層 self-attention、1 層 cross-attention</strong>；二分搜尋需 ⌈log₂100⌉=<strong>7 層</strong>。</li>
+</ul>
+<p><strong>SS95 穩定性</strong>：1 層、b=40、float64 下約可靠執行 <strong>8 次 pop</strong>（每次 pop 把捨入誤差放大約 b 倍），足以處理長度 ≤8 的平衡括號。</p>
+<h2 id="5-局限">5. 局限</h2>
+<ul>
+<li><strong>數值精度</strong>：SS95 的 Cantor 編碼把資訊塞進小數位，誤差逐步放大，限制可靠步數。</li>
+<li><strong>可解釋性不遷移</strong>：手工建構的可解釋結構<strong>無法遷移到由梯度下降訓練得到的網路</strong>——後者神經元可能被置換、重新縮放。</li>
+<li>開放問題：對擾動的容忍度、在特定輸入分布上微調是否會產生「捷徑」。</li>
+</ul>
+<h2 id="6-貢獻">6. 貢獻</h2>
+<ol>
+<li><strong>自足的說明</strong>：系統性展示 ReLU 網路如何從邏輯閘、經 DNF、到加法器實現布林電路。</li>
+<li>把兩條理論結果做成<strong>可跑、權重完全指定的 PyTorch 模組</strong>。</li>
+<li>提供開源基礎，<strong>適合研究建構解在擾動與梯度微調下的穩定性</strong>。</li>
+</ol>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2605.08150_Turing_Complete_NN_Library.%E6%91%98%E8%A6%81.html"><code>../summarize/2605.08150_Turing_Complete_NN_Library.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

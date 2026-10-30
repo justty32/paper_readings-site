@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.01658_CORAL.zh-TW.html">回 2604.01658_CORAL.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>LLM-based 演化搜尋是開放式發現（open-ended discovery）的有前景途徑——進展需要持續的搜尋與知識累積。但現有方法仍大量依賴<strong>固定啟發式</strong>與<strong>硬編碼的探索規則</strong>，限制 LLM agent 的自主性。我們提出 CORAL，第一個針對開放式問題的<strong>自主多 agent 演化</strong>框架。CORAL 以 long-running agents 取代剛性控制：agent 透過<strong>共享持久記憶</strong>探索、反思與協作，輔以<strong>非同步多 agent 執行</strong>與<strong>心跳式介入</strong>機制，並提供隔離 workspace、evaluator 分離、資源管理、agent session 與健康管理等實用安全措施。在數學、演算法與系統最佳化任務上評估，CORAL 在 10 個任務中設定新 SOTA，改善率比固定演化搜尋 baseline 高 3–10×，卻使用遠少得多的評估次數。在 Anthropic 的 kernel engineering 任務上，四個協同演化的 agent 把最佳已知分數從 1,363 推進至 1,103 cycles。機制分析進一步顯示這些增益來自知識重用與多 agent 探索與溝通。這些結果顯示更大的 agent 自主性與多 agent 演化能顯著改善開放式發現。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>許多重要科學問題沒有標準答案：最佳物流啟發式是什麼？最有效率的 GPU kernel 要怎麼寫？目標明確但最優解未知時，強大解法必須透過迭代提案、測試、修正與長期進展來發現。</p>
+<p>現有 LLM-powered 系統（FunSearch、AlphaEvolve 等）把 LLM 嵌入 <strong>evaluator 引導的演化搜尋迴圈</strong>：模型以先前高分解為條件提出候選程式，外部 evaluator 執行並評分，預定的演化演算法管理父代選擇與族群更新。這類方法在數學發現、演算法設計、系統最佳化上很有效，但<strong>關鍵搜尋決策獨立於 agent</strong>——該檢索哪些父代解、何時跑中介測試、什麼知識該外化重用，全由固定啟發式決定。</p>
+<p>這自然引出兩個問題：</p>
+<ol>
+<li><strong>把演化演算法更大比例委託給自主 agent，效能是否更強？</strong></li>
+<li><strong>多個自主 agent 能否透過水平並行——平行探索、交換發現、在彼此進展上疊加——達成更有效率的規模化？</strong></li>
+</ol>
+<p>圖 1 對比三種範式：固定演化搜尋（一切由外部規則驅動）→ 自主單 agent 演化（agent 控制更多決策）→ 自主多 agent 演化（多 agent 非同步、透過共享記憶協調）。</p>
+<p>CORAL 實現了後者。核心機制：(1) <strong>共享持久記憶</strong>（attempts/notes/skills 三層），agent 把它當成知識庫檢索、貢獻、蒸餾；(2) <strong>非同步多 agent 組織</strong>，無預定義角色或通訊結構，間接透過共享記憶協調；(3) <strong>心跳式介入</strong>，週期性提示 agent 反思、鞏固、或 pivot 新方向。實證上，11 任務中 8 個新 SOTA，改善率 2.5x 以上，評估次數 10x 少於 baseline。Kernel Engineering 壓力測試上四 agent 從 1,363 → 1,103 cycles。</p>
+<p>本文三貢獻：(1) 形式化「自主演化」為開放式發現的獨立範式；(2) CORAL 框架實現此範式；(3) 跨數學、演算法、系統優化的實證驗證。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>LLM 驅動演化搜尋</strong>：FunSearch 開創此範式，AlphaEvolve 用 MAP-Elites 擴展到完整程式庫。後續系統精煉搜尋編排（adaptive sampling、island-based、Pareto-based），AdaEvolve 與 EvoX 讓搜尋策略本身具適應性。另有一支做 test-time fine-tuning 或從 solver feedback 建立經驗庫。全部遵循<strong>固定管線</strong>：預設啟發式選父代→構造 prompt→LLM 生成突變。LLM 對探索什麼無 agency。CORAL 移除這層腳手架。</li>
+<li><strong>自主 LLM Agent</strong>：coding agent（SWE-agent、OpenHands）與 AI Scientist 展示 agent 自主性，但目標是一次性任務完成，非持續目標驅動最佳化。CORAL 把這自主性帶進演化迴圈。</li>
+<li><strong>多 Agent 協作</strong>：現有多 agent 系統依賴角色指派與結構化通訊（MetaGPT、ChatDev、AutoGen）。演化系統中的平行僅限多個無狀態 worker 並行。CORAL 引入長期存在的有狀態 agent，非同步透過共享知識溝通，湧現技術擴散、自發共識與交叉引用。</li>
+</ul>
+<h2 id="3-coral-框架">3. CORAL 框架</h2>
+<h3 id="31-開放式發現的問題形式化">3.1 開放式發現的問題形式化</h3>
+<p>任務實例由描述 x 與 evaluator E 指定，E(x, y) → (s, f)，s 為分數、f 為輔助回饋（sub-score 分解或文字 critique）。M_t 為搜尋步 t 的共享持久記憶。每步包含四階段：RETRIEVE（從 M_t 建構工作 context M̂_t）→ PROPOSE（生成候選 y_{t+1}）→ EVALUATE（取得分數與回饋）→ UPDATE（寫入 M_{t+1}）。</p>
+<h3 id="32-從固定搜尋到自主多-agent-演化">3.2 從固定搜尋到自主多 Agent 演化</h3>
+<p>固定演化搜尋把 RETRIEVE 與 UPDATE 交給外部規則，LLM 只在 PROPOSE 階段單次生成。agent 不決定該檢索什麼證據、何時驗證中介結果、如何回應失敗、什麼知識該保存——而這些對開放式問題常是問題本身的一部分。</p>
+<p>自主單 agent 演化讓單一 agent 控制更多搜尋過程：決定檢索什麼、何時本地測試、何時叫 evaluator、什麼寫回持久記憶。自主多 agent 演化進一步讓多個 agent 非同步執行、透過共享持久記憶協調，不以預定義角色或通訊結構為前提，增加探索多樣性。</p>
+<h3 id="33-核心機制">3.3 核心機制</h3>
+<p><strong>共享持久記憶即檔案系統</strong>：M 結構化為檔案系統，透過 symbolic link 與 agent workspace 同步。agent 透過 CORAL CLI 工具與 Bash 存取，甚至可協助組織子目錄。三層根目錄：</p>
+<ul>
+<li><strong>attempts/</strong>：記錄歷史評估與解，agent 瀏覽高分方案並取回比較。</li>
+<li><strong>notes/</strong>：所有 agent 的觀察、學習、反思（markdown 檔）。</li>
+<li><strong>skills/</strong>：可重用程序、工具、腳本與實作模式（<code>SKILL.md</code> + 可執行 artifact）。agent 受 skill-creator skill 引導創建新技能。</li>
+</ul>
+<p><strong>多 Agent 組織</strong>：N 個 agent 各自維護本地 context C_t^(i)、在隔離 workspace 執行，共享同一 evaluator 與 M。agent 間協調主要透過 M 間接進行（非直接通訊）：一個 agent 寫入 M 的 artifact 可能被另一個 agent 檢索為其 M̂_t 的一部分。增加探索多樣性。</p>
+<p><strong>心跳式介入</strong>：三種週期性 prompt 如同 Reminder App：</p>
+<ol>
+<li><strong>per-iteration reflection</strong>：每次迭代提示記錄觀察。</li>
+<li><strong>periodic consolidation</strong>：固定嘗試次數後觸發，回顧進度、整理並精煉 notes、蒸餾可重用程序為 skills。</li>
+<li><strong>stagnation-triggered redirection</strong>：連續無改善時觸發，重新評估方向、決定繼續/修正/pivot。</li>
+</ol>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

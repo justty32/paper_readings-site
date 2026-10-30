@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_為什麼把這_21_篇放在一起讀 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../evolutionary_computation_LLM.html">回 evolutionary_computation_LLM 目錄</a>　<a href="02_Quality-Diversity_%E8%88%87%E9%96%8B%E6%94%BE%E5%BC%8F%E9%80%B2%E5%8C%96%E5%B0%88%E7%AB%A0.html">下一節 →</a></p>
+</blockquote>
+<h2 id="0-為什麼把這-26-篇放在一起讀">0. 為什麼把這 26 篇放在一起讀</h2>
+<p>這批論文表面分散在三個社群——演化強化學習（D 類）、遺傳編程（G 類）、LLM 符號迴歸（C 類）——但它們其實共享<strong>同一個母結構</strong>：</p>
+<blockquote>
+<p><strong>一個「外層搜尋（演化）／內層評估（跑一遍）」的雙層迴圈，差別只在「演化的物件是什麼」與「變異算子由誰來提」。</strong></p>
+</blockquote>
+<p>把這個母結構拆成兩條正交的演進軸，幾乎能定位本批每一篇：</p>
+<ul>
+<li><strong>軸一｜演化的物件（被發現的 X）</strong>：從「解」本身（GP 演化表達式）→「演算法的某個函數」（損失、更新規則、競爭函數、reward）→「演算法的架構」（actor-critic 網路）→「演算法本身 / agent 自己的原始碼」。越往上，被發現的東西越接近「系統的設計」，威力越大但搜尋空間越離散。</li>
+<li><strong>軸二｜變異算子是誰</strong>：從<strong>隨機/結構化算子</strong>（傳統 GP 的子樹交換、CMA-ES 的高斯擾動）→<strong>神經參數化算子</strong>（用 Transformer/ES 學競爭函數）→<strong>LLM 當算子</strong>（讀程式碼、提連貫編輯）→<strong>內嵌式自參照算子</strong>（網路自己生成自己的變異）。</li>
+</ul>
+<pre><code class="language-mermaid">graph LR
+    subgraph 軸一[&quot;軸一：演化什麼（被發現的 X）&quot;]
+        X1[&quot;解本身&lt;br/&gt;(GP 表達式)&quot;] --&gt; X2[&quot;演算法的函數&lt;br/&gt;(loss/update/reward/competition)&quot;] --&gt; X3[&quot;演算法架構&lt;br/&gt;(actor-critic 網路)&quot;] --&gt; X4[&quot;演算法本身 / agent 原始碼&quot;]
+    end
+    subgraph 軸二[&quot;軸二：變異算子是誰&quot;]
+        O1[&quot;隨機/結構化算子&lt;br/&gt;(子樹交換·高斯擾動)&quot;] --&gt; O2[&quot;神經參數化算子&lt;br/&gt;(學出來的 competition)&quot;] --&gt; O3[&quot;LLM 當算子&lt;br/&gt;(讀碼·提連貫編輯)&quot;] --&gt; O4[&quot;內嵌自參照算子&lt;br/&gt;(網路生成自身變異)&quot;]
+    end
+</code></pre>
+<p>本檔結構：§1 講軸二的時代轉折（LLM 當演化算子的興起）；§2 講 Quality-Diversity 與開放式進化這條獨立但深刻的支線；§3 把軸一鋪成「演化發現 X」光譜；§4 講演化骨架與符號迴歸／程式合成的三個交叉點；§5 收斂出五個共通設計議題；§6 研究空白與方向。</p>
+<hr />
+<h2 id="1-llm-當演化算子的興起">1. 「LLM 當演化算子」的興起</h2>
+<h3 id="11-轉折點把隨機算子換成會讀程式碼提連貫編輯的-llm">1.1 轉折點：把隨機算子換成「會讀程式碼、提連貫編輯」的 LLM</h3>
+<p>傳統演化計算的變異/交叉是<strong>盲目的</strong>：子樹隨機交換、權重加高斯噪聲。這在「解空間平滑」時有效，但在<strong>離散程式結構</strong>上幾乎只產出無效或語意崩壞的後代——<a class="paper-reference" href="../../summarize/2603.28416_Evolutionary_Discovery_RL_Algos_LLM.%E6%91%98%E8%A6%81.html">2603.28416</a> 點得最白：RL 更新規則是緊耦合訓練程序，「盲目 mutation/crossover 幾乎只產出無效變體」。</p>
+<p>FunSearch / AlphaEvolve / Eureka / EoH 一脈帶來的範式轉折，就是<strong>把變異算子換成 LLM</strong>：LLM 讀親代程式碼 + 評估反饋，提出<strong>連貫、可執行、帶語意意圖</strong>的編輯。本批論文把這個算子推到五個不同層面：</p>
+<pre><code class="language-mermaid">graph TD
+    LLMOP[&quot;LLM 當演化算子&lt;br/&gt;(讀親代碼 + 反饋 → 提連貫 mutation/crossover)&quot;]
+
+    LLMOP --&gt; SR[&quot;符號迴歸 SR&quot;]
+    LLMOP --&gt; PROG[&quot;程式 / 演算法&quot;]
+    LLMOP --&gt; RLALG[&quot;RL 演算法元件&quot;]
+    LLMOP --&gt; ARCH[&quot;神經架構&quot;]
+    LLMOP --&gt; AGENT[&quot;agent 自身 / 評估者&quot;]
+
+    SR --&gt; SR1[&quot;FunctionEvolve [[2606.07704]]&lt;br/&gt;讓 LLM 看見 AST 結構&quot;]
+    SR --&gt; SR2[&quot;Deliberate Evolution [[2606.04360]]&lt;br/&gt;提議/控制解耦 + 工具診斷&quot;]
+    SR --&gt; SR3[&quot;SMCEvolve [[2605.15308]]&lt;br/&gt;四種 LLM 突變核 + MH 接受&quot;]
+
+    PROG --&gt; P1[&quot;MoH [[2505.20881]]&lt;br/&gt;LLM 設計『優化器』本身&quot;]
+    PROG --&gt; P2[&quot;EvoLattice [[2512.13857]]&lt;br/&gt;DAG 內含族群 + 替代層級統計&quot;]
+
+    RLALG --&gt; R1[&quot;update rule [[2603.28416]]&lt;br/&gt;禁 actor-critic/TD 逼出新規則&quot;]
+    RLALG --&gt; R2[&quot;reward (MetaBBO) [[2601.21847]]&lt;br/&gt;多任務 niche + 知識遷移&quot;]
+
+    ARCH --&gt; A1[&quot;EVOM [[2606.26327]]&lt;br/&gt;LLM 當『架構設計師』內層 PPO 評分&quot;]
+
+    AGENT --&gt; AG1[&quot;Darwin-Gödel Machine [[2505.22954]]&lt;br/&gt;改自己的工具/prompt/workflow&quot;]
+    AGENT --&gt; AG2[&quot;Red Queen GM [[2606.26294]]&lt;br/&gt;連『評估者』也一起演化&quot;]
+</code></pre>
+<p><a class="paper-reference" href="../../summarize/2609.05093_DiscoveryLoop.%E6%91%98%E8%A6%81.html">2609.05093</a> <strong>Discovery Loop</strong> 替這張圖補上一個刻意縮小的正證：不需複雜族群，只靠完整 solver 重寫、外部評分、與 solver 分離的 verifier、近期嘗試紀錄與 champion 更新，也能形成可驗證的 LLM 程式演化；逐目標保存最佳 artifact，又補住單一總分可能抹去 niche improvement 的缺口。它佐證「LLM 提案、外部執行、客觀篩選」確實是最大公因式，卻也劃出邊界：單一 circle-packing 領域的成功尚不能證明框架可泛化，而單一 champion 也沒有取代 §2 的族群多樣性。</p>
+<p>這篇還把 §5 的計算成本問題往前推一步：停不停也應由邊際可驗證改善決定。作者回測的停滯規則可在第九輪停止，成本由 27.72 美元降至 13.95 美元，而最終總值只少 0.01%（作者自報）<a class="paper-reference" href="../../summarize/2609.05093_DiscoveryLoop.%E6%91%98%E8%A6%81.html">2609.05093</a>。因此，LLM-as-operator 的完整配方不只要有生成與驗證，還要有一個能拒絕繼續花費的停滾條件。</p>
+<h3 id="12-llm-算子的共通配方從本批抽出的最大公因式">1.2 LLM 算子的共通配方（從本批抽出的「最大公因式」）</h3>
+<p>幾乎每篇 LLM-as-operator 論文都重複以下骨架，差異只在填空：</p>
+<table>
+<thead>
+<tr>
+<th>配方元件</th>
+<th>典型實作</th>
+<th>出處範例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>個體表示</strong></td>
+<td>⟨自然語言 Thought / 描述， 程式碼 Code, 效用 Float⟩ 三元組</td>
+<td>EoH 系 → <a class="paper-reference" href="../../summarize/2601.21847_READY_Reward_Discovery_MetaBBO.%E6%91%98%E8%A6%81.html">2601.21847</a> READY、<a class="paper-reference" href="../../summarize/2505.20881_MoH_Meta_Optimization_Heuristics.%E6%91%98%E8%A6%81.html">2505.20881</a> MoH</td>
+</tr>
+<tr>
+<td><strong>變異算子</strong></td>
+<td>mutation（局部編輯一個）+ crossover（融合兩個）；常再分「局部編輯 vs 全重寫」「帶/不帶同儕啟發」</td>
+<td><a class="paper-reference" href="../../summarize/2605.15308_SMCEvolve_SMC_Program_Evolution.%E6%91%98%E8%A6%81.html">2605.15308</a> 四核、<a class="paper-reference" href="../../summarize/2606.26327_EVOM_MetaEvolution_ActorCritic.%E6%91%98%E8%A6%81.html">2606.26327</a> EVOM、<a class="paper-reference" href="../../summarize/2512.13857_EvoLattice.%E6%91%98%E8%A6%81.html">2512.13857</a></td>
+</tr>
+<tr>
+<td><strong>族群結構</strong></td>
+<td>島嶼（island）/ niche / DAG 內含 / archive；維持多樣性</td>
+<td><a class="paper-reference" href="../../summarize/2603.28416_Evolutionary_Discovery_RL_Algos_LLM.%E6%91%98%E8%A6%81.html">2603.28416</a> 島嶼、<a class="paper-reference" href="../../summarize/2601.21847_READY_Reward_Discovery_MetaBBO.%E6%91%98%E8%A6%81.html">2601.21847</a> 多任務 niche</td>
+</tr>
+<tr>
+<td><strong>驗證守衛</strong></td>
+<td>編譯失敗/非有限輸出/崩潰 → 重罰 fitness（EVOM 用 −1000）；確定性自我修復（EvoLattice 保證無環）</td>
+<td><a class="paper-reference" href="../../summarize/2606.26327_EVOM_MetaEvolution_ActorCritic.%E6%91%98%E8%A6%81.html">2606.26327</a>、<a class="paper-reference" href="../../summarize/2512.13857_EvoLattice.%E6%91%98%E8%A6%81.html">2512.13857</a></td>
+</tr>
+<tr>
+<td><strong>入選門檻</strong></td>
+<td>rejection sampling：新個體須勝過人類 baseline 才入種群</td>
+<td><a class="paper-reference" href="../../summarize/2601.21847_READY_Reward_Discovery_MetaBBO.%E6%91%98%E8%A6%81.html">2601.21847</a> READY</td>
+</tr>
+<tr>
+<td><strong>反思機制</strong></td>
+<td>global reflection（回溯哪些改動歷史上帶來增益）、debug reflection（找最差實例診斷）</td>
+<td><a class="paper-reference" href="../../summarize/2601.21847_READY_Reward_Discovery_MetaBBO.%E6%91%98%E8%A6%81.html">2601.21847</a>、<a class="paper-reference" href="../../summarize/2606.04360_Deliberate_Evolution.%E6%91%98%E8%A6%81.html">2606.04360</a></td>
+</tr>
+</tbody>
+</table>
+<h3 id="13-抽象躍升從設計解到設計設計者">1.3 抽象躍升：從「設計解」到「設計設計者」</h3>
+<p>本批最深刻的觀念是<strong>遞迴抽象</strong>——LLM 不只設計啟發式，而是設計「<strong>生成啟發式的優化器</strong>」：</p>
+<ul>
+<li><a class="paper-reference" href="../../summarize/2505.20881_MoH_Meta_Optimization_Heuristics.%E6%91%98%E8%A6%81.html">2505.20881</a> <strong>MoH</strong> 把 LLM-EC 從「設計啟發式」提升到「設計優化器本身」：一個能<strong>自我（遞迴）調用</strong>的 meta-optimizer，自動生成多樣的 heuristic-optimizer，擺脫人工預設的固定 EC 流程（如「先交叉再變異」）。優化器簽名 <code>optimize_algorithm(population, utility, language_model, ...)</code> 支援把自身實作當輸入。</li>
+<li><a class="paper-reference" href="../../summarize/2606.26327_EVOM_MetaEvolution_ActorCritic.%E6%91%98%E8%A6%81.html">2606.26327</a> <strong>EVOM</strong> 把 LLM 定位成<strong>純架構設計師</strong>，與策略執行、環境控制完全解耦——「agentic」的有限意義＝維持狀態（current elite + 歷史 log）、採取設計動作（生成架構程式）、觀察反饋（內層 PPO 回報）。</li>
+</ul>
+<p>這條「設計設計者」的線，把演化計算從「一個固定流程」變成「<strong>流程本身也是被演化的對象</strong>」——直接通往 §2 的開放式進化與 §3 的「演化發現演算法本身」。</p>
+<h3 id="14-llm-算子帶來的新痛點">1.4 LLM 算子帶來的新痛點</h3>
+<p>LLM 不是免費午餐。本批反覆撞到三個 LLM 特有問題：</p>
+<ol>
+<li><strong>對 backbone 敏感</strong>：<a class="paper-reference" href="../../summarize/2603.28416_Evolutionary_Discovery_RL_Algos_LLM.%E6%91%98%E8%A6%81.html">2603.28416</a> 中 GPT-5.2 末代 fitness 0.65–0.69，Claude 4.5 Opus 只有 0.37–0.47（未產出有競爭力候選而被排除）；<a class="paper-reference" href="../../summarize/2606.26327_EVOM_MetaEvolution_ActorCritic.%E6%91%98%E8%A6%81.html">2606.26327</a> 也要比較 DeepSeek/Claude/Qwen。<strong>結論可重現性受 LLM 版本綁定</strong>。</li>
+<li><strong>「結構盲」</strong>：純把親代式 + 一個純量 MSE 丟給 LLM，要它一次推斷「怎麼改/為何錯/過去學到什麼」——<a class="paper-reference" href="../../summarize/2606.04360_Deliberate_Evolution.%E6%91%98%E8%A6%81.html">2606.04360</a> 指這是 LLM-SR 樣本低效的病根，<a class="paper-reference" href="../../summarize/2606.07704_FunctionEvolve.%E6%91%98%E8%A6%81.html">2606.07704</a> 補上 AST 可見性。詳見 §4.3。</li>
+<li><strong>守規則負擔</strong>：放任 LLM 自由生成易破壞結構/產生環。<a class="paper-reference" href="../../summarize/2512.13857_EvoLattice.%E6%91%98%E8%A6%81.html">2512.13857</a> 的解法是把結構正確性<strong>移離 LLM</strong>（確定性自我修復保證無環與依賴一致），讓 LLM 只管語意。</li>
+</ol>
+<hr />
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Helix：用於開放式科學問題求解的演化式強化學習》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Chang Su, Zhongkai Hao, Zhizhou Zhang, Zeyu Xia, Youjia Wu, Hang Su, Jun Zhu（Bosch China + 清華大學 Tsinghua-Bosch ML 聯合中心）</p><p>日期：2026-03，開放式問題求解／演化×RL／LLM</p><p>arXiv：2603.07642</p><p><a href="https://arxiv.org/abs/2603.07642" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="helix用於開放式科學問題求解的演化式強化學習重點摘要">《Helix：用於開放式科學問題求解的演化式強化學習》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>複雜科學問題具有 <strong>domain-specific（領域特定）、open-ended（開放式，需探索龐大彈性解空間）、unbounded（無界，無已知全域最優）</strong> 三特性，純後訓練 RL（RLVR）會 entropy collapse 難跳出基模能力、工作流派又靠死板 pipeline 不能複用過往發現；<strong>HELIX</strong> 把兩者融合——LLM 當「會突變既有解（程式碼）的策略 π_θ」、用 <strong>GRPO 線上更新策略提升解品質</strong>，同時把所有產出的解組成 population、用 <strong>NSGA-II 多目標選擇在「reward × diversity（語意嵌入 KNN 算多樣性）」的 Pareto 前緣保留高品質又多樣的候選</strong>，再把 population 中最佳解（沿 lineage tree 譜系的祖先解＋其 reward/feedback）塞進 prompt 做 in-context learning「站在巨人肩上」迭代。在 20 個跨 5 類（ML/物理模擬/圓堆積/函數最小化/符號回歸）開放式任務上，<strong>僅用 14B 模型在圓堆積（circle packing）達到 SOTA 半徑和 2.63598308</strong>，ML benchmark 上<strong>平均 F1 超過「配精心 pipeline 的 GPT-4o」5.95 分</strong>（Adult＋Bank Marketing），17/20 任務最佳。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>用 LLM 解複雜科學問題（符號回歸、分子生成、難最佳化）正熱，但這些問題天生開放式且無界。現有兩派都缺三項關鍵能力（從經驗學習／平衡品質與多樣性／站在巨人肩上）：</p>
+<ol>
+<li><strong>後訓練派（SFT、RLVR；AlphaCode、DeepSeek-R1）</strong>：domain 微調效果強，但<strong>entropy collapse、罕能超越基模能力</strong>，稀疏獎勵下更難發現「根本性新解」。</li>
+<li><strong>工作流派（LLM×GA enzyme discovery、LLaMEA、AlphaEvolve/OpenEvolve）</strong>：把 LLM 嵌入預定 pipeline，但<strong>高度依賴工作流與 prompt 設計、靠靜態預訓練知識、難複用過往發現指導迭代搜尋</strong>。
+兩派都難在「需高效探索＋持續精煉」的開放式科學域泛化。</li>
+</ol>
+<h2 id="核心方法三模組協同">核心方法（三模組協同）</h2>
+<p>把任務視為「解空間＝程式碼」的最佳化 max_s R(s)。LLM 策略 π_θ 對候選解 s_t 輸出一個「編輯/修改」動作 a_t → 新解 s_{t+1}=T(s_t,a)。</p>
+<ul>
+<li><strong>(1) RL 策略更新（從經驗學習）</strong>：用 <strong>GRPO</strong>（群組內標準化 reward 算 advantage、KL 懲罰）更新 π_θ，讓模型學會把當前解推向更高 reward；GRPO 的多樣本生成天然豐富演化資料集。</li>
+<li><strong>(2) 演化機制（平衡品質與多樣性）</strong>：所有歷史解 ∪𝒟_s 經 <strong>NSGA-II</strong>（非支配排序 + crowding distance）在「reward R(s) 與 diversity Div(s)」二維目標的 Pareto 前緣選 top → 構成下一步候選池 𝒫_t。<strong>多樣性 Div(s)＝用預訓練語言嵌入模型把（正規化後的）程式碼編碼，取 KNN 鄰居的平均餘弦相似度的 1−補數</strong>。</li>
+<li><strong>(3) In-context「站在巨人肩上」</strong>：prompt q 由「問題描述 + 當前解及其 reward/feedback + lineage tree 上 n 個祖先解及其 reward/feedback」構成，讓 LLM 沿譜系記憶迭代精煉、跨挑戰性解空間有效探索。</li>
+<li>模型：DeepSeek-R1-Distill-Qwen，主結果用 14B（物理模擬用 32B）。</li>
+</ul>
+<h2 id="結果20-任務5-類">結果（20 任務、5 類）</h2>
+<ul>
+<li><strong>圓堆積 circle packing</strong>：僅 14B 模型達 <strong>SOTA，半徑和 2.63598308</strong>。</li>
+<li><strong>ML 任務</strong>：Adult Income 82.07（勝 LightGBM 80.36、GPT-4o+pipeline 76.91）、Bank Marketing 80.65、Boston Housing RMSE 降到 1.747（baseline 2.937～3.258）、Transparent Conductors 0.049（最佳）；<strong>平均 F1 超 GPT-4o（配精心 pipeline）5.95 分</strong>。</li>
+<li><strong>整體 17/20 任務最佳</strong>（對比 task-specific baselines、Direct Prompt 測試時擴展上界、OpenEvolve）。</li>
+<li>消融確認三模組（RL、NSGA-II 多樣性選擇、in-context 譜系）各自關鍵互補。論文另附 GRPO 與「演化×HELIX」的漂移-擴散/選擇理論分析。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>任務雖跨 5 類但每類規模有限、評測指標異質（圓堆積等無已證全域最優，只能報「所有嘗試中最佳值」）；缺跨多種隨機種子的統計顯著性大表。</li>
+<li>依賴外部「可驗證 reward / evaluator」與預訓練嵌入模型算多樣性 → 對 evaluator 設計與嵌入品質敏感。</li>
+<li>物理模擬需 32B、RL 微調 LLM 成本高；「站在巨人肩上」的 lineage prompt 會推高 context 長度。</li>
+<li>仍是「LLM 演化既有程式碼解」的範式，是否能發現真正超出基模先驗的科學新知，需更嚴格對照。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 D 類<strong>把「開放式問題求解」做成具體系統</strong>的一篇——與理論派 <a class="paper-reference" href="2606.08369_OpenEnded_Learning_BitEquivalent.%E6%91%98%E8%A6%81.html">2606.08369</a>（開放式學習的 bit-equivalent 定義）正好對照：一個定義「何謂開放式」、一個示範「如何在開放式科學任務上有效探索」。其「RL 內層提品質 × EA 外層保多樣 × in-context 站巨人肩」三件套，是 AlphaEvolve/OpenEvolve 路線的「可訓練策略」升級版。</li>
+<li>最值得記的配方：<strong>用 NSGA-II 在「reward × 語意嵌入多樣性」Pareto 前緣選種、以對抗 GRPO 的 entropy collapse</strong>——把 quality-diversity（QD）思想（呼應 <a class="paper-reference" href="2502.02190_LQD_MetaBBO_QD.%E6%91%98%E8%A6%81.html">2502.02190</a> LQD、<a class="paper-reference" href="2502.00593_DNS_QD_Local_Competition.%E6%91%98%E8%A6%81.html">2502.00593</a> DNS-QD 的 MAP-Elites 系）接到 LLM 程式碼演化上；以及「lineage tree 祖先解 + feedback 進 prompt」當作跨迭代記憶。</li>
+<li>與課程/自動課程相鄰：HELIX 不排「訓練什麼任務」，而是讓 population 自我生成「愈來愈好的起點」，是一種 data-side 的開放式精煉。</li>
+<li>定位：清華-Bosch 的系統論文（cs.LG，2026-03），適合做 LLM-for-science、evolutionary search × RL、QD、AlphaEvolve 類框架、自動科學發現的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2603.07642_Helix_Evolutionary_RL_OpenEnded.zh-TW.html"><code>../translate/2603.07642_Helix_Evolutionary_RL_OpenEnded.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

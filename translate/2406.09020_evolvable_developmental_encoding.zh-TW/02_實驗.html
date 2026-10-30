@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2406.09020_evolvable_developmental_encoding.zh-TW.html">回 2406.09020_evolvable_developmental_encoding.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="實驗">實驗</h2>
+<p>以簡單<strong>迷宮生成</strong>任務說明。模型須在固定大小網格放可通行或牆瓦片生成迷宮。<strong>品質＝迷宮連通分量數</strong>（1 最佳）；<strong>描述子＝所有有效瓦片對間的最大最短路徑長 + 對稱性（水平垂直平均）</strong>。網格大小決定路徑長範圍；對稱性 0 到 128（128＝完美水平垂直對稱）。</p>
+<p>發展系統為 NCA 的擴展：用各細胞狀態當 attention query。<strong>DNA 字串長 8、字母表大小 8（共 65,536 種組合）；NCA 細胞狀態 9 維</strong>。更新函數（公式 4-5）用 sign 分量（可朝潛空間任意方向移動）× gating（必要時停止狀態修改），並對隱狀態做歐式範數正規化（發現能提升性能）——是 Springer &amp; Kenyon 函數（僅 sigmoid、狀態只增）的簡單擴展。</p>
+<p>內迴圈 QD 算法用標準 <strong>MAP-Elites</strong>（archive 上限 500、批量 100、最多 10 迭代），用點突變（每字元有機率以均勻機率換成其他字元）+ 均勻交叉（各產半批）發新批。外迴圈用 <strong>CMA-ES</strong>（群體 100，其餘用 Evosax 預設）。全部用 <strong>Jax</strong>（Equinox、Evosax、Qdax）實作、程式碼開源。</p>
+<h2 id="結果">結果</h2>
+<h3 id="可演化性">可演化性</h3>
+<p>此處定義為「模型產出與既有高品質解不同的高品質解的能力」——每迭代加入 archive 的解應與既有同樣高品質，且模型應在內迴圈早期就學會（須易搜尋）。圖 2 顯示<strong>系統隨訓練確實更可演化</strong>：每次內迴圈起點越來越高、品質與覆蓋的變化率也越來越快。模型可用兩策略（或組合）解題：先求最大覆蓋再改進品質；或先求高品質再突變達覆蓋。<strong>後者更符合可演化性</strong>，圖 2 的 quality ratio（archive 平均品質 / 最大可能值）面板顯示模型確實採後者（值近 1＝先優化再覆蓋），且約<strong>前 200 外迴圈迭代</strong>就採此策略——儘管覆蓋對總分有乘法效應本應偏好相反策略。注意這不直接蘊含模型能泛化（產出遠離訓練覆蓋空間的解）。</p>
+<p>圖 3 可視化內迴圈中的 repertoire：模型僅 10 迭代就覆蓋大片空間（對比 Earle et al. 在類似問題上需大得多的參數空間與更多迭代，雖本文覆蓋更高且不需 meta 迴圈），且 DNA 字串中觀察到結構。圖 4 展示 NCA 生成關卡的多步：從網格中心慢慢建有效瓦片；底列顯示各細胞注意 DNA 哪一位——邊緣細胞剛變活時多注意 DNA 第一位、後可切換，中央對角線細胞穩定注意第二位（似當作建構參考），注意力圖與最終形狀模式相似。</p>
+<h3 id="分析系統">分析系統</h3>
+<p>發展系統如何用基因型空間達標？是否湧現結構（特定 DNA 位置/字元是否關聯輸出特定性質）？用三個量度：<strong>total disentanglement</strong>（用 Random Forest 回歸對每個依變量擬合、量各輸入特徵重要性；高度 disentangled 特徵只預測一個/少數依變量；模型整體值為所有特徵平均）；以及湧現語言研究的 <strong>position information gap 與 character information gap</strong>（一特徵的 information gap＝它與「互資訊最高的兩個性質」間的互資訊差；越高表越只預測某一性質）。</p>
+<p>圖 5：初始有結構（隨機初始化 + attention 傾向放大最受注意位置所致），很快消失；約訓練三分之一處 position/character info gap 上升；disentanglement 直到後期才升、且開始劇烈波動，此時另兩量度略降。<strong>這表明模型可能傾向過擬合/採混沌策略</strong>（更依賴其固有隨機性而非 DNA 結構），是未來須處理的限制。</p>
+<h3 id="控制不同設計決策">控制不同設計決策</h3>
+<p>測三件事：①最重要——<strong>控制「純連續基因型 vs DNA」</strong>；②更新函數修改（尤其更新後狀態正規化）對性能的影響；③內迴圈用更複雜的 CMA emitter vs 標準 GA。</p>
+<p>圖 6（6 種組合：DNA±正規化、DNA+CMA±正規化、連續向量±正規化）顯示：<strong>DNA 基因型勝連續向量</strong>（後者收斂更快但表達力較弱）——但<strong>僅在更新後正規化狀態時成立</strong>（再次顯示系統易不穩）；<strong>用 CMA 與 GA 無顯著差異</strong>（頗意外，顯示 DNA 編碼夠強、不需複雜演化算法即可高效探索）。</p>
+<h2 id="討論">討論</h2>
+<p>DNA 與「轉錄其資訊的發展機制」之分離，支撐生物系統的可演化本質。即使最小限度地駕馭此能力，也可提升 AI 系統的自主與魯棒。結果顯示確實能把這些原理整合進人工發展系統，使其利用基因型空間產生多樣表現型。隨訓練，NCA 學會利用 DNA 空間變異性以高品質解覆蓋描述子空間；模型傾向<strong>先最大化品質再增覆蓋</strong>顯示其有可演化性質。且因架構顯式呈現「發展中注意 DNA 哪些部分」，<strong>易於理解其動態</strong>（可解釋性）。</p>
+<p><strong>限制</strong>：①<strong>無強可演化性</strong>——延長內迴圈迭代不會大幅增覆蓋，模型仍難泛化到分布外輸出（而這正是接軌生物實體、達成開放式創新的根本）；②<strong>DNA 結構性質隨訓練退化</strong>（圖 5 結構量度衰減），模型仍能產一致結構或表明它<strong>過擬合特定模式</strong>（以最小修改增覆蓋），即 DNA 空間不需很結構化也能成功。作者認為成因有二：系統雖極富表達力，但可能缺乏「偏好在不同尺度/組合中重用基本模式」的歸納偏置；當前描述子可能讓模型「鑽空子」（如只移除一格即大幅增最短路徑長，不需根本改變模式）。未來將探索不同發展系統架構與不同任務描述，並有興趣結合 Neural Developmental Programs 做神經架構搜尋。</p>
+<h2 id="致謝">致謝</h2>
+<p>由歐洲研究理事會（ERC） grant（GA no. 101045094，&quot;GROW-AI&quot; 專案）支持。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2406.09020_evolvable_developmental_encoding.%E6%91%98%E8%A6%81.html"><code>../summarize/2406.09020_evolvable_developmental_encoding.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2309.17428_CRAFT.zh-TW.html">回 2309.17428_CRAFT.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="3-實驗">3. 實驗</h2>
+<h3 id="31-實驗設定">3.1 實驗設定</h3>
+<p><strong>任務、資料集與指標</strong>（三類任務）：</p>
+<ul>
+<li><strong>視覺問答（VQA）</strong>：依關聯影像回答問題。用 GQA（需組合式推理）、OK-VQA、A-OKVQA（後二者主要用影像中物件/動作的真實世界外部知識）。以開放式生成處理，用 soft accuracy（SAcc）指標；並補用 <strong>F1</strong>（因 LM 生成常為描述性長句而非簡短片語，會低估 exact-match 表現）。</li>
+<li><strong>表格處理</strong>：用 <strong>TabMWP</strong>（每筆含一表格＋一自然語言問題），需理解問題、從表擷取資訊、再計算；以 exact-match accuracy 衡量。</li>
+<li><strong>數學推理</strong>：用 <strong>MATH</strong> 的 algebra 子集（881 題競賽級代數題，因預算僅測此子集）；以 accuracy 衡量。</li>
+</ul>
+<p><strong>基線</strong>四類：(1) <strong>無工具基礎推理</strong>——CoT（VQA 不適用，因無視覺工具無法處理影像）；(2) <strong>工具學習</strong>——Vanilla（VQA 用 ViperGPT，其餘用 Program-of-Thoughts）與 External library（額外用 Numpy/SciPy/Scikit-Image/Mahotas 或 Pandas/SymPy 等）；(3) <strong>不同 LLM 造工具法</strong>——LATM（用 3 訓練樣本造 1 個工具、3 驗證樣本核驗，套用全部測試）與 CREATOR（推論時逐題現造工具）；(4) <strong>替代檢索法</strong>——SimCSE 與 BM25（僅以問題 vs API 名相似度，且皆基於 CRAFT 所造工具集以公平比較）。</p>
+<p><strong>表 1（基線與 CRAFT 的差異）</strong>：CREATOR 用測試集造工具、不可重用、工具庫 0、無檢索；LATM 用訓練集、可重用、工具庫 1、無檢索；<strong>CRAFT 用指令集或訓練集、可重用、工具庫 &gt;100（理論上無上限）、有檢索</strong>。</p>
+<p>所有方法皆以 <strong>GPT-3.5-Turbo-0613</strong> 為 backbone（較 GPT-4 划算，且 Turbo-0613 專為工具學習優化；CodeLlama 等在此設定近乎隨機表現）。</p>
+<h3 id="32-實驗結果">3.2 實驗結果</h3>
+<p><strong>表 2（GPT-3.5-Turbo 主結果，摘要）</strong>——欄為 GQA / OK-VQA / A-OKVQA（各 SAcc、F1）、TabMWP（Acc）、MATHalg（Acc）：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>GQA SAcc/F1</th>
+<th>OK-VQA SAcc/F1</th>
+<th>A-OKVQA SAcc/F1</th>
+<th>TabMWP</th>
+<th>MATHalg</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CoT</td>
+<td>–/–</td>
+<td>–/–</td>
+<td>–/–</td>
+<td>75.2</td>
+<td>50.9</td>
+</tr>
+<tr>
+<td>Vanilla</td>
+<td>35.0/36.9</td>
+<td>15.4/24.7</td>
+<td>15.6/23.0</td>
+<td>80.6</td>
+<td>58.2</td>
+</tr>
+<tr>
+<td>External</td>
+<td>34.2/37.8</td>
+<td>16.8/25.3</td>
+<td>14.5/22.9</td>
+<td>83.1</td>
+<td>41.1</td>
+</tr>
+<tr>
+<td>LATM</td>
+<td>29.4/30.3</td>
+<td>7.8/11.8</td>
+<td>6.5/11.4</td>
+<td>9.3</td>
+<td>30.3</td>
+</tr>
+<tr>
+<td>CREATOR</td>
+<td>34.3/38.4</td>
+<td>16.7/27.3</td>
+<td>17.3/25.8</td>
+<td>81.0</td>
+<td>65.0</td>
+</tr>
+<tr>
+<td>SimCSE</td>
+<td>36.4/38.8</td>
+<td>18.4/28.9</td>
+<td>16.8/24.3</td>
+<td>83.8</td>
+<td>36.7</td>
+</tr>
+<tr>
+<td>BM25</td>
+<td>37.9/39.0</td>
+<td>13.4/24.3</td>
+<td>17.8/26.1</td>
+<td>89.2</td>
+<td>35.9</td>
+</tr>
+<tr>
+<td><strong>CRAFT</strong></td>
+<td><strong>45.4/48.8</strong></td>
+<td><strong>33.4/43.0</strong></td>
+<td><strong>30.8/40.6</strong></td>
+<td><strong>88.4</strong></td>
+<td><strong>68.1</strong></td>
+</tr>
+</tbody>
+</table>
+<p>要點：直接借用 Python 外部庫工具無助益、甚至有害（如數學推理），顯示<strong>工具相關性</strong>影響表現，故需為每個任務造高品質工具庫。LATM 在所有資料集掙扎、帶來負效；CREATOR 對數學有顯著提升、對其餘僅邊際——顯示需<strong>足量且多樣</strong>的工具。檢索基線各資料集表現不一，除 TabMWP 外多無實質增益，凸顯更佳檢索演算法之需。整體 CRAFT 全面領先，尤在困難的 VQA 上：較 vanilla ViperGPT，GQA/OK-VQA/A-OKVQA 的 SAcc <strong>絕對提升 10.4 / 18.0 / 15.2</strong>；基於同一工具集，CRAFT 的檢索也優於替代法（唯 TabMWP 上 BM25 例外，因該資料集模式較單純、未能凸顯 CRAFT 檢索優勢）。</p>
+<h2 id="4-進一步分析於-vqa-資料集">4. 進一步分析（於 VQA 資料集）</h2>
+<p><strong>表 3</strong> 涵蓋抽象化與檢索組件的消融、以及不同 backbone 下 ViperGPT 與 CRAFT 的比較。</p>
+<h3 id="41-抽象化是否有助工具使用">4.1 抽象化是否有助工具使用？</h3>
+<p>把抽象化步驟消融（但仍為每個解指派獨特函數名與 docstring 以利多視角檢索、公平比較）。結果（表 3）：去抽象化明顯掉分（GQA 45.4→37.1），確認其重要性。不過即使去抽象化的 CRAFT 仍勝過 ViperGPT（尤在 OK-VQA/A-OKVQA），原因可能是：工具集夠大夠多樣，即使不抽象也能覆蓋新題；且取回的工具提供正確解法思路，LLM 能據以高效適配新題。</p>
+<h3 id="42-檢索三元組中每個匹配同等重要嗎">4.2 檢索三元組中每個匹配同等重要嗎？</h3>
+<p>分別把問題、函數名、docstring 從匹配中移除。結果（表 3）：<strong>三者缺一皆傷表現</strong>，驗證設計合理性。其中<strong>函數名最關鍵</strong>——消融時 SAcc 掉超過 6.6（絕對值）。</p>
+<h3 id="43-craft-對更強-backbone-仍有效嗎">4.3 CRAFT 對更強 backbone 仍有效嗎？</h3>
+<p>改用 <strong>GPT-4</strong> 為 backbone（因預算僅與 ViperGPT 比）。結果（表 3）：CRAFT 於 GPT-4 仍一致更佳（如 GQA 55.6/58.8、OK-VQA 39.0/49.1、A-OKVQA 35.3/44.8），確認對更強 backbone 亦有助。但增益不如在 GPT-3.5-Turbo 上明顯——作者推測與近期發現一致：<strong>LLM 可從更強模型的指引獲益，卻難從自身指引獲益</strong>；由 GPT-4 造的工具對 GPT-4 自身洞見較少，故外部工具增益受限。</p>
+<h3 id="44-工具集變大能否持續提升">4.4 工具集變大能否持續提升？</h3>
+<p>依 §2.1 的迭代採樣（共 11 個 epoch），取初始、中間、最後 epoch 的工具，構成大小 0、261、337、525 的工具集。結果（圖 3）：三個資料集的 soft accuracy <strong>隨工具集擴大持續上升</strong>，展現可擴展性；上升趨勢未止，暗示續擴仍有潛力。最大增益出現在「從無工具到 261 個工具」——驗證造專用工具集以客製 LLM 的有效性。</p>
+<h3 id="45-工具集裡有什麼表-4">4.5 工具集裡有什麼？（表 4）</h3>
+<p>以**循環複雜度（cyclomatic complexity）**衡量複雜度（良好軟體應 ≤10，越低越不易出 bug），以工具分組數衡量多樣性（用 Louvain 社群偵測分群）。結果：VQA / 表格 / 數學的平均複雜度為 <strong>2.64 / 2.07 / 1.34</strong>（均遠低於 10，結構良好可靠）；工具數 525 / 181 / 282，分屬 <strong>195 / 23 / 234</strong> 類——顯示 MATH 模式最多樣、VQA 次之，而 TabMWP 較同質、用較少工具即可解好。</p>
+<h2 id="5-相關工作">5. 相關工作</h2>
+<p><strong>5.1 LLM 工具學習</strong>：LLM 接上真實 API 便能與外部系統互動；先驅工作把 GPT-3 接上瀏覽器並用人工示範網搜，後續擴及計算機、日曆、直譯器、物理模擬器、地圖等，並探索 bootstrapping 等弱監督法；近期則把閉源 LLM（ChatGPT）的工具使用能力<strong>蒸餾</strong>到開源 LLM（讓 ChatGPT 產生示範 API 用法的合成資料再微調開源模型）。本文則超越僅依賴既有工具——透過<strong>創建客製工具＋推論時檢索</strong>來適配下游任務。</p>
+<p><strong>5.2 工具創建與檢索</strong>：此領域探索相對有限。工具創建方面，Cai et al.（LATM）用三個訓練樣本造工具、三個驗證樣本評估，工具庫量受限且假設訓練/測試分佈相近；Qian et al.（CREATOR）僅依當下查詢造工具，故<strong>不可重用</strong>，削弱了工具創建的根本目的。工具檢索方面，既有多為人工預選工具、啟發式選擇、或僅「使用者查詢 vs API 名稱」的簡單相似度。本文則要造一個可被下游任務有效利用的大工具庫，並解決「從大工具庫檢索相關工具」的挑戰。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>CRAFT 是一個以工具創建與檢索泛化 LLM 到多樣領域與任務的通用框架。其效果由困難任務上的表現提升印證，並附有對組件貢獻、所造工具集、可擴展性的洞見。</p>
+<h2 id="附錄重點實作與局限">附錄重點（實作與局限）</h2>
+<ul>
+<li><strong>實作（附錄 B）</strong>：VQA 從通用指令集採樣造工具——用 LLaVA 並補一個基於 COCO-2017 的指令集（令 GPT-3.5-Turbo 依影像 caption 生 QA 對並過濾掉可純語言回答者），共採 2,000 題（1,000 來自首輪隨機、其餘 1,000 來自後 10 輪各 100），以 ViperGPT 生具體解。表格與數學無高品質指令集，改用 TabMWP、MATH(algebra) 的訓練切分造工具，採 500 題（200 首輪＋後 3 輪各 100）。檢索數 k 對 q_t/f_t/d_t 分別設 10/5/10。</li>
+<li><strong>局限與未來（附錄 A）</strong>：(1) 目前建立在<strong>程式碼生成</strong>上，只適用「能寫程式求解」的任務——擬用<strong>偽代碼（pseudocode）<strong>擴展範疇；(2) 效果</strong>高度依賴 backbone 的工具操作能力</strong>，部分開源模型在此具挑戰的工具操縱設定下近乎隨機——未來將設法激發開源模型的工具操縱能力。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2309.17428_CRAFT.%E6%91%98%E8%A6%81.html"><code>../summarize/2309.17428_CRAFT.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

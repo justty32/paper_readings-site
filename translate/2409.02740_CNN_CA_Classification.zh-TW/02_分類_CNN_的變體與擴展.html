@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_分類_CNN_的變體與擴展 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2409.02740_CNN_CA_Classification.zh-TW.html">回 2409.02740_CNN_CA_Classification.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="3-分類-cnn-的變體與擴展">3. 分類 CNN 的變體與擴展</h2>
+<h3 id="31-一個完美的規則辨識-cnn">3.1 一個「完美」的規則辨識 CNN</h3>
+<p>任何含全部鄰域配置的 ECA 圖，可經 2×2 卷積 + ReLU <strong>分解成 8 個通道</strong>（圖 9：第 i 通道在「該鄰域輸出 1」處為 1）。每通道全域最大值是 0 或 1，<strong>八個最大值的有序八元組正好編碼局部規則</strong>。把此二元圖樣餵進手選權重/偏置的 256 節點輸出層 + SoftMax，得到一個<strong>固定參數</strong>的 CNN，僅在少數（≈缺資訊的 370 張）圖上出錯，規則辨識準確度極高。<strong>但這比直接掃 grid 更繁瑣</strong>——若要善用 CNN 的力量，就該設計成做<strong>真正的圖樣辨識</strong>，而非把瑣碎任務繞遠路。</p>
+<h3 id="32-瘦身-cnn-以做介觀圖樣辨識">3.2 瘦身 CNN 以做介觀圖樣辨識</h3>
+<p>瘦身兩個理由：(1) 證明更簡單模型也能高準確分類，即使不為重建規則表而設計；(2) 瘦身使準確度略降、<strong>騰出觀察資料增強效果的空間</strong>。對比：單隱藏層全連接 NN 雖能做到 LP 分類驗證準確度尚可，卻需逾百萬參數。</p>
+<p><strong>重設計三原則</strong>（除一般 CNN 設計準則外）：(1) <strong>第一隱藏層卷積核不可框住「ECA 鄰域 + 其次態」（T-tetromino）</strong>；(2) CNN 需<strong>夠大感受野</strong>以觀察介觀結構；(3) 最後 dense 層<strong>不可能編碼 ECA 規則</strong>。預設 CNN 三者皆不滿足。</p>
+<p>圖 10 的瘦身 CNN 滿足之：卷積核尺寸<strong>裝不下 T-tetromino</strong>；額外卷積層 +（尤其）中央 max pooling 大幅擴大感受野；最後 <strong>16 節點 dense 層</strong>絕無法唯一編碼規則。如此 <strong>LP 分類僅 389 個可訓練參數</strong>仍達高驗證準確度；但規則辨識準確度<strong>大幅下降</strong>（即便用更多參數）。</p>
+<h3 id="33-針對類別辨識的資料增強">3.3 針對類別辨識的資料增強</h3>
+<p>要讓模型對「分類重要的」敏感、對「不重要的」不敏感：操弄資料在像素層的內容、但不改整體圖樣結構（人類仍能分類）——這是一種<strong>正則化（資料增強）</strong>。因 ECA 時空圖集近乎無限且最大多樣，<strong>過擬合非問題</strong>；此處用增強是為<strong>抹平非本質面向、引導演算法聚焦</strong>。重點：<strong>不會提升驗證準確度，但會拉大「規則辨識」與「LP 類別辨識」準確度的差距</strong>。</p>
+<p>四種增強（圖 11）：(1) <strong>反相（inversion）</strong>——配色與底層二元結構無關；(2) <strong>鏡像（mirroring）</strong>——左右翻轉不改湧現圖樣本質（反相+鏡像正是定義 ECA 等價規則子集的操作）；(3) <strong>2×2 粗粒化（coarse-graining）</strong>——每 2×2 區塊取平均，圖樣略糊仍可辨，但<strong>移除微觀資訊、破壞規則辨識</strong>；(4) <strong>椒鹽噪聲</strong>——隨機把一定比例像素改 0/1，<strong>在規則表引入矛盾、但大致不動較大結構</strong>。增強為「線上」執行，每 batch 隨機；每張圖有一定機率被選一種增強、否則保持原樣。另把<strong>規則等價類</strong>納入訓練（把輸出層由 256 改成等價類數、相應調整標籤）。</p>
+<h3 id="34-瘦身-cnn-在增強資料上的性能">3.4 瘦身 CNN 在增強資料上的性能</h3>
+<p>以不同增強組合、學習率、噪聲水準訓練（表 3 列最高驗證準確度，區分「實際局部規則 / 獨立規則 / LP 類別」三種辨識）。<strong>增強會降低所有準確度，但關鍵是同時拉大規則與類別辨識的差距</strong>：</p>
+<ul>
+<li><strong>反相/鏡像</strong>：使辨識「實際規則」變難（等於把規則換成等價規則）；反相效果更大（或因訓練收斂困難）；但因「鏡像常等同微觀層的恆等操作、僅少數規則是自身反相」，<strong>對『獨立規則辨識』幾乎無損甚至略升</strong>。</li>
+<li><strong>2×2 粗粒化</strong>：對規則偵測能力打擊最強（從 &gt;99% 壓到不足 1/6），雖然 LP 誤分類也增加，但<strong>規則↔類別差距最大</strong>——是最符合目標的增強。</li>
+<li><strong>椒鹽噪聲</strong>：即使少量也對所有準確度有害、<strong>不偏向 LP 分類</strong>，與目標相悖，故棄用。</li>
+<li><strong>多增強合用</strong>：準確度顯著低於各單一增強的平均——訓練被增強「分心」時更難收斂到最優。</li>
+</ul>
+<p><strong>最終優化</strong>：在含驗證集的完整 LP 訓練集上，用<strong>除椒鹽噪聲外全部增強</strong>再訓。測試集 LP 分類達高準確度、獨立規則辨識則明顯較低（圖 12 混淆矩陣）——<strong>最常見錯誤是把 chaotic 誤判為 locally chaotic</strong>。</p>
+<h2 id="4-討論與未來發展">4. 討論與未來發展</h2>
+<p>深度學習與離散動態系統的交集持續擴大。本章與「用 CA 研究 CNN 內部機制」（Gilpin 2019）相反，<strong>探討 CNN 如何輔助 CA 研究</strong>——自動把時空圖歸入行為類別，是大規模統計評估分類方案、進而回答 Wolfram CA 理論首要問題的關鍵。</p>
+<p>但<strong>必須做對</strong>：先明示「作弊」（掃局部規則、或手選權重的 CNN）多容易得到完美分類；再從既有 CNN 出發<strong>重設計</strong>，使演算法抓<strong>決定現象學（與分類）的介觀結構</strong>、卻<strong>難以辨識直接洩露基因型的微觀結構</strong>。手段：(1) 改架構讓資訊流不易直接編碼局部規則；(2) 四種增強中，<strong>粗粒化最能阻止模型學底層規則</strong>。最終模型（全增強除椒鹽噪聲）LP 誤分類率極低；需注意它<strong>較常把 chaotic/periodic 誤判為 locally chaotic</strong>。</p>
+<p><strong>未來</strong>：(1) 探索更多架構/訓練策略以<strong>拉大規則-類別準確度差距</strong>；(2) 試不同分類方案（如 Comelli et al.），但以最大化差距為目標（LP 未必最有用，尤其難鎖定 Wolfram class-IV 複雜行為）；(3) 用此「對介觀圖樣敏感」的分類器<strong>遷移到非基本 CA</strong>（更大鄰域、非均勻 CA）。對訓練分佈外資料的推斷須謹慎；<strong>自監督學習</strong>（演算法自行分群、免標籤）是後續工作、與本監督式方法互補。更遠：時間序列 + RNN（如時變空間熵）、預測 Lyapunov 譜等難算量、以及生成式「選規則以生成目標行為」（把分類問題反轉）。這些路徑都指向「連結有趣湧現行為 ↔ CA 核心的簡單演算序列」。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2409.02740_CNN_CA_Classification.%E6%91%98%E8%A6%81.html"><code>../summarize/2409.02740_CNN_CA_Classification.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

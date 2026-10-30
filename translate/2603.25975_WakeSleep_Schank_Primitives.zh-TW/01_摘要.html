@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.25975_WakeSleep_Schank_Primitives.zh-TW.html">回 2603.25975_WakeSleep_Schank_Primitives.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>答案是會。Roger Schank 的概念依存理論主張所有人類事件都可分解為一小組 primitive 運算——ATRANS（持有轉移）、PTRANS（物理移動）、MTRANS（資訊轉移）等，這些 primitive 是憑語言學直覺手工編碼的。我們問：同樣這些 primitive 能否單憑壓縮壓力、自動從資料中被發現？</p>
+<p>我們把 <strong>DreamCoder 的 wake-sleep 庫學習演算法</strong>改造到「事件狀態轉換」領域。給定以 before/after 世界狀態對表示的事件，系統搜尋能解釋每個事件的運算子組合（wake），再把反覆出現的模式抽成新庫項、在最小描述長度（MDL）下優化（sleep）。從 4 個通用狀態變化 primitive 出發，系統發現對應 Schank 核心 primitive 的特化運算子：MOVE_PROP_has ≈ ATRANS、CHANGE_location ≈ PTRANS、SET_knows ≈ MTRANS、SET_consumed ≈ INGEST；也發現對應動詞組合的複合運算子（如「mail」= ATRANS∘PTRANS）與 Schank 原始分類學中沒有的情緒狀態變化運算子。</p>
+<p>我們在合成事件與真實 ATOMIC 常識知識圖上驗證。合成資料上，學出的庫貝氏 MDL 落在 Schank 手工 primitive 的 4% 內，卻能解釋 100% 事件 vs Schank 的 81%。ATOMIC 上結果更戲劇：Schank primitive 只解釋 10% 的自然常識事件，學出的庫解釋 100%。真實資料中的主導運算子不是 Schank 的物理動作 primitive，而是心理與情緒狀態變化——CHANGE_wants（20%）、CHANGE_feels（18%）、CHANGE_is（18%）——皆不在 Schank 原始分類學。</p>
+<p>這提供首個實證：事件 primitive 能從壓縮壓力推得；Schank 核心物理動作 primitive（ATRANS、PTRANS、MTRANS）資訊論上是被證成的；而完整的事件 primitive 清單比 Schank 提的豐富得多——自然資料中心理/情緒運算子主導物理運算子。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>1972 年 Schank 提出概念依存理論，主張任何描述事件的句子其意義都可分解為一小組 primitive 動作（ATRANS、PTRANS、MTRANS、MBUILD、INGEST 等約 11 個）。它們有影響力但有爭議：批評者認為任意、不完整、只反映創造者直覺；隨統計方法主導 NLP，「語意 primitive 是否存在」一問被擱置。</p>
+<p>我們用新工具——<strong>庫學習</strong>——重審。DreamCoder 證明 wake-sleep 學習能透過壓縮壓力從範例中發現可重用編程 primitive：MDL 原則自動辨識「能最小化『描述庫 + 描述用庫的程式』總成本」的抽象。若 Schank primitive 真是基本的，它們應從同種壓縮壓力（施於事件資料）湧現。</p>
+<p>兩種評估設定：合成事件（受控模板生成，驗證演算法機制正確、能還原已知 ground-truth 類別）；真實事件（取自 ATOMIC 常識圖，測試是否泛化到「非為 Schank 理論設計」的自然資料）——後者是關鍵。</p>
+<p>貢獻：(1) 把事件表示為世界狀態三元組上狀態轉換的新 DSL，運算子為帶型別、可組合的模板；(2) 把 wake-sleep 庫學習改造到此領域，含辨識複合運算子（mail=ATRANS∘PTRANS）的組合發現機制；(3) 實證四個 Schank 核心 primitive 從純 MDL 壓力湧現，並有情緒/目標/屬性變化的新 primitive；(4) 在 ATOMIC 上驗證 primitive 清單比 Schank 豐富、心理/情緒運算子主導；(5) 帶適當機率成本的貝氏 MDL 框架，支援 Bayes factor 嚴格模型比較。</p>
+<h2 id="2-背景">2. 背景</h2>
+<h3 id="21-schank-概念依存理論">2.1 Schank 概念依存理論</h3>
+<p>約 11 個 primitive 動作：ATRANS（持有/所有權轉移：give/buy/steal）、PTRANS（位置轉移：go/move/fly）、MTRANS（資訊轉移：tell/teach/read）、MBUILD（心理建構：think/decide）、INGEST（攝入：eat/drink）、EXPEL、PROPEL、MOVE 等。複雜事件分解為 primitive 組合：「John mailed Mary the book」= ATRANS(John→Mary, book) ∘ PTRANS（book, John 家→Mary 家）。</p>
+<h3 id="22-dreamcoder-與庫學習">2.2 DreamCoder 與庫學習</h3>
+<p>DreamCoder 用 wake-sleep 演算法 bootstrap 程式合成。核心洞見：對的 primitive 集就是最小化總描述長度者：</p>
+<blockquote>
+<p>MDL = L（庫）〔primitive 成本〕 + Σᵢ L（程式ᵢ | 庫）〔各程式成本〕</p>
+</blockquote>
+<p>交替進行 <strong>wake</strong>（用當前庫搜尋解任務的程式）與 <strong>sleep</strong>（從成功程式抽共用子式、若降總 MDL 則提為新庫項）。DreamCoder 用於列表操作、文字編輯、圖形（皆以 lambda 演算建模）；我們把同原則改造到事件狀態轉換。</p>
+<h3 id="23-相關工作">2.3 相關工作</h3>
+<p>Wierzbicka NSM（約 65 個語意 prime）、Dowty proto-role、ATOMIC、GLUCOSE、FrameNet/VerbNet 等屬語言學分解傳統。LeCun 的 JEPA 主張系統應在抽象表示空間預測（而非像素/token），其 predictor 學動作條件下的潛在轉換——本質上學狀態間運算子；本法與 JEPA 共享「對的抽象層次既非原始觀察也非手編符號」的信念：JEPA 學連續潛在預測器（提供知覺接地、學「抽象狀態是什麼」），本法學離散、可組合、可解釋運算子（提供符號結構、學「狀態如何轉換」），二者互補。我們與上述工作的差異在於：<strong>從資料發現 primitive</strong> 而非語言分析定義，且以壓縮效率而非語言學覆蓋度評估。抽象發現與資料壓縮的連結不只類比：BPE（子詞 token 化）用同樣「合併最頻繁對」程序，Huffman 給高頻符號短碼正對應我們的特化步驟。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

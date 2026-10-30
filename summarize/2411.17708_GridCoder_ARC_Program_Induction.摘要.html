@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《面向 ARC-AGI 的高效神經引導程式誘導》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Simon Ouellette</p><p>日期：2024-11，ARC-AGI／神經引導程式誘導</p><p>arXiv：2411.17708</p><p><a href="https://arxiv.org/abs/2411.17708" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="面向-arc-agi-的高效神經引導程式誘導重點摘要">《面向 ARC-AGI 的高效神經引導程式誘導》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>系統比較三種「神經引導程式誘導」範式——<strong>學網格空間 (LGS)</strong>、<strong>學程式空間 (LPS)</strong>、<strong>學變換空間 (LTS)</strong>——並提出代表 LPS 的 <strong>GridCoder</strong>：用 <strong>VLM （視覺語言模型） 自回歸輸出 DSL token 序列的機率</strong>，再做<strong>機率枚舉搜尋</strong>找正確程式；靠<strong>條件獨立假設</strong>（把機率攤平成「位置×類別」而非樹，只需呼叫神經網路幾次）大幅提速；在 ARC-AGI 評估集 DSL 可解子集（29 題）達 <strong>79.3%</strong>（勝 MCTS+VLM 的 69%、純 VLM 的 13.8%），但<strong>結構性 (compositional) 泛化極差</strong>——10 個刻意 OOD 任務只解出 1 個 (10%)，作者提出尚未實作的 LTS（加回執行引導反饋）作為解方，proxy 實驗顯示可達 80%。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>ARC-AGI 是<strong>開放世界</strong>域，隱藏測試集刻意與公開任務「質性不同」，深度學習的<strong>分布外 (OOD) 泛化</strong>在此失效。本文在程式合成設定下（假設 DSL 含足夠原語），系統研究「如何用搜尋高效擴展神經網路超出訓練分布的能力」，並要求測試集在<strong>組合結構</strong>上對訓練集 OOD（否則純神經網路即可解）。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>三範式</strong>：
+<ul>
+<li><strong>LGS（學網格空間）</strong>：對比學習一個「在特定 DSL 下兩網格的相似度」嵌入，當作 A* 式啟發式做執行引導搜尋。限定純網格到網格 DSL（Version 1）。</li>
+<li><strong>LPS（學程式空間）= GridCoder（選定方案）</strong>：訓練 VLM 輸出 token 機率序列 → 解讀為程式空間的機率分布 → 枚舉並按聯合機率排序、逐一驗證。<strong>非執行引導</strong>。</li>
+<li><strong>LTS（學變換空間，提案未實作）</strong>：把程式中間狀態回饋進每步解碼，結合 LPS 效率與 LGS 執行引導。</li>
+</ul>
+</li>
+<li><strong>搜尋演算法</strong>：概念近 DreamCoder / Heap Search，但機率不來自 n-gram，而來自 transformer 自回歸 token 序列。<strong>條件獨立假設</strong>：機率只依 token 位置、不依先前選擇（如貝氏網路簡化），故只需幾次推論 + 少量 bootstrapping（6 次不同範例對/起始 token 取均值）注入熵。</li>
+<li><strong>VLM 架構</strong>：雙 CNN（輸入/輸出網格）橋接為編碼器 + 單層 transformer 解碼器，452M 參數；輸出 token 序列自底向上、左到右建語法樹（特殊 token：<code>&lt;EOS&gt;</code>、<code>&lt;New Level&gt;</code>、<code>&lt;Identity&gt;</code>）。</li>
+<li><strong>DSL 與資料</strong>：三版 DSL（74→89→98 原語，逐步加物件偵測/過濾）；程序化「meta-pattern」任務生成器（split-merge、tiling、物件等），V1 約 5M 樣本，課程式微調。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>ARC 評估全集 15 分鐘預算：GridCoder <strong>5.75%</strong>（DSL V3 達 8.25%）；可解 29 題子集 <strong>79.3%</strong>（5 分鐘亦 79.3%）。對比：MCTS+VLM 69%、Pixelwise sim 44.8%、Learned sim 37.9%、VLM-only 13.8%。</li>
+<li><strong>條件獨立有益</strong>：GridCoder 79.3% &gt; GridCoder cond.（不做假設）75.9%，且 5 分鐘預算差距更大。</li>
+<li><strong>DSL 擴展性佳</strong>：V1→V3 無遺忘、每原語平均解題時間不增反略降（0.064→0.057 秒/原語）→ <strong>次線性擴展</strong>。</li>
+<li><strong>結構泛化失敗</strong>：10 個 OAD 手作任務 GridCoder 只解 1（10%）；模擬執行引導的 LTS proxy 解 8（80%）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>DSL 不完整</strong>（主要限制）；函數式 DSL 不如關係式 DSL 可做部分驗證；6 種物件偵測原語仍常失敗（擬改用物件分割神經網路）。</li>
+<li><strong>程式語法低效</strong>（4 拼貼 vs 5 拼貼差 5 token、子樹須重複）。</li>
+<li>LTS 僅 proxy 模擬未真訓練；GridCoder 只能提出訓練見過的程式結構（機率硬卡在 0/1），加訓也無法解決結構泛化。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 <strong>E 類 ARC-AGI</strong> 代表之一，與 <a class="paper-reference" href="2411.08706_LPN_Latent_Program_Search.%E6%91%98%E8%A6%81.html">2411.08706</a> LPN（搜尋潛在程式空間）正好是同期姊妹路線——都在「神經 + 搜尋」解 ARC，但本文走<strong>離散 DSL token 枚舉</strong>、LPN 走<strong>連續潛在空間梯度搜尋</strong>。</li>
+<li>最值得記：<strong>「VLM 自回歸機率 + 條件獨立攤平 + 機率枚舉」高效搜尋配方</strong>；以及核心洞見——<strong>搜尋能補的是「網格層 OOD（高熵）」，補不了「程式結構 OOD（低熵卡死在 0/1）」</strong>，故執行引導 (LTS) 才是真正泛化解方。</li>
+<li>與 <a class="paper-reference" href="2411.02272_Induction_Transduction.%E6%91%98%E8%A6%81.html">2411.02272</a>（結合歸納+傳導）、<a class="paper-reference" href="2411.07279_Test_Time_Training.%E6%91%98%E8%A6%81.html">2411.07279</a>（測試時訓練）同屬 ARC 程式合成軌；對做 DSL 程式合成、神經引導搜尋、ARC 泛化分析的人有參考價值。誠實的 proof-of-concept 論文（坦承尚不具競爭力）。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2411.17708_GridCoder_ARC_Program_Induction.zh-TW.html"><code>../translate/2411.17708_GridCoder_ARC_Program_Induction.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

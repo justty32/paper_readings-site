@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_損失函數 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2506.22899_Cells_to_Pixels.zh-TW.html">回 2506.22899_Cells_to_Pixels.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-損失函數">4. 損失函數</h2>
+<p>為兩大設定（紋理合成、從種子生長形態）設計任務專屬目標。</p>
+<h3 id="41-紋理損失">4.1 紋理損失</h3>
+<p>建於 VGG16 的鬆弛最優傳輸（OT）風格損失（取自 Kolkin 等 2019，前人 NCA 紋理工作沿用）：從固定預訓 VGG16 數層抽特徵，用 OT + 額外動差匹配（均值與協方差）匹配生成與目標的特徵分布。再擴充三項：</p>
+<ul>
+<li><strong>Patch 式多尺度監督</strong>：全解析金字塔餵 VGG 對高解析度愈來愈貴，故在三尺度（全、半、四分之一目標解析度）以<strong>渲染輸出的隨機 patch</strong> 算 OT 風格損失（裁切數與大小隨尺度增加、resize 到固定輸入尺寸）；目標側不裁切（建目標金字塔並快取 VGG 特徵）。避開全解析金字塔的二次爆炸，成本主要隨裁切數縮放；又因 NCA 規則與 LPPN 皆局部且權重共享，隨機 patch 的梯度可代表整個輸出。</li>
+<li><strong>PBR 多圖對齊偽目標</strong>：PBR 合成中 LPPN 輸出 9 值（albedo、normal、HRA＝高度／粗糙度／環境遮蔽）。逐圖獨立算損失會跨圖錯位，故每次迭代隨機從所有目標圖的聯集選三個相異通道堆成合成 3 通道目標、對相應生成通道套同樣多尺度 OT 損失，提供跨圖對齊訊號。</li>
+<li><strong>自相關正則</strong>：為鼓勵長程幾何結構，可選地在早期 VGG 特徵圖上加 <strong>FFT 式自相關損失</strong>（算通道聚合的自相關圖、罰 L1 差，僅在最粗尺度施加即足）；僅對有強幾何結構與長程相關的紋理啟用。</li>
+</ul>
+<h3 id="42-形態損失">4.2 形態損失</h3>
+<p>訓 NCA 從單一種子生長目標形態（沿 Mordvintsev 等 2020）。目標為 RGBA 影像（alpha 通道定義形狀），墊入更大透明畫布留生長空間。混合模型中，NCA 在粗格演化並產生 <strong>living mask（一通道）</strong> 閘控更新，LPPN 把 NCA 狀態解碼成高解析度 RGBA。形態損失為下列（不加權）之和：</p>
+<ul>
+<li>(i) <strong>LPPN 輸出的 RGBA 重建</strong>：對生成與目標 RGBA 各以其 alpha 遮罩後，套逐像素 L1+L2。</li>
+<li>(ii) <strong>NCA living mask 的 shape loss</strong>：因只有活細胞（與鄰居）能更新狀態，直接監督 living mask 對教 NCA 從種子擴張至關重要；雙線性上採樣 living mask 到渲染解析度、對目標 alpha 套逐像素 L1+L2。</li>
+<li>(iii) <strong>LPIPS 求銳利</strong>：因生長隨機且局部、小偏移常見，純 L1/L2 會平均成模糊，故加 LPIPS（隨機選 RGBA 中三通道計算）鼓勵感知相似。</li>
+</ul>
+<p>更新規則的局部性加上 shape loss，使學得動態在生長中自然貼合目標形態輪廓。</p>
+<h2 id="5-實驗">5. 實驗</h2>
+<p>四種代表設定：(i) 生長形態、(ii) 合成 PBR 紋理、(iii) 網格紋理合成、(iv) 3D 體積紋理。遵標準 NCA 訓練實務（checkpoint pool、隨機更新、隨機 rollout 長度、溢位正則、梯度正規化）。LPPN 一律用 <strong>4 層 SIREN MLP</strong>（三層 + 線性輸出），僅增少量參數。主基線把 LPPN 換成從局部平均狀態的單一線性讀出（無座標輸入）；不與「直接在渲染解析度跑 NCA」比，因其訓練記憶體超出當前 GPU 上限。</p>
+<ul>
+<li><strong>5.1 生長形態</strong>：目標於 NCA 格演化、暴露 living 通道閘控更新，LPPN 解碼成 RGBA 受形態損失監督；2D 局部座標以正弦對編碼確保連續；週期性把 pool 重置回種子並重啟學習率排程以避不良局部極小。相較基線，輸出形狀與結構更銳利、細節更精；從單一種子向外擴張自然長出目標輪廓。嚴重損壞後系統再生回同一吸引子；測試時換參數產生漸進形變（morphing，為湧現性質、非顯式優化）。消融確認各組件作用（移除 LPPN／座標輸入／LPIPS／編碼分別致品質降、blob 或 patch 偽影、模糊）。</li>
+<li><strong>5.2 PBR 紋理合成</strong>：LPPN 輸出 9 通道場（albedo、normal、HRA），物理渲染僅用於視覺化非訓練。多尺度監督改善全域連貫、偽目標改善跨圖對齊、自相關項改善強幾何規律紋理的長程結構（顯示 NCA 動態在適當長程監督下能產生剛性高度結構化圖樣）。交換 NCA 與 LPPN 揭示<strong>粗到細分工</strong>：NCA 定粗略幾何佈局、LPPN 貢獻細尺度外觀；在不同於訓練的解析度渲染仍穩定、品質隨解析度上升而改善（算力–品質旋鈕）。</li>
+<li><strong>5.3 3D 體積紋理合成</strong>：NCA 在 3D 格上代表 ℝ³ 立方體；以 <strong>NeRF 式體積渲染</strong>沿相機射線取樣、三線性插值局部 NCA 狀態、查 LPPN 得 RGB 與標量密度（softplus 確保非負）、標準發射-吸收合成成像，受紋理損失監督；用正交相機減透視畸變、依目標對稱限制視角。較基線結構更連貫、細節更銳。</li>
+<li><strong>5.4 網格紋理合成</strong>：採 <strong>MeshNCA</strong>（細胞居網格頂點、感知以球諧基經網格連通性訊息傳遞），在 <strong>icosphere（約 4 萬頂點）<strong>訓練、測試時零樣本套用到未見網格。LPPN 把局部平均頂點狀態 + 連續表面座標解碼成任意取樣點 RGB；以重心座標前處理（排序 + 重映射）跨三角邊界穩定解碼。訓練時（僅 icosphere）以</strong>快取的 Lambert 等面積投影</strong>取代透視光柵化加速、減曲率與透視畸變。較基線更銳，並凸顯局部座標變換對防三角對齊偽影的重要。</li>
+<li><strong>5.5 線上 demo</strong>：cells2pixels.github.io，以 SwissGL/WebGL 完全在瀏覽器 GPU 跑（NCA 更新、LPPN 解碼/渲染、互動編輯）；三模式對應主實驗，可調模擬速度與 LPPN 取樣尺度；模型皆以較大 LPPN 尺度訓練，邊緣裝置即時則預設較小尺度。</li>
+</ul>
+<h2 id="6-結論">6. 結論</h2>
+<p>提出混合自組織框架：NCA + 輕量 LPPN，<strong>把 NCA 格大小從輸出解析度解耦</strong>——NCA 經粗格局部更新引導圖樣形成，共享 LPPN 把局部插值狀態 + 連續局部座標轉成任意尺度的外觀屬性。與影像超解析度有高層相似（學得解碼器從低解析表徵產高解析輸出），但目標不是通用超解析，而是一個<strong>局部、輕量、相容於 NCA 演化與其自組織特性</strong>的解碼器，且自然延伸到網格與體素等非影像域。任務專屬損失在不耗盡記憶體與計算下進一步提升品質。NCA + LPPN 能即時生成細緻高解析度影像與紋理，使 NCA 擴展到實用解析度而不失穩健、可控、高效，為互動可部署的自組織系統鋪路。</p>
+<p><strong>局限</strong>：LPPN 只依格內座標與局部插值狀態（無法存取所在 primitive 外的細胞），可能產生淡淡的 primitive 對齊 patch 偽影。</p>
+<p><strong>未來</strong>：把形態設定從 2D 物件擴到生長完整 3D 資產並保再生與可控；把 patch 式紋理損失與 LPPN 評估更緊整合（只渲染損失用到的查詢區）以省記憶體、訓更高有效解析度（如 4K+）；探索 NCA+LPPN 緊湊性用於影像與紋理的學習壓縮；探索更適合各向同性與一般多邊形的座標自由 LPPN 變體（改以插值狀態 + 最近鄰細胞狀態為條件、避免顯式格內座標）。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2506.22899_Cells_to_Pixels.%E6%91%98%E8%A6%81.html"><code>../summarize/2506.22899_Cells_to_Pixels.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

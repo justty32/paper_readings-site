@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>04_附錄要點 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2509.26433_ACT.zh-TW.html">回 2509.26433_ACT.zh-TW 目錄</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">← 上一節</a></p>
+</blockquote>
+<h2 id="附錄要點">附錄要點</h2>
+<h3 id="a-計算成本分析詳見-figure-4">A. 計算成本分析（詳見 Figure 4）</h3>
+<p>訓練階段各方法成本反映其程式建構策略：TextGrad 處理少量但非常長的 prompt；DSPy 評估 13 個中等大小的候選程式；ACT 發送大量短 prompt（估計 Gini）加少量長 prompt（語義回饋）。最低配置（d=3, k=10）下 ACT 與兩者成本可比。推論階段 TextGrad 最經濟，ACT 在同一數量級內但提供更可解釋的輸出。</p>
+<h3 id="b-act-演算法實作細節">B. ACT 演算法實作細節</h3>
+<p><strong>B.1 Prompt 精煉範例</strong>（DIAGNO 結核病診斷）：</p>
+<p>Iteration 0 — 初始通用 Prompt：</p>
+<blockquote>
+<p>「Based on the provided context, does this example belong to the positive class? (yes/no)」
+Gini impurity: 0.495</p>
+</blockquote>
+<p>LLM 回饋指出：正確預測 yes 的樣本展現嚴重全身性症狀（咳血、體重減輕、呼吸急促、皮疹、疲勞）；誤分類為 no 的樣本包含輕微局部症狀（眼睛癢、輕微喉嚨痛）。全局語義回饋建議聚焦於高區別力的特定特徵（咳血、體重減輕、高燒）。</p>
+<p>→ 修訂 p^(1)：</p>
+<blockquote>
+<p>「Does this example show severe systemic symptoms such as coughing blood, weight loss, or high fever? (yes/no)」
+Gini impurity: 0.470</p>
+</blockquote>
+<p>Iteration 1 — 進一步精煉：LLM 回饋指出當前問題過於寬泛（發燒與體重減輕區別力不足），建議聚焦最具特異性的正類指標——咳血。</p>
+<p>→ 修訂 p^(2)：</p>
+<blockquote>
+<p>「Does this example show evidence of coughing up blood? (yes/no)」
+Gini impurity: 0.468</p>
+</blockquote>
+<p>此迭代過程展示了 ACT 如何從通用問題逐步演化到針對性領域問題。</p>
+<p><strong>B.2 Prompt 優化約束</strong>（同 §3.6 所述）</p>
+<p><strong>B.3 資料集詳情</strong>：所有資料集相對較小且大多平衡，反映低資料 prompt 優化場景。DIAGNO（600 train / 100 val / 600 test）、SPAM（同上分割）、JAILBREAK（923/102/249）、BANKCHURN（600/100/600）、IMDB（600/100/600）。</p>
+<h3 id="d-額外定性結果">D. 額外定性結果</h3>
+<p><strong>D.1 ACT 生成問題的定性分析</strong>：ACT 識別的五項症狀與 WHO/NHS 醫學來源一致（咳血、發燒、體重減輕、淋巴腫大、疲勞），差異可歸因於部分症狀模棱兩可（「劇烈疼痛」vs. 胸痛/頭痛）以及二元分類設定中的資料集代表性限制。</p>
+<p><strong>D.2 SPAM 與 JAILBREAK 的生成決策樹</strong>（Figure 5、6）：SPAM 樹以「推廣語言/行銷術語→過度驚嘆號/文法錯誤→情緒化語言/聳動宣稱」等語義問題階層區分垃圾郵件。JAILBREAK 樹以「是否指示 AI 繞過倫理/法律約束→是否隱式或顯式覆寫安全限制→角色扮演中是否要求生成有害內容」等問題結構化檢測越獄 prompt。</p>
+<p><strong>D.3 與 TF-IDF + CART 的定性比較</strong>（Figure 7、8）：TF-IDF + CART 節點為單詞閾值（如「nose ≤ 0.074」「itching ≤ 0.052」「our ≤ 0.041」），大量通用副詞與介詞出現為分裂條件，既難理解也難以利用。ACT 的 NL 問題則易於人類理解與驗證。</p>
+<h3 id="e-額外-baseline-結果">E. 額外 Baseline 結果</h3>
+<p>ACT 與強大的不可解釋 baseline 對比仍具競爭力：</p>
+<ul>
+<li>TF-IDF + XGBoost：DIAGNO 83.0% acc、SPAM 96.3%、JAILBREAK 96.8%</li>
+<li>BERT：DIAGNO 90.3%、SPAM 99.5%、JAILBREAK 98.4%</li>
+<li>RoBERTa：DIAGNO 89.8%、SPAM 99.3%、JAILBREAK 99.6%</li>
+</ul>
+<p>ACT 雖不及 fine-tuned Transformer，但提供人類可讀決策路徑，在準確率與可解釋性之間取得權衡。完整 TF-IDF + CART 多深度結果與 XGBoost 多配置結果見 Table 8。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

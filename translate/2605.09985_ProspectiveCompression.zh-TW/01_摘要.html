@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.09985_ProspectiveCompression.zh-TW.html">回 2605.09985_ProspectiveCompression.zh-TW 目錄</a>　<a href="02_%E8%A8%88%E7%AE%97%E6%A8%A1%E5%9E%8B.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>程式合成（program synthesis）的核心難題之一是<strong>線上庫學習（online library learning）</strong>：在不確定未來任務需求的情況下，增量地習得可重用的抽象。現有演算法把庫學習當成對「靜態任務分佈」的<strong>回溯式壓縮（retrospective compression）</strong>——所學的庫完全由過去任務的語料決定。然而真實的學習領域往往是<strong>非平穩（non-stationary）<strong>的，任務來自一個隨時間演化的生成過程。我們提出並檢驗一個假說：在非平穩領域中，人類的庫學習是</strong>前瞻式（prospectively）<strong>地選擇抽象——以壓縮</strong>未來</strong>任務為目標。我們用 <strong>Pattern Builder Task（PBT）</strong>（一種視覺化程式合成範式，參與者由少量 primitive、變換與自訂 helper 構造愈來愈複雜的幾何圖案）研究此問題，設計兩個互補的潛在課程實驗來區辨「與前瞻式壓縮一致的行為」和其他庫學習說法。透過涵蓋各種線上庫學習策略的六個計算模型，我們證明人類抽象行為反映出對「任務生成過程之潛在、非平穩結構」的敏感度；這種行為與前瞻式壓縮一致，卻無法被現有回溯式壓縮演算法或 LLM 程式合成所建模的歸納偏好所捕捉。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>從蓋一座大教堂到學一種樂器，人類藉由把複雜問題<strong>分解為可重用的子任務</strong>來解決它。庫學習在程式合成脈絡中把此想法形式化：給定一個程式語料，它迭代地發現一組可重用的子程式（庫），每個都被挑選來<strong>最大化壓縮至今所見的程式</strong>（DreamCoder、Liang 等）。此路線在建模人類跨領域抽象學習（list functions、認知地圖、階層規劃策略）上成果豐碩。</p>
+<p>然而許多自然問題領域是<strong>動態</strong>的，任務來自非平穩生成過程，而非現有庫學習所假設的靜態分佈。在這種條件下，學習者只憑至今所見任務，該如何決定形成與重用哪些抽象（圖 1）？基於回溯式壓縮的演算法能自然延伸到這種非平穩設定嗎？</p>
+<p><strong>圖 1 要旨</strong>：現有庫學習演算法對過去任務做<strong>回溯式壓縮</strong>（左）；人類抽象學習則更適合刻畫為對<strong>任務生成過程</strong>做<strong>前瞻式壓縮</strong>，以選出能轉移到未來任務的抽象（右）。</p>
+<p>本文用<strong>人類行為當診斷神諭（diagnostic oracle）</strong>，來辨識支撐線上庫學習（含非平穩條件）的計算原則。工具是 <strong>PBT</strong>：學習者用少量 primitive 圖案與變換運算子構造幾何圖案；解表示為由這些 primitive 與變換組成的程式，且學習者可把任何中間構造存為 <strong>helper</strong>，供後續 trial 使用。我們考慮三個計算原則：(1) <strong>壓縮</strong>（最小化解的描述長度）；(2) <strong>歸納偏好</strong>（對表徵的結構性先驗）；(3) <strong>生成式推斷</strong>（建模非平穩任務分佈以預期未來任務）。</p>
+<p>我們發現人類的抽象決策對「任務分佈的潛在生成結構」敏感，顯示人類庫學習由<strong>前瞻式壓縮</strong>驅動，無法僅以回溯式壓縮或歸納偏好解釋。貢獻有三：(1) 一個受控實驗範式，其潛在課程能把前瞻式與回溯式壓縮策略區辨開；(2) 一族實例化回溯式壓縮與歸納偏好、並與人類行為對照評估的計算模型；(3) <strong>首次證明</strong>人類的線上抽象學習由「對任務生成過程的前瞻式壓縮」驅動，無法僅以回溯式壓縮或歸納偏好解釋。</p>
+<h2 id="2-庫學習形式化">2 庫學習（形式化）</h2>
+<p>我們把圖案構造形式化為 programming-by-example（PBE）範式下的歸納程式合成。一個 DSL 定義了程式空間 𝒫，由幾何 primitive 𝒳 與變換運算子 𝒯 組成。給定目標圖案 c，「構造 c」即找到程式 p 使得 ⟦p⟧=c。庫 ℒ 用一組有限的 helper 程式 ℋ⊂𝒫 擴充基礎 DSL，helper 在後續程式中充當 primitive。程式以抽象語法樹（AST）表示：葉為 primitive 或 helper，內部節點為變換運算子。</p>
+<p><strong>經典（回溯式）庫學習問題</strong>：給定目標序列與其解 𝒫′，找一組 helper ℋ* 最大化<strong>壓縮效用（Compression Utility, CU）</strong>：</p>
+<blockquote>
+<p>CU(ℋ, 𝒫′) = Σ_{h∈ℋ} |h|·occ_ℋ(h, 𝒫′)</p>
+</blockquote>
+<p>其中 |h| 是 helper 的大小（AST 中的 DSL primitive 數），occ(h,𝒫′) 是 h 作為子程式出現（且不被 ℋ 中其他程式的子程式所包含，以免重複計數）的程式數。此定義沿用標準壓縮效用，反映跨所有程式省下的 AST 節點總數。附錄 A 證明：即使在受限的扁平程式設定中，找<strong>最佳單一 helper 也是 NP-complete</strong>。</p>
+<p>現有方法透過選擇「最大化至今所見程式之回溯 CU」的 helper 來建庫。相對地，我們假設人類庫學習可能在解一個<strong>前瞻式庫學習問題</strong>——找 ℋ 來優化<strong>整個</strong>解語料 P*（含未來）的壓縮：</p>
+<blockquote>
+<p>ℋ* = arg max_ℋ  𝔼_{P(P*|𝒞₁:ₜ)} [ CU(ℋ, P*) ]（式 2）</p>
+</blockquote>
+<p>其中 P(P*|𝒞₁:ₜ) 是「以至今所見任務為條件、對完整（含未來 t+k 個）解語料」的分佈。我們藉由比較人類 helper 學習行為與一族計算模型，檢驗前瞻式庫學習是否更能捕捉人們形成可重用抽象的方式。</p>
+<p><strong>圖 2 要旨</strong>：學習者有 5 個幾何 primitive（綠框）與 7 個固定運算（藍框），可組合並把新圖案存成 helper（如綠色高亮的對角十字），helper 延續到後續任務。不同模型的 helper 建立策略發散：歸納偏好（LLM）選「合理的規則幾何圖案」；機率式庫學習隨機晉升 MDL 解中的步驟；回溯式（DreamCoder 式）晉升「最大化壓縮過去任務」的 helper；貪婪式總是晉升最近的解（最大化當前 trial 壓縮）；前瞻式晉升「預測會被未來程式分佈共享」的 helper。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_討論 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2504.19254_UQ_Scorers.zh-TW.html">回 2504.19254_UQ_Scorers.zh-TW 目錄</a>　<a href="02_%E5%B9%BB%E8%A6%BA%E5%81%B5%E6%B8%AC%E6%96%B9%E6%B3%95%E8%AB%96.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-討論">5. 討論</h2>
+<p><strong>如何選分數</strong>：取決於 API 支援、延遲需求、LLM 行為與是否有 graded 資料集。若 API 提供 token 機率，白盒分數<strong>不增延遲與生成成本</strong>（只需單次生成）；若無，則只能用黑盒或 LLM-judge。黑盒中 NLI 類（NSN、NCP）延遲較高，低延遲場景宜改用較快的黑盒或 LLM-judge；不在意延遲則黑盒皆可。LLM-judge 方面，<strong>模型在某資料集自身的準確率正相關於它當該資料集評審的能力</strong>，可作評審選擇的實用準則。若有 graded 資料集，調集成通常能比單一分數更準。</p>
+<p><strong>如何用信心分數</strong>：(1) <strong>response filtering</strong>（擋掉低信心回應）或<strong>定向 human-in-the-loop</strong>（低信心轉人工審查）——Filtered Accuracy@τ 已證其效；閾值選擇取決於分數、資料集與相關方對「假陰 vs 假陽成本」的權衡。(2) <strong>部署前診斷</strong>——看模型在哪類問題表現最差，指引改進（如再做 prompt engineering）。<strong>倫理提醒</strong>：信心分數反映的是模型不確定性而非以真值為準的正確性，高分可能在高風險場景誘發過度依賴，故在醫療／法律／金融不應把信心分數當決策保證，須輔以人工審查與領域防護；並應監控分佈公平性與內容多樣性（含分群錯誤率），避免系統性移除特定群體的正確回應。</p>
+<p><strong>局限與未來工作</strong>：(1) 只測可程式化評分的 QA（數字／選擇／短答），對長文生成（可能一則輸出混真假 claim，需 claim 級拆解）與程式碼生成（正確性靠語法與執行，黑盒一致性未必適用）不保證推廣。(2) 只測 4 個 LLM，token 機率分佈差異影響白盒、回應變異度影響黑盒、評審表現隨 LLM 與 prompt 大幅變動。(3) 集成只驗<strong>同域</strong>、只用<strong>線性</strong>加權；跨資料集遷移、非線性集成（保留可解釋性的單調 GAM、mixture-of-experts、樹集成）留待未來——當分數訊號有交互或非線性關係時可能勝過線性平均，須權衡延遲、小樣本過擬合、可解釋性。(4) 調集成需 graded 資料集：易評分任務可自動產標籤；難評分任務（如摘要）可先用少量人工標註（數百則）起步，再從 production log 增量補標籤。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>本文提出一套閉卷幻覺偵測框架，由多種黑盒 UQ、白盒 UQ 與 LLM-as-a-Judge 分數組成，全部轉換／正規化為 0 到 1（越高越有信心）的 response-level 信心分數，可用於生成時的幻覺偵測；並提出可調的集成——任意組合個別分數的最佳化加權平均，且可擴充納入新分數。實證給出實務指引：<strong>集成穩定勝過單一方法</strong>，強力支持逐場景客製化而非一體適用；無 token 機率時 <strong>NLI 類</strong>通常是最佳黑盒選擇；採樣更多回應的增益隨數量遞減，提供兼顧效果與運算效率的部署準則；模型自身準確率正相關於其評審能力，可作評審選擇準則。<code>uqlm</code> 實作全部分數並持續維護。</p>
+<h2 id="附錄要點">附錄要點</h2>
+<ul>
+<li><strong>附錄 A（LLM-as-a-Judge Prompt）</strong>：把「Question:[question], Proposed Answer:[answer]」餵給 LLM，要它評估答案正確可能性、給 0-100 分（100＝確定正確、0＝確定錯誤），只回數字。用大寫與重複指令（受 DecodingTrust 啟發）確保遵從，並附兩個 few-shot 範例（如「美國第一任總統＝Benjamin Franklin」給 4 分）。</li>
+<li><strong>附錄 B（集成調參）</strong>：形式化兩策略。<strong>Threshold-agnostic</strong>（公式 20-22）：先以與閾值無關的指標 𝒮（如 AUROC）解出最佳權重 w*，再以依賴閾值的指標 ℬ（如 F1）解出最佳閾值 τ*。<strong>Threshold-aware</strong>（公式 23）：以依賴閾值的目標<strong>同時</strong>解出 w* 與 τ*。</li>
+<li><strong>附錄 C（回應評分 h）</strong>：各任務給 LLM 特定輸出格式指令，並以對應 grader 實例化 h（大小寫不敏感、去空白）。<strong>數學</strong>：抽取開頭整數子串比對正解，非數字或缺失視為錯。<strong>選擇</strong>：正規化為大寫字母比對 {A-E}，非法字母視為錯。<strong>短答</strong>：正解為一組可接受答案（含多種措辭，如「film director / director / screenwriter…」），只要輸出（正規化後）<strong>包含</strong>任一可接受答案子串即算對。作者提醒這些自動 grader 非完美、視模型是否遵從輸出格式而定，應視為以答案鍵為準的正確性代理。</li>
+<li><strong>附錄 D（候選回應數 m 對黑盒表現的影響）</strong>：對 m=1,3,5,10,15 重算所有黑盒分數。整體 AUROC 隨 m <strong>近乎單調上升但邊際遞減</strong>（如 GPT-4o 在 CSQA 從 m=1 的 0.54-0.57 升到 m=15 的 0.75-0.8），24 情境皆一致，僅少數例外（如 GPT-4o 在 GSM8K 的 BSC、在 AI2-ARC 的 BSC/NCS/EMR）。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2504.19254_UQ_Scorers.%E6%91%98%E8%A6%81.html"><code>../summarize/2504.19254_UQ_Scorers.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

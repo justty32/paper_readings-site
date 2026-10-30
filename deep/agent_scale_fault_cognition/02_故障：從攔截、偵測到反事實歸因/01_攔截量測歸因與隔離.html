@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_攔截量測歸因與隔離 · 論文閱讀</title><link rel="stylesheet" href="../../../html/_shared.css"><link rel="stylesheet" href="../../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../../html/index.html">總覽</a><a href="../../../index/README.html">論文索引</a><a href="../../../html/deep.html">深掘綜述</a><a href="../../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../02_%E6%95%85%E9%9A%9C%EF%BC%9A%E5%BE%9E%E6%94%94%E6%88%AA%E3%80%81%E5%81%B5%E6%B8%AC%E5%88%B0%E5%8F%8D%E4%BA%8B%E5%AF%A6%E6%AD%B8%E5%9B%A0.html">回本章目錄</a>　<a href="02_%E6%95%88%E6%9E%9C%E8%AA%9E%E6%84%8F%E8%88%87%E6%95%85%E9%9A%9C%E4%BF%AE%E5%BE%A9.html">下一子節 →</a></p>
+</blockquote>
+<h2 id="一先攔截副作用">一、先攔截副作用</h2>
+<p>AutoGen 的 Safeguard 與棋盤驗證器提供最小原則：LLM 只提議；確定性節點檢查權限、schema、狀態轉移與領域規則，放行後才能執行。移除守門節點就會出現不安全程式或非法棋步。<a class="paper-reference" href="../../../summarize/2308.08155_AutoGen.%E6%91%98%E8%A6%81.html">2308.08155</a></p>
+<p>工程上還需補入 idempotency key、重試上限、timeout、熔斷、不可逆操作前的 commit gate，以及多步操作的補償行為。否則「反思再試一次」可能重複扣款或污染共享狀態。</p>
+<h2 id="二量測每一步而非只看終局">二、量測每一步，而非只看終局</h2>
+<p>Agent UQ 綜述把軌跡寫成動作、環境狀態與觀察的動態系統，要求同時估每輪條件不確定性與整條軌跡的聯合不確定性。既有單輪 QA 方法搬到 agent 場景後常接近隨機，原因包括工具與使用者觀察不是 LLM 自身分布、互動可能消減而不只是累積不確定性。<a class="paper-reference" href="../../../summarize/2602.05073_UQAgentsSurvey.%E6%91%98%E8%A6%81.html">2602.05073</a></p>
+<p>多 agent 又多一個危險象限：每個 agent 內部都很確定，彼此卻給出不同語意結論。Collaborative Entropy 以 agent 內語意熵與 agent 間分歧分解系統不確定性，使「大家都不知道」與「大家各自深信不同答案」可以分開處理。<a class="paper-reference" href="../../../summarize/2603.28360_CoECollaborativeEntropy.%E6%91%98%E8%A6%81.html">2603.28360</a></p>
+<p>MEMOBench 把「量測每一步」具體化為 Storage、Update、Compression 三種可執行 checkpoint，並用 prefix completion 防止後段狀態碰巧成立就冒領前序進度。 <a class="paper-reference" href="../../../summarize/2609.07047_MEMOBench.%E6%91%98%E8%A6%81.html">2609.07047</a> 它因此補上前述軌跡級 UQ 尚未定位記憶生命週期故障的空白：終局失敗還能拆成沒有存入、沒有更新，或沒有把歷史壓成可行動狀態；這是本檔依兩篇工作的對照推論，不是作者聲稱已建立通用故障分類。（本檔補註，非作者自陳）它目前也只在模擬器驗證，尚未涵蓋真實感測與接觸動力學。 <a class="paper-reference" href="../../../summarize/2609.07047_MEMOBench.%E6%91%98%E8%A6%81.html">2609.07047</a></p>
+<h2 id="三定位誰何時犯下決定性錯誤">三、定位誰、何時犯下決定性錯誤</h2>
+<p>Who &amp; When 首次把問題明確化，收集 127 個 LLM 多智能體系統的細粒度失敗紀錄。最佳方法找對責任 agent 只有 53.5%，定位決定性錯誤步只有 14.2%；強推理模型也未達實用。這表示完整 trace 不等於可診斷性。<a class="paper-reference" href="../../../summarize/2505.00212_WhoAndWhenFailureAttribution.%E6%91%98%E8%A6%81.html">2505.00212</a></p>
+<p>REFLECT 的進展在於不相信 auditor 的敘事。它保留原始前綴，在可疑步附近注入診斷特定修補後重播；只有修補被忠實執行且結果由錯翻正，該步才獲得反事實歸因證據。它比純 LLM 評審可靠，但仍依賴可重播環境、主要定位單一最早錯誤，遇到不可逆工具或多點共因就受限。<a class="paper-reference" href="../../../summarize/2606.09071_REFLECT.%E6%91%98%E8%A6%81.html">2606.09071</a></p>
+<p>CHIME 把終局成敗先分配給 planning、execution、both 或 none，再只更新對應的規劃或執行記憶庫。 <a class="paper-reference" href="../../../summarize/2609.02074_CHIME.%E6%91%98%E8%A6%81.html">2609.02074</a> 這為 Who &amp; When 揭露的責任定位難題補上一條「先歸因、後固化」的正證，也避免把執行失誤寫成規劃經驗；但它的歸因門仍由凍結骨幹模型判定，重跑後失敗消失也不是逐步反事實介入，所以證據強度仍低於 REFLECT 的修補重播。（本檔補註，非作者自陳） <a class="paper-reference" href="../../../summarize/2609.02074_CHIME.%E6%91%98%E8%A6%81.html">2609.02074</a></p>
+<h2 id="四控制爆炸半徑並讓系統學會遺忘">四、控制爆炸半徑並讓系統學會遺忘</h2>
+<p>每個 shard、工作流子圖與工具域都應是獨立 fault domain。失敗 agent 先隔離，不要讓錯誤記憶或建議寫入共用資產。Library Drift 顯示技能庫無界累積會讓陳舊指引反向拖累 agent；結果驅動退役、容量上限與作者先驗才能恢復效能。<a class="paper-reference" href="../../../summarize/2605.19576_LibraryDrift.%E6%91%98%E8%A6%81.html">2605.19576</a></p>
+<p>完整治理鏈應是：</p>
+<pre><code class="language-text">提議 → 確定性驗證 → 執行／拒絕
+  ↓          ↓             ↓
+步級信心   結構化錯誤     可重播事件紀錄
+               ↓
+      責任 agent／錯誤步歸因
+               ↓
+隔離、補償、升級人工、修正或退役記憶／技能
+</code></pre>
+<p>真正缺少的不是更多 reflection prompt，而是跨 agent 的因果 provenance：一個下游錯誤受到哪些上游訊息、模型版本、記憶與工具回傳影響，而且能以重播或干預驗證。</p>
+<p>Harness Tampering 把這個缺口再往下挖一層：除了追 agent 的訊息、記憶與工具，也要追產生、評估、選擇、紀錄與傳承這些證據的 harness 修改，並以「功能角色×完整性義務」標示破壞位置。 <a class="paper-reference" href="../../../summarize/2609.00069_HarnessTampering.%E6%91%98%E8%A6%81.html">2609.00069</a> 這填補了既有 provenance 只審計執行軌跡、卻把證據機制本身當成可信底座的空白。（本檔補註，非作者自陳）不過其 benchmark 真值主要來自人工植入的配對修改，公開運行材料中的 finding 又是模型審計結果，不等於已人工確證的自然竄改盛行率。 <a class="paper-reference" href="../../../summarize/2609.00069_HarnessTampering.%E6%91%98%E8%A6%81.html">2609.00069</a></p>
+<blockquote>
+<p>← <a href="../02_%E6%95%85%E9%9A%9C%EF%BC%9A%E5%BE%9E%E6%94%94%E6%88%AA%E3%80%81%E5%81%B5%E6%B8%AC%E5%88%B0%E5%8F%8D%E4%BA%8B%E5%AF%A6%E6%AD%B8%E5%9B%A0.html">回本章目錄</a>　<a href="02_%E6%95%88%E6%9E%9C%E8%AA%9E%E6%84%8F%E8%88%87%E6%95%85%E9%9A%9C%E4%BF%AE%E5%BE%A9.html">下一子節 →</a></p>
+</blockquote>
+<footer class="site-footer"><a href="../../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

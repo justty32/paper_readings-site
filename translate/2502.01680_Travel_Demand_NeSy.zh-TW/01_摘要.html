@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2502.01680_Travel_Demand_NeSy.zh-TW.html">回 2502.01680_Travel_Demand_NeSy.zh-TW 目錄</a>　<a href="02_%E7%B5%90%E8%AB%96%E8%88%87%E6%9C%AA%E4%BE%86%E5%B7%A5%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>旅行需求預測對優化交通規劃、資源配置與基建發展至關重要。本研究提出一個<strong>神經符號人工智慧（Neurosymbolic AI）框架</strong>，將<strong>決策樹（DT）符號規則</strong>與<strong>神經網路（NN）<strong>整合來預測旅行需求，兼取符號推理的可解釋性與神經學習的預測力。框架整合地理空間、經濟、移動等多源資料建立完整特徵集；以 DT 萃取可解釋的 if-then 規則捕捉關鍵模式，再把這些規則作為</strong>額外特徵</strong>併入 NN 以增強預測。實驗顯示：規則增強後的<strong>組合資料集</strong>在多項指標（MAE、R²、CPC）上一致優於單獨資料集；以**更細變異數門檻（如 0.0001）**篩出的規則在捕捉細緻關係、降低誤差、貼合觀測通勤模式上表現尤佳。資料與程式碼公開於 GitHub。</p>
+<p><strong>關鍵詞</strong>：決策樹、神經網路、神經符號 AI、旅行需求預測。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>精準預測縣與縣間的旅行需求，能讓決策者優化交通網、減壅塞、做好基建投資。挑戰在於需同時建模空間、經濟、移動因子的複雜關係：傳統統計／時間序列模型雖簡單可解釋，卻抓不住真實旅行資料中的非線性多維交互；NN 能學這些複雜模式，但其「黑箱」性質限制可解釋性，而交通應用恰需透明與可問責。</p>
+<p>本文提出新穎的神經符號做法（圖 1）：用 DT 萃取捕捉關鍵旅行模式的 if-then 規則，用 NN 建模非線性交互；<strong>把 DT 規則編碼成額外輸入特徵餵給 NN</strong>，橋接符號與神經兩種學習範式。貢獻要點：(1) 首個把符號模型與 NN 結合用於旅行需求預測的研究；(2) 方法納入<strong>基於變異數的規則選擇</strong>，提供平衡模型複雜度與可解釋性的新機制。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>傳統旅行需求預測靠統計模型（重力模型、邏輯迴歸；亦用於區域空中移動 RAM、先進空中移動 AAM 的需求迴歸），多假設線性關係。機器學習興起後，NN 因能建模非線性、從大資料學習而廣被採用並勝過傳統法，但缺乏可解釋性。為破黑箱有兩支：<strong>XAI</strong>（通常在訓練後提供解釋）與<strong>神經符號 AI</strong>（將神經學習與符號推理直接整合進模型架構，更內在可解釋）。</p>
+<p>既有 XAI 於旅行需求的應用：Hu 等比較樹模型預測人口流入（boosting 樹勝出）；Kim 等用線性迴歸 + LSTM 兩階段模型捕捉計程車與叫車服務的動態；Kim 用 XGBoost + 變數重要度／ALE 分析首爾出行模式選擇；另有研究用變數重要度 + SHAP 解釋出行方式選擇。<strong>但交通領域尚無人用神經符號做法做旅行需求預測</strong>——既有研究只探討「訓練後」的準確度與可解釋性。本文以 DT 萃取規則 + NN 的框架填補此空白。</p>
+<h2 id="3-方法">3. 方法</h2>
+<p>工作流（圖 2）：從地理空間、經濟、移動多源整合成「初始資料集」→ 處理精煉成「最終資料集」（確保特徵相關性與品質）→ 用不同深度的 DT 萃取規則得「規則資料集」→ 依變異數門檻精煉得「選定規則資料集」。</p>
+<h3 id="a-資料收集與預處理">A. 資料收集與預處理</h3>
+<p>資料源：多尺度動態人流資料集（SafeGraph 匿名手機定位，自 2019-01 起 census tract 級每日 O-D 流；本研究取 2021-03-15 至 04-15）、OSRM（田納西各縣地理特徵與縣間時間/距離）、Boyd Center 經濟資料、田納西兒少委員會的縣排名。所有資料清洗、標準化、以縣級識別碼合併；缺值用中位數補、數值縮放。每縣最終備妥 <strong>11 個特徵</strong>：土地利用（自然區/公共區計數）、POI 計數、道路（主要/其他）、交通（機場/車站等總數）、經濟（失業率、就業人口、銷售稅收）、縣排名、人口。</p>
+<p>起點與終點兩縣特徵併入移動資料集得初始資料集（22 欄特徵 + 時間/距離 2 欄 + 平日/週末 1 欄 + 流量 1 欄）。經 <strong>VIF ≤ 10 多重共線性檢查</strong>剔除冗餘變數後，得 <strong>10 特徵 + 人流欄 = 11 欄</strong>的最終資料集。</p>
+<h3 id="b-決策樹規則萃取">B. 決策樹規則萃取</h3>
+<ol>
+<li><strong>建不同深度的 DT（深度 3–15）</strong>：淺樹（深度 3）凸顯最關鍵特徵、重可解釋；深樹（深度 15）捕捉複雜非線性，藉此比較複雜度 vs 效能。</li>
+<li><strong>萃取規則</strong>：訓練後遍歷根節點到葉節點的路徑，每條路徑即一條 if-then 規則（表 II 列出深度 3 萃出的 8 條規則，例如「distance ≤ 46.08 哩 AND POIs_Destination &gt; 323 AND POIs_Origin &gt; 307」，平均流量值 31,867.81）。</li>
+</ol>
+<h3 id="c-生成規則資料集">C. 生成規則資料集</h3>
+<p>把萃出的規則套回資料集生成新特徵：每條規則對應一個<strong>二元指示特徵</strong>（條件滿足為 1，否則 0）。系統性過濾：剔除<strong>變異數低於 0.01 / 0.001 / 0.0001</strong> 的規則，得四種規則集（全部規則 + 三種門檻）。</p>
+<h3 id="d-神經網路實作">D. 神經網路實作</h3>
+<p>由 DT 萃出的規則共生成 <strong>60 個資料集</strong>，與最終資料集一起訓練 NN，評估不同規則與樹深組合的影響（表 III 列出資料集配置：Final 1 個、各類 Rules 各 12 個，對應深度 3–15）。</p>
+<h2 id="4-實驗與結果">4. 實驗與結果</h2>
+<h3 id="a-評估指標">A. 評估指標</h3>
+<ul>
+<li><strong>MAE</strong>：預測誤差絕對值平均。</li>
+<li><strong>R²（決定係數）</strong>：模型解釋的變異比例，越接近 1 越好。</li>
+<li><strong>CPC（Common Part of Commuters，Sørensen-Dice 指數）</strong>：衡量生成流 yg 與真實流 yr 的相似度，0–1，1 為完全吻合；當總生成外流等於真實總外流時，CPC 等同於模型把行程指派到正確目的地的準確率。</li>
+</ul>
+<h3 id="b-結果">B. 結果</h3>
+<ul>
+<li><strong>圖 3（Final vs Rules vs Combined）</strong>：隨樹深增加，Rules 與 Combined 的 MAE 顯著下降；<strong>Combined 在所有深度一致取得最低 MAE、最高 R²、最高 CPC</strong>；Rules-only 起初誤差高，約<strong>深度 9 之後</strong>才穩定勝過基線。</li>
+<li><strong>圖 4（不同變異數門檻 + Final）</strong>：<strong>門檻 0.0001 的規則一致給出較低 MAE、較高 R² 與 CPC</strong>，尤其在較深的樹；0.01 / 0.001 門檻波動較大；所有規則集都優於基線。</li>
+<li><strong>表 IV（各深度規則數）</strong>：樹深增加，規則總數<strong>指數成長</strong>（深度 3 為 8 條 → 深度 15 為 2628 條）；變異數門檻越低保留越多細規則（深度 15：0.01→5 條、0.001→171 條、0.0001→1595 條），凸顯變異數選擇在簡化模型同時保留關鍵規則的價值。</li>
+<li><strong>圖 5（每條規則的效能）</strong>：低深度時每規則貢獻較高（規則少）；深度增加後規則數增但效能增幅趕不上，故每規則貢獻下降；0.01 門檻因選出規則極少，深度 10 後每規則效能反升。</li>
+</ul>
+<h2 id="5-討論">5. 討論</h2>
+<p><strong>整合 DT 規則的影響</strong>：規則提供明確的 if-then 條件與決策邊界，既補足 NN 的非線性學習，又以結構化約束<strong>緩解過擬合</strong>；在較深樹與較細門檻下尤其降低 MAE、提升 R² 與 CPC。</p>
+<p><strong>規則深度與數量分析</strong>：樹越深規則越多、表徵越豐富，但有<strong>邊際遞減</strong>（過大規則集引入雜訊與複雜度）；低變異數門檻能平衡規則數量與相關性（深度 10–14，0.0001 門檻一致勝過 0.01/0.001）。</p>
+<p><strong>改善的可能原因</strong>：(1) <strong>特徵增強</strong>——規則為原始特徵集加上可解釋、資料驅動的約束；(2) <strong>細粒度規則選擇</strong>——低門檻引入更細模式；(3) <strong>混合框架</strong>——DT 可解釋性 × NN 非線性學習的協同；(4) <strong>減少過擬合</strong>——規則避免過度依賴雜訊/無關特徵。</p>
+<p><strong>局限</strong>：(1) 資料偏誤——依賴特定來源、靜態快照，難涵蓋季節/即時波動，泛化受限；(2) 規則選擇可擴展性——樹深增規則指數爆炸，固定門檻可能誤刪有用規則；(3) 可解釋性折衷——規則嵌入 NN 後整體仍受黑箱性影響，難追溯單一規則貢獻；(4) 方法論偏誤——固定（非自適應）門檻可能引入偏差。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

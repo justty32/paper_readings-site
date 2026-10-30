@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>以對數深度遞迴單元達成長度泛化（Length Generalization with Log-Depth Recurrent Units） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Charles Pert、Dalal Alrajeh、Alessandra Russo（Imperial College London）</p><p>日期：2026-05（arXiv v1）</p><p>arXiv：2605.26035</p><p><a href="https://arxiv.org/abs/2605.26035" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="以對數深度遞迴單元達成長度泛化">以對數深度遞迴單元達成長度泛化</h1>
+<h2 id="摘要">摘要</h2>
+<p>長度泛化是神經網路的長期難題：遞迴模型易有位置偏差，Transformer 受固定計算深度所限。正規語言是常用試驗場（標籤預測可在任意長度驗證）。本文提出 <strong>MLP-LDRU</strong>——一種對數深度遞迴單元（Log-Depth Recurrent Unit），捕捉一類<strong>偏向結合律的算子</strong>，以<strong>平行歸約</strong>逼近遞迴。在 21 個正規語言任務（標準 benchmark + 新的 prefix languages）上，增大最大訓練長度時，<strong>18 個任務達 100% OOD 準確率、其餘 3 個 ≥99.9%</strong>，勝過可比的遞迴與注意力模型。在 ListOps 與 NLP 分類 benchmark 上亦具競爭力。</p>
+<hr />
+<h2 id="1-引言">1 引言</h2>
+<p>OOD 序列長度泛化是神經建模的核心開放難題。正規語言因可精確數學刻畫、直連自動機理論、能在任意長度驗證正確性，成為熱門試驗場。先前工作指出一個取捨：<strong>RNN</strong> 提供長度自適應計算，但較早 token 經更多遞迴步，導致長程記憶問題；<strong>Transformer</strong> 套固定層數、與序列長無關，OOD 長度泛化較不可靠。本文想用<strong>平行歸約</strong>實現遞迴：已知（Ladner-Fischer 1980、Blelloch 1990）有結合律算子時，平行歸約能給遞迴一個對數深度實作；但這類算子層級約束未被充分探索。假設：用<strong>顯式結合律（與單位元）偏置</strong>學這類算子，可改善正規任務上的長度外推。</p>
+<p>把這類算子命名為 <strong>LDRU</strong>：透過二元算子在平衡樹上組合 token 嵌入，歸約得均勻 O(log n) 深度，緩解 RNN 位置偏差又能平行算如遞迴。動機是正規語言的<strong>幺半群視角</strong>（串接＝結合性乘積）：若學到的算子近似結合律，當歸約算子用即近似序列遞迴——此性質支撐正規任務上的長度泛化。LDRU 是平衡二元樹遞迴網路（BBT-RvNN）的子類，但學習目標不同：<strong>刻意把算子偏向近似結合並強制單位元行為</strong>（padding 當中性元）。</p>
+<p><strong>貢獻</strong>：(1) 提出 MLP-LDRU，一個設計來誘導近似結合行為＋單位元處理的二元算子；(2) 在 21 個正規任務上實證評估，並在 ListOps 外推與 NLP 分類上做遷移探針；(3) 引入 <strong>prefix languages</strong> 這類新正規任務，測長度外推下的長程依賴。</p>
+<h2 id="2-prefix-languages">2 Prefix Languages</h2>
+<p>新設計的一類正規任務，用來隔離「長度外推下的長程依賴處理」（定義見附錄 B）。</p>
+<h2 id="3-方法">3 方法</h2>
+<p>給定 n 個 token 嵌入，模型對相鄰對平行套用 ⊙_θ，共 ⌈log₂ n⌉ 步（圖 2：長度 8 的序列 3 步歸成單一嵌入，示意 O(log n) 深度）。每步＝算子→殘差 FFN→LayerNorm，<strong>步間權重共享</strong>；每步後加 dropout（經驗上助穩健泛化）。長度為奇數時補零嵌入 0；把 0 當 ⊙_θ 的中性佔位元（任一輸入為 0 則輸出另一輸入＝跳過組合），免去學恆等映射、避免 padding 偽影。</p>
+<p><strong>算子 ⊙_θ：ℝ^d × ℝ^d → ℝ^d</strong>，核心是逐元素加總（天然結合）＋學習閘控：</p>
+<pre><code>[g_i; g_j] = MLP([h_i; h_j])           (1)
+f_i = V_i(g_i ∘ h_i) + b_i,  f_j = V_j(g_j ∘ h_j) + b_j   (2)
+⊙_θ(h_i, h_j) = W_out(f_i + f_j) + b_out                  (3)
+</code></pre>
+<p>其中 ∘ 為逐元素乘；用 3 層 MLP、擴張因子 (1,2,1)；<strong>V_i、V_j、W_out 皆以單位矩陣初始化、對應偏置歸零</strong>。逐元素加總＋此初始化把 ⊙_θ 偏向近似結合。整條序列反覆套 ⊙_θ 歸成單一嵌入 h_n，送線性分類器出 logits。</p>
+<p><strong>3.1 複雜度</strong>：MLP-LDRU 達 O(n·d²) 工作量、O(log n) 深度——結合 RNN 式線性擴張與對數時間平行；對比 RNN 的 O(n) 序列深度、Transformer 的 O(n²d+nd²)。</p>
+<pre><code class="language-mermaid">graph TD
+  subgraph 三條長度泛化路線
+    A[RNN：長度自適應&lt;br/&gt;但 O(n) 深度＋位置偏差]
+    B[Transformer：固定層數&lt;br/&gt;O(n²d) 且 OOD 長度不穩]
+    C[MLP-LDRU：平衡樹平行歸約&lt;br/&gt;O(log n) 深度＋結合律偏置]
+  end
+</code></pre>
+<h2 id="45-實驗與結果">4–5 實驗與結果</h2>
+<p>所有架構訓練於長度 1–40、評估於 41–500（均值±標準差，多種子）。</p>
+<ul>
+<li><strong>21 個正規任務（Table 2）</strong>：MLP-LDRU <strong>18 個達 100%</strong>、其餘 3 個近完美。Even Pairs、Modular Arithmetic、Parity Check、Cycle Navigation、D₂、D₃、D₄ 皆 100.0±0.0；D₆ 98.5、D₈ 98.1、D₁₂ 略低。</li>
+<li>對比：勝過全部 3 種 Transformer PE（NoPE/ALiBi/∼RoPE），唯 D₈、D₁₂ 對 ∼RoPE 例外；∼RoPE 雖在 D₁₂ 最強卻<strong>不一致</strong>（Modular Arithmetic 僅 31.4% vs NoPE 76.0%、ALiBi 54.4%）。<strong>Gated DeltaNet（及附錄 S5、SD-SSM）從未在任何任務超越</strong> MLP-LDRU；多種 Transformer/SSM 在 Cycle Navigation、Parity 退化到接近隨機（~20–50%）。亦勝 RegularGPT，匹敵或超越 RNN（除 D₈，差距不顯著）、LSTM、BBT-GRC。</li>
+<li><strong>超出正規語言</strong>：ListOps（測組合外推）與多個 NLP 分類 benchmark 上具競爭力。</li>
+</ul>
+<h2 id="68-討論相關工作結論">6–8 討論／相關工作／結論</h2>
+<p>進一步分析任務底層幺半群顯示：<strong>剩餘失敗源於訓練資料對幺半群組合覆蓋不足，而非架構限制</strong>。LDRU 把「結合律歸納偏置 + 對數深度平行歸約」做成可學算子，作為介於 RNN 與 Transformer 之間、能在正規任務上可靠長度泛化的第三條路；以正規任務為嚴謹起點，邁向更複雜場景的長度外推序列模型。</p>
+<hr />
+<blockquote>
+<p>附錄涵蓋：與自動機理論的連結（A）、prefix languages 定義（B）、MLP-LDRU 細節（C）、額外複雜度分析（D）、正規任務實驗細節與優化器消融（E）、完整結果表（F）、結合律正則化（G）、非正規語言實驗（H：ListOps／NLP）、可解釋性分析（I）、幺半群組合分析（J）。程式碼承諾發表時釋出。</p>
+</blockquote>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2605.26035_MLP_LDRU_Length_Gen.%E6%91%98%E8%A6%81.html"><code>../summarize/2605.26035_MLP_LDRU_Length_Gen.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

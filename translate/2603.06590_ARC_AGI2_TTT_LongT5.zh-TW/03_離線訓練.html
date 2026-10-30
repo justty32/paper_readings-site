@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_離線訓練 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.06590_ARC_AGI2_TTT_LongT5.zh-TW.html">回 2603.06590_ARC_AGI2_TTT_LongT5.zh-TW 目錄</a>　<a href="02_%E6%B3%A8%E5%85%A5%E5%85%88%E9%A9%97%E7%9F%A5%E8%AD%98.html">← 上一節</a>　<a href="04_%E6%B6%88%E8%9E%8D%E7%A0%94%E7%A9%B6.html">下一節 →</a></p>
+</blockquote>
+<h2 id="6-離線訓練">6. 離線訓練</h2>
+<p>大規模離線預訓練，賦予模型對符號網格轉換的廣泛理解，再做任務專屬適應。</p>
+<ul>
+<li><strong>6.1 分散式設定</strong>：HuggingFace Trainer + PyTorch DDP，<strong>8 節點 × 8×H100 = 64 GPU</strong>，有效批次 512。從 <code>google/long-t5-tglobal-base</code> 初始化。</li>
+<li><strong>6.2 學習率排程</strong>：70 epoch，AdamW + weight decay，cosine 排程 + 100 步線性 warm-up。</li>
+<li><strong>6.3 課程學習</strong>：依複雜度分階引入——階段 1 僅 ARC-AGI-1 訓練集（學基本網格語意）→ 階段 2 加 ARC-AGI-1 評測集 + 其他公開資料集 → 階段 3 加 ARC-AGI-2 公開資料（需組合推理）。</li>
+<li><strong>6.4 增強流水線</strong>：所有課程資料過對稱增強 + 網格遍歷 + 自動機擾動。</li>
+<li><strong>6.5 訓練去「解題」</strong>：標準 token 級交叉熵自回歸生成測試輸出。也試過 Goldfish loss（隨機遮 token 防死背，但因 ARC 需像素精度反而變差）與 DGA loss（正則化保持權重近預訓練初始化，結果幾乎與標準交叉熵相同）。優化器離線用 <code>adamw_torch_fused</code>、TTT 用 <code>adamw_8bit</code>，全精度 fp32，梯度裁剪 ≤1.0。</li>
+<li><strong>6.6 訓練去「理解」（UL2 去噪）</strong>：依 <strong>UL2（統一語言學習範式）</strong>，模型重建被遮的網格區域而非直接預測輸出，促進雙向推理與潛在規則發現。三種去遮模式（不同噪比/遮罩）。課程中交錯標準 ARC 任務與去噪任務，比例隨時間變化（ARC 重 → 去噪重 → ARC 重）。消融顯示 <strong>60% 去噪混比</strong> 最佳，高噪反而最強（噪聲作正則）。本地約 +2 個百分點。<strong>結果</strong>：把 Kaggle 從 25.00% → <strong>27.08%</strong>（+2.08%）。</li>
+<li><strong>6.7 多任務離線訓練</strong>：交替「解題批次」（交叉熵）與「理解批次」（UL2 去噪），隨機混合防 mode collapse。</li>
+<li><strong>6.8 Grokking</strong>：模型先過擬合（訓練損失低、驗證高），持續訓練後<strong>突然轉入強泛化</strong>。可用 WeightWatcher 分析權重相關矩陣特徵值，對尾部擬合冪律 P(λ)∼λ⁻ᵅ，<strong>2&lt;α&lt;4</strong> 表示重尾、進入 grokked 狀態。實驗觀察到數層落在此範圍。<strong>結果</strong>：把 Kaggle 從 19.86% → <strong>25.00%</strong>（<strong>+5.14%</strong>）。</li>
+</ul>
+<h2 id="7-推理流水線">7. 推理流水線</h2>
+<h3 id="71-測試時訓練ttt">7.1 測試時訓練（TTT）</h3>
+<p>目標非重訓而是局部精修以貼合單一未見任務。</p>
+<ul>
+<li><strong>線上微調程序</strong>：用「leave-one-out」把一個訓練對提升為測試對（輪流對所有對做），再用群對稱 + 顏色置換增強，形成小適應集 D_TTT（M≈2–5 例/任務、N≈20–60 增強組合），做幾步 LoRA 微調。</li>
+<li><strong>LoRA 配置</strong>：對編碼器與解碼器線性層套 LoRA。<strong>rank r=8、scaling α=16、dropout=0</strong>，目標模組為 q/k/v/o 投影 + 前饋層（HuggingFace 的「all-linear」）。低秩防過擬合與死背。</li>
+<li><strong>記憶體管理</strong>：bfloat16 混精度、動態批次（OOM 則減半批次、加倍梯度累積）、TTT 間重用狀態（基礎模型只載一次、只掛/卸 adapter）。</li>
+<li><strong>跨任務檢索的外部記憶</strong>：用 LongT5 編碼器 mean pooling 把每訓練任務嵌入向量庫（FAISS），測試時以餘弦相似度檢索近鄰。檢索任務以三模式併入 TTT（資料擴展 / 對增強 / 評估引導早停），並有多種增強策略（Many_sim、Aug_0–3）。</li>
+<li><strong>平行與動態負載平衡</strong>：TTT 各任務獨立（embarrassingly parallel），自製負載平衡器把任務動態派給 GPU，近常駐飽和。</li>
+</ul>
+<h3 id="72-解碼策略">7.2 解碼策略</h3>
+<p>把解碼形式化為<strong>前綴圖搜尋</strong>：節點是前綴序列、邊是接 token、邊權是對數機率。各解碼法對應不同圖探索：貪婪（取最大邊）、Top-k/nucleus 抽樣、<strong>beam search</strong>（保 B 個最佳假設、有界最佳優先）、DFS、BFS。</p>
+<ul>
+<li><strong>熵分支法</strong>：算每 token softmax 熵，低熵（高信心）不分支、高熵（≥閾值 α）才分支探索多續寫。效果與抽樣相當（略勝），但每 token 算熵的開銷使其略慢，未進最終提交。</li>
+<li><strong>溫度</strong>：τ&lt;1 更確定、τ&gt;1 更多樣；跨層輸出快取加速批次 beam search。</li>
+<li><strong>解碼時遍歷</strong>：只用逐行（RbR）。</li>
+<li><strong>長上下文處理</strong>：KV 快取、LongT5 暫態注意力分塊解碼、可用時的記憶增強解碼。</li>
+<li><strong>推測解碼（speculative decoding）</strong>：用簡單轉移矩陣 M（144×12，對應 10 色 + 2 結構標記）取代草稿模型，依局部 token 統計平行提多個候選續寫，再經基礎模型批次驗證。M 每任務以頻率法快速建好，下個 2–3 token 預測平均準確 <strong>84%</strong>，跨 beam 平行推測達 <strong>1.598× 提速</strong>。</li>
+<li><strong>BFS 評述</strong>：用類似 [FDH24] 的閾值（10–17%）剪枝，比 beam search 快 2–3 倍但效能顯著下降；降到 ~1% 閾值才補回，但又略慢於 beam。即便 1% 閾值，BFS 仍比 beam search 低約 0.5–1%——因 beam search 有時能撈到<strong>機率僅 0.1%</strong>（且只在某剛性變換下）的真解。故多數提交用 beam search。</li>
+</ul>
+<h3 id="73-過濾">7.3 過濾</h3>
+<p>解碼產大量語法有效但邏輯不一致的候選，評分前套白盒過濾先驗（即 4.1 節）。<strong>影響</strong>：過濾把候選集減 <strong>35–55%</strong>（整個 held-out 集只砍掉約 1% 正解），顯著改善評分時間與穩定性，且任務無關、免學參數。</p>
+<h3 id="74-評分">7.4 評分</h3>
+<p>ARC 每任務全有或全無，排序策略關鍵。</p>
+<ul>
+<li><strong>基準：出現次數排序</strong>：最常被生成的網格較可能正確，平手時用累積對數似然破。</li>
+<li><strong>遍歷式評分嘗試</strong>：在不同遍歷下評分。無 UL2 的 2-遍歷模型上，從純 RbR 改用雙遍歷 + top-5 用 RbR 精修，Kaggle 約 +2%。但引入 UL2 後純 RbR 反而更好，成最終配置。</li>
+<li><strong>對稱式評分（Mini-Arch）</strong>：受 The ARChitects [FDH24] 啟發，對每候選在 D4（8 個剛性對稱）變換視角下重編碼前向、加總對數似然，取最高分。正解在對稱下似然穩定、錯解不穩。</li>
+<li><strong>兩階段選擇</strong>：(1) 預選——出現次數排序保 top 50%；(2) 對稱精修——對該 50% 套 Mini-Arch 取 top-2。</li>
+<li><strong>效率</strong>：8 個對稱視角每任務在 H100 約加 30 秒，但比出現次數排序提升選擇準確 <strong>逾 25%</strong>。</li>
+</ul>
+<h2 id="8-監控日誌與作業排程">8. 監控、日誌與作業排程</h2>
+<p>以中央 <strong>Ray cluster</strong> 編排分散式執行；<strong>MLflow</strong> 追蹤實驗（HF 指標 + 系統統計 + artifact）；OAuth2/Microsoft Entra 安全存取；自製 Ray 作業排程器。引入 ARC 專屬診斷：<strong>像素級評分模擬器</strong>（每 epoch 在 held-out 算正確像素百分比直方圖）、<strong>似然基診斷</strong>（訓練損失、長度正規化損失、平均/最大序列對數似然）。觀察：已解任務聚於低訓練損失、高對數似然；<strong>對數似然比損失更能預測可解性</strong>（尤其用 beam search 時）；正規化損失與成功的相關強於原始訓練損失。<strong>可重現性</strong>：固定全部 seed 並啟用確定性運算，但因 CUDA 非確定核、多 GPU 排程、浮點累加序，仍有 ±1% 波動（不影響定性結論與排名）。</p>
+<h2 id="9-結果">9. 結果</h2>
+<p>在內部 177 任務私有評測集（與 ARC-AGI-1/2 完全不相交）上：</p>
+<ul>
+<li><strong>9.1 pass@k</strong>（top-k 任一精確全對即解）：pass@1 <strong>35.12%</strong>、pass@2 <strong>45.99%</strong>、pass@3 51.79%、pass@5 55.93%。k 增則覆蓋漸升，顯示解碼/評分產多樣候選。</li>
+<li><strong>9.2 候選品質</strong>：最佳候選的像素級準確分布<strong>強烈偏向接近 1.0</strong>——多數錯誤嘗試其實非常接近正解（小範圍局部錯），佐證「生成+精修多假設」策略與結構化評分的重要。</li>
+<li><strong>9.3 TTT 中似然/損失行為</strong>：已解任務 top 候選對數似然一致較高；正規化損失是弱預測子（逐任務 TTT 收斂不夠，還需跨對稱的候選一致性）。</li>
+<li><strong>9.4 上界與最終準確</strong>：完美選擇的上界——過濾前 <strong>69.02%</strong>、過濾後 <strong>68.17%</strong>。最終系統（TTT + 過濾 + Mini-Arch 評分）達 <strong>pass@2 = 46.99%</strong>。即：解碼能穩定產正解（約 68% 覆蓋），<strong>評分與選擇仍是逼近上界的主瓶頸</strong>。8×H100 一輪：TTT 1.52h、解碼 0.66h、評分 0.22h、共 2.42h/177 任務（49.3 秒/任務）；4×L4 約 11.7h。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

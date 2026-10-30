@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_注入先驗知識 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.06590_ARC_AGI2_TTT_LongT5.zh-TW.html">回 2603.06590_ARC_AGI2_TTT_LongT5.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E9%9B%A2%E7%B7%9A%E8%A8%93%E7%B7%B4.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-注入先驗知識">4. 注入先驗知識</h2>
+<p>先驗編碼任務結構的歸納偏置、約束假設空間。三種互補策略：(1) 架構等變性（探索過但未進最終系統）、(2) 過濾先驗（符號驗證規則）、(3) 資料增強先驗（對稱變換）。</p>
+<h3 id="41-符號先驗過濾">4.1 符號先驗過濾</h3>
+<p>推理時用符號一致規則砍掉無效候選。過濾函式 ℱ(Ô, I, D_train) ∈ {0,1}。三大過濾器：</p>
+<ul>
+<li><strong>顏色一致過濾</strong>：輸出只用任務中出現過的顏色（C(Ô) ⊆ 訓練對與測試輸入的顏色聯集）。</li>
+<li><strong>網格尺寸一致過濾</strong>：若所有示範輸出同尺寸，則測試輸出須同尺寸；若所有輸出對輸入有固定比例 k，則測試輸出須維持同比例。</li>
+<li><strong>包含過濾</strong>：許多 ARC 轉換維持輸入輸出的包含關係（物件抽取則輸出⊆輸入；建構任務則輸入⊆輸出）。亦在剛性變換（D4 二面體群）下檢查，捕捉旋轉/翻轉版。</li>
+</ul>
+<p>這些過濾器砍掉少量候選、通常保留正解（內部測試僅 1% 退化），減輕排序負擔。</p>
+<h3 id="42-對稱先驗增強">4.2 對稱先驗增強</h3>
+<p>用 ARC 域的對稱群 <strong>𝒢 = D4 = {恆等、90°/180°/270° 旋轉、水平/垂直/對角翻轉}</strong>。對每訓練對生成其在 𝒢 下的完整軌道，提供 <strong>8 倍</strong> 有效擴展且維持語意一致，並正則化模型、防學到方向敏感的偽啟發。測試時對輸入施同對稱、對輸出施逆變換以與其他候選比較。</p>
+<h3 id="43-電腦視覺式變換增強">4.3 電腦視覺式變換增強</h3>
+<p>離線訓練再加三種 CV 啟發變換（隨機施於輸入/輸出）：</p>
+<ul>
+<li><strong>upscale</strong>：隨機 ×2/×3 放大（方向 row/column/both）。</li>
+<li><strong>framing</strong>：等同 padding，框色取自任務未用的補色。</li>
+<li><strong>metagrid</strong>：每隔 s 行/列插入一列指定色，把像素推遠。</li>
+</ul>
+<p>核心目的：讓模型少關注 token 層（單像素）、多泛化「物件性（objectness）」與空間關係概念。</p>
+<h3 id="44-遍歷先驗作為表示增強">4.4 遍歷先驗作為表示增強</h3>
+<p>不同於對稱（保 2D 結構），遍歷提供同一網格的不同 1D 序列化，暴露多樣演算法模式，鼓勵模型學「轉換規則本身」而非過擬合特定表示。形式上 τ 是 {1..HW} → 網格座標 的雙射。</p>
+<ul>
+<li><strong>(1) 逐行遍歷（Row-by-row, 左到右）</strong>：標準閱讀順序，基準表示。</li>
+<li><strong>(2) 蛇形（zig-zag）遍歷</strong>：相鄰行交替方向，避免嚴格左到右的規則偵測偏置。</li>
+</ul>
+<p>（也提及對角、螺旋、Hilbert 曲線等，但未用於最終流水線。）遍歷增強用來<strong>建新任務</strong>而非任務內增強（因增長上下文常損害效能）。若 O_k = f(I_k)，則用遍歷訓練強制 τ(O_k) = f(τ(I_k))，教模型發現底層規則 f。</p>
+<p><strong>遍歷 token</strong>：<code>&lt;|row_by_row|&gt;</code>（預設）與 <code>&lt;|snake|&gt;</code> 前置於 prompt，讓模型依遍歷視角推理。<strong>結果</strong>：不改架構下，遍歷條件化把 Kaggle 從 19.86% 提到 25.00%（<strong>+6.14% 絕對增益</strong>）。</p>
+<h3 id="45-細胞自動機ca增強">4.5 細胞自動機（CA）增強</h3>
+<p>CA 是離散模型，依局部轉移規則（每格新色由自身與鄰居決定）同時更新所有格、迭代至穩定（如 Conway 生命遊戲）。用 CA 生成逾 <strong>75 萬</strong> 新任務。給定任務隨機抽低複雜度自動機 f，套四種生成方案：</p>
+<ol>
+<li>對輸入施 f → 全新邏輯 (I_k, f(I_k))。</li>
+<li>對輸出施 f → 疊加既有邏輯 (I_k, f(O_k))。</li>
+<li>若 f 不損資訊，只對輸入施 f 保留原輸出 (f(I_k), O_k)。</li>
+<li>若 f 不損資訊，對輸入輸出都施 f (f(I_k), f(O_k))。</li>
+</ol>
+<p>後兩方案要求 f 在輸入上<strong>局部可逆</strong>（見「共軛技巧」，附錄 A.2）。並用 Pixel Features（對稱、洞、物件等遮罩）擴展、提升可解釋性。</p>
+<h3 id="46-增強在-ttt解碼評分中的分工">4.6 增強在 TTT/解碼/評分中的分工</h3>
+<p>以 <strong>AEIDR</strong> 字母標示各階段：A=Augment、E=Encode、I=Infer、D=Decode、R=Reverse augment。</p>
+<ul>
+<li><strong>階段 1：TTT（AE）</strong>：每任務建小適應集（D4 剛性變換 8 種 + 顏色置換 + 示範重排），編碼用兩種遍歷。LoRA（<strong>r=8、35 epoch、lr=8×10⁻⁴</strong>）。最終配置 TTT 僅用 RbR 遍歷（離線訓練保兩種）。</li>
+<li><strong>階段 2：候選生成（AEIDR）</strong>：抽 <strong>A=18</strong> 個增強視角 + RbR 編碼 + beam search（<strong>B=10</strong>）→ 反向增強映回原座標 → 共達 <strong>18×10=180</strong> 個候選；違反符號先驗者剔除。</li>
+<li><strong>階段 3：候選評分（AEI）</strong>：對每候選施 <strong>A=8</strong> 個 D4 剛性變換，僅 RbR 編碼，純前向算對數似然。最終分數 S(Ô) = 對所有對稱條件視角的似然加總。取分數最高的 2 個作答（「change of perspective」策略：最佳解是在對稱變換下最一致者）。</li>
+</ul>
+<h2 id="5-模型架構">5. 模型架構</h2>
+<h3 id="51-動機">5.1 動機</h3>
+<p>ARC 需<strong>像素級全對</strong>（一 token 錯整題零分），要求注意力能處理長序列且 token 級精確。每任務序列化達 <strong>10,000 token</strong>（多示範對串接）。標準注意力對序列長度二次擴展、不實用，故採 <strong>LongT5</strong>。序列超過約 1000 token 後純局部注意力不足，故用 <strong>Transient Global Attention（TGlobal）</strong> 提供稀疏但表達力強的全域互動。</p>
+<h3 id="52-longt5-編碼器-解碼器">5.2 LongT5 編碼器-解碼器</h3>
+<p>LongT5 擴展 T5 支援長輸入（達 16k token）：編碼器用局部+暫態全域注意力處理長上下文；解碼器維持 T5 標準因果自注意（ARC 輸出通常 500–900 token）。編碼器收「訓練對 + 測試輸入」，解碼器自回歸生成測試輸出。</p>
+<h3 id="521-注意力機制">5.2.1 注意力機制</h3>
+<p>T5 與 LongT5 主要差別在編碼器注意力。LongT5 支援：(1) <strong>局部注意力</strong>（每 token 只看固定窗鄰居）、(2) <strong>暫態全域注意力</strong>：把序列分固定大小塊，每塊聚合（求和正規化）成暫時全域 token；每 token 同時關注局部鄰域與所有全域 token，使資訊跨遠端傳播。稱「暫態」是因全域 token 每層動態重算（非固定一次）。</p>
+<h3 id="5357-實作改進">5.3–5.7 實作改進</h3>
+<ul>
+<li><strong>動機</strong>：LongT5+TGlobal 表現強但 PyTorch 舊注意力實作極慢、記憶體開銷高。FlashAttention 快但原生不支援 T5 系列關鍵的相對位置偏置。</li>
+<li><strong>FlashAttention 整合</strong>：自行擴展 FlashAttention 支援注意力偏置項，<strong>僅用於編碼器</strong>（處理 5k–10k token），解碼器（&lt;1000 token）續用標準 PyTorch 注意力。FlashAttention 無原生 dropout，故只在 TTT 用它；離線訓練用標準注意力 + dropout 0.1 以利穩定泛化。</li>
+<li><strong>結果（表 4）</strong>：線上微調時間提速約 <strong>1.589×</strong>（1.24h → 0.78h），準確維持或提升。架構從 Llama3.1 1B 換成 LongT5 並整合上述優化後，Kaggle 從 5.00% → <strong>12.08%</strong>（+7.08%）。</li>
+<li><strong>融合相對位置偏置嘗試</strong>：把位置偏置直接整進 FlashAttention，記憶體降 4 倍但計算更慢，未進最終流水線。LongT5 用桶化相對距離（小距離高精度、大距離對數分桶）編碼相對位置，可泛化到未見序列長、維持平移不變。</li>
+<li><strong>TGlobal 配置</strong>：<code>relative_attention_max_distance=1024</code>、<code>local_radius=1024</code>、<code>global_block_size=4</code>（每 4 token 共享全域表示）。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

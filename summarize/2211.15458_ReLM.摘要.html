@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《用 ReLM 驗證大型語言模型（Validating Large Language Models with ReLM）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Michael Kuchnik, Virginia Smith, George Amvrosiadis（Carnegie Mellon University；arXiv 版為匿名審稿稿）</p><p>日期：2022-11（MLSys 2023）</p><p>arXiv：2211.15458</p><p><a href="https://arxiv.org/abs/2211.15458" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="用-relm-驗證大型語言模型validating-large-language-models-with-relm重點摘要">《用 ReLM 驗證大型語言模型（Validating Large Language Models with ReLM）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>ReLM（Regular Expression engine for Language Models）：把「測 LLM 會不會做 X」這件事形式化成標準正則表達式查詢</strong>——用正則描述「感興趣的字串集合」，經圖（自動機/automaton）編譯到 LLM 的 token 空間後執行，取「正則語言 L_r」與「LLM 解碼所定義語言 L_m」的交集 <code>L_r ∩ L_m</code>，讓記憶化、偏見、毒性、語言理解等各式驗證任務，都化約為幾行正則就能精確、可控、可窮舉地跑完。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>現有 LLM 測試都是 <strong>ad-hoc（臨時拼湊）</strong>：維護者用 LLM 專屬工具把測試邏輯硬編碼，使用者靠擴充程式或灌數百萬行 JSON 模板參數來加題，難維護、難修改、難擴充。兩種主流打分法各有缺陷：**多選題（multiple choice）**選項少而可枚舉，但候選集的選法會偏誤結果（如問華盛頓生日，數百萬個日期候選一換就翻盤，易假陽性）；**自由作答（free response）**允許任意輸出，卻要對照「正確答案的所有表示法」去評分任意字串，幾乎不可控。缺的是一個能「保證只從期望字串集合抽樣」的結構化查詢介面。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>查詢＝四要素</strong>：① 正則描述的形式語言、② 一個 LLM、③ 解碼／決策規則（如 top-k）、④ 走訪演算法（traversal）。輸出即 <code>L_r ∩ L_m</code> 中的字串集合，其生成順序由走訪演算法決定。</li>
+<li><strong>圖編譯器（Graph Compiler）</strong>：先把正則轉成字元/Unicode 上的<strong>自然語言自動機</strong>，再編譯成 token 空間的 <strong>LLM 自動機</strong>。關鍵難點是「一個字串在 GPT-2 有多種 token 切分」——長度 n 的字串有 2^(n-1) 種切分。
+<ul>
+<li>**全編碼集（full/ambiguous encodings）**＝無條件生成（unconditional）：用 transducer 組合加「捷徑邊」表示所有等價 token 切分（實測 GPT-2 約 3%、GPT-2 XL 約 2% 樣本非規範編碼）。</li>
+<li>**僅規範編碼（canonical）**＝條件生成（conditional）：只留最短切分，常用於輸入/輸出被使用者固定的情境（如多選題以前綴 prefix 條件化）。</li>
+</ul>
+</li>
+<li><strong>執行器與走訪</strong>：top-k 把分支因子從 50257 降到 k，且被淘汰前綴會連帶剪掉所有共享該前綴的字串。兩種常用走訪——<strong>最短路徑</strong>（Dijkstra，取最高機率字串，用於記憶化/推理）與<strong>隨機取樣</strong>（估機率，用於偏見；需以鄰接矩陣冪次數「walks」正規化才能對前綴均勻取樣）。</li>
+<li><strong>API 與前處理器（Preprocessors）</strong>：<code>relm.SearchQuery(regex, prefix, top_k)</code> + <code>relm.search(model, query)</code>；前處理器以 transducer 施加於自動機——<strong>Levenshtein 自動機</strong>（涵蓋 1 個編輯距離內所有字串，可鏈接成更高階）與<strong>filters</strong>（把停用詞/毒詞映成空字串）。共 7000+ 行 Python/Rust，開源，原型針對 GPT-2。</li>
+</ul>
+<h2 id="結果gpt-2--gpt-2-xlgtx-3080">結果（GPT-2 / GPT-2 XL，GTX-3080）</h2>
+<ul>
+<li><strong>記憶化（URL 抽取）</strong>：ReLM 以最短路徑走訪，首結果延遲僅 5 秒、GPU 使用率 67%，27% 查詢命中有效 URL；比最佳定長隨機基線（n=16）<strong>快 15×</strong>（n=64 每次嘗試慢 48×）。</li>
+<li><strong>性別偏見</strong>：χ² 檢定下規範編碼 p≈10⁻²²⁹（偏見最顯著），全編碼 p≈10⁻¹⁸，加字元編輯 p≈10⁻⁵⁴——<strong>編碼、編輯、前綴的選擇會導出不同偏見結論</strong>，偏見部分源於子詞概念重疊（非規範的 &quot;trained&quot; 編碼偏向 art→&quot;artificial&quot;）。</li>
+<li><strong>毒性</strong>：從 The Pile 首檔（41GiB）用 grep 抓 2807 條 6 個侮辱詞範例當模板。有提示（prompted）下開啟全編碼+編輯，命中率是純規範基線的 <strong>2.5×</strong>（91% vs 27–37%）；無提示（unprompted）下產出 6616 條（每輸入 2.4 條），比逐字基線多 <strong>93×</strong>——逐字毒性生成會嚴重低估毒性暴露。</li>
+<li><strong>語言理解（LAMBADA 零樣本）</strong>：GPT-2 XL 隨查詢逐步加約束 baseline 41.6%→words 56.6%→terminated 65%→no_stop 71%（GPT-2：27→52.2%）；<strong>微調正則即可提升多達 30 分</strong>，並復現/超越原論文 63.24% 零樣本成績。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>原型僅支援 GPT-2 系列（設計上宣稱可推廣到其他 LLM，未驗證）。</li>
+<li>自回歸左到右解碼對「後綴補全」有天然偏好，系統化處理查詢仍有新挑戰。</li>
+<li>部分毒性抽取因編輯而產生假陽性；規範編碼自動機的還原比全編碼更繁複（需枚舉/回溯/transducer 字串改寫三選一）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>對 ai_core §3.4（治理／驗證側）的直接啟發</strong>：ReLM 正是「把 LLM 行為的<strong>檢測形式化</strong>」的範本——把「測 LLM 會不會 X」翻成正則可表達、輸出**永遠良定義（well-defined）**的測試，取代 ad-hoc 腳本。這與「<strong>拒絕為預設＋憑證准入</strong>」同構：正則/自動機是一道確定性的准入閘，只放行落在期望字串集合內的行為，其餘一律不生成。歸 <strong>I 類</strong>。</li>
+<li>也呼應 §1 的「<strong>符號神經網路計算圖</strong>」觀：正則自動機是確定性節點，把唯一的 LLM 節點<strong>約束</strong>在 <code>L_r ∩ L_m</code> 上；以及 §3.6「<strong>固化引擎</strong>」——把反覆手寫的評測規則結晶成可重用、可組合（transducer 前處理器）的確定性查詢庫。</li>
+<li>最值得記：<strong>query＝regex＋LLM＋decoding＋traversal 四要素</strong>、<strong>全編碼 vs 規範編碼＝無條件 vs 條件生成</strong>、<strong>編碼/編輯會左右偏見與毒性結論（逐字測試低估 93×）</strong>、<strong>微調正則約束即可 +30 分零樣本</strong>。適合做 <strong>LLM 評測/紅隊、受約束解碼、確定性驗證閘</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2211.15458_ReLM.zh-TW.html"><code>../translate/2211.15458_ReLM.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

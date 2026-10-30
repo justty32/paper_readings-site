@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《NeSyA：神經符號自動機》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：N. Manginas 等（KU Leuven / NCSR Demokritos / Örebro）</p><p>日期：2024-12，NeSy（時序）</p><p>arXiv：2412.07331</p><p><a href="https://arxiv.org/abs/2412.07331" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="nesya神經符號自動機重點摘要">《NeSyA：神經符號自動機》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>NeSy 多半沒為<strong>時序/序列問題</strong>量身打造。本文用 <strong>符號自動機（Symbolic Finite Automata, SFA）</strong>——<strong>自動機做時序推理 + 命題邏輯做靜態推理（狀態間的轉移由命題公式定義）</strong>——當時序知識的表示，接上神經感知，在<strong>機率語意</strong>下組成<strong>端到端可微</strong>模型 <strong>NeSyA</strong>。序列分類/標註上，比前作 NeSy 系統<strong>快數量級或更準</strong>，比純神經系統<strong>泛化更好</strong>。</p>
+<h2 id="核心思想">核心思想</h2>
+<ul>
+<li><strong>符號自動機（SFA）</strong>：異於經典自動機，<strong>轉移是符號的</strong>（由命題邏輯公式定義）→ 同時做<strong>時序推理（自動機）+ 非時序推理（邏輯轉移）</strong>。例：「若駕駛累或路堵，則下一時刻不應開快」。</li>
+<li><strong>NeSyA = （SFA over 變數， 神經網路）</strong>：神經網路從子符號觀察 o_t 算出<strong>各命題變數為真的機率向量</strong>，橋接 SFA 的離散表示與觀察的連續表示。</li>
+<li><strong>四大特性（用以對比既有系統）</strong>：[C1] 聚焦時序域、[C2] 機率語意、[C3] 把靜態邏輯推理整合進時序模式、[C4] 基於<strong>矩陣 + 知識編譯（KC）的高效精確推理</strong>。</li>
+</ul>
+<h2 id="推理與學習">推理與學習</h2>
+<ul>
+<li><strong>HMM 式前向遞迴</strong>：α_t(q)＝看完 o_1..o_t 後處於狀態 q 的機率，動態規劃遞迴（式 2，類 HMM 但狀態↔觀察箭頭反轉）。</li>
+<li><strong>轉移機率</strong>：先算 SFA 轉移上命題公式（給神經網路當前輸出）的機率；<strong>不天真枚舉所有模型，而用 KC</strong> 算（傳播算術電路）。狀態更新可化為<strong>矩陣運算 → 可平行、GPU 加速</strong>。SFA 確定性 → 轉移矩陣每列和為 1。</li>
+<li><strong>序列分類</strong>：只看最終時刻、對接受態聚合得接受機率；<strong>序列標註</strong>：每時刻都看。弱監督（序列級監督，神經元無符號級監督，做 weak symbol grounding）。</li>
+</ul>
+<h2 id="與既有-nesy-系統的差異">與既有 NeSy 系統的差異</h2>
+<ul>
+<li><strong>FuzzyA</strong>（最接近，把 LTLf 接神經）：差在 [C2]——FuzzyA 用<strong>模糊邏輯（LTN）</strong>，本文證明<strong>機率語意預測準確度顯著優於模糊</strong>。</li>
+<li><strong>Semantic Loss / DeepProbLog</strong>：差在 [C1]——非為時序設計 → 面對時序問題<strong>擴展性差很多</strong>。</li>
+<li><strong>DeepStochLog</strong>（統一文法）：差在 [C1] 尤其 [C4] → <strong>慢數量級</strong>。</li>
+<li><strong>經典自動機 + 神經</strong>（Umili 等）：差在 [C3]——經典自動機缺符號轉移、無非時序推理。</li>
+<li><strong>De Smet 等</strong>（混合離散連續）：差在 [C4]——用近似推理（NeSyA 是精確）。</li>
+</ul>
+<h2 id="實驗">實驗</h2>
+<ul>
+<li><strong>合成駕駛</strong>（影像序列依時序模式分類，加高斯噪聲，每影像多達 5 符號，3 個漸複雜 SFA;CNN 感知 + 弱監督）：
+<ul>
+<li><strong>[Q1] 擴展性</strong>：NeSyA <strong>平均比 DeepStochLog 快 2 個數量級</strong>（最複雜任務序列長 N：NeSyA 數秒/batch，DeepStochLog 約數百秒）;DeepProbLog 更慢（省略）。</li>
+<li><strong>[Q2] 準確</strong>：NeSyA <strong>顯著勝 FuzzyA</strong>（模糊準確較低，<strong>序列越長差距越大</strong>），FuzzyA 擴展性也落後。</li>
+</ul>
+</li>
+<li><strong>真實事件辨識（CAVIAR 影片）</strong>：辨識成對行人事件（meeting/moving/no-event）;NeSyA vs CNN-LSTM vs CNN-Transformer（macro F1，小資料 8 訓練/3 測試）。
+<ul>
+<li><strong>[Q3] 泛化</strong>：把「高階事件由低階活動構成」的知識（3 態 SFA + 簡單轉移邏輯）納入 → NeSyA <strong>train-test 差距小</strong>（純神經在低資料 regime 差距大）。Transformer 能競爭但<strong>需多 2.5M 參數</strong>才達相當表現。（CAVIAR 資料小、標準差高，結果需保留看待。）</li>
+</ul>
+</li>
+</ul>
+<h2 id="未來">未來</h2>
+<ul>
+<li><strong>子符號 RL 約束</strong>（用 SFA 表達需記憶/狀態的複雜時序約束，比 LTL-shielding 更可擴展）、reward machines 的 NeSy 擴展加邏輯轉移、<strong>受約束自迴歸/LLM</strong>（輸出是結構化 trace 而非自然語言時 NeSyA 有益）、定義<strong>高階 NeSy 時序語言</strong>以 NeSyA 為編譯目標（自動機太低階難手寫）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>與 <a class="paper-reference" href="2509.00834_NeSy_Predictive_Process_Monitoring.%E6%91%98%E8%A6%81.html">2509.00834</a>（把 LTLf 注入自迴歸訓練）、<a class="paper-reference" href="2511.14533_NeSy_Perceptual_Uncertainty.%E6%91%98%E8%A6%81.html">2511.14533</a>（NeSy-RL 的 reward machine）同屬「<strong>時序邏輯/自動機 + 神經</strong>」一脈，但 NeSyA 的賣點是<strong>符號自動機（時序＋靜態邏輯兼具）+ 機率語意 + 矩陣/KC 精確推理</strong>，且明確證明<strong>比 fuzzy（FuzzyA）準、比 grammar（DeepStochLog）快</strong>。</li>
+<li>與 <a class="paper-reference" href="2509.07665_DeepGraphLog.%E6%91%98%E8%A6%81.html">2509.07665</a> DeepGraphLog 同出 KU Leuven 系，皆機率 NeSy + KC，但 NeSyA 專攻<strong>時序序列</strong>。</li>
+<li>最值得記：<strong>「SFA：自動機管時序、命題邏輯管轉移」</strong> 的表示選擇；<strong>HMM 式前向遞迴 + 矩陣化 + KC</strong> 讓時序 NeSy 推理可 GPU 且精確；<strong>機率 &gt; 模糊</strong> 的實證對比。</li>
+<li>適合做<strong>時序序列分類/標註、事件辨識、需把時序知識注入神經感知</strong>的人；有開源（github.com/nmanginas/nesya）。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2412.07331_NeSyA.zh-TW.html"><code>../translate/2412.07331_NeSyA.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

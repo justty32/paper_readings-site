@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Beyond LLM-Based Reasoning: Lightweight GNNs for Agent Failure Attribution 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Ting-Wei Li、Yuanchen Bei、Xiao Lin、Hanghang Tong</p><p>日期：2026-08-19（v1，cs.CL）</p><p>arXiv：2608.18575</p><p><a href="https://arxiv.org/abs/2608.18575" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="beyond-llm-based-reasoning-lightweight-gnns-for-agent-failure-attribution-重點摘要">Beyond LLM-Based Reasoning: Lightweight GNNs for Agent Failure Attribution 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>作者質疑「找出多 agent 系統裡哪個 agent、犯了哪種錯誤」這件事是否真的需要 LLM 推理：AFANet 用一個 65K 參數的輕量 GNN，把對話轉成 turn-level graph 跑 message passing，在準確度上打平甚至超越微調過的 7B/14B LLM，且訓練與推論成本近乎為零。</p>
+<h2 id="方法">方法</h2>
+<ul>
+<li><strong>圖建構</strong>：把失敗的多 agent trajectory 轉成 heterogeneous graph，每個 turn 是一個節點，特徵由三部分拼接：TF-IDF 降維後的 deviation 特徵（該 turn 與整段對話語意的偏離程度）、statistical 特徵（如位置編碼）、sentence-BERT 的語意 embedding。邊分兩類：相鄰 turn 的雙向時序邊，以及同一 agent 跨 turn 的雙向 intra-agent 邊。</li>
+<li><strong>AFANet</strong>：turn 特徵先投影到隱藏維度，過 L 層 GNN（可替換 GCN／GAT／GraphSAGE 任一 backbone）做 message passing，同 agent 的 turn 表示做 mean+max 雙重 pooling 得 agent 級表示，再過 bottleneck 投影頭輸出 K+1 類分數（clean + K 種錯誤類型）。</li>
+<li><strong>訓練目標</strong>：agent 級二元故障偵測（weighted BCE）+ 錯誤類型多分類（僅對故障 agent 算 CE），兩者加權相加。</li>
+<li><strong>推論</strong>：可用 threshold 或 ranking 兩種解碼方式挑出故障 agent 與對應錯誤類型。</li>
+</ul>
+<h2 id="作者報告的結果與資料限制">作者報告的結果與資料限制</h2>
+<p>在 AEGIS-Bench（in-domain）與 Who&amp;When（OOD）上，作者稱 AFANet 在最難、也最有實務意義的 pair-level 指標（同時抓對故障 agent＋錯誤類型）達到 top-1（AEGIS-Bench）或高排名（Who&amp;When OOD）。效率對比（Table 2）：7B SFT 訓練 6 小時、推論 199 秒／樣本，AFANet 訓練 1.1 小時、推論僅 1.16 秒（in-domain）／0.37 秒（OOD），可訓練參數僅 65K。Backbone 敏感度測試顯示 GCN／GAT／GraphSAGE 與不同層數下表現相對穩定。Ablation 顯示拿掉圖結構（邊）、拿掉 deviation/statistical 特徵、拿掉 GNN 模組都會明顯掉分，尤其 pair-level 指標受 deviation/statistical 特徵影響最大。OOD 上另外用 test-time entropy minimization 做輕量適應，pair-level EM 帶來最大增益。以上數字全部來自作者自建的兩個 benchmark 與自跑的 LLM baseline 重現，作者自陳這是有限任務域（AEGIS-Bench、Who&amp;When 兩個資料集）下的結果，跨分布泛化仍是待解問題。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>這篇對 ai_core 的「驗證器邊界」議題給出一個反直覺但務實的資料點：failure attribution 未必需要用 LLM 當 judge 才做得動，結構訊號（turn 序列的偏離模式、同 agent 跨 turn 一致性）本身可能比語意內容更能定位故障源，且成本可壓到 LLM judge 的千分之一等級。若 ai_core 未來要做多 agent 或多步驟任務的故障溯源／根因分析，這篇提示：與其一開始就上重推理的 LLM judge，可以先用便宜的結構特徵（deviation、位置、agent 身份一致性）當第一層篩選，只在少數不確定案例才升級到 LLM 推理，兼顧成本與 OOD 穩健性。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2608.18575_GNNFailureAttribution.zh-TW.html"><code>../translate/2608.18575_GNNFailureAttribution.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

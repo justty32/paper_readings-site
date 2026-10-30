@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2411.05276_GPT_Semantic_Cache.zh-TW.html">回 2411.05276_GPT_Semantic_Cache.zh-TW 目錄</a>　<a href="02_%E6%B8%AC%E8%A9%A6%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM，如 GPT）藉由對人類文字進行細緻理解與生成，已徹底改變人工智慧在各領域的應用。然而，頻繁呼叫這些模型的 API 所帶來的高昂運算與財務成本，是一大瓶頸——尤其是像客服聊天機器人這種需要處理大量重複性查詢的應用。本文提出 <strong>GPT Semantic Cache</strong>，一種在記憶體內儲存（Redis）中對查詢嵌入做語意快取的方法。透過儲存使用者查詢的嵌入向量，本方法能有效辨識語意相近的問題，讓系統可直接取用預先生成的回應，而不必對 LLM 進行重複的 API 呼叫。實驗顯示，本技術在各查詢類別中最多可減少 68.8% 的 API 呼叫，快取命中率介於 61.6% 至 68.8%；系統同時具備高準確度，正確命中率超過 97%，證實快取回應的可靠性。本技術不僅降低營運成本，也改善回應時間，提升 LLM 應用的整體效率。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>LLM（如 GPT）因其理解與生成類人文字的能力，已成為現代 AI 應用不可或缺的一環，廣泛用於聊天機器人、虛擬助理與客服系統以解讀使用者查詢並提供相關回應。</p>
+<p>然而，一大挑戰在於：每個使用者查詢都須對 LLM 個別呼叫 API，這既耗時又昂貴，尤其是在需處理大量相似或重複問題的客服情境中——客服聊天機器人常遇到帶有些微變化的重複查詢，導致冗餘處理與運算費用攀升。</p>
+<p>為緩解此問題，已有多種快取 LLM 回應的方法被提出。例如 Bang（2023）提出 <strong>GPTCache</strong>，一個為降低延遲與成本而設計的開源 LLM 回應快取 Python 套件；Chen 等人（2023）則探討以推測取樣（speculative sampling, SpS）——一種用草稿模型（draft model）與拒絕取樣加速 token 生成的方法——提升 LLM 解碼效率。後者聚焦於序列生成階段的延遲，本文的 GPT Semantic Cache 則透過對查詢嵌入做語意快取來補足這方面的努力，處理延遲與成本問題、有效檢索語意相似查詢的回應。</p>
+<p>延續此構想，本文提出 GPT Semantic Cache：將使用者查詢轉換為能捕捉語意的數值嵌入表示，即可快速儲存與檢索這些嵌入。新查詢到來時，將其嵌入與快取中已存的嵌入比對；若找到語意相似的查詢，即可立即提供對應回應，跳過對 LLM 的額外 API 呼叫。此方法有三項優點：<strong>降低延遲</strong>（直接從快取取得回應）、<strong>成本效益</strong>（減少對 LLM 的 API 呼叫可降低營運成本）、<strong>可擴展性</strong>（系統可在不成比例增加運算資源的情況下處理更大查詢量）。</p>
+<h2 id="2-系統架構">2 系統架構</h2>
+<p>GPT Semantic Cache 系統的架構設計旨在最佳化處理重複與語意相似查詢，以降低成本並改善回應時間。系統由數個關鍵元件組成，各自在整體工作流程中扮演關鍵角色。</p>
+<h3 id="21-概覽">2.1 概覽</h3>
+<p>架構由三個主要元件構成：<strong>嵌入生成</strong>（將使用者查詢轉為語意嵌入）、<strong>記憶體內快取</strong>（用 Redis 管理嵌入與回應的儲存與檢索）、<strong>相似度搜尋</strong>（用近似最近鄰 ANN 技術辨識語意相似查詢）。系統圖示（Figure 1）呈現使用者查詢經嵌入生成、相似度計算、ANN 索引的流程；Redis 記憶體內快取儲存嵌入與對應回應以利快速檢索，僅在快取中找不到匹配回應時才將查詢送往 GPT API。</p>
+<h3 id="22-嵌入生成">2.2 嵌入生成</h3>
+<p>系統可使用 OpenAI API 產生文字嵌入，或使用 Hugging Face 等平台上任何 ONNX 相容模型，具備彈性以適應不同部署情境（雲端模型或自架模型）。使用 OpenAI 嵌入時，文字送至 API 後回傳嵌入向量，如 text-embedding-ada-002 模型典型輸出長度為 1536 維；使用本地嵌入時，系統載入 ONNX 支援的模型，並用 <code>@xenova/transformers</code> 等函式庫生成嵌入，生成的嵌入經正規化與池化以形成一致的表示。</p>
+<h3 id="23-記憶體內快取">2.3 記憶體內快取</h3>
+<p>快取層使用 <strong>Redis</strong> 儲存嵌入與對應回應，Redis 提供高效能的記憶體內資料存儲，確保快速存取與高效的快取資料管理。快取依「嵌入大小」分割（不同嵌入模型可能產生不同維度的向量）並附「<strong>存活時間（TTL）</strong>」——確保過時資訊不會無限期存留，讓快取保持新鮮相關、並自動過期舊項目。</p>
+<h3 id="24-以-ann-做相似度搜尋">2.4 以 ANN 做相似度搜尋</h3>
+<p>系統採用近似最近鄰（ANN）演算法，如透過 hnswlib-node 實作的 <strong>HNSW（Hierarchical Navigable Small World，階層式可導覽小世界圖）</strong>，執行高效的相似度搜尋。HNSW 建構一個多層圖 G=(V,E)，節點 V 對應已存嵌入，邊 E 代表鄰近連結。索引初始化時，系統以已存嵌入初始化 ANN 索引，若索引尚未初始化則從最小尺寸起始並隨新資料加入動態成長。給定嵌入 e，其圖中鄰居依「餘弦相似度 top-k」選出；新查詢嵌入 q 到來時，搜尋會沿 HNSW 圖做多層遍歷，從進入點出發、依餘弦相似度迭代探索更近的鄰居，直到收斂至 top-k 最近節點。相較窮舉搜尋，HNSW 透過階層式分割與貪婪搜尋策略，把搜尋複雜度從 O(n) 降至約 O(log n)（n 為嵌入數量）。系統會週期性重新平衡 HNSW 圖以確保處理動態更新時仍具穩健性；未來版本將探索自適應索引策略以進一步提升效能。</p>
+<h3 id="25-查詢處理流程">2.5 查詢處理流程</h3>
+<p>流程分三步：（1）<strong>快取查找</strong>——查詢到來時先轉為嵌入，系統在 ANN 索引中搜尋相似嵌入，若找到相似度超過指定門檻（例如 0.8）的匹配，即回傳快取回應；（2）<strong>快取未命中</strong>——若找不到合適匹配，系統將查詢送往 LLM API（如 OpenAI GPT）產生新回應，並將查詢、嵌入與回應存入快取供未來使用；（3）<strong>嵌入儲存</strong>——新嵌入與回應同時加入 ANN 索引與 Redis 快取，系統會在必要時調整索引大小以容納持續成長的資料。</p>
+<h3 id="26-餘弦相似度與相似度門檻">2.6 餘弦相似度與相似度門檻</h3>
+<p>系統以<strong>餘弦相似度</strong>衡量查詢嵌入間的相似度：給定兩向量 u, v ∈ ℝᵈ，餘弦相似度定義為兩向量點積除以其歐氏範數乘積。快取系統用餘弦相似度衡量查詢嵌入 q 與已存嵌入集合的接近程度，以檢索最相關的快取回應。餘弦值介於 -1 到 1，1 表示方向完全一致；在語意嵌入脈絡中，較高相似度分數代表語意上較接近。系統以相似度門檻（<strong>0.8</strong>）判定快取回應是否與新查詢足夠相似而可被重用。</p>
+<h3 id="27-以-ttl-做快取管理">2.7 以 TTL 做快取管理</h3>
+<p>為防止快取內容過時，每筆快取項目被賦予一個存活時間（TTL）值。TTL 確保資料在一段時間後自動移除，維持快取回應的相關性；此機制也有助於管理快取大小，避免其無限成長。</p>
+<h3 id="28-系統工作流程總結">2.8 系統工作流程總結</h3>
+<p>整體流程為：（1）接收查詢；（2）用 OpenAI API 或本地 ONNX 模型將查詢轉為嵌入；（3）用該嵌入搜尋 ANN 索引中的相似嵌入；（4）計算查詢嵌入與快取嵌入間的餘弦相似度；（5）檢索或生成回應——若找到超過門檻的相似嵌入即為快取命中、回傳對應回應；若無則為快取未命中，將查詢送往 LLM API 生成新回應並存入快取；（6）更新快取與 ANN 索引，將新嵌入與回應存入 Redis 並加入 ANN 索引供未來查詢使用。</p>
+<h3 id="29-架構優點">2.9 架構優點</h3>
+<p>系統提供數項效益：<strong>降低延遲</strong>（盡可能從快取提供回應，加快回應速度）、<strong>成本節省</strong>（減少對 LLM 的 API 呼叫，顯著降低營運成本）、<strong>可擴展性</strong>（ANN 與記憶體內快取讓系統能高效處理成長中的查詢量）、<strong>彈性</strong>（支援多種嵌入模型與設定，適應不同部署需求）。</p>
+<h3 id="210-潛在延伸">2.10 潛在延伸</h3>
+<p>未來可能的強化方向包括：<strong>動態門檻調整</strong>（依系統表現或使用者回饋調整相似度門檻）、<strong>分散式快取</strong>（將快取層擴展為分散式架構以提升可用性與容錯性）、<strong>進階嵌入模型</strong>（採用更新或領域專用的嵌入模型以提升語意理解）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

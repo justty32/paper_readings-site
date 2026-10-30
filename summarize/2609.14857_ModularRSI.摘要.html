@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>ModularRSI: Modular and Generalizable Recursive Harness Self-Improvement 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Siwei Wu、Jincheng Ren、Yizhi Li、Haau-Sing Li、Chengran Yang、Yuxuan Zhang、Weicheng Gu、Jian Yang、Riza Batista-Navarro、Chuanyi Zhang、Xianglong Liu、Ming Zhou、Bryan Dai、Chenghua Lin</p><p>日期：2026-09-14（v1，cs.CL）</p><p>arXiv：2609.14857</p><p><a href="https://arxiv.org/abs/2609.14857" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="modularrsi-modular-and-generalizable-recursive-harness-self-improvement-重點摘要">ModularRSI: Modular and Generalizable Recursive Harness Self-Improvement 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>ModularRSI 用同一任務的成功與失敗軌跡做對照，跨任務累積修改票數，再把 harness 拆成五個功能模組分開演化、驗證與整合，並用不含下游 benchmark 實例的外部任務檢驗修改是否真能泛化。</p>
+<h2 id="方法架構">方法架構</h2>
+<ul>
+<li><strong>問題</strong>：直接從單條軌跡改整個 harness，容易把任務特定解法誤當通用缺陷，也難判斷是哪個機制該負責；若演化資料又取自評估 benchmark，表現提升究竟是可重用能力還是 benchmark 適配便無法分清。</li>
+<li><strong>模組化</strong>：作者把可演化的行為機制拆成 Agent Loop、Tool Use、Observation Management、Context Management、Task Completion Detection。基礎設施不在修改範圍內；各模組從同一初始 harness 獨立演化，不共享中途更新。</li>
+<li><strong>對照式軌跡分析</strong>：同一任務重複 rollout 後，依全成功、成敗並存、全失敗分組。成敗並存時直接比較軌跡；全失敗時先查 Trajectory Memory 是否有歷史成功軌跡，否則才做單側診斷；全成功時則找冗餘步驟與不必要工具呼叫。</li>
+<li><strong>從證據到修改</strong>：結構化 finding 必須指向模組、支持軌跡與修改理由。語意相近且指向同一函式的診斷會合併，並按支持它的不同任務數排序；每個函式另保存 Evolution History，避免重做或互相衝突的修改。</li>
+<li><strong>驗證與整合</strong>：候選依序通過 AST、import、protocol 等靜態檢查、針對任務特定捷徑的 diff review，以及演化任務上的執行驗證；失敗便回滾。五個模組完成後另跑 cross-module integration，消除重複與衝突。Function Merge 壓縮重複函式，Task-Aware Function Composer 每次只啟用與任務相關的子集，最後凍結函式庫再做下游評估。</li>
+</ul>
+<h2 id="作者報告的結果">作者報告的結果</h2>
+<p>作者建立 <code>2,000</code> 個與下游 benchmark 分離的可執行演化任務，主要實驗因算力與時間限制，從 TB-related 與 SWE-related 子集各抽 120 個實例演化（作者自報）。以 DeepSeek-V4-Flash-Preview 為 backbone 時，TerminalBench 2.0 accuracy 由 47.57 升至 52.43，SWE-Bench Verified 由 73.40 升至 76.45；跨域時，TB-related 演化的 harness 在 SWE-Bench Verified 得到 75.80，SWE-related 演化的 harness 在 TerminalBench 2.0 得到 49.40（作者自報）。</p>
+<p>凍結同一 evolved harness 後，GLM-5.2、MiniMax-2.5、DeepSeek-V4-Flash 的 TerminalBench 2.0 accuracy 都高於各自 baseline；例如 GLM-5.2 由 59.55 升至 61.80，MiniMax-2.5 由 41.57 升至 44.94（作者自報）。模組化消融更直接：完整 ModularRSI 的 accuracy 為 52.43，而 non-modular 與 joint all-module evolution 分別是 46.44、44.19，皆低於 47.57 的 baseline；完整方法的 <code>Pass^3</code> 也由 30.34 升至 35.96（作者自報）。這支持限制修改範圍後再整合，能降低不同機制互相干擾。</p>
+<h2 id="局限">局限</h2>
+<p>作者自陳沒有做專門消融來單獨隔離 contrastive trajectory analysis 的貢獻，目前只以軌跡統計與案例提供旁證。另一項限制是主要演化實驗只使用 <code>2,000</code> 個策展任務的一小部分；更大規模實驗與更廣泛的方法比較仍待後續完成。因此，現有結果能支持整套 ModularRSI 的泛化效果，不能把增益精確歸因給對照分析單一元件。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>ModularRSI 給 ai_core 一個可操作的 credit assignment 模板：先把「成功或失敗」轉成同任務的行為差異，再要求相同缺陷跨多個任務重現，最後只開放對應模組的最小修改範圍。這能降低把單次解題細節固化成全域規則的風險。三層 gate 也適合做成憑證階梯：語法與介面正確只證明可執行，diff review 排除明顯的實例捷徑，重跑任務才提供行為證據；跨模組整合則負責檢查各自合格的局部修改能否共同運作。它提醒 ai_core，模組證書不能直接相加，整合後仍需新的端到端憑證。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2609.14857_ModularRSI.zh-TW.html"><code>../translate/2609.14857_ModularRSI.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話地圖 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../neurosymbolic_reasoning_methodology.html">回 neurosymbolic_reasoning_methodology 目錄</a>　<a href="02_%E5%9B%9B%E6%A2%9D%E9%97%9C%E9%8D%B5%E8%A8%AD%E8%A8%88%E8%BB%B8.html">下一節 →</a></p>
+</blockquote>
+<h2 id="0-一句話地圖">0. 一句話地圖</h2>
+<p>神經符號整合的本質是一道<strong>取捨光譜</strong>：一端是把符號當外掛、神經與符號各管一段的<strong>鬆耦合 pipeline</strong>（易實作、可換 solver、但無端到端訊號）；另一端是把邏輯編譯進可微計算圖的<strong>緊耦合可微</strong>（端到端、梯度可穿透、但符號被迫低階且易生推理捷徑）。中間還夾著三條近年才被釘清楚的路線：用 <strong>EM 解耦</strong> 繞開「符號必須可微」的枷鎖、用 <strong>知識圖譜協同</strong> 把結構知識雙向接進 LLM、以及用 <strong>LLM＋符號驗證器</strong> 把語言模型的彈性與求解器的確定性縫起來。</p>
+<p>選哪一端，取決於四個設計軸的答案：<strong>符號要不要可微、推理發生在訓練期還是推論期、接地（grounding）怎麼處理、以及你願意為健全性（soundness）犧牲多少實用性。</strong></p>
+<hr />
+<h2 id="1-整合光譜與分類">1. 整合光譜與分類</h2>
+<h3 id="11-五大耦合形態">1.1 五大耦合形態</h3>
+<pre><code class="language-mermaid">flowchart LR
+    subgraph LOOSE[&quot;鬆耦合 pipeline（符號當外掛）&quot;]
+        A1[&quot;特徵注入&lt;br/&gt;規則→0/1 特徵&lt;br/&gt;[[2502.01680]]&quot;]
+        A2[&quot;LLM 翻形式→solver&lt;br/&gt;[[2407.10162]] [[2501.14540]]&lt;br/&gt;[[2604.27960]]&quot;]
+        A3[&quot;事後蒸餾&lt;br/&gt;NN→可解釋符號式&lt;br/&gt;[[2511.04124]]&quot;]
+    end
+    subgraph LLMV[&quot;LLM + 符號驗證器&quot;]
+        B1[&quot;LLM 當解釋/theory 函數&lt;br/&gt;[[2507.09751]] [[2602.18095]]&quot;]
+        B2[&quot;生成-驗證-自我修正&lt;br/&gt;[[2606.20895]] [[2604.26311]]&quot;]
+        B3[&quot;表徵層內化&lt;br/&gt;[[2604.19716]] [[2507.09854]]&quot;]
+    end
+    subgraph EM[&quot;EM / 期望最大化（解耦可微性）&quot;]
+        C1[&quot;E 步任意推論引擎&lt;br/&gt;M 步只更新神經&lt;br/&gt;[[2606.14463]]&quot;]
+    end
+    subgraph KG[&quot;知識圖譜協同&quot;]
+        D1[&quot;KG⇄LLM 雙向&lt;br/&gt;[[2506.09566]]&quot;]
+        D2[&quot;本體論引導 RAG&lt;br/&gt;[[2602.17826]]&quot;]
+    end
+    subgraph TIGHT[&quot;緊耦合可微（符號編進計算圖）&quot;]
+        E1[&quot;可微邏輯損失/約束&lt;br/&gt;[[2411.08463]] [[2509.00834]]&quot;]
+        E2[&quot;機率語意 + 知識編譯&lt;br/&gt;[[2412.07331]] [[2507.11127]]&quot;]
+        E3[&quot;邏輯=神經結構&lt;br/&gt;[[2505.14510]] [[2505.20313]]&lt;br/&gt;[[2506.04912]] [[2509.07665]]&quot;]
+        E4[&quot;可微解釋器/程式合成&lt;br/&gt;[[2604.18907]] [[2604.16232]]&quot;]
+    end
+
+    LOOSE --&gt;|&quot;耦合漸緊、梯度漸通&quot;| LLMV --&gt; EM --&gt; KG --&gt; TIGHT
+</code></pre>
+<blockquote>
+<p>光譜不是優劣排序，而是「耦合強度」與「梯度可穿透程度」遞增。越往右端到端訊號越強、可解釋與硬體部署越友善，但符號表達力被壓低、推理捷徑風險上升。</p>
+</blockquote>
+<h3 id="12-各形態速寫">1.2 各形態速寫</h3>
+<table>
+<thead>
+<tr>
+<th>形態</th>
+<th>核心機制</th>
+<th>代表</th>
+<th>何時選它</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>鬆耦合 pipeline</strong></td>
+<td>符號是獨立階段（前置特徵、後置 solver、事後蒸餾），兩端不共享梯度</td>
+<td><a class="paper-reference" href="../../summarize/2502.01680_Travel_Demand_NeSy.%E6%91%98%E8%A6%81.html">2502.01680</a> <a class="paper-reference" href="../../summarize/2407.10162_ChatLogic.%E6%91%98%E8%A6%81.html">2407.10162</a> <a class="paper-reference" href="../../summarize/2501.14540_VERUS_LM.%E6%91%98%E8%A6%81.html">2501.14540</a> <a class="paper-reference" href="../../summarize/2511.04124_Decomposable_NeSy_Regression.%E6%91%98%E8%A6%81.html">2511.04124</a></td>
+<td>想複用現成 solver/工具、要快速落地、不在意端到端最佳化</td>
+</tr>
+<tr>
+<td><strong>LLM + 符號驗證器</strong></td>
+<td>LLM 出彈性、符號做確定性檢查/枚舉，常配自我修正迴圈</td>
+<td><a class="paper-reference" href="../../summarize/2507.09751_Sound_Complete_NeSy_LLM.%E6%91%98%E8%A6%81.html">2507.09751</a> <a class="paper-reference" href="../../summarize/2602.18095_Logitext_NeSy_SMT.%E6%91%98%E8%A6%81.html">2602.18095</a> <a class="paper-reference" href="../../summarize/2606.20895_Abductive_NeSy_Clinical_Trial_Matching.%E6%91%98%E8%A6%81.html">2606.20895</a> <a class="paper-reference" href="../../summarize/2604.26311_DreamProver.%E6%91%98%E8%A6%81.html">2604.26311</a> <a class="paper-reference" href="../../summarize/2604.27960_LLM_ASP_Self_Correction.%E6%91%98%E8%A6%81.html">2604.27960</a></td>
+<td>任務「部分可形式化」、需可審計結論、容忍多次 API 呼叫</td>
+</tr>
+<tr>
+<td><strong>EM / 期望最大化</strong></td>
+<td>E 步用任意推論引擎算隱符號後驗，M 步只對神經做梯度，<strong>符號不必可微</strong></td>
+<td><a class="paper-reference" href="../../summarize/2606.14463_EM_NeSy.%E6%91%98%E8%A6%81.html">2606.14463</a></td>
+<td>想用最佳化過的符號軟體、精確推論在大規模逾時</td>
+</tr>
+<tr>
+<td><strong>知識圖譜協同</strong></td>
+<td>KG 與 LLM 雙向強化：KG 接地 LLM 減幻覺、LLM 構建/補全 KG</td>
+<td><a class="paper-reference" href="../../summarize/2506.09566_KG_LLM_Synergies.%E6%91%98%E8%A6%81.html">2506.09566</a> <a class="paper-reference" href="../../summarize/2602.17826_Ontology_Guided_NeSy.%E6%91%98%E8%A6%81.html">2602.17826</a></td>
+<td>有結構化知識資產、要事實接地、做檢索增強</td>
+</tr>
+<tr>
+<td><strong>緊耦合可微</strong></td>
+<td>邏輯被編成可微算子/損失/電路，端到端梯度貫穿</td>
+<td><a class="paper-reference" href="../../summarize/2412.07331_NeSyA.%E6%91%98%E8%A6%81.html">2412.07331</a> <a class="paper-reference" href="../../summarize/2505.14510_BACON.%E6%91%98%E8%A6%81.html">2505.14510</a> <a class="paper-reference" href="../../summarize/2505.20313_Reasoning_in_NeSy.%E6%91%98%E8%A6%81.html">2505.20313</a> <a class="paper-reference" href="../../summarize/2506.04912_DiffLogic_CA.%E6%91%98%E8%A6%81.html">2506.04912</a> <a class="paper-reference" href="../../summarize/2509.07665_DeepGraphLog.%E6%91%98%E8%A6%81.html">2509.07665</a> <a class="paper-reference" href="../../summarize/2509.00834_NeSy_Predictive_Process_Monitoring.%E6%91%98%E8%A6%81.html">2509.00834</a> <a class="paper-reference" href="../../summarize/2604.18907_NLI_Neural_Interpreter.%E6%91%98%E8%A6%81.html">2604.18907</a></td>
+<td>要端到端學習、要可上硬體、要精確機率推理</td>
+</tr>
+</tbody>
+</table>
+<h3 id="121-2026-09-補入符號層從外掛升格為世界引擎">1.2.1 2026-09 補入：符號層從外掛升格為世界引擎</h3>
+<p>Programmable World Model 讓可執行引擎維持實體身分、離鏡狀態、非視覺屬性與狀態轉移，再把更新後的狀態編譯成畫素對齊控制圖，生成模型只負責渲染 <a class="paper-reference" href="../../summarize/2609.10540_ProgrammableWorldModel.%E6%91%98%E8%A6%81.html">2609.10540</a>。這不只是本表「前置特徵、後置 solver」式的鬆耦合；符號程式在兩者之間成了世界事實的權威來源，填上現有五類尚未單獨命名的「可程式世界模型」位置，也打破鬆耦合符號層只能在神經模型前後工作的描述（本檔補註，非作者自陳）。目前證據只涵蓋粗粒度數量與死亡狀態一致性，尚不能把這條路線視為細部實體對應已獲完整驗證。</p>
+<p>DREAM 則替既有鬆耦合路線補上一座資料工廠：LLM 只能組合預先實作的 predicate，TAMP 與物理檢查決定候選軌跡能否進入訓練庫 <a class="paper-reference" href="../../summarize/2608.29078_DREAM.%E6%91%98%E8%A6%81.html">2608.29078</a>。它佐證了「生成提案、符號准入」可以擴充部署期示範，卻也反駁「通過符號與物理檢查的資料愈多，下游策略必然愈好」這個未經驗證的假設；作者自報 SmolVLA 在 FruitPacking 使用 DREAM 資料為 <code>6.7%</code>，人工資料為 <code>26.7%</code>，而 DREAM 資料超過 <code>500</code> 筆後沒有再改善。</p>
+<p>GAVEL 把「LLM＋符號驗證器」再往前推一步：圖世界模型不只拒絕錯誤計畫，還能依前置條件直接插入唯一可推出的導航、開啟與恢復動作，只把無法由規則決定的語意缺口退回 LLM <a class="paper-reference" href="../../summarize/2609.19315_GAVEL.%E6%91%98%E8%A6%81.html">2609.19315</a>。這補上本表把符號端寫成「檢查／枚舉」留下的空白：符號層也能產生可追溯的確定性修復，並以完整位置信念與線上重排管理不確定狀態（本檔補註，非作者自陳）。但其驗收仍在符號動作層，未納入幾何可達性與碰撞，不能直接推成完整實體機器人的端到端保證。</p>
+<h3 id="13-上層分類框架綜述們怎麼切">1.3 上層分類框架（綜述們怎麼切）</h3>
+<p>不同綜述各有切法，互為補充：</p>
+<table>
+<thead>
+<tr>
+<th>綜述</th>
+<th>分類維度</th>
+<th>一句話貢獻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a class="paper-reference" href="../../summarize/2401.01040_Cognitive_AI_NSAI_Survey.%E6%91%98%E8%A6%81.html">2401.01040</a></td>
+<td>Kautz 五範式 × <strong>系統/硬體</strong></td>
+<td>實測發現符號工作負載常主宰算力（NVSA 達 92%），呼籲「認知硬體」</td>
+</tr>
+<tr>
+<td><a class="paper-reference" href="../../summarize/2411.04383_NeSy_Explainability_Challenges.%E6%91%98%E8%A6%81.html">2411.04383</a></td>
+<td><strong>可解釋性</strong>（中間表徵可讀 × 決策透明）五級</td>
+<td>191 篇中真正高可解釋僅 4 篇；鬆耦合得不到可解釋性</td>
+</tr>
+<tr>
+<td><a class="paper-reference" href="../../summarize/2501.05435_Neurosymbolic_AI_2024_Review.%E6%91%98%E8%A6%81.html">2501.05435</a></td>
+<td>PRISMA 五大研究領域</td>
+<td>最大缺口＝後設認知（僅 5%）；理想 NeSy 仍停在理論</td>
+</tr>
+<tr>
+<td><a class="paper-reference" href="../../summarize/2502.11269_NSAI_Generative_AI_Architectures.%E6%91%98%E8%A6%81.html">2502.11269</a></td>
+<td><strong>八種架構 × 七準則</strong>評分</td>
+<td>集成式 Neuro→Symbolic←Neuro（fibring）全面最優</td>
+</tr>
+<tr>
+<td><a class="paper-reference" href="../../summarize/2507.11127_Defining_Neurosymbolic_AI.%E6%91%98%E8%A6%81.html">2507.11127</a></td>
+<td><strong>積分式統一定義</strong>（邏輯函數 × 信念函數的測度積分）</td>
+<td>把 30+ 系統證明為單一泛函的特例</td>
+</tr>
+<tr>
+<td><a class="paper-reference" href="../../summarize/2508.13678_NeSy_LLM_Reasoning_Survey.%E6%91%98%E8%A6%81.html">2508.13678</a></td>
+<td>Symbolic→LLM / LLM→Symbolic / LLM⊗Symbolic</td>
+<td>LLM 時代的三視角速查框架</td>
+</tr>
+<tr>
+<td><a class="paper-reference" href="../../summarize/2603.03177_NeSy_TaskDirected_Survey.%E6%91%98%E8%A6%81.html">2603.03177</a></td>
+<td><strong>按任務</strong>（NLP/CV）而非機制</td>
+<td>一致模式：神經管感知、符號管約束/驗證/解釋</td>
+</tr>
+<tr>
+<td><a class="paper-reference" href="../../summarize/2502.09100_LLM_Logical_Reasoning_Survey.%E6%91%98%E8%A6%81.html">2502.09100</a></td>
+<td>LLM 四推理範式（演繹/歸納/溯因/類比）</td>
+<td>LLM 啟發式強、形式嚴謹性不足</td>
+</tr>
+<tr>
+<td><a class="paper-reference" href="../../summarize/2606.08728_AI4Math_Survey.%E6%91%98%E8%A6%81.html">2606.08728</a></td>
+<td>AI4Math 四軸（非形式/形式/發現/推理時）</td>
+<td>主線＝「非形式生成 + 形式驗證」雙向管線</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

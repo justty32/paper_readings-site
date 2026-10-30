@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_LLM_核心續：目標處理與規劃 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.26522_AGELComp.zh-TW.html">回 2604.26522_AGELComp.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_AGEL-Comp_%E5%B7%A5%E4%BD%9C%E6%B5%81%E7%A8%8B%E8%88%87%E5%AD%B8%E7%BF%92%E6%A9%9F%E5%88%B6.html">下一節 →</a></p>
+</blockquote>
+<h2 id="32-llm-核心續目標處理與規劃">3.2 LLM 核心（續）：目標處理與規劃</h2>
+<p>此組件是一個混合規劃器-驗證器架構，整合 LLM 的生成能力與符號嚴謹性。</p>
+<ol>
+<li>
+<p><strong>LLM 作為規劃器</strong>：給定目標 G 與知覺 Pt，LLM 生成一組候選計劃或子目標。LLM 作為生成性假設引擎，產生候選子目標集合 {g1, ..., gk} = LLM_generate(G, Pt)。此集合代表一個可能但未經驗證的想法池。NTP 隨後處理此集合，過濾邏輯一致性與健全性。</p>
+</li>
+<li>
+<p><strong>NTP 作為驗證器</strong>：每個子目標 gi 是 NTP 的形式化查詢。它對 Wt 中的規則執行端到端可微反向鏈接。返回元組 (σi, πi) = NTP.prove(gi | Wt)，其中 σi 是證明成功分數，πi 是證明路徑。路徑 πi 隨後被轉化為可執行的動作序列 At。此循環確保計劃既具創造性地生成，又根據 agent 的有基礎世界模型 Wt 具有邏輯健全性。</p>
+</li>
+</ol>
+<h3 id="33-行動模組action-module">3.3 行動模組（Action Module）</h3>
+<p>將 LLM 核心所選擇的高層次文字動作計劃 At，轉化為可透過模擬環境 API 直接執行的一序列低層次指令 Ct。</p>
+<h3 id="34-反饋訊號f">3.4 反饋訊號（F）</h3>
+<p>對於每一個已執行的動作計劃 At = (a1, ..., aj)，agent 從環境接收一組對應的反饋訊號 Ft = (f1, ..., fj)。每個訊號 fi 提供結果的內容（例如 HP: -10）與強度，作為學習的主要驅動力。</p>
+<h3 id="35-情節記憶m">3.5 情節記憶（M）</h3>
+<p>一個固定大小的緩衝區，儲存最近 k 次經驗。每次經驗 e 是一個元組：e = (St, At, Ft)，其中 St 是執行動作計劃時的狀態，Ft 是所產生的反饋。記憶 M = {e1, e2, ..., ek} 提供基礎化過程的資料。</p>
+<h3 id="36-基礎化函數g">3.6 基礎化函數（G）</h3>
+<p>任何從互動中學習的 agent 的核心挑戰，是橋接低層次雜亂經驗與高層次抽象符號知識之間的差距。AGEL-Comp 中的 G 透過兩個連續階段解決此挑戰：(1) 因果歸因階段以解決功勞分配問題；(2) 抽象歸納階段以將具體觀察泛化為可重用規則。</p>
+<h4 id="階段一經驗驅動的因果歸因mcs-演算法">階段一：經驗驅動的因果歸因（MCS 演算法）</h4>
+<p>第一階段解決預測錯誤發生時的功勞分配問題——即 agent 世界模型 Wt 預測的結果與環境實際反饋 Ft 之間的錯配。為了在不受 LLM 潛在知識干擾下解決此問題，我們引入最小對比搜尋（Minimal Contrastive Search, MCS）演算法：</p>
+<ol>
+<li>
+<p>Agent 在狀態 St 執行 At。NTP 使用當前 Wt 預測 F_expected。環境返回不同的 F_actual（例如預期 HP: 0，實際 HP: -10）。元組 e_fail = (St, At, F_actual) 是學習的觸發條件。</p>
+</li>
+<li>
+<p>知覺模組提供 ground literals 集合 C = {c1, ..., cn} 表示觸發狀態 St（例如 C = {at(agent, loc1), is(fire, loc1), is(coin, loc1)}）。</p>
+</li>
+<li>
+<p>MCS 搜尋情節記憶 M，尋找「最小對比」經驗 e_success，其須滿足：(a) 涉及相同動作 At；(b) 產生了預期結果 F_expected。</p>
+</li>
+<li>
+<p>若找到有效的 e_success，比較 Cfail 與 Csuccess，計算 ∆S = Cfail - Csuccess。</p>
+</li>
+<li>
+<p>僅在 ∆S 為單元素時繼續。若 ∆S = {ck}，此 literal 被識別為失敗的最可能因果前件，形成具體因果假設 h_causal（例如 causes_damage(fire)）。</p>
+</li>
+</ol>
+<hr />
+<h2 id="翻譯接續第-4-部分"><em>翻譯接續：第 4 部分</em></h2>
+<h2 id="36-基礎化函數續">3.6 基礎化函數（續）</h2>
+<h4 id="階段二透過元直譯學習mil的抽象歸納">階段二：透過元直譯學習（MIL）的抽象歸納</h4>
+<p>此階段接受具體假設 h_causal（若找到），使用元直譯學習（MIL）系統將其泛化為可重用的符號規則。</p>
+<ol>
+<li>
+<p>若 MCS 返回 null，學習循環跳過。若返回有效的 h_causal，此 literal 成為 MIL 引擎的正例 E+，現有 CPG（Wt）作為背景知識 B。</p>
+</li>
+<li>
+<p>MIL 引擎使用高階元規則搜尋一般假設 H（Horn 子句），以解釋給定 B 下的 E+。例如，給定 E+ = causes_damage(fire) 與背景知識 B = {is_harmful(fire)}，引擎可歸納出規則 H = ∀X: causes_damage(X) ← is_harmful(X)。</p>
+</li>
+<li>
+<p>此經驗驗證的新規則 H 被整合到 CPG 中：Wt+1 ← Wt ∪ H。現在此規則可供 NTP 在所有未來規劃循環中使用。</p>
+</li>
+</ol>
+<h3 id="37-ntp-與-cpg-的整合">3.7 NTP 與 CPG 的整合</h3>
+<p>符號 CPG 與神經 NTP 之間的協同作用由兩個關鍵過程實現：共享的可訓練符號嵌入空間，以及 NTP 的雙階段訓練方案。</p>
+<h4 id="符號嵌入空間">符號嵌入空間</h4>
+<p>離散符號 CPG 與連續 NTP 向量空間之間的橋樑，是一個可訓練的嵌入矩陣 E ∈ R^{|V|×d}，其中 |V| 是 CPG 中謂詞與常數詞彙的大小，d 是嵌入維度。每個符號謂詞或常數 v ∈ V 被映射到一個唯一稠密向量。</p>
+<p>此共享嵌入空間使 NTP 能執行可微統一化（differentiable unification）：NTP 不是進行離散身份檢查，而是基於目標嵌入與規則頭嵌入之間的相似度（例如內積）計算軟統一化分數 [20, 14]。當 ILP 引擎發明新謂詞時，它們被加入詞彙 V，對應嵌入在 E 中初始化（例如隨機或由其組成部分的嵌入組合），隨後在訓練中精煉。</p>
+<h4 id="ntp-訓練方案">NTP 訓練方案</h4>
+<p>NTP 與嵌入矩陣 E 不是靜態的，而是被訓練以適應 agent 不斷增長的知識庫。訓練遵循兩階段過程：</p>
+<ol>
+<li>
+<p><strong>階段一：基礎知識引導（Bootstrapping）</strong>。NTP 與 E 在一組基礎、領域通用的邏輯規則（例如傳遞性、對稱性）以及環境基本事實上進行預訓練。訓練目標是連結預測任務：最大化已知真實事實的證明成功分數 σ，同時最小化虛假或未知事實的分數。此階段確保符號嵌入初始化到有意義狀態，NTP 學會邏輯演繹的基本機制。</p>
+</li>
+<li>
+<p><strong>階段二：對已歸納規則的持續微調</strong>。隨著 agent 與世界互動，ILP 引擎歸納出新規則 ∆W 加入 CPG。NTP 的知識必須更新以反映此新理解。agent 定期使用更新後的 CPG（Wt+1）對 NTP 和 E 進行微調，透過對可用新規則證明的查詢進行採樣並最佳化連結預測目標。此持續學習確保 NTP 的推理與 agent 最新、經驗驗證的知識一致，鞏固符號與神經組件的整合。</p>
+</li>
+</ol>
+<p>此雙階段訓練使 NTP 成為一個穩健且可適應的驗證器，與 agent 的符號世界模型同步演進。</p>
+<hr />
+<h2 id="翻譯接續第-5-部分"><em>翻譯接續：第 5 部分</em></h2>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

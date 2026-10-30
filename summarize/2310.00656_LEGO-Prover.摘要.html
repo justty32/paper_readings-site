@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《LEGO-Prover：以成長型技能庫進行神經定理證明（LEGO-Prover: Neural Theorem Proving with Growing Libraries）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Haiming Wang, Huajian Xin（共同第一）, Chuanyang Zheng, Lin Li, Zhengying Liu（通訊）, Qingxing Cao, Yinya Huang, Jing Xiong, Han Shi, Enze Xie, Jian Yin（通訊）, Zhenguo Li, Heng Liao, Xiaodan Liang（通訊）（中山大學、華為諾亞方舟實驗室、香港中文大學、香港城市大學、MBZUAI、華為海思）</p><p>日期：2024-10</p><p>arXiv：2310.00656</p><p><a href="https://arxiv.org/abs/2310.00656" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="lego-prover以成長型技能庫進行神經定理證明重點摘要">《LEGO-Prover：以成長型技能庫進行神經定理證明》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>LEGO-Prover 以「積木式」模組化證明的範式，讓 LLM 在證明過程中不斷從<strong>成長型技能庫</strong>（已驗證引理）檢索既有技能、生成新技能，並透過 LLM 演化技能以擴充庫內容；在 miniF2F 上將 pass rate 從 48.0% 提升至 57.0%，生成超過 20,000 個已驗證技能，且消融實驗顯示技能庫獨立貢獻 +3.3% 的證明成功率——<strong>直接實證了「庫成長 → 證明變淺 → 搜尋節省」的飛輪假說</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>既有神經定理證明方法（如 GPT-f、Draft-Sketch-Prove、Thor）共同假設一個<strong>靜態的定理庫</strong>：LLM 在整個證明過程中只能使用預先給定的引理，無法在證明過程中學習新知識、也無法將已證明的子目標重複用於其他問題。這與人類數學家的實際工作方式相悖——人類數學家會不斷建立新引理、新理論，用先前建立的結果輔助後續證明，形成<strong>累積式的知識成長</strong>。</p>
+<p>這也直接導致「純證明器」（plain prover）的結構性短板：當遇到長鏈推理時，模型必須一次性地從起始狀態一路證明到最終目標，<strong>搜尋深度過大</strong>導致失敗。不同問題之間即使共享相同的子引理，純證明器也無法跨問題重複利用已證明的結果——每一次都必須從頭證明。</p>
+<p>LEGO-Prover 的核心洞見是：把複雜的證明<strong>分解成可重複使用的技能積木</strong>，讓 LLM 以「積木拼裝」方式組合技能完成證明。這不僅降低了單次證明的難度，也讓技能庫隨時間成長，形成「越證越多、越多越易證」的正回饋循環。這個架構直接對應到 ai_core §3.6「固化引擎」的核心假說：<strong>每省下一次重複證明，就是一次淨收益</strong>。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>技能庫（Skill Library）</strong>：三個向量儲存庫——引理庫（已驗證引理+證明）、請求庫（分解器提出的子目標請求）、問題庫（資料集問題形式，供演化器作啟發式導引）。以 ChromaDB + OpenAI embedding 實現 k-NN 語義檢索。</li>
+<li><strong>證明器（Prover）三階段</strong>：(1) 非正式求解器用 GPT-4 生成自然語言證明草稿；(2) 分解器將非正式證明細化為逐步推理，並生成<strong>子目標引理的請求</strong>；(3) 形式化器從技能庫檢索相關技能（nf=4~6），以積木方式拼裝完整 Isabelle 證明碼，驗證後將新生成的有效引理回注技能庫。</li>
+<li><strong>演化器（Evolver）雙機制</strong>：(1) <strong>定向轉換器</strong>——沿四個預定義方向（維度擴展、關鍵概念識別、參數化、複雜度提升）將既有技能演化為更一般、更可重用的形式；(2) <strong>請求求解器</strong>——直接解答證明器提出的子目標請求。新技能通過 Isabelle 驗證後，再經 difflib 比較去重（閾值 0.85）後入庫。</li>
+<li><strong>非正式與形式證明的橋接</strong>：技能庫的成長逐步拉近人類非正式推理步與形式化證明碼之間的距離——技能越高層，每次引用就越能自動「填補」formalization 的繁瑣步。</li>
+</ul>
+<h2 id="關鍵發現數據">關鍵發現/數據</h2>
+<ul>
+<li>miniF2F-valid：48.0% → <strong>57.0%</strong>（+9.0%）；miniF2F-test：45.5% → <strong>50.0%</strong>（+4.5%）。模型生成的非正式證明下仍達 52.4%/45.5%。</li>
+<li>技能庫累計生成 <strong>22,532 個已驗證技能</strong>（10.8% 來自證明器、38.2% 來自請求求解器、51.1% 來自定向轉換器演化）。</li>
+<li><strong>消融實驗（50 次嘗試）</strong>：有技能庫 50.4% vs 無技能庫 47.1%，<strong>技能庫獨立貢獻 +3.3%</strong>。關鍵趨勢：隨著庫成長，差距<strong>持續擴大</strong>——初期幾無差異，後期明顯拉開。</li>
+<li>分析 135 個成功證明的 miniF2F-valid 問題：<strong>24% 的證明直接得益於檢索技能的輔助</strong>（其中 51% 直接複製使用、49% 模仿技能生成新引理），71% 被直接用的技能來自請求求解器程序。</li>
+<li>案例研究（IMO 1988 P6）展示技能演化樹：從少數種子定理透過定向演化生出大規模技能森林。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>技能庫的效益<strong>需要時間累積</strong>——初期庫容量不足時，與無庫的差距微乎其微；冷啟動問題是固化引擎通用挑戰。</li>
+<li>生成的技能中有許多<strong>平凡真或已存在於 Isabelle 內建庫中</strong>的引理（儘管系統仍產出足夠多有價值的獨特引理）。</li>
+<li>實驗基於 ChatGPT API（GPT-3.5 系列），成本約 $300/實驗；未測試開源本地模型的可行性。</li>
+<li>後續工作 2410.20274 提出質疑：雙系統實證指出 LEGO-Prover 的<strong>技能重用率極低</strong>，消融揭示真正增益可能來自自我修正與多取樣而非庫重用。這對 ai_core §3.6 是關鍵警示：必須仔細區分「庫本身貢獻」與「冗餘嘗試的邊際效益」。</li>
+</ul>
+<h2 id="對讀者的價值ai_core-接點">對讀者的價值（ai_core 接點）</h2>
+<p>LEGO-Prover 是 <strong>ai_core §3.6 固化引擎假說的直接實證標本</strong>——它的核心命題「動態成長的技能庫能透過降低證明搜尋深度來提升 LLM 定理證明能力」恰好對應 ai_core 的「固化價值＝省下多少搜尋」假說。其消融實驗（有庫 50.4% vs 無庫 47.1%）量化了「庫成長帶來的搜尋節省」，且趨勢圖（差距隨庫擴張而擴大）為固化引擎的「累積增值」提供了數據支撐。方法論上，技能庫的三層架構（引理庫／請求庫／問題庫）對應 §3.6 的資產倉儲分層；演化器的定向轉換（維度擴展、關鍵概念識別、參數化、複雜度提升）可視為固化引擎中「資產演化策略」的具體模板。</p>
+<p>然而，後續批判性工作（2410.20274）的雙系統實證指出重用率極低、真增益可能來自自我修正與多取樣——這是 §3.6 必須內化的警戒：固化引擎的評估不能只看「總體提升」，必須以<strong>可控消融隔離「庫本身貢獻」</strong>，否則會誤將「多試幾次」的邊際效益歸功於庫。正因如此，LEGO-Prover 的消融（有庫 vs 無庫，保持嘗試次數一致）是良好的實驗設計範例，而其後續被質疑也說明了 <strong>§3.4 的「憑證准入」與「資產審計」（哪個技能真的被用過、用了幾次）</strong> 的必要性。歸 <strong>G 類</strong>，方向四（UQ 實證對決），適合關注固化引擎／抽象庫成長飛輪／定理證明域實證的讀者。</p>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2310.00656_LEGO-Prover.zh-TW.html"><code>../translate/2310.00656_LEGO-Prover.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

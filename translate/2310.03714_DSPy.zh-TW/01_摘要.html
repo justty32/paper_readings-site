@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2310.03714_DSPy.zh-TW.html">回 2310.03714_DSPy.zh-TW 目錄</a>　<a href="02_DSPy_%E7%A8%8B%E5%BC%8F%E8%A8%AD%E8%A8%88%E6%A8%A1%E5%9E%8B.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>ML 社群正快速探索 prompting 語言模型（LM）並把它們堆疊成 pipeline 以解複雜任務的技術。可惜現有 LM pipeline 通常用<strong>手寫死的「prompt 模板」</strong>（靠試誤湊出的長字串）實作。為邁向更系統化地開發與優化 LM pipeline，本文提出 <strong>DSPy</strong>：一個把 LM pipeline 抽象成<strong>文字轉換圖（text transformation graph）<strong>的程式設計模型——即一種指令式計算圖，其中 LM 透過</strong>宣告式模組</strong>被呼叫。DSPy 模組是<strong>參數化</strong>的，意即它們能（透過建立與蒐集示範）學會如何組合套用 prompting、finetuning、augmentation、reasoning 等技術。作者設計了一個<strong>編譯器</strong>，能優化任意 DSPy pipeline 以最大化給定指標。透過數學應用題、多跳檢索、複雜問答、代理迴圈控制等兩個案例研究顯示：簡潔的 DSPy 程式能表達並優化複雜的 LM pipeline。編譯數分鐘內，幾行 DSPy 就讓 GPT-3.5 與 llama2-13b-chat 自我 bootstrap 出勝過標準 few-shot prompting（分別一般 <strong>&gt;25%</strong>、<strong>&gt;65%</strong>）與勝過含專家手寫示範之 pipeline（分別高達 <strong>5–46%</strong>、<strong>16–40%</strong>）的 pipeline。此外，編譯到 770M 參數的 T5、llama2-13b-chat 等開源小模型後，可與依賴專有 GPT-3.5 之專家手寫 prompt 鏈的方法競爭。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LM 讓研究者能以更高抽象層、更低資料需求建 NLP 系統，催生了爆炸性的「prompting」與輕量 finetuning 技術（CoT 引出系統性推理、以檢索/工具增強等）。愈來愈多人建<strong>多階段 pipeline 與代理</strong>，把複雜任務拆成較好管理的 LM 呼叫以提升表現。</p>
+<p>問題：LM 對「怎麼被 prompt」極敏感，在多個 LM 呼叫須彼此配合的 pipeline 中更嚴重。因此現有 pipeline 與熱門框架的 LM 呼叫，普遍用<strong>手寫死的「prompt 模板」</strong>（大段人工試誤的指令與示範字串）。作者論證此法雖普遍卻<strong>脆弱、不可擴展</strong>——概念上像<strong>手動調分類器的權重</strong>：同一段 prompt 字串換 pipeline、換 LM、換資料域、甚至換輸入就可能失效。</p>
+<p>DSPy 把「建 LM pipeline」從<strong>操弄自由字串</strong>推向<strong>寫程式</strong>（組合模組化運算子建文字轉換圖），由<strong>編譯器自動從程式生成優化過的 LM 呼叫策略與 prompt</strong>。靈感來自神經網路抽象達成的共識：(1) 通用層可模組化組進任意複雜架構；(2) 權重用<strong>優化器訓練</strong>而非手調。</p>
+<p>對應地，DSPy：先把字串式 prompting 技術（含 CoT、ReAct 等複雜且任務相依者）翻譯成攜帶<strong>自然語言型別簽章</strong>的<strong>宣告式模組</strong>（如神經網路層般的任務自適應元件）；再<strong>參數化</strong>每個模組，使其能在 pipeline 內<strong>迭代 bootstrap 有用示範</strong>來學會目標行為；模組以 PyTorch 式 <strong>define-by-run 計算圖</strong>使用——(1) 宣告所需模組、(2) 用任意控制流（if、for、例外等）把模組邏輯串接。</p>
+<p>接著開發 <strong>DSPy 編譯器</strong>（§4）以優化品質或成本。編譯器輸入＝程式 + 少量（可選標籤的）訓練輸入 + 驗證指標；它在輸入上模擬程式的各版本、為每個模組 bootstrap 範例 trace 做自我改進，用來構造有效 few-shot prompt 或 finetune 小 LM。優化高度模組化，由 <strong>teleprompters</strong>（通用優化策略，決定各模組如何從資料學習）執行；編譯器藉此自動把宣告式模組映射到 prompting/finetuning/reasoning/augmentation 的高品質組合。（teleprompter 一名取自「把 prompting 抽象化、自動化、在遠端無人工介入地完成」。）</p>
+<p>作者聚焦一個維度：<strong>專家手寫 prompt 對系統表現的角色</strong>，欲用 DSPy 模組與 teleprompters <strong>減少乃至移除</strong>其角色。主要貢獻為實證與演算法性的：用 DSPy 寫極短程式，即可用 llama2-13b-chat、T5-Large（770M）這麼小的 LM bootstrap 出自我改進的多階段 NLP 系統；無手寫 prompt、編譯數分鐘至數十分鐘內，可把簡單程式品質從 <strong>33%→82%</strong>（§6）、<strong>32%→46%</strong>（§7）（GPT-3.5），並從 <strong>9%→47%</strong>（§6）、<strong>22%→41%</strong>（§7）（llama2-13b-chat）。</p>
+<p>（註：DSPy 讀作 dee-ess-pie，是先前 Demonstrate–Search–Predict 框架 DSP 的第二代。）</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>本工作受 Torch、Theano、Chainer 等在深度學習發展中提供強大抽象的角色啟發；作者稱之為 <strong>foundation model programming</strong>，借鑑可微分程式設計（但套在 LM 呼叫而非神經網路上）與 PyTorch 的語法。</p>
+<ul>
+<li><strong>In-context learning</strong> 是 foundation model programming 的關鍵機制：配合指令微調，可用 prompting 引出複雜行為；過去需任務專屬或手建啟發式的弱監督，如今由 LM 完成。</li>
+<li>In-context 方法已常規化地<strong>呼叫工具</strong>（檢索模型、多模態基礎模型、API、計算機），催生 LangChain、Semantic Kernel、LlamaIndex 等工具包；但它們仍以<strong>手寫 prompt 模板</strong>表達任務專屬行為，正是 DSPy 要解的普遍痛點。</li>
+<li>已有人用<strong>離散優化與 RL 找有效 prompt</strong>，但多針對<strong>單一邏輯 LM 呼叫</strong>。DSPy 要一般化此空間：從高層宣告式簽章出發，透過帶約束地 bootstrap 高品質多階段示範，優化<strong>任意 pipeline</strong>；其 teleprompters 原則上可用交叉驗證、RL＋LM 回饋、貝式超參優化等。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

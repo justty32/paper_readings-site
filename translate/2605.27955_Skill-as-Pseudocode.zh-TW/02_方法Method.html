@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>技能即偽代碼：將技能庫重構為偽代碼以服務 LLM 智能體（3/5） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.27955_Skill-as-Pseudocode.zh-TW.html">回 2605.27955_Skill-as-Pseudocode.zh-TW 目錄</a>　<a href="01_%E5%BC%95%E8%A8%80Introduction.html">← 上一節</a>　<a href="03_%E6%AA%A2%E7%B4%A2%E6%99%82%E4%BB%A3%E6%8F%9BRetrieval-time_substitution.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-方法method">3. 方法（Method）</h2>
+<h3 id="31-問題陳述problem-statement">3.1 問題陳述（Problem statement）</h3>
+<p>技能庫 L = {p₁, ..., pₙ} 為一組 parent skills，各為程序性文件（markdown SKILL.md、OpenAPI spec 或 MCP 伺服器描述）。每個 parent pᵢ 由一系列程序單元（procedural units）uᵢ,₁, ..., uᵢ,ₖᵢ 組成。一個<strong>候選群集 c</strong> 為來自一或多個 parent 的程序單元集合，假設以不同散文描述同一底層程序。一個<strong>帶類型合約 κ</strong> 為結構化偽代碼規範，含顯式 trigger、input_schema、output_schema、preconditions、postconditions、side_effects 欄位。κ 是 c 中散文的結構化替代：相同資訊以 agent 能一次讀取的形式重新表達，而非每次檢索時重新推導。</p>
+<p>轉換 c → κ 定義為<strong>有效</strong>若且唯若 κ 滿足四個確定性檢查：Coverage、Binding、Replacement、Risk。驗證器返回「valid，附帶 κ 與支撐證據」或「invalid，附帶檢查層級拒絕原因」，不產生軟分類器分數——任何拒絕皆基於四個命名檢查之一。給定驗證後合約集合 K，轉換後庫 L&#x27; 將每個 parent 的匹配單元改寫為 invoke(κⱼ, ⃗a) 佔位符，並將各 κⱼ 新增為 child skill（僅透過 invoke 到達，非直接檢索；§3.5）。跨 parent 分解（|src(κ)| &gt; 1）為次要收益；主要收益是散文→偽代碼的轉換本身。</p>
+<h3 id="32-管線概述pipeline-overview">3.2 管線概述（Pipeline overview）</h3>
+<p>五個基礎階段加兩個 LLM 覺察後驗證通過。Parser、Candidate proposer 與 Refactor（階段 1/2/5）為確定性；Contract extractor（階段 3）每候選群集一次 gpt-4o-mini 調用；Verifier（階段 4）完全確定性。</p>
+<p><strong>階段 1 — Parser：</strong> 對 SKILL.md 分離 YAML frontmatter 與正文，以 markdown heading 定義程序單元。對 OpenAPI 將參數處理操作分組為單元。輸出：parents.json（含 procedural_units、scripts、references）。</p>
+<p><strong>階段 2 — Candidate proposer：</strong> 對每個程序單元提取 frame tuple (verb, objects, code_langs, linked_scripts) 後以 text-embedding-3-small 嵌入。單連鎖聚類（single-linkage）合併共享 frame 且餘弦相似度 ≥0.65 的單元。階段故意高召回——過度聚類可接受，驗證器在下游過濾。</p>
+<p><strong>階段 3 — Contract extractor（LLM）：</strong> 每候選群集一次 gpt-4o-mini 調用，產生嚴格 JSON 格式的合約草稿；模型可透過 _extraction_failed 拒絕（結構性拒絕）。後續拒絕均為確定性。合約 IR 為帶類型記錄，含 trigger、input_schema、output_schema、pre/postconditions、resources、side_effects、source_parents 欄位，以及 BE 填入的 per-call-site bindings。</p>
+<p><strong>階段 4 — Verifier（四個檢查）：</strong> 輸出 profile φ(c, κ) 以及三層決策（auto_promote/review/reject）。細節見 §3.3。</p>
+<p><strong>階段 5 — Refactor：</strong> 對每個 auto_promote 合約：(i) 確定性檢測調用點——遍歷 parents 並匹配貢獻至群集的單元；(ii) 應用 BE LLM 覺察綁定；(iii) 以 invoke(κ, ⃗a) 替換調用點單元改寫每個 parent 骨架；(iv) 應用 RC cleanup。輸出：每個被觸及 skill 的 *.rewritten.md 加上索引 refactored_library.json。</p>
+<p><strong>BE（Binding Extraction）：</strong> 對每個確定性調用點，BE 以 gpt-4o-mini 判斷該單元是否為 κ 的真實實例，以及對每個 required input，unit text 中哪個 substring 綁定它。確定性後檢查丟棄綁定為空或 token 與 unit 不重疊的調用點。通過的綁定以 invoke(κ, {object=&quot;laptop 1&quot;, source=&quot;bed 2&quot;, dest=&quot;desk 1&quot;}) 形式內聯至改寫，具體化 per-parent 佔位符。BE 在 skills_500 上丟棄 630/2,105（30%）調用點為偽陽性。</p>
+<p><strong>RC（Rewrite Cleanup）：</strong> 確定性改寫保留非群集 sections（Workflow lists、Examples、Bundled Resources）逐字不變；若這些內容區塊與 child contract 矛盾（如 Example 使用不同動作動詞），衝突會誤導 agent。RC 為單次驗證器引導改寫：要求 gpt-4o-mini 檢測並將此類衝突改寫為 invoke(κ, ⃗a) 調用，保留 parent 特定文字，不引入原始 parent 或驗證後合約外的內容。確定性後檢查確保每個被調用 κ 在 cleanup 後仍被引用。RC 在 320/322（99.4%）觸及 parents 上成功。</p>
+<h1 id="技能即偽代碼將技能庫重構為偽代碼以服務-llm-智能體35">技能即偽代碼：將技能庫重構為偽代碼以服務 LLM 智能體（3/5）</h1>
+<h2 id="33-四個驗證器檢查the-four-verifier-checks">3.3 四個驗證器檢查（The four verifier checks）</h2>
+<p>給定候選 c 與合約草稿 κ，驗證器計算四個基於規則的檢查層級分數——不同於學習型步驟級驗證器（Lightman et al. 2024; Uesato et al. 2022），輸出為結構化拒絕 profile 而非軟分類器分數：</p>
+<ul>
+<li><strong>Coverage（覆蓋）</strong>：κ 的 trigger/I-O 字串對各 parent 的單元文本 token 召回率。捕捉誤命名合約——合約描述的內容與群集內實際散文不匹配。</li>
+<li><strong>Binding（綁定）</strong>：對每個 required input，其名稱在 (parent, input) 對的 unit text 中有對應重疊的 fraction。捕捉過寬群集——合約所需的參數在群集的一些 parent 中找不到對應文字。</li>
+<li><strong>Replacement（替換）</strong>：以 invoke(κ) 語法替換後單元 markdown 結構保持完整的 parent fraction。捕捉控制流糾纏——程序單元嵌入在不能簡單以佔位符替換的控制流結構中。</li>
+<li><strong>Risk（風險）</strong>：AST 掃描合約腳本/資源中的不安全接收器（subprocess.shell、eval、檔案刪除、未申明網路出口），加權分 ≥0.80 則硬拒絕。有意保守——合法需要 rm 或 requests.post 的重複片段必須在 side_effects 中申明才能通過。</li>
+</ul>
+<p>四個檢查捕捉四類<strong>近乎不重疊</strong>的失敗模式（每層最多 ~51% 的首失敗），驗證器的輸出為結構化拒絕 profile 而非軟分類器分數——無單一層主導拒絕。</p>
+<h2 id="34-決策策略與校準decision-policy--calibration">3.4 決策策略與校準（Decision policy + calibration）</h2>
+<p>四個分數合併為純量提升分數：
+s(φ) = w_b·binding + w_c·coverage + w_r·replacement − w_s·risk</p>
+<p>以門檻 (τ_auto, τ_rev) 映射為三層決策（auto_promote / review / reject）。門檻以 30 個合成負控制校準，來自三類單庫場景：B_same_domain_distinct（不同子域的合約）、C_near_miss（真實合約的 verb-object 排列變體）、D_swapped_contract（真實合約分配至錯誤群集），各 n=10。此為 benchmark-free 的校準方法，對應 output calibration（Guo et al. 2017）與 Chow-style reject options。</p>
+<p>在 skills_500 上，門檻網格的寬廣區域在此類負控制上達到 0% FP。主結果使用校準點 (τ_auto, τ_rev) = (0.30, 0.10)，推廣 80 個驗證後 child contracts 且維持 0% FP。更嚴格點 (0.65, 0.35) 僅推廣 49 個——額外的 31 個 children 包含真正重複出現的子程序（navigate-and-take、locate-receptacle、appliance-state-modifier），其提取正是核心論點。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

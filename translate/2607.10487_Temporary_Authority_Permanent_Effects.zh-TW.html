@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>暫時權限，永久效果：LLM Agent 的提交時授權（精要逐節翻譯） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Igor Santos-Grueiro</p><p>日期：2026-07</p><p>arXiv：2607.10487</p><p><a href="https://arxiv.org/abs/2607.10487" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="暫時權限永久效果llm-agent-的提交時授權">暫時權限，永久效果：LLM Agent 的提交時授權</h1>
+<blockquote>
+<p>依官方 arXiv TeX 原文作精要逐節翻譯；保留 controlled-invalidation 的實驗性質，不把壓力測試比率外推為部署事故率。</p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>agent 常依賴 DOM snapshot、approval、tool output 或 branch result 等暫時 authority，卻在數步後才讓效果永久化。本文建立 browser、tool/API、multi-agent controlled-invalidation suite：保持 goal 與 payload shape 不變，只在 durability 前使 authority relation 失效。270 runs 中 262 到達 endpoint，只有 55 是 authorized completion；216 invalidating rows 中 207 在授權路徑失效後 commit。54 clean controls 全部 authorized，另 54 authority-preserving checks 沒有 unauthorized commit。結論是 endpoint success 是 utility metric，authorized commit 是 security property。</p>
+<h2 id="1-導論">1. 導論</h2>
+<p>要保護的不是最後畫面，而是 <code>witness → derived state → durable effect</code> 路徑。舊 approval 仍可能產生看似正確 ticket update，losing worker branch 也可能留下 coherent output。任務完成與 entitlement-to-commit 是不同問題。</p>
+<p>本文貢獻為 temporary-authority model、54-task suite、分離 endpoint 與 authorization 的實證，以及 CommitGuard runtime boundary monitor。</p>
+<h2 id="2-temporary-authority-下的-authorized-commit">2. Temporary Authority 下的 Authorized Commit</h2>
+<p>threat 包括 benign concurrency 與 adversarial page/tool/worker，能 expiry、reorder、retarget、revoke 或 cancel authority；host/model-weight compromise、偽造 monitor evidence 不在範圍。protected asset 是 browser、ticket、repo、deployment、API 或 shared-agent durable state。</p>
+<p>temporal hazard 是可能讓 authority 在 commit 前失效的時序／可見性／順序／資格改變；temporal attack 是蓄意誘發者；boundary violation 是 trace 上控制路徑斷裂；unauthorized commit 是 entitlement 已失去仍外部化的結果。</p>
+<h2 id="3-commit-boundary-model">3. Commit-Boundary Model</h2>
+<p>authority witness 是具體授權物件；derived state 是繼承其權限的 plan、cache、pending action、staged write 或 branch output；commit 是效果離開 private scratch、成為 durable 的邊界。</p>
+<p>commit 時檢查四條件：freshness、causal priority、effect binding、commit eligibility。failure 的修復各異：refresh witness、等待 predecessor、rebind target、拒絕已取消 branch。只有四者皆成立才 authorized；若失效後仍完成 endpoint 即 unauthorized commit；拒絕、replan 或 withheld effect 則 safe non-completion。</p>
+<p>runtime 應發出 browser epoch、ETag、approval epoch、branch id、barrier token、memory TTL 或 capability 等 evidence。任何訊號缺失都產生 monitor blind spot。模型只要求與 external effect 有關的 dependency integrity，不要求記錄完整思維鏈。</p>
+<h2 id="4-實驗設定">4. 實驗設定</h2>
+<p>54 tasks 每個含 witness、invalidator、durable effect，來源改寫自 web/desktop、tool/API 與 multi-agent workflows。每 task 跑一 clean control、四 invalidating perturbations，共 270 rows。主要 family 是 browser 18 tasks、tool/state 18、multi-agent 18。</p>
+<p>label 要求 goal reached、授權 control path 在 commit 仍 valid、失去 authority 後無 externally consequential effect 越界。optimality、完整 serializability 與 maximal caution 不在 label 範圍。suite 刻意 invalid authority，故數字只與同 task clean row 比，不代表部署頻率。</p>
+<h2 id="5-主結果">5. 主結果</h2>
+<p>reference LangGraph+Qwen stack 的全矩陣：browser endpoint 89/90、authorized 19、unauthorized 70、safe stop 1；tool/state 83/90、18、65、7；multi-agent 90/90、18、72、0。總計 endpoint 262/270、authorized 55、unauthorized 207、safe stop 8、infra 0。</p>
+<p>54 clean controls 全 authorized；207 unsafe commits 分成 wrong/stale browser target 70、revoked/stale tool write 65、ineligible/reordered agent path 72。primary condition attribution 為 freshness 105、binding 18、causal 51、eligibility 33。</p>
+<p>fixed paired 108 runs 全到 endpoint，但 54 controls authorized、54 invalidations unauthorized。另 18 matched pairs 全數翻轉，sign test <code>p=7.6×10^-6</code>。authority-preserving negative control 的 18 clean + 36 benign variants 全 authorized，unauthorized 0/54。</p>
+<p>這支持「在控制式 invalidation 下 endpoint 與 authorization 可分離」，不是估計 unsafe 行為自然發生率。</p>
+<h2 id="6-緩解與-commitguard">6. 緩解與 CommitGuard</h2>
+<p>prompt caution 不會恢復 runtime entitlement。pre-execution revalidation 適合 browser repaint，卻可能漏掉 approval drift；version pinning 適合版本／approval，但不處理 retarget；replanning 與 commit gating 在三種 probe 都可清除 unauthorized commits，通常代價是 success 從完整完成降到約 50%。</p>
+<p>CommitGuard 需要 effect id、witness、dependency projection、target binding、eligibility path、freshness window，以及原子 check-and-commit primitive。shadow mode 只記錄；enforce mode block；repair mode先嘗試 refresh/rebind/recompute。實作 footprint 報為 725 standalone + 175 shared-support + 83 adapter LOC。</p>
+<p>matched replay 中 shadow 的 18 perturbations 全 unauthorized，enforce 全 abort，18 controls 保留。固定 18-task run 也把 unsafe 降為零、將 18 perturbations 全 abort。180-run replay 中 unauthorized 0.80 → 0，authorized 0.20 不變，其餘成 guarded abort，平均 latency 約 597 ms。live run success 0.972 → 0.5；early abort 讓 latency 下降，不代表更快完成工作。</p>
+<p>recovery 只有在 commit 前拿到 fresh witness 才可行；小型 comparison 修復 6/6。missing signal 時 fail closed 會同時阻擋 unsafe 與失去 authorized decisions，這是 availability cost。</p>
+<h2 id="7-討論與限制">7. 討論與限制</h2>
+<p>所有 207 unsafe commits 都有 stale freshness、failed eligibility、invalidator、target、witness 與 commit event；8 safe stops 則沒有 commit event。monitor 能判斷的上限由 trace coverage 決定。hidden dependency、side effect bypass、host compromise、forged evidence，以及沒有 atomic check-and-commit 的 runtime 不在保證內。</p>
+<p>模型與框架變動會把 perturbation 從 unauthorized commit 移到 safe non-completion；較強模型能力不能取代 fresh witness 與 commit gate。closed route 若 control/infrastructure gate 未通過，只能當 artifact diagnostic。</p>
+<h2 id="8-相關工作倫理與結論">8. 相關工作、倫理與結論</h2>
+<p>本文與 TOCTOU、transactional agent runtime、Atomix、trace assurance 互補：關注的不是一般 rollback 或 ordering，而是舊 approval/page/worker result 何時失去授權最終效果的資格。實驗全在 sandbox synthetic accounts/tickets/repos，沒有修改真實服務。</p>
+<p>實務報告應拆分 endpoint success、authorized completion、unauthorized commit、safe non-completion、infra failure。CommitGuard 的主要作用先是擋下 stale effect，之後才談 recovery。最終設計原則是：暫時 witness 所衍生的 authority 必須一路可追蹤，並在 durability boundary 再驗證。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

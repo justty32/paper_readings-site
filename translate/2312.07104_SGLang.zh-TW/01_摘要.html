@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2312.07104_SGLang.zh-TW.html">回 2312.07104_SGLang.zh-TW 目錄</a>　<a href="02_%E4%BB%A5_RadixAttention_%E9%AB%98%E6%95%88%E9%87%8D%E7%94%A8_KV_%E5%BF%AB%E5%8F%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）愈來愈多用於需要<strong>多次生成呼叫、進階提示技術、控制流與結構化輸入輸出</strong>的複雜任務，但目前缺乏高效地「編寫並執行」這類應用的系統。我們提出 <strong>SGLang</strong>，一套高效執行複雜語言模型程式的系統，由<strong>前端語言</strong>與 <strong>runtime</strong> 兩部分組成。前端以「生成」與「並行控制」原語簡化編寫；runtime 以 <strong>RadixAttention（KV 快取重用）</strong> 與 <strong>壓縮有限狀態機（更快的結構化輸出解碼）</strong> 等新優化加速執行。實驗顯示在 agent 控制、邏輯推理、few-shot 學習基準、JSON 解碼、檢索增強生成（RAG）管線、多輪對話等任務上，SGLang 相對 SOTA 推論系統取得<strong>最高 6.4 倍吞吐</strong>。程式碼開源於 github.com/sgl-project/sglang。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 能力提升使其能作為<strong>自主 agent</strong>，進行多輪規劃、推理與環境互動，透過工具使用、多模態輸入、以及 few-shot、self-consistency、skeleton-of-thought、tree-of-thought 等提示技術完成任務。這些用例都需要<strong>多次、常互相依賴的 LLM 生成呼叫</strong>，標誌著我們與 LLM 互動方式的轉變：從單純聊天，走向「用程式排程與控制 LLM 生成過程」的<strong>程式化使用</strong>。我們把這類程式稱為「<strong>語言模型程式（LM Programs）</strong>」，其兩個共通性質：(1) 多次 LLM 呼叫交錯控制流（為完成複雜任務、提升品質）；(2) 收結構化輸入、產結構化輸出（為使 LM program 可組合、可嵌入既有軟體系統）。</p>
+<p>儘管 LM program 廣泛使用，現有系統仍低效。作者指出兩大挑戰：</p>
+<ul>
+<li><strong>編寫繁瑣</strong>：因 LLM 非確定性，開發常需大量字串處理、prompt 試調、脆弱的輸出解析、多模態處理與手工並行，嚴重降低可讀性（§2）。</li>
+<li><strong>執行低效</strong>（更關鍵）：因<strong>冗餘計算與記憶體使用</strong>。SOTA 引擎（vLLM、TGI、TensorRT-LLM）不了解具體 workload，通用穩健但對任一 workload 都有顯著低效。例一：<strong>KV 快取重用</strong>——KV 快取是生成推論必需的可重用中間張量，批次執行 LM program 時大量呼叫共享前綴、本可重用，但現有系統缺機制而重算浪費記憶體。例二：<strong>結構化輸出的受約束解碼</strong>（如 JSON mode，輸出須遵守正則定義的文法）——多個 token 常可一次解完，但現有系統一次只解一個。</li>
+</ul>
+<p><strong>SGLang（Structured Generation Language）</strong> 的核心想法是<strong>系統性地利用 LM program 的多呼叫結構</strong>以高效執行。如圖 1，它含<strong>前端語言</strong>與<strong>後端 runtime</strong> 兩部分，可協同運作也可獨立運作。SGLang 是嵌入 Python 的 DSL，提供生成原語（<code>extend</code>、<code>gen</code>、<code>select</code>）與並行控制原語（<code>fork</code>、<code>join</code>），相容 Python 語法與函式庫。提供直譯器與編譯器：直譯器把 prompt 狀態當 stream，非同步提交原語、確保正確同步與程式內並行；程式亦可被 trace、編譯以做更多優化。</p>
+<p>runtime 三項新優化：</p>
+<ul>
+<li><strong>RadixAttention</strong>：跨多次生成呼叫<strong>自動重用 KV 快取</strong>。不像既有引擎完成後即丟棄，本系統把所有請求的 KV 快取以 <strong>LRU 快取</strong>存進<strong>基數樹（radix tree）</strong>，用樹做高效匹配、插入、逐出，並以 cache-aware 排程處理各種重用模式。</li>
+<li><strong>壓縮有限狀態機</strong>：既有系統只對「下一個 token」遮蔽非法機率、故一次一 token；本系統分析約束、建<strong>壓縮 FSM</strong>，把多 token 路徑盡量壓成單步，一次解多個 token。</li>
+<li><strong>API 推測執行</strong>：對僅能呼叫黑箱 API 的模型（如 GPT-4）優化多呼叫程式。</li>
+</ul>
+<p>作者用 SGLang 實作了 agent 控制、邏輯推理、few-shot 基準、JSON 解碼、RAG、多輪對話、多模態等應用，在 Llama-7B/70B、Mixtral-8x7B、LLaVA（圖／影片）上、A10G 與 A100 GPU，較 Guidance、vLLM、LMQL 取得<strong>最高 6.4 倍吞吐</strong>。</p>
+<h2 id="2-程式設計模型">2. 程式設計模型</h2>
+<p>SGLang 是嵌入 Python 的 DSL，透過靈活可組合的原語簡化多呼叫工作流中繁瑣的字串處理、API 呼叫、約束指定與並行。</p>
+<p><strong>執行範例（圖 2）</strong>：一個用 <strong>branch-solve-merge</strong> 提示法評分「關於某圖片的短文」的程式 <code>multi_dimensional_judge(s, path, essay)</code>——<code>s</code> 管理 prompt 狀態、<code>path</code> 是圖片路徑、<code>essay</code> 是文本。用 <code>+=</code> 把新字串與原語接到 <code>s</code>。先加圖片與短文；用 <code>select</code> 判斷短文是否與圖片相關（存 <code>s[&quot;related&quot;]</code>）；若相關，<code>fork</code> 出三份副本從不同維度並行評分（<code>gen</code> 存進 <code>f[&quot;judgment&quot;]</code>）；再合併判斷、生摘要、給字母等級；最後依 <code>regex</code> 定義的 schema 以 JSON 回傳。等價的 OpenAI-like 介面程式需<strong>2.1 倍</strong>行數。</p>
+<p><strong>語言原語</strong>：<code>gen</code>（呼叫模型生成、存進具名變數，支援 <code>regex</code> 約束輸出遵循文法如 JSON schema）；<code>select</code>（從清單選最高機率選項）；<code>+=</code>／<code>extend</code>（接字串）；<code>[變數名]</code>（取生成結果）；<code>fork</code>（建 prompt 狀態的並行副本）；<code>join</code>（重新合併）；<code>image</code>／<code>video</code>（多模態輸入）。</p>
+<p><strong>執行模式</strong>：最簡是<strong>直譯器</strong>——prompt 當非同步 stream，<code>extend</code>/<code>gen</code>/<code>select</code> 非阻塞提交（類似非同步啟動 CUDA kernel），各 prompt 由背景執行緒的 stream executor 管理、達成程式內並行；取結果時阻塞以確保同步。另可<strong>編譯成計算圖</strong>由 graph executor 執行以做更多優化（本文預設直譯器模式，編譯器模式見附錄 D）。支援開源權重（自帶 SGLang Runtime, SRT）與 OpenAI/Anthropic 等 API 模型。</p>
+<p><strong>比較</strong>：LLM 程式系統可分<strong>高階</strong>（LangChain、DSPy，提供預定義或自動生成的 prompt，如 DSPy 的 prompt optimizer）與<strong>低階</strong>（LMQL、Guidance、SGLang，不改 prompt、允許直接操作 prompt 與原語）。SGLang 屬低階，類似 LMQL / Guidance，但<strong>更著重 runtime 效率並自帶協同設計的 runtime</strong>。<strong>高階語言（如 DSPy）可編譯到低階（如 SGLang）</strong>；§6 展示把 SGLang 當 DSPy 後端以提升效率。</p>
+<p><strong>表 1（擇要）</strong> 三系統比較：LMQL（自訂語法，原語 extend/gen/select，後端 HF Transformers/llama.cpp/OpenAI）；Guidance（Python，多 image 原語，後端同上）；<strong>SGLang</strong>（Python，原語最全含 fork/join/video，後端 SRT/OpenAI）。</p>
+<p>圖 2 亦標出三處 runtime 優化機會：KV 快取重用、快速受約束解碼、API 推測執行。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

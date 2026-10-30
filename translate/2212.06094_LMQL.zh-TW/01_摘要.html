@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2212.06094_LMQL.zh-TW.html">回 2212.06094_LMQL.zh-TW 目錄</a>　<a href="02_LMQL_%E8%AA%9E%E8%A8%80.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）在問答、程式碼生成等眾多任務上表現卓越：給定輸入，模型會以「統計上可能」的方式自動補全序列，使用者則以語言指令或範例來 prompt 模型以實作各種下游任務。進階的 prompting 方法甚至涉及模型、使用者、外部工具（如計算器）之間的互動。然而要取得 SOTA 表現或針對特定任務調適模型，往往得實作複雜、任務與模型專屬的程式，且仍需臨機（ad-hoc）互動。</p>
+<p>基於此，我們提出 <strong>Language Model Programming（LMP，語言模型程式設計）</strong> 這個新想法：把語言模型 prompting 從純文字提示，一般化為「文字提示 + 腳本（scripting）」的直觀組合，並允許對模型輸出<strong>指定約束（constraints）</strong>。這讓使用者能輕鬆調適多種任務，同時抽象掉模型內部細節、提供高階語意。</p>
+<p>為實現 LMP，我們實作了 <strong>LMQL（Language Model Query Language）</strong>，它利用 LMP prompt 中的約束與控制流，生成一個能<strong>最小化昂貴 LM 呼叫次數</strong>的高效推論程序。我們證明 LMQL 能以直觀方式涵蓋多種 SOTA prompting 方法，尤其能實作既有高階 API 難以實現的互動流程。評測顯示我們在數個下游任務上<strong>保持或提升準確率</strong>，同時顯著降低所需算力，在按量計費 API 情境下<strong>節省 26–85% 成本</strong>。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LM 已在機器翻譯、摘要、問答、推理、程式碼生成等任務上成功，並逐漸被整合進眾多應用。</p>
+<p><strong>LM 基礎</strong>：模型在 token（子詞）上運作。給定 tokenized 的輸入（即 prompt），LM 對詞表中每個可能的下一 token 給出分數；再用一個**解碼程序（decoding）**多次呼叫 LM 補全序列。要逼近「整體機率最高的補全」有時需昂貴的搜尋或回溯。</p>
+<p><strong>使用 LM 的關鍵挑戰</strong>：新一代 LM 雖能用範例或指令簡單 prompt，但要用好並跟上新模型仍需深入其內部與供應商專屬函式庫。因為 LM 在 token 上運作，很難把解碼約束到一組合法的詞或片語；許多 prompting 技巧需要 LM 與使用者反覆互動（如 ChatGPT）或很任務專屬的介面（如以外部控制邏輯做算術）；且 LM 一次只產一個子詞 token，補完序列常需多次呼叫，隨 prompt 與已生成內容變長而愈發昂貴——按量計費 API 下即為高昂的每次查詢成本。</p>
+<p><strong>本工作：以 LMQL 實現 LMP</strong>。LMP 在自然語言 prompting 之上，額外允許輕量腳本與輸出約束，達成 prompting 的<strong>前端／後端分離</strong>：使用者無需知道 tokenization、實作、架構，就能指定複雜互動、控制流與約束；且程式對底層 LM 保持中立，大幅提升可移植性。LMQL 是一套具<strong>宣告式 SQL 風格元素</strong>與<strong>命令式腳本語法</strong>的高階語言，執行期只需對解碼邏輯做簡單改動即可相容既有 LM，並利用約束與腳本以<strong>遮罩（masking）</strong> 剪除 LM 搜尋空間，最多降低 80% 推論成本。</p>
+<p><strong>核心貢獻</strong>：(1) 提出 LMP 範式並形式化其挑戰（§2）；(2) LMQL——支援腳本化 prompting 與輸出約束的高效高階查詢語言（§3、§4）；(3) 基於 <strong>final</strong> 與 <strong>follow</strong> 抽象的急切部分求值語意的形式模型，能從高階約束自動生成模型專屬 token 遮罩（§5）；(4) 完整評測，顯示廣泛 prompting 技巧可寫成簡潔 LMQL 程式且執行更高效，降低推論成本與延遲 26–80% 而不損準確率（§6）。</p>
+<h2 id="2-綜覽language-model-programming">2. 綜覽：Language Model Programming</h2>
+<p><strong>2.1 背景</strong>：LM 在詞表 𝒱 的子詞 token 上運作（圖 2：常見詞有自己的 token，罕見詞被切成多個）。給定 token 序列，模型 𝒇 為每個可能的下一 token 給分，經 softmax 轉成機率分佈。常見解碼法：<strong>Greedy/Argmax</strong>（每步取最高機率，等同深度優先，未必得整體最高機率）、<strong>Sampling</strong>（把 softmax 當類別分佈取樣，常取 n 個輸出）、<strong>Full decoding</strong>（枚舉所有序列取最高，等同廣度優先，過於昂貴）、<strong>Beam search</strong>（維持 n 條 beam，介於 greedy 與 full 之間）。溫度 τ 可調輸出多樣性。</p>
+<p><strong>Masked decoding（遮罩解碼）</strong>：若已能在某位置排除某些 token，可給一個遮罩 𝒎∈{0,1}^|𝒱|，對 𝒎⊙softmax(𝒛) 解碼（再重新正規化）。極端例子是 yes/no 或分類任務只允許特定詞；或解碼形式語言（程式碼合成）時只允許符合文法的 token。</p>
+<p><strong>Few-shot prompting</strong>：不需為下游任務專門訓練，只要在呼叫時以範例形式提供脈絡（圖 3：英譯法範例後補全 cheese→fromage）。<strong>Multi-part prompting</strong>：LM 已被當作可組合的推理引擎嵌入更大程式——Iterated Decomposition、meta prompting、工具使用（ReAct、Toolformer）、langchain（多 prompt 串接）、LM cascades（機率程式框架）。</p>
+<p><strong>2.2 三大關鍵挑戰</strong>：</p>
+<ul>
+<li><strong>互動（Interaction）</strong>：以 meta prompt（圖 4）為例——先問「誰最適合回答此問題」得到專家名，再問「該專家會怎麼回答」。現行介面須手動輸入第一段、呼叫 LM、抽取專家名、填入模板、再呼叫，需大量 API 手動互動或人在迴路；且專家名一旦固定就不會與其餘答案<strong>聯合最佳化</strong>。</li>
+<li><strong>約束與 token 表徵</strong>：LM 常離題、產生冗長跑題句子；若輸出要餵給另一電腦系統則格式必須精確。理想上約束應以人類概念（詞、句、實體）表達，但現行約束法需大量手工實作與模型層理解。</li>
+<li><strong>效率與成本</strong>：LM 推論需昂貴 GPU 或付費 API；每個生成又丟棄的 token 都是成本。但依賴 LMP 與約束時，可利用預定義行為與縮小的搜尋空間來減少 LM 呼叫次數；相對於單次 LM 呼叫的龐大成本，驗證、剖析、遮罩生成的成本可忽略。</li>
+</ul>
+<p><strong>2.3 LMQL 中的 LMP</strong>：以 <code>[VAR]</code> 語法（圖 4c）——變數前的一切餵給 LM，解碼所得指派給 VAR；<code>{var}</code> 則回填先前變數的值。這簡化 prompt、免除手動互動，並可<strong>聯合考量</strong>專家名與答案。<code>where</code> 子句（圖 4d，如 <code>len(words(EXPERT)) &lt;= 3 and stop_at(EXPERT, &quot;.&quot;)</code>）以詞／片語層級的宣告式高階約束，於解碼時<strong>急切強制</strong>、用 token 層遮罩與部分求值語意實現。約束不只避免跑題，甚至能逼模型探索它原本不會走的、更正確的輸出。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

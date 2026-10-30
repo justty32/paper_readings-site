@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2406.18665_RouteLLM.zh-TW.html">回 2406.18665_RouteLLM.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）在眾多任務上表現卓越，但選對模型往往要在<strong>效能與成本間權衡</strong>：強大的模型效果好卻昂貴，較小的模型便宜卻能力較弱。為處理此取捨，本文提出一個<strong>訓練框架</strong>，用來學習高效的 router 模型，在推論時<strong>動態地在較強與較弱的 LLM 之間選擇</strong>。框架利用<strong>人類偏好資料</strong>，並採用<strong>資料增強</strong>技術提升效能。在公開 benchmark 上的評估顯示，本方法可在<strong>不犧牲回覆品質下把成本降到 2 倍以上</strong>；此外 router 展現強大的泛化能力，即使路由於<strong>訓練時未見過的 LLM</strong> 之間仍能維持效能。這凸顯本框架在提供「兼顧成本與高效能的 LLM 方案」上的潛力。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 在對話、問答、摘要、程式生成等任務展現流暢與理解力，這得益於 Transformer 架構與資料／訓練基礎設施的擴大。然而各 LLM 並不等價：模型規模不同會影響服務所需資源，訓練資料不同又造成強弱能力差異——<strong>大模型通常更強但更貴，小模型較弱但便宜</strong>。</p>
+<p>這種異質格局造成部署兩難：全部查詢丟給最強模型能保品質但貴得離譜；全丟給小模型可省成本（原文舉例 Claude-3 Haiku vs Opus，以每百萬輸出 token 計為 $1.25 vs $75，差 50 倍以上），但複雜查詢品質會下降。**LLM 路由（routing）**提供解法：先讓每個查詢過一個 router，由它判斷最適合的 LLM——簡單查詢送小模型、複雜查詢送大模型，藉此平衡品質與成本。</p>
+<p>達成「在成本約束下最大化品質，或在目標品質下最小化成本」的最佳路由很有挑戰。理想 router 須：(1) <strong>每個查詢只呼叫單一 LLM</strong>，相對多 LLM 法把成本與延遲降到最低；(2) 泛化到域外查詢，不必為不同領域各訓 router；(3) <strong>跨多種 LLM 而不需重訓</strong>，保有面對模型版圖演變的彈性。</p>
+<p>本文提出一個以偏好資料學習 LLM router 的原理化框架。路由對象是兩類模型：(1) <strong>強模型</strong>，高品質高成本（如 GPT-4）；(2) <strong>弱模型</strong>，低品質低成本（如 Mixtral-8x7B）。目標是<strong>在達成特定效能目標（如強模型的 90%）下最小化成本</strong>，做法是把簡單查詢智慧地導向弱模型、把複雜查詢留給強模型。以此框架訓練多個 router，在 MMLU、MT Bench 等 benchmark 上顯示<strong>成本降低 2 倍以上而品質幾乎不損</strong>，且跨多組強／弱模型配對免重訓仍有效。</p>
+<p><strong>三項貢獻</strong>：(1) 提出利用人類偏好資料與資料增強的 router 學習框架，在熱門 benchmark 上省成本 2 倍以上而對品質影響極小；(2) 展示 router 能泛化到未見資料、跨多個 LLM 維持效能，單一訓好的 router 即可廣泛適用；(3) <strong>開源</strong>訓練、服務與評估 LLM router 的整套框架。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>獎勵建模 vs LLM 路由</strong>：獎勵建模是在 LLM 生成回覆<strong>之後</strong>評估品質；路由則是<strong>事前</strong>選對 LLM，需要對查詢複雜度與各模型能力有深刻理解。</li>
+<li><strong>多 LLM 的成本-效能取捨</strong>：<strong>LLM-Blender</strong> 用集成框架推論時查多個 LLM 再選最佳回覆；<strong>FrugalGPT</strong> 走<strong>級聯（cascading）</strong>，依序查詢 LLM 直到得到夠可靠的回覆；<strong>AutoMix</strong> 讓小模型先自我驗證回覆、必要時才路由到大模型。<strong>這些法都依賴多次 LLM 查詢、會增加延遲</strong>；相對地，本文對每個查詢只路由到單一 LLM，滿足理想 router 的延遲約束。</li>
+<li><strong>Hybrid-LLM</strong>：與本框架相似但關鍵不同——它用 MixInstruct 上基於 BARTScore 的<strong>合成偏好標籤</strong>與<strong>單一 BERT-based router</strong>；本文用 Chatbot Arena 的<strong>人類偏好標籤</strong>並探索<strong>多種 router 架構</strong>，且證明資料增強能全面提升各架構；Hybrid-LLM 只在 MixInstruct 測試集評估、缺域外泛化證據，本文則在多個去污染公開 benchmark 上驗證。</li>
+<li><strong>Zooter</strong>：用 QwenRM 獎勵模型的路由標籤，可能繼承其訓練資料偏誤、且訓練訊號綁定固定一組 LLM；本文主要靠人類偏好資料，並展示對訓練外 LLM 仍維持效能。</li>
+</ul>
+<h2 id="3-llm-路由">3. LLM 路由</h2>
+<h3 id="31-問題形式化">3.1 問題形式化</h3>
+<p>考慮 LLM 集合 <span class="math inline">\(M\)</span>，每個模型 <span class="math inline">\(M: Q\to A\)</span> 把查詢 <span class="math inline">\(q\)</span> 映到答案。本文聚焦兩類：<strong>強模型 <span class="math inline">\(M_{strong}\)</span></strong>（高品質高成本，如 GPT-4）與<strong>弱模型 <span class="math inline">\(M_{weak}\)</span></strong>（低品質低成本，如 Mixtral-8x7B）。此二元路由在實務常見（尤其使用者想從閉源轉開源以優化品質-成本），也是延伸到更複雜 N-way 路由的基礎。</p>
+<p>假設有<strong>偏好資料</strong> <span class="math inline">\(D_{pref}=\{(q, l_{s,w})\}\)</span>，其中 <span class="math inline">\(l_{s,w}\in L=\{\text{win}_s, \text{tie}, \text{win}_w\}\)</span> 是「對查詢 <span class="math inline">\(q\)</span>，強模型與弱模型回覆比較的結果」。學一個二元路由函式 <span class="math inline">\(R^α: Q\to\{M_{weak}, M_{strong}\}\)</span>，由兩個關鍵組件定義：</p>
+<ol>
+<li><strong>Win Prediction Model（勝率預測模型）</strong>：估計「對查詢 <span class="math inline">\(q\)</span>，強模型會勝過弱模型的機率」<span class="math inline">\(P_θ(\text{win}_s|q)\)</span>，透過<strong>最大化觀測偏好資料的似然</strong>學參數 <span class="math inline">\(θ\)</span>（式 1）。此舉讓模型捕捉兩類模型在不同查詢型別上的相對強弱。</li>
+<li><strong>Cost Threshold（成本閾值）<span class="math inline">\(α\in[0,1]\)</span></strong>：把預測勝率轉成路由決策——<span class="math inline">\(P(\text{win}_s|q)&lt;α\)</span> 走弱模型、<span class="math inline">\(\geq α\)</span> 走強模型（式 2）。<strong><span class="math inline">\(α\)</span> 越高越嚴格省錢（偏好弱模型），<span class="math inline">\(α\)</span> 越低越偏高品質（偏好強模型）</strong>。</li>
+</ol>
+<p>最後由路由函式與兩個模型組成 router 模型 <span class="math inline">\(M_{R^α}\)</span>：<span class="math inline">\(R^α(q)=M_{strong}\)</span> 時回傳強模型答案，否則回傳弱模型答案（式 3）。</p>
+<h3 id="32-評估指標">3.2 評估指標</h3>
+<ul>
+<li><strong>成本效率</strong> <span class="math inline">\(c(M_{R^α})\)</span>：對強模型的呼叫百分比（式 4）——因強模型顯著較貴。</li>
+<li><strong>效能</strong> <span class="math inline">\(r(M_{R^α})\)</span>：平均回覆品質（式 5），品質分數可以是黃金標註資料上的正確率（如 MMLU）或評分（如 1–5、1–10）。</li>
+<li><strong>PGR（performance gap recovered）</strong>：<span class="math inline">\(\frac{r(M_{R^α})-r(M_w)}{r(M_s)-r(M_w)}\)</span>（式 6），衡量 router 補回了強弱模型效能差距的多少。</li>
+<li>上述指標單看皆不足（例如「永遠送強模型」PGR=1 但零省錢）。因此變動 <span class="math inline">\(α\)</span> 畫出「呼叫-效能圖」，定義 **APGR（average performance gap recovered）**＝不同成本約束下 PGR 的積分／平均（式 7、8，對應 router 曲線與弱模型曲線間的面積）。</li>
+<li><strong>CPT(x%)（call-performance threshold）</strong>：達到 x% PGR 所需的<strong>最少強模型呼叫比例</strong>。圖 1 中 CPT(50%)≈37%（達 50% PGR 需約 37% 呼叫走 GPT-4）。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

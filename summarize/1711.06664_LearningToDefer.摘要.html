@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Predict Responsibly：藉由學習委讓改善公平與準確（Learning to Defer）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：David Madras, Toniann Pitassi, Richard Zemel（University of Toronto, Vector Institute）</p><p>日期：2018-11（NeurIPS 2018；v1 2017-11）</p><p>arXiv：1711.06664</p><p><a href="https://arxiv.org/abs/1711.06664" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="predict-responsibly藉由學習委讓改善公平與準確learning-to-defer重點摘要">《Predict Responsibly：藉由學習委讓改善公平與準確（Learning to Defer）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Learning to Defer（學習委讓）</strong>：在「自動化模型 → 外部決策者（decision-maker, DM）」的兩階段級聯中，讓模型對每個樣本輸出預測 Ŷ_M 與<strong>閘控變數 s</strong>（s=1 即 pass 交給 DM），並以<strong>系統整體輸出</strong> Ŷ = (1−s)Ŷ_M + sŶ_D 的損失來訓練——s 學的不是「我不確定」，而是「<strong>這一例上模型與 DM 誰的損失較低</strong>」；理論上證明拒絕學習（rejection learning）恰是「DM 損失恆定」的特例，實驗顯示對高準確、高偏、不一致三種 DM，委讓模型都比拒絕模型讓系統更準且更公平。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>高風險決策（保釋、診斷、貸款）中模型常與人類/黑箱 DM 協同，但既有拒絕學習<strong>非自適應</strong>：模型只憑自身信心決定棄權，不管下游 DM 的專長與弱點。若 DM 對某子群比模型更不準或更有偏，模型「不確定就 pass」反而害了系統——棄權該考慮<strong>棄權給誰</strong>。且 pass 不是終點：每個樣本最終都得有人決定，故應以<strong>管線整體</strong>（而非模型孤立）的準確與公平來訓練與評估。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>框架</strong>：系統聯合機率＝Bernoulli 混合（模型 P_M(Y|X) vs DM P_D(Y|X,Z)，DM 獨享側面資訊 Z、為固定未知黑箱）；最小化 L_defer = −Σ[(1−s)ℓ(Y,Ŷ_M) + s·ℓ(Y,Ŷ_D)]（可加委讓罰項 γ_defer）。</li>
+<li><strong>定理</strong>：DM 每例損失恆為 α 時，取 γ_defer = γ_reject − α，學習委讓 ≡ 拒絕學習——後者是前者的退化特例。</li>
+<li><strong>本質是 mixture-of-experts</strong>，但只有一位專家（模型）可學，另一位（DM）不受控，閘 π 需適應之。</li>
+<li><strong>兩種實作</strong>：(1) 事後閾值——在既有二元分類器上學兩個閾值形成三元分類（0 / pass / 1），可分群體設閾值；(2) 端到端可微——π = g(Ŷ_M, X) 吃原始輸入以捕捉 DM 對資料的異質行為，s~Ber(π) 以 Concrete 鬆弛過梯度，並阻斷 π→Ŷ_M 的梯度。</li>
+<li><strong>公平</strong>：以 equalized odds 的連續鬆弛（disparate impact, DI）作正則項，係數 α_fair 調準確—公平取捨。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>半合成設定：COMPAS（再犯/種族；模擬 DM 錯誤率 24% vs 基線模型 29%）與 Heritage Health（Charlson 指數/年齡；DM 16% vs 基線 21%），DM 皆握有模型看不到的額外資訊。</li>
+<li><strong>高準確不公 DM</strong>：委讓在準確—公平 Pareto 前緣全面優於拒絕學習（收益主要來自公平性）。</li>
+<li><strong>高偏 DM</strong>：委讓模型自動對兩敏感群體以不同比率委讓以抵銷偏誤，並整體調低委讓量（多數執行 &lt;20%）。</li>
+<li><strong>不一致 DM</strong>：每個委讓率下委讓皆比拒絕更準；最佳委讓模型<strong>同時勝過 DM 單獨與基線分類器</strong>——最準方案是 DM–模型混合而非取代；委讓模型最先 pass 的 ~40% 樣本都在提升系統準確率（拒絕模型最先 10% 與最後 10% 差別不大），且確實在 DM 可靠子群多委讓、不可靠子群少委讓。</li>
+<li>天然公平性質：最準的委讓模型往往也有最高的最低子群準確率（MSA），非取捨。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>DM 為<strong>半合成模擬</strong>（另訓練的分類器＋人工加噪/加偏），非真實人類決策資料；作者論證可用群眾外包多 DM 資料替代但未實作。</li>
+<li>僅二元分類、單一 DM、兩階段；敏感屬性 A 假設已知；訓練需能觀測 DM 的逐例決策以估 ℓ(Y,Ŷ_D)。</li>
+<li>公平正則項不滿足定理的形式（等價性只另以實驗驗證）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>learning-to-defer 奠基之作</strong>——ai_core「非它不可才留 LLM，否則委派確定性節點」（§1 符號神經網路計算圖、§3.3 成本梯度/級聯路由）的<strong>可學判準原型</strong>：閘控 s 學的正是「這一例交給誰損失較低」，即路由決策本身可以是被訓練的模組，且訓練目標必須是<strong>系統整體輸出</strong>而非單節點表現——對 ai_core 把 LLM 呼叫包成可靠函數後「誰執行」的調度層是直接的形式化模板。</li>
+<li>與 <a class="paper-reference" href="1705.08500_SelectiveClassification.%E6%91%98%E8%A6%81.html">1705.08500</a>（單模型棄權/選擇性預測）對照：defer 是「<strong>棄權給誰</strong>」的擴充——棄權不再是常數罰項，而是下游代理的逐例損失。對應到 ai_core：級聯中「fallback 到更大 LLM／人工」不該只看上游信心，還要建模<strong>下游節點自身的準確度與偏誤</strong>；固化引擎（§3.6）把案例結晶成確定性程式碼後，「哪些案例仍須回流 LLM」正是一個 learning-to-defer 問題（確定性節點＝模型、LLM＝DM，或反之）。</li>
+<li>治理接點（§3.4 拒絕為預設）：本文顯示「拒絕為預設」若不考慮下游會傷害整體——**自適應的拒絕（defer）**才能兼顧；「模型放進管線裡一起評估」一語即 ai_core 資產驗收該以計算圖端到端指標為準的早期論據。</li>
+<li>定位：理論（等價性定理）＋方法（兩種可實作訓練法）＋半合成實證的短篇奠基論文，適合做 <strong>routing、級聯、選擇性預測、人機協同決策</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/1711.06664_LearningToDefer.zh-TW.html"><code>../translate/1711.06664_LearningToDefer.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

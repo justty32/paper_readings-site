@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2402.10978_Conformal_Factuality.%E6%91%98%E8%A6%81.html">回 2402.10978_Conformal_Factuality.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Conformal Factuality（共形事實性）</strong>：把「LLM 輸出是否為真」重新表述成一個<strong>不確定性集合（uncertainty set）的覆蓋問題</strong>——每個輸出對應「所有蘊涵（entail）它的更具體陳述」所成的集合，於是共形預測（conformal prediction）標準的<strong>集合覆蓋率保證</strong>就直接轉成「輸出敘述以 1-α 機率為真」的保證；具體實作是把輸出拆成子主張（sub-claim）並逐一評分，用一個對「粗略」到「不删」單調的<strong>回退（back-off）演算法</strong>，依信心分數由低到高剔除不可靠子主張，直到剩下的敘述通過用校準集算出的門檻為止——本質是<strong>降級輸出</strong>而非拒答：不確定時把答案改寫得更保守、更粗粒度，而不是全有全無地棄權。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 輸出的正確性與事實性缺乏精確保證，但在醫療、法律、機器人等高風險場域，部署要求輸出以使用者指定機率為正確。傳統共形預測擅長為黑箱模型建構具邊際覆蓋保證的信賴集合，但直接套用在語言生成上有兩個老問題：(i) 對整個輸出空間評分不可行（序列空間太大）；(ii) 得到的信賴集合（一堆候選序列/token 集合）難以解讀、無法直接使用。既有工作若非侷限在多選題等受限領域，就是要對序列空間做近似。本文要在<strong>開放式生成</strong>（問答、推理）上，給出<strong>可直接使用的單一自然語言輸出</strong>、同時帶精確共形保證的方法。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>核心巧思：把「事實性」重新表述為「不確定性集合覆蓋」</strong>。定義蘊涵運算子 E(y) = {y′ : y′ ⇒ y}（所有蘊涵 y 的陳述集合）。輸出 y 正確 ⇔ 參考真值 y* ∈ E(y)（y* 蘊涵 y）。因此「輸出正確」的機率保證，等價於「參考值落在（隱式定義的）不確定性集合 E(y) 內」的覆蓋率保證——這正是標準共形預測的問題形式，唯一差別是集合由<strong>蘊涵關係隱式定義</strong>，從不需要真的枚舉。</li>
+<li><strong>回退演算法（back-off function F_t）</strong>：定義一族隨門檻 t 遞增而<strong>逐步移除較不可靠子主張</strong>的輸出序列 {F_t(x)}，滿足「sound」性質——t 取到最大時輸出淨空（∅，代表完全棄權）。將原輸出 L(x) 用 GPT-4 拆成子主張集合 S∘L(x)，每個子主張 c 給一個分數 s(·)（越大代表越可能為真），F_t(x) 保留分數 ≥ t 的子主張再合併（merge）成一段文字。t 越高，保留的主張越少、越保守；t=最低時幾乎等於原輸出，t=最高時等於空輸出——藉此把「事實性」對應到「主張的粒度／具體程度」：不確定就把敘述改得更保守、更粗粒度（拿掉風險子主張），而非整段拒答。</li>
+<li><strong>標準 split conformal prediction 校準門檻</strong>：用一個小型、人工標註的校準集 {(X_i, Y_i*)}，對每筆資料算出「最小安全門檻」r(X_i, Y_i*)（即多小的 t 仍能讓 F_t(x) 被 y* 蘊涵），取這些分數的 ⌈(n+1)(1-α)⌉/n 分位數作為 q̂_α；最終輸出即 L̄(x) := F_{q̂_α}(x)。作者證明（Theorem 4.1）此演算法對任意可交換（exchangeable）資料達到 <strong>α-conformal factuality</strong>：P(Y*<em>{n+1} ∈ E(F</em>{q̂_α}(X_{n+1}))) ≥ 1-α（下界恆成立；若 F_t 的蘊涵集合具巢狀/nested 性質，另有 1-α+1/(n+1) 的上界）。此保證是<strong>邊際（marginal）而非條件（conditional）</strong>——對校準集與測試點的隨機性取平均，並非對每個輸入分別保證，原文 Limitations 明確點出。</li>
+<li><strong>子主張評分函數</strong>：實驗比較隨機分數、順序分數（越晚出現分數越低）兩個基線，與兩個實用方法——<strong>GPT-4 信心分數</strong>（直接問模型打分）與<strong>頻率分數（frequency scoring）</strong>（採樣 5 個高溫替代回應，用 GPT-4 數某子主張在替代回應中出現的次數，類似 self-consistency/SelfCheckGPT），以及一個上界用的 oracle（用真值蘊涵當分數，僅供評估）。實測頻率分數效果最好。</li>
+<li><strong>附論可延伸</strong>：可放寬到「部分蘊涵」（partial entailment，保證 a 比例的子主張為真而非全部）；並可套用其他共形預測變體（分佈偏移、conditional coverage 等後續文獻）處理本法的邊際保證局限。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>均以 <strong>GPT-4</strong> 同時當生成器 L、拆解器 S、合併器 M 做概念驗證，三個資料集皆取前 50 筆人工標註（Factual/Subjective/Unverifiable/False 四級，Factual+Subjective 視為蘊涵）。</li>
+<li><strong>FActScore</strong>（人物傳記，事實密度高、GPT-4 原生錯誤率高）：基底事實性僅約 25-30%，用頻率分數的共形事實性可拉到約 <strong>80%</strong>，同時<strong>保留約一半</strong>原子主張。</li>
+<li><strong>Natural Questions</strong>：基底約 78%，拉到約 <strong>93%</strong>，只需移除約四分之一子主張。</li>
+<li><strong>MATH</strong>（推理步驟當子主張）：基底約 75%，拉到約 <strong>95%</strong>，僅需移除約一成子主張——證明框架同樣適用於「拆步驟」的推理任務，可保留部分正確步驟、僅棄權於出錯的那一步。</li>
+<li>以 1000 次隨機切分校準/測試集驗證：實證事實性緊貼理論目標 1-α（額外的高機率變異度標準差約 0.09，隨校準集增大應趨零）。</li>
+<li>定性範例（Table 1）：共形事實性版本會<strong>刪掉整段中出錯的具體細節</strong>（如錯誤的生卒日期、錯誤的政黨/職業描述），保留可確認為真的部分，行為明顯不是「整篇拒答」而是<strong>選擇性降級</strong>。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>保證是<strong>邊際（marginal）</strong>，非<strong>條件（conditional）</strong>：只在對校準集與測試點抽樣取平均下成立，不保證每個輸入、每個子群體（跨任務/跨使用者混合的校準集）都達標。</li>
+<li>保證仰賴校準集與測試分佈<strong>可交換</strong>；分佈偏移（distribution shift）會讓已算出的門檻失效，原文明言此為主要限制之一。</li>
+<li>需要人工標註的蘊涵/正確性判準（entailment oracle）建校準集，論文用 Google 人工核實生成 4 級標籤；子主張拆解與合併也仰賴 LLM（GPT-4）本身，仍是黑箱評分。</li>
+<li>實用性取決於評分函數品質：若評分把正確主張排在不可靠主張之前移除，輸出會變得空泛無資訊；本文僅在小樣本人工標註資料上驗證，未涵蓋更廣泛部署場景下的長期穩定性。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

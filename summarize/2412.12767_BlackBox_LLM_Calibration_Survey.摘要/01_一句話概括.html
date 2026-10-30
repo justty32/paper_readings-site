@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2412.12767_BlackBox_LLM_Calibration_Survey.%E6%91%98%E8%A6%81.html">回 2412.12767_BlackBox_LLM_Calibration_Survey.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p>本篇是<strong>首篇</strong>專門針對<strong>黑箱 LLM</strong>（只能靠 API 輸入輸出互動、無法讀取權重/logits）的**校準流程（Calibration Process）**系統性綜述：作者把整個流程正式拆成「<strong>信心估計（Confidence Estimation）→ 校準（Calibration，含校準方法與誤差量測方法）</strong>」兩大環節，逐一盤點黑箱情境下各環節可用的方法家族，並整理其應用場景與未來方向。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 常在模糊提示或知識不足時產生幻覺或過度自信（如稀有病診斷本該約 40% 信心卻給出 95%）；既有的校準技術綜述幾乎都預設<strong>白箱</strong>存取（可讀 logits、可微調、可加參數層），這些手段對 GPT、Claude、Gemini 這類<strong>僅開放 API</strong> 的黑箱模型完全用不上。黑箱模型因為被廣泛當作評判模型（LLM-as-judge）、又被中小企業大量用於產品開發，其信心可靠性格外關鍵，但至今沒有一篇綜述系統整理黑箱情境下到底有哪些校準手段可用——這正是本文要填補的空缺。</p>
+<h2 id="核心方法分類架構">核心方法：分類架構</h2>
+<p>論文先用一個公式定義「良好校準」：V(Correct∣Confidence=v)=v（模型宣稱信心 v 的那批答案，實際正確率也該是 v）。整個 Calibration Process 分兩大步驟：</p>
+<p><strong>（一）信心估計（Confidence Estimation，§2.1）</strong>——黑箱下只能靠輸入輸出互動萃取信心，分三類：</p>
+<ul>
+<li><strong>一致性方法（Consistency）</strong>：靠多次取樣/多種提示下答案的穩定度推信心。
+<ul>
+<li><em>相似度型</em>：SelfCheckGPT（BERTScore/MQAG/n-gram/NLI/GPT-3 提示量相似度）；Wightman et al. 用多提示回答頻率算信心；Pedapati et al. 提出六種擴大輸出變異空間的手法（隨機解碼、拆句一致性、改寫、句子重排、實體頻率放大、停用詞移除）餵邏輯迴歸。</li>
+<li><em>熵型</em>：Lin et al. 用語意集合數量/圖拉普拉斯特徵值/度矩陣量不確定性；Nikitin et al. 用 PSD 語意核建語意圖、以 von-Neumann 熵量化；Tonolini et al. 提出貝氏提示集成（Bayesian Prompt Ensembles）算誤差下界。</li>
+</ul>
+</li>
+<li><strong>自我反思方法（Self-Reflection）</strong>：靠提示讓模型自評/口語化輸出信心（如「Confidence(0-1):」後綴）。Peng et al. 發現直接要 0–100 分常導致高估；Chen &amp; Mueller 改用選擇題式反思問句取平均再正規化；Li et al. 的 T³ 框架先反思生成論證解釋再用 Top-K 口語化信心估計。</li>
+<li><strong>混合方法（Hybrid）</strong>：結合一致性＋自我反思（如 Chen &amp; Mueller 雙分支模型）；或引入<strong>第三方代理模型</strong>把黑箱局部轉成灰箱（如 Shrivastava et al. 用一致性/口語化信心與代理模型信心交叉驗證；Ulmer et al. 訓練白箱模型學習黑箱模型的信心-正確性映射）；或用多個 LLM 互相交叉驗證答案（跨模型一致性、多模型協作反思框架）。</li>
+</ul>
+<p><strong>（二）校準（Calibration，§2.2）</strong>——分兩子步驟：</p>
+<ul>
+<li><strong>校準方法（§2.2.1）</strong>：白箱常用的 label smoothing、logistic calibration 因需存取內部參數而不適用黑箱；temperature scaling（作用於 logits）較適合灰箱。黑箱下常用<strong>後處理</strong>（Histogram Binning、Isotonic Regression；Hébert-Johnson et al. 的多重校準對多個子群分別對齊；Detommaso et al. 把提示做嵌入空間分群後分組校準）與<strong>代理模型/灰箱化</strong>（貝氏校準網路建信心-正確性依賴關係；Küppers et al. 用變分推論建模認知不確定性；Ulmer et al. 用句嵌入分群訓練輔助模型最小化信心-正確性 MSE；Zhao et al. 用 Pareto 最佳化整合多外部訊息源訓機率模型；Hashemi et al. 訓小型前饋網路對齊人類判斷）。</li>
+<li><strong>量測方法（§2.2.2，白箱黑箱通用）</strong>：分<strong>誤差型（Error-Based）</strong>（信心與正確性須同量尺，聚焦偵測過度自信：ECE 系列、Brier Score、NLL）與<strong>相關型（Correlation-Based）</strong>（不需同量尺，評整體校準表現：Spearman/Pearson 相關係數、AUROC、AUARC）。生成類/不確定性任務多用相關型（可容納多種正確性標準，如摘要任務的事實性/連貫性分數），分類任務多用誤差型。</li>
+</ul>
+<h2 id="結果主要發現與方法比較結論">結果：主要發現與方法比較結論</h2>
+<ul>
+<li>黑箱校準方法可歸納為<strong>兩條主線</strong>：純後處理（只動輸入輸出資料）與引入第三方代理模型（把黑箱局部轉灰箱）。</li>
+<li>因為信心估計階段已能做到「近乎良好校準」，後續校準步驟承受的壓力相對減輕（即好的信心估計已先解決大半問題）。</li>
+<li>白箱方法在黑箱情境「幾乎用不上」，但黑箱方法反過來對白箱校準也有參考價值（黑箱方法可完全嵌入白箱各模組，反向則有限）——這是本文選擇以黑箱為主軸的立論基礎（見原文 Figure 1 說明）。</li>
+<li>應用面歸為兩類：<strong>風險評估與緩解</strong>（醫療診斷、自動駕駛等高風險場域的幻覺/過度自信防治，如 Atypical Presentations Recalibration、樣本一致性校準、HCMA 風險管理框架、DwD 複合決策風險校準）與<strong>人機信任提升</strong>（對齊人類偏好、事實性分數＋來源歸因、程式生成任務中校準可提升效率與準確率）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>範疇限制</strong>：作者自陳本篇刻意不涵蓋白箱 LLM 的校準方法，故不含該領域廣為人知的部分經典工作；但作者主張黑箱方法對白箱仍有參考價值，故仍值得單獨成篇。</li>
+<li><strong>涵蓋限制</strong>：許多論文中校準只是輔助優化/評估工具而非研究主軸，故部分相關工作可能被漏收。</li>
+<li><strong>原文自陳的未來研究方向（open challenges）</strong>：（1）<strong>建立多維度、多階段的綜合校準基準</strong>——不同任務對「正確性」定義差異極大（事實準確性 vs 邏輯連貫 vs 主張一致性 vs 人類滿意度），亟需能涵蓋此複雜度的 benchmark；（2）<strong>黑箱 LLM 的偏誤偵測與緩解</strong>——內部不可見使偏誤難以定位，傳統方法效果有限，需要提升輸出透明度、整合外部校準機制、利用使用者回饋做動態信心調整等量身訂做手段；（3）<strong>長文本校準</strong>——長文常含多項聲明與事實，只有部分正確時信心是否「良好校準」難以判定，品質評估本質上又主觀，需要納入人類感知作為正確性指標、並針對黑箱情境（參數不可見）發展專用方法。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

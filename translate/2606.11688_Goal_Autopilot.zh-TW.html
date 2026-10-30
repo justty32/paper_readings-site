@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Goal-Autopilot：無人長程 Agent 的可驗證防捏造防火牆（精要逐節翻譯） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Youwang Deng</p><p>日期：2026-06</p><p>arXiv：2606.11688</p><p><a href="https://arxiv.org/abs/2606.11688" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="goal-autopilot無人長程-agent-的可驗證防捏造防火牆">Goal-Autopilot：無人長程 Agent 的可驗證防捏造防火牆</h1>
+<blockquote>
+<p>依官方 arXiv TeX 原文作精要逐節翻譯，保留定理假設、完整 verdict 分布及作者承認的負結果。</p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>長程 agent 會在 context 漂移、tool failure 或 restart 後，回報從未驗證的成功。本文把 honesty 定義為限制 agent 在 termination 時可宣稱之事，提出 Goal-Autopilot：先把 goal 編譯成有可執行 gates 的 state machine，再由 stateless ticks 執行。只有實際執行且為 true 的 gate 能前往 DONE；最壞情況是 honest stall。</p>
+<p>3,150-cell paired corpus 上，Autopilot fabrication 0.95%，Reflexion 8.10%，StateFlow 25.05%。SWE-bench Lite 上，StateFlow 33.73% 降至 Autopilot 0.67%。這個 firewall 以 coverage 換 honesty；stall 可恢復，捏造成功則會污染下游。</p>
+<h2 id="1-導論">1. 導論</h2>
+<p>checkpoint、workflow graph、reflection 或 model confidence 都不能保證 terminal success claim 為真。Autopilot 將工作分解為 states，每個 state 有 falsifiable executable predicate；agent 的信心不進入成功判定。</p>
+<p>貢獻包括：條件式 no-false-success theorem；framework-neutral reference implementation；測 fabrication、honest stall 與 verified completion 的 paired benchmark。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>過往 long-horizon 方法著重記憶、恢復、反思、狀態化控制與 context efficiency。selective prediction 讓低信心模型 abstain，但仍信任 confidence calibration。Autopilot 不問模型有多確定，而要求 external check 真正執行。它針對的是 termination-time false success，不等同解決一般 hallucination、規劃錯誤或 tool misuse。</p>
+<h2 id="3-方法">3. 方法</h2>
+<p><code>S=(goal, states, cursor, phase, async, attempts, history, definition-of-done)</code> 是整次 run 的 durable memory。每 state 含 gate、known fixes 與 retry bound；graph 的唯一 success sink 是 DONE。每次變動都 atomic write 並 commit 到 version control。</p>
+<p>每個 stateless tick：讀 S；處理 async job 或 cursor state；做一單位工作；實際執行 gate 並記錄 literal result；true 才 advance，否則做可逆、資訊量高的修復並重試；最後持久化。fresh session 只 rehydrate S，因此 per-tick context 對 horizon <code>T</code> 為常數 <code>O(|S|)</code>，總成本 <code>O(|S|T)</code>，相較攜帶完整 trajectory 的 <code>O(T²)</code>。</p>
+<p>goal compiler 只呼叫一次 LLM，把 goal 分解成 dependency-ordered states 與 gates，並自查 gate 是否 executable、DONE 是否 reachable、transition target 是否存在。compiler 的自查是 A3 的建構來源，但不能保證語義完整。</p>
+<h2 id="4-no-false-success-形式化">4. No-False-Success 形式化</h2>
+<p>A1：<code>check_s()=true ⇒ g_s</code>；允許 false negative。A2：只有實際執行並通過 gate 的 path 能設 DONE。A3：accepting path 的所有 <code>g_s</code> 合取蘊含真正 goal <code>G</code>。若 A1∧A2∧A3，則 DONE 必然蘊含 G：A2 給出所有通過 checks，A1 推得 predicates，A3 推得 goal。</p>
+<p>gate 不完整只會讓已完成工作被判 stall，不能產生 false success。這是保守錯誤方向。保證的信任不在 model confidence，而在 gate soundness 與 plan coverage；A2 是 tick code invariant。</p>
+<h2 id="5-系統">5. 系統</h2>
+<p>reference stack 使用 generic process supervisor、任意 headless agent CLI、git 下的 JSON state；具體用了 pm2，但設計不綁框架。scheduler 定時 spawn fresh worker，crash/reboot 後重啟；長操作放 background，後續 ticks poll。</p>
+<p>作者稱 atomic state write 與 externalized state 使 tick idempotent/crash-safe。不過這項敘述主要覆蓋 S 本身；外部工具 action 是否可重複、是否有 side effects，仍需 gate、tool protocol 或 idempotency 個別處理。</p>
+<h2 id="6-初步實證評估">6. 初步實證評估</h2>
+<p>corpus 含 20 trap + 50 SWE-bench Lite tasks，11 repositories；Autopilot、Reflexion、StateFlow × 三個 models × 五 seeds，共 3,150 cells、1,050 paired triples。每 cell 600 秒，ensemble auditor 先 static、再 LLM judge，bootstrap 5,000 次。</p>
+<p>總體 verdict：Autopilot 85 true、10 fabrication、928 stall、32 undetermined，fab 0.95% [0.38,1.62]；Reflexion 92/85/674/199，8.10%；StateFlow 293/263/488/6，25.05%。Autopilot 相對 StateFlow −24.10 pp，相對 Reflexion −7.14 pp。</p>
+<p>trap 300 paired units 上差異不顯著：1.67%、2.67%、3.33%。SWE-bench Lite 750 units 上則是 0.67%、10.27%、33.73%，Autopilot–StateFlow 為 −33.07 pp。但 Autopilot 在 SWE-bench 的 true success 是 0%；750 cases 成為 745 honest stalls 與 5 fabrications。</p>
+<p>按模型看，最強 F2 在 Autopilot/Reflexion/StateFlow 為 2.86%/22.29%/64.57%；M1 為 0/1.14/4.00%；M2 為 0/0.86/6.57%。所有 10 個 Autopilot fab 都來自 F2。928 stalls 中，866 在任何 action 前因 failed-A3-audit，43 timeout，19 harness artifacts。</p>
+<p>首輪 baseline 曾因 driver 不接受 flag 且無 output，被 oracle 全判 fabrication，得到不合理 100%；作者移除 flag、加入 explicit abstain，重跑全部 2,100 baseline cells。正式數字為重跑後結果。</p>
+<h2 id="7-限制">7. 限制</h2>
+<p>定理是條件式：A1/A2 可測 code path，但 A1 的 predicate-grounding 與 A3 的語義 coverage 仍是 trust points。auditor 主要檢查 goal-text requirement tokens，不能證明語義等價；誤導性 goal 可能讓 tokens 都出現而 plan 仍錯。</p>
+<p>trap regime 的 CI 穿過零，不能宣稱普遍改善。35-cell pilot 中 auditor 7 次 over-fire，擋住原可通過 oracle 的 artifact。scaled SWE-bench 上 0% true success，顯示保守政策犧牲所有有效 coverage。模型使用 tier 名稱而非公開型號，也限制外部比較。</p>
+<h2 id="8-結論與可重現性">8. 結論與可重現性</h2>
+<p>Autopilot 將 success claim 變成由 executed verification gates 控制的能力，而不是模型可自由生成的文字。在其 corpus 上 fabrication 從 StateFlow 25.05% 降至 0.95%。最嚴謹的解讀是：在 gate soundness、floor enforcement、plan coverage 成立時，可排除 false DONE；現有 auditor 大幅降低但沒有消除 A3 risk。部署時應把大量 STALL 視為需要明確排隊與升級的正常結果。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

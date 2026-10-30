@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2303.17651_Self_Refine.%E6%91%98%E8%A6%81.html">回 2303.17651_Self_Refine.摘要 目錄</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Self-Refine</strong>：用<strong>同一個 LLM 同時扮演生成器、回饋者與精煉者</strong>，以三段 few-shot prompt（生成 → <strong>feedback</strong> → <strong>refine</strong>）迭代最多 <strong>4 輪</strong>，不需任何監督資料、額外訓練或強化學習，即在 7 項任務上較同模型單次生成平均提升約 <strong>20% 絕對值</strong>（各任務 5–40%），連 GPT-4 也能在測試時再被推高——但在<strong>缺乏外部接地訊號</strong>的數學推理上幾乎零增益（GPT-4 92.9 → 93.1）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 第一次生成往往達不到複雜、多面向或目標難以定義的要求（對話回應、程式可讀性）。既有的「迭代精煉」做法要嘛訓練一個領域專屬的精煉模型、要嘛依賴外部監督或獎勵模型，都需要大量標註或訓練集，難以泛化。作者主張：人類寫作本來就是「先寫草稿、再依自我反省修改」，而現代 LLM 已強到可以自己扮演這個 critic，因此精煉可以<strong>完全靠 prompt、在測試時完成</strong>。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>三個 prompt、一個模型</strong>：初始生成 <code>p_gen</code>（few-shot 輸入-輸出對）→ 回饋 <code>p_fb</code>（輸入-輸出-回饋三元組）→ 精煉 <code>p_refine</code>（輸入-輸出-回饋-修訂四元組）。全程同一個 M，不訓練任何東西。</li>
+<li><strong>回饋必須「可執行（actionable）」且「具體（specific）」</strong>：要指出該改的具體片段（如「for 迴圈」）並給出明確動作（如「改用 n(n+1)/2 公式」），而非「把程式改快一點」這類泛泛之詞。</li>
+<li><strong>迭代與歷史</strong>：feedback/refine 交替直到停止條件（達到指定步數，或從回饋中抽出停止指標／純量分數）；把歷次輸出與回饋<strong>附加回 prompt</strong>，讓模型不重蹈覆轍。最多 4 輪，temperature 0.7。</li>
+<li><strong>多面向任務的選擇機制</strong>：像 Acronym Generation 這種多面向回饋任務品質會震盪（改善發音卻犧牲拼寫），故要求模型輸出各面向的數值分數，最後取所有迭代中<strong>分數最高者</strong>。</li>
+<li><strong>評測 7 任務</strong>：對話回應生成、程式最佳化、程式可讀性改善、數學推理（GSM8K）、情感反轉，外加自建的 Acronym Generation 與 Constrained Generation（把 CommonGen 加難到 20–30 個關鍵詞約束）。指標分三類：任務自動指標、人類盲測 A/B 偏好、GPT-4 代理偏好（與人類相關度 82%／68%／71%）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>Table 1（Base → +Self-Refine）</strong>：情感反轉 GPT-3.5 8.8→30.4、ChatGPT 11.4→43.2、GPT-4 3.8→36.2（<strong>+32.4</strong>）；對話回應 GPT-4 <strong>25.4→74.6（+49.2）</strong>；程式可讀性 ChatGPT 27.7→63.1（+35.4）；受限生成 GPT-4 15.0→45.0（+30.0）；程式最佳化 GPT-4 27.3→36.0（+8.7）。</li>
+<li><strong>數學推理幾乎不動</strong>：GPT-3.5 64.1→64.1（0）、ChatGPT 74.8→75.0、GPT-4 92.9→93.1。原因是模型驗不出自己錯在哪——<strong>ChatGPT 對 94% 的實例回饋都是「everything looks good」</strong>。</li>
+<li><strong>接上外部接地就有效</strong>：改用 Oracle Feedback（外部告知答案是否正確、僅在錯時才精煉），數學推理 GPT-3.5 +4.8（64.06→68.9）、ChatGPT +1.4、GPT-4 +0.7。</li>
+<li><strong>回饋品質消融（Table 2）</strong>：ChatGPT 程式最佳化 27.5（具體回饋）→ 26.0（泛泛回饋）→ 24.8（無回饋）；情感反轉 43.2 → 31.2 → <strong>0</strong>（無回饋直接失效）。</li>
+<li><strong>迭代收益遞減</strong>：程式最佳化 22.0→27.0→27.9→28.8；受限生成 29.0→40.3→46.7→49.7；情感反轉 33.9→36.8。</li>
+<li><strong>不是「多抽幾次」的效果</strong>：與 ChatGPT 生成 k 個樣本的 1-vs-k 盲測相比，Self-Refine 輸出仍被人類偏好。</li>
+<li><strong>失敗歸因（70 例人工分析）</strong>：失敗案例中 <strong>33% 是回饋指錯位置、61% 是回饋開錯藥方，只有 6% 是精煉者實作不良</strong>；成功案例中有 33% 是「回饋部分錯誤但精煉者仍改對」。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>完全依賴模型自身的 few-shot／指令跟隨能力</strong>：Vicuna-13B 無法穩定產出格式正確的回饋，即使給它 Oracle 或硬編碼回饋也常常照抄原輸出或幻覺出一段對話。</li>
+<li><strong>沒有外部接地就會空轉</strong>：驗證比生成難的任務（數學）中，模型會被看起來一致的推理鏈騙過，導致零增益；效果最好的反而是「偏好類」「約束覆蓋類」等自評相對容易的任務。</li>
+<li>實驗全部在未開源的 GPT-3.5／ChatGPT／GPT-4／Codex 上進行，預訓練語料、模型規模與偏誤不明，且需付費；資料集僅限英文。</li>
+<li>不含對惡意使用（誘導產生更有害文本）的防護。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>本篇在庫中的定位：主題 7「自我改進／反思迴圈」中最純粹的自我精煉飛輪，也是最容易缺外部接地而空轉的一篇。</strong> Self-Refine 把迴圈壓到極簡——同一顆 LLM、三段 prompt、零訓練——正因為極簡，它把「自評迴圈的有效邊界」暴露得最清楚。</li>
+<li>對 ai_core <strong>§3.4「治理＝拒絕為預設＋憑證准入」</strong>：本篇是「<strong>無接地則崩</strong>」最好的實證。數學推理零增益、且 94% 的自評回饋是「everything looks good」，說明<strong>把 LLM 自己當驗證器等於沒有驗證器</strong>——那不是憑證，只是同一個分布再抽一次。而一旦接上 Oracle（外部正確性訊號）就立刻回到 +4.8，證明<strong>閘門必須由 LLM 之外的東西持有</strong>。在 ai_core 的計算圖裡，這意味著自我精煉迴圈只能放在「已有確定性驗證器把關」的節點後面，否則迭代只會放大自信而非放大正確性。</li>
+<li>對 ai_core <strong>§1「系統＝可優化的符號神經網路計算圖」</strong>：Self-Refine 是最小可行的「生成→評估→修正」子圖，三個角色（generator / feedback / refiner）本來就是三個可分離的節點；ai_core 的做法應該是<strong>把 feedback 節點逐步換成確定性驗證器（型別檢查、單元測試、約束求解、覆蓋率計算）</strong>，而 refine 節點暫留 LLM。有趣的是本篇的錯誤歸因剛好支持這條路線：94% 的失敗來自回饋錯（33%+61%），只有 6% 來自精煉錯——<strong>該剃除的是評估端的 LLM，不是生成端的</strong>。</li>
+<li>對 ai_core <strong>§3.3「成本梯度」</strong>：迭代收益遞減（程式最佳化 22.0→27.0→27.9→28.8，第一輪吃掉大半增益）給出很實際的預算規則——<strong>自我精煉一般只值得跑 1–2 輪</strong>，再多是把 token 燒在邊際 0.9 分上；這正是級聯／路由該切斷的地方。</li>
+<li>對 ai_core <strong>§3.6「固化引擎」</strong>：本篇是反面教材——每次呼叫都從零開始重跑同一套回饋推理，回饋內容用完即丟，跨題不累積、不沉澱為任何資產。「可執行且具體的回饋」其實正是最適合被結晶成確定性檢查（lint 規則、約束檢查器、程式碼轉寫模板）的素材，Self-Refine 卻把它當一次性 token 消耗掉。</li>
+<li><strong>庫內對照</strong>：
+<ul>
+<li>vs. <strong>2303.11366 Reflexion</strong>：Reflexion 多了<strong>外部接地評估</strong>（編譯器／單元測試／環境）與<strong>跨試驗持久情節記憶</strong>；Self-Refine 兩者皆無，是單題內、無記憶的自我精修。Reflexion 論文自己也把 Self-Refine 定位成「侷限於單次生成」。</li>
+<li>vs. <strong>2310.01798《LLM 不能自我修正》</strong>：那篇是本篇的直接反證——去掉 Oracle 標籤後內在自我修正反而掉分。本篇的數學推理零增益與 94% 「everything looks good」其實已經在自家實驗裡預告了這個結論；兩篇合讀可得：<strong>Self-Refine 的增益主要來自「自評容易」的偏好類任務，而非真正的推理修正能力</strong>。</li>
+<li>vs. <strong>2305.11738 CRITIC</strong>：CRITIC 的核心正是把回饋端外包給<strong>外部工具</strong>（搜尋引擎、直譯器、API），可視為對 Self-Refine feedback 節點的直接接地化改造。</li>
+<li>vs. <strong>2203.14465 STaR</strong>：STaR 把成功軌跡<strong>回灌權重</strong>，是「沉澱成資產」的另一條路；Self-Refine 完全停在推論期，什麼都不留下。</li>
+</ul>
+</li>
+<li>歸 <strong>I 類</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../../translate/2303.17651_Self_Refine.zh-TW.html"><code>../translate/2303.17651_Self_Refine.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

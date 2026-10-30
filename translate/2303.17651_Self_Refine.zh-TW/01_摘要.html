@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2303.17651_Self_Refine.zh-TW.html">回 2303.17651_Self_Refine.zh-TW 目錄</a>　<a href="02_%E8%A9%95%E6%B8%AC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>和人類一樣，大型語言模型（LLM）第一次生成不見得就是最好的輸出。受人類反覆修改文稿的過程啟發，我們提出 <strong>Self-Refine</strong>：一種透過<strong>迭代回饋與精煉</strong>來改善 LLM 初始輸出的方法。核心構想很簡單——先用一個 LLM 產生初始輸出，接著<strong>同一個 LLM</strong> 對自己的輸出提供<strong>回饋（feedback）</strong>，再依據該回饋**精煉（refine）**自己，如此反覆。Self-Refine 不需要任何監督訓練資料、額外訓練或強化學習，只用單一 LLM 同時扮演生成器、精煉者與回饋提供者。</p>
+<p>我們在 7 項多樣任務（從對話回應生成到數學推理）上、以當時最先進的 GPT-3.5、ChatGPT 與 GPT-4 進行評測。在所有任務上，Self-Refine 的輸出無論在人類偏好或自動指標上都優於同一模型的傳統單次生成，任務表現<strong>平均提升約 20% 絕對值</strong>。我們的工作顯示：即使是 GPT-4 這種頂尖模型，也能用這個簡單、獨立的方法在<strong>測試時</strong>被進一步改進。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 雖能產生連貫的輸出，卻常無法滿足複雜要求，特別是<strong>目標多面向</strong>（如對話回應生成）或<strong>目標難以明確定義</strong>（如提升程式可讀性）的任務。這類情境下，模型的初稿看得懂，但很需要迭代精煉——把候選輸出反覆映射成更好的輸出——才能達到期望品質。</p>
+<p>既有的迭代精煉多半要訓練一個依賴領域資料的精煉模型（Reid and Neubig 2022；Schick et al. 2022a；Welleck et al. 2022），其他依賴外部監督或獎勵模型的做法則需要龐大訓練集或昂貴人工標註（Madaan et al. 2021；Ouyang et al. 2022），並非總是可行。這凸顯了「不需大量監督、又能跨任務套用」的精煉方法的必要性。</p>
+<p><strong>迭代自我精煉是人類解決問題的基本特徵</strong>（Simon 1962；Flower and Hayes 1981；Amabile 1983）：先寫初稿，再依自己的回饋修改。例如寫信向同事要資料，一開始可能直接寫「Send me the data ASAP」，反省後意識到失禮，改成「Hi Ashley, could you please send me the data at your earliest convenience?」。寫程式時，工程師常先寫一版「quick and dirty」的實作，反省後再重構成更有效率、更好讀的版本。</p>
+<p>本文證明 LLM <strong>不需額外訓練</strong>就能做迭代自我精煉。Self-Refine 在兩個生成步驟間交替：<strong>feedback</strong> 與 <strong>refine</strong>。給定模型 M 產生的初始輸出，把它傳回同一個 M 取得回饋；再把回饋傳回同一個 M 精煉先前草稿。此過程重複固定次數，或直到 M 判定不需再精煉為止。兩個步驟都用 few-shot prompting（Brown et al. 2020）引導。</p>
+<p><strong>圖 1 要旨</strong>：輸入 ⓪ 進入模型產生初始輸出 → 傳回同一模型取得回饋 ①→ 回饋再傳回同一模型精煉輸出 ②→ ① 與 ② 反覆直到停止條件。整條流程由單一語言模型（如 GPT-3.5）驅動，不涉及任何人工介入。</p>
+<p>我們在涵蓋自然語言與原始碼生成的 7 項任務上評測，Self-Refine 較 GPT-3.5（text-davinci-003）、ChatGPT（gpt-3.5-turbo）與 GPT-4 的直接生成有 <strong>5–40% 的絕對提升</strong>；在程式生成任務上，套用於 Codex（code-davinci-002）這類強程式模型時最多提升 <strong>13% 絕對值</strong>。結論是：即使 LLM 第一次無法生成最佳輸出，它往往仍能對自己提供有用的回饋並據以改進。</p>
+<p><strong>圖 2 要旨（兩個實例）</strong>：</p>
+<ul>
+<li>對話：使用者說「我對打桌球有興趣」，初始回應是空泛的「我相信這是個社交與保持活動的好方法」。回饋指出「Engaging：完全沒提供任何關於桌球或怎麼打的資訊；User understanding：不理解使用者的需求與心境」。精煉後回應變成「太好了！這是一項需要快速反應與良好手眼協調的有趣運動。你以前打過嗎，還是想開始學？」</li>
+<li>程式最佳化：初始程式用 for 迴圈逐項累加求 1..N 之和。回饋指出「這段程式很慢因為用暴力法，較好的做法是用公式 n(n+1)/2」。精煉後變成 <code>return (n*(n+1))//2</code>。</li>
+</ul>
+<h2 id="2-以-self-refine-做迭代精煉">2. 以 Self-Refine 做迭代精煉</h2>
+<p>給定輸入序列，Self-Refine 產生初始輸出、對輸出提供回饋、再依回饋精煉輸出，並在 feedback 與 refine 之間迭代直到滿足條件。它只需要一個合適的語言模型與<strong>三段 prompt</strong>（初始生成、回饋、精煉），<strong>不需訓練</strong>。</p>
+<p><strong>初始生成</strong>：給定輸入 x、prompt <code>p_gen</code> 與模型 M，產生初始輸出 y₀。<code>p_gen</code> 是任務專屬的 few-shot prompt（或指令），內含該任務的輸入-輸出對範例。</p>
+<p><strong>feedback</strong>：Self-Refine 用<strong>同一個模型 M</strong> 搭配任務專屬的回饋 prompt <code>p_fb</code>，對自己的輸出產生回饋 fb。回饋可涵蓋多個面向——以程式最佳化為例，可能同時談效率、可讀性與整體品質。<code>p_fb</code> 提供的是「輸入-輸出-回饋」三元組範例。</p>
+<p>我們特別要求回饋要<strong>可執行（actionable）<strong>且</strong>具體（specific）</strong>：「可執行」指回饋要包含一個可能改善輸出的具體動作；「具體」指回饋要點名輸出中該改的具體片段。例如「這段程式很慢因為用了暴力法的 for 迴圈，較好的做法是用公式 n(n+1)/2」——「用公式…」是可執行的動作，「for 迴圈」是具體的定位。</p>
+<p><strong>refine</strong>：M 依據自己的回饋精煉最近一次的輸出。<code>p_refine</code> 提供「輸入-輸出-回饋-修訂結果」四元組範例。</p>
+<p><strong>迭代</strong>：feedback 與 refine 交替直到停止條件 stop(·) 成立。停止條件可以是達到指定步數 t，或從回饋中抽出一個停止指標（例如純量的 stop score）；實務上可提示模型在 <code>p_fb</code> 中生成停止指標，條件依任務而定。為了讓模型知道先前的迭代狀況，我們把<strong>歷次的回饋與輸出附加回 prompt</strong>，直覺上讓模型從過去錯誤中學習、避免重蹈覆轍。最後一次精煉結果即為 Self-Refine 的輸出。</p>
+<p><strong>演算法 1 要旨</strong>：輸入 x、模型 M、三段 prompt、停止條件 stop；先做初始生成 y₀；迴圈中先算回饋 fb_t，若 stop 成立則中斷，否則做精煉 y_{t+1}；最後回傳結果。</p>
+<p>關鍵在於：Self-Refine 用<strong>同一個底層 LLM</strong> 生成、取得回饋、並依自己的回饋精煉，唯一的監督來自 few-shot 範例。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

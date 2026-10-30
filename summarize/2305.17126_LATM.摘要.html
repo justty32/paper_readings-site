@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《大型語言模型作為工具製造者（LLMs as Tool Makers, LATM）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Tianle Cai, Xuezhi Wang, Tengyu Ma, Xinyun Chen, Denny Zhou（Google DeepMind / Princeton / Stanford；ICLR 2024）</p><p>日期：2024-03</p><p>arXiv：2305.17126</p><p><a href="https://arxiv.org/abs/2305.17126" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="大型語言模型作為工具製造者llms-as-tool-makers-latm重點摘要">《大型語言模型作為工具製造者（LLMs as Tool Makers, LATM）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>LATM（LLMs As Tool Makers）</strong>：一個閉環框架，把「解一類任務」拆成兩階段分工——用<strong>貴而強的工具製造者（tool maker，如 GPT-4）<strong>從少量示範一次性造出</strong>可重用的 Python 工具函式</strong>，再交給**便宜輕量的工具使用者（tool user，如 GPT-3.5 Turbo）**高頻套用；並可加一個 <strong>dispatcher</strong> 在串流任務中判斷「已有現成工具就派給 tool user、沒有才觸發 tool maker」，形成「<strong>功能快取（functional cache）</strong>」；如此讓輕量模型達到與強模型相當的表現，卻大幅降低平均推論成本。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>既有「工具增強 LLM」的方法（Toolformer、ReAct、Chameleon 等）成效高度取決於<strong>是否已有現成合適的工具</strong>。作者受人類演化史啟發——關鍵轉捩點是人類學會<strong>自造工具</strong>應對新挑戰——主張讓 LLM 也能為新任務生成自己的可重用工具。同時想解決一個服務成本問題：對大量問題請求，全程用強模型成本太高，輕量模型又搞不定複雜任務；傳統快取（如 GPTCache）只能快取<strong>文字相似</strong>的自然語言回應，無法覆蓋「功能類似但文字不同」的請求。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>兩階段分工</strong>：
+<ol>
+<li><strong>工具製造（tool making）</strong>：由強模型當 tool maker，用「舉例編程（programming by example, PbE）」從少量示範造出通用 Python 函式。此階段一次性完成，成本被攤提到該類任務的所有實例上。分三子階段：
+<ul>
+<li><strong>工具提議（tool proposing）</strong>：實驗用 <strong>3 個示範</strong>產生函式；若不可執行則把錯誤訊息附進歷史再重試。</li>
+<li><strong>工具驗證（tool verification）</strong>：用 <strong>3 個驗證樣本</strong>生成單元測試並執行；測試失敗時只修「單元測試中的函式呼叫」而非函式本身。此階段同時提供「如何把自然語言問題轉成函式呼叫」的示範、並驗證工具可靠性以達全自動。提議與驗證階段最大重試次數各設為 <strong>3</strong>。</li>
+<li><strong>工具封裝（tool wrapping）</strong>：把函式碼與「問題→函式呼叫」的示範打包，交付給 tool user。</li>
+</ul>
+</li>
+<li><strong>工具使用（tool using）</strong>：由輕量模型當 tool user，以 in-context learning 方式依封裝好的工具生成函式呼叫並執行；可選後處理把輸出轉成任務要求格式（如選擇題選項）。</li>
+</ol>
+</li>
+<li><strong>dispatcher 與功能快取（§4）</strong>：串流情境下加入第三個 LLM——dispatcher，維護一個工具庫（函式 API 格式）。新任務進來先找相容工具：有就派給 tool user；沒有則判為新任務（交強模型或人工標註），累積足量後再造新工具。dispatcher 本身簡單，用輕量模型即可，只增加邊際成本。</li>
+<li><strong>模型設定</strong>：製造階段 temperature 設 0.3（允許重試），使用階段設 0.0。工具是「更通用形式的 Chain-of-Thought」，能解需演算法推理的問題。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>主結果（表 2）</strong>：以 <strong>GPT-4 當 tool maker、GPT-3.5 Turbo 當 tool user</strong>，LATM 在六項任務上讓輕量模型達到與 GPT-4 相當的表現，遠勝 CoT prompting。例如中國剩餘定理任務由 0.0 → 100.0；Dyck Language GPT-3.5 Turbo 甚至反超 GPT-4 當 tool user 的結果。撰文當時 <strong>GPT-4 單次呼叫成本 C 是 GPT-3.5 Turbo 成本 c 的 15 倍以上</strong>，故用輕量模型當 tool user 顯著省成本。</li>
+<li><strong>工具製造需要強模型（表 3）</strong>：每模型每任務跑 5 次。難任務（Logical Deduction、Tracking Shuffled Objects）GPT-3.5 Turbo 全部 5 次失敗（生成的工具不夠通用、只在訓練樣本上有效），GPT-4 分別 3/5、4/5 成功；但簡單任務（Word Sorting）GPT-3.5 Turbo 5/5 就能勝任。60 次試驗中僅 2 例是靠錯誤訊息引導修正成功。</li>
+<li><strong>dispatcher 穩健（§5.4）</strong>：在混合六任務的 100 樣本測試集上，正確辨識既有工具的準確率 <strong>95%±2%</strong>；正確判斷「該用既有工具或請求造新工具」的準確率 <strong>96%±3%</strong>。</li>
+<li><strong>工具使用者容量（表 4）</strong>：GPT-3.5 Turbo 在效能/成本間取得最佳平衡；發現指令微調（instruction tuning）前的 GPT-3 系列（ada/babbage/curie/davinci）在 tool-using 反而優於微調後版本，推測指令微調損害了 in-context learning 能力。</li>
+<li><strong>CoT 當工具無效（表 5）</strong>：把 GPT-4 產的 CoT 傳給小模型，表現與人寫 CoT 相近、遠差於 LATM。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>屬<strong>早期階段</strong>框架；未深入處理 LLM 自造工具帶來的<strong>倫理、安全與控制</strong>風險（工具品質可能不達人類標準、甚至有害；自主性升高可能導致失控）。</li>
+<li>tool maker 受<strong>上下文長度</strong>限制（因每步保留完整歷史），偏好 8192 上下文的 GPT-4。</li>
+<li>真實世界中缺乏「忠實反映日常人機互動」（如以自然語言排會、訂機票）的高品質資料集，作者呼籲社群建立。</li>
+<li>未來方向：讓 tool maker 能像軟體開發般<strong>精修、升級既有工具</strong>以應對新問題實例。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本文是 <strong>ai_core 北極星「貴稀有智能＝資產工廠 vs 便宜高頻智能＝資產消費者」（roadmap §2）分工的直系學術原型、也是 §5「上層聰明模型讀框架→生可重用資產、下層笨模型高頻套用」的最貼近先行者</strong>：LATM 的 tool maker 正是一次性把某類任務凝結成可重用資產（Python 工具）的「資產工廠」，tool user 則是高頻消費該資產的便宜模型，dispatcher 負責分流「是否已有現成工具」。這對應 ai_core §3.6「固化引擎——把 LLM 反覆處理的同類任務凍成可重用確定性單元」的思路：工具封裝＝把一類請求的<strong>功能</strong>（而非自然語言回應）固化下來重用。</li>
+<li>對 ai_core 第一目標「程式碼助手（抽取＋受約束生成）」尤其貼切：工具＝受約束生成出的 Python 函式，並靠單元測試自動驗證後才交付下游——這正是「上層生資產、下層套用」在程式碼場景的具體化。</li>
+<li>庫內延伸閱讀：可與 <a class="paper-reference" href="2603.01145_AutoSkill_Skill_SelfEvolution.%E6%91%98%E8%A6%81.html">2603.01145</a>（AutoSkill）、<a class="paper-reference" href="2506.10021_Persistent_Lisp_Metaprogramming_Loop.%E6%91%98%E8%A6%81.html">2506.10021</a>（持久 Lisp 自建工具）對讀，同屬「LLM 自造／累積可重用技能與工具」這條線；LATM 是其中最早、最直接點出「分工降成本＋功能快取」的一篇。</li>
+<li>定位：<strong>框架＋實證論文</strong>，開源於 github.com/ctlllll/LLM-ToolMaker。適合做 <strong>LLM 自造工具、模型分工降本、functional cache、程式化工具生成、多模型級聯（cascade）</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2305.17126_LATM.zh-TW.html"><code>../translate/2305.17126_LATM.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

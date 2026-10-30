@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>HiveMind：以作業系統式排程管理並行 LLM Agent 工作負載（HiveMind: OS-Inspired Scheduling for Concurrent LLM Agent Workloads） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Justice Owusu Agyemang, Jerry John Kponyo, Obed Kwasi Somuah, Elliot Amponsah, Godfred Manu Addo Boakye, Kwame Opuni-Boachie Obour Agyekum（Sperix Labs / KNUST）</p><p>日期：2026-04</p><p>arXiv：2604.17111</p><p><a href="https://arxiv.org/abs/2604.17111" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="hivemind以作業系統式排程管理並行-llm-agent-工作負載">HiveMind：以作業系統式排程管理並行 LLM Agent 工作負載</h1>
+<h2 id="摘要">摘要</h2>
+<p>多個 LLM coding agents 共用 rate-limited endpoint 時，行為像沒有 scheduler 的 process 爭 CPU、記憶體與 I/O。作者曾讓 11 個 agent 並行，3 個因 connection reset／502 死亡，雖然 API 總容量足以循序服務全部。</p>
+<p>HiveMind 是透明 HTTP proxy，以 admission control、rate tracking、AIMD+circuit breaker、token budget、priority queue 與 centralized retry 管理資源。七個 5–50 agent scenario 中，uncoordinated failure 為 72–100%，HiveMind 降至 0–18%，減少 48–100% wasted compute。主要數據來自 mock API；local model 實驗確認 overhead 小於 3 ms/request。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>Coding agent 是長期 stateful process，會讀寫檔案、執行 shell，並重複呼叫模型。並行後共享 RPM、TPM、connection limit、context 和 API-key quota。LangChain、CrewAI、AutoGen 等擅長組合 chain、crew 與對話，但通常把 LLM API 當成無限資源，沒有全域 scheduler。</p>
+<p>2026-04-15 的動機事件中，11 個 Claude Code agents 共用一個 Anthropic key：8 成功、2 ECONNRESET、1 HTTP 502，失敗 agent 已各消耗約 45K tokens，總浪費約 135K tokens 與 15 分鐘。作者判斷若每個錯開 5 秒就能完成，但未展示該事件的 controlled replay。</p>
+<h2 id="2-背景">2. 背景</h2>
+<p>單個 agent session 可用 50K–500K tokens，幾十個 calls 彼此依賴。中途 API failure 會讓先前 token、file changes 與 context 難以恢復。</p>
+<p>OS analogy 將 agent 對應 process、request slot 對應 CPU slice、RPM/TPM 對應 capacity、network connections 對應 I/O、token budget 對應 quota、checkpoint 對應 virtual memory、max-agent 對應 fork-bomb protection、priority 對應 nice level。Admission 防 thrashing，AIMD 看 latency 調 concurrency，circuit breaker 防 cascading failure，budget 防單一 agent 壟斷，priority 讓高價值或短工作先完成。</p>
+<h2 id="3-架構">3. 架構</h2>
+<h3 id="31-透明-proxy">3.1 透明 Proxy</h3>
+<p>Agent 將正常 API request 發到 localhost proxy。所有 traffic 經單一觀測與排程點，再轉送 Anthropic、OpenAI-compatible 或 local server。好處是不用改 agent、跨語言／框架、可統一量測，也能與其他 proxy 串接；代價是看不到 agent 內部狀態。</p>
+<h3 id="32-admission-control">3.2 Admission control</h3>
+<p>Active requests 小於 <code>C_max</code> 才進入，否則在 condition variable 等待。使用 condition 而不是 semaphore，是因 AIMD 會動態 resize；增加上限時喚醒所有 waiter 重查，降低時等待既有 request 自然結束。</p>
+<h3 id="33-rate-tracking">3.3 Rate tracking</h3>
+<p>Reactive 層讀 provider headers 與 Retry-After，剩餘容量低於預設 10% 且只剩兩個 requests 時暫停。Proactive 層依 provider profile 預先設定 RPM/TPM sliding window，未收到第一個 response、或 Ollama 沒 header 時也能限流。</p>
+<h3 id="34-aimd-與-circuit-breaker">3.4 AIMD 與 Circuit breaker</h3>
+<p>平均 latency 不超過 target 時 concurrency 每次加 0.5；超過或遇 429、502、reset 時乘 0.5，且不低於 <code>C_min</code>。新值直接推到 admission controller。</p>
+<p>最近 20 requests 的 error rate 達 50% 時 circuit open，所有新 request 快速收到 503 與 Retry-After。10 秒後 half-open，只放一個真實 probe；成功關閉，失敗再開啟。</p>
+<h3 id="35-budgetpriority-與-retry">3.5 Budget、Priority 與 Retry</h3>
+<p>Token budget 到 85% 警告，100% checkpoint 並停止。Task 先按 Critical/High/Normal/Low，再在同級 shortest estimated token job first，最後 FIFO；dependency DAG 確保 predecessor 完成。</p>
+<p>Central retry 攔截 429、502、503、529、ECONNRESET、RemoteProtocolError，用上限 30 秒的 exponential backoff+jitter，provider Retry-After 優先。所有 retry 再走 admission gate，避免多個 agent 同時醒來重送。SSE 直接 passthrough，不 buffer，slot 持有到 stream 完成。</p>
+<h2 id="4-實作">4. 實作</h2>
+<p>Python 3.11、asyncio、Uvicorn、Starlette、httpx 實作；同時可作 MCP server，提供 submit、batch、status、priority、budget、metrics、config、setup 八個 tools。</p>
+<p>Provider profiles 含 Anthropic、OpenAI、Azure、Google、Ollama、generic，預設 RPM、TPM、max concurrency、header、retry status 與 AIMD 參數。URL regex 自動判斷 provider。Streaming token 從 SSE message_start/message_delta 讀取；無使用量時以每四字元一 token 估算。</p>
+<h2 id="5-評估">5. 評估</h2>
+<h3 id="51-方法">5.1 方法</h3>
+<p>Mock server 模擬 Anthropic/OpenAI response、RPM、random 502/reset、provider headers、latency spike、connection limit 與 SSE。Mock agent 做 <code>N</code> 個 sequential calls，第一個不可恢復錯誤即死亡。</p>
+<h3 id="52-七個-scenario">5.2 七個 Scenario</h3>
+<p>5 agents 無 contention，兩法都 0% failure。10、20、50 agents 的 micro tests，direct 都 100% failure，HiveMind 為 10%、10%、0%。Replay-11 為 73% 對 18%；20-agent stress 為 100% 對 10%；latency spike 為 100% 對 0%。Wasted-token reduction 介於 48% 與 100%。</p>
+<p>Managed mode wall time較長，因 request 真正排隊完成；direct 很快是因 agent 早死。作者以 completed work 算 effective throughput，managed mode 較高。</p>
+<h3 id="53-ablation">5.3 Ablation</h3>
+<p>Replay-11 中 full、no admission、no rate limit 都 11/11 alive；no backpressure 10/11；no retry 4/11；admission-only 2/11。Central retry 在此錯誤注入設定最重要；單獨 admission 無法處理 reset 或 502。各 agent 自己 retry 仍會在同一時刻形成 herd，集中 scheduler 才能序列化。</p>
+<h3 id="54-local-server">5.4 Local Server</h3>
+<p>Ollama Qwen3.5-4B：direct 10/10、30.5 秒，HiveMind 10/10、28.5 秒。MLX Qwen3.5-4B-4bit：兩者 10/10，3.9 對 3.6 秒。Local server 本來就排隊，沒有觸發 contention failure；結果只支持相容性與低 overhead。早期 MLX 的一次 disconnect 被加入 retryable list 後消失。</p>
+<h3 id="55-wasted-cost">5.5 Wasted Cost</h3>
+<p>依論文當時 Anthropic input pricing、每天跑十次七情境 suite，估計 Haiku/Sonnet/Opus direct waste 為 $0.35/$1.31/$6.55，HiveMind 為 $0.01/$0.05/$0.24，約省 96–97%。這是從 mock suite extrapolate，且價格會變動，不是 production 帳單證據。</p>
+<h2 id="6-相關工作">6. 相關工作</h2>
+<p>HiveMind 位於 agent framework 下層，集中管理大家共享的 API。Tenacity/backoff 只知道單一 request，無法協調 API key 的全域壓力。AIMD 將 API latency 當 TCP RTT 的早期 congestion signal；pipeline 也類似 SEDA 的 admission→rate limit→backpressure→forward→retry stages。</p>
+<h2 id="7-討論限制與結論">7. 討論、限制與結論</h2>
+<p>透明 proxy 換得 universal integration，犧牲 task progress 等 agent metadata。Condition variable 比 semaphore 每次多約 50 μs，相較 500–5000 ms API latency 可忽略。AIMD 與 provider profile 仍需調參。</p>
+<p>主要限制是單機；Redis distributed state 未經 scale evaluation。Primary results 來自 mock，尚未在 cloud hard limits 下用 20–50 agents 驗證。Priority、budget 與 DAG 沒有獨立效果數據，也不處理跨 agent filesystem/tool conflict。</p>
+<p>原文對元件數目不一致：文字稱五個 primitives，主清單含 admission、rate、AIMD、budget、priority；架構圖的五層卻把 priority 換成 retry，而 ablation 又稱 retry 最重要。較精確的理解是系統包含至少七個相關機制，實驗主要證明 centralized retry 加其餘 throttling 的組合，而不是逐一驗證所有 OS analogy。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

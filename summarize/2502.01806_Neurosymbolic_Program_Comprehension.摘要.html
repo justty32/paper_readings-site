@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《邁向神經符號程序理解（NsPC）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Alejandro Velasco, Aya Garryyeva, David N. Palacio, Antonio Mastropaolo, Denys Poshyvanyk</p><p>日期：2025-02-03，cs.SE（願景／初步結果論文）</p><p>arXiv：2502.01806</p><p><a href="https://arxiv.org/abs/2502.01806" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="邁向神經符號程序理解nspc重點摘要">《邁向神經符號程序理解（NsPC）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>一篇<strong>軟體工程（SE）視角</strong>的 NeSy 願景＋初步結果論文：質疑「無限擴大模型參數」是唯一出路（資料 2026–2032 將耗盡），主張把<strong>大型程式碼模型（LCM）的機率能力 + 傳統符號規則的確定性/可解釋性</strong>結合，提出<strong>首個神經符號程序理解（Neurosymbolic Program Comprehension, NsPC）框架</strong>，以<strong>漏洞偵測</strong>為首個落地任務。核心做法：用 <strong>SHAP 可解釋性</strong>從 LCM 預測中挖模式 → 轉成<strong>符號規則</strong> → 嵌回 LCM。</p>
+<h2 id="動機">動機</h2>
+<ul>
+<li>LCM（GitHub Copilot、ChatGPT、GPT-4）革新 SE 自動化，但「no free lunch」：訓練/維護算力暴增、偏差、可信度、<strong>黑箱可解釋性差</strong>。</li>
+<li>引 Villalobos：LLM 可學的有意義資料將於 <strong>2026–2032 近乎耗盡</strong> → 純擴大模型遇瓶頸。</li>
+<li>「後退一步以便日後前進兩步」：用 SHAP 等可解釋技術把模型行為<strong>形式化成確定性符號層</strong>，兼顧效能與透明。</li>
+</ul>
+<h2 id="方法nspc-框架圖-1">方法（NsPC 框架，圖 1）</h2>
+<ul>
+<li><strong>背景：SHAP（Shapley Additive exPlanations）</strong>——基於合作賽局 Shapley 值，估計每個特徵 w_i 對模型輸出 f(x) 的貢獻 ϕ（含與否的平均預測差），是事後（post-hoc）可解釋方法。</li>
+<li><strong>① SHAP 張量建構</strong>：對 LCM 預測為某類 y（如 Secure/Insecure）的輸入算 SHAP 值；用<strong>對齊函數 δ</strong> 把 token w_i 標上對應的 <strong>AST 型別 µ</strong>（由程式語言文法定義）→ 產出 SHAP 張量 <code>(i, w_i, ϕ_i, µ_i)</code>（位置、token、SHAP 值、AST 型別）。</li>
+<li><strong>② 模式識別（受 NLP/SE 的 probing classifier 啟發）</strong>：按 <strong>AST 型別 × 位置區間 [a,b]</strong> 分組，訓練監督模型（邏輯迴歸/決策樹/隨機森林）找「ϕ 值與位置的關係曲線」;<strong>準確率 &gt;60% 且有明確決策邊界（與 x 軸交點）</strong> 即視為「該 AST 型別在該位置區間的 SHAP 值一致影響預測」的證據。</li>
+<li><strong>③ 符號規則</strong>：從模式導出規則，兩部分——(i) 與預測標籤<strong>正相關</strong>的配置（正確預測模式的規則）、(ii) 對應<strong>低預測可信度</strong>配置的互補規則（不確定時做針對性調整）。規則可在 <strong>post-training 階段</strong>用（監督微調、知識蒸餾）。</li>
+</ul>
+<h2 id="案例研究rq1shap-能多大程度定義符號規則">案例研究（RQ1：SHAP 能多大程度定義符號規則?）</h2>
+<ul>
+<li><strong>模型</strong>：CodeBERT（微調於不安全程式碼偵測，二元分類）；訓練自 Devign / CodeXGLUE-Defect Detection;12 隱藏層。</li>
+<li><strong>資料</strong>：CodeXGLUE 驗證集，300 不安全 + 300 安全 Java 片段，每片段限 300 token，分 6 個位置區間。</li>
+<li><strong>結果（Table I，邏輯迴歸）</strong>：只有 <strong>punctuation、operator、literal、type、primitive</strong> 這幾種 AST 型別過 60% 門檻且有清楚決策邊界。例：
+<ul>
+<li><strong>literal 出現在位置 [0–43]</strong> → 高機率判<strong>不安全</strong>（硬編碼值/初始化區塊/函數參數常見於不安全模式，多在前段）;</li>
+<li><strong>operator 出現在 [251–280]</strong> → 高機率判<strong>安全</strong>（後段運算子多屬結構化邏輯）。</li>
+</ul>
+</li>
+<li><strong>局限</strong>：模式綁定此特定模型的 SHAP 值，<strong>無法泛化</strong>到其他模型/任務/資料集。</li>
+</ul>
+<h2 id="相關工作">相關工作</h2>
+<ul>
+<li><strong>SE 可解釋性</strong>：CAT-probing（量化 CodePTM 捕捉結構性質；中間層傳一般結構知識、後層精煉任務知識）、注意力分析（cLLM 注意力圖未編碼語法-識別符關係）、ASTprobe。</li>
+<li><strong>SE 的 NeSy</strong>：符號檢查改進 SQL 生成（部分查詢求值 + 提早剔除無效）、語意程式碼搜尋（規則解析 NL 查詢，但規則手工難泛化）、<strong>CoTran</strong>（LLM+符號執行回饋確保翻譯程式碼功能等價，Java↔Python）；及程式合成、表示學習、錯誤修正、語意修復。</li>
+</ul>
+<h2 id="未來">未來</h2>
+<ul>
+<li>建<strong>更嚴謹的數學基礎</strong>（超越分類任務）;</li>
+<li>引入<strong>人工驗證</strong>導出的符號規則（正確性/可解釋性/實用性），橋接自動規則生成與真實應用。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>與本批其他 NeSy 論文不同視角：這是<strong>SE/程式碼領域</strong>的 NeSy 應用，且方法獨特——<strong>不是「LLM 翻形式語言給 solver」，而是「用 SHAP 從模型內部挖規則、再嵌回模型」</strong>（規則來自可解釋性而非外部知識庫）。</li>
+<li>與 <a class="paper-reference" href="2510.14538_Reasoning_Shortcuts.%E6%91%98%E8%A6%81.html">2510.14538</a>（RS、概念可解釋）在「可解釋性 ↔ 符號」上有哲學交集，但 NsPC 是工程性 probing-to-rules 流程。</li>
+<li>誠實定位：<strong>願景 + 單一案例的初步結果</strong>（CodeBERT/Java/漏洞偵測），規則不泛化、無理論保證、無端到端 NeSy 系統，作者自承是「首步」。</li>
+<li>最值得記的點子：<strong>SHAP 值 × AST 型別 × 位置區間 → 邏輯迴歸找決策邊界 → 符號規則</strong>，是把「事後可解釋性」轉成「可注入規則」的具體配方；適合做<strong>程式碼模型可解釋性/漏洞偵測</strong>且想加符號層的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2502.01806_Neurosymbolic_Program_Comprehension.zh-TW.html"><code>../translate/2502.01806_Neurosymbolic_Program_Comprehension.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

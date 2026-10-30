@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2308.00675_ToolDoc.zh-TW.html">回 2308.00675_ToolDoc.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97%E8%A8%AD%E5%AE%9A.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>如今教大型語言模型（LLM）使用新工具，靠的是提供幾個工具用法的<strong>示範（demonstrations，demos）</strong>。可惜示範難以取得，若挑錯示範還會造成不良的偏誤性用法；即使少數情況下示範唾手可得，也沒有原則性的挑選協定來決定該給幾個、給哪些。當任務變複雜，示範的挑選搜尋會組合式暴增而終致不可行。本文提供示範的替代方案：<strong>工具文件（tool documentation）</strong>。我們主張用工具文件（對個別工具用法的描述）取代示範，並透過橫跨視覺與語言模態的 <strong>6 個任務</strong>上的三大實證發現來佐證此主張。第一，在既有基準上，只含工具文件的零樣本提示已足以引出正確的工具使用，表現與少樣本提示相當。第二，在一個新收集、含數百個可用工具 API 的真實工具使用資料集上，我們顯示工具文件遠比示範有價值——零樣本＋文件顯著勝過無文件的少樣本。第三，我們用剛發布、未見過的最新模型當工具來處理影像生成與影片追蹤，凸顯文件的好處。最後，我們展示文件可自動催生新應用：僅憑 GroundingDino、Stable Diffusion、XMem、SAM 的文件，LLM 就能重新發明剛發布的 Grounded-SAM 與 Track Anything 的功能。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>如今的 LLM 讓人聯想到工匠：面對複雜任務，它會把任務拆解成較簡單的子任務，並為每個子任務組裝最合適的工具。例如圖 1 中「兩塊磁鐵會相吸還是相斥」的多模態問答：LLM 需要先辨識影像中磁鐵位置（如用 Text Detector 找出南北極），再擷取「異極相吸、同極相斥」的背景知識（如用 Knowledge Retriever），最後綜合作答。正如稱職工匠知道自己工具的能耐——但 <strong>LLM 怎麼知道哪個工具能做什麼？</strong></p>
+<p>目前的做法是給 LLM 幾個工具能力的<strong>少樣本示範</strong>，期望這些示範能讓模型行為泛化到更新的複雜任務，至今相當成功。示範含一到數個「指令＋對應工具使用計畫」的 &lt;輸入， 輸出&gt; 對映（圖 2），LLM 需從中找出模式並泛化。文字任務上，LLM 有計算機、Python 直譯器、搜尋引擎的示範就能做邏輯與算術；視覺任務上，有預訓練視覺模型示範就能做複雜視覺推理、生成甚至編輯影像；具身機器人任務上也能推理與規劃。</p>
+<p>作者主張這種對示範的依賴在某些情況下並非必要、甚至可能有限制。近期研究發現 LLM 對示範敏感，需謹慎挑選以免偏誤或過擬合到特定用法。隨之而來的問題是：<strong>該怎麼選示範？</strong> 目前並無不需人工介入即可挑選示範的原則性方法；更糟的是，當可用工具數量規模化，少樣本挑選過程會<strong>組合式地不可行</strong>。正如工匠不必看新工具被示範、只要讀使用手冊就能辨其能力，作者希望讓 LLM 不看任何示範就學會用工具。</p>
+<p><strong>本文的替代方案：工具文件（doc）。</strong> 一如手冊標示實體工具的能力，軟體工具的文件勾勒出「這工具能做什麼、不能做什麼、怎麼呼叫」。文件對工具功能與用法提供相對<strong>中性</strong>的說明，且通常隨工具建立而<strong>有機地自然存在</strong>。直覺上就像工匠讀手冊學新工具，作者在 LLM 遇到新工具/儲存庫時提供其 README 檔。有了文件，LLM 未必需要示範就能用新工具。</p>
+<p>本文研究 LLM 能否<strong>單靠文件</strong>用工具：在加入或排除文件、並把示範數從少樣本一路降到零樣本的設定下，於視覺與文字的 <strong>6 個任務</strong>上做實驗。發現：</p>
+<ul>
+<li>有工具文件時，LLM 的零樣本表現與少樣本相當甚至更好，顯示文件能有效繞過對少樣本示範的需求。</li>
+<li>據此放寬少樣本約束，只給文件即可有效率地規模化到大得多的工具集（在新收集的 API 使用資料集上驗證）。</li>
+<li>可在「即插即用」下，把新工具連同其文件無縫加入工具集，讓 LLM 無需更多示範就解影像編輯與影片追蹤等未見任務。</li>
+<li>以近期開發的未見工具為積木，LLM 能重新發明更晚近的熱門作品 Grounded-SAM 與 Track Anything，暗示從零樣本用工具邁向<strong>自動知識發現</strong>的潛力。</li>
+</ul>
+<p>（圖 1：LLM 用工具解多模態問答的範例流程——選工具、生成執行計畫。圖 2：教 LLM 用工具的兩類知識——示範 vs 文件。示範是 &lt;輸入， 輸出&gt; 對、需為每個新任務人工策劃、表現對用哪些示範敏感、工具數增多時需大量示範才夠覆蓋；文件則描述工具功能、通常隨工具有機存在。）</p>
+<h2 id="2-相關工作">2 相關工作</h2>
+<p><strong>LLM 的檢索增強與工具。</strong> 儘管 LLM 成就斐然，外接工具可讓其更準確、高效或通用。工具用法從知識檢索起步，擴展到搜尋引擎、QA 系統、計算機、Python 直譯器、模擬引擎、機器學習模型，乃至 LLM 自造的工具。早期作品常依賴人工監督或額外自監督學習，不利即插即用；近期進展改以提示中的示範消除額外訓練。本文更進一步，僅用個別工具的文件簡化提示設計，同時維持有競爭力的表現。</p>
+<p><strong>用 LLM 做規劃。</strong> 語言模型有潛力為複雜任務規劃或分解子問題。既有工作在測試時檢索示範、或依賴預先設計的示範做任務分解；近期工具使用作品也多靠「用工具規劃解例題」的示範。但工具數量激增時，打造工具間互動的示範很有挑戰。同期工作以強 LLM（如 GPT-4）透過 self-instruct 造大型指令跟隨資料集，再微調其他 LLM（LLaMA、OPT）以掌握大量工具；相對地，本文展示 LLM 可<strong>靠讀文件</strong>使用任何未見的新工具。</p>
+<p><strong>示範與文件。</strong> 從示範學習在強化學習中很流行；in-context learning 透過展示範例做下游適應，多數 LLM 工具使用工作因此依賴少樣本示範。然而有研究顯示更多示範可能反直覺地降低表現、需謹慎挑選；也有檢索式示範挑選法（但隱含需要更大的範例集）。用文件改進演算法相對少被探索：既有作品含特定遊戲的讀手冊演算法、以及 DocPrompting（訓練檢索器取相關文件以增進程式生成）。本文則邁向「LLM 單靠文件做零樣本工具規劃」，涵蓋語言到視覺的多樣任務。ViperGPT 是同期工作，聚焦 Python 視覺程式、以函式實作與規格當文件；AutoGPT 雖也展示 LLM 靠讀文件用工具的能力，但本文著重從真實用例到學術基準的系統性探索。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>MEMOBench: A Process Level Memory Benchmark for Robotic Manipulation 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Haiyang Sun、Haoxiao Wang、Junming Chen、Weicheng Fang、Zihao Su、Jingkun Yi、Wenyou Yi、Hao Chen、Zhou Zhao</p><p>日期：2026-09-07（v1，cs.RO）</p><p>arXiv：2609.07047</p><p><a href="https://arxiv.org/abs/2609.07047" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="memobench-a-process-level-memory-benchmark-for-robotic-manipulation">MEMOBench: A Process Level Memory Benchmark for Robotic Manipulation</h1>
+<h2 id="摘要與問題">摘要與問題</h2>
+<p>機器人常須根據當前畫面已看不見的資訊行動，例如記住先前指定的物件、更新抽屜裡已變動的位置，或累積重複操作次數。現有記憶型 manipulation benchmark 多以最終成功判定，因而把忘記、感知失誤與控制失敗混在一起。一次 rollout 失敗後，很難知道模型沒存進資訊、沒有更新舊狀態、無法整合歷史，還是明明記得卻做不好動作。</p>
+<p>MEMOBench 把評估拆到過程層。每項 history-dependent task 除了終點目標，還有帶自然語言、模擬器 predicate 與 memory operation 標籤的可執行 checkpoint。研究者可以在不讀取模型內部狀態的情況下，檢查環境是否達到那一刻應由記憶支援的狀態。</p>
+<h2 id="雙層記憶分類">雙層記憶分類</h2>
+<p>第一層描述任務主要記住什麼。Temporal Memory 保留事件次數、先後與狀態轉移；Spatial Memory 保留當前看不見的位置與空間關係；Object Memory 維持相似物件之間的指涉一致；Procedural Memory 保存觀察過的動作模式或程序順序。</p>
+<p>第二層描述記憶如何改變。Storage 把新資訊寫入；Update 在外界狀態改變後修訂既有記錄，也包含刪除；Compression 把累積事件整合成可供任務使用的摘要。Retrieval 可能發生在任何決策點，因此不另標 checkpoint。每個 checkpoint 只屬於一種 operation，避免同一事件在指標裡重複計算。</p>
+<h2 id="任務checkpoint-與訓練用途">任務、checkpoint 與訓練用途</h2>
+<p>任務建立於 LIBERO／robosuite 家居場景，刻意讓物件身分、位置、互動史或示範程序在離開視野後仍影響下一步。每個 checkpoint 同時提供由簡到細的語言與可在模擬器直接判定的 predicate；順序敏感分析採 prefix completion，較後面的 predicate 即使偶然成立，只要先前 checkpoint 未依序完成，就不算有效進度。</p>
+<p>這些註記不只用來評分，也能在訓練時約束 memory representation。作者在同一個記憶模組 backbone 上比較三類 auxiliary objective：以 cosine similarity 對齊 pooled memory 與文字的 semantic alignment；用雙向 InfoNCE 拉近配對記憶與文字的 contrastive alignment；以及把歷史影格對到當時 checkpoint 文字的 framewise alignment。推論時不需要 checkpoint 文字。</p>
+<h2 id="指標與實驗設計">指標與實驗設計</h2>
+<p>Task Success Rate 仍以最終任務 predicate 是否全部成立計算。過程指標則按 operation 分別得到 Memory Storage Rate、Memory Update Rate 與 Memory Compression Rate。高過程分數但低成功率，較可能表示記憶內容存在而執行失敗；某一 operation 特別低，則可定位到寫入、修訂或整合的問題。</p>
+<p>實驗比較標準 VLA、帶 history 或顯式 memory 的多種政策，也控制不同 replan interval。另以 ground-truth memory text 作 oracle，估計完美記憶內容能補回多少失敗；shuffle control 則打亂訓練時的子目標記憶順序，檢驗模型是否真的需要有序歷史。這兩種控制讓 checkpoint 指標不只描述相關性，也能較細緻地分開 memory 與 manipulation 的責任。</p>
+<h2 id="主要結果">主要結果</h2>
+<p>作者自報：未加 alignment 時，最佳記憶模組設定的平均成功率只有 31.9％；標準 <code>pi0</code> 在短 replan 設定下的 temporal MSR 為 94.0％，但 temporal task success 只有 4.4％。這個落差是論文的核心發現：初始資訊常能存住，真正困難的是在狀態變化後更新舊記憶，或把多段歷史壓成能驅動後續行動的表示。</p>
+<p>不同顯式 memory 機制各擅長不同 operation，沒有單一模型全面領先。縮短 replan interval 通常有利，但無法消除 Update 與 Compression 瓶頸。錯誤分析也把大量 temporal failure 定位到狀態改變後仍沿用 stale memory，而非一開始完全沒有編碼。</p>
+<p>oracle memory 主要補回 temporal 與 spatial 的更新、整合及成功率，對已接近飽和的物件指涉幫助較小，支持過程指標確實捕捉部分記憶問題。打亂子目標順序後，模型仍可完成初始寫入動作，卻在需要更新狀態的後段迅速失效，顯示有序 supervision 不能被無序文字集合取代。alignment 帶來的提升整體溫和，而且 semantic、contrastive、framewise 對不同 operation 的幫助不同。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>MEMOBench 的主要貢獻不是再加一個總分，而是讓「記憶失敗」能落到可執行、可分 operation 的過程證據。實驗顯示，現有政策常能寫入一開始看見的資訊，卻不擅長修訂 stale state 與整合長歷史；checkpoint language 也能作為改善這些表徵的訓練訊號。</p>
+<p>作者明列三類限制。第一，benchmark 完全在模擬中建立，尚未涵蓋實體感測雜訊、接觸動力學與視覺 domain shift。第二，主要比較的模型家族與 alignment backbone 有限，未涵蓋 state space model 等其他架構。第三，Storage、Update 與 Compression 的事件邊界仍含人工判斷；雖有盲標一致性檢查，分歧主要落在 Update 與 Compression 的界線，未來仍需半自動或自動註記方法。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2609.07047_MEMOBench.%E6%91%98%E8%A6%81.html"><code>../summarize/2609.07047_MEMOBench.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

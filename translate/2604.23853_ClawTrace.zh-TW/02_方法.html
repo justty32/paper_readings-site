@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>ClawTrace：成本感知的 LLM Agent 技能蒸餾追蹤（3/3） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.23853_ClawTrace.zh-TW.html">回 2604.23853_ClawTrace.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-方法">3. 方法</h2>
+<p>系統分為三個階段（圖 1）。在 Capture 階段，ClawTrace 外掛在 agent session 期間記錄原始軌跡事件並寫入雲端儲存。在 Compile 階段，確定性編譯器將每個 session 摘要為一張 TraceCard。在 Distill 階段，CostCraft 讀取 TraceCard，透過平行分析和衝突感知合併產出進化後的技能文件。</p>
+<h3 id="31-clawtrace-插裝">3.1 ClawTrace 插裝</h3>
+<p>ClawTrace 是一個 OpenClaw 原生外掛，註冊了八個事件 hook，涵蓋 agent session 的完整生命週期：session 開始與結束、LLM 輸入與輸出、工具呼叫進入與退出，以及子 agent 生成與終止。圖 2 展示了產生的執行路徑視圖及其逐步成本歸因。外掛在記憶體中批次處理事件，並在 agent 關閉時將其刷新到雲端攝取端點（POST /v1/traces/events）。該端點接受純 JSON，無框架特定依賴，因此任何 agent harness 都可以透過發送符合規範的 payload 來產生有效的下游產物。基於 PuppyGraph [18] 的圖譜湖倉管線從原始事件中物化八個 Iceberg silver 表。兩個設計決策對本文其餘部分具有承重作用。</p>
+<p>**多 agent 執行的跨軌跡連結。**現代多 agent 系統 [7, 11, 22, 23] 經常生成委派子任務的子 agent，產生巢狀呼叫樹，平面軌跡無法表示。當 OpenClaw 生成子 agent 時，ClawTrace 透過 childSessionKey → parentSpanId 映射將子 session 鏈回父 session 的工具呼叫 span，該映射跨刷新邊界持久存在。通用可觀測性堆疊支援父子層次結構，但將每個子 agent 視為獨立軌跡，需要手動標記才能恢復呼叫圖。</p>
+<p>**快取感知逐步成本。**ClawTrace 分開對四種 token 費率計費：input、output、cacheRead、cacheWrite。提供者將快取讀取價格定為全新輸入費率的大約十分之一。在典型的 50 軌跡 SpreadsheetBench 執行中，快取讀取佔總輸入量的 30% 到 50%。以全新輸入費率計算它們將高估真實成本 1.6 到 2.0 倍，並扭曲蒸餾管線依賴的逐步成本排名。</p>
+<h3 id="32-tracecard-編譯">3.2 TraceCard 編譯</h3>
+<p>TraceCard 是一個 agent session 的緊湊 YAML 摘要，由該 session 的 span tree 確定性產生。典型的 TraceCard 為 1.2 到 1.8 kB，小到足以讓數十個 TraceCard 裝入分析師的 context window。表 1 列出了 schema 欄位。成本和 token 欄位直接從 span 和提供者定價表計算。三個欄位使用啟發式方法。role_hint 根據步驟的工具呼叫比例和在回合序列中的位置，將每個 LLM 步驟分類為五類之一。redundant_tool_calls 將使用相同名稱且參數經正規化 Levenshtein 距離至少 80% 相似的工具呼叫分組，將兩次或更多次呼叫標記為冗餘。sub_agents.output_used_in_final 使用 Jaccard 重疊量測子 agent 的輸出有多少出現在父 agent 的最終訊息中。</p>
+<p>我們在 10 條軌跡（5 條含冗餘集群、5 條不含）上審計了冗餘檢測器。精確率為 100%：所有 8 個檢測到的集群都是真正的冗餘檔案讀取。召回率約為 80%；因 heredoc payload 漂移超過相似度閾值而漏掉一對完全重複。</p>
+<h3 id="33-costcraft三動作蒸餾">3.3 CostCraft：三動作蒸餾</h3>
+<p>CostCraft 是一個三階段蒸餾管線。Stage 1 在沒有任何技能的情況下執行一組任務並記錄其軌跡。Stage 2 分析每條軌跡並提出技能修補。Stage 3 將所有修補合併為一個技能文件。架構建立在 Trace2Skill [14] 的平行分析師和層次化合併設計之上；我們的貢獻是三路修補型別學、成本歸因分析師輸入，以及衝突感知合併。</p>
+<p>**三種修補型別。**每條修補標記為三種動作之一。Preserve 保留對成功有貢獻的行為。Prune 刪除一個昂貴但不影響結果的步驟；它必須指名要針對的具體高成本步驟，並包含一個反事實論證說明移除為何安全。Repair 修復在失敗軌跡中發現的失敗模式，以 oracle 證據為基礎。與前期工作的關鍵區別是 prune 修補來自成功軌跡：任務已經通過，因此修補關乎效率而非正確性。</p>
+<p>**成功分析師。**該分析師檢查每條成功軌跡並產出最多兩條修補：一條 preserve 修補描述應保留的行為，並可選地一條 prune 修補針對一個昂貴步驟。prune 修補僅在三個條件同時成立時才准入：分析師指名 TraceCard 的 top_cost_spans 列表中的一個具體條目、提供自然語言反事實論證，並將規則表述為「應避免之事」而非硬性成本上限。</p>
+<p>**錯誤分析師。**該分析師使用多輪 ReAct 迴圈檢查每條失敗或部分失敗的軌跡，配備三個工具：inspect_mismatches（讀取哪些評分項失敗）、read_gold_snippet（查閱預期答案）、final_patch（產出修復）。Oracle 存取僅在離線技能創作期間可用，而非 agent 推論時；產生的修復規則被蒸餾進技能文件，並在未來任務中無 oracle 存取地應用。Preserve 和 prune 修補完全不需要 oracle，因為它們是從自然成功的軌跡中挖掘出來的。分析師有 3 次查閱預算。若無法在該預算內診斷失敗，則產出一條低信心修補，合併步驟將其去優先級。</p>
+<p>**衝突感知合併。**Stage 3 透過基於 LLM 的層次化縮減將所有修補合併為單一技能文件。合併強制執行優先順序：具備因果診斷的 repair 修補排名最高，其次是指名成本目標且附反事實的 prune 修補，再其次是出現在兩條或以上軌跡中的 preserve 修補。單次出現的 preserve 修補被丟棄。當兩條修補衝突時，repair 取代 prune，prune 取代 preserve。最終技能包含五個章節：Trigger、Workflow、Stop rules、Artifact checklist 和 Cost control。後檢查強制執行章節標題存在、1200 token 上限，以及無任務特定資訊洩漏。</p>
+<h3 id="34-失敗分類學">3.4 失敗分類學</h3>
+<h2 id="為激勵三路修補型別學我們從-50-任務-spreadsheetbench-樣本中的-16-個非完美基線建立了操作分類學歸為七種失敗型別表-2該分類學特定於我們的樣本和標註者我們用它來引導分析而非作為-agent-失敗的一般分類六類對應-repair一類對應-preserve零類對應-prune這是預期中的失敗無法透過刪除從未存在的行為來修復prune-修補僅來自包含浪費步驟的成功軌跡">為激勵三路修補型別學，我們從 50 任務 SpreadsheetBench 樣本中的 16 個非完美基線建立了操作分類學，歸為七種失敗型別（表 2）。該分類學特定於我們的樣本和標註者；我們用它來引導分析，而非作為 agent 失敗的一般分類。六類對應 repair、一類對應 preserve、零類對應 prune。這是預期中的：失敗無法透過刪除從未存在的行為來修復。prune 修補僅來自包含浪費步驟的成功軌跡。</h2>
+<h2 id="title-clawtrace成本感知的-llm-agent-技能蒸餾追蹤part-33實驗與結論-source-httpsarxivorgabs260423853-arxiv_id-260423853-date-2026-05">title: ClawTrace：成本感知的 LLM Agent 技能蒸餾追蹤（part 3/3：實驗與結論）
+source: https://arxiv.org/abs/2604.23853
+arxiv_id: 2604.23853
+date: 2026-05</h2>
+<h1 id="clawtrace成本感知的-llm-agent-技能蒸餾追蹤33">ClawTrace：成本感知的 LLM Agent 技能蒸餾追蹤（3/3）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

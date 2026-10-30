@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《DeepGraphLog：用於分層神經符號 AI》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Adem Kikaj, Giuseppe Marra, Floris Geerts, Robin Manhaeve, Luc De Raedt</p><p>日期：2025-09-09（v1），cs.AI</p><p>arXiv：2509.07665</p><p><a href="https://arxiv.org/abs/2509.07665" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="deepgraphlog用於分層神經符號-ai重點摘要">《DeepGraphLog：用於分層神經符號 AI》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>出自 <strong>ProbLog/DeepProbLog 原班人馬（De Raedt 組）</strong>：DeepProbLog 只能做<strong>固定的「子符號→神經→符號」單向流</strong>，且事實彼此邊際獨立、無法處理結構化符號輸入。本文提出 <strong>DeepGraphLog</strong>，用 <strong>圖神經謂詞（graph neural predicate）</strong> 取代神經謂詞——<strong>把符號表示本身當成圖、交給 GNN 處理</strong>，於是可做 <strong>「符號→神經→符號」</strong> 並<strong>任意層數、任意順序交錯</strong>的多層神經符號推理。</p>
+<h2 id="解決什麼問題1">解決什麼問題（§1）</h2>
+<ul>
+<li>現有 NeSy（DeepProbLog 等）的硬傷：神經與符號<strong>在推理時互動受限</strong>——神經只做感知、不能對不完整符號資料運算；符號模組也用不到神經學到的內部表示。</li>
+<li>許多任務需要<strong>迭代推理</strong>：符號表示被神經反覆精煉（不完整符號輸入 → 神經精煉成新符號 → 再推理），即 <strong>symbolic→neural→symbolic</strong> 流。要學習就要求神經與符號<strong>全程可微</strong>、讓梯度跨多階段傳播。</li>
+<li>以 Blocks World 為例（圖 1）：(a) 傳統 subsymbolic→neural→symbolic 只在感知層用神經；(b) 神經也作用在<strong>中間符號結構</strong>（on、next_to）上推更高關係（move），再交符號模組——這是傳統 NeSy 不支援的<strong>遞迴分層推理</strong>。</li>
+<li>切入點：用 <strong>GNN</strong> 作為「能對（常常不完整、關係性、不規則的）符號結構推理」的神經元件；但 GNN 過去未被深度整合進 NeSy 做多層雙向互動。</li>
+</ul>
+<h2 id="核心機制3">核心機制（§3）</h2>
+<p>建立在 <strong>ProbLog</strong>（邏輯程式 + 機率事實 <code>p::f</code>，定義「可能世界」上的機率分布）之上。</p>
+<ul>
+<li><strong>圖神經事實（graph neural fact）</strong>：語法 <code>gnn(m_id, [輸入原子=圖], [terms]) :: head_atom.</code>
+<ul>
+<li><code>m_id</code>：指定某個固定 GNN 架構（層數/聚合策略固定，但<strong>權重可學</strong>）。</li>
+<li>輸入原子集合 G 編碼一張圖：<strong>一元原子＝節點屬性、二元原子＝邊</strong>。若某些原子是機率事實 → G 不是單一圖而是<strong>隨機圖（random graph）</strong>，每個可能世界給出一個具體圖實例餵給 GNN。</li>
+<li>把「機率事實」一般化：機率由 <strong>GNN 對抽取出的關係結構計算</strong>，而非固定值。</li>
+<li>可表達節點分類（<code>move(a)</code>）、邊分類（<code>person(x,y)</code>）、圖分類（<code>positive</code>）。</li>
+</ul>
+</li>
+<li><strong>語意</strong>：程式＝（機率事實集， 規則集， 圖神經事實集）；可能世界＝最小模型；機率分布類似 ProbLog 但<strong>加入條件化以表達事實間相依</strong>（式 2）——突破 DeepProbLog「事實邊際獨立」之限，使神經能學相依、<strong>在缺顯式規則時仍能推理</strong>（symbol→neural→symbol）。</li>
+<li><strong>推理</strong>：查詢不涉圖神經事實 → 退化為標準 ProbLog 推理（SLD → 知識編譯 SDD → semiring 自底向上求值）；涉圖神經事實 → 輸入圖隨世界而變、知識編譯失效 → <strong>對所有可能世界顯式邊際化</strong>（naive 列舉，可能昂貴；實務上不確定邊數通常有限）。未來探索取樣/近似。</li>
+</ul>
+<h2 id="實驗4q1q5">實驗（§4，Q1–Q5）</h2>
+<ul>
+<li><strong>E1 超越 Weisfeiler-Leman（GNN 表示力）</strong>：標準訊息傳遞 GNN 受限於 1-WL，無法分辨某些結構（如 4-cycle）。對比 <strong>logic-at-the-top（DeepGraphLog：GNN 輸出上加邏輯規則 <code>class(0):-cycle_4</code>）</strong> vs <strong>logic-at-the-bottom（把結構當新特徵節點接進圖）</strong>。資料量 1000/500/100：DeepGraphLog <strong>收斂更快</strong>，<strong>樣本少（100）時準確度也勝</strong>。→ 答 Q1/Q2。</li>
+<li><strong>E2 結構學習（靠參數學習）</strong>：給一組候選結構模板（cycle/clique），每個配一個<strong>可學機率</strong> <code>p::rF(c_i, class)</code>，與任務聯合學。結果：把 <code>cycle_4</code> 對 <code>class_0</code> 的機率學到 →1、其餘 →0，<strong>自動找出最相關結構</strong>，準確度勝標準 GNN、近似「顯式給定」版本。→ 答 Q3。</li>
+<li><strong>E3 遠監督的知識圖譜補全</strong>：family-tree（似 Kinship）。輸入只有 <code>parentOf</code>，要學 <code>fatherOf</code>/<code>motherOf</code> 兩關係，但<strong>無這兩者標籤</strong>，只有 <code>grandfatherOf</code> 的<strong>遠監督訊號</strong> + 背景知識規則。純邏輯不知父母含義、純 GNN 學得到祖父卻無法回溯父母；DeepGraphLog 橋接兩者。<strong>F1：fatherOf 98.94 vs GNN 22.95;motherOf 98.96 vs 59.61</strong>（AUCROC、Hits@K 近滿分 vs GNN 全面落後）。→ 答 Q4。</li>
+<li><strong>E4 Blocks World 多層規劃</strong>：<code>move</code> GNN 預測可能移動 → <strong>硬約束</strong> <code>illegal(X,Y):-move(X,Y),glass(Y)</code> 過濾 → <code>after_move</code> 轉移狀態 → 第二個 <code>tower</code> GNN 判斷是否成塔。對比：單 GNN 直接預測、雙 GNN 無層間約束。<strong>DeepGraphLog 達 100% 準確</strong>（單 GNN 低、雙 GNN 無約束中等）。→ 答 Q5。</li>
+</ul>
+<h2 id="與既有工作的差異56">與既有工作的差異（§5–6）</h2>
+<ul>
+<li>多數 NeSy×知識圖譜是<strong>單向 neural→symbol</strong>（邏輯只在神經處理後套用）：BetaE（embedding 上的 Beta 分布）、GNN-QE（GNN 做關係投影 + 模糊邏輯組合）、ExpressGNN（GNN 當 MLN 推理引擎）、LRNN/SATNet（受限於 Datalog 表示力與模糊鬆弛語意）。</li>
+<li><strong>DeepGraphLog 支援雙向 neural↔symbol</strong>（neural→symbol→neural），建於機率邏輯程式、語意良定義、<strong>同時容納軟/硬約束、全程可微</strong>、能處理複雜圖資料。</li>
+<li>代價/挑戰：神經與符號<strong>遞迴相依</strong>帶來的<strong>計算複雜度</strong>上升；未來優化推理效率、擴展到多步規劃。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>與 <a class="paper-reference" href="2505.20313_Reasoning_in_NeSy.%E6%91%98%E8%A6%81.html">2505.20313</a>（LBM 把邏輯塞進 RBM 權重）同屬「可疊加 NeSy 模組」家族，但<strong>正交互補</strong>：LBM 是命題邏輯 ↔ 能量網路；DeepGraphLog 是<strong>機率邏輯程式 ↔ GNN</strong>，賣點在<strong>任意層數交錯 + 把符號結構當圖</strong>。</li>
+<li>最大亮點：<strong>遠監督學中間關係</strong>（E3）與<strong>多層規劃中插入硬約束</strong>（E4）——示範了「神經學軟、邏輯管硬、層層交錯」的可微框架。</li>
+<li>適合做<strong>機率邏輯 + 圖學習</strong>、想突破 1-WL 表示力、或想在神經管線中夾入符號約束的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2509.07665_DeepGraphLog.zh-TW.html"><code>../translate/2509.07665_DeepGraphLog.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

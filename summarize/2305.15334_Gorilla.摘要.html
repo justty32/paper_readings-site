@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Gorilla：與海量 API 連接的大型語言模型（Gorilla: Large Language Model Connected with Massive APIs）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Shishir G. Patil, Tianjun Zhang, Xin Wang, Joseph E. Gonzalez（UC Berkeley、Microsoft Research）</p><p>日期：2023-05</p><p>arXiv：2305.15334</p><p><a href="https://arxiv.org/abs/2305.15334" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="gorilla與海量-api-連接的大型語言模型重點摘要">《Gorilla：與海量 API 連接的大型語言模型》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Gorilla</strong>：把「從海量、重疊、常變動的 API 中選對並正確呼叫」視為一個可微調的專門任務——用 self-instruct 從三大 ML 模型庫（TorchHub/TensorHub/HuggingFace，共 1,645 個 API）合成指令-API 對，<strong>retriever-aware 微調 LLaMA-7B</strong>（訓練時把 API 文件附進 prompt，教模型「讀文件答問題」），配 <strong>AST 子樹匹配</strong>做功能正確性與幻覺的客觀評測；結果 7B 小模型在 API 呼叫準確率上<strong>零樣本勝過 GPT-4 達 20.43%</strong>、幻覺大幅更低，且能適應測試期 API 文件變更。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 呼叫工具的既有工作只考慮「少量、文件齊全、可整包塞進 prompt」的 API；真實世界是<strong>百萬級、功能重疊、頻繁改版</strong>的 API 空間，無法全放進單一 context。GPT-4 等 SOTA 直接 prompt 時<strong>產生錯誤引數、幻覺出不存在的 API</strong>（如捏造 HuggingFace repo 名）情況嚴重；且 API 文件更新速度遠快於 LLM 重訓週期，模型知識易過期。此外此領域缺乏系統性評測基準。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>APIBench</strong>：爬取三大模型庫 model cards（HuggingFace 925、TensorHub 626、TorchHub 94，共 1,645），轉成統一 JSON 欄位（domain/api_call/api_arguments/example_code…，設計上可推廣到 RESTful API）；用 self-instruct（GPT-4 + 每庫僅 6 個手寫範例，全篇僅 18 筆人工資料）為每個 API 生成 10 條不提 API 名的真實使用情境指令。</li>
+<li><strong>Retriever-aware 訓練</strong>：微調時在 user prompt 後附上「Use this API documentation for reference: &lt;文件JSON&gt;」，教模型<strong>用後半段文件回答前半段問題</strong>→能適應測試期文件變更、降低幻覺。推理支援零樣本與檢索（BM25/GPT-Index）兩種模式，無任何額外 prompt 工程。</li>
+<li><strong>AST 子樹匹配評測</strong>：API 呼叫難以用單元測試驗證語意正確性（同任務有數十個等價模型）；改為把生成碼解析成 AST，檢查其是否為資料庫中某參考 API 的子樹（只比對關鍵引數、忽略可選引數）。<strong>幻覺＝呼叫不屬於資料庫任何子樹的憑空 API；錯誤＝呼叫真實 API 但用錯</strong>——給了幻覺一個可機械判定的定義。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>零樣本</strong>：Gorilla-7B 整體準確率勝 GPT-4 20.43%、勝 ChatGPT 10.75%、勝 LLaMA 83%（TorchHub 59.13 vs GPT-4 38.70；HuggingFace 71.68 vs 19.80；TensorHub 83.79 vs 18.20）。</li>
+<li><strong>幻覺</strong>：零樣本幻覺率 Gorilla 5.4–10.95%，GPT-4 高達 36.55–78.65%；Oracle 檢索下 Gorilla TorchHub 幻覺 0%。另觀察到 GPT-3.5 幻覺比 GPT-4 少（推測 RLHF 有助 truthfulness）。</li>
+<li><strong>檢索的雙面性</strong>：帶 oracle 檢索器微調比不帶好（TorchHub +12.37%、HuggingFace +23.46%）；但<strong>測試期用不完美檢索器反而重傷</strong>（BM25 掉 52.27%、GPT-Index 掉 29.20%）——有好檢索器才用 retriever-aware 訓練，否則零樣本微調更佳。</li>
+<li><strong>文件變更適應</strong>：能跟上如 FCN backbone ResNet-50→101、registry 從 pytorch/vision 換到 NVIDIA 的測試期更新。</li>
+<li><strong>帶約束選 API</strong>（如「參數 &lt;10M 且 ImageNet top-1 ≥70%」）：Gorilla 零樣本最高（47.88），檢索模式與最佳的 GPT-3.5 相當。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>只處理<strong>單一 API 呼叫的一行程式</strong>，不涉多步組合與執行結果驗證（example code 未經執行測試）。</li>
+<li>HuggingFace 上對非 Gorilla 模型只檢查 domain 是否正確（降格為選擇題），跨模型比較在該庫上不完全對等。</li>
+<li>檢索器品質是瓶頸：現有 BM25/GPT-Index 與 oracle 差距巨大，retriever-aware 訓練的收益被爛檢索器反噬。</li>
+<li>資料侷限 ML 領域 API；作者以釋出 11,000+ 指令-API 對資料集回應偏差疑慮。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>ai_core §5（意圖→工具映射）的直接實證</strong>：Gorilla 證明「聽懂模糊意圖→選對工具→產出正確呼叫」這一步可以從 GPT-4 級通用智能<strong>退縮成一個微調 7B 的窄任務</strong>，而且更準、幻覺更少——正是「把 LLM 呼叫包成可靠函數」的範本：輸入自然語言、輸出受 AST 可驗證的 API 呼叫。</li>
+<li><strong>§3.3（便宜高頻智能）</strong>：7B 自架模型勝 GPT-4，意味意圖→工具這種高頻節點應由便宜消費端執行，貴智能只需在資產工廠端（此處＝GPT-4 生成 self-instruct 訓練資料）出現一次——「貴智能造資產、便宜智能消費資產」的完整閉環，且僅需 18 筆人工範例即可自舉。</li>
+<li><strong>AST 子樹匹配＝確定性驗證節點</strong>：把「LLM 有沒有幻覺」變成可機械判定的子樹查詢，呼應 §1 符號神經網路計算圖中「LLM 節點的輸出須經確定性節點驗證」；也可視為 §3.4 拒絕為預設的實作素材——不在資料庫子樹內的呼叫一律判幻覺拒收。</li>
+<li><strong>Retriever-aware 訓練的警訊</strong>：文件檢索接得好能適應工具改版，接得差反而毒化輸出（掉 52%）——對 ai_core 的啟示是：工具目錄檢索本身必須是高可靠的確定性節點，否則寧可讓執行端模型零樣本裸跑。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2305.15334_Gorilla.zh-TW.html"><code>../translate/2305.15334_Gorilla.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

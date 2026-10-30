@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.17198_Abstraction_Inductive_Bias_CL.%E6%91%98%E8%A6%81.html">回 2603.17198_Abstraction_Inductive_Bias_CL.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>AAT（Abstraction-Augmented Training）</strong>：在線上連續學習（OCL，資料串流、無任務邊界、每筆只看一次）中，每個實例首次出現時，除了對具體實例算 loss，同時對其「結構抽象」（如遮蔽實體身份後的版本）算 loss 並加權合併，把梯度偏向跨實例共享的關係結構、壓低實體特定梯度的方差；<strong>全程不儲存任何過去實例（無 replay buffer）</strong>，卻在兩個新提出的基準（RCB、NAB）與三種模型（Qwen2.5-1.5B/3B、SmolLM-1.7B）上一致降低遺忘、提升對未見關係／敘事的泛化，且比一般 fine-tuning 更不受資料排序影響。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>語言模型的線上連續學習（OCL）中，資料以串流到達、無任務邊界、每筆只曝光一次。傳統方法靠 experience replay（ER）緩解 catastrophic forgetting，但需維護記憶緩衝區，在嚴格線上、儲存受限或不可行的場景成本愈來愈高；更深層的問題是，<strong>單純重播表面實例並未解決模型可能「背得出訓練實例、卻遺失支撐歸納推理的共享關係結構」</strong>。認知科學早已主張，智能體不是靠儲存孤立經驗，而是形成能萃取跨情境共享關係結構的抽象基模（schema）才更穩固地保留與遷移知識——但這個原則能否直接當成語言模型的<strong>計算訓練訊號</strong>，尚未被系統驗證。本文問：把學習偏向結構抽象，是否如認知科學所預測地降低災難性遺忘、提升關係泛化？</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>AAT 演算法</strong>：資料流每個 batch 首次遇到時（j=0），同時前向具體實例 x_inst 與其結構抽象 x_abs，loss = α·NLL(abs) + (1-α)·NLL(inst)（預設 α=0.5）；之後 n-1 次「本地重播」（local replay，n∈[1,5]）只用實例 loss 鞏固事實細節，避免抽象項長期主導。<strong>本地重播只發生在同一次曝光的多步優化內，不是 ER 式跨時間步取樣歷史實例</strong>——AAT 全程不保存任何跨 batch 的歷史資料。</li>
+<li><strong>理論依據（Proposition 1，附錄證明）</strong>：在簡化假設下（A1 關係/實體表徵佔用不相交參數子集、A2 實體梯度方差遠大於關係梯度方差、A3 實體遮蔽移除實體梯度貢獻），合併 loss 的梯度方差嚴格小於純實例 loss，且關係梯度信噪比隨 α 單調上升。作者自陳 A1 是最強的理想化——「Transformer 實際上不會維持這種不相交子集」。</li>
+<li><strong>兩個新基準操作化「情節保留 vs 結構泛化」</strong>：**RCB（Relational Cycle Benchmark）**由 Wikidata 知識圖譜構造 51 種關係拓撲（≥3 邊無向環，60% 含邏輯蘊涵），每實例把已知邊（known，含干擾關係）serialize 成段落、留出一個未知邊（unknown，需推導才能得知）；抽象＝實體遮蔽。**NAB（Narrative Abstraction Benchmark）**以 ePiC 的 250 條諺語+敘事為基礎，用 Qwen2.5-7B-Instruct 依 Structure-Mapping Theory 原則擴增出每諺語 15 篇新敘事，轉成「正確結局 vs 違反諺語 motif 的干擾結局」成對延續比較任務；此處抽象是隱式的（靠共享諺語，非顯式遮蔽）。</li>
+<li><strong>基線</strong>：純 SFT（α=0，下界）；ER（reservoir buffer=100＋local replay，「最強重播設定」）。<strong>指標</strong>：Online/Cumulative Accuracy、Forgetting F（先前答對、現在答錯的比例）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>Loss landscape：AAT 比正常 SFT 降低 loss 曲面方差 <strong>17.00%</strong>，CV 由 0.1549 降到 0.1375，驗證理論預測（絕對 loss 平均略高 2.64%，換取更平滑、干擾更少的優化區域）。</li>
+<li>抽象程度消融（RCB）：<strong>random &lt; category &lt; mask</strong> 單調遞增（Acc_cumul^unknown：0.3898/0.4059/0.4086；F^unknown：0.0845/0.0657/0.0643）——關鍵是抽象的<strong>結構連貫性</strong>而非額外訓練訊號本身，隨機重組的遮蔽句子甚至劣於正常 SFT。</li>
+<li>NAB（隱式抽象）：AAT 是唯一在 known 與 unknown 敘事上<strong>都</strong>降低遺忘的方法；ER 雖 known-narrative 準確率最高（0.8940），但 unknown-narrative 遺忘反而比 SFT 更高（0.1730 vs 0.1460）——重播過去實例可能干擾隱式關係泛化。</li>
+<li>三模型一致性（Qwen-1.5B/3B、SmolLM-1.7B）：相對 ER，AAT 呈現特有取捨——Qwen-1.5B 上 unknown edge 贏 6.54%、known edge 輸 1.14%；SmolLM 上 AAT 累積準確率比 SFT 高 5.76%、unknown 邊遺忘降 80%、known 邊遺忘降 37.34%，且累積準確率與遺忘皆優於 ER。</li>
+<li>資料排序穩健性：三個隨機種子下，SFT 在 unknown edge 上變異數最高（0.0392），AAT 把整體變異數壓到 0.0071（SFT 為 0.0197），顯示抽象降低了對訓練順序的敏感度。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>理論核心假設 A1（關係/實體佔用不相交參數子集）是作者自承的最強理想化，命題應被理解為「揭示機制」而非「精確刻畫」Transformer 行為。</li>
+<li><strong>抽象方式（實體遮蔽規則、諺語-敘事配對）是外部給定的</strong>，AAT 本身不學習「該抽象出什麼」——與 library learning 路線（見下）解決的是不同層次的問題。</li>
+<li>只測到 3B（Qwen2.5-3B）與 1.7B（SmolLM）；附錄顯示 RCB 上 1.5B→3B 幾乎無進步、要到 7B 才明顯提升，作者在結論明言留問：原則能否延伸到更大模型、隱式語言結構、自然資料流仍待驗證。</li>
+<li>RCB 是知識圖譜衍生的合成資料、關係拓撲人工設計；NAB 雖以 LLM 擴增仍限定在單一諺語資料集的 domain-shift 模式內。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

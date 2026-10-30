@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_預訓練結果 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2207.14255_FIM.zh-TW.html">回 2207.14255_FIM.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E9%99%84%E9%8C%84%E6%93%87%E8%A6%81.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-預訓練結果">4. 預訓練結果</h2>
+<p>（模型皆訓 100B tokens；消融實驗用較短訓程的子集以控算力。）</p>
+<h3 id="41-下游基準的左到右能力">4.1 下游基準的左到右能力</h3>
+<p>50M–6.9B 全系列、50% FIM：左到右 test loss 不受影響（即使 FIM 模型只有一半時間看到原始形式資料、還在同時學新技能）；標準下游基準（圖 3）在自然語言與程式碼上皆與 AR 模型誤差內持平。</p>
+<h3 id="42-fim-rate">4.2 FIM rate</h3>
+<p>以 FIM rate ∈ {0, 0.25, 0.5, 0.75, 0.9, 1.0} 各訓 50B tokens：<strong>高到 90% 都不劣化左到右能力，100% 才明顯變差</strong>；HumanEval 不受 FIM rate 影響。另一方面，FIM rate 對填空能力影響顯著：FIM perplexity 的增益微不足道，但 random span infilling（light）的 pass rate 隨 FIM rate 持續上升——再次證明不能只看 perplexity。主線用 50% 而非 90% 純屬時序意外（消融結果出來前主線已訓完，重訓太貴）；後續補訓一個 FIM rate 90% 的 6.9B 程式碼模型（見表 4），惟圖 13 顯示 50% 離最優不遠。</p>
+<h3 id="43-spm-vs-psm-vs-聯合訓練">4.3 SPM vs PSM vs 聯合訓練</h3>
+<p>SPM 略強於 PSM 且跨規模一致（圖 6）——可能因 SPM 中 prefix 與 middle 是連續文本，模型接續更自然；PSM 則需注意力先定位 span token。但不應只訓 SPM：表 1 顯示 PSM 與 SPM 間有<strong>正向能力遷移</strong>——joint 訓練（FIM rate 50%）在 SPM 模式的成績 ≈ 純 SPM（FIM rate 90%），而<strong>純 SPM 模型在 PSM 評測下近乎全滅</strong>（單行 0.023 vs joint 的 0.550+）。聯合預訓練最高效、也得到具兩種推論模式的最靈活模型。值得注意：先前工作（Donahue 2020、CM3、InCoder）用的都是類 PSM 格式——本文結果顯示那是次優選擇。</p>
+<p>表 1 擇要（temperature 0.2，每題 100 樣本；「單行/多行/random span」各列 PSM｜SPM 評測）：</p>
+<table>
+<thead>
+<tr>
+<th>訓練分佈</th>
+<th>FIM rate</th>
+<th>單行</th>
+<th>多行</th>
+<th>random span</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Joint</td>
+<td>0.5</td>
+<td>0.550｜0.595</td>
+<td>0.265｜0.293</td>
+<td>0.367｜0.379</td>
+</tr>
+<tr>
+<td>Joint</td>
+<td>0.9</td>
+<td>0.616｜0.622</td>
+<td>0.290｜0.305</td>
+<td>0.397｜0.420</td>
+</tr>
+<tr>
+<td>純 PSM</td>
+<td>0.9</td>
+<td>0.583｜0.625</td>
+<td>0.273｜0.305</td>
+<td>0.362｜0.274</td>
+</tr>
+<tr>
+<td>純 SPM</td>
+<td>0.9</td>
+<td>0.023｜0.586</td>
+<td>0.008｜0.301</td>
+<td>0.007｜0.386</td>
+</tr>
+</tbody>
+</table>
+<h3 id="44-context-level-vs-document-level-fim">4.4 Context-level vs document-level FIM</h3>
+<p>Context-level 在全規模一致且顯著優於 document-level（圖 7）——但 FIM perplexity 只差約 0.001 nats/token（圖 8 右），又一次「loss 看不出、採樣見真章」。Document-level 的碎片化無效樣本不傷左到右 loss（圖 8 左），故求實作簡單者仍可選用。</p>
+<h3 id="45-中段選取">4.5 中段選取</h3>
+<p>消融三種語言無關的切法：按行、按 token（BPE 詞）、按字元隨機切。表 2（medium 模型 pass rate）：行級在單行/多行填空略佔優（分佈內），但在 random span 上<strong>近乎全敗（0.015）</strong>；token 級 0.102；<strong>字元級 0.321 且單行/多行不遑多讓</strong>。原因：token 級模型從未見過「token 在中段邊界被切成兩半」的情形，而字元級隨機切天然在中段頭尾引入 subtoken，無訓練-測試落差，能應對真實使用中游標落在 token 中間的情境。</p>
+<h2 id="5-finetune-結果">5. Finetune 結果</h2>
+<p>理想上，AR 模型 finetune 後應達到「當初就以 FIM 預訓練」的水準。既然預訓練學 FIM 免費，直覺上 finetune 也該很快學會——<strong>出乎意料，並非如此</strong>。對一個訓了 100B tokens 的無 FIM XL 模型，掃 16 種 finetune 配置（學習率 0.1/0.2/0.5/1.0 倍預訓練值 × FIM rate 0.5/0.9 × 訓程 25B/50B tokens），與「100B tokens、FIM rate 50% 預訓練、無 finetune」基線比較（圖 9）：<strong>唯一追平基線的配置是最激進的組合</strong>——FIM rate 0.9＋1.0 倍學習率＋50B tokens（相當於預訓練一半的算力）。整體上，更高學習率、更高 FIM rate、更長訓程皆有助。不過少量 finetune（尤其高 FIM rate 與高學習率）已可達到非平凡的 FIM 表現。</p>
+<h2 id="6-討論">6. 討論</h2>
+<p><strong>預訓練 vs finetune</strong>：FIM 預訓練免費的直覺——切三段搬中段等效於創造三份較小文件，每段仍是左到右的下一 token 預測，自迴歸處理的 token 總量不變。但 FIM 資料雖局部與 AR 資料相同，卻在整份文件上施加<strong>不同的全局注意力模式</strong>（圖 10：FIM 讓 transformer 解碼中段時能注意到未來上下文；副作用是 suffix 的機率不再依賴中段）。AR 預訓練學到的文件級注意力模式可能已<strong>僵化（ossification）</strong>，需要長訓程與高學習率才能適應——這或可解釋 finetune 之貴。</p>
+<p><strong>FIM 比 AR 難</strong>：延續文本容易，「以指定結尾為條件」延續困難——須規劃銜接兩端的合理敘事、開頭接得上 prefix、且在對的時機停下接 suffix。模型生不出 <code>&lt;eot&gt;</code> 時常得到與 suffix 接不上的截斷樣本；此類失敗比左到右更麻煩，因為<strong>無法用後處理修復</strong>（AR 採樣可裁到最後一段/行，FIM 不行）。loss 上也可見：同批文件，FIM 格式的整體 perplexity 一致高於 AR 格式（圖 11 左）；但看條件機率則 P_FIM(middle|prefix,suffix) &gt; P_AR(middle|prefix)（圖 11 右）——能看 suffix 確實帶來資訊。</p>
+<p><strong>Context-level 較優的解釋</strong>：document-level FIM 因切塊與打包，常使 prefix/middle/suffix 三者不同時出現在同一 context——<strong>有效 FIM rate</strong>（三段齊聚且為 FIM 格式的樣本比例）實質降低；即使資料中長文件不多，打包的邊角效應仍會壓低有效 FIM rate。</p>
+<h2 id="7-相關工作">7. 相關工作</h2>
+<p>Masked LM（BERT 隨機遮 token；T5/SpanBERT/BART 遮連續 span）與填空相關，但 span 長度太短、目標是表徵學習。另一路是彈性生成順序的自迴歸模型（XLNet、Insertion Transformer、KERMIT、Blank LM）。與本文最近的是「把 infill 區段搬到 context 末尾、以哨兵分隔」一系：Zhu et al. 2019、Donahue et al. 2020、GLM、CM3、<strong>InCoder</strong>（後者同樣以 HumanEval 建採樣式填空評測）。本文差異：聚焦單一空格（single-slot，符合游標場景）、強調大規模訓練的計算效率、證明字元級切段提升穩健性。整體而言賦予模型填空能力有二途——新架構（SpanBERT、XLNet）或資料格式化；後者更簡單通用（可視為 CTRL 式 control code 的一種）。目前規模最大的最強填空系統是 2022 年 3 月釋出的 <strong>code-davinci-002</strong>——本文正是驅動其填空能力的早期研究。</p>
+<h2 id="8-結論">8. 結論</h2>
+<p>因果解碼器 LM 在「左到右＋FIM 變換」混合資料上聯合訓練即可學會填中段：單一 FIM 模型能補 import、寫 docstring、補完函數，涵蓋過去需個別 finetune 的專用模型。核心發現：(1) <strong>FIM-for-free</strong>——同算力下 FIM 模型左到右 loss 不變、FIM loss 更低，嚴格更有能力；(2) finetune 補學 FIM 即使精調超參也難以充分習得，<strong>從頭聯合預訓練更有效</strong>；(3) perplexity 反映不了真實填空表現，須用精心設計的採樣 benchmark；(4) 字元級 FIM 賦予模型 subtoken 穩健性，才能實戰部署（如程式助手）。</p>
+<h3 id="81-建議超參數">8.1 建議超參數</h3>
+<p>字元級切段並必含隨機 span（子詞穩健性）；<strong>PSM＋SPM 聯合預訓練</strong>（正遷移；就子詞穩健而言推論用 PSM 可能優於本文的 SPM 變體）；<strong>context-level FIM</strong> 較優（求簡可用 document-level）；<strong>FIM rate 50%–90% 皆合理</strong>（90% 仍無 AR 損失；先前工作如 InCoder 用 15%，次優）。</p>
+<h3 id="82-未來方向">8.2 未來方向</h3>
+<p>更聰明的 span 選取（語法/語義邊界、單詞 span 對 cloze 大有幫助）；可控生成（RLHF/指令遵循，解決不知使用者要多長多短的問題）；進一步檢驗 FIM-for-free；多空格（multi-slot）填空；改善自然語言 FIM；雙向性與注意力目標的角色（BERT 式架構在單 token 填空上更強，自由形式待研究）。最後提出方法論：<strong>先設定「願為新能力犧牲多少原能力」的預算，再在預算內最大化新能力</strong>——預算-能力取捨分析讓新能力的整合有據可依。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

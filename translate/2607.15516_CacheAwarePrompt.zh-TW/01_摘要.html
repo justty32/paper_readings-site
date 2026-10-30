@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Part 2: 成本模型、CAPC 演算法、AdaptiveCacheBoundary · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2607.15516_CacheAwarePrompt.zh-TW.html">回 2607.15516_CacheAwarePrompt.zh-TW 目錄</a>　<a href="02_%E6%88%90%E6%9C%AC%E6%A8%A1%E5%9E%8B%E8%88%87_Crossover_%E5%88%86%E6%9E%90.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>LLM 部署常規結合兩種成本節省原語——prompt caching 與 prompt compression——但文獻標準化的 query-aware 壓縮為每個 query 產生不同前綴，機械性地使 prefix-strict cache 在每次呼叫時失效。我們在 Sonnet 4.6 API 上實證特徵化發現：cache 具有兩層架構，約 3,500 token 處有尖銳閾值，低於此 hit rate 平台值 ρ≈0.83。成本模型預測且實驗確認——高壓縮比（r≥6）時 query-aware compression 勝過 naive caching。我們提出 <strong>CAPC</strong>：query-agnostic compression + 顯式 cache_control + tier-preserving ratio bound。LongBench-v2 16/16 配置全是最便宜策略（vs cache-only 節省 49%、vs query-aware 節省 64%、vs vanilla 節省 90%）。三個生產驗證：企業工具助手（94k-token tools= schema，51.7% 節省）、graphify RAG（FastAPI 9.3×/httpx 2.4× vs cache-all，85% hit rate）、τ-bench retail（CAPC 最便宜且 reward 與 vanilla 相等 36/50, z=0.00，query-aware 反而貴 +40.1%）。總 API 花費 $98.96。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>現代 LLM 部署結合了兩種文獻迄今分開處理的成本節省原語。Prompt caching（Anthropic 的 cache_control、OpenAI 的自動 caching、Google 的 Vertex caching）透過儲存前綴的 KV-states 並對後續讀取收取折扣費率來節省成本。Prompt compression（LLMLingua、LongLLMLingua、Cmprsr）透過減少發送的 token 數來節省成本。</p>
+<p>這兩種思想通常是衝突的。Query-aware compression 為每個 query 產生不同壓縮前綴，破壞 caching 所需的前綴約束：每次呼叫都是 cache miss、壓縮節省被反覆 cache write 成本銷毀。</p>
+<p>我們在 Sonnet 4.6 上對此交互進行實證特徵化，證明隱含 ρ=1.0 假設以三種方式錯誤描述了成本-品質地貌：(1) cache 具有兩層架構，約 3,500 token 處有尖銳閾值；(2) r≥6 時 query-aware compression 勝過 cache-only——與直覺相反；(3) 在 LongBench-v2 16 個配置中，CAPC 嚴格支配文獻基線。</p>
+<p><strong>貢獻</strong>：(1) Sonnet 4.6 cache 實證特徵化——兩層架構（hot 低於 ~3k token 且 ρ≤0.83；persistent 以上 ρ≈1.0, σ=0）。(2) 成本模型以 ρ=1.0 為特例，產生 crossover 預測——r≥6 時 cache-only 不敵 query-aware——並在真實 API 花費上精確驗證。(3) CAPC + tier-preserving ratio bound。(4) LongBench-v2 16/16 dominance。(5) 生產驗證（企業助手 51.7%、graphify RAG、τ-bench retail）。(6) 知識圖譜 RAG「最後一哩交付」框架。(7) τ-bench 公開基準驗證（確定性 reward）。</p>
+<p><strong>範圍與可推廣性</strong>：成本模型、crossover 分析方法、CAPC 演算法、tier-preserving ratio bound、AdaptiveCacheBoundary 演算法是框架貢獻——僅依賴存在於具有 cw&gt;cr 定價結構的 prefix-strict caching API（目前所有主要商業 LLM API 共享此屬性）。具體數值——~3,500 token 的兩層閾值、ρ≈0.83 的 hot-tier 平台值、16/16 dominance 百分比、crossover 閾值 ρ_cross(r)——是 Sonnet 4.6 在 2026 年 5 月的量測。我們預期定性發現（兩層架構、小前綴 ρ&lt;1、CAPC dominance）將轉移到其他 provider 和未來模型版本，而具體數字需要重新量測。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p><strong>Prompt caching（§2.1）</strong>：Anthropic、OpenAI、Google 在 2024–2025 年發布了 cache_control 式 prefix-caching API。學術研究近期且狹窄——Don&#x27;t Break the Cache 評估三種策略但未提出成本模型、Auditing Prompt Caching 將 caching 作為隱私側通道風險、vCache/GenCache 研究語義 caching（與 prefix caching 正交）。<strong>本論文的空白</strong>：首次系統性 ρ(N,|P|) 特徵化，發現兩層架構及 ~3,500 token 閾值。</p>
+<p><strong>Prompt compression（§2.2）</strong>：query-aware 方法主導（LLMLingua、LongLLMLingua、ProCut、CompactPrompt、500xCompressor）。關鍵屬性：所有 query-aware 方法按構造為每個 query 產生不同壓縮前綴——正是 prompt caching 所禁止的屬性。Query-agnostic 文獻很小：Cmprsr 訓練 RL 驅動的 query-agnostic 抽象壓縮器並指出結果&quot;適合預先計算&quot;，但未對 caching 經濟進行建模。<strong>空白</strong>：將 query-agnostic compression 定位為其隱含的 cache-preserving 設計選擇，識別出過度壓縮將 cache 前綴推入 hot tier 的新失敗模式。</p>
+<p><strong>Cost-aware model routing（§2.3）</strong>：FrugalGPT 引入 LLM cascade、RouteLLM 訓練二元路由器、xRouter 使用 RL 進行成本感知編排、Cascade Routing 框架統一前述。這些工作將每模型價格視為靜態常數；無一考慮 cache-stickiness。<strong>空白</strong>：ρ(N,|P|) 成本模型可直接與這些路由器組合。</p>
+<p><strong>Agent and reasoning budget control（§2.4）</strong>：預算感知工具使用、INTENT、Re-FORC 在呼叫次數而非 token 內容上操作——與 CAPC 乾淨組合。</p>
+<p><strong>Industry guidance（§2.5）</strong>：大量的 provider 文檔和工程部落格給出正確但非正式的 cache-aware prompt 建構指導（&quot;static first, dynamic last&quot;；&quot;compress first, then cache&quot;）。<strong>空白</strong>：將此非正式生產指導轉化為（a）帶量測參數的形式成本模型、（b）帶推導設計規則的演算法、（c）對已建立學術基線的嚴格實證評估。</p>
+<p>表 1 將 CAPC 定位為唯一同時具有：實證 ρ(N,|P|) 量測、兩層 cache 模型、compress×cache 聯合優化、形式成本模型的文獻貢獻。</p>
+<h2 id="3-sonnet-46-prompt-caching-的實證特徵化">3. Sonnet 4.6 Prompt Caching 的實證特徵化</h2>
+<p>既有工作要麼將 ρ 視為未量測的隱含 ρ=1.0，要麼研究 caching 行為但不產出定量成本模型。本節報告四個實證發現。所有量測使用 claude-sonnet-4-6、5 分鐘 TTL ephemeral caching、每個 cache 前綴以 per-run UUID（RUN_NONCE）標籤防止跨實驗 cache 污染。總特徵化成本：$1.91。</p>
+<h3 id="31-ρnp-具有兩層架構">3.1 ρ(N,|P|) 具有兩層架構</h3>
+<p>在 |P|=2.4k token（n=3 試驗，N 達 50）下量測，累積 hit rate 從 ρ(N=5)=0.47 爬升至 ρ(N=50)=0.89 的平台值，平台值 σ≤0.01。多尺寸 sweep（2k/4k/6k/8k token）揭示階梯函數：2k 時 ρ(N=30)=0.833（σ=0，三次試驗完全相同）；4k 及以上 ρ=1.0 從第一次後續呼叫開始。採用 T≈3,500 token 作為建模閾值。</p>
+<h3 id="32-前綴失效是-token-strict但有一個-tokenizer-注意事項">3.2 前綴失效是 token-strict，但有一個 tokenizer 注意事項</h3>
+<p>測試四種受控突變：（a）不同的 post-cache_control query（預期 HIT）、（b）前綴開頭 1 字元突變（預期 MISS）、（c）中間 5 字元突變（預期 MISS）、（d）末尾追加真實 token 後綴（預期 MISS）。四種預期全部滿足（4/4 PASS）。然而：前置單個空白字元意外 HIT——Claude 的 tokenizer 在計算 cache key 前正規化前導和尾隨空白。</p>
+<h3 id="33-帳單與文檔費率在-1-內調節">3.3 帳單與文檔費率在 &lt;1% 內調節</h3>
+<h2 id="三次獨立運行中anthropic-報告的帳單總額與機械計算300mtok-輸入1500mtok-輸出375mtok-cache-write-5-min030mtok-cache-read在-1-內一致發布的定價表是精確的">三次獨立運行中，Anthropic 報告的帳單總額與機械計算（$3.00/MTok 輸入、$15.00/MTok 輸出、$3.75/MTok cache write 5-min、$0.30/MTok cache read）在 &lt;1% 內一致。發布的定價表是精確的。</h2>
+<h2 id="title-part-2--成本模型至-adaptivecacheboundary-arxiv_id-260715516-parent-translate260715516_cacheawarepromptzh-twmd">title: Part 2 — 成本模型至 AdaptiveCacheBoundary
+arxiv_id: 2607.15516
+parent: ../translate/2607.15516_CacheAwarePrompt.zh-TW.md</h2>
+<h1 id="part-2-成本模型capc-演算法adaptivecacheboundary">Part 2: 成本模型、CAPC 演算法、AdaptiveCacheBoundary</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《一種可擴展的機率神經符號穩健性驗證方法》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：（EVENFLOW-project-EU 團隊）</p><p>日期：2025-02，NeSy 形式驗證</p><p>arXiv：2502.03274</p><p><a href="https://arxiv.org/abs/2502.03274" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="一種可擴展的機率神經符號穩健性驗證方法重點摘要">《一種可擴展的機率神經符號穩健性驗證方法》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>形式驗證機率 NeSy 系統的穩健性</strong>（輸入擾動不改變推理輸出）。先證明精確求解的核心計算（E-WMC 決策版）是 <strong>NP^PP-complete</strong>（極難）；面對此結果，提出<strong>首個近似、鬆弛式（relaxation-based）的機率 NeSy 驗證法</strong>——把整個 NeSy（神經網路 + 由知識編譯得的算術電路）編成<strong>單一端到端可微計算圖、匯出 ONNX</strong>，直接用現成的鬆弛式 NN 驗證器（auto_LiRPA/IBP）做驗證。比 solver 法<strong>指數級更可擴展</strong>，並在真實自駕場景驗證安全性質。</p>
+<h2 id="問題">問題</h2>
+<ul>
+<li>機率 NeSy（如 DeepProbLog）：NN 從子符號輸入抽概念 → 符號層用機率語意推理答查詢。要部署到關鍵領域需<strong>形式保證</strong>。</li>
+<li><strong>穩健性驗證</strong>：對輸入 x 的 ε-ball 內所有擾動，機率輸出 P（滿足約束） 是否恆 &gt; 閾值 T。等於求 NeSy 機率輸出在擾動下的 min/max。</li>
+</ul>
+<h2 id="背景">背景</h2>
+<ul>
+<li><strong>WMC（加權模型計數）</strong>：機率推理常化約為 WMC＝公式所有模型世界的機率和。</li>
+<li><strong>知識編譯（KC）</strong>：把公式編成可處理電路（葉子是字面、節點是 AND/OR），離線編譯一次 → 線上多查詢多項式時間（amortized inference）。做 WMC 時把布林電路換算術電路（<strong>AND→×、OR→+、¬→1−x</strong>）。</li>
+<li><strong>NN 穩健性驗證</strong>：solver 式（MILP/SMT，精確但不可擴展，NP-hard）vs <strong>鬆弛式（IBP 區間界傳播，不完備但 sound——若下界為正則確定穩健，可擴展）</strong>。</li>
+</ul>
+<h2 id="理論貢獻精確求解極難">理論貢獻：精確求解極難</h2>
+<ul>
+<li>引入決策問題 <strong>E-WMC</strong>：給布林公式、各變數的機率區間、閾值 T，「<strong>是否存在區間內的機率指派使 WMC ≥ T</strong>?」</li>
+<li><strong>Proposition 3.2：E-WMC 是 NP^PP-complete</strong>。
+<ul>
+<li><strong>歸屬</strong>：符號電路是輸入變數的<strong>多線性多項式</strong>，極值落在定義域<strong>頂點</strong>（各變數取上界或下界）→ 2^n 組合搜尋空間，每組用 PP-oracle（WMC 屬 PP/#P）檢查 → 落在 NP^PP。</li>
+<li><strong>困難性</strong>：把 <strong>E-MAJSAT</strong>（NP^PP 的 SAT 完備問題）歸約到 E-WMC。</li>
+</ul>
+</li>
+<li>此結果<strong>證成用鬆弛式近似</strong>。</li>
+</ul>
+<h2 id="方法端到端鬆弛驗證">方法：端到端鬆弛驗證</h2>
+<ul>
+<li>因 NN 輸出餵進算術電路、且電路是代數的 → <strong>整個 NeSy 系統＝單一端到端可微計算圖</strong>，可在 PyTorch 建成單一模組、匯出 <strong>ONNX</strong>。</li>
+<li>ONNX 是 NN 驗證器的標準輸入格式 → 可<strong>幾乎開箱即用</strong>現成的 solver 式（Marabou）或鬆弛式（auto_LiRPA、VeriNet）驗證器。聚焦鬆弛式：<strong>直接擾動輸入、在整個 NeSy 輸出上算界，不需先算 NN 輸出的中間界</strong>。</li>
+</ul>
+<h2 id="實驗">實驗</h2>
+<ul>
+<li><strong>多位數 MNIST 加法</strong>（2–6 位數、3 種擾動大小、72h timeout）。比較三法：
+<ul>
+<li><strong>E2E-R</strong>（本文法，auto_LiRPA + IBP 端到端）;</li>
+<li><strong>R+SLV</strong>（NN 部分鬆弛 + 符號部分轉多項式用 Gurobi 求解，精確界）;</li>
+<li><strong>Marabou</strong>（SMT 精確，但不支援 Softmax 等運算子，只能驗 CNN 部分）。</li>
+<li><strong>結果</strong>：<strong>E2E-R 比 R+SLV 指數級更快</strong>（對數尺度）;R+SLV 在 6 位數 timeout（5 位數僅驗 &lt;5%）;Marabou 光驗 CNN 就 <strong>314 秒/樣本</strong>（慢數個數量級）。</li>
+<li><strong>品質權衡（Table 1）</strong>：R+SLV 界更緊（符號精確）;E2E-R 隨電路變大界品質下降（誤差沿大圖累積），但<strong>穩健性差異極小</strong>。</li>
+</ul>
+</li>
+<li><strong>自駕</strong>（真實資料集，兩個 6 層 CNN：物件偵測 + 動作選擇；驗安全約束）：E2E-R <strong>執行時間幾乎不受擾動大小影響</strong>；穩健準確率隨擾動增大而降。高維輸入 + 較大網路皆可處理。</li>
+</ul>
+<h2 id="結論與未來">結論與未來</h2>
+<ul>
+<li>結合「NN 驗證的鬆弛技術」+「知識編譯」評估輸入擾動對機率邏輯輸出的影響；理論動機 + 合成/真實資料驗證。</li>
+<li>未來：接更精巧的 NN 驗證（（反向）符號區間傳播）、認證訓練（certified training）以提升估計穩健性。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批中<strong>唯一聚焦「形式驗證 + 複雜度理論」<strong>的 NeSy 論文，與 <a class="paper-reference" href="2510.14538_Reasoning_Shortcuts.%E6%91%98%E8%A6%81.html">2510.14538</a>（RS）關心的「NeSy 可靠性」呼應，但這篇給的是</strong>可證的穩健性憑證</strong>而非概念正確性。</li>
+<li>與 <a class="paper-reference" href="2509.07665_DeepGraphLog.%E6%91%98%E8%A6%81.html">2509.07665</a><a class="paper-reference" href="2505.20313_Reasoning_in_NeSy.%E6%91%98%E8%A6%81.html">2505.20313</a> 同樣涉及 WMC/知識編譯，但目的相反：那些用 KC 做推理/學習，這篇用 KC 的算術電路結構<strong>做驗證</strong>。</li>
+<li>最值得記的兩點：<strong>(1) E-WMC 是 NP^PP-complete</strong>（量化了「為什麼精確驗證機率 NeSy 這麼難」）;<strong>(2) 把整個 NeSy 編成 ONNX 圖 → 直接餵現成 NN 驗證器</strong>這個工程招式，讓 NeSy 驗證「開箱即用」且可擴展。</li>
+<li>適合做<strong>安全關鍵 NeSy 部署、形式驗證、認證穩健性</strong>的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2502.03274_Probabilistic_NeSy_Robustness_Verification.zh-TW.html"><code>../translate/2502.03274_Probabilistic_NeSy_Robustness_Verification.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

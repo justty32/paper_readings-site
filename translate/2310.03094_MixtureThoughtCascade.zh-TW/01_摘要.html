@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2310.03094_MixtureThoughtCascade.zh-TW.html">回 2310.03094_MixtureThoughtCascade.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>GPT-4 這類大型語言模型（LLM）在各種任務上表現卓越，但強效能常伴隨付費 API 的高昂開銷。本文研究如何建構 <strong>LLM 級聯（LLM cascade）</strong> 以節省使用成本，特別針對推理（數學、因果等）任務。級聯管線的直覺是：<strong>簡單問題可交給較弱但更便宜的 LLM，只有困難問題才需要更強、更貴的 LLM</strong>。為實現此決策，我們把弱 LLM 的「答案一致性（answer consistency）」當作題目難度的信號，並提出數種答案取樣與一致性檢查方法，其中一種利用<strong>兩種思維表徵的混合（Chain-of-Thought 與 Program-of-Thought）</strong>。在六個推理基準上（弱模型用 GPT-3.5-turbo、強模型用 GPT-4）實驗顯示，我們的級聯能達到與純用強模型相當的表現，卻只需其約 <strong>40% 的成本</strong>。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>由於訓練與推論所需的算力龐大，許多 LLM 只能透過付費 API 取得，帶來高昂金錢成本。不同型號的 LLM 能力與成本各異：表現較好者（強 LLM）通常比表現較差者（弱 LLM）貴——例如 GPT-4 的輸出 token 費用是 GPT-3.5-turbo 的 <strong>30 倍</strong>。這暗示了省錢之道：簡單題交弱模型，困難題才交強模型。</p>
+<p>Chen et al.（2023a，即 FrugalGPT）探索過「LLM 級聯」：問題先由弱 LLM 回答，若答案不被接受再選擇性地路由到強 LLM（圖 1）。該作法<strong>微調一個較小的 LLM 去為「問題＋弱模型答案」評分</strong>以決定是否路由。作者觀察到：對複雜推理任務，這種方法表現不佳——<strong>光憑題目與答案的字面表述，即便用夠大的 LLM 也很難評估推理題的難度與答案正確性</strong>，因為推理路徑看似合理，錯誤卻可能很細微。</p>
+<p>本文從不同角度設計路由決策者，即弱 LLM 的**「答案一致性」**（Wang et al. 2023）。靈感來自觀察：<strong>題目簡單時弱模型多次取樣的答案傾向一致，題目困難時則不一致</strong>。據此提出兩類方法：</p>
+<ul>
+<li><strong>投票式（vote-based）</strong>：檢查多個答案樣本對「多數決答案」的同意度是否超過預設信心門檻。</li>
+<li><strong>互檢式（verification-based）</strong>：檢查來自不同 prompt 的多數決答案是否彼此一致。</li>
+</ul>
+<p>為在推理任務落實，進一步研究多種答案取樣策略，包含從單一或兩組任務示範取樣。特別提出**「混合思維表徵（mixture of thought, MoT）」**——同時從思維鏈（CoT，以自然語言逐步描述）與思維程式（PoT，以程式碼描述並執行）取樣答案，仿效專家能對同一問題提供多元視角。這承襲集成（ensembling）精神，但首次用於建構 LLM 級聯。把不同取樣策略與兩種一致性檢查配對，共得 <strong>10 種級聯實作</strong>。</p>
+<p>在六個推理資料集（數學、符號、因果）上以 GPT-3.5-turbo 為弱模型、GPT-4 為強模型實驗，證明基於答案一致性的級聯普遍能達到「與純用強模型相當甚至更好」的表現，卻只需其一半或更少的相對成本；其中基於 MoT 的方法<strong>僅用 GPT-4 的 40% 成本</strong>即達相當表現。分析亦顯示，不同 prompt 設定對較複雜問題常給出不同意見、對簡單問題則趨於一致，讓難度判斷更準確。與微調小模型評分器（Chen et al. 2023a）及其他字面式路由變體相比，本法有明顯優勢。</p>
+<h2 id="2-面向低成本推理的-llm-級聯">2. 面向低成本推理的 LLM 級聯</h2>
+<h3 id="21-級聯總覽">2.1 級聯總覽</h3>
+<p>假設有兩個 LLM：弱模型 <code>LLM^w</code>（較差但便宜）與強模型 <code>LLM^s</code>（較好但昂貴）。給定問題 Q，級聯先用弱模型得初始答案 <code>A^w</code>；此答案連同弱模型產生的其他中繼資料，交給<strong>級聯決策者（cascade decision maker）</strong> 判斷是否接受為最終答案。若被拒，才呼叫強模型得更可靠的答案 <code>A^s</code>。回答一題的總成本為：</p>
+<blockquote>
+<p><strong>C = C^w + C^d + 1_reject · C^s</strong>（式 1）</p>
+</blockquote>
+<p>其中 <code>C^w</code>、<code>C^s</code> 為呼叫弱／強模型的成本，<code>C^d</code> 為級聯決策過程的成本，<code>1_reject=1</code> 當且僅當決策者拒絕弱模型答案。</p>
+<p>兩個 LLM 都以 few-shot in-context learning 解題：弱模型答案 <code>A^w</code> 由 M 個任務示範與問題 Q 串接成的 prompt 取樣而得（即 M-shot）。推理任務中，LLM 通常被要求以「思維表徵」闡述推理過程——CoT 以自然語言逐步描述，PoT 以程式語言描述；答案由文字擷取（CoT）或執行程式碼取得（PoT）。</p>
+<h3 id="22-基於答案一致性的級聯決策">2.2 基於答案一致性的級聯決策</h3>
+<p>決策者的核心是：接收弱模型輸出，決定是否路由到強模型。理想決策者<strong>只在弱模型答錯時才呼叫強模型</strong>，以在不損整體表現下最小化總成本。</p>
+<p><strong>答案一致性與取樣來源</strong>：Wang et al.（2023）不用貪婪解碼單一答案，而是取樣多條推理路徑再邊際化選出最一致的答案。本文的假設是：<strong>當弱模型對某題取樣出高度一致的答案，代表它對此題有高「信心」、其最一致答案很可能正確，就不必動用強模型</strong>。取樣一致性有三種來源：</p>
+<ul>
+<li><strong>同分佈取樣（in-distribution）</strong>：同一 prompt 下設非零溫度重複取樣多個答案（如 Wang et al. 2023）。</li>
+<li><strong>不同示範集取樣</strong>：同一思維表徵下用兩組任務示範取樣。除既有 8 個 CoT 示範外，另標註第二組 8 個示範以擴大取樣來源多樣性。</li>
+<li><strong>不同思維表徵取樣</strong>：既有文獻多獨立研究 CoT 或 PoT，本文主張兩者協同。假設<strong>唯有當 LLM 能給出「與中間步驟如何表達無關」的一致答案時，才算真正高信心</strong>。故從 CoT 與 PoT 混合（MoT）取樣。</li>
+</ul>
+<p><strong>方法一：投票式決策</strong>。對一個 prompt，記弱模型對題目 Q 產生的答案集為 <code>(A^w_1,...,A^w_K)</code>，K 為預設樣本數（兩個 prompt 時各記為 K₁、K₂）。此方法不區分答案來自單一或多個 prompt（不同 prompt 的樣本投票權重相等）。最一致答案（最多樣本同意者）即最終答案 <code>A^w</code>。一致性以<strong>同意分數 s</strong> 衡量：</p>
+<blockquote>
+<p>s = （與 A^w 相同的樣本數）/（總樣本數）（式 2）</p>
+</blockquote>
+<p>s 越大越一致。配合預設門檻 τ：<code>s ≥ τ</code> 則接受弱模型答案，否則拒絕。總成本因門檻不同而變。</p>
+<p><strong>方法二：互檢式決策</strong>。當從兩個不同 prompt 設定（不同示範或不同思維表徵）取樣時，比較各自的最一致答案 <code>A^w′_1</code>、<code>A^w′_2</code> 是否相同：</p>
+<blockquote>
+<p>s = 1[A^w′_1 = A^w′_2]（式 3）</p>
+</blockquote>
+<p><strong>只有兩答案相同（s=1）</strong> 才接受弱模型答案，此時最終答案即該共同答案。</p>
+<p>兩法適用情境不同：<strong>投票式</strong>適合有預設成本約束的場景（可調門檻對齊約束）；<strong>互檢式</strong>無須調門檻即能產出相對最優結果，但較不靈活。</p>
+<h3 id="23-推理任務上的級聯實作">2.3 推理任務上的級聯實作</h3>
+<p>以不同取樣來源實例化兩種方法，共得 <strong>10 種</strong>（圖 2）：</p>
+<ul>
+<li><strong>6 種投票式</strong>：CoT-1D-Vote / PoT-1D-Vote（單一表徵、單一示範集，K 個樣本算一致性）；CoT-2D-Vote / PoT-2D-Vote（同表徵、兩組示範集）；MoT-1D-Vote（CoT 取 K₁ 個、PoT 取 K₂ 個，合併算一致性分數 s）；MoT-2D-Vote（CoT 與 PoT 各用不同示範集）。</li>
+<li><strong>4 種互檢式</strong>（假設樣本來自兩個不同 prompt）：CoT-2D-Verify（兩組 CoT 示範）、PoT-2D-Verify（兩組 PoT 示範）、MoT-1D-Verify（兩種表徵、同一組示範）、MoT-2D-Verify（兩種表徵且各用不同示範集）。</li>
+</ul>
+<p><strong>成本可比的樣本數配置</strong>：為公平比較各法辨識易／難題的能力，須讓成本相當。強模型成本 <code>C^s</code> 與方法無關；但各法呼叫弱模型的 <code>C^w</code> 不同（例如同樣總樣本數下，CoT-1D-Vote 只送一次 prompt、CoT-2D-Vote 送兩次，input token 加倍）。故以<strong>粗粒度成本對齊</strong>統一 <code>C^w</code>：分析建議不同方法用不同 K（詳見附錄 A）。由於只能做到近似可比，仍回報各法的實際 token 成本。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

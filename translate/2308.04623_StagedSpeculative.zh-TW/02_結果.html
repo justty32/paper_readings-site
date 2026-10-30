@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_結果 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2308.04623_StagedSpeculative.zh-TW.html">回 2308.04623_StagedSpeculative.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-結果">4. 結果</h2>
+<p><strong>模型設定</strong>：oracle 為 GPT-2-Large（762M，在 The Stack 的 Python 子集微調）；draft 為小型 GPT-2（40M，同資料訓練）；draft2 為 <strong>Katz backoff trigram（N-gram）模型</strong>——由 draft 模型以採樣溫度 1.5 跑兩小時生成 1.2 億 token 後建成。所有評測在靜置的 RTX 4090（頂級消費級硬體）上進行。對照兩種方法：baseline（oracle 逐 token 解碼）與 Leviathan et al. 的標準推測解碼。於 HumanEval 的 164 題、確定性與 topk 兩種採樣下評測。</p>
+<p><strong>表 1（記憶體頻寬，相對 baseline=1.00）</strong>：確定性 baseline 1.00 → 推測 0.31 → <strong>staged 0.23</strong>；topk 1.00 → 0.48 → <strong>0.35</strong>。分階段推測用的頻寬顯著少於另兩法。</p>
+<p><strong>表 2（吞吐量 tokens/秒）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>採樣</th>
+<th>baseline</th>
+<th>標準推測</th>
+<th>分階段推測</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>確定性</td>
+<td>150</td>
+<td>350</td>
+<td><strong>475</strong></td>
+</tr>
+<tr>
+<td>Topk</td>
+<td>150</td>
+<td>219</td>
+<td><strong>298</strong></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>確定性採樣</strong>：較參考實作平均提速 <strong>3.16x</strong>、較標準推測採樣 <strong>1.36x</strong>。且本文用的是相對小的模型，更大模型預期增益更大。Profiling 顯示實作有 <strong>35% 來自 Python 基礎設施的開銷</strong>，可由更有效率的實作或攤到更大模型上降低。</li>
+<li><strong>Topk（k=50, T=1）採樣</strong>：兩種推測法都因批次中 token 被<strong>隨機拒絕</strong>而明顯退化，但分階段推測仍領先——較 baseline <strong>1.98x</strong>、較標準推測仍 <strong>1.36x</strong>。</li>
+</ul>
+<p><strong>Token 來源（圖 3）</strong>：模型通常能把最簡單、最明顯的 token（如空白）透過兩個 transformer 批次解出，因它們源自 N-gram 模型；較難的由小模型生成；最關鍵的 token（如「if」之後的 token）才由 oracle 產生。（當然所有 token 最終都經 oracle 校驗。）因批次大小有限，這只是趨勢、非每個 token 皆然。</p>
+<p><strong>增益變異（作者自陳缺點）</strong>：真實 prompt 上效能增益高可達 10x、也可能僅 2x，很大程度取決於難內容的稠密或稀疏——例如高縮排 Python 比無縮排更能利用 N-gram 模型、增益更大。作者推測這些模型代表「<strong>每單位資料熵約為固定成本</strong>」：極低熵生成（如純空白）會被極快產生、效能逼近大批次推論；高熵稠密生成則各階段都得靠小批次解碼。由此得一推論：<strong>LLM 生成的多數文本，其熵低於其作者模型的能力；大模型增加的準確度僅集中在少數關鍵 token 上</strong>。</p>
+<p><strong>未來工作</strong>：(1) T&gt;0 時或可先生成 multinomial CDF、再據此挑選要組進批次的 token 而更快；(2) 用更大模型（8-bit 量化下消費級 GPU 可容納 20B 模型）可在裝置端獲得更大增益，並容納<strong>再多一階段推測</strong>（20B→1B→50M→N-gram）；(3) 研究比 N-gram 更好、但仍能在 &lt;10μs 內執行的更佳最底層草稿模型。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>本文描述並實作了對既有推測解碼的數項改進。第一，把送給 oracle 的批次重構為<strong>樹</strong>，以降低生成成本、提高每批次期望 token 數。第二，<strong>加入第二階段推測</strong>以加速草稿模型的解碼。整體上，較標準單批次推論達到平均 <strong>3.16x</strong> 的加速。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2308.04623_StagedSpeculative.%E6%91%98%E8%A6%81.html"><code>../summarize/2308.04623_StagedSpeculative.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

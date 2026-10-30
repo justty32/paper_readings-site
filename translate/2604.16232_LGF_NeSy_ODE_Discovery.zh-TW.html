@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Latent Grammar Flow：以隱空間文法流發現常微分方程（Neuro-Symbolic ODE Discovery with Latent Grammar Flow） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Karin Yu, Eleni Chatzi, Georgios Kissas（ETH Zurich / Swiss Data Science Center）</p><p>日期：2026-04</p><p>arXiv：2604.16232</p><p><a href="https://arxiv.org/abs/2604.16232" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="latent-grammar-flow發現常微分方程的神經符號生成框架">Latent Grammar Flow：發現常微分方程的神經符號生成框架</h1>
+<p>ETH Zurich AI Center 與結構工程研究所、Swiss Data Science Center</p>
+<h2 id="摘要">摘要</h2>
+<p>理解自然與工程系統常仰賴<strong>符號表述</strong>（如微分方程），其可解釋、可遷移皆勝於黑箱模型。本文提出 <strong>LGF（Latent Grammar Flow）</strong>——一個從資料發現 ODE 的神經符號生成框架。LGF 把方程以<strong>文法（grammar）表示</strong>嵌入<strong>離散隱空間</strong>，並以<strong>行為損失</strong>強迫語義相似的方程在空間中靠近；再以**離散流模型（discrete flow）**引導採樣，遞迴生成最擬合觀測資料的候選方程。領域知識與約束（如穩定性）可內嵌進規則，或作為條件預測器使用。</p>
+<p><strong>關鍵詞</strong>：深度生成模型、動力系統、方程發現、流模型、形式文法、ODE、符號迴歸。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>自然與工程系統常以動力模型描述，其支配律以微分方程從觀測導出。ODE 推斷因噪聲、不確定與**不適定性（ill-posedness）**而困難。資料驅動法（如 Neural ODE）雖能模擬，但多為黑箱、難遷移、難解釋。**符號迴歸（SR）**則直接從資料找緊湊透明的數學式，提供可解釋與可遷移性。</p>
+<p>SR 可分<strong>生成法</strong>（學方程分布再採樣，常用 transformer，需大語料）、<strong>搜尋法</strong>（演化、組合搜尋、RL 探索；搜尋空間可用文法、網路結構或字典限制）、以及<strong>混合法</strong>（用訓好的模型採樣，再以演化策略調整先驗如隱向量/提示）。</p>
+<p>ODE 有隱式（𝒟(u(t))−F(t)=0）與顯式（u⁽ⁿ⁾=f(...)）兩形，並非所有隱式都能全域化為顯式。多數 SR 把 ODE 當函數逼近 f(X)=y，為避免平凡解與強制階數，只能處理<strong>顯式</strong> ODE。</p>
+<p>LGF 同時支援<strong>顯式與隱式</strong> ODE：把方程的符號結構（規則序列）嵌入離散隱空間，用流模型 + 解碼器引導採樣。既有文法法（ProGED、GODE）靠 Monte-Carlo 採樣（昂貴）或嵌入<strong>連續</strong>隱空間（鬆弛離散本質、隱表示差、拒絕採樣多）。LGF 改用<strong>離散降維 + 條件式隱空間流生成</strong>。</p>
+<p><strong>主要貢獻</strong>：</p>
+<ul>
+<li>提出 <strong>GQAE（文法量化自編碼器）</strong>，把規則化表示嵌入離散隱空間。</li>
+<li>依<strong>行為距離</strong>重塑隱空間，兼顧結構與語義行為。</li>
+<li>以階數與穩定性條件注入領域知識並訓練預測器。</li>
+<li>在離散隱空間以<strong>離散流 + 預測器</strong>做引導採樣。</li>
+</ul>
+<h2 id="2-方法">2. 方法</h2>
+<h3 id="21-文法表示">2.1 文法表示</h3>
+<p>CFG = {終端 𝒯, 非終端 𝒩, 產生規則 𝒫, 起始符 𝒮}。遞迴套用規則生成終端串，反之給定式子可解析為規則序列。天然滿足語法限制（括號平衡）、免學 token 或建表達式樹。<strong>純量常數不展為規則序列</strong>（會太長、難訓），改用佔位符 C，數值之後再優化。</p>
+<h3 id="22-文法離散隱嵌入gqae">2.2 文法離散隱嵌入（GQAE）</h3>
+<p>不像文法 VAE 映到連續空間，GQAE 用量化映到<strong>離散</strong>隱空間。改造 Mentzer 等人的 <strong>FSQ-AE（有限純量量化自編碼器）</strong>（比 VQ-VAE 簡單、免訓 codebook）。把式子解析成規則序列、表為 one-hot 矩陣（最大長度 N_max × 規則數），編碼器映到隱分布，FSQ 量化（指派到最近量化向量），解碼器還原規則序列。離散降維、減少拒絕採樣、提升探索效率。</p>
+<h3 id="23-行為隱距離">2.3 行為隱距離</h3>
+<p>離散隱空間免 Gaussian 先驗。但 ODE 不只由符號結構定義，也由其<strong>動力學行為</strong>定義——結構像不代表行為像（例：u+3t·u̇ 與 u+3t²·u̇ 解差很多）。沿用 Mežnar 等人「以行為分布定義式子距離」的觀點並適配 ODE：只看<strong>內在動力學</strong>（左式微分算子 𝒟(u(t))），在向量場上取樣（t,u,u̇ 共 8×16×16=2048 點），每式以 25 組隨機純量（−10~10）求均值/標準差。取<strong>平方 Wasserstein 距離的對數</strong>（對數降離群影響）當語義距離。</p>
+<p>行為損失 ℒ_W = ‖z_e,i − z_e,j‖² − λ_W·W₂(...)，把語義近的式子在隱空間拉近。總損失 ℒ_GQAE = ℒ_BCE（重建）+ βW·ℒ_W。用 Adam、PyTorch。</p>
+<h3 id="24-離散流匹配與條件引導">2.4 離散流匹配與條件引導</h3>
+<p>流模型把簡單分布（噪聲）轉成複雜目標分布。離散態無梯度（無法定義 score），改以<strong>連續時間 Markov 鏈</strong>的速率矩陣 R_t（依 Kolmogorov 方程描述狀態是否跳變）做離散流匹配；訓練去噪模型 p_{1|t}(x₁|x_t) 把噪聲態映回目標態。採用 Nisonoff 等人的<strong>離散引導</strong>並把預測器 p(y|x,t) 注入速率矩陣，且<strong>擴展到多預測器</strong>（聯合機率連乘）。</p>
+<h3 id="25-最佳化發現流程與引導">2.5 最佳化、發現流程與引導</h3>
+<p><strong>兩階嵌套</strong>：外層 GQAE 採 ODE 骨架，內層用 Scipy 的 <strong>Nelder-Mead</strong>（無導數）優化純量。靜態預測器（如階數，跨問題不變）離線訓；動態預測器（穩定性、優化目標值，隨資料集變）每資料集重評。</p>
+<p><strong>穩定性</strong>：先用 Lyapunov 間接法（線性化、看 Jacobian 特徵值）；非自治系統不確定時改數值評估向量場的有界/衰減（耗散傾向）——非正式證明但實用。</p>
+<p><strong>目標</strong>：ℒ_IC = α·複雜度 𝒞 + (1−α)·n_s·準確度（α=0.1）。外層序貫採樣→評估動態條件→訓練動態預測器→迭代。收斂條件：新唯一式增量低於門檻<strong>且</strong>目標停滯。內層 Nelder-Mead 兩階段公差（先粗後細，loss&lt;25 才細修），準確度用 ODE 殘差 ℒ_DE 或（殘差夠低時）解損失 ℒ_SOL（需解 ODE）——對差候選跳過解 ODE 省成本。並對和/積項做化簡剪除。</p>
+<h2 id="3-結果">3. 結果</h2>
+<p>以相對 L2 誤差比較，三組 benchmark 皆加 5% 高斯噪聲。</p>
+<ul>
+<li><strong>Benchmark 1</strong>（30 個一階顯式 ODE，23 取自 ODEBench + 7 取自 Yu 等人；外層 10 代、族群 100；此例不用階數/穩定性引導）：PySR 最準，LGF 與 ProGED 相近、勝 ODEFormer 與 GODE。ODEFormer 偏好過簡式（複雜度顯著低於真值），LGF/ProGED/GODE 複雜度貼近真值。</li>
+<li><strong>Benchmark 2</strong>（5 線性 + 5 非線性，已知階數/穩定性；10 代、族群 100）：LGF 在 u 與 u̇ 相對 L2 誤差<strong>勝全部</strong>（u:0.098, u̇:0.110），ü 第二（GODE 之後）但<strong>族群只用 GODE 一半</strong>，凸顯採樣效率。</li>
+<li><strong>Benchmark 3</strong>（7 個二階動力系統：線性化鐘擺、Duffing、Van der Pol、阻尼振子、指數剛度、非線性阻尼；<strong>只量測加速度 ü</strong>、部分可觀測；已知階數/穩定性/輸入函數；10 代、族群 250）：多數例 LGF <strong>大幅勝 PySR</strong>——鐘擺 0.015 vs 3.707、Van der Pol 0.115 vs 20.517。原因：PySR 直接當顯式 ODE 函數逼近，<strong>不施加輸入函數也不解 ODE</strong>——殘差低但解可能遠離真值；LGF 透過施加輸入函數並解 ODE 找到更準、更有意義的式子。</li>
+</ul>
+<h2 id="4-結論">4. 結論</h2>
+<p>LGF 是結合結構化表示與生成式建模的混合神經符號框架，可推斷隱式與顯式單自由度 ODE。GQAE 把符號式嵌入離散隱空間，離散流模型引導採樣，使階數/穩定性等領域知識直接進入發現流程。優勢在於能整合專家知識又保持資料驅動，且計算效率優於 transformer/LLM 法。雖目前只驗一/二階單自由度 ODE，可透過調整目標函數擴展到高維、或透過建構合適文法推廣到 ODE 系統。未來探索更多動力性質（如自治性）與更廣系統類。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2604.16232_LGF_NeSy_ODE_Discovery.%E6%91%98%E8%A6%81.html"><code>../summarize/2604.16232_LGF_NeSy_ODE_Discovery.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

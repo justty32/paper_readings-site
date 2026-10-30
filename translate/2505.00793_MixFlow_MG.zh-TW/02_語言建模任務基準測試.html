@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_語言建模任務基準測試 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2505.00793_MixFlow_MG.zh-TW.html">回 2505.00793_MixFlow_MG.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-語言建模任務基準測試">5. 語言建模任務基準測試</h2>
+<p>選語言建模域做內層優化（次 token 預測損失），用 Chinchilla 模型族 + RoPE + Adam。在 JAX、TPUv5p 與 H100（OpenXLA）上測。</p>
+<h3 id="51-指標">5.1 指標</h3>
+<p>聚焦動態 HBM 與 wall-clock 步時。報告兩個比值指標：<strong>動態 HBM 比</strong>與<strong>步時比</strong>（預設 ÷ 本法，越高表示增益越大）。</p>
+<h3 id="52-三種-blo-設定掃描">5.2 三種 BLO 設定掃描</h3>
+<ul>
+<li><strong>超參學習</strong>：元參數為內層優化器的逐參數學習率。</li>
+<li><strong>MAML</strong>：元參數定義內層優化初始點。</li>
+<li><strong>自適應 loss 加權</strong>：元參數算逐資料點的損失加權因子。</li>
+</ul>
+<p>掃描 Table 1 超參（任務 × 模型大小 57–306 × 內層步 2/4/8 × batch × 序列長），共數百配置。Figure 4：能放進記憶體的配置<strong>全部記憶體與步時都贏</strong>。<strong>約 75% 記憶體縮減（~4×）出現在 80% 配置</strong>，峰值 &gt;90%（&gt;10×）；wall-clock GPU 達 25%、TPU 達 20%，中位 12%。wall-clock 增益近乎均勻，記憶體增益則差異大。</p>
+<h3 id="53-模型與資料縮放">5.3 模型與資料縮放</h3>
+<p>預設實作的 transformer 動態記憶體 ∝ O(L·N·B·C)（L 層數、C 上下文長、B batch），源於自注意力塊，即使開 block remat 亦然。本文混合模式 + block remat 後記憶體<strong>與層數無關</strong>，只 ∝ O(N·B·C)——因 forward-over-reverse 只需單一 activation 緩衝（預設需「塊數」個）。比值含 L 因子（式 12），故對殘差塊網路是演算法級改進。</p>
+<p>Figure 6 證實記憶體增益<strong>隨層數 L 線性增長</strong>。Figure 7（Chinchilla 縮放梯 44M–16B）：模型越大增益越大，收斂到 <strong>TPU ~23-25×、GPU ~10×</strong>。推測收斂源於 1B 以上預設計算圖超出可用記憶體一個數量級、遠離典型編譯目標所致的編譯器行為。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>本文檢視 BLO 梯度法的實務面，指出預設自動微分實作的低效，提出 MixFlow-MG——以<strong>簡單通用的重參數化</strong>對最耗算的部分採混合模式微分，可輕鬆整合進標準實作。實證顯示<strong>最高 10× 總記憶體縮減與更低 wall-clock</strong>；隨模型變大效益複利累積。附最小 JAX/PyTorch 實作供採用。</p>
+<p>（附錄涵蓋 MixFlow-MG 推導、靜態記憶體處理（FSDP／可逆網路反推更新／對數級 checkpoint 把靜態記憶體從線性降對數）、JAX/PyTorch 代碼、逐步 checkpointing 片段、啟發範例代碼與編譯計算圖、各優化的詳細消融（Table 2：489M 全開時 GPU HBM 371→54.8G）、TPU 資料域掃描、模型與超參表。）</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2505.00793_MixFlow_MG.%E6%91%98%E8%A6%81.html"><code>../summarize/2505.00793_MixFlow_MG.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

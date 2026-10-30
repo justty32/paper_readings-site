@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2509.07665_DeepGraphLog.zh-TW.html">回 2509.07665_DeepGraphLog.zh-TW 目錄</a>　<a href="02_DeepGraphLog_%E6%A1%86%E6%9E%B6.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<p>研究問題：<strong>Q1</strong> DeepGraphLog 能否結合學習與機率推理以克服 GNN 表示力限制?<strong>Q2</strong> 相較 GNN 基線在準確度與資料效率上如何?<strong>Q3</strong> 能否經參數學習做結構學習?<strong>Q4</strong> 能否從遠監督範例學習?<strong>Q5</strong> 圖神經謂詞能否用於規劃?</p>
+<p>這些是展示概念驗證的初步評估。</p>
+<p><strong>E1：超越 Weisfeiler-Leman</strong>
+標準訊息傳遞 GNN 表示力受限於 <strong>1-WL 同構測試</strong>，無法分辨某些結構（如同尺寸的 d-正則圖）。本實驗聚焦 1-WL GNN，目標是顯示<strong>邏輯知識能幫忙分辨 GNN 單獨無法分辨的圖</strong>，而 GNN 在缺顯式邏輯規則時仍能分辨。對比兩法：</p>
+<ul>
+<li><strong>Logic-at-the-top</strong>：把邏輯推理當 GNN 之上的獨立層——不把符號知識注入節點特徵，而是<strong>用邏輯規則對 GNN 輸出推理</strong>（DeepGraphLog 的自然表達，圖 2a）。</li>
+<li><strong>Logic-at-the-bottom</strong>（基線）：找出 1-WL GNN 抓不到的圖性質，<strong>把每個此種結構編碼成一個新節點</strong>接到所有既有節點、以特徵向量標註類型，透過訊息傳遞把符號資訊餵給 GNN（圖 2b）。</li>
+</ul>
+<p>任務：依是否含 <strong>4-cycle</strong> 分類圖（標準 GNN 因表示力不足偵測不到）。資料量 1000/500/100（圖 3）：1000、500 時 DeepGraphLog 比基線<strong>收斂更快</strong>但準確度相當；<strong>100 時在收斂與最終準確度上都勝</strong>。基線須學會如何使用輸入特徵，DeepGraphLog 則可<strong>直接編碼並對其推理</strong>。</p>
+<p><strong>E2：結構學習</strong>
+評估 DeepGraphLog 經<strong>參數學習</strong>做結構學習：不顯式編碼「判別模式如何貢獻分類」的規則，而讓模型<strong>學不同圖結構對下游任務的重要性</strong>。給一組候選結構模板（cycle、clique 等），每個配一個<strong>可學機率</strong>（機率事實），與圖分類任務聯合學：</p>
+<pre><code>p1::rF(c1, class_0).  p2::rF(c2, class_0).  …
+classify(G, class_0) :- gnn_classifier(G, class_0).
+classify(G, class_0) :- rF(c1, class_0).
+classify(G, class_0) :- rF(c2, class_0).  …
+</code></pre>
+<p>（<code>rF</code> 為 <code>relevantFor</code> 縮寫）一張圖若 GNN 判為 class_0 <strong>或</strong>含某帶機率的結構模板即歸為 class_0。學這些機率即可<strong>自動判定哪些結構特徵最相關</strong>。</p>
+<p><strong>E3：遠監督的知識圖譜補全</strong>
+用 family-tree 圖（似知名 Kinship 資料集）。節點標 <code>person(X)</code> 及性別 <code>male/female</code>；唯一給定的輸入關係是 <code>parentOf(X,Y)</code>，目標是學 <code>fatherOf</code>、<code>motherOf</code> 兩關係——但<strong>不給這兩者任何標籤</strong>，只給「誰是誰的祖父」的<strong>遠監督訊號</strong>與背景知識：</p>
+<pre><code>gnn(gcn_fOf, [m/1, f/1, pOf/2], [X,Y]) :: fatherOf(X,Y).
+gnn(gcn_mOf, [m/1, f/1, pOf/2], [X,Y]) :: motherOf(X,Y).
+grandfatherOf(X,Y) :- fatherOf(X,Z), fatherOf(Z,Y).
+grandfatherOf(X,Y) :- fatherOf(X,Z), motherOf(Z,Y).
+</code></pre>
+<p>純邏輯系統無法用這些規則（不知父/母含義）；純 GNN 學得到祖父關係卻<strong>無法回溯到父或母</strong>。DeepGraphLog 橋接兩者：用一個圖神經謂詞建模各關係。基線是直接預測 <code>fatherOf</code>/<code>motherOf</code> 的標準 GNN（但無直接監督，唯一訊號來自 <code>grandfatherOf</code>）。</p>
+<p><strong>E4：Blocks World — 多層推理</strong>
+展示核心能力（多層推理）的規劃任務：給定方塊在地板上的初始配置，判斷能否一步形成有效塔。方塊類型 metal/plastic/glass；關鍵硬約束：<strong>不可把方塊移到玻璃方塊上</strong> <code>illegal(X,Y):-move(X,Y),glass(Y).</code>。流程：符號狀態 → 圖神經謂詞 <code>move(X,Y)</code> 預測可能移動 → 用硬約束 <code>illegal</code> 過濾無效移動 → 合法移動構成轉移狀態 <code>after_move(X,Y)</code> → 第二個圖神經謂詞 <code>tower</code> 接收更新後關係結構、預測是否成有效塔（至少兩方塊堆疊且頂端為玻璃）。對比兩基線：(i) 單 GNN 直接預測；(ii) 雙 GNN 但層間不套硬約束（「GNN w/o Constraints」）。</p>
+<h3 id="結果e1e2e4-報-5-次執行標準差">結果（E1、E2、E4 報 5 次執行標準差）</h3>
+<ul>
+<li><strong>E1（答 Q1/Q2）</strong>：1000、500 時 DeepGraphLog 收斂較快、準確度相當；<strong>100 時在收斂與最終準確度都勝</strong>兩基線。</li>
+<li><strong>E2（答 Q3）</strong>：模型把 <code>cycle_4</code> 對 <code>class_0</code> 相關的機率學到趨近 1、對其他類趨近 0，<strong>符合真正判別模式</strong>；準確度勝標準 GNN、近似「顯式給定結構與機率」的版本。顯示學結構模式（而非只靠節點特徵）在需符號抽象的任務上有顯著優勢。</li>
+<li><strong>E3（答 Q4）</strong>：DGL <strong>顯著勝</strong> GNN 基線——<strong>fatherOf F1：98.94 vs 22.95;motherOf：98.96 vs 59.61</strong>;AUCROC、Hits@K 近滿分，GNN 全面落後。證實 DGL 能有效利用遠監督與背景知識學「GNN 單獨抓不到的中間關係」。</li>
+<li><strong>E4（答 Q5）</strong>：單 GNN 直接預測準確度低（難學任務的組合結構）；雙 GNN 無約束提升（模組化推理有幫助）;<strong>DeepGraphLog（兩圖神經謂詞 + 中間顯式符號約束）達 100% 準確</strong>。顯示圖神經謂詞結合邏輯結構能成功處理需關係推理與符號強制的規劃任務——凸顯<strong>結構化中間表示與硬約束</strong>對有效且可解釋規劃的重要性。</li>
+</ul>
+<h2 id="5-相關工作">5. 相關工作</h2>
+<p>多數 NeSy×邏輯推理工作針對知識圖譜，且多為<strong>單向 neural→symbol</strong>（邏輯只在神經處理後套用）：<strong>BetaE</strong>（在 embedding 上學 Beta 分布，以機率集合表示支援多跳與否定查詢）;<strong>GNN-QE</strong>（GNN 做關係投影、模糊邏輯做查詢組合，各邏輯運算分開處理）;<strong>ExpressGNN</strong>（GNN 當 Markov 邏輯網路等機率框架的推理引擎）;<strong>LRNN、SATNet</strong>（原則上可分層學習與推理，但受限於表示力如 Datalog、及語意如硬約束的模糊鬆弛）。相對地，DeepGraphLog 支援神經與符號的<strong>雙向互動</strong>（neural→symbol→neural），建於機率邏輯程式、<strong>在良定義語意下結合軟硬約束</strong>、提升正確性與可解釋性，且<strong>全程可微、能處理複雜圖資料</strong>。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>DeepGraphLog 整合 GNN 與機率邏輯程式，支援多層神經-符號推理。不同於強制固定分層的既有方法，它允許<strong>神經與符號層任意交錯</strong>，提升表示力與推理能力。實驗（GNN 表示力、知識圖譜補全、規劃）展示其彈性與學關係結構的能力，<strong>泛化超越 Weisfeiler-Leman 表示力上限</strong>，並能納入背景知識引導學習。挑戰：神經與符號<strong>遞迴相依</strong>帶來的計算複雜度上升。未來聚焦優化推理效率、擴展到多步規劃等更複雜推理任務。</p>
+<p>（致謝：受 KU Leuven Research Fund、Flemish Government AI Vlaanderen、WASP、ERC Horizon Europe 資助。）</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2509.07665_DeepGraphLog.%E6%91%98%E8%A6%81.html"><code>../summarize/2509.07665_DeepGraphLog.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

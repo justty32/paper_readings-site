@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2302.07863_BigLittleDecoder.zh-TW.html">回 2302.07863_BigLittleDecoder.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="31-動機實驗">3.1 動機實驗</h3>
+<p>大模型雖生成品質較高，但端到端延遲較長，且逐一預測 token 的循序過程更放大此問題。然而在許多生成情境下，一個比大模型小一個數量級的模型，<strong>只要少數錯誤預測被修正</strong>，即可達到與大模型相當的品質——意味小模型只有一小部分預測偏離大模型。為驗證，作者以 mT5 在 WMT 2014 De-En、T5 在 CNN/DailyMail 上，每個解碼步都同時跑大模型，量測大模型預測出小模型所生 token 的機率；若低於門檻即視小模型預測不準並用大模型替換，藉調門檻控制大模型介入比例。</p>
+<p><strong>圖 2</strong> 顯示清楚趨勢：約 10× 更小的小模型，只要其約 <strong>20% 的不準確預測被大模型替換</strong>，即可保住大模型的生成品質。雖然此實驗假設「每步都有大模型預測當 ground truth」的理想情形，但已證明「用小模型的低延遲達到大模型品質」是可行的。</p>
+<h3 id="32-問題形式化">3.2 問題形式化</h3>
+<p>第 n 步解碼時，小模型與大模型各對已生成前綴 y₁:ₙ₋₁ 產生全詞彙分布 p_S、p_L，並各自抽樣出 y_{n,S}、y_{n,L}。第 n 個 token 用哪個由策略 π(y₁:ₙ₋₁)（回傳 {0,1}）決定：π=0 用小模型、π=1 用大模型。由於不可能每步都同時跑大模型來驗證（如 §3.1 的理想實驗），必須只在小模型可能出錯時才交棒給大模型。</p>
+<p><strong>延遲為何降低</strong>：若小模型已自回歸生成 y₁…yₙ，當大模型接手預測 yₙ₊₁ 時，它可<strong>並行吃進 y₁…yₙ 多個輸入 token</strong>、非自回歸執行。此非自回歸做法的 FLOPs 與循序預測 y₁…yₙ₊₁ 相同，但在硬體上快得多——因 token 級平行、arithmetic intensity 提高；在解碼中記憶體存取往往比算術更貴，故「一次記憶體操作處理多 token」比「逐一處理」高效。只要「大模型非自回歸執行省下的延遲」蓋過「額外跑小模型的成本」，就有淨延遲下降。因此本法<strong>不是減少 FLOPs，而是提升硬體利用率與 arithmetic intensity</strong>。接著介紹 fallback 與 rollback 兩策略。</p>
+<h3 id="33-fallback-策略小模型知道何時該停止預測">3.3 Fallback 策略：小模型知道何時該停止預測</h3>
+<p>第一原則：小模型應能判斷何時把控制權交給大模型——只要小模型對預測沒把握，就該讓大模型接手。信心（或反過來不確定性）量化是活躍研究領域，任何輕量信心指標皆可當候選。作者發現用<strong>最大預測機率</strong> <code>max_y p_S(y|y₁:ₙ₋₁)</code> 這個簡單策略即足夠：若其低於門檻 α_FB，視小模型預測不夠自信，<strong>fallback 到大模型</strong>生成下一 token。此判斷<strong>無執行期開銷</strong>。</p>
+<blockquote>
+<p><strong>Fallback 策略</strong>：若 <code>max_y p_S(y|y₁:ₙ₋₁) &lt; α_FB</code>，則 fallback 到大模型並設 yₙ = y_{n,L}。</p>
+</blockquote>
+<h3 id="34-rollback-策略大模型知道何時該撤回預測">3.4 Rollback 策略：大模型知道何時該撤回預測</h3>
+<p>fallback 讓大模型在小模型沒把握時接手，但小模型仍可能<strong>對錯誤預測過度自信</strong>；且早期一步錯誤會<strong>災難性地</strong>影響其後所有 token。為此，讓大模型審查小模型的預測、確保每步有效——而在本框架中這<strong>不需額外成本</strong>：當大模型拿到小模型生成的 token 去做下一 token 的非自回歸預測時，它會<strong>順帶對先前所有解碼步 m=1…n 都算出自己的分布</strong> p_L(y|y₁:ₘ)，可用來驗證小模型先前的預測。</p>
+<p>因此對某個比較兩分布的距離度量 d，找出最小的解碼步 m 使得 <code>d(p_S(y|y₁:ₘ), p_L(y|y₁:ₘ)) &gt; α_RB</code>。若存在這樣的 m，判定小模型該步預測 y_m 不準，並<strong>回退其後全部預測 y_m…yₙ</strong>（因它們都依賴該錯誤預測），再用大模型的 y_{m,L} 替換 y_m。距離 d 採「小模型硬標籤與大模型軟標籤的交叉熵」（衡量從大模型輸出得到小模型預測的可能性）。rollback 因需重算被回退的 token 會帶來額外延遲，但 §4.3 證明品質增益整體上蓋過此成本。</p>
+<blockquote>
+<p><strong>Rollback 策略</strong>：若存在最小 m∈[1,n−1] 使 <code>d(p_S(y|y₁:ₘ), p_L(y|y₁:ₘ)) &gt; α_RB</code>，則回退 (y_m,…,yₙ) 並設 y_m = y_{m,L}。</p>
+</blockquote>
+<h3 id="35-big-little-decoder整體演算法">3.5 Big Little Decoder（整體演算法）</h3>
+<p>BiLD 由一個小模型、一個大模型、與決定每步用哪個模型的策略組成。策略含兩部分：小模型不夠自信時 fallback 到大模型；小模型預測偏離大模型時 rollback。<strong>演算法 1</strong> 概述端到端流程：小模型逐 token 生成，若最大機率 &gt; α_FB 就採用其預測；否則叫大模型——若找到滿足 rollback 條件的最小 m，就回退到 m 並用大模型預測改寫，否則不回退、直接採用大模型對當前 token 的預測。</p>
+<h3 id="351-模型預測對齊model-prediction-alignment">3.5.1 模型預測對齊（Model Prediction Alignment）</h3>
+<p>BiLD 不限制小、大模型的選擇，只要<strong>共用同一 vocabulary</strong>；兩個獨立訓練的模型即可組成 BiLD 並顯著加速。但獨立訓練的兩模型可能產生語意相同、用詞不同的序列（如「writing is hard」vs「writing is difficult」）。由於 BiLD 策略依賴兩模型的一致程度，這種<strong>詞彙層級差異會造成無謂的 rollback</strong>（回退卻無品質提升）。</p>
+<p>為此提出 <strong>model prediction alignment</strong>：取一個能代表輸入分布的校準集 𝒳_cal，用大模型對每個輸入生成輸出得 𝒴_cal（取 argmax p_L），再用這些 (x_cal, y_cal) 去 <strong>fine-tune 小模型</strong>。其原理是提高小模型「生成大模型會生成之序列」的可能性，從而逐 token 最小化兩模型分布距離、避免無效回退。此法簡單、<strong>不增訓練管線複雜度或超參</strong>；相較知識蒸餾（需改訓練管線、存取 logits 等內部隱狀態、額外調參）更輕量。全文將用 baseline 小模型的 BiLD 稱 unaligned、用對齊小模型的稱 aligned。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

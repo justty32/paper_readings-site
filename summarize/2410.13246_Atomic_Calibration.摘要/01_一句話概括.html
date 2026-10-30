@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2410.13246_Atomic_Calibration.%E6%91%98%E8%A6%81.html">回 2410.13246_Atomic_Calibration.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p>既有校準研究幾乎都只對<strong>整段回應打一個信心分數（macro/response-level calibration）</strong>，但長文輸出常常真假夾雜，一個分數無法反映內部差異；本篇正式定義<strong>原子校準（atomic calibration）</strong>——把長回應拆成<strong>原子主張（atomic claims）</strong>、逐項打信心分數並逐項核實真偽，證明「macro 校準良好」不蘊涵「atomic 校準良好」，並提出信心抽取方法的<strong>判別式／生成式</strong>二分類，以及兩種<strong>考慮信心分歧</strong>的新融合策略。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>既有 LLM 校準研究多聚焦短答案 QA（TriviaQA、Natural Questions，答案常 &lt;10 字），用單一 response-level 分數衡量信心是否貼合正確率。但真實查詢常要求長回應（數百至上千字），此時回應品質不是二元的——同一段話裡可能同時包含正確與錯誤陳述，macro calibration 完全無法反映這種混雜。作者在此之前，文獻雖已有零星工作在 atomic-claim 層級打信心分數，卻缺乏一個統一定義：為何要在原子層級評估校準？哪些因素會影響原子層級的校準結果？能從中觀察到什麼規律？本篇要系統性回答這三個問題。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>形式化區分 macro / atomic calibration</strong>：Definition 1（macro）要求 P(y | f(x)_y = β) = β，f(x)<em>y 是對整段回應 x 的信心；Definition 2（atomic）要求把 x 拆成 N 個原子主張 c_i（各帶二元真偽標籤 y_i），對每個 c_i 都要求 P(y_i | f(c_i)</em>{y_i} = β_i) = β_i。作者明確用一組蘊涵關係證明：response-level 校準良好 ⇏ 各原子主張平均後校準良好 ⇏ 每個原子主張個別校準良好——三者是嚴格遞減的三個不同命題。</li>
+<li><strong>原子事實生成與驗證</strong>：沿用 FActScore（Min et al., 2023）流程，用 GPT-4o 把回應拆成原子事實，再用 GPT-4o 交叉比對 Wikipedia 與 Google 搜尋逐項判真偽，作為訓練/評估用的真值標籤。</li>
+<li><strong>信心抽取方法二分類</strong>：
+<ul>
+<li><strong>生成式（Generative）</strong>：靠對同一問題額外取樣 K 個回應、用 NLI 模型檢查每個原子主張與這些額外樣本的一致性來估信心。<strong>Gen-Binary</strong>：信心 = 支持該主張的樣本數／總樣本數；<strong>Gen-Multi</strong>：進一步把「不支持」細分為「衝突（conflict）」與「未提及（not mentioned）」，信心 = 支持數／（支持數＋衝突數），排除「未提及」的樣本。</li>
+<li><strong>判別式（Discriminative）</strong>：直接問模型自己判斷。<strong>Dis-Single</strong>：單獨問模型某原子主張真假，取「True」token 的機率 P(true) 當信心；<strong>Dis-Context</strong>：額外附上原段落或原始 prompt 當上下文再問；<strong>Dis-Rating</strong>：直接要求模型給 0–10 的數字評分（作者引用 Tian et al. 2023 指出數字評分不劣於語意描述式評分）。</li>
+</ul>
+</li>
+<li><strong>信心融合策略</strong>：既有融合法（如 WAvg）用固定權重 α 線性組合兩個信心分數 A、B，忽略兩者的<strong>分歧程度</strong> d = B − A（例如 α=0.5 時，(0,1) 與 (0.4,0.6) 會被同等對待，儘管前者分歧明顯更大）。本篇提出 <strong>AdjustedAlpha</strong>（依 d 動態調整權重 α′ = α + γ_a·d 再加權平均）與 <strong>DampedFusion</strong>（用阻尼因子 γ(d) = 1 − k·|d| 縮放融合後分數），並與既有的 MinConf、HMean（調和平均）、ProdConf（相乘）等基線比較。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>七個開源 LLM（Llama3-8B/70B-Instruct、Mistral-7B/8x7B-Instruct、Qwen2-7B/57B/72B-Instruct）× 三個長文 QA 資料集（Bios 人物傳記、LongFact、WildHallu），用 ECE、Brier Score、AUROC、Spearman Correlation 度量。</li>
+<li><strong>模型在原子層級普遍校準不佳</strong>：即使最好的方法 Gen-Binary，ECE 仍約落在 10% 上下，遠高於一般視為「校準良好」的約 1% 門檻。</li>
+<li><strong>「response-level 看似校準良好」不代表「atomic level 也校準良好」</strong>：把 atomic-level 與 response-level 的 ECE/Brier 逐點畫在同一張圖上，資料點一致落在恆等線之上，即 atomic-level 誤差系統性高於 response-level 誤差。</li>
+<li><strong>原子校準反而有助於提升整段校準</strong>：把各原子主張信心平均得到的 response-level 信心，比直接用既有 response-level 方法（P(true)、Self-Rating、語意熵 SE、EigV）本身還準。</li>
+<li><strong>考慮分歧的融合策略持續勝出</strong>：AdjustedAlpha／DampedFusion 穩定優於既有融合基線；但同一類型內部融合（如兩種 discriminative 方法互融）效果有限，跨類型（generative × discriminative）融合效果更好——對應到相關性分析：同類型信心方法彼此 Spearman 相關性較高，代表它們捕捉的是相近訊號，互補性弱。</li>
+<li><strong>模型變大不必然改善校準</strong>：生成式方法在不同模型尺寸間差異很小；判別式方法則隨模型變大而校準改善，作者推測因為判別式方法本質是模型自評，而更大模型的自我判別能力更強。</li>
+<li><strong>信心隨生成位置的變化規律</strong>（把每個回應的原子主張依生成順序切五段觀察）：判別式方法的信心隨生成推進單調遞減；生成式方法則在<strong>生成中段</strong>信心最低（作者解讀：開頭/結尾常是「他很有名」之類套話，多次取樣容易一致而顯得高信心，中段講具體事蹟則各次取樣措辭與細節差異較大）。</li>
+<li><strong>下游應用驗證原子校準的實用性</strong>（Appendix C）：(1) Selective QA——設信心門檻拒答，拒答率從 0% 拉到 10% 時整體事實性持續提升；(2) LLM Ensemble——三模型同題作答、選信心最高者回答，用本篇的判別式信心（DIS-Gen）選擇時 Bios 事實性由 0.475 升到 0.556、WildHallu 由 0.655 升到 0.752，但若改用語意熵（SE）選擇則沒有提升甚至更差；(3) <strong>Atomic Claims Reunion</strong>——對同一問題取樣 5 次、拆成原子主張、只保留高信心主張、再用 GPT-4o 重組成一篇連貫回答，10% 拒答率下 Bios 事實性由 0.475 升到 0.528，且原子校準較好的模型（如 Qwen2）在重組後改善幅度更大。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<p>論文自陳三點：(1) 只聚焦事實性（factuality）這一個品質面向，未涵蓋長文的連貫性、創意、文風等其他維度；(2) 只測試開源模型——因為判別式方法需要 logit 存取（P(true) 機率），閉源 API 通常不提供，且下一步研究方向（調整模型本身以改善校準）也不適用閉源模型；(3) 刻意不套用溫度縮放（temperature scaling）、直方圖分箱（histogram binning）等事後校準技術，只報告原始信心分數，以避免「信心抽取設計本身的改善」與「事後校正的改善」混在一起難以拆解，將事後校準留給未來工作。原文未給出原子事實生成/驗證管線（GPT-4o + Wikipedia/Google 搜尋）本身準確率的具體數字（該可靠度分析在附錄 D，本篇未逐字核對其數值，故不在此摘要中引用），如需精確數字應查閱原文附錄。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

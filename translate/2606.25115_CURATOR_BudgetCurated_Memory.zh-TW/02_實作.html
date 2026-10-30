@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實作 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.25115_CURATOR_BudgetCurated_Memory.zh-TW.html">回 2606.25115_CURATOR_BudgetCurated_Memory.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實作">4. 實作</h2>
+<p>CURATOR 是 agent 執行時之上的輕量治理層，不重訓 planner。主骨幹 Qwen2.5-3B-Instruct，另以 Phi-3.5-mini、Qwen2.5-7B 做端側穩健性檢查，皆 4-bit；草圖建在 bge-small/e5-small 嵌入上。評分器加 &lt;2% 計算與幾 KB 狀態。真機測試台為三節點異質系統：兩個 Jetson AGX Orin 64GB（各跑 3B planner、驅動一支 HighTorque Panthera-HT 機械臂）＋ 一個 Jetson AGX Thor（Blackwell、128GB、7B planner）當分享 hub，透過真實無線上行交換洞見。Orin 上記憶先綁定，Thor 上記憶充裕但能耗與細上行先綁定；一個 ρ 在每節點治理當下最稀缺的預算，無需逐裝置重調。INA3221 量能耗（焦耳）、tegrastats 量峰值記憶、系統計上行位元組。</p>
+<h2 id="5-評測">5. 評測</h2>
+<p><strong>設定</strong>：凍結 LLM planner 呼叫固定原語，唯一適應來自外部經驗記憶內容。工作負載為<strong>任務漂移序列</strong>（後續經歷與先前衝突），建於 ALFWorld、BabyAI 風工具環境、MemoryAgentBench 的選擇性遺忘/測試時學習軌、長工具鏈；每序列交錯乾淨任務與「正確行為可被過時/過度特化條目毀掉」的受害子集。投毒以 PoisonedRAG / MemoryGraft / MINJA 風格注入（每次 n_p=4 條）。基線：no-curation（全留）、naive-LRU、recency、A-MEM、Agentic Memory、MaRS 文字版；另報全記憶 oracle（不可部署上界）。指標：任務品質、選擇性遺忘（受害子集準確率）、峰值記憶、能耗、每輪上行位元組、注入 ASR；主基準 15 seeds、其餘 ≥5 seeds。</p>
+<p><strong>主結果（遺忘以求進步）</strong>：對全留，ρ 把常駐足跡 287→107 KB（2.7×）、能耗代理 −38%（真機 36–40%）、每輪上行 1068→454 B，注入 0.75→0；同期任務準確率 0.528→0.605、受害子集 0.294→0.420。對不可部署 oracle，ρ 以 <strong>37% 足跡達 97% 準確率</strong>且零攻擊面（oracle 付滿 ASR=1.00）。A-MEM/Agentic Memory 連結與整併條目，投毒條目反獲更多檢索路徑、ASR 升到 0.85 且準確率掉到比 no-curation 還低——<strong>組織記憶不能取代治理記憶</strong>。</p>
+<p><strong>回補集中在被毀案例</strong>：乾淨任務準確率在雜訊內不變，回補全在受害/投毒子集；同 107 KB 的 recency/naive-LRU 把受害準確率留在 ~0.33、注入留在 0.75，證明來源是「淨值尺」而非縮小本身。</p>
+<p><strong>跨骨幹</strong>：Phi-3.5-mini 0.487→0.589、Qwen2.5-7B 0.597→0.663，注入皆 0.72→0，皆同 2.7× 縮減。</p>
+<p><strong>Pareto/knee</strong>：足跡縮到 ~107 KB 的 knee 前準確率維持、之下才掉；上行 knee 在 454 B。操作點由預算決定而非假設。</p>
+<p><strong>投毒下的信任</strong>：來源項是安全結果的真正功臣（投毒條目 V̂ 為正，唯有 π 讓注入隨策展下降）。偽造自產來源的攻擊者在 15 條投毒下 ASR 僅 0.30（無防護 4 條即 0.75），三骨幹上無防護/偽造/來源三曲線幾乎重合——閘是模型無關的。</p>
+<p><strong>真機部署</strong>：Orin 上每決策能耗 12.84→8.19 J、常駐記憶 51.6→19.4 MB、上行 118→47 B；Thor 上 27.0→16.1 J、62.0→24.0 MB、118→47 B；每軸降到全留的 0.38–0.64，延遲不變。門控分享送 209 vs 642 B/輪、無損品質；門控下每 Orin 同儕受害準確率 0.410、跨 agent 注入 0.02（無門控則 0.381 與 0.64）。</p>
+<pre><code class="language-mermaid">flowchart LR
+  E[經驗條目 m] --&gt; S{ρ = 價值−λ·危害 / 位元組}
+  S --&gt;|RAM/能量預算| K[KEEP 常駐集]
+  S --&gt;|上行預算| SH[SHARE 傳同儕]
+  S --&gt;|來源閘 θ| T[TRUST 納入同儕條目]
+  subgraph 價值 V̂
+    p[檢索傾向] &amp; q[無標籤有用性] &amp; a[抽象增益]
+  end
+  subgraph 危害 Ĥ
+    eta[負遷移 η] &amp; pi[來源風險 π · 承重]
+  end
+</code></pre>
+<h2 id="6-7-相關工作與結論">6-7. 相關工作與結論</h2>
+<p>相關工作分三線：(1) agent 記憶與持續學習（多無預算地長）；(2) 記憶投毒與信任（多當攻擊研究）；(3) 預算化記憶治理（多未建模能量/跨 agent 分享/投毒）。CURATOR 是首個用單一預算化價值分數治理端側 agent 經驗記憶（含跨 agent 分享與信任）、並在真實異質 Jetson 測試台驗證的系統。核心結論：<strong>在邊緣，預算不損害 agent，而是編輯 agent 的記憶</strong>——按淨值遺忘讓 footprint、能耗、上行、攻擊面齊降而準確率維持或回補。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

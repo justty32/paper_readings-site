@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_評估與結論 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><p>← <a href="../2602.14849_Atomix.zh-TW.html">回母檔</a></p>
+<h2 id="3-評估">3. 評估</h2>
+<h3 id="31-方法">3.1 方法</h3>
+<p>主要真實 workload 是 τ-bench retail（GPT-4.1，<code>max_steps=30</code>），<code>fp=.10/.30</code> 各 cell <code>N=30</code>，<code>fp=0</code> 為 <code>N=10</code>。次要 workload 為 WebArena（GPT-5、medium reasoning）及 OSWorld（Claude Sonnet 4）。multi-agent τ-bench 使用 2/4/8 個 GPT-4o-mini agents。</p>
+<p>每次工具 call 以 Bernoulli 機率注入五類錯誤：執行前、effect 後回傳前、補償時、duplicate delivery、timeout。作者強調故障率只用於壓力測試。比較的是共同 harness 中的機制，不是完整產品 port；文中稱 9 個 baselines，但列舉包含 Tx-Full 在內共有十個名稱。</p>
+<h3 id="32-rq1故障恢復">3.2 RQ1：故障恢復</h3>
+<p>τ-bench 在 <code>fp=.30</code> 時，Atomix clean success 為 17/30（57%）；Checkpoint-Replay 為 16/30（53%），Fisher <code>p=1.0</code>；其他主要比較機制僅 0–7%。在 <code>fp=.10</code> 的合併 <code>N=114</code> pool，Atomix 67/114（58.8%）、Checkpoint-Replay 61/114（53.5%），<code>p≈.50</code>。因此 recovery task success 的領先未達統計顯著，Checkpoint-Replay 是重要同級比較者。</p>
+<p>burst marginal test 的等效 <code>fp≈.12</code>、<code>N=30</code> 中，Atomix 20/30（67%）、Checkpoint-Replay 57%，TCC 與 No-Tx 各 60%。這些結果支持組合機制在部分故障切點的穩健性，但不代表任務能力本身提高。</p>
+<h3 id="33-rq2frontier-隔離">3.3 RQ2：Frontier 隔離</h3>
+<p>forced overlap/disjoint 測試中，Atomix 與 OCC safety-clean 且無等待；workflow lock 安全但 contention wait 約 112 ms，disjoint 也要 45/105 ms；per-call lock 與 No-Tx 約有 4.9 violations/run。OCC 在四 agents 的每 100 runs 付出 3,000 次 rejected commits。</p>
+<p>拿掉 scope-on-read 或 abort-on-stale，各出現約 5 invariants/run；拿掉 per-resource frontier、改全域等待仍安全，但約多 113 ms。global frontier 在 16/32/64 agents 分別等待約 564/1,163/2,369 ms，顯示資源化 progress tracking 對擴展性的重要性。</p>
+<h3 id="34-rq3不可逆效果">3.4 RQ3：不可逆效果</h3>
+<p>實驗使用真實 SMTP/webhook sink，五種 abort source、每一來源與 baseline 100 trials，因此每列 500 invalid 與 500 valid。Atomix、TCC-Confirm、Mutex+WAL+Rollback 都是 0 個分類後仍提早外部化的 invalid sends，並釋放 500/500 valid sends。Saga 在五種 abort source 中四種洩漏，Checkpoint-Replay 兩種，錯誤 effect classification ablation 三種。</p>
+<p>但 TCC 與 Mutex 的成功來自 email tool 已完整接線；若只保護 DB，losing branch 每次仍會寄信。Atomix 的比較優勢主要是每 adapter 約 17 LOC 的統一宣告，相對 TCC 約 50 LOC/tool、Mutex 約 30 LOC/tool，而非其他機制理論上無法 gate 郵件。</p>
+<h3 id="35-rq4rq5綜合差異與成本">3.5 RQ4/RQ5：綜合差異與成本</h3>
+<p>綜合壓力下，Atomix、OCC、workflow mutex、TCC 在各故障率的 run-clean 層級並列，差異 <code>p&gt;0.1</code>。Atomix 的 Pareto-best 主張建立在次要軸：零 contention wait、零 rejected commits、每 adapter 17 LOC；mutex 有約 95.9 ms 等待，OCC 有重試拒絕，TCC 需逐工具 wiring。</p>
+<p>real GPT-4o-mini、<code>fp=.10</code>、<code>N=30</code> 的補充測試中，Atomix 90%、TCC 93%、Saga 80%、Checkpoint-Replay 與 workflow lock 各 73%；workflow lock 約 1,651 ms wait。附錄另報 Atomix 約 635 ms 每 run wait，與主文「zero wait」看似不同，應理解為不同等待指標或實驗切片，不能把零等待泛化成端到端沒有延遲。</p>
+<p>wrapper microbenchmark 顯示相對工具 latency 是微秒級開銷；這只衡量 runtime wrapper，不含 provider latency、frontier stall 或補償成本。</p>
+<h2 id="4-討論限制與相關工作">4. 討論、限制與相關工作</h2>
+<p>Atomix 把 Saga 的補償、TCC 的延後確認與 streaming watermark 的 progress 思想搬到 LLM tool interface。其能力邊界是：</p>
+<ul>
+<li>adapter mediation 與 metadata 是安全關鍵。too-narrow scope 測試出現 66/200 violations，錯誤效果類別造成 17/200 irreversible leaks。</li>
+<li>多個不可逆效果依序釋放；若先成功後失敗，只能回報 partial commit。要跨異質 endpoint 真正原子化，必須由工具端提供 TCC/2PC。</li>
+<li>hot resource 會序列化，hung agent 或 partition 會使 frontier 停滯。</li>
+<li>reversible eager effect 的 commit 前外部可見性不會被補償「抹除」。</li>
+<li>尚未驗證分散式部署、完整 crash recovery 或 semantic correctness。雖摘要與範圍文字對 dedup 的措辭略有張力，最窄且安全的解讀仍是單程序內去重，不能推論為 provider 級 exactly-once。</li>
+</ul>
+<h2 id="5-結論">5. 結論</h2>
+<p>Atomix 主張可靠 agent tool use 的關鍵不是更多 retry，而是先封閉必須一起 settle 的 footprint，再以 per-resource progress 證明舊衝突已結束，最後依效果類別 commit 或 abort。實驗支持它能避免 losing branch 與不可逆操作的特定安全事故，但 clean task success 對強勢 checkpoint baseline 未顯著領先。它應被視為一個清楚、可檢驗的 settlement protocol 與研究 prototype，而非已解決跨服務原子性的大規模 agent 作業系統。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

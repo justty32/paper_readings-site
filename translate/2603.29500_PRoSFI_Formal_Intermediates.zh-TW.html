@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>透過結構化形式中介學習可形式驗證的逐步邏輯推理（Learning to Generate Formally Verifiable Step-by-Step Logic Reasoning via Structured Formal Intermediaries） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Luoxin Chen、Yichi Zhou、Huishuai Zhang（附屬未列）</p><p>日期：2026-03</p><p>arXiv：2603.29500</p><p><a href="https://arxiv.org/abs/2603.29500" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="透過結構化形式中介學習可形式驗證的逐步邏輯推理">透過結構化形式中介學習可形式驗證的逐步邏輯推理</h1>
+<h2 id="引言">引言</h2>
+<p>本文處理一個關鍵問題：LLM 可能用<strong>有瑕疵的中間步驟</strong>得到正確最終答案。雖然 outcome-reward RL（如 DeepSeek-R1）提升準確率，卻不保證推理鏈健全。作者主張「過程層級監督在每個思維鏈步驟給回饋，產生更精確的訓練訊號與更可解釋、可靠的推理步驟」。先前嘗試完整形式證明生成失敗，因為中型模型（7B）難搞形式語法，且把驗證塞進訓練造成計算瓶頸。</p>
+<h2 id="prosfi-方法">PRoSFI 方法</h2>
+<h3 id="結構化形式中介">結構化形式中介</h3>
+<p>PRoSFI 不生成完整形式證明，而是在自然語言與形式驗證之間引入結構化 JSON/YAML 中介表示。每個推理塊含：</p>
+<ul>
+<li><strong>id</strong>：步驟識別</li>
+<li><strong>dependencies</strong>：前提或前步清單（限 &lt;5）</li>
+<li><strong>conclusion</strong>：單一 FOL 公式（Lean4 語法）</li>
+<li><strong>rule</strong>：所用邏輯推理規則</li>
+</ul>
+<p>這個輕量鷹架避開完整形式證明生成的分布漂移，又在 Qwen2.5-7B-Instruct 等 7B 模型可及範圍內（選它因「對 RL 後訓練的回應性優於其他開源替代」）。</p>
+<h3 id="形式驗證流程">形式驗證流程</h3>
+<p>抽出每個中介表示的命題、交給形式證明器（Prover9、Z3 或輕量 Lean tactic 如 <code>aesop</code>）。<strong>驗單步而非要完整證明</strong>，降低驗證複雜度。推理鏈只有在全部步驟驗證成功時才拿高獎勵。</p>
+<h3 id="獎勵設計">獎勵設計</h3>
+<pre><code>R = {
+  1.0：答對 且 全步驟驗過
+  0.3：答對 但 有步驟未驗過
+  0.1：輸出格式對 但 答錯
+  0.0：輸出格式錯 或 其他失敗
+}
+</code></pre>
+<p>此粒度設計避開效率瓶頸——模型單次前向生成推理，驗證事後做、可全批次平行。</p>
+<h2 id="訓練設定">訓練設定</h2>
+<ul>
+<li><strong>基模</strong>：Qwen2.5-7B-Instruct（7B）</li>
+<li><strong>演算法</strong>：GRPO（Group Relative Policy Optimization）</li>
+<li><strong>超參</strong>：lr 3×10⁻⁷、batch 64、每迭代 8 回應、max 5,120 token、KL 0.001、960 迭代（≈14 小時、8× Hopper GPU）；DAPO clip-higher 穩定（ε_low=0.2、ε_high=0.28）</li>
+<li><strong>資料</strong>：ProverQA（1,500 FOL，easy/medium/hard；排除 Uncertain 後 769 訓練）＋ ProverQA-Extra（128 較難合成題）</li>
+</ul>
+<h2 id="實驗與結果">實驗與結果</h2>
+<h3 id="基線outcome-cot">基線：Outcome-CoT</h3>
+<p>僅用 outcome 獎勵（仿 DeepSeek-R1-Zero）於 ProverQA-Hard：答對率 91.31%（基底 46.0%）、GPT soundness 21.97%（基底 9.0%）。高準確但推理有效性低。</p>
+<h3 id="直接生-lean-基線">直接生 Lean 基線</h3>
+<p>要求模型吐完整 Lean4 證明腳本：ProverQA-Hard reward hit 13.77%、Extra 4.35%。編譯率太低、證明過於不透明，相對 Outcome-CoT 拖累準確與 soundness。</p>
+<h3 id="prosfi-結果">PRoSFI 結果</h3>
+<ul>
+<li><strong>ProverQA-Hard</strong>：答對率 92.97%、GPT soundness <strong>76.07%</strong>（vs Outcome-CoT +54.1 分）。</li>
+<li><strong>ProverQA-Extra（OOD）</strong>：答對率 91.94%、soundness 56.10%（+44.2 分）。
+結構化形式獎勵維持準確率同時大幅提升推理路徑可信度。</li>
+</ul>
+<h3 id="測試期擴展">測試期擴展</h3>
+<p>搭「Don&#x27;t Trust; Verify」（DTV）：採樣多條推理路徑＋形式驗證選擇，在 Hard 與 Extra 上持續提升 soundness；Outcome-CoT 無法從加採樣受益。</p>
+<h3 id="獎勵對齊分析">獎勵對齊分析</h3>
+<p>PRoSFI 的 reward hit 與目標品質指標 GPT-soundness 相關性，高於僅看答對率，驗證獎勵設計與步驟層級推理品質對齊。</p>
+<h3 id="泛化knights-and-knaves">泛化：Knights and Knaves</h3>
+<p>K&amp;K 謎題（程序生成，2–8 人）：</p>
+<table>
+<thead>
+<tr>
+<th>難度</th>
+<th>Outcome-CoT 答對率</th>
+<th>Outcome-CoT soundness</th>
+<th>PRoSFI 答對率</th>
+<th>PRoSFI soundness</th>
+<th>提升</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2 人</td>
+<td>99.63%</td>
+<td>64.81%</td>
+<td>99.75%</td>
+<td>86.56%</td>
+<td>↑21.8</td>
+</tr>
+<tr>
+<td>3 人</td>
+<td>99.81%</td>
+<td>68.56%</td>
+<td>99.31%</td>
+<td>90.31%</td>
+<td>↑21.8</td>
+</tr>
+<tr>
+<td>8 人（OOD）</td>
+<td>94.25%</td>
+<td>47.94%</td>
+<td>97.38%</td>
+<td>80.94%</td>
+<td>↑33.0</td>
+</tr>
+</tbody>
+</table>
+<p>各難度 soundness 一致提升，最難的 OOD 分割尤甚。</p>
+<h2 id="相關工作">相關工作</h2>
+<ul>
+<li><strong>RL 後訓練</strong>：建於 PPO、GRPO（DeepSeek-R1-Zero），引用 TinyZero、Logical RL。</li>
+<li><strong>邏輯推理資料集</strong>：人工策展（Reclor、FOLIO）與合成（ProntoQA、ProofWriter、LogicPro、FLD）。</li>
+<li><strong>形式語言增強推理</strong>：neurosymbolic（LINC、Logic-LM）把 LLM 當語意解析器翻成 FOL，外接求解器（Prover9、Z3）。</li>
+<li><strong>定理證明</strong>：GPT-f 在 miniF2F 31% 成功；DeepSeek-Prover-V1.5/V2、Kimina-Prover、Seed-Prover 等用更大模型與資料蒸餾。</li>
+<li><strong>過程獎勵模型</strong>：math-shepherd、Let&#x27;s Verify Step by Step，及近期達 IMO 2025 金牌的驗證-精修管線。</li>
+</ul>
+<h2 id="局限與結論">局限與結論</h2>
+<p>目前範圍限一階邏輯任務；未來應推及更廣自然語言推理與自動定理證明，需多元資料、更強基模、與領域形式工具更深整合，亦可探索更細粒度獎勵/信用分派的訓練演算法。核心貢獻：「Process Reward over Structured Formal Intermediates」讓 7B 模型在困難 FOL 任務上產出可驗證證明——此規模下首見——靠的是用結構化中介橋接 LLM 自然語言生成與形式證明器驗證。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2603.29500_PRoSFI_Formal_Intermediates.%E6%91%98%E8%A6%81.html"><code>../summarize/2603.29500_PRoSFI_Formal_Intermediates.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

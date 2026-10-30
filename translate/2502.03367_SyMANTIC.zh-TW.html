@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>SyMANTIC：科學及其他領域中可解釋簡約模型發現的高效符號迴歸方法（SyMANTIC: An Efficient Symbolic Regression Method for Interpretable and Parsimonious Model Discovery） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Ohio State University 化工系 + Dow Chemical</p><p>日期：2025-02</p><p>arXiv：2502.03367</p><p><a href="https://arxiv.org/abs/2502.03367" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="symantic可解釋簡約模型發現的高效符號迴歸方法">SyMANTIC：可解釋簡約模型發現的高效符號迴歸方法</h1>
+<p>Ohio State University 化工與生物分子工程系 + The Dow Chemical Company</p>
+<h2 id="摘要">摘要</h2>
+<p>SR 是發掘簡單可解釋數學式的新興 ML 分支。雖已有多種 SR 法，但常面臨<strong>計算成本高、隨輸入維度擴展性差、對噪聲脆弱、無法平衡準確與複雜度</strong>等挑戰。本文提出 <strong>SyMANTIC</strong> 解決這些。SyMANTIC 經獨特組合——<strong>互資訊特徵選擇、自適應特徵擴展、遞迴 L0 稀疏迴歸</strong>——從海量候選（10⁴ 到 10¹⁰+）高效辨識（可能多個）低維描述子；並用資訊論量度產近似 <strong>Pareto 最優方程集</strong>（各在給定複雜度下達最佳準確）。開源實作建於 PyTorch（易裝、GPU 加速）。在合成例、科學 benchmark、真實材料性質預測、小資料混沌動態系統辨識上展示有效。廣泛比較顯示 SyMANTIC 以遠低成本發現相近或更準的模型。</p>
+<p><strong>關鍵詞</strong>：符號迴歸、可解釋 ML、系統辨識。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>SR 發掘準確擬合資料的符號式（如從行星質量/距離/重力測量「重新發現」牛頓萬有引力）。簡單數學式不只可能提升預測（更好泛化），也增可解釋、利深入分析 → 適合安全可靠要求嚴格的高風險應用（物理/化學/材料/經濟/醫療/動態控制/太空）。SR 是模型空間全為解析式的監督學習，<strong>NP-hard</strong>（解析式空間隨輸入指數成長）。</p>
+<h3 id="11-範圍">1.1 範圍</h3>
+<p>聚焦<strong>代數模型 y=f(x)+ε</strong>（對齊標準監督學習）。也提及動態系統（如 SINDy 假設可取狀態 + 其導數）但非焦點。</p>
+<h3 id="12-既有方法四類">1.2 既有方法四類</h3>
+<p><strong>暴力搜尋</strong>（BACON/FAHRENHEIT，靠啟發式、搜尋空間指數成長已不實用）、<strong>遺傳程式設計</strong>、<strong>深度學習</strong>、<strong>稀疏迴歸</strong>。各有彈性/可擴展/可解釋的優勢與限制。</p>
+<h2 id="2-symantic-方法">2. SyMANTIC 方法</h2>
+<h3 id="21-問題描述">2.1 問題描述</h3>
+<p>SR 形式化為函數類 F 上的經驗風險最小化（式 1，損失常取 MSE = 加性 iid 高斯誤差下的 NLL）。SR 與其他迴歸的關鍵差別在 F——應是「<strong>可解釋</strong>」函數（由基本算術/超越函數/常數/恆等函數經函數組合構成的庫；如 {+,−,×,÷} 含所有二維任意次多項式）。F 隨基元集大小指數成長 → 幾乎不可能精確解。實際目標是泛化 → 依奧坎剃刀<strong>聯合最小化期望損失 + 函數複雜度</strong> → 找 <strong>Pareto 最優</strong>函數（無更簡且更準者）。精確 Pareto 前沿不可行 → 用假設/啟發式建可行近似（取稀疏迴歸/壓縮感知視角的懲罰式 SR）。</p>
+<h3 id="22-總體演算法">2.2 總體演算法</h3>
+<p><strong>SyMANTIC</strong> 核心是 <strong>C²-SISSO（Complexity-Constrained Sure Independence Screening with Sparsifying Operator）</strong>——建於 <strong>SISSO</strong>（從海量候選找最優低維描述子的高效壓縮感知法，原為材料性質建模）之上，<strong>跑稀疏迴歸前先限制特徵複雜度</strong>。C²-SISSO 依賴關鍵超參（生成特徵空間、複雜度約束界），這些難手設且不同複雜度的最佳模型不太可能來自同超參 → SyMANTIC <strong>自動序貫測試多組超參組合，每輪用 C²-SISSO 新結果更新「損失-複雜度」Pareto 前沿估計</strong>。因送進 C²-SISSO 的特徵空間由 x 與使用者運算子集<strong>遞迴建構</strong>、隨運算子/主特徵數指數成長（計算與記憶體很快難承） → SyMANTIC 納入<strong>互資訊（MI）篩選</strong>處理高維（特徵 &gt;~10–20），對 x↔y 強非線性穩健。</p>
+<p><strong>流程</strong>（圖 1）：訓練資料 →(Step1) <strong>MI 預篩</strong>限制送進特徵擴展的主特徵數 →(Step2) <strong>特徵擴展</strong>（遞迴 L 層）→(Step3) 擴展特徵 + 複雜度過濾參數送 <strong>C²-SISSO</strong> 出帶損失/複雜度的新模型集 → 更新 Pareto 前沿近似 →(Step4) 對多組超參自動序貫改善 Pareto。達 RMSE 閾值或試完所有超參組合即停。</p>
+<p><strong>MI 預篩</strong>：因 x↔y 可高度非線性，用<strong>互資訊</strong>量測各分量與目標的關係強度（式 2，非負、獨立時為 0），按 MI 值排序選最相關主特徵。</p>
+<p>（後續：自適應特徵擴展、C²-SISSO 內部、資訊論複雜度量度、動態系統應用。）</p>
+<h2 id="3-案例研究">3. 案例研究</h2>
+<p>合成例、挑戰性科學式、真實化學/材料性質預測、混沌動態系統辨識。對比多個 SOTA SR。</p>
+<h2 id="4-結論">4. 結論</h2>
+<p>SyMANTIC 克服既有 SR 關鍵挑戰：低計算成本、穩健處理高維輸入與噪聲資料、平衡準確與簡單。不返回單一最準式，而給<strong>近似 Pareto 最優方程集</strong>。提出計入「唯一輸入/運算子之<strong>數量與頻率</strong>」的資訊論結構複雜度量度。雖精確 Pareto 前沿一般不可行，SyMANTIC 建於 SISSO 智慧搜尋可能近 Pareto 的有限式集，特別發展<strong>複雜度約束變體 C²-SISSO</strong>。並含自動超參搜尋逐輪改善近似 Pareto。釋為易用 Python 套件（PyTorch、GPU）。</p>
+<p>廣泛測試（合成/挑戰性科學式/真實化學材料性質/混沌動態系統）對比 SOTA：SyMANTIC 一致勝出——<strong>回復 &gt;95% benchmark 真值方程（次佳僅略過 50%）、訓練時間最短</strong>（高效易平行）。從<strong>僅 5 個時間點</strong>的狀態導數量測準確學混沌 <strong>Lorenz</strong> 系統方程，勝廣用 <strong>SINDy</strong>。在可持續電池材料性質預測上，即使有限資料也學到比現有 SR 與傳統 ML <strong>更準、更可泛化</strong>的模型。</p>
+<p><strong>未來</strong>：更多 benchmark/真實問題找其困難類型；探索更好處理離群/非高斯噪聲的損失；<strong>混合稀疏線性迴歸 + GP 搜尋</strong>（SyMANTIC 只探到最大深度，GP 可更深但測很多低品質式效率低；SyMANTIC 的針對性搜尋是成功關鍵，混合可結合兩者之長）。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2502.03367_SyMANTIC.%E6%91%98%E8%A6%81.html"><code>../summarize/2502.03367_SyMANTIC.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

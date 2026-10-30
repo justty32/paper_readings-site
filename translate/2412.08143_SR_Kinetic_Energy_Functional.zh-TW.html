@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>利用符號迴歸學習一維動能密度泛函（1D Kinetic Energy Density Functional Learned with Symbolic Regression） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>日期：2024-12</p><p>arXiv：2412.08143</p><p><a href="https://arxiv.org/abs/2412.08143" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="利用符號迴歸學習一維動能密度泛函kedf">利用符號迴歸學習一維動能密度泛函（KEDF）</h1>
+<h2 id="摘要">摘要</h2>
+<p><strong>無軌道密度泛函理論（OF-DFT）<strong>承諾交付線性標度的電子結構計算。這需要已知的</strong>非交互作用動能密度泛函（KEDF）</strong>——應準確且須有<strong>準確的泛函導數</strong>，使最小化程序可設計。本文探索用<strong>符號迴歸</strong>作為機器學習 KEDF 的替代手段，產出<strong>解析表達式，其泛函導數易算</strong>。所定的半局域（semi-local）泛函形式作為電子數的函數被研究，我們能追蹤從<strong>單電子情況精確的 von Weizsäcker（vW）泛函</strong>到<strong>均勻電子氣極限精確的 Thomas-Fermi（TF）泛函</strong>的過渡。執行數個獨立搜尋，從完全無約束到約束成增強因子（enhancement factor）形式。本工作凸顯構造 KEDF 半局域近似的複雜性、及符號迴歸推進此搜尋的潛力。</p>
+<hr />
+<h2 id="i-引言">I. 引言</h2>
+<p>DFT 是最廣用的 ab initio 電子結構計算法（理論嚴謹、計算吞吐、預測準確間平衡好）。Hohenberg-Kohn 定理建立基態能量與基態電子密度的一一對應。標準 Kohn-Sham DFT 用軌道；<strong>OF-DFT 直接用密度（免軌道）→ 線性標度</strong>，但代價是須有<strong>非交互作用 KEDF</strong> 的良好近似。</p>
+<h2 id="ii-問題陳述與方法">II. 問題陳述與方法</h2>
+<p>KEDF 須準確 + 有準確泛函導數（OF-DFT 的密度最小化程序需要）。既有 ML 法（神經網路）的泛函導數常不穩；<strong>SR 產解析式 → 泛函導數易算、穩定</strong>。</p>
+<h3 id="symbolicregressionjl-改造讓它能處理泛函">SymbolicRegression.jl 改造（讓它能處理泛函）</h3>
+<p>SR 在材料科學（含交換-關聯泛函優化）漸常見，但<strong>從未用於 KEDF</strong>。SymbolicRegression.jl（PySR 的 Julia 後端）為「高維資料上找低維函數」設計、非為找泛函 → 本文改造：</p>
+<ul>
+<li>原本資料點是 d 維輸入向量（一維一特徵）；用此軸指不同函數（如 TF、vW 動能密度等涉密度與其導數的構造）;</li>
+<li>但為承載這些函數/密度的 <strong>1D 空間資訊</strong>，須加<strong>額外維度</strong> → 編輯庫以容納額外記憶體配置、<strong>把所有運算子升級為逐點矩陣運算子</strong>;</li>
+<li><strong>損失函數現含對候選動能密度的積分</strong>（得一值，與該外勢的已知總動能比較，由直接對角化算），用 MSE。</li>
+<li>密度的導數用中央差分數值計算。</li>
+<li>含模擬退火（溫度隨搜尋下降，使 tournament 選擇對「使損失變差的方程」越來越不寬容）、族群間非同步遷移。</li>
+<li>搜尋策略：完全無約束 → 約束成增強因子形式（學 TF 增強因子）。</li>
+</ul>
+<h2 id="iii-結果">III. 結果</h2>
+<ul>
+<li><strong>單電子</strong>：所有搜尋 SR 都收斂到精確解 <strong>vW 泛函</strong>。</li>
+<li><strong>多電子</strong>：半局域 SR 似不足，尤量子力學效應最明顯的少電子情況。</li>
+<li>分析最佳與次佳泛函 → 有時<strong>效能與複雜度間存在反直覺的平衡</strong>。</li>
+</ul>
+<h2 id="iv-結論">IV. 結論</h2>
+<p>為尋找「有穩定泛函導數」的機器學習動能密度表達式，對 1D 情況做 SR（隨電子數變化）。從完全無資訊搜尋到嘗試學 TF 增強因子。所有搜尋中，<strong>單電子 SR 都收斂到精確 vW 泛函</strong>；但<strong>多電子半局域 SR 不足</strong>（尤量子效應顯著的少電子）。分析最佳與次佳泛函顯示有時效能-複雜度的反直覺平衡。</p>
+<p>這是 SR 搜尋 KEDF 的首個實驗，開啟多條新路：可先定非局域貢獻再重學半局域組件（如交換-關聯泛函的 SR 搜尋所循）；理想上同時學非局域 + 半局域組件（計算需求大增）。本文對 SymbolicRegression.jl 的泛函相容改造為後續擴展鋪路。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2412.08143_SR_Kinetic_Energy_Functional.%E6%91%98%E8%A6%81.html"><code>../summarize/2412.08143_SR_Kinetic_Energy_Functional.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

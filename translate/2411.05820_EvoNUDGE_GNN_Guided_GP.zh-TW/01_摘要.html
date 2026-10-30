@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2411.05820_EvoNUDGE_GNN_Guided_GP.zh-TW.html">回 2411.05820_EvoNUDGE_GNN_Guided_GP.zh-TW 目錄</a>　<a href="02_%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>在演化計算中，通常假設搜尋算法「靠從搜尋空間採樣解、再用適應度函數評估」來取得問題實例的知識。這必然低效，因為適應度揭露的資訊極少——而解本身含有更多可被潛在利用的資訊。針對遺傳編程（GP），本文提出 <strong>EvoNUDGE</strong>：用一個圖神經網路（GNN）從符號迴歸（SR）問題中<strong>汲取額外知識</strong>。在演化開跑前先查詢該網路，產出一份<strong>子程式庫</strong>，隨後用它<strong>播種初始族群</strong>並<strong>偏置搜尋運算子的行為</strong>。在大量問題實例的廣泛實驗中，EvoNUDGE 顯著勝過多個基線，包含傳統 tree-based GP 與本方法的純神經變體。</p>
+<p><strong>關鍵詞</strong>：遺傳編程、符號迴歸、圖神經網路。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>演化算法的藍圖假設<strong>適應度函數是搜尋方法獲知問題特性的唯一管道</strong>，靈感來自自然演化（物種只能靠生出隨機多樣的後代來改進適應）。但若有其他資訊性導引來源，就沒理由維持此資訊瓶頸——在 metaheuristic 實務中這其實很常見（如有約束就用合規解播種、已知變數分布就設計考量分布的運算子）。本研究還想從<strong>候選解本身</strong>及<strong>評估方式</strong>汲取問題特定知識。</p>
+<p>依 No Free Lunch 定理，被告知問題特性的算法平均不會比未被告知的差。但在「適應度以複雜方式依賴解」的領域，把問題知識轉成對搜尋策略「可行動」的資訊很難——GP 正是這種領域：解是程式/符號式，只有執行後才揭露特性。本文把 GP 啟發式與一個<strong>自製 GNN</strong>（用來生成程式的圖）混合：給定一個以輸入-輸出範例表示的 GP 問題實例，查詢 GNN 產出一批 GP 子程式樣本，再用來播種 GP 族群並偏置運算子。應用於 SR，但易推廣到其他領域。</p>
+<p>主要貢獻：(i) EvoNUDGE——解 SR 的神經演化方法（§3），及其在多個 SR 基準上的實驗評估（§5）。</p>
+<h2 id="2-問題描述">2. 問題描述</h2>
+<p>考慮<strong>符號迴歸（SR）</strong>：建構一個把多個自變數映到因變數的數學式，使其在訓練範例上的近似誤差（通常 MSE）最小，並期望良好泛化。SR 是「從範例做程式合成」的特例，搜尋空間由 DSL 定義（指令集＝數學運算子；終端集＝輸入變數與常數）。由這兩集合複合而成的任意有限樹皆為合法程式（假設執行無副作用）。</p>
+<h2 id="3-所提方法">3. 所提方法</h2>
+<h3 id="31-動機">3.1 動機</h3>
+<p>NUDGE（EvoNUDGE 的神經組件）旨在補足 GP 作為 SR 方法的若干限制。把 SR（或任何程式合成）當成「搜尋完整解空間」有幾個缺點：(1) 大致<strong>忽略程式的組合性</strong>——程式由可獨立執行、可推理的部件（指令、子程式）組成，但對 GP 而言候選解是無法檢視線索的不透明實體；(2) 用完整解做事，難以取得關於<strong>該問題實例</strong>與<strong>整個領域</strong>（DSL 特性、問題類別）的知識。GP 是迭代算法、族群本應逐步累積高品質解並維持探索（族群即搜尋過程的記憶），但演化藍圖維護/更新/利用該知識的機制非常有限（多半只有選入/選出完整解）——GP 無法保留「只是<strong>潛在有用</strong>」的程式片段，也無法對所解問題做任何基本「推理」。既有對策（niching、novelty search、model-based search）少有<strong>明確從問題汲取知識</strong>、也少看重候選解的組合性。</p>
+<h3 id="32-nudge">3.2 NUDGE</h3>
+<p><strong>Neuro gUideD Graph sEarch</strong>：在「解的部件」而非完整解層級做前置搜尋。搜尋狀態是一張涵蓋目前所有部分解的圖，用終端與運算子自底向上漸進建構，給算法一個整合連貫的問題知識視圖；由能存取圖中語法與語意資訊的 GNN 導引。</p>
+<p><strong>圖搜尋算法</strong>：可比作優先化地建構 DSL 的<strong>遞移閉包</strong>（能自底向上由變數/常數/運算建出的表達式圖）。從無邊有向圖出發，每輪用一「層」新節點與邊擴展，要加哪些節點由 GNN 控制。後續圖由以下擴展前圖而成：(i) <strong>application 節點</strong>（代表把某運算套到某些引數）、(ii) <strong>value 節點</strong>（那些套用的結果）。初始常數與變數也表示為 value 節點。以有向邊捕捉因果依賴：application 節點收一條來自 operation 節點、若干條來自引數（variable/constant/既有 value 節點，數量＝運算的 arity），並有一條出邊指向結果 value 節點。</p>
+<p>若新 application 產出的值已在圖中，便連到既有 value 節點；否則建新 value 節點。值等價用<strong>符號執行</strong>判定：回溯邊到初始節點、建出符號式，再查詢 <strong>SymPy</strong> 符號執行器判 e₁=e₂。故圖在此意義下<strong>極小</strong>。NUDGE 因此平行建多棵 SR 表達式樹，並以一張圖整合表示之（類比 GP 族群，但更緊湊整合）。</p>
+<p><strong>用 GNN 導引搜尋</strong>：無約束擴展等同廣度優先搜尋，會因組合爆炸快速膨脹圖、耗盡算力。為約束搜尋空間，設計一個 GNN 充當注意力機制，只指派部分 application 節點值得擴展——技術上對 application 節點產出<strong>顯著度圖（saliency map）</strong>。為處理 SR 問題附帶的多個資料點，對每個範例獨立查詢 GNN：在代表輸入變數的節點餵入該範例值、算出所有 value 節點的因變值（用跨迭代維護的快取，開銷不大），得各範例的 saliency，平均成<strong>平均顯著度圖</strong>，最後指派 saliency 最高的前若干個 application 節點做擴展（個數為方法參數；試過其他擴展策略，此法最佳）。</p>
+<p><strong>節點表示向量</strong>（為第 i 個資料點實例化）：節點類型 one-hot（4 維）＋運算子在 DSL 的 one-hot（實驗用 11 個運算子＝11 維）＋value 節點的「值」嵌入（仿 Kamienny 2022，把 IEEE-754 單精度浮點的尾數與指數每 bit 當一輸入＝32 維；其他類型填零）＋「值與目標值之帶號差」同法嵌入（32 維）。共 79 維。</p>
+<p><strong>GNN 模型</strong>：以 **GAT（圖注意力網路）**為藍圖。79 維節點表示先過 128 單元線性層初始化狀態，再做 3 層 GAT 訊息傳遞（多頭、各頭獨立、串接維持維度、sum 聚合、ELU 激活）；最後每節點各自過輸出層（單一單元 + sigmoid）做二元分類。</p>
+<p><strong>訓練 = 模仿學習</strong>：在從 DSL 採樣的 SR 表達式樹（實驗中高度 ≤6）上監督訓練。已知某 SR 實例的目標程式 → 可定出圖擴展應走的軌跡；每輪擴展中辨識「目標解內含/不含」的 application 節點，劃為正/負類，定出二元目標 saliency 向量，與 GNN 輸出用<strong>二元交叉熵</strong>比對。因 saliency 嚴格為正，加上系統性搜尋策略，NUDGE <strong>保證最終收斂</strong>（資源足夠且模型可由可用運算子/常數表示時，必能建出目標 value 節點）——這點有別於不做系統性搜尋的方法（含 LLM 類）；產出的解也<strong>語法正確 by design</strong>。</p>
+<h3 id="33-evonudge-混合">3.3 EvoNUDGE 混合</h3>
+<p>混合 NUDGE 與 tree-based GP，期望互補。一方面 NUDGE 比傳統 GP 更了解問題（能直接檢視範例、觀察自底向上建出的式子如何「回應」輸入、能存取對目標變數的誤差），但<strong>難擴展</strong>（後續擴展查詢 GNN 越貴、對大圖的導引越不準）。另一方面演化搜尋有 NUDGE 難達的特性：族群式平行搜尋、可用交叉把代碼片段「嫁接」到另一解。</p>
+<p><strong>混合藍圖</strong>：給定 SR 問題，先呼叫 NUDGE 做若干次圖擴展；用最終圖填一份子表達式庫 L（遍歷所有 value 節點、轉成對應表達式樹）。再用兩個 library-based 運算子跑 GP：</p>
+<ul>
+<li><strong>Library-based 初始化</strong>：若目標族群 &lt; |L|，把 L 全部表達式複製進族群、其餘用預設（ramped half-and-half）補；否則從 L 無放回抽樣。</li>
+<li><strong>Library-based 變異</strong>：仿子樹替換變異，隨機選父解一節點，把該節點為根的子樹換成從 L 隨機抽的表達式。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

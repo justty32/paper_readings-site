@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.17198_Abstraction_Inductive_Bias_CL.zh-TW.html">回 2603.17198_Abstraction_Inductive_Bias_CL.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97%E8%A8%AD%E7%BD%AE.html">下一節 →</a></p>
+</blockquote>
+<h2 id="2-方法">2 方法</h2>
+<p>認知科學把人類學習區分為編碼特定經驗事件的<strong>情節表徵</strong>，與捕捉跨事件共享關係模式的<strong>基模表徵</strong>。有效的長期學習兩者皆需：情節細節支持特定事實的回憶，基模結構則支持泛化、降低相關記憶間的干擾。這種「實例層級記憶」與「結構泛化」的張力同樣出現在機器學習中，本文在 OCL 框架下將其計算化。</p>
+<h3 id="21-abstraction-augmented-online-learning">2.1 Abstraction-Augmented Online Learning</h3>
+<p>人類學習中一個常見的失敗模式，是表面細節壓過底層關係結構，導致情境綁定的表徵、損害向新領域的遷移。在知識圖譜衍生的資料流上微調 LLM 時也會出現類似型態：實體特定的表面特徵傾向主導學習訊號，覆寫了編碼更廣關係依賴的參數，結果模型可能成功回憶訓練實例，卻遺失歸納推理所需的共享結構。</p>
+<p><strong>演算法 1（AAT）</strong>：對資料流 D 中的每個 batch，做 n 次局部迭代。第 0 次（j=0）：前向具體實例 x_inst 與其結構抽象 x_abs，合併 loss = α·NLL(ŷ_abs, y_abs) + (1-α)·NLL(ŷ_inst, y_inst)；其後 j=1…n-1 次：只用實例 loss = NLL(ŷ_inst, y_inst)。每次都用 Adam 更新參數。</p>
+<p>形式上，資料流 D={d1,…,dm} 中每個實例只被觀察一次；在步驟 i，模型 π_i 遇到 batch b_i。目標是在最大化當前 batch 表現的同時，最小化對歷史資料的遺忘。作者借鑑 SMT 與理論式類別化（theory-based categorization）：類比推理透過在跨領域對齊關係結構、同時抽離表面屬性來進行。計算上，這被詮釋為梯度層級的歸納偏置——透過對具體實例與其結構抽象共同最佳化，抑制實體特定的梯度成分、放大與共享關係模式對齊的更新，從而降低跨序列範例的災難性干擾。</p>
+<p>AAT 透過雙目標 loss 搭配本地重播實現此構想。在 OCL 中每個 batch 只會遇到一次；由於資訊密集的 batch 可能無法在單次更新中充分鞏固，故引入本地重播次數 n∈[1,5]，允許每個 batch 做多次最佳化步驟。首次曝光時，模型同時接收具體實例與其結構抽象（透過移除實例特定表面特徵，例如遮蔽實體身份構成），使更新偏向對表面變異不變的表徵；抽象對 loss 的貢獻由 α 控制（預設 0.5）。後續 n-1 次本地重播強化具體實例，保留事實細節，同時第一步的抽象項防止實體特定梯度主導。</p>
+<h3 id="22-理論動機">2.2 理論動機</h3>
+<p>作者在簡化模型下分析抽象為何能穩定學習。設模型以編碼器 φ_θ(·) 加線性頭 W 預測關係：f_θ(x)=Wφ_θ(x)。每個範例含兩種資訊來源：關係結構 r 與實體身份 e₁,…,e_k，表徵可加性分解為 φ_θ(x)=φ_r(r)+φ_e(e₁,…,e_k)。</p>
+<p><strong>假設</strong>：**A1（加性分解）**編碼器加性分解，φ_r 與 φ_e 作用於不相交的參數子集。**A2（不對稱梯度方差）**實體 token 屬長尾、逐 token loss 在連續範例間變化劇烈；關係 token 是高機率詞，loss 低且穩定：σ_e² ≫ σ_r² ≥ 0。**A3（實體遮蔽）**遮蔽後的抽象輸入使 φ_θ(x_abs)=φ_r(r)，即抽象前向不貢獻任何實體特定梯度。</p>
+<p><strong>命題 1（抽象降低梯度方差）</strong>：在 A1–A3 下，AAT 合併 loss（權重 α∈(0,1)）是低方差訊號（抽象 loss，貢獻 ∇φ_r）與高方差訊號（實例 loss，貢獻 ∇φ_r+∇φ_e）的加權組合；對任意 α&gt;0，合併梯度的方差嚴格小於純實例梯度，且關係梯度的信噪比隨 α 單調上升。證明見附錄 A.1。</p>
+<p><strong>Remark 1</strong>：A1 是最強的理想化——實務上 Transformer 並不會為關係與實體表徵維持不相交的參數子集，命題應被理解為揭示機制，而非精確刻畫 Transformer 行為；第 5 節的實證結果支持該效應在實務中近似成立。</p>
+<p>抽象抑制了跨序列範例中劇烈變動的實體特定梯度成分，同時放大跨資料流保持一致的關係結構相關更新；藉由把大量實體特定範例摺疊進共享的關係模板，每次更新強化了更廣的關係模式等價類，形成隱式的結構正則化，即便新實體不斷到來仍能保留先前學到的關係知識。與靠重訪過去實例達成穩定的 ER 不同，AAT 是靠強化關係結構本身達成穩定效果。</p>
+<h2 id="3-基準">3 基準</h2>
+<p>基模式學習理論區分知識的兩個面向：對已觀察事實的情節式保留，以及對可由共享模式推得、未觀察關係的結構泛化。本文提出兩個基準，在不同粒度上操作化此區別。</p>
+<p>**Relational Cycle Benchmark（RCB）**同時探測事實保留與演繹泛化。它從涵蓋八個語意領域的「關係銀行」（{entity1, relation, entity2} 三元組）構造，定義 51 種關係拓撲（固定結構的小型關係子圖），每個拓撲至少含三個排成無向環的關係。60% 的拓撲中，環編碼了顯式邏輯依賴（一個關係被其餘關係的合取嚴格蘊涵，例如「Sarah 是 John 和 Jane 的母親」蘊涵「John 和 Jane 是手足」）；其餘拓撲則隨機選一邊作為留出邊。每個拓撲以來自 Wikidata 的完全不同實體實例化約 25 次，共產生 1,245 個拓撲實例、3,295 條唯一實體關係三元組。留出的關係作為「未知邊」，其餘關係（「已知邊」）連同不相關的干擾關係一起序列化為帶詞彙變化的自然語言段落。已知邊對應直接經驗到的事實，未知邊只有在模型已抽象出底層關係結構時才可推得——這是人類記憶中基模支持推論的計算類比。</p>
+<p>**Narrative Abstraction Benchmark（NAB）**探測更高階的抽象：即使表面形式、實體與事件結構完全不同，仍要透過共享的關係 motif（以諺語表達）對齊敘事。與 RCB 中實體遮蔽提供顯式結構訊號不同，NAB 要求模型在訓練與評測實例間沒有詞彙或表面重疊的情況下，辨識隱式關係規律。基準以 ePiC 資料集中「敘事配對諺語」為基礎，透過受 SMT 啟發、提示引導的類比生成程序，每則諺語再擴增 15 篇敘事（鼓勵領域層級轉移、懲罰表面重疊）。每則敘事接著轉為成對延續比較任務：一個符合諺語抽象意義的正確結局，與一個局部連貫但違反底層關係 motif 的干擾結局（長度匹配、構造為合理的故事延續）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

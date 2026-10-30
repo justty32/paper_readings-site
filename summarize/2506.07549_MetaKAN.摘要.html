@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《透過元學習提高訓練 KAN 的記憶體效率（MetaKAN）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zhangchi Zhao, Jun Shu, Deyu Meng, Zongben Xu（西安交通大學）</p><p>日期：2025-06，ICML 2025（H 類 KAN）</p><p>arXiv：2506.07549</p><p><a href="https://arxiv.org/abs/2506.07549" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="透過元學習提高訓練-kan-的記憶體效率metakan重點摘要">《透過元學習提高訓練 KAN 的記憶體效率（MetaKAN）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>MetaKAN</strong>：不直接最佳化 KAN 的海量激活函數參數，而是<strong>用一個更小的「元學習器（meta-learner）」生成這些權重</strong>——靠「<strong>可學習提示（learnable prompt）當每個激活函數的識別符 + 一個兩層 MLP 元學習器學共享的權重生成規則</strong>」，端到端可微訓練，<strong>只用 KAN 1/3 到 1/9 的可訓練參數</strong>就達到相當甚至更好的效能，把 KAN 與 MLP 的訓練成本差距大幅縮小；且<strong>模型無關（model-agnostic）</strong>，可套用到 FastKAN/ConvKAN/WavKAN 等變體。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>KAN 把固定激活函數換成<strong>邊上可學習的 spline 激活函數</strong>，更靈活可解釋；但每個激活函數都帶可學習係數 → <strong>參數量約為同結構 MLP 的 G+k+3 倍</strong>（G=grid 數、k=spline 階），<strong>記憶體效率差、訓練成本高、難擴展到大資料/複雜任務</strong>。這正是原 KAN 論文點名的痛點。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>關鍵觀察</strong>：KAN 把高維函數分解成<strong>逐維的單變量函數</strong>，而這些單變量函數同屬一個<strong>共享函數類 Ω</strong>、共用同一套「參數設定規則」。於是 KAN 的權重學習可視為<strong>多任務學習</strong>：每個激活函數是一個迴歸任務，由「任務資訊 c」對應到「該激活函數的 spline 係數」。</li>
+<li><strong>MetaKAN 框架</strong>（圖 1）：把 KAN 每個激活函數的權重改由 <strong>w = h(c; θ)</strong> 生成——
+<ol>
+<li><strong>可學習提示 c（prompt）</strong>：每個激活函數的唯一識別符（類比 LLM 的 prompt）。</li>
+<li><strong>元學習器 h（兩層 MLP）</strong>：學「識別符 → spline 係數」的<strong>共享生成規則</strong>。
+原本龐大的激活函數參數 → 壓縮成「提示 + 小元學習器」的參數。提示與元學習器<strong>同時用梯度下降更新</strong>（Algorithm 1）。</li>
+</ol>
+</li>
+<li><strong>擴展到深層 KAN</strong>（Algorithm 2/3）：不同層的任務分布會「漂移」，單一共享元學習器難擬合 → 把層<strong>分群成 K 個 cluster</strong>（依輸入/輸出通道相近分組），每群配一個專屬元學習器，在<strong>表達力與記憶體</strong>間取平衡。</li>
+<li><strong>模型無關</strong>：同框架可生 MetaFastKAN、MetaWavKAN、MetaConvKAN 等。</li>
+<li><strong>記憶體效率條件</strong>：元學習器是固定成本，當「省下的 spline 參數」&gt; 此固定成本才划算 → <strong>網路越大越深、grid 越大越有利</strong>；極小 KAN 反而可能略增參數。總參數量近似等於同結構 MLP。</li>
+</ul>
+<h2 id="結果含數字">結果（含數字）</h2>
+<ul>
+<li><strong>Feynman 符號迴歸</strong>（表 2，16–17 條方程）：grid=5 時 <strong>11/17 條 MSE 更低</strong>、參數減 <strong>21–47%</strong>;grid 較大時 <strong>13/16 條更優</strong>、平均省 <strong>18%</strong> 參數。I.12.5 方程 MSE 有<strong>一個數量級</strong>提升（30 參數 vs KAN 57）。</li>
+<li><strong>卷積架構</strong>（表 3，MNIST/CIFAR-10/CIFAR-100）：4 層 MetaKANConv 在 CIFAR-10 達 <strong>45.86%</strong>、參數減 <strong>89%</strong>（392K vs 3.49M），且高出 baseline 6.03 個百分點；MetaFastKANConv 在 CIFAR-100 達 <strong>34.81%</strong>（vs 28.84%）僅用 <strong>12%</strong> 參數；8 層 MetaFastKANConv 在 CIFAR-10 達 <strong>81.53%</strong>、參數減 <strong>78%</strong>。</li>
+<li><strong>記憶體</strong>（圖 4）：網路越大、grid 越大，MetaKAN 峰值 GPU 記憶體節省越顯著。</li>
+<li><strong>提示語義</strong>（圖 10）：相似激活函數的學到提示更相似（熱圖暗區），佐證提示確實能識別激活函數。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>極小 KAN</strong>（總激活數很少）時，元學習器固定成本反而使參數略多於 KAN。</li>
+<li>元學習器隱藏維度需<strong>配合 grid 大小</strong>挑選（grid 小要用很小的隱藏維才省）。</li>
+<li>MetaKAN 與 KAN 本身在<strong>影像分類 benchmark 仍可能弱於既有基線</strong>（作者於 Impact Statement 自承）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 <strong>H 類（KAN）</strong> 中走「<strong>HyperNetwork / meta-learning 生成權重</strong>」路線的代表，與 <a class="paper-reference" href="2501.17411_GA_KAN.%E6%91%98%E8%A6%81.html">2501.17411</a>（GA-KAN，用演化計算搜尋稀疏架構減參）對照：兩者都治 KAN 參數爆炸，<strong>GA-KAN 砍結構、MetaKAN 砍權重表示冗餘</strong>。</li>
+<li>最值得記：<strong>「KAN 激活函數＝共享函數類的多任務」</strong> 這個重構視角，以及由此導出的「<strong>prompt（識別符）+ 小 meta-learner（共享規則）</strong>」配方；深層用<strong>分群多元學習器</strong>；參數量可壓到接近 MLP。</li>
+<li>與 HyperNetwork 的差別：不靠啟發式整層共享，而是<strong>顯式建模 KAN 的權重生成規則</strong>。</li>
+<li>定位：ICML 2025 方法論文 + 多任務（符號迴歸/PDE/影像分類）實證，附開源碼（github.com/Murphyzc/MetaKAN）；適合做 <strong>KAN 擴展、記憶體高效訓練、HyperNetwork/meta-learning</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2506.07549_MetaKAN.zh-TW.html"><code>../translate/2506.07549_MetaKAN.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

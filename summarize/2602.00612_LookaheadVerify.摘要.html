@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《前瞻而後驗證：擴散大語言模型在上下文無關文法下的可靠約束解碼》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yitong Zhang (Tsinghua), Yongmin Li (PKU), Yuetong Liu (Beihang), Jia Li* (Tsinghua), Xiaoran Jia (BIT), Zherui Li (NUS), Ge Li (PKU)</p><p>日期：2026-02</p><p>arXiv：2602.00612</p><p><a href="https://arxiv.org/abs/2602.00612" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="前瞻而後驗證擴散大語言模型在-cfg-下的可靠約束解碼重點摘要">《前瞻而後驗證：擴散大語言模型在 CFG 下的可靠約束解碼》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>針對擴散 LLM（dLLM）非自迴歸生成「不完整前綴」無法被既有語法剖析器檢查的問題，提出 <strong>LAVE</strong>：每次 dLLM 為某 [MASK] 位置提議新 token 時，利用 dLLM 一次前向傳播可同時預測所有位置分布的性質，對其餘 [MASK] 位置採樣出 N 組 lookahead 完整前綴，再用 CFG 剖析器驗證是否有任何一組可合法延伸——若至少一組可行則接受該 token，否則拒絕並重提——從而<strong>可靠保證中間輸出總是可被完成為合法句型</strong>。在 4 個 dLLM × 3 個基準上語法正確率逼近 100%，且幾乎無額外時間成本。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>dLLM 的非自迴歸生成順序（右邊 token 可先於左邊生成）使中間輸出<strong>含有 [MASK] 的不完整前綴</strong>，無法直接套用為 AR LLM 設計的 CFG 約束解碼（那些技術依賴「完整前綴」的剖析器）。</li>
+<li>現有針對 dLLM 的 CFG 約束解碼（Mündler et al.）為計算可行而採用<strong>正規語言過近似</strong>，忽略遮罩區段的確切長度上限，導致<strong>約束不可靠</strong>——可能接受使中間輸出無法被完成為合法句型的 token。作者正式定義「可靠約束」：解碼每一步的中間輸出都必須可被延伸為至少一個合法句子。</li>
+<li>不可靠約束使 dLLM 可能進入「死胡同」——生成的半成品無論如何補完都不合法，尾段徒然重複直到長度上限。</li>
+</ul>
+<h2 id="核心方法lavelookahead-then-verify">核心方法：LAVE（Lookahead-then-Verify）</h2>
+<h3 id="1-前瞻驗證lookahead-based-verification核心">1. 前瞻驗證（Lookahead-Based Verification，核心）</h3>
+<ul>
+<li>當模型為某位置提議 token t*，暫先替換該 [MASK] 得到 y&#x27;。</li>
+<li>對 y&#x27; 中其餘被遮罩位置，依模型當步預測的邊際分布獨立採樣 N 組 token 填入（N=10 已達 &gt;97% 接受率），得到 N 組「lookahead 完整前綴」。</li>
+<li>並行用 CFG 剖析器（Earley parser）檢查是否有任一組可合法延伸（IsExtendable）：若有則接受 t*，無則拒絕並重提。</li>
+<li>此設計保證：被接受的 token 永遠存在至少一個合法完成路徑，實現<strong>可靠約束</strong>。</li>
+</ul>
+<h3 id="2-快取增強恢復cache-enhanced-recovery">2. 快取增強恢復（Cache-Enhanced Recovery）</h3>
+<ul>
+<li>若連續被拒絕次數超過閾值 τ（預設 5），表示模型卡在困難上下文。</li>
+<li><strong>恢復手段</strong>：取最近一次通過驗證的完整前綴 y_cache 取代當前前綴，再利用剖析器提供的合法下一 token 集合約束取樣一個新 token 以有效改變上下文，恢復生成。</li>
+</ul>
+<h3 id="3-整體流程">3. 整體流程</h3>
+<p>提案 → 前瞻驗證 → 接受/拒絕 → 若連續失敗過多則快取恢復 → 迴圈至無 [MASK] 為止。</p>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>語法正確率</strong>（syntactic@k）：在 4 個模型（LLaDA-8B/LLaDA-1.5/Dream-7B/DiffuC-7B）×3 個基準（C++/JSON/SMILES）上幾乎所有設定都達到 ~100%，大幅優於 NO-CD（未約束）、FS-CD（強制左到右）與 IG-CD（交集引導）。</li>
+<li><strong>功能正確率</strong>（functional@k）：LAVE 一致提升功能正確率，且增幅遠大於其他約束方法——例如 Dream-7B CPP 上 functional@1 從 25.6%→33.5%（+7.9%），最佳基線僅 +3.5%。</li>
+<li><strong>時間開銷</strong>：幾乎可忽略——JSON-Bench 平均僅 +2%，甚至在某些場景（DiffuC-7B SMILES）因減少冗餘生成而<strong>比不約束更快</strong>。</li>
+<li><strong>消融</strong>：前瞻驗證單獨即可大幅提升語法與功能正確率；快取恢復進一步增益且無額外時間成本。</li>
+<li><strong>超參數穩健性</strong>：對前瞻大小 N 與提案預算 τ 在大範圍變動下效能穩定。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>無法對抗 dLLM 的重複生成行為（例如不斷產出空白／換行直到長度上限），這是正交易題，可與抗重複技術組合解決。</li>
+<li>小量前瞻（N=10）偶爾無法發現存在的可延伸前綴，導致拒絕有效 token，但作者證明此機率極低且對最終品質影響可忽略。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本文提出首個<strong>可靠</strong>的 dLLM CFG 約束解碼方案，其核心洞察——利用 dLLM 並行預測全部位置之分布做 lookahead 來繞過不完整前綴問題——思路清晰且極簡，<strong>適用於任何 dLLM 架構與任何 CFG</strong>。</li>
+<li>與 <strong>ai_core §5 受約束填碼（前瞻驗證約束解碼）</strong> 直接對應：本文為該方向的<strong>理論基礎</strong>與<strong>先驅實作</strong>，前瞻驗證（lookahead-then-verify）正是 ai_core §5 所描述受約束填碼管線的核心環節，兩者共享「在並行生成中確保每一步都保持可完成性」的設計精神。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2602.00612_LookaheadVerify.zh-TW.html"><code>../translate/2602.00612_LookaheadVerify.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

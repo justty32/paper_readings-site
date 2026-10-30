@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>EvoRouter: Cost-Efficient Multi-Agent Routing via Insight-Guided On-Policy Distillation 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yitao Xiao、Xu Zhang、Ye Cheng、Shaoyong Guo、Yan Sun、Ziyue Zhu、Sitao Xie、Guo Tong、Haoran Luo</p><p>日期：2026-10-26（v1，cs.AI）</p><p>arXiv：2610.35690</p><p><a href="https://arxiv.org/html/2610.35690v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="evorouter以洞察引導的-on-policy-蒸餾訓練多代理路由">EvoRouter：以洞察引導的 on-policy 蒸餾訓練多代理路由</h1>
+<h2 id="摘要與第-12-節問題與定位">摘要與第 1～2 節：問題與定位</h2>
+<p>多代理服務要同時決定模型、協作模式、代理數、互動輪數、技能與子任務。配置間有相互作用，執行後只有任務成功與成本等稀疏訊號，難以指出哪一項選擇有效。作者提出 EvoRouter：由專家彙整多條執行軌跡的條件式路由洞察，用教師對學生自身軌跡做 on-policy 蒸餾，並以成本感知強化學習更新路由器。（<a href="https://arxiv.org/html/2610.35690v1#S1">§1～2</a>）</p>
+<h2 id="第-3-節路由洞察與目標">第 3 節：路由洞察與目標</h2>
+<p>作者的前置實驗歸納三點：不同任務需要不同能力；增加代理或互動輪數不一定持續改善；模型與協作模式的效果取決於彼此組合。這些觀察用來引導後續洞察的彙整，而非保證任一配置在新任務上必然有效。（<a href="https://arxiv.org/html/2610.35690v1#S3.SS1">§3.1</a>）</p>
+<p>路由器依請求與可用資源輸出配置：協作模式 <code>c</code>、互動輪數 <code>r</code>，以及每個代理的模型、技能與子任務。環境實例化並執行後回傳結果；路由器再綜合產生最終答案。任務驗證器給成功／失敗訊號，目標在成功率與相對參考預算的執行成本間取捨。（<a href="https://arxiv.org/html/2610.35690v1#S3.SS2">§3.2</a>）</p>
+<h2 id="第-4143-節初始化與成本感知學習">第 4.1～4.3 節：初始化與成本感知學習</h2>
+<p>路由器先分析任務，在 <code>&lt;plan&gt;</code> 產生結構化配置；確定性執行器解析計畫並啟動多代理系統，結果回傳後路由器再輸出答案。每條軌跡保存任務、配置、執行結果及驗證結果。（<a href="https://arxiv.org/html/2610.35690v1#S4.SS1">§4.1</a>）</p>
+<p>監督初始化以凍結的強模型產生示範，只保留格式有效且答對者，對路由器生成的 token 訓練；提示及環境回饋在 loss 中遮罩。所得政策也成為後續 KL 正則化的凍結參照。（<a href="https://arxiv.org/html/2610.35690v1#S4.SS2">§4.2</a>）</p>
+<p>強化學習的獎勵為任務成功指標減去成本懲罰：<code>R = R_perf − λC · log₂(1 + C/B)</code>，其中 <code>C</code> 是軌跡 worker 執行成本，<code>B</code> 是任務所屬預算。加權成本懲罰設有小於 1 的上限，使成功軌跡的獎勵為正、失敗軌跡不為正。每個問題採樣一組軌跡，依組內相對優勢更新路由器，並以 KL 項約束其相對參照政策的偏移。（<a href="https://arxiv.org/html/2610.35690v1#S4.SS3">§4.3</a>）</p>
+<h2 id="第-44-節洞察與-on-policy-蒸餾">第 4.4 節：洞察與 on-policy 蒸餾</h2>
+<p>訓練期間，洞察專家定期比較跨任務配置、成敗與成本：歸納條件式規則、釐清互相衝突規則的適用前提，並合併或裁除冗餘內容。新洞察與舊洞察一起更新；部署時不依賴這些特權訓練資訊。（<a href="https://arxiv.org/html/2610.35690v1#S4.SS4">§4.4</a>）</p>
+<p>對學生政策採樣出的軌跡，凍結教師可額外看到當前洞察、配置、執行結果及驗證成敗；教師與學生共用學生已生成的前綴，對下一 token 分布計算 <code>KL(學生 || 教師)</code>，教師停止梯度。蒸餾只施於初始路由回應的分析及計畫內容 token，計畫和分析的損失分別加權。訓練目標結合此蒸餾、成本感知 RL 與參照政策 KL；更新後的學生產生新軌跡，供專家後續修訂洞察。（<a href="https://arxiv.org/html/2610.35690v1#S4.SS4">§4.4</a>）</p>
+<h2 id="第-51-節與附錄-a實驗設定">第 5.1 節與附錄 A：實驗設定</h2>
+<p>作者使用 21 個資料集：19 個涵蓋數學、常識、知識、檢索與多模態的域內資料集，另用程式生成 LiveCodeBench 與邏輯推理 BBH-LD 作域外測試。五個域內類別共 12,800 題，切為 10,500 訓練、1,000 開發與 1,300 測試；域外分別為 175、200 題。SFT、RL 與評估任務集互斥。表 2 的平均正確率按樣本數加權，不是各領域等權平均。（<a href="https://arxiv.org/html/2610.35690v1#A1.SS2">§5.1、附錄 A.2～A.4</a>）</p>
+<p>可路由資源包括五個 LLM、六種協作模式，以及各類任務至少六項相關技能。比較涵蓋單一模型、單代理及多代理路由；無原生模型選擇能力的基線固定使用 GLM-5。無視覺能力的模型在多模態題目會收到圖片不可見的固定提示。（<a href="https://arxiv.org/html/2610.35690v1#A1.SS4">§5.1、附錄 A.1、A.4</a>）</p>
+<p>路由器骨幹為 Qwen3-4B、Qwen3-8B 或 Llama-3.1-8B。DeepSeek-V4-Pro 先產生 2,000 筆通過篩選的 SFT 示範，也在後續擔任洞察專家；蒸餾教師則依學生家族採 Qwen3-32B 或 Llama-3.1-70B。後續訓練每題採 16 條 rollout，洞察池上限八條、總長 6,144 字元，實驗使用八張 A100 80GB。（<a href="https://arxiv.org/html/2610.35690v1#A1.SS3">附錄 A.3</a>）</p>
+<h2 id="第-52-節與附錄-b正確率與推論成本">第 5.2 節與附錄 B：正確率與推論成本</h2>
+<p>作者自報三次獨立執行的樣本加權結果如下；域內有 1,300 題，域外有 375 題。表中 <code>±</code> 保留原文寫法。（<a href="https://arxiv.org/html/2610.35690v1#S5.SS2">§5.2，表 2</a>）</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th style="text-align:right">域內平均正確率</th>
+<th style="text-align:right">域外平均正確率</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RCR-Router</td>
+<td style="text-align:right">61.46 ± 0.73%</td>
+<td style="text-align:right">65.33 ± 2.32%</td>
+</tr>
+<tr>
+<td>EvoRouter-4B</td>
+<td style="text-align:right">68.69 ± 0.95%</td>
+<td style="text-align:right">74.67 ± 0.96%</td>
+</tr>
+<tr>
+<td>EvoRouter-8B</td>
+<td style="text-align:right">71.23 ± 0.74%</td>
+<td style="text-align:right">76.80 ± 0.67%</td>
+</tr>
+<tr>
+<td>EvoRouter-LLaMa-8B</td>
+<td style="text-align:right">71.15 ± 0.89%</td>
+<td style="text-align:right">78.93 ± 1.13%</td>
+</tr>
+</tbody>
+</table>
+<p>EvoRouter-4B 的域內平均正確率比 RCR-Router 高 7.23 個百分點；作者報告其平均 worker 成本為 15,280.79 單位，低 50.95%。若加入路由器呼叫，總推論成本約 18,940 單位，較 RCR-Router 低 39.2%。兩個百分比的計算範圍不同。（<a href="https://arxiv.org/html/2610.35690v1#S5.SS2">§5.2，圖 5</a>）</p>
+<p>這裡的成本單位是 FLOPs <strong>估算代理量</strong>，不是直接量測的 FLOPs 或費用：每次 worker 呼叫以模型活躍參數相對 3B 參照模型的比例，乘上輸入與輸出 token 數，再沿軌跡相加。作者省略注意力互動與其餘運算項；圖 5 右側另納入 router 呼叫。此推論比較沒有把 SFT、專家、教師及多條 rollout 的訓練成本攤入。（<a href="https://arxiv.org/html/2610.35690v1#A2">附錄 B</a>）</p>
+<h2 id="第-5355-節消融與泛化">第 5.3～5.5 節：消融與泛化</h2>
+<p>作者自報 EvoRouter-4B 完整方法域內正確率為 68.69%；移除洞察為 64.54%，移除 OPD 為 63.23%，只保留 SFT（無 RL 與 OPD）為 59.77%。域外相應數字為 74.67%、70.93%、69.87%、63.20%。各項消融也改變成本，不能只看正確率而視為完全相同資源消耗。（<a href="https://arxiv.org/html/2610.35690v1#S5.SS3">§5.3，表 3</a>）</p>
+<p>成本懲罰權重增大時，作者觀察到政策傾向較低成本配置，正確率對權重的敏感度依領域而異。另一實驗固定已訓練路由器，同時替換模型池、協作模式與技能池；作者報告 EvoRouter-4B 相對 MasRouter 的域內／域外正確率分別高 3.85／7.47 個百分點，worker 成本低 6.7%／18.5%。這是指定替換資源下的零樣本測試，不代表對所有未知資源均成立。（<a href="https://arxiv.org/html/2610.35690v1#S5.SS4">§5.3～5.4</a>）</p>
+<h2 id="第-6-節結論與範圍">第 6 節：結論與範圍</h2>
+<p>作者將跨軌跡洞察、特權教師蒸餾與成本感知 RL 結合，讓部署路由器不需取得訓練時的執行結果與洞察。框架目前面向雲端代理服務，作者提出未來納入裝置異質性與代理間通訊成本，以延伸到雲邊協同。（<a href="https://arxiv.org/html/2610.35690v1#S6">§6</a>）</p>
+<p><strong>本檔補註，非作者自陳</strong>：結果依賴有限任務集、指定資源池、驗證器與 FLOPs 代理量；成本估算不等同延遲、價格或端到端訓練投入，也不能由此推出實際服務一定省費用。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2610.35690_EvoRouter.%E6%91%98%E8%A6%81.html">EvoRouter 摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

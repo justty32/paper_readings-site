@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_背景與推論限制 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><p>← <a href="../2402.01869_InferCept.zh-TW.html">回母檔</a>｜<a href="02_InferCept%E8%A8%AD%E8%A8%88.html">下一節</a></p>
+<h2 id="摘要">摘要</h2>
+<p>LLM 愈來愈常連接外部環境、工具與 agent，以突破純語言任務的限制。然而今天的 inference systems 是為 standalone LLM 設計，常把每次外部互動視為 generation 結束；互動完成後建立新 request，導致已算過的 context 再算一次。實驗中這占總 model-forwarding time 的 37%–40%。</p>
+<p>InferCept 是針對 augmented LLM 的 inference framework，支援 generation 中途 interception。它減少暫停造成的 GPU resource waste，把省下的 memory 用於服務其他 requests。相較 SOTA systems，整體 serving throughput 改善 1.6–2×，每秒完成的 requests 約為兩倍。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 的語言知識會過時，也不擅長所有非語言工作。現代系統因此加入 web search、QA、text-to-speech、image generation、robot action、human feedback 或另一個 agent。LLM 生成 tool token 後暫停，外部執行結束，再把結果送回同一條 generation。</p>
+<p>標準 serving system 沒有把「暫停後恢復」當成 request lifecycle 的一級狀態。最常見做法是清除 KV，回傳後把舊 tokens 和 API result 當新 prompt。這浪費重算，也改變排程優先序。</p>
+<p>三種直覺政策沒有絕對贏家。Discard 回收快但要重算；Preserve 沒重算卻讓 inactive KV 卡住 GPU；Swap 回收 GPU，卻消耗 CPU memory、PCIe bandwidth 與 foreground time。InferCept 的核心是把它們放進同一個 GPU memory-time waste 尺度，依 request 與當前資源狀態選擇。</p>
+<h2 id="2-augmented-llms">2. Augmented LLMs</h2>
+<p>作者研究 LangChain、ReAct 類框架及六種 augmentation。外部工作可由自動 API、互動式人類或 agent 完成；interception duration 從穩定短延遲到高度變動、長時間都有。Context length、工具出現位置、呼叫次數也不同。</p>
+<p>這些屬性直接改變 KV 政策。短 API 通常適合 preserve；很長 API 值得釋放 KV；長 context 的重算與搬移都更貴；多次中斷使固定政策的錯誤一再累積。因此 system 必須在 runtime 使用 request state，而不是只按 API name 分類。</p>
+<h2 id="3-現有推論系統的限制">3. 現有推論系統的限制</h2>
+<p>Continuous batching 與 PagedAttention 能在普通 generation 中改善利用率，但沒有處理外部等待。</p>
+<ul>
+<li>Discard：清除 KV，工具回來後從 prompt 重算。混合 workload 中 37%–40% forwarding time 是重算，換算 GPU memory-time 的 waste 為 27%。</li>
+<li>Preserve：保留 KV，request 只是停止 decode。實驗裡超過 60% 的時間，近半 GPU memory 被 interrupted requests 占住。</li>
+<li>Swap：把 KV 搬到 CPU，回來再搬回。Naive 版本串行且阻塞 compute；混合 workload waste 26%，逾 25% workload time 在等待 swapping。</li>
+</ul>
+<p>Vanilla vLLM 還會把 resumed request 當新 request 放到 queue 後端。這可能讓 TTFT 看起來不差，因為系統持續先接新 request，代價是已經呼叫工具的 request 被餓死，completed-request throughput 下降。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

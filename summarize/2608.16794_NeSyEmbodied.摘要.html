@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Neurosymbolic Embodied Agents 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Mohammad Albinhassan、Yuming Feng、Alessandra Russo、Pranava Madhyastha</p><p>日期：2026-08-17（v1，cs.RO）</p><p>arXiv：2608.16794</p><p><a href="https://arxiv.org/abs/2608.16794" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="neurosymbolic-embodied-agents-重點摘要">Neurosymbolic Embodied Agents 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>把「感知」與「規劃」拆成兩階段：VLM 主動探索只取任務相關的謂詞與物件綁定，產出符號初始狀態；PDDL 轉移模型在 token 層限制解碼只能產生可行動作，MCTS 再用領域無關的規劃啟發式在可行延續裡搜長程解——結果是「依構造即可執行」的計畫，唯一還可能出錯的環節被侷限在感知這一階段。</p>
+<h2 id="兩階段架構">兩階段架構</h2>
+<ul>
+<li><strong>Phase I 探索</strong>：VLM 與確定性探索控制器（harness）配合，依當前影像與已知事實提出候選探索技能（Goto、Open、Close、Look、Done），只有經多視角定位或成功的 grounded 互動支持的關係主張才會寫入符號狀態，未經支持的提議只能觸發再探索、不能直接成立事實。</li>
+<li><strong>Phase II 規劃</strong>：PDDL 定義動作的前置條件與效果，在每個 token 邊界把解碼分布限制在能延伸出可行動作的 token 上（不可行 token 機率設零），因此任何生成完的計畫依構造保證在轉移模型下可執行；token 層 MCTS 再用 Fast Forward、LM-cut 等規劃啟發式的加權平均當價值函數，在可行延續中挑長程可達目標的路徑。</li>
+</ul>
+<h2 id="作者報告的結果">作者報告的結果</h2>
+<p>在 VirtualHome 與 ALFWorld 上，Qwen3.5 4B–27B 版本的成功率分別達 94.5–99.5% 與 90.3–97.8%（作者自報）。4B agent 分別以 32.0 與 63.4 個百分點超過 27B 直接視覺策略，顯示顯式結構可部分取代模型規模。成本上，配對同模型規模比較，constrained MCTS 比 extended thinking 少用至多 4.0 倍生成 token、比 unconstrained MCTS 少 1.5 倍；所需模型可見影像數比直接互動少至多 5.5 倍。消融顯示約束與搜尋互補而非可互相替代——ALFWorld 上單獨用約束或單獨用 MCTS 都只解不到三成任務，兩者合併解超過 95%。失效歸因顯示殘餘錯誤集中在狀態獲取階段（VirtualHome 約 2.3%、ALFWorld 約 4.5% 的任務因此失敗），一旦符號狀態正確，約束規劃本身高度可靠；相對地直接視覺策略在 VirtualHome 有 64.2% 的任務死於「無法達成目標」、在 ALFWorld 有 39.8% 死於「動作無法對應到模擬器」。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>這篇對<strong>typed DSL 與符號接地</strong>是極具體的工程範本。Phase II 的 token 層約束解碼，正是「用 typed 介面把 LLM 輸出空間收斂到必然合法」的具體實作——不是事後驗證再重試，而是生成當下就把不合法 token 機率歸零，這比 ai_core §3.2「帶 LLM 留白的程序」更進一步：洞不只縮小，連洞的邊界形狀都由確定性 schema（這裡是 PDDL 的 precondition/effect）直接刻出來。Phase I「一個字面量只有在視覺或互動證據支持下才進入符號狀態」的設計，則是符號接地訊號的一個乾淨案例，呼應 ai_core §5.2（為何不會自我污染）的精神——未經證據支持的模型提議只能觸發再探索，不能直接寫入事實庫，避免符號漂移隨執行累積放大。失效歸因顯示一旦接地正確，下游規劃幾乎不出錯，這也提示 ai_core 若要做符號接地層，投入重點該放在感知/證據獲取的可靠度，而非規劃器本身。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2608.16794_NeSyEmbodied.zh-TW.html"><code>../translate/2608.16794_NeSyEmbodied.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.06590_ARC_AGI2_TTT_LongT5.zh-TW.html">回 2603.06590_ARC_AGI2_TTT_LongT5.zh-TW 目錄</a>　<a href="02_%E6%B3%A8%E5%85%A5%E5%85%88%E9%A9%97%E7%9F%A5%E8%AD%98.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>抽象與推理語料庫（Abstraction and Reasoning Corpus, ARC）旨在評估「超越模式匹配」的泛化能力，要求模型從極少範例推出符號規則。本文提出一套以 transformer 為基礎的系統，靠四個核心想法推進 ARC 表現：</p>
+<ol>
+<li><strong>重新表述為序列建模</strong>：用僅 <strong>125 token</strong> 的緊湊任務編碼，搭配改造的 <strong>LongT5</strong> 架構做高效長上下文處理。</li>
+<li><strong>有原則的增強框架</strong>：基於群對稱、網格遍歷（grid traversals）、與細胞自動機擾動，強制模型對「表示變化」保持不變性。</li>
+<li><strong>測試時訓練（TTT）+ 輕量 LoRA</strong>：讓模型針對每個未見任務，從示範對學其轉換邏輯而專化。</li>
+<li><strong>對稱感知的解碼與評分</strong>：在多種增強視角下聚合似然，等同於對候選解做「多視角推理（multi-perspective reasoning）」。</li>
+</ol>
+<p>這些元件協同運作：增強擴展假設空間、TTT 銳化局部推理、對稱評分提升解的一致性。最終 <strong>200M 參數的 LongT5</strong> 在 Kaggle 半私有評測集達 <strong>27%</strong>，在算力約束下具競爭力，並超越先前的神經 ARC 解法。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>ARC（Chollet 2019 提出）要求用極少資料解謎、強調泛化與抽象推理。傳統 ML/DL 依賴大資料集與固定模式，難以應付。本系統圍繞 <strong>LongT5 編碼器-解碼器</strong> 架構：</p>
+<ul>
+<li><strong>離線訓練階段</strong>：分層結合課程學習（curriculum learning）、多任務學習、grokking，讓模型逐步建立對 ARC 推理模式的理解與穩健內部表示。</li>
+<li><strong>推理時的線上策略</strong>：測試時訓練（TTT）、基於空間/顏色對稱的自適應解碼與評分、以及把不合理候選砍掉的過濾機制（以白盒函數編碼領域先驗）。</li>
+</ul>
+<p>所有元件都需在 Kaggle 嚴格約束下運作：<strong>4×L4 GPU、12 小時內處理 240 個任務</strong>。即便如此，200M LongT5 仍在半私有集達 27%。</p>
+<p><strong>資料規模</strong>：ARC 公開任務僅 1120 個（訓練/評測各半），太少不足以直接訓大模型。團隊納入其他公開 ARC-like 資料集，並用對稱、遍歷、細胞自動機自建生成流水線，產出 <strong>逾 230 萬個合成任務</strong>。</p>
+<h3 id="11-貢獻">1.1 貢獻</h3>
+<ol>
+<li><strong>離線訓練配方</strong>：分層結合課程學習（漸進理解）、多任務學習（不只解題還要去噪）、grokking（最大化效能、培養穩健內部規則表示）。</li>
+<li><strong>逐任務適應的 TTT</strong>：把 TTT 新應用於 ARC，僅用 prompt 中的輸入-輸出範例即可動態適應。不同於傳統微調，用輕量 <strong>LoRA</strong> + 任務專屬外部記憶，達局部專化又不災難性遺忘。</li>
+<li><strong>結構感知資料增強</strong>：三種領域感知增強——對稱增強（微改規則、改像素表示）、自動機擾動（保語意改表面、教規則不變性）、網格遍歷（蛇形/逐行，同一網格的不同序列視角）。</li>
+<li><strong>對稱感知評分</strong>：受 2024 冠軍解法 [FDH24] 啟發，在旋轉/反射等對稱變換下評估候選，靠多視角的多數一致來驗證或否決假設，比「出現次數」排序更可靠。</li>
+</ol>
+<p><strong>Kaggle 增量歷程（一句話總結）</strong>：llama3.1 1B 首投 <strong>3.75%</strong> → 調超參 <strong>5.00%</strong> → 換 LongT5 <strong>7.08%</strong> → 跑全資料集（先前誤跑一半）<strong>12.08%</strong> → 加 grokking <strong>19.86%</strong> → 加 2-遍歷 <strong>25.00%</strong> → 加多任務 UL2 <strong>27.08%</strong>。</p>
+<h3 id="12-arc-背景">1.2 ARC 背景</h3>
+<p>ARC 是格狀謎題集，每任務含少量示範對（輸入網格 → 輸出網格），網格最多 10 種符號（顏色）、尺寸 1×1 到 30×30。目標：推出輸入→輸出的規則並套用到新測試輸入。挑戰在於：示範極少、任務抽象多樣、強調泛化、不依賴領域知識。</p>
+<p><strong>ARC-AGI-2（2025 推出）</strong> 比 1 更難：任務平均更大（達 30×30）、用更多顏色（每題達 10 色）、需<strong>序列套用多個組合規則</strong>，且設計成更能抵抗暴力搜尋與 DSL 法。但每題仍經驗證至少兩名人類可解。</p>
+<h3 id="13-相關工作">1.3 相關工作</h3>
+<ul>
+<li><strong>資料增強</strong>：Hodel 的 DSL 法（每任務生成達 10,000 例）、Concept-ARC（160 個概念導向手作任務）、BARC（從 100 seed 經 LLM 生成達 40 萬合成題）。</li>
+<li><strong>早期 DSL 搜尋解法</strong>：2020 冠軍 [JS20]（142 個一元函式組合成有向無環圖再貪婪堆疊）。</li>
+<li><strong>神經符號</strong>：DreamCoder（清醒/睡眠交替，DSL+神經）、CodeIt（程式迭代）。</li>
+<li><strong>直接 prompt LLM</strong>：最佳達公開評測集 50%（[Gre24]，GPT-4o 生約 5000 候選程式再修），但因閉源與算力不適合 Kaggle。</li>
+<li><strong>2024 ARC Prize 名次解法</strong>：第二名 [FDH24] fine-tune Mistral-NeMo-Minitron-8B，隱藏集 <strong>56.5%</strong>（靠資料增強 + 測試時微調 + 增強下聚合機率選解）；第三名 [Bar24] 用 Qwen2.5-0.5B（小很多），隱藏集 <strong>40%</strong>（單獨 LLM 33%，外加 Icecuber 解法集成）。</li>
+</ul>
+<h2 id="2-方法總覽">2. 方法總覽</h2>
+<h3 id="21-流水線">2.1 流水線</h3>
+<p>模組化、可擴展，分三階段：</p>
+<ul>
+<li><strong>Setup</strong>：初始化環境、下載資料與模型、初始化 Wrapper。</li>
+<li><strong>Training</strong>：在攝入的資料上微調基礎模型，權重存檔供推理重用。</li>
+<li><strong>Inference</strong>（對新任務）四大元件：
+<ul>
+<li><strong>TTT</strong>：在單一任務上對增強資料做低秩 LoRA 微調，使模型專化到新任務邏輯而不過擬合。</li>
+<li><strong>Decoding</strong>：適應後模型用標準 <strong>beam search</strong> 生成多個候選輸出網格。</li>
+<li><strong>Filtering</strong>：白盒啟發式依形狀一致、顏色約束、物件層一致性砍掉不合理候選。</li>
+<li><strong>Scoring</strong>：對剩餘候選做一次前向（在原始與變換版任務上），利用 ARC 固有空間對稱（旋轉/反射/轉置）算每像素信心分。取最高分的 1 個（ARC 取 2 個）作答。</li>
+</ul>
+</li>
+</ul>
+<p>整個流水線由人類可讀的 <code>.yaml</code> 設定檔定義。</p>
+<h3 id="22-設計原則">2.2 設計原則</h3>
+<p>可擴展性（分散式訓練/推理）、模組化（各元件可替換）、可適應性（可泛化到任意 transformer）、可重現性（固定 seed，結果在 1% 容差內確定）。</p>
+<h2 id="3-資料">3. 資料</h2>
+<h3 id="31-公開訓練集">3.1 公開訓練集</h3>
+<p>蒐集官方 1240 例外的所有公開 ARC-like 資料集（共 11 個開源資料集，多數 &lt;1000 例）。<strong>排除 BARC（40 萬題）</strong>：雜訊高、含缺乏人類可解邏輯的任務；ARC-AGI 要求高精度，雜訊換穩健的取捨不划算。最終用約 2275 個來源樣本（再經生成流水線擴增）。</p>
+<h3 id="32-測試集">3.2 測試集</h3>
+<p>由於 Kaggle 測試集寫稿時仍未公開，團隊<strong>手工設計 177 個新任務</strong>，本文所有數字都在此內部集上計算（邏輯與公開資料集相似但不相同）。</p>
+<h3 id="33-編碼">3.3 編碼</h3>
+<p>LLM 是序列處理器，ARC 網格須轉成 token 化文字。兩大挑戰：</p>
+<ul>
+<li><strong>上下文長度限制</strong>：序列長則記憶體/延遲暴增、長序列表現下降，需緊湊編碼。</li>
+<li><strong>Tokenization artifact</strong>：標準 BPE 會把多位數字併成單 token（如「112」→「11」「2」），但 ARC 每個數字是不同顏色類別。故<strong>完全自控 tokenizer</strong>，把詞彙表從 32,128 縮到 <strong>125 個原子 token</strong>（每個視覺符號一 token）。</li>
+</ul>
+<p><strong>詞彙設計</strong>含結構分隔符（<code>&lt;|start_example|&gt;</code>、<code>&lt;|start_input|&gt;</code>、<code>&lt;|start_row|&gt;</code> 等）、顏色 token（<code>&lt;|color_0|&gt;</code>…<code>&lt;|color_9|&gt;</code>）、遍歷 token（<code>&lt;|row_by_row|&gt;</code>、<code>&lt;|snake|&gt;</code>）、UL2 去噪 token。此緊湊語意對齊編碼把參數從 250M 降到 201M（約 20% 減少），且更易訓練。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

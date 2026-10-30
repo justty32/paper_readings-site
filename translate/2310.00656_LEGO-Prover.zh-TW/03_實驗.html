@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2310.00656_LEGO-Prover.zh-TW.html">回 2310.00656_LEGO-Prover.zh-TW 目錄</a>　<a href="02_%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-實驗設置">4.1 實驗設置</h3>
+<p>證明器與演化器以多進程並行（比例 3:8），每個問題嘗試 100 次證明。為最大化技能庫的利用，問題以連續輪次形式形式化，每輪處理每個問題一次。以 ChatGPT 系列為 LLM（gpt-3.5-turbo 各版本隨機選用），溫度統一 0.7。證明器的分解器使用 3-shot 範例；形式化器每問題檢索 nf=6（valid set）或 4（test set）個參考技能，搭配 2 個形式化情境範例。定向轉換器檢索 nd=4 個參考問題，搭配 2 個演化情境範例；請求求解器檢索 3 個參考技能。</p>
+<p>資料集為 miniF2F 更新版（488 個高中競賽題目，均分 valid/test 各 244 題），每題含 Isabelle 形式陳述、非正式陳述及人類撰寫的非正式證明。透過 PISA 環境與 Isabelle 互動。基線方法包括 Thor、Thor+expert iteration（搜尋式）、Draft-Sketch-Prove 及 Subgoal-Learning（LLM 直接證明式）。消融實驗因 API 成本限制（約 $300/實驗）以 50 次嘗試進行。</p>
+<h3 id="42-主要結果">4.2 主要結果</h3>
+<p>LEGO-Prover 顯著優於搜尋式與 LLM 式方法。使用人類撰寫證明時，miniF2F-valid 上比 Subgoal-Learning 提升 7.3%，miniF2F-test 提升 4.5%，共解出 488 題中的 257 題。替換為 GPT-4 預生成的模型非正式證明（每題至多 20 個草稿隨機選取）時仍達 52.4%/45.5%，接近人類證明水準。</p>
+<p><strong>技能庫效果（消融實驗）</strong>：在 50 次嘗試的消融中，移除成長型技能庫（含演化器）後，LEGO-Prover 達 50.4%，而無技能庫版本僅 47.1%，<strong>技能庫淨貢獻 +3.3%</strong>。更關鍵的發現來自趨勢圖：初期技能庫尚不成熟時兩者幾無差異，但隨著技能庫擴張（技能數量持續增長），LEGO-Prover 與無庫版本的差距<strong>持續且穩定地擴大</strong>。這直接驗證了核心假說：證明器隨著技能庫中可用技能的增長，變得越來越擅長形式化定理——「越證越多、越多越易證」的正回饋循環。</p>
+<h3 id="43-分析">4.3 分析</h3>
+<p><strong>技能庫樣貌</strong>：技能演化樹範例（IMO 1988 P6）展示從少數種子定理如何透過定向演化生成大規模技能森林——引理從證明器或請求求解器產生後成為根節點，定向轉換器沿不同方向延伸出新子節點。統計上，技能庫共 22,532 個技能：10.8% 來自證明器、38.2% 來自請求求解器、51.1% 來自定向轉換器。部分引理雖平凡真或已存在於 Isabelle 內建庫，但 LEGO-Prover 仍產出許多獨特、有趣且有價值的引理。技能庫的成長顯著拉近了非正式與形式化數學語言之間的差距——自然語言中一兩句描述的推理步，在形式語言中可能需十幾行程式碼，但隨著技能庫填充更多高層引理，這種落差逐步縮小。</p>
+<p><strong>技能如何提升 LLM 能力</strong>：對 miniF2F-valid 135 個成功證明的手動檢視揭示兩種主要模式：(1)<strong>直接可重用區塊</strong>——檢索到的已驗證技能被直接複製為證明碼的一部分，LLM 無需擔心錯誤地引用；(2)<strong>當作證明的參考範例</strong>——許多技能雖不能直接複製，但提供了關鍵解題線索。24% 的成功證明獲益於檢索技能（51% 直接使用、49% 模仿生成新引理）。被直接使用的技能中，71% 來自請求求解器、關鍵概念識別與複雜度提升各 12%、參數化 6%。雖然直接重用是最理想的使用方式，但解出的問題中直接重用者並不十分多——因為 miniF2F 中許多平凡題目不需要引用任何技能即可解出。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>LEGO-Prover 引入了一種以<strong>成長型技能庫</strong>持續增強 LLM 形式化能力的新定理證明方法，為社群提供了與先前「一次性完成證明」根本不同的範式——以<strong>積木方式</strong>、類似分而治之地證明定理。證明器利用細化的結構化非正式證明與檢索引理建構模組化證明，演化器解答證明器提出的請求或將既有技能演化為更一般、更可重用的新技能。大量測試顯示本方法提升 miniF2F pass rate，消融實驗驗證了技能庫各組件的有效性。技能庫的成長提供了逾兩萬個已驗證技能，持續橋接非正式與形式化數學語言的差距。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

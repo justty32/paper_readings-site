@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>工具增強 LLM agent 中政策合規的求解器輔助驗證（Solver-Aided Verification of Policy Compliance in Tool-Augmented LLM Agents） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Cailin Winston、Claris Winston、René Just（附屬未列；cs.SE / cs.AI）</p><p>日期：2026-03</p><p>arXiv：2603.20449</p><p><a href="https://arxiv.org/abs/2603.20449" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="工具增強-llm-agent-中政策合規的求解器輔助驗證">工具增強 LLM agent 中政策合規的求解器輔助驗證</h1>
+<h2 id="引言">引言</h2>
+<p>工具增強 LLM（TaLLM）讓 LLM 能呼叫外部工具、與真實環境互動，但要部署到客服、業務流程自動化等敏感域，<strong>缺乏對領域特定操作政策（工具使用與 agent 行為）的可靠遵循</strong>。現行政策執行靠「把政策塞進 prompt」或啟發式 guardrail——皆無形式保證。本文把工具使用政策建模為<strong>約束滿足問題</strong>，讓 SMT 求解器在執行前驗證每個計畫中的工具呼叫。</p>
+<h2 id="政策smt-翻譯方法">政策→SMT 翻譯方法</h2>
+<p>把自然語言政策轉成形式邏輯極具挑戰。作者測了四條漸進路線：</p>
+<ol>
+<li><strong>Proof-of-Thought 生成</strong>：直接 LLM→SMT-LIB，持續語法錯誤、結構不完整。</li>
+<li><strong>迭代修復迴圈</strong>：產出語法正確（50–60 行）但<strong>約束不足</strong>的政策。</li>
+<li><strong>AWS Bedrock 自動推理</strong>：產更完整編碼（~600 行、~95% 覆蓋），但仍欠約束。</li>
+<li><strong>Bedrock＋客製 prompt＋人工微調</strong>：最終採用，結合自動生成與專家審閱、精修。</li>
+</ol>
+<p>三大核心挑戰：<strong>語法正確、語意完整、約束緊度</strong>。作者最終把政策編碼當成「<strong>顯式、可審查的工件</strong>」，承認完全自動化仍是 open problem。</p>
+<h2 id="執行期攔截與執行架構">執行期攔截與執行架構</h2>
+<p>框架以「工具規劃迴圈中的外部閘門」運作：</p>
+<ul>
+<li><strong>SMT-LIB 約束建構</strong>：agent 提議工具呼叫時，相容性檢查器取出該工具的驗證 schema、用 LLM 從對話歷史抽出所需政策變數、把值轉成邏輯斷言、附到靜態政策編碼上。</li>
+<li><strong>求解器檢查</strong>：Z3 判可滿足性（SAT＝放行；UNSAT＝擋下）。被擋時 agent 收到**最小不可滿足核（unsat core）**當解釋，最多 3 次重規劃後交還使用者。</li>
+</ul>
+<h2 id="τ2-bench-評估與量化結果">τ²-bench 評估與量化結果</h2>
+<p>評估用 τ²-bench 的航空域：「50 任務、13 工具、1242 字政策文件」。兩模型：GPT-4.1 做 agent 規劃、GPT-4o 做工具呼叫驗證。指標用 pass∧k（k=4，所有 k 次 i.i.d. 試驗皆成功的機率）。</p>
+<ul>
+<li><strong>RQ2（政策違規）</strong>：基線產出有效/無效寫入工具呼叫約各半；加上政策檢查器後，<strong>無效寫入呼叫降到全部寫入呼叫的 29%</strong>，但正確寫入呼叫也略降（精度/召回取捨）。</li>
+<li><strong>RQ3（任務正確率）</strong>：兩系統整體成功率相近，檢查器略升。關鍵在<strong>一致性</strong>：隨 k 增大成功率僅下降 26%（基線 40%），顯示跨多次執行更可靠。</li>
+</ul>
+<h2 id="相關工作">相關工作</h2>
+<p>定位於三條研究線：</p>
+<ul>
+<li><strong>工具增強 LLM</strong>：回顧 Chameleon、Gorilla、ToolkenGPT 的工具供給法。</li>
+<li><strong>agent 政策執行</strong>：現有工作靠系統 prompt 或後處理，缺確定性保證。</li>
+<li><strong>形式驗證</strong>：指出缺口——先前工作（Proof of Thought）未把形式驗證直接整合進工具使用規劃迴圈。</li>
+</ul>
+<h2 id="局限與結論">局限與結論</h2>
+<p>作者坦承「手動或半結構化的政策編碼仍屬必要」以驗證正確性與緊度。形式方法對 TaLLM 政策執行可行，但<strong>政策翻譯的完全自動化尚未實現</strong>。本工作顯示求解器輔助檢查能減少違政策的工具呼叫、同時維持任務成功——對安全關鍵性質而言，形式保證有其價值。未來方向：進一步自動化、改良政策檢查機制。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2603.20449_SolverAided_Policy_Compliance.%E6%91%98%E8%A6%81.html"><code>../summarize/2603.20449_SolverAided_Policy_Compliance.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

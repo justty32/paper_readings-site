@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Leroy：命令式程式語言的庫學習（Leroy: Library Learning for Imperative Programming Languages）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Abhiram Bellur, Razan Alghamdi, Kidus Workneh, Joseph Izraelevitz（University of Colorado, Boulder）</p><p>日期：2024-10</p><p>arXiv：2410.06438</p><p><a href="https://arxiv.org/abs/2410.06438" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="leroy命令式程式語言的庫學習重點摘要">《Leroy：命令式程式語言的庫學習》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Leroy 把函數式世界成熟的「庫學習（library learning）」工具 Stitch 包裝起來，透過「AST → Lisp 化 → 剪枝 → 補洞收尾（closing）→ 校驗呼叫點 → 轉回 Python」的管線，讓 Stitch 式的抽象抽取能落地到命令式語言（Python 子集 P2）</strong>——核心工程貢獻不是更好的搜尋演算法，而是「馴服命令式語言的不規則性與狀態/副作用」，把 Stitch 產出的、多半在 Python 裡非法的候選抽象，過濾並修補成語意正確、可重用的函數。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>既有庫學習（DreamCoder、Babble、Stitch）都針對<strong>函數式 Lisp 類語言</strong>——其規則性（regularity）讓重複結構容易被抽出。但真實工程師寫的是命令式語言，想抽取共用功能是為了<strong>可重用性（reusability）與可維護性（maintenance）</strong>，而非只服務程式合成。直接把 Python AST 餵給 Stitch 會壞掉：Stitch 假設「所有程式元素都是一等公民」，會抽出像 <code>compare(1,2,==)</code>、<code>x = while</code> 這種語法非法、或改了變數卻不回傳（因 Python 賦值產生的是被呼叫函數的區域變數）的破碎抽象。</p>
+<h2 id="核心方法leroy-管線">核心方法（Leroy 管線）</h2>
+<ul>
+<li><strong>Lispify（Lisp 化）</strong>：把 P2 程式的 AST 攤成巢狀函數呼叫餵給 Stitch；命令式語句序列以仿 Lisp <code>let</code> 的 <code>StatementList(stmt, 其餘)</code> 遞迴結構編碼。</li>
+<li><strong>Stitch 搜尋</strong>：沿用 Stitch 的語料引導自頂向下搜尋（CTS，branch-and-bound 依效用剪枝）產生候選抽象。</li>
+<li><strong>剪枝三類非法候選</strong>：(1) <strong>類巨集（macro-like）</strong>——如把 <code>1+2</code> 抽成 <code>add(1) 2</code>，靠反轉 lispify 重建 AST 檢查完整性；(2) <strong>非法參數</strong>——把運算子 <code>==</code> 當參數傳，靠把參數編為 identifier 節點驗證；(3) <strong>瑣碎抽象</strong>——單行加法/列印雖高頻但無價值，用「最小 AST 節點數」門檻濾除。</li>
+<li><strong>收尾（closing）補回作用域</strong>：用**活躍變數分析（liveness analysis）**找出 live-out 變數並加入回傳值（無則回傳最後一個運算式）；找出未 live-in 卻被使用的變數並補為參數，避免未初始化。</li>
+<li><strong>校驗呼叫點</strong>：偵測「引數名與函數體內符號衝撞」的隱式改名問題（如迴圈內每輪重算的 <code>x</code> 被當一次算好的引數傳入），衝突則棄用該呼叫點。</li>
+</ul>
+<h2 id="結果具體數字">結果（具體數字）</h2>
+<ul>
+<li>語料：<strong>122 支小程式</strong>（大學編譯課單元測試，平均 <strong>7 行</strong>，重複性低＝對 Leroy 的最壞情況）。</li>
+<li>最小門檻設 <strong>20 個 AST 節點</strong>時，找到 <strong>6 個有效抽象</strong>（多為賦值/列印組合，平均用於 <strong>2.5 個呼叫點</strong>）。</li>
+<li>剪枝掉 <strong>3123 個類巨集</strong>、<strong>32 個非法參數</strong>、約 <strong>42000 個過小</strong>候選（Stitch 把每個子樹都當候選，故海量小抽象）。</li>
+<li><strong>壓縮比僅 1.04x</strong>（不含庫）；<strong>含庫反而膨脹 1.2%</strong>——因 closing 會加大抽象體與呼叫點；作者坦言小而不重複的語料難有好壓縮，寄望更大真實語料。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<p>尚未大規模嚴格測試；不支援 lambda、巢狀函數、類別；未如 Babble 利用<strong>語意等價</strong>擴大抽象選擇；只測了壓縮，未測可讀性等其他品質指標（可編進效用函數但未做）；壓縮增益在此語料上幾近於無。</p>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>直接命中 ai_core §3.6「固化引擎（crystallization engine）」——把反覆處理的案例結晶成確定性程式碼/抽象庫——的跨語言落地工程路徑</strong>。ai_core 第一目標是<strong>程式碼助手</strong>（§5），而真實工程程式絕大多數是命令式；本篇正是把 Stitch 式庫學習從函數式搬到命令式（Python）時，<strong>必須解決的那一串工程難題的清單與解法</strong>：不規則語法、變數作用域、賦值副作用、活躍變數、呼叫點改名。這正是「固化」不能只靠 LLM 一鍵重寫、而要靠<strong>確定性程式分析</strong>保證語意等價的骨架。</li>
+<li><strong>與 Stitch（函數式）對照</strong>：Stitch 是本批同族的函數式基準；Leroy 是它的「命令式落地版」。ai_core 若要把重複的 LLM 處理沉澱成可重用工具函數，函數式路線的乾淨（Stitch）與命令式路線的髒（Leroy 所列的 closing / call-site 校驗）之落差，正是「固化引擎」工程量的真實估計。</li>
+<li><strong>對照 §3.4 治理「拒絕為預設＋憑證准入」</strong>：Leroy 的剪枝/校驗本質是「候選抽象需通過一系列確定性驗證才准入庫」——與 ai_core「預設拒絕、憑證才放行」同構，且展示了<strong>不靠 LLM、純程式分析</strong>即可把守關卡（相對 ReGAL 靠 LLM 抽象但無法證明等價、且受 context window 限制）。歸 <strong>G 類</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2410.06438_Leroy.zh-TW.html"><code>../translate/2410.06438_Leroy.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

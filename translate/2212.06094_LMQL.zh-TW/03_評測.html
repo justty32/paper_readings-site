@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_評測 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2212.06094_LMQL.zh-TW.html">回 2212.06094_LMQL.zh-TW 目錄</a>　<a href="02_LMQL_%E8%AA%9E%E8%A8%80.html">← 上一節</a></p>
+</blockquote>
+<h2 id="6-評測">6. 評測</h2>
+<p>三個核心問題：<strong>表達力</strong>（能否用簡潔查詢實作常見與進階 prompting，尤其互動式）、<strong>效能</strong>（能否降低模型查詢次數與計算／API 成本）、<strong>準確率</strong>（約束解碼是否影響任務準確率）。</p>
+<p><strong>基線</strong>：HuggingFace <code>generate()</code> 這類高階、純文字介面——不支援 token 層驗證，只能 chunk-wise 生成後手動剖析／驗證；多 token 約束與字元級長度約束無法強制。<strong>指標</strong>：LOC（功能行數）、模型查詢次數（Model Queries）、解碼器呼叫次數（Decoder Calls，反映 API 成本）、計費 token（Billable Tokens，依 GPT-3 davinci $0.02/1K 估算）。<strong>模型</strong>：GPT-J 6B、OPT-30B、gpt2-xl，另有限度測 GPT-3.5 <code>text-davinci-003</code>（A100 GPU）。</p>
+<ul>
+<li><strong>6.1 案例一：Chain-of-Thought（圖 10）</strong>——多選題（Odd One Out、Date Understanding，BIG-bench）。以 few-shot + 約束（REASONING 詞數上限、禁 &quot;Pick&quot; 與換行、多個停止條件）引導推理，末以 <code>distribute</code> 對選項算分佈。結果（表 3）：準確率持平或微升（Odd One Out 33.33%→34.52%）；Model Queries −43~45%、Billable Tokens −27~31%；LOC 僅為基線 26%（34%）。GPT-3.5 控制實驗：Odd One Out 42.86%、Date Understanding 85.29%→86.10%。</li>
+<li><strong>6.2 案例二：互動式 ReAct（圖 11）</strong>——問答時讓 LM 以 <code>Search</code>/<code>Finish</code> 動作互動查 Wikipedia。LMQL 用一個解釋迴圈 + 約束（MODE∈{Tho,Act}、ACTION∈{Search,Finish}、停止條件）即可實作，且<strong>天生支援 beam search 的分支</strong>（Python 基線難做）。結果（HotpotQA，表 5）：Decoder Calls <strong>−80%</strong>、Model Queries ≥−30%、Billable Tokens <strong>−76%</strong>（省 5.2¢/query）；僅 18 行 LMQL（比 Python 少 63%）。圖 12 比較不同 chunk size 下基線的取捨。</li>
+<li><strong>6.3 案例三：算術推理（圖 13）</strong>——掃描 <code>&lt;&lt;</code> 觸發外接計算器評估算式再回填，並用 <code>int(RESULT)</code> 約束強制最終輸出為合法整數。結果（GSM8K，表 5）：Decoder Calls 從 7 降到 1（−85.7%）、Model Queries −66%、Billable Tokens <strong>−84.9%</strong>（省 6.2¢/query）；18 行 vs 78 行。</li>
+</ul>
+<p><strong>6.4 討論</strong>：三案例證明 (i) 表達力高（遠少於 Python 的行數即可，表 4：Odd One Out 9 vs 34、Date 13 vs 38、Arithmetic 22 vs 59、ReAct 18 vs 78）；(ii) 靠 token 層驗證即時強制約束，大減模型查詢與執行時間；(iii) 不損準確率、有時微升；且在付費 API 情境省下可觀費用。<strong>侷限</strong>：未做真實 prompt engineer 的完整使用者研究，對易用性主張構成有效性威脅。</p>
+<h2 id="7-相關工作">7. 相關工作</h2>
+<p><strong>LMP</strong>：CoT、ReAct、self-consistency、ThinkSum、Iterated Decomposition、program-aided CoT（PAL/PoT，把 LM 產的程式碼餵給直譯器）等皆屬 LMP／prompt programming。PromptChainer、langchain、OpenPrompt、PromptSource 提供 LM 互動的 IDE 或函式庫（後兩者有簡單模板語言，近似 LMQL 頂層字串），但<strong>都未實作 LMQL 式的約束或控制流</strong>。Dohan et al. 的 language model cascades 把 LM 查詢連結到機率程式設計。<strong>約束 LM</strong>：Shin et al.（把輸出約束到易解讀的英語子集）、Poesia et al./Scholak et al.（生成程式碼時整合剖析器保證語法語意有效）多需手工客製；LMQL 則提供通用的高階約束介面，且運算子集可由使用者擴充（接入文法剖析器、語意驗證等）。</p>
+<h2 id="8-結論">8. 結論</h2>
+<p>本文提出 <strong>Language Model Programming</strong> 這個與 LLM 互動的新方式，並實作高階查詢語言 <strong>LMQL</strong>——語法簡潔直觀，以專用求值語意實現高效執行。三個案例研究證明複雜的 SOTA prompting 技巧可寫成直觀、簡潔、高效的 LMQL 程式，最多降低 80% 計算成本。程式碼開源於 <code>github.com/eth-sri/lmql</code>，專案頁 <code>lmql.ai</code>。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2212.06094_LMQL.%E6%91%98%E8%A6%81.html"><code>../summarize/2212.06094_LMQL.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

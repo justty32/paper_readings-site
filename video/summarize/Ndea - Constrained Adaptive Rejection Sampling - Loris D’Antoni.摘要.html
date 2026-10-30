@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《約束適應性拒絕採樣》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><h1 id="約束適應性拒絕採樣重點摘要">《約束適應性拒絕採樣》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>CARS（Constrained Adaptive Rejection Sampling）把「拒絕採樣」加上「路障記憶」：每次因違反約束而被迫放棄，就把撞到的違規子空間及其機率記下來，下一輪整個重新採樣並避開已知路障，理論上保證最終收斂到約束下的真實條件分布，在編譯器測試場景把千次採樣中的有效樣本數從 1-2 個拉到約 350 個。</strong></p>
+<h2 id="講者與脈絡">講者與脈絡</h2>
+<p>Loris D’Antoni，UCSD 教職員，程式合成領域工作約 12-13 年；此前在威斯康辛大學麥迪遜分校任教 9 年，並先後在 Amazon（4 年）與現職 Code Metal（做「已驗證程式碼轉換 verified code translation」）擔任學者。博士就讀賓夕法尼亞大學，導師 Rajiv Alur，最初五年做自動機理論，成為教授後才轉向程式合成；求學脈絡上溯至都靈大學（義大利）碩士導師 Mariangiola Dezani。CARS 論文合著者包括 Taylor Berg-Kirkpatrick（UCSD NLP/ML 教授）、Sam Bao（UCSD 學生），以及波蘭理論學者 Paweł Parys（自動機理論/邏輯背景，藉訪問合作促成論文核心化簡）。本集為《Abstract Synthesis》Podcast，主持人 Brian Landers；D’Antoni 與上一集來賓 Aws Albarghouthi（逐字稿暱稱 &quot;Az&quot;）為博士期間舊識，後於威斯康辛大學麥迪遜分校同事 9 年。</p>
+<h2 id="核心論點">核心論點</h2>
+<ul>
+<li><strong>約束解碼的既有問題</strong>：在 LLM 生成過程中即時剪掉會違反約束（如 JSON Schema）的 token，是一種貪婪策略——類比 GPS 遇到臨時封路即刻繞道，會偏離 LLM 原本學到的高機率分布，導致輸出品質劣化（不自然的括號堆疊、大量空格等）。這個問題在作者兩年前的 NeurIPS 論文《Grammar-Aligned Decoding》中被正式形式化。</li>
+<li><strong>拒絕採樣加記憶</strong>：最樸素的作法是不斷重新生成直到符合約束的「拒絕採樣」，缺點是無法預估要試多少次。CARS 的做法是：每當因違反約束而放棄，就把那次撞到的違規子空間（及其機率）記錄下來，下一輪整個重新採樣、避開已知違規區域；隨著已知路障累積，最終保證收斂到「約束下的正確條件分布」。</li>
+<li><strong>CARS 相較舊法的關鍵改進</strong>：不只記錄「已知一定違規、被迫繞開」的路障，也把採樣過程中「路過但未必踩上」的其他路障一併記下來，加快學到完整路障地圖、加速收斂。作者形容 CARS 本質上是對此前一種「平凡（trivial）」演算法的一行修改變體，其簡化來自與 Paweł Parys 的討論。</li>
+<li><strong>為何要保持精確分布，而非只求拿到一個能用的樣本</strong>：一是約束往往只是必要條件而非完整規格，仍希望拿到「合法程式中最可能正確」的那個；二是許多應用需要的不是單一樣本而是「多樣且分布良好」的一批樣本——模糊測試（fuzzing）需要高覆蓋率的多元輸入，分子生成、數學猜想生成等「知識發現」場景同樣不希望反覆拿到同一結果。</li>
+<li><strong>實測場景</strong>：用 LLM 為在網路上訓練資料稀少的冷門語言生成編譯器測試輸入（fuzzing）。基準 LLM 直接採樣的合法輸出比例約千分之一；只記單一路障的舊演算法約提升到千分之二；CARS 在經歷 1-3 次失敗採樣後即可提升到約千分之 350（約 300 倍提升），並因此發現一批編譯器 bug。</li>
+<li><strong>對神經符號分工的定位</strong>：LLM（神經）負責生成分布，自動機/文法剖析器（符號）即時判斷合法性，CARS 用機率論方法協調兩者——是「約束解碼」這條神經符號組合路線的一個具體理論推進，而非在末端硬啃搜尋空間。</li>
+</ul>
+<h2 id="值得記的具體細節">值得記的具體細節</h2>
+<ul>
+<li>前作：《Grammar-Aligned Decoding》，NeurIPS，約兩年前發表（逐字稿原話為「兩年前」，未給精確年份）。</li>
+<li>編譯器測試實驗數字：基準 LLM 有效採樣率約 1/1000；僅記單一路障的舊演算法約 2/1000；CARS 經 1-3 次壞採樣後達約 350/1000。</li>
+<li>後續工作（作者列舉三條）：①擴散模型版 CARS，已發表於 ICML，透過直接對「滿足約束」方向計算梯度可完全避開分布扭曲；②讓 LLM 藉由檢查器（型別檢查器/剖析器）自行學習約束以避免未來犯錯，類比 SAT 求解器中的 CDCL（Conflict-Driven Clause Learning）——已放上 arXiv（逐字稿未提供 arxiv id）；③把二元「有效/無效」約束擴展為多個模型的定量偏好組合（乘積、多數決、差集、最大分歧）。</li>
+<li>與 Nadia Polikarpova（逐字稿記為 &quot;Polycarpova&quot;，拼字存疑）合作，從程式碼反向合成規格：OOPSLA 論文 LOUD（去年發表）與更早的 Spyro；對應「可擴展監督（scalable oversight）」問題。</li>
+<li>講者學術脈絡：博士導師 Rajiv Alur（賓大，ExCAPE 計畫）；博士期間五年研究自動機理論；與上一集來賓 Aws Albarghouthi 相識於 Marktoberdorf 暑期學校，後於微軟研究院實習、威斯康辛大學麥迪遜分校同事 9 年；兩人共同指導的最後一位學生 Ameer 現任教於 Carleton College；UCSD 博士生 Jinwoo Kim 即將進入學術/求職市場。</li>
+</ul>
+<h2 id="與本庫的接點">與本庫的接點</h2>
+<p>這集談的是約束解碼／結構化生成中「神經生成 + 符號約束」的分工模式：LLM（神經）產生候選分布，自動機/文法剖析器（符號）即時判斷合法性，CARS 演算法則用機率論把兩者協調成理論上正確的採樣器——對應本庫 <strong>B（神經符號推理）</strong>「神經前端＋符號後端分工」範式；逐字稿明確以有限狀態自動機（finite state automata）解說約束合法性判斷與剖析器建構原理，對應 <strong>F（自動機）</strong>；主題本身也屬於 **G（遺傳編程與程式合成）**中「語法導向合成／約束解碼」一線，可與前一集 Mark Santolucito 的 SyGuS 文法終端符號剪枝互相對照（同樣是「神經前端縮小/約束搜尋空間、符號後端保正確性」的思路）。本庫 <code>index/cat_g.md</code> 現有條目未見對應 CARS 或《Grammar-Aligned Decoding》的既收錄論文，故未特指某篇本庫已收錄篇目。</p>
+<blockquote>
+<p>轉錄品質備註：Podcast 開場沿用系列慣例把「Ndea」語音辨識誤植為「India AGI Research Lab」／「AGI Research Lab」（與其他集一致）；開場處主持人一句「今天能 Saturn 和他聊天」疑為語音辨識錯誤（原意應近似「非常興奮」一類措辭），具體原文無法還原，故照轉錄原樣保留未更正；「Nadia Polycarpova」應為 Nadia Polikarpova，拼字存疑。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

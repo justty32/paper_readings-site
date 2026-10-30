@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2307.09702_Outlines_Guided_Generation.zh-TW.html">回 2307.09702_Outlines_Guided_Generation.zh-TW 目錄</a>　<a href="02_%E8%BF%AD%E4%BB%A3%E5%BC%8F_FSM_%E8%99%95%E7%90%86%E8%88%87%E7%B4%A2%E5%BC%95%E6%9C%AC%E6%96%87%E6%A0%B8%E5%BF%83.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>本文展示如何把「神經文字生成」問題<strong>建設性地重構為有限狀態機（FSM）各狀態之間的轉移</strong>。此框架帶來一種高效途徑：藉由在語言模型的<strong>詞彙表上構造一份索引</strong>，來用正則表達式與上下文無關文法（CFG）引導文字生成。此法<strong>與模型無關</strong>、能施加領域特定知識與約束、並藉由<strong>保證生成文字的結構</strong>而能構造可靠的介面。它對 token 序列生成過程只增加極小的額外負擔，且顯著優於既有方案。實作已提供於開源 Python 函式庫 <strong>Outlines</strong>。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>我們關注的問題是：從 LLM 生成<strong>符合正則表達式或 CFG</strong> 的 token 序列。這類引導式生成，用於在難以（或代價高昂）僅靠 fine-tune 捕捉的嚴格格式要求下，讓 LLM 輸出可用。此類功能近來已被泛化進各種 prompting 函式庫與介面，但其適用性常受<strong>縮放成本</strong>限制。</p>
+<p>多數引導式生成的實作是<strong>偏置分數值</strong>（用來決定 LLM 詞彙表中各 token 機率的 logits）。一種常見且足夠的做法是：<strong>反覆對整個詞彙表評估</strong>，判斷哪些 token 依約束與先前已取樣的 token 為合法，並把不合法 token 的機率設為 0。這種做法對每個生成的 token 帶來<strong>固定的 O(N) 成本</strong>，N 為 LLM 詞彙表大小。</p>
+<p>我們提出的方法用正則表達式的<strong>有限狀態機（FSM）表述</strong>，來（a）任意地開始與停止引導式生成，並（b）構造一份索引，使每一步能高效取得「非零機率 token 集合」。其結果是一個<strong>平均 O(1)</strong> 成本的演算法。</p>
+<p>在正則表達式情形，本法與 Kuchnik et al. [2023]（用轉換器/transducer 表述在語言模型詞彙表上取得 FSM）最相似；那些 FSM 含有與本文索引大致相同的資訊與縮放好處。但本法<strong>不需要完整的轉換器抽象</strong>，且更容易在<strong>不修改底層自動機及其實作</strong>的情況下，擴充既有的高效正則表達式函式庫。更重要的是，本文的索引法<strong>可延伸到 CFG 與 LALR(1) 剖析器</strong>，以支援對熱門資料格式與程式語言（JSON、Python、SQL 等）的高效引導式生成；此延伸是透過對傳統 LALR(1) 剖析器組件與操作的<strong>增補</strong>達成，同樣可用來擴充既有剖析器實作。</p>
+<h2 id="2-llm-取樣與引導式生成">2. LLM 取樣與引導式生成</h2>
+<p>令 Sₜ = (s₁ … sₜ) 表示 t 個 token 的序列，sₜ ∈ V，V 為詞彙表，|V| = N。詞彙表由取自固定字母表的字串組成，N 常為 10⁴ 量級或更大。下一個 token 定義為隨機變數：α = LLM(Sₜ, θ)，sₜ₊₁ ∼ Categorical(α)，其中 θ 為訓練參數、α ∈ ℝᴺ。本文中 LLM 指做「下一 token 補全」訓練的深度網路，但方法可推廣到任何「吃 token 序列、回傳下一 token 機率分佈」的函數。</p>
+<h3 id="21-序列取樣">2.1 序列取樣</h3>
+<p>令 F ⊂ P(V) 為以特殊 token EOS ∈ V 結尾的多 token 字串子集；文字生成任務即從 F 抽樣。既有程序有貪婪解碼、beam search、以及較新的 SMC 取樣。<strong>Algorithm 1（基本 LLM token 取樣）</strong> 描述一般程序（常稱 multinomial sampling）：遞迴地從上述 categorical 分佈取樣新 token，直到取到 EOS。</p>
+<h3 id="22-引導生成">2.2 引導生成</h3>
+<p>可藉由操作輸出 logits α，從下一 token 分佈導出其他隨機變數。因處理的是有限離散分佈，可施加一個布林<strong>遮罩</strong> m : P(V) → {0,1}ᴺ 來限制原分佈的支撐集，得未歸一化的條件分佈：α = LM(S̃ₜ, θ)，α̃ = m(S̃ₜ) ⊙ α，s̃ₜ₊₁ ∼ Categorical(α̃)。如此，遮罩 m 可設計成讓生成序列表示：數字樣本、匹配正則 <code>[a-zA-Z]</code> 的字串、或依指定文法（Python、SQL 等）可剖析的字串。</p>
+<p><strong>Algorithm 2（帶遮罩的 LLM 取樣）</strong> 是 Algorithm 1 的簡單增補：每步先算 α，再構造遮罩 m(s)，取 α̃ = m ⊙ α 後取樣。問題在於：遮罩 m 的計算（第 2.5 行）隱含<strong>遍歷 V 全部元素</strong>——除了算 α 外，這步是最貴的。在正則引導（及更複雜情形）中，支撐集與遮罩 m 必然<strong>依賴先前已取樣的 token</strong>；這種引導生成本質上是<strong>迭代式比對／剖析</strong>問題，不適合「需一次拿到完整字串」的標準做法。若每次迭代都從序列開頭做部分比對，成本會<strong>至少隨長度線性增長</strong>，再乘上遍歷整個詞彙表的 O(N)。由此引出本文核心問題：<strong>如何在 Algorithm 2 每次迭代中高效地依正則／CFG 比對或剖析不完整字串、並決定遮罩 m？</strong></p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

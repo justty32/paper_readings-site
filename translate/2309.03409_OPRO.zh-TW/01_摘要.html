@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2309.03409_OPRO.zh-TW.html">回 2309.03409_OPRO.zh-TW 目錄</a>　<a href="02_Prompt_%E5%84%AA%E5%8C%96%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>優化無所不在。基於導數（derivative-based）的演算法是各類問題的強大工具，但<strong>缺乏梯度</strong>時，許多真實應用便面臨挑戰。本文提出 <strong>OPRO（Optimization by PROmpting，以提示進行優化）</strong>——一種讓大型語言模型（LLM）扮演優化器的簡單而有效的方法，其中<strong>優化任務以自然語言描述</strong>。每個優化步驟中，LLM 從 meta-prompt（元提示）生成新解，該 meta-prompt 內含<strong>先前生成的解及其分數</strong>；新解被評估後加回 meta-prompt，供下一步使用。作者先在<strong>線性回歸</strong>與**旅行商問題（TSP）**上展示 OPRO，再進入主要應用——<strong>prompt 優化</strong>，目標是找出最大化任務準確率的指令。以多種 LLM 實驗，OPRO 優化出的最佳 prompt 在 GSM8K 上勝過人工設計 prompt 達 <strong>8%</strong>，在 Big-Bench Hard（BBH）任務上勝過達 <strong>50%</strong>。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>許多優化技術是<strong>迭代式</strong>的：從初始解出發，反覆更新以優化目標函數。傳統做法需為每個任務客製化演算法以應對決策空間與效能地形（performance landscape）的特殊挑戰，尤其在無導數（derivative-free）情形下更難。</p>
+<p>OPRO 的核心構想：不需正式定義優化問題並用程式化求解器推導更新步驟，而是<strong>用自然語言描述優化問題</strong>，再指示 LLM 依「問題描述 + 先前已找到的解」迭代生成新解。只要改變 prompt 中的問題描述，就能快速適應不同任務；也能藉由加入指令來指定解的期望性質，客製化優化過程。</p>
+<p>作者先以線性回歸與 TSP 這兩個經典優化問題做案例研究，顯示 LLM 在小規模問題上僅靠提示即能找到高品質解、有時匹配甚至超越手工啟發式演算法。接著轉向主要應用 <strong>prompt 優化</strong>：LLM 對 prompt 格式很敏感，<strong>語意相近的 prompt 效能可能天差地別</strong>，且最佳格式常因模型與任務而異，故 prompt engineering 很重要；但 prompt 空間<strong>又大又離散</strong>，僅有 API 存取時尤難優化。</p>
+<p>送給優化器 LLM 的 prompt 稱為 <strong>meta-prompt</strong>（見圖 3），含兩塊核心資訊：(1) 先前生成的 prompt 及其對應<strong>訓練準確率</strong>；(2) 優化問題描述，內含從訓練集隨機挑選的數個範例（exemplar）以示範任務。與近期自動 prompt 生成工作不同：OPRO 每步是基於<strong>整條先前 prompt 軌跡（trajectory）<strong>生成旨在提高準確率的新 prompt，而非依自然語言回饋去編輯單一 prompt（如 APO），也不要求新 prompt 保持相同語意（如 APE）。善用完整優化軌跡，讓 LLM 從低準確率的初始 prompt 起逐步生成愈來愈好的 prompt。作者以 text-bison、PaLM 2-L、gpt-3.5-turbo、gpt-4 全面評估，證明它們</strong>都能勝任優化器</strong>。</p>
+<h2 id="2-oprollm-作為優化器">2. OPRO：LLM 作為優化器</h2>
+<p>框架概觀（圖 2）：給定 meta-prompt 作為輸入，LLM 對目標函數生成新解，新解與其分數被加入 meta-prompt 供下一步；當 LLM 無法再提出分數更高的解、或達到最大步數時終止。</p>
+<h3 id="21-llm-優化器的理想特性">2.1 LLM 優化器的理想特性</h3>
+<ul>
+<li><strong>善用自然語言描述</strong>：LLM 最大優勢是理解自然語言，讓人不必給出形式化規格即可描述優化任務（如 prompt 優化只需高層文字摘要加輸入-輸出範例）。</li>
+<li><strong>權衡探索與利用（exploration-exploitation trade-off）</strong>：LLM 須能**利用（exploit）<strong>已找到好解的區域，同時</strong>探索（explore）**新區域以免錯過更好的解。</li>
+</ul>
+<h3 id="22-meta-prompt-設計">2.2 Meta-prompt 設計</h3>
+<p>meta-prompt 含兩要素：</p>
+<ul>
+<li><strong>優化問題描述</strong>：目標函數與解的約束的文字描述。對 prompt 優化，可指示 LLM「生成一個能達到更高準確率的新指令」，這類指令稱 <strong>meta-instructions（元指令）</strong>；也可加入客製化元指令作為對生成解的非正式正則化，如「指令應簡潔且普遍適用」。</li>
+<li><strong>優化軌跡（optimization trajectory）</strong>：利用 LLM 從 in-context 示範辨識模式的能力，把過往的解與其分數（依分數<strong>升序</strong>排列）放進 meta-prompt。這讓 LLM 辨識高分解之間的相似性，鼓勵它在既有好解上構築更好的解，<strong>無需明確定義更新規則</strong>。</li>
+</ul>
+<h3 id="23-解的生成">2.3 解的生成</h3>
+<ul>
+<li><strong>優化穩定性（optimization stability）</strong>：因 in-context learning 對 prompt 敏感，軌跡中的低品質解會嚴重影響 LLM 輸出（尤其初期探索不足時），造成不穩定與大方差。作法：<strong>每步生成多個解</strong>，讓 LLM 同時探索多種可能、快速找到有希望的方向。</li>
+<li><strong>探索-利用權衡</strong>：以**採樣溫度（temperature）**調節——低溫鼓勵在既有解附近利用、小幅調整；高溫則更積極探索差異大的解。</li>
+</ul>
+<h2 id="3-動機示例數學優化">3. 動機示例：數學優化</h2>
+<h3 id="31-線性回歸">3.1 線性回歸</h3>
+<p>一維自變數 X 與應變數 y、含截距 b，故要優化 w、b 兩個一維變數。合成 50 個資料點，優化從 5 個隨機 (w,b) 起點開始。每步 meta-prompt 含歷史最佳的 20 組 (w,b) 及其排序後目標值，要求提出能進一步降低目標值的新 (w,b)；每步提示 8 次生成至多 8 個新解。採<strong>黑箱優化</strong>：meta-prompt 中不放解析式（否則 LLM 會直接算出解）。結果（表 2）：各模型探索的相異 (w,b) 數皆遠少於窮舉，證明它們能做黑箱優化——比較數字並提出下降方向；text-bison 與 gpt-4 收斂比 gpt-3.5-turbo 快，gpt-4 最擅長從歷史推斷合理的下一步（如見到 (8,7)(8,6)(8,5) 目標值遞減，最可能提出 (8,4)）；ground truth 離起點越遠問題越難。</p>
+<h3 id="32-旅行商問題tsp">3.2 旅行商問題（TSP）</h3>
+<p>給定 n 個節點座標，求最短巡迴路徑。從 5 個隨機解起、每步至多 8 新解；以 Gurobi solver 求 oracle 解並計算<strong>最佳性差距（optimality gap）</strong>，並與 Nearest Neighbor（NN）、Farthest Insertion（FI）啟發式比較。結果（表 3）：gpt-4 在所有規模均顯著優於另兩者，小規模時達最優解快約 4 倍；n=50 時 gpt-4 品質仍與啟發式相當，而 text-bison、gpt-3.5-turbo 卡在局部最優、差距可差 20 倍。但<strong>規模一大 OPRO 效能急劇退化</strong>：n=10 時全找到最優解，n 增大後 gap 快速上升，FI 開始勝過所有 LLM。</p>
+<p><strong>局限</strong>：OPRO 並非要贏過連續優化的頂尖梯度法、也非要超越 TSP 專用求解器，而是展示 LLM 僅靠提示就能優化各類目標函數、並在部分小規模問題上達全域最優。已知限制：context window 長度使大規模問題難塞進 prompt；某些目標函數地形太崎嶇，LLM 難提出正確下降方向而中途卡住。</p>
+<h2 id="4-應用prompt-優化">4. 應用：Prompt 優化</h2>
+<h3 id="41-問題設定">4.1 問題設定</h3>
+<p>聚焦輸入輸出皆為文字的自然語言任務。任務表示為含訓練/測試切分的資料集，訓練集算<strong>訓練準確率</strong>作為優化目標值，優化結束後在測試集算測試準確率。實驗顯示<strong>極少量訓練樣本即足夠</strong>（GSM8K 用 3.5%、BBH 用 20%）。目標函數評估者是一個 LLM，即被套用優化後 prompt 的 <strong>scorer LLM（評分模型）</strong>；負責優化的是 <strong>optimizer LLM（優化模型）</strong>，兩者可同可異。優化器輸出一條指令，接到每個範例的問題部分去提示 scorer。指令插入位置有三種：<strong>Q_begin</strong>（問題前）、<strong>Q_end</strong>（問題後）、<strong>A_begin</strong>（scorer 輸出開頭，適用於未經指令微調、以 QA 序列格式提示的預訓練 LLM）。</p>
+<h3 id="42-meta-prompt-設計圖-3">4.2 Meta-prompt 設計（圖 3）</h3>
+<ul>
+<li><strong>優化問題範例</strong>：從訓練集取幾個範例（如 3 個）示範任務，也示範指令要插入的位置（<code>&lt;INS&gt;</code> 標記），這對優化器生成同風格指令至關重要。每步隨機取樣（或選前一版指令答錯的）數個訓練範例。</li>
+<li><strong>優化軌跡</strong>：過往生成的指令及其分數（此處分數＝訓練準確率），依分數升序排列；因 context 長度限制，只保留<strong>最高分的指令</strong>（預設保留最好的 20 條）。</li>
+<li><strong>元指令（meta-instructions）</strong>：向優化器解釋優化目標、指示如何使用上述資訊，並可指定輸出格式以便解析。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2411.02272_Induction_Transduction.zh-TW.html">回 2411.02272_Induction_Transduction.zh-TW 目錄</a>　<a href="02_%E7%B5%90%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>從極少數範例學習「輸入→輸出」映射時，<strong>先推論出能解釋範例的潛在函式</strong>較好，還是<strong>直接用神經網路預測測試輸出</strong>較好？本文在 ARC 上分別訓練<strong>歸納</strong>（inferring latent functions，推論潛在函式）與<strong>傳導</strong>（直接預測測試輸出）的神經模型，並以合成生成的 Python 程式變體（解 ARC 訓練題）為訓練資料。發現：即使同訓練題、同神經架構，歸納與傳導<strong>解出不同類型的題目</strong>——歸納式程式合成擅長<strong>精確計算與多概念組合</strong>，傳導擅長<strong>較模糊的知覺型概念</strong>。將兩者集成可在 ARC 上逼近人類水準。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>從少例穩健泛化是人類智慧勝過 AI 的關鍵。給定少數訓練輸入輸出 (x_train, y_train) 與測試輸入 x_test，要預測 y_test。<strong>ARC</strong>（Chollet 2019）是測試「快速學會多樣新技能並應用」的少樣本 benchmark，題目是彩色網格上的輸入輸出，卻涉及遮擋、路徑、碰撞、對稱、重力、彈跳、計數等概念，是廣覆蓋少樣本學習的硬骨頭。</p>
+<ul>
+<li><strong>歸納（induction）</strong>：先找 f 使 f(x_train)≈y_train，再算 y_test=f(x_test)；可花更多時間搜尋/優化更好的解釋，並用範例為候選函式評分。</li>
+<li><strong>傳導（transduction）</strong>：不顯式建構中間函式 f，直接輸出 y_test；訓練範例直接參與預測，成功不必先有顯式解釋。</li>
+</ul>
+<p><strong>核心發現（反直覺）</strong>：即使<strong>控制先驗、資料、架構皆相同</strong>，歸納解出的題大多傳導沒解、反之亦然——兩者<strong>強烈互補</strong>。且可<strong>輕易集成</strong>：用歸納抽樣候選 f 直到找到滿足範例者或耗盡測試時算力，再用傳導兜底。</p>
+<p>本研究與程式合成緊密相關：f 以 Python 表示，故歸納＝合成程式；傳導則在 LLM 產生的 Python 腳本之輸入輸出上訓練（學著模仿符號程式碼）。長期主流理論偏向顯式產碼（歸納）而非隱式教神經網路模仿程式碼（傳導），本文正面檢驗此假設。</p>
+<p><strong>貢獻</strong>：(1) 歸納與傳導即使同題訓練仍強互補（推翻 Devlin 等「歸納較優」、也與「傳導 + 測試時訓練」的領先 ARC 隊伍立場相左）；(2) 自動資料生成：從 100–160 個 ARC 訓練題的程式解擴增出 40 萬新題（配 Python 解）；(3) 規模化研究：人工標註資料很快飽和，但能隨訓練/測試時算力擴展；(4) 各方法擅長題型及與人類的比較分析。</p>
+<h2 id="2-歸納與傳導的神經模型">2. 歸納與傳導的神經模型</h2>
+<p>考慮 K-shot 監督學習：收到 K 對 (x_train,y_train) 與單一 x_test，預測 y_test。模型以 <strong>meta-learning</strong> 訓練，meta 資料額外標註真值函式 f 監督歸納模型。</p>
+<ul>
+<li><strong>傳導網路</strong> t_θ：把 (x_train,y_train,x_test) 映到 y_test 的分布。</li>
+<li><strong>歸納網路</strong> i_θ：把 (x_train,y_train,x_test) 映到「函式 f」的分布。</li>
+<li><strong>訓練</strong>：皆以 meta-learning 最小化負對數似然（式 1 傳導損失、式 2 歸納損失）。</li>
+<li><strong>測試</strong>：傳導用 beam search 取最可能 y_test；歸納抽 B 個函式、用 (x_train,y_train) 過濾出 F={f_b(x_test)|f_b(x_train)=y_train}，再均勻取樣。</li>
+<li><strong>集成（式 5）</strong>：F≠∅ 時用歸納；F=∅ 時退回傳導。歸納能對照範例驗證假設（知道何時找到合理解但有時找不到），傳導反之（無法驗證但總有答案）。</li>
+</ul>
+<p><strong>ARC 實例化</strong>：每格網格 1–30 像素、每像素 10 色之一。因 ARC 題抽象且像程式結構，將 f 表示為 <strong>Python</strong>（圖靈完備）。歸納模型須產 Python 碼，故以 <strong>Llama3.1-8B-instruct</strong> 初始化（預訓練含原始碼，優於 Mistral-7B / Qwen2-7B / deepseek-coder）。網格以每像素 1 token、換行分列編碼。</p>
+<h2 id="3-為歸納與傳導生成資料集">3. 為歸納與傳導生成資料集</h2>
+<p>挑戰：ARC 概念多樣，且不只要產函式、還要產適合該函式的好輸入。</p>
+<ul>
+<li>從 <strong>100 個人工撰寫的 seed</strong> 程式長出資料集。每個 seed 既解一題（函式 f）又隨機產生新輸入網格，並有自然語言註解描述核心直覺。</li>
+<li><strong>seed 三部分</strong>：(1) 該 ARC 題的自然語言描述（含解法，置於 Python 註解頂端）；(2) <code>transform_grid</code>（對應 f）；(3) <code>generate_input</code>（無參數，隨機產生 f 的新輸入）。</li>
+<li><strong>先驗知識</strong>：seed 示範好程式並沉澱成共用 Python 函式庫（產隨機 sprite、偵測對稱、抽物件等）。<strong>與既有 ARC 的 DSL 不同</strong>：DSL 只允許領域原語的刻板組合，本文仍允許<strong>任意 Python</strong>，以涵蓋多樣題的長尾。</li>
+<li><strong>Remix（三階段管線）</strong>：(1) 以 seed 描述提示 LLM、用 in-context learning 重組變異出新自然語言描述（self-instruct 精神）；(2) 以 RAG 檢索相似 seed 為新描述產碼；(3) 執行新 <code>generate_input</code> 產輸入、餵 <code>transform_grid</code> 產輸入輸出。除非另述，用 GPT-4o-mini + ada-002。</li>
+</ul>
+<h2 id="4-歸納與傳導的實證研究">4. 歸納與傳導的實證研究</h2>
+<p>在 ARC <strong>400 題公開驗證集</strong>（比訓練集難）評估，模型僅從 100 題（有做 seed 的）訓練子集學。</p>
+<ul>
+<li><strong>強互補</strong>：同題訓練下，歸納與傳導解出不同題、整體解題率相近，但歸納解的多半傳導沒解、反之亦然（圖 5A）。多隨機種子重訓顯示「哪些題對歸納/傳導友善」<strong>跨種子穩定</strong>（圖 5B，p&lt;0.004，圖 5C），排除「只是隨機初始化不同」的替代解釋。</li>
+<li><strong>規模化</strong>：效能隨<strong>合成資料量</strong>增加而升，但隨<strong>人工 seed 數</strong>很快飽和（每個 seed 引入少數核心概念，足夠後概念已涵蓋）→ 過臨界 seed 數後可純靠算力擴展、少需人工標註；方法或可遷移到其他少樣本函式學習。</li>
+<li><strong>測試時算力</strong>：歸納解題率隨抽樣預算近單調上升（圖 8 左）。約 9% 通過範例過濾的樣本是假陽性（擬合範例卻測試錯），但其中約半數仍把多數機率質量放對的輸出（簡單多數投票即可壓掉假陽性）。</li>
+<li><strong>更強 LLM 產更好資料、歸納對資料品質更敏感</strong>（表 1）：用 GPT-4 產描述（GPT-4o-mini 產碼）的 100k 資料顯著提升效能，主要利好歸納（集成 26.50%／歸納 18.78%／傳導 15.25%），純 GPT-4o-mini 版較低（集成 19.50%／歸納 11.07%／傳導 13.50%）。</li>
+</ul>
+<h2 id="5-方法規模化barc">5. 方法規模化（BARC）</h2>
+<ul>
+<li><strong>ARC-Heavy</strong>：160 seed 產 200k 題（GPT-4 產描述、GPT-4o-mini 產碼），含補足模型仍弱的 60 題新 seed。</li>
+<li><strong>ARC-Potpourri</strong>：以 ARC-Heavy 為底再加第 4 節全部合成資料 + ReARC 的 100k 純傳導訓練樣本，湊成最大、雜揉的資料集。</li>
+<li><strong>測試時改進</strong>：傳導加<strong>測試時訓練（TTT）</strong> 與 reranking（多增強版本下取最可能輸出），抽樣預算擴到 20k。所得系統稱 <strong>BARC</strong>。</li>
+<li><strong>結果（表 2，pass@2）</strong>：未加 TTT 時歸納略勝傳導；加 TTT/reranking 後傳導略勝。<strong>集成 56.75%</strong>，超越先前已發表方法。後續 Akyürek 等以更好 TTT 把分數推到 <strong>61.9%</strong>（用本文歸納模型原樣），但<strong>拿掉本文模型則僅 47.1%</strong>——精巧 TTT 無法完全取代程式合成。最佳模型逼近人類平均（56.75% vs 60.2%），但遠低於最佳人類（97.8%）。</li>
+<li><strong>縮小版</strong>（無 TTT、336 抽樣、beam 3）：Kaggle 私有測試 19%、驗證 36.5%；小搜尋預算下程式合成效益降低，暗示更聰明的神經程式搜尋報酬高。</li>
+</ul>
+<h2 id="6-哪些題對模型人類較易">6. 哪些題對模型/人類較易？</h2>
+<ul>
+<li>依 LeGris 等資料把驗證題分 5 等難度級：所有模型在<strong>最難 20%</strong> 題超越人類，在<strong>最易 20%</strong> 卻輸人類（模型學簡單 Python 程式，故某些「程式簡單但人覺難」的題反而會解；而人有先驗能輕鬆解程式生成器產不出的題）。各難度級歸納與傳導皆互補。</li>
+<li><strong>ConceptARC</strong>（每題一個孤立高階概念）：計數類最適合符號程式碼（歸納），判斷形狀偏水平/垂直等知覺過程傳導較好。因每題只一概念、無需組合，歸納的「符號組合」優勢消失，故傳導表現佳。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

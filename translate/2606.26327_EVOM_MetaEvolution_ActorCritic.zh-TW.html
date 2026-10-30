@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>EVOM：強化學習中 Actor-Critic 架構的 Agentic 元演化（EVOM: Agentic Meta-Evolution of Actor-Critic Architectures for Reinforcement Learning） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Boyun Zhang、Chao Wang、Kai Wu（Xidian University 西安電子科技大學）</p><p>日期：2026-06</p><p>arXiv：2606.26327</p><p><a href="https://arxiv.org/abs/2606.26327" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="evomrl-中-actor-critic-架構的-agentic-元演化">EVOM：RL 中 Actor-Critic 架構的 Agentic 元演化</h1>
+<p>Xidian University（西安電子科技大學）</p>
+<h2 id="摘要">摘要</h2>
+<p>在 actor-critic RL 中，網路架構通常手工設計。自動化此設計很難，因為每個候選都得先訓練才能評估，且設計空間是開放式的。為此我們提出 <strong>EVOM</strong>，一個發現高效能 actor-critic 架構的 agentic 元演化框架。我們把架構搜尋形式化為<strong>雙層最佳化</strong>：內層用低保真 PPO 訓練權重，外層靠迭代精煉「架構程式」驅動元演化。關鍵在外層由一個<strong>基於 LLM 的設計 agent</strong> 驅動，它純粹當架構設計師、完全與策略執行和環境控制解耦。實驗顯示 EVOM 勝過手工設計 baseline、LLM-guided random search、以及 SOTA 的 LLM-guided 程式策略搜尋方法 <strong>MLES</strong>，在 Ant-v4 與 HalfCheetah-v4 上效能更佳。消融證明元演化迴圈與 LLM 設計 agent 對最終效能都不可或缺。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>深度學習的成功不只靠演算法進展，也靠架構創新。監督學習因此催生了大量 NAS 研究。但在 RL 中，自動架構設計受關注較少：actor-critic 方法（如 PPO）的 policy/value 網路常被當成固定實作從前人繼承。這可能忽略一個重要設計因素——actor-critic 架構會影響學習穩定性與最終效能。</p>
+<p>自動架構發現有兩難：(1) 每個候選都得先訓練才能評估 → 全預算跨多候選比較極貴；(2) actor-critic 設計<strong>開放式</strong>——policy head、value head、共享 trunk、normalization、activation 等可多種組合，無正典固定拓撲搜尋空間。</p>
+<p>EVOM 同時解決兩者：低保真內層評估給出可算的 fitness 估計；LLM 設計 agent 把架構當<strong>可執行程式</strong>生成/精煉，減少對手工預定義搜尋空間的依賴。EVOM 是雙層最佳化：外層演化架構程式種群，內層用縮減預算 PPO 訓練評估各候選。</p>
+<p>EVOM 也異於 MLES 等近期 LLM-guided 策略搜尋——MLES 合成「把觀測直接映到動作」的可執行控制器程式；EVOM 則生成<strong>可訓練的 actor-critic 架構</strong>：程式指定網路結構，PPO 透過環境互動學權重。這把 LLM 定位成元演化迴圈內的<strong>可重用設計算子</strong>，而非 RL 的替代品。</p>
+<h2 id="34-問題形式化與-evom-方法">3–4. 問題形式化與 EVOM 方法</h2>
+<p><strong>演算法（外層）</strong>：對 t = 0…G−1，用 LLM 設計 agent 在 P^(t) 上做 mutation/crossover 產後代 P′；每個後代 p′ 用 PPO 在 B_low 訓練、跑 K 個確定性 episode 估評估訊號；把 P^(t)∪P′ 按訊號排序、選 top-N 當下一代 elite。G 代後把最佳架構用 B_full 從頭重訓、評估、回報 r_final。</p>
+<ul>
+<li><strong>4.2 LLM-guided 演化迴圈</strong>：LLM 收任務描述、輸入/輸出維度、程式介面、設計約束，回傳初始種群 P^(0)（每個立即評估，故初始 elite 按實證反饋而非模型偏好選）。每代 prompt 含環境描述、固定狀態-動作資訊、輸出要求、選定架構、演化指令（mutation 一個程式 / crossover 兩個程式）。<strong>agentic 的有限意義</strong>＝維持狀態（current elite + 歷史評估 log）、採設計動作（程式生成）、觀察反饋（內層 PPO 回報）；因 prompt 以 current elite 為條件，能跨代重用設計樣式。prompt state 刻意精簡（mutation 記 current architecture + 設計；crossover 記 Parent 1/2 + 設計），不暴露原始軌跡/梯度/訓練內部，也支援受控消融。</li>
+<li><strong>4.3 開放式架構表示</strong>：每候選＝generation label + 結構化設計描述（layer 類型、寬度、activation、normalization、殘差、初始化、actor-critic 共享/非對稱）+ 可執行 Python（評估的權威物件）。介面固定：須定義 <code>PolicyNet(obs_length, act_length)</code>（回動作 mean，shape (n_b, m)）與 <code>ValueNet(obs_length)</code>（回 value，shape (n_b, 1)）；深度/寬度/activation/normalization/殘差/dropout/初始化/非對稱性全開放。每程式寫入隔離檔、由 worker import、實例化、接 Stable-Baselines3 actor-critic policy wrapper。<strong>編譯失敗、非有限輸出、違反 shape、訓練崩潰者罰 fitness −1000</strong>，使無效架構難以存活 elitist 選擇或當 parent。</li>
+<li><strong>4.4 LLM 設計算子</strong>：LLM 當可重用設計 agent（非一次性生成）。Mutation 對 activation、容量、normalization、殘差等做語意改動；Crossover 把兩 parent 融成一致的新後代（非機械拼接文字）。預設 mixed reproduction：N/2 mutation + N/2 crossover。</li>
+<li><strong>4.5 PPO 評估與最終重訓</strong>：低保真 B_low 引導搜尋，全預算 B_full 從頭重訓決定回報效能。</li>
+</ul>
+<h2 id="56-實驗與結果">5–6. 實驗與結果</h2>
+<ul>
+<li>
+<p><strong>設定</strong>：MuJoCo 連續控制 Ant-v4（27 維觀測、8 維 torque）與 HalfCheetah-v4（17 維、6 維），都用 VecNormalize。EVOM：N=16、G=20;B_low = PPO 100k 步、K=3 確定性 episode 估訊號；B_full = PPO 5M 步（對齊手工 baseline）、3 獨立 run。</p>
+</li>
+<li>
+<p><strong>baselines/消融</strong>：Manual PPO（SB3 固定 MLP）;Random Search（同 EVOM 但無 mutation/crossover/選擇，獨立採樣）;MLES（演化可執行控制器程式，直接程式控制）。消融：reproduction 算子、種群大小、LLM backbone（DeepSeek V4、Claude Opus 4.7、Qwen3.6 Plus）。</p>
+</li>
+<li>
+<p><strong>全預算效能（Table 1）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>Ant-v4</th>
+<th>HalfCheetah-v4</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Manual PPO</td>
+<td>2517.06 ± 366.24</td>
+<td>1691.42 ± 495.26</td>
+</tr>
+<tr>
+<td>MLES</td>
+<td>1185.26 ± 84.15</td>
+<td>1045.71 ± 134.04</td>
+</tr>
+<tr>
+<td>Random Search</td>
+<td>988.15 ± 2.81</td>
+<td>3612.87 ± 1953.45</td>
+</tr>
+<tr>
+<td><strong>EVOM</strong></td>
+<td><strong>4652.10 ± 746.91</strong></td>
+<td><strong>5381.07 ± 1357.70</strong></td>
+</tr>
+</tbody>
+</table>
+<p>EVOM 兩任務均最高。Random Search 在 HalfCheetah 上較強但標準差巨大——獨立 LLM 採樣偶能找到有用架構但跨全預算重訓不穩定。</p>
+</li>
+<li>
+<p><strong>收斂與架構分析</strong>：Ant-v4 歷史最佳回報與 elite 平均隨代上升，最終架構含殘差 + normalization（手工 baseline 沒有）;HalfCheetah-v4 最終為更深的 LayerNorm-SiLU MLP。歷史最佳曲線與最終重訓的 gap 解釋了為何用最終全預算評估而非搜尋時/best-checkpoint 回報。</p>
+</li>
+<li>
+<p><strong>算子/種群消融（Table 2）</strong>：Mixed reproduction 兩任務最佳；crossover-only 在 Ant 仍有競爭力、HalfCheetah 勝 mutation-only；兩種單算子變體都遜於 mixed → 局部編輯與設計樣式重組互補。增大種群非單調改善（更大候選池更依賴 noisy 低預算訊號）。</p>
+</li>
+</ul>
+<h2 id="78-討論與結論">7–8. 討論與結論</h2>
+<p>EVOM 把 NAS 思路引進長期被忽視的 actor-critic 架構設計，用「低保真 PPO 內層 + LLM 解耦外層設計師」的雙層元演化，在兩個 MuJoCo 任務上顯著勝過手工與既有 LLM-guided 方法。限制：僅兩任務、低保真代理與全預算有 gap、種群增大不單調。開源於 github.com/xiaofangxd/EVOM。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

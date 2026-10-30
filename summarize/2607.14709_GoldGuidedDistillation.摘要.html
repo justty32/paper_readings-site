@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《金標引導的程式化蒸餾用於混合表格與文本之財務推理（Gold-Guided Programmatic Distillation）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yun Dong（Georgia Tech）、Erica Zhao, Elana Chen（Stanford）</p><p>日期：2026-07</p><p>arXiv：2607.14709</p><p><a href="https://arxiv.org/abs/2607.14709" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="金標引導的程式化蒸餾用於財務推理gold-guided-programmatic-distillation重點摘要">《金標引導的程式化蒸餾用於財務推理（Gold-Guided Programmatic Distillation）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>把 LLM 的自由形式推理步驟轉成執行驗證的 Python 程式，再用這些程式來蒸餾小模型</strong>：大教師模型以金標推導（gold derivation）為引導合成 Python 程式，只保留執行正確且產出正確答案者作為高品質監督訊號；7B 學生模型經兩階段蒸餾（教師蒸餾＋迭代自恢復）後在 TAT-QA 上達 87.00 EM，大幅超越 72B 教師（78.46 EM）與最強基線 TAT-LLM（82.67 EM）。核心洞見：用確定性的程式執行取代 LLM 內部的數值運算，從根源消滅算術錯誤。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>財務問答需要整合<strong>混合表格與文本</strong>的多來源資訊並執行<strong>精確數值推理</strong>；CoT 之類的自然語言推理步驟容易出現算術幻覺，作為蒸餾的監督訊號不可靠。</li>
+<li>現有方法（PaD 等）雖用程式取代文字推理，但<strong>蒸餾品質高度依賴中間推理軌跡的正確性</strong>——不完美的軌跡會傳播錯誤。</li>
+<li>迭代生成-驗證策略（STaR、RFT）已展現自改進潛力，但如何<strong>把監督擴展到教師未能解決的範例</strong>仍是開放問題。</li>
+</ul>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>兩階段架構</strong>：(1) 教師驅動蒸餾——大模型合成 Python 程式，只保留經沙箱執行驗證且產出金標答案者；(2) 迭代自改進——學生模型對教師失敗的範例取樣候選程式，執行驗證後將正確者回補訓練集。</li>
+<li><strong>Phase 1 教師驅動蒸餾</strong>：教師（Qwen2.5-72B）在 prompt 中注入 TAT-QA 的金標推導作為推理提示，並以 DSPy（MIPROv2）優化 prompt 形成嚴格的結構化輸出格式（Python→JSON <code>{&quot;ans&quot;:..., &quot;scale&quot;:...}</code>）。生成後經沙箱執行過濾：只保留無編譯錯誤、且產出完全正確答案與單位者（EM=1）。從 6,603 訓練題中篩出 5,190 題（78.6%）構成 <code>D_T</code>。學生（Qwen2.5-7B）以 LoRA（r=8/α=16/dropout=0.05/1 epoch）在此資料集上 SFT——學生僅以 <code>(C, q)</code> 為輸入，不接觸金標推導。</li>
+<li><strong>Phase 2 迭代拒絕取樣自改進</strong>：對教師失敗集合 <code>D_wrong</code>，Phase 1 學生以 T=0.7 每題取樣 5 個候選程式，經相同沙箱過濾後將正確者加入 <code>D_rec</code>。以 <code>D_Total = D_T ∪ D_rec</code> 進行第二輪 LoRA 微調。注意：這一步讓學生從<strong>自己生成並被執行驗證</strong>的程式中學習，將監督擴展到教師原始覆蓋之外。</li>
+<li><strong>推理時</strong>：學生僅根據 <code>(C, q)</code> 生成 Python 程式 → 由確定性 Python 解譯器執行產生最終答案——模型只需專注於推理邏輯，所有數值計算外包給確定性執行。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>7B 學生（Attention+MLP Round 2）達 87.00 EM / 87.18 F1</strong>，超越 72B 教師（78.46 EM）、TAT-LLM FFT（82.67 EM）、TAGOP（47.05 EM）。</li>
+<li><strong>Round 1 已全面超越所有基線</strong>：Attention+MLP 版本在教師蒸餾階段即達 84.72 EM。</li>
+<li><strong>Phase 2 迭代恢復</strong>：Attention+MLP 版本從教師失敗集中恢復 979 題，第二輪後測試 EM 從 84.72 → 87.00（+2.28pp）。</li>
+<li><strong>教師端資料品質至關重要</strong>：注入金標推導使 72B 教師的 EM 從 69.55 → 78.46；嚴格的結構化輸出格式與執行過濾確保監督品質。</li>
+<li><strong>LoRA 模組範圍</strong>：Attention+MLP（包含 gate/up/down proj）一致優於 Attention-only（僅 q/k/v/o proj）。</li>
+<li><strong>錯誤分解</strong>：主要殘餘錯誤來自答案預測（而非僅單位錯誤）；訓練後總錯誤從 445 → 108，三類錯誤皆顯著減少。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>評測僅在 TAT-QA 的<strong>過濾子集</strong>（需有推導的題目）上進行，評測集較小且部分子群缺少範例，泛化性待驗證。</li>
+<li>三類錯誤（答案錯、單位錯、兩者皆錯/缺失）仍未完全消滅。</li>
+<li>目前框架對所有查詢強制走程式化推理；對純粹的擷取型問題可能過度複雜。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>這是 ai_core §3.6「固化引擎」的<strong>直接實證</strong>：把 LLM 反覆處理的自由形式推理步驟，結晶成<strong>經執行驗證的確定性 Python 程式</strong>——一旦在某組案例上被驗證正確，推理就從 LLM 呼叫換成程式執行，既可靠又便宜。本文的貢獻正是這條路徑的完整管線。</li>
+<li><strong>對 §3.4 治理（拒絕為預設＋憑證准入）</strong>：執行驗證（execution-based filtering）是比信心分數或 LLM-as-judge 更強的准入裁決——程式不是「可能對」而是「執行後產出正確答案才收」。這種「嚴格過濾後再蒸餾」的結構，正是 ai_core 節點從 LLM 退化為確定性函數前需要的品質閘。</li>
+<li><strong>對 §3.3 成本梯度</strong>：7B 超越 72B 且用確定性執行取代 LLM 推理——這是典型的「讓貴的模型教便宜的模型，然後貴的模型退場」的成本轉移模式。Phase 2 的迭代自恢復進一步壓低教師依賴：學生自己取樣、自己驗證、自己學。</li>
+<li><strong>對 §3.1 技能庫</strong>：每個執行驗證過的 Python 程式本質上是一個可重用的推理技能；成對閱讀 <strong>2604.05150 Compiled AI</strong>（LLM workflow→確定性 Python）可形成「蒸餾→編譯→入庫」的完整閉環。</li>
+<li>最值得記：<strong>執行驗證＞自然語言蒸餾</strong>、<strong>金標引導是程式合成品質的關鍵</strong>、<strong>迭代自恢復把監督擴展到教師盲區</strong>、<strong>7B 打 72B 不是靠更大而是靠更確定</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2607.14709_GoldGuidedDistillation.zh-TW.html"><code>../translate/2607.14709_GoldGuidedDistillation.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《EGG-SR：透過等式圖將符號等價性嵌入符號迴歸》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Nan Jiang group 等</p><p>日期：2025-11，符號迴歸方法</p><p>arXiv：2511.05849</p><p><a href="https://arxiv.org/abs/2511.05849" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="egg-sr透過等式圖將符號等價性嵌入符號迴歸重點摘要">《EGG-SR：透過等式圖將符號等價性嵌入符號迴歸》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>把「符號等價性」嵌入現代符號迴歸（SR）<strong>的統一框架：許多語法不同的表達式其實是同一函數（如 log(2x)=log2+logx），既有 SR 把它們當不同輸出 → <strong>冗餘探索、學習慢</strong>。<strong>EGG-SR</strong> 用 <strong>等式圖（e-graph）</strong> 緊湊表示等價表達式，並嵌入三類 SR 方法——<strong>MCTS、深度強化學習（DRL）、LLM</strong>——分別經 (1) 剪枝等價子樹、(2) 聚合等價序列的獎勵、(3) 豐富回饋 prompt 來加速學習。理論上</strong>收緊 MCTS 的 regret 界、降低 DRL 梯度估計的變異數</strong>；實驗上一致在相同時限內找到更準的表達式。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>SR 搜尋空間隨資料維度<strong>指數成長（NP-hard）</strong>;<strong>符號等價</strong>是縮空間的有望但未充分探索方向。</li>
+<li>等價變體數隨表達式長度指數成長 → 顯式維護不可擴展。<strong>e-graph</strong> 解：<strong>只儲存共享子表達式一次</strong>，緊湊編碼等價集（用於程式優化、表達式簡化、去重）。但缺「讓多種 SR 演算法與 e-graph 互動加速學習」的統一框架。</li>
+</ul>
+<h2 id="核心egg-模組">核心：Egg 模組</h2>
+<ul>
+<li>把 e-graph 擴展到<strong>文法式符號表達式</strong>（稱 <strong>Egg</strong>，純 Python 實作）。e-graph 由 <strong>e-class（等價類）</strong> 組成，每類含多個 <strong>e-node（等價子表達式）</strong>;e-node 編碼數學運算、指向子 e-class。</li>
+<li>給 SR 預測的產生式規則序列 → Egg 建 e-graph → 用<strong>改寫規則（rewrite rules，編碼已知數學恆等式）飽和（saturate）</strong> → <strong>隨機遊走取樣</strong>取回一批等價序列。</li>
+<li>與既有用法不同：不是用 e-graph 找「最簡形式（Occam）」，而是<strong>刻意暴露 SR 演算法一批等價變體</strong>做「等價感知學習」。</li>
+</ul>
+<h2 id="三種嵌入">三種嵌入</h2>
+<ol>
+<li><strong>Egg-MCTS</strong>：<strong>反向傳播時把獎勵/訪問次數分享給所有等價路徑</strong>（靈感自 transposition table，但 SR 中節點只在符號等價下相同，雜湊表不直接適用 → 用 Egg 辨識等價路徑）。剪枝等價子樹的冗餘探索。<strong>Theorem 3.1：更緊的 regret 界</strong>（有效分支因子變小，更快聚焦近最優區）。</li>
+<li><strong>Egg-DRL</strong>：在策略梯度中<strong>聚合等價序列的獎勵</strong>（同獎勵的等價序列機率加總）。<strong>Theorem 3.2：無偏 + 嚴格降低梯度變異數</strong>（同獎勵分組減組內變異）→ 更穩定高效。</li>
+<li><strong>Egg-LLM</strong>：把生成的 Python 函數解析成符號表達式 → e-graph 抽等價式 → <strong>豐富回饋 prompt</strong>（讓 LLM 看到更多功能等價式）改善後續預測。</li>
+</ol>
+<h2 id="實驗">實驗</h2>
+<ul>
+<li>在<strong>三角函數資料集</strong>（含大量等價變體）上：<strong>Egg-MCTS/Egg-DRL 一致找到更低 NMSE</strong> 的表達式（無噪與有噪設定皆然）。</li>
+<li>Egg-MCTS 維持<strong>更廣更深的搜尋樹</strong>（探索更大更多元空間）。歸功於涵蓋豐富三角恆等式的改寫規則。</li>
+<li>與知識引導法（AI-Feynman 的組合性/對稱、物理單位約束）<strong>正交</strong>——是新的知識引導維度。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>與 <a class="paper-reference" href="2512.01682_SR_Current_Challenges_Thesis.%E6%91%98%E8%A6%81.html">2512.01682</a>（Aldeia 論文用 LSH/equality graph 做簡化/去重）、<a class="paper-reference" href="2511.05849_EGG_SR.%E6%91%98%E8%A6%81.html">2511.05849</a>、G 類 <a class="paper-reference" href="2501.17848_eggp_Equality_Graphs.%E6%91%98%E8%A6%81.html">2501.17848</a>（equality graph 改進 GP）同屬「<strong>e-graph/等價性用於 SR</strong>」一脈，但本文獨特在<strong>把等價性嵌入「學習目標」</strong>（MCTS regret、DRL 梯度變異數）而非只做簡化/去重，且<strong>統一涵蓋 MCTS/DRL/LLM 三類</strong>。</li>
+<li>最值得記：<strong>「符號等價」是縮 SR 搜尋空間的免費午餐</strong>——同函數的不同寫法應共享統計；<strong>e-graph 緊湊表示 + 改寫規則飽和 + 取樣等價序列</strong> 的配方；以及兩個乾淨的理論保證（regret 界、梯度變異數）。</li>
+<li>與 <a class="paper-reference" href="2502.09100_LLM_Logical_Reasoning_Survey.%E6%91%98%E8%A6%81.html">2502.09100</a> 等「LLM 推理」呼應：Egg-LLM 用等價式豐富 prompt。</li>
+<li>定位：<strong>方法論文 + 理論 + 實驗</strong>（聚焦三角函數等富等價的領域，有開源 project page）；適合做 <strong>SR 演算法（MCTS/DRL/LLM）、e-graph/改寫系統、加速符號搜尋</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2511.05849_EGG_SR.zh-TW.html"><code>../translate/2511.05849_EGG_SR.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

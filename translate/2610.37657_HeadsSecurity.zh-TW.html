@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Heads of Security: Learned Attention Gates Improve Prompt Injection Robustness 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Igor Shilov、Xiaoxue Yang、Alexander Panfilov、Evgenii Kortukov、Matthieu Meeus、Peter Romov、Wojciech Samek、Jonas Geiping、Yves-Alexandre de Montjoye</p><p>日期：2026-10-27（v1，cs.LG）</p><p>arXiv：2610.37657</p><p><a href="https://arxiv.org/html/2610.37657v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="heads-of-security-learned-attention-gates-improve-prompt-injection-robustness">Heads of Security: Learned Attention Gates Improve Prompt Injection Robustness</h1>
+<h2 id="摘要與第-12-節問題與範圍">摘要與第 1～2 節：問題與範圍</h2>
+<p>間接提示注入把攻擊指令藏在工具輸出等外部資料中，誘使模型把資料當成授權指令。本文研究指令與資料分離：模型仍可讀取外部內容，但當它被指定為資料時，不應服從其中的指令。可信邊界由外部提供，而非由模型自行判定。</p>
+<p>Heads of Security（HoS）為注意力頭學習依來源通道調整注意力的閘門。作者在 Llama-3.3-70B-Instruct 與 GPT-OSS-20B 比較 HoS、SecAlign++ 微調及 ASIDE 架構防禦；文中簡稱 SecAlign。所測模型與攻擊下的穩健性不等於完整安全保證。（<a href="https://arxiv.org/html/2610.37657v1#S1">§1～2</a>）</p>
+<h2 id="第-3-節通道注意力閘門與訓練">第 3 節：通道注意力閘門與訓練</h2>
+<p>輸入 token 分為可信、不可信與聊天模板三通道：一般設定中 system／user 與模型生成內容為可信，工具輸出為不可信，角色標頭等模板 token 為模板通道；具體分派由系統提供。每層每個注意力頭對查詢通道 <code>c_i</code> 與鍵通道 <code>c_j</code> 有獨立閘門 logit <code>g[c_i,c_j]</code>。在注意力 softmax 前加上 <code>log σ(g[c_i,c_j])</code>，等價於將該鍵未正規化注意力權重乘以 <code>σ(g)</code>；各頭可學到不同重分配，而非一律壓低所有不可信內容。</p>
+<p>若所有鍵的閘門相同，softmax 會抵消共同位移。GPT-OSS 另有顯式 attention sink，故增加只作鍵的 sink 通道。作者凍結基礎模型，僅以 SecAlign++ 的直接偏好最佳化（DPO）配對訓練閘門：偏好回覆遵循使用者指令，拒絕回覆遵循注入。作者自報 Llama 的閘門參數為 46,080，GPT-OSS 含 sink 為 18,432；比較的 SecAlign adapter 分別為 349M、38M。Llama 使用公開 SecAlign adapter，GPT-OSS 的 SecAlign 由作者訓練。（<a href="https://arxiv.org/html/2610.37657v1#S3.SS2">§3.1～3.3</a>、<a href="https://arxiv.org/html/2610.37657v1#A10.SS1">附錄 J，表 15</a>）</p>
+<h2 id="第-41-節自適應黑箱與白箱攻擊">第 4.1 節：自適應黑箱與白箱攻擊</h2>
+<p>RL-Hammer 以強化學習訓練 Llama-3.1-8B 攻擊者，將攻擊目標改寫成針對特定目標模型的注入；每個主要目標另配一個同家族較易攻擊的目標。表中每列是攻擊者訓練目標，每欄是評估目標，也包含跨模型轉移。作者自報對相同 100 個未見過的 InjecAgent 目標，取所示攻擊者對每個防禦的最高平均 ASR：</p>
+<table>
+<thead>
+<tr>
+<th>評估目標</th>
+<th style="text-align:right">無防禦</th>
+<th style="text-align:right">SecAlign</th>
+<th style="text-align:right">HoS</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPT-OSS-20B</td>
+<td style="text-align:right">97.2%</td>
+<td style="text-align:right">85.2%</td>
+<td style="text-align:right">10.0%</td>
+</tr>
+<tr>
+<td>Llama-3.3-70B</td>
+<td style="text-align:right">99%</td>
+<td style="text-align:right">82%</td>
+<td style="text-align:right">1%</td>
+</tr>
+</tbody>
+</table>
+<p>GPT-OSS 自適應攻擊結果為五次執行的平均，最高值標準誤依序 0.5、1.2、0.6 個百分點。各欄最高值可來自不同攻擊者；兩模型家族中針對 SecAlign 訓練的攻擊者比針對 HoS 訓練者更能攻破 HoS。作者推測後者訓練時獎勵稀疏，限制了優化；這是解釋而非已證實原因。（<a href="https://arxiv.org/html/2610.37657v1#S4.SS1">§4.1，表 1</a>、<a href="https://arxiv.org/html/2610.37657v1#A5.SS1">附錄 E.1，表 5～6</a>）</p>
+<p>白箱攻擊可讀模型權重、閘門、梯度與最佳化器。作者用 GPT-5.6-Sol 在 6 個 AgentDojo 開發案例上進行 50 次攻擊變體研究，選出 V38；此過程未見最終 100 對評估案例。V38 對每個案例優化附加在注入中的 120 token 後綴，8 次重啟，對每目標每案例最多 <code>10^17</code> active-parameter FLOPs。AgentDojo 評估集從固定攻擊對三模型都失敗、攻擊目標可由單一工具呼叫達成且符合記憶限制的案例挑選；另測同一批 100 個 InjecAgent 目標。</p>
+<p>作者自報累積 ASR 達 50% 時，AgentDojo 的 HoS 約需 <code>6×10^16</code> FLOPs，基礎／SecAlign 約 <code>2.2～2.3×10^16</code>；InjecAgent 為 <code>3.0×10^16</code> 對 <code>8.5～9.5×10^15</code>。累積指預算內任何已保存的最佳後綴成功即算成功。完整預算下，InjecAgent 的基礎／SecAlign／HoS 累積 ASR 為 95%／100%／90%；實際交付後綴的 ASR 為 90%／100%／84%。因此較高攻擊成本不代表該白箱攻擊無法成功。（<a href="https://arxiv.org/html/2610.37657v1#S4.SS1">§4.1，圖 2</a>、<a href="https://arxiv.org/html/2610.37657v1#A6">附錄 F</a>）</p>
+<h2 id="第-4243-節正常效用與代理基準">第 4.2～4.3 節：正常效用與代理基準</h2>
+<p>在將提示內容標為可信的標準測試中，作者自報 HoS 大致保留原模型效用。GPT-OSS 的 5-shot MMLU-Pro：基礎／SecAlign／ASIDE／HoS 準確率為 68.3%／59.4%／52.1%／67.2%；Llama 基礎／SecAlign／HoS 為 56.3%／16.1%／54.8%。作者認為窄單輪資料可能使較廣泛的微調學到格式捷徑；這是其假說，且後文承認更多元訓練資料可能改善比較方法。（<a href="https://arxiv.org/html/2610.37657v1#S4.SS2">§4.2，表 2</a>、<a href="https://arxiv.org/html/2610.37657v1#S6">§6</a>）</p>
+<p>AgentDojo 與 AgentDyn 衡量合法任務完成率及注入任務成功率，以固定攻擊與環境狀態檢查；WASP 含 37 個乾淨任務與 84 種安全評估組合；LLMail 抽取 4,000 個第一階段提交，各挑戰等級各 1,000 個，其摘要效用由 Claude Sonnet 5 額外評估。HoS 一般將工具輸出標為不可信；WASP 中不可由使用者修改的網頁介面元素則標可信。部分 AgentDojo 任務因上下文限制被排除。（<a href="https://arxiv.org/html/2610.37657v1#A7.SS1">附錄 G.1</a>）</p>
+<p>作者報告 GPT-OSS 的多學習率安全／效用曲線中，HoS 在 AgentDojo、WASP 優於所示 SecAlign 前緣，AgentDyn、LLMail 相當；測試的 ASIDE 設定常無法產生可用工具呼叫。Llama 的 AgentDyn 亦有明顯取捨：基礎／SecAlign／HoS 乾淨效用為 33.7%／41.7%／18.3%，攻擊下效用為 30.9%／38.3%／18.4%，ASR 為 18.5%／5.4%／1.4%。（<a href="https://arxiv.org/html/2610.37657v1#S4.SS3">§4.3，圖 4、表 3</a>）</p>
+<h2 id="第-56-節機制分析與限制">第 5～6 節：機制分析與限制</h2>
+<p>作者觀察多數頭減少可信查詢對不可信鍵的相對注意力，少數反而增加。LLMail 子集的消融中，僅保留增加相對注意力的閘門時，注入偵測率由基礎模型 11.03% 升至 28.20%；完整 HoS 為 3.11%，因此不能把完整模型視為同時提升偵測。角色探針顯示 HoS 下工具輸出角色辨識提高，注入片段的「使用者角色感」降低；作者將其作為相關機制的證據。（<a href="https://arxiv.org/html/2610.37657v1#S5">§5，表 4、圖 5</a>）</p>
+<p>作者明言，HoS 不決定來源是否可信或使用者授權了什麼；有些任務本來就需要遵循外部指令，嚴格分離只適用於外部內容作為資料的情況。攻擊者可在看到防禦後調整，有限評估無法證明安全；訓練資料固定，更多元資料可能改善各方法。方法依賴明確的逐鍵注意力 logits，不能直接套用於純線性注意力架構。（<a href="https://arxiv.org/html/2610.37657v1#S6">§6</a>）</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2610.37657_HeadsSecurity.%E6%91%98%E8%A6%81.html">Heads of Security 摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

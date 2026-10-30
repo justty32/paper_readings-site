@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_提出方法：UMCNP · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2506.04399_UMCNP.zh-TW.html">回 2506.04399_UMCNP.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-提出方法umcnp">4. 提出方法：UMCNP</h2>
+<p>藉由 PPG 元 RL 收集的元訓練軌跡學動力學模型。從策略採動作，UMCNP <strong>自回歸生成完整軌跡</strong>（用動作+狀態查模型→得下一狀態→回饋連同新動作）。學到的 pseudo-advantage 吃 <code>(s,a,s')</code> 引導適應的策略梯度。如此用更少樣本即建立未知環境模型。目標＝在無監督元測試提升樣本效率，<strong>不需環境參數或獎勵</strong>即從測試任務用少樣本生成軌跡。</p>
+<p><strong>第一相（PPG 元訓練）</strong>：元訓練時把各任務轉移存成<strong>不含任務參數與獎勵</strong>的元組集，建離線資料集。pseudo-advantage 與 advantage 用多項式回歸+擬合價值函數；內層（式 3）用 vanilla PG、外層（式 4）用 actor-critic <strong>PPO</strong>（含擬合價值函數），皆用 Adam。學完元策略、offset、pseudo-advantage（NORML）後，用離線轉移資料集訓 UMCNP 模型。</p>
+<p><strong>第二相（離線訓 UMCNP）</strong>：用先前線上 PPG 元訓練收集的<strong>無標籤轉移批</strong>離線訓 UMCNP（任務推論）。轉移動力學參數隱藏、資料無獎勵。每次迭代從離線資料集隨機取一批，再無放回隨機取一組任務特定轉移與一個目標查詢元組（用其 (s,a) 當查詢、真 s&#x27; 當標籤）。把每個元組用參數共享 encoder 編成定長表徵→平均模組得代表該批隱藏轉移參數的潛在向量→與 (s,a) 查詢拼接，預測下一狀態分布參數（式 5）。損失見式 6。對標準差套 softplus，與均值構成對角協方差多元高斯（高變異＝高不確定）。</p>
+<p><strong>元測試</strong>：agent 從未見測試任務無獎勵採少量樣本→共享權重 encoder 編成定長表徵→平均模組成測試任務動力學的共享表徵→用此潛在向量+元策略生成<strong>低成本 rollout</strong>。每條 UMCNP 生成的 rollout 都用測試任務的<strong>同一真實初始狀態</strong>；輸入隨機元策略（PPO 訓，具隨機性）得動作查詢，故能生成<strong>多樣 rollout</strong> 促進資訊性探索；取預測下一狀態定後續動作查詢，循環查 decoder 直到 episode 結束。把這些生成 rollout 與<strong>單條真實 rollout</strong> 合併。pseudo-advantage 對合併集每個元組算優勢估計，最後對元策略做一步梯度更新快速適應。<strong>儘管元測試完全無獎勵（獎勵僅第一相元訓練有），仍能顯著樣本高效地無監督適應。</strong></p>
+<h2 id="5-實驗">5. 實驗</h2>
+<p>5 隨機種子、95% 信賴區間。<strong>ORACLE</strong>（NORML 訓、允許大量採樣，25 rollout）為「充分採樣」上界基線。UMCNP、NORML、PE-TS CaDM、Vanilla CaDM、PE-TS、PPO-CaDM、Vanilla DM 等元測試時對測試任務存取受限。</p>
+<h3 id="51-2d-point-agent未知人工力場">5.1 2D Point Agent（未知人工力場）</h3>
+<p>agent 從原點移到目標，獎勵＝到目標的負歐氏距離（跨任務相同）。不同任務＝不同力場（旋轉參數 φ）推 agent 不同方向；最大 episode 長 10；5000 任務分布訓練。<strong>UMCNP-ADV</strong> 變體額外吃 advantage 並預測之。元測試：ORACLE 採 25 真實 rollout；NORML/UMCNP/UMCNP-ADV 只用<strong>單條</strong>真實 rollout 微調（用同一條以公平比較）。</p>
+<p><strong>Table I</strong>：UMCNP（24 生成 + 1 真實）達 <strong>−1.02±0.09</strong>，逼近 ORACLE（25 真實）<strong>−1.20±0.12</strong>；NORML（1 真實）僅 <strong>−11.49±1.44</strong>；UMCNP-ADV <strong>−8.49±0.58</strong> 勝 NORML 但遜於 UMCNP（未來以分離 decoder 改進）。圖 3 軌跡顯示 UMCNP 與 ORACLE 相似。</p>
+<h3 id="52-cartpole未知角度感測偏差">5.2 Cartpole（未知角度感測偏差）</h3>
+<p>MuJoCo/Gym 的 Cartpole 擴展，任務差在<strong>隱藏位置感測漂移參數</strong>；最大 episode 長 500。比較 UMCNP（5/50 轉移）對 NORML、PE-TS CaDM、Vanilla CaDM、PPO-CaDM（歷史/未來長 5、Random Shooting 1000 候選）、PE-TS、Vanilla DM。<strong>注意 CaDM 訓練需獎勵函數做 MPC</strong>（已提供）。結果（圖 6、Table II）：UMCNP 勝基線；CaDM 整合進 model-free RL 時較好。</p>
+<h3 id="53-walker-2d隨機動力學參數">5.3 Walker-2D（隨機動力學參數）</h3>
+<p>更高維控制，最大 episode 長 1000，<strong>無監督元測試（無獎勵）</strong>。任務＝未知體質量、慣量、各關節阻尼、摩擦（質量/慣量/摩擦以 1.5 的指數縮放、阻尼以 1.3）。只用 <strong>40 任務元訓練</strong>、10 測試任務。圖 7 小提琴圖：NORML/UMCNP 用單 rollout、10N 版用 10 轉移、CaDM 用歷史/未來長 10、ORACLE 用 25 rollout。</p>
+<p><strong>Table II</strong>：UMCNP <strong>1844.62±338.80</strong> ＞ ORACLE 1755.07 ＞ NORML 1608.97；10N UMCNP 1684.56 ＞ 10N NORML 1566.38；低樣本 5N UMCNP <strong>424.13±39.79</strong> 遠勝 5N NORML 144.56、PPO+CaDM 295.40。UMCNP 不僅樣本效率高、還可能擴大未見任務範圍的適應性能——因 UMCNP 在元訓練集上訓練，能生成<strong>噪聲更低、更魯棒</strong>的樣本（噪聲真實樣本 vs 生成樣本的 bias-variance 取捨）。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>提出 UMCNP——能生成有用 rollout 做樣本高效元策略適應的「無監督元測試」元 RL 法。agent 元測試時<strong>無需獎勵</strong>、無顯式任務參數，全靠互動資料（元訓練與元測試皆然）。用生成資料微調的元測試性能在 point/cartpole 顯著更佳、walker 更佳，且<strong>逼近允許大量互動的 ground-truth 法</strong>。此樣本效率來自「用更少轉移元組生成樣本」。</p>
+<p>結論：用生成資料做元更新不僅改善樣本效率、還能提升更新後性能。CNP 在高維輸入（如影像）的成功應用，提示把本法用於<strong>高維感測運動空間</strong>（如配 RGB-D 相機的操作機器人）是值得探索的未來方向。</p>
+<p><strong>實作細節</strong>：128 維表徵、encoder/decoder 各兩層 128 單元；batch size 32、50 輸入元組 + 50 目標查詢元組、500000 迭代、Adam（lr 0.0001）；用元訓練階段元策略收集軌跡的<strong>最後 10%</strong>。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2506.04399_UMCNP.%E6%91%98%E8%A6%81.html"><code>../summarize/2506.04399_UMCNP.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

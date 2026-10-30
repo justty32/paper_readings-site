@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>基於演化符號迴歸的可解釋非線性生存分析（Interpretable Non-linear Survival Analysis with Evolutionary Symbolic Regression） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：GECCO 2025（Virgolin 等；程式碼 lurovi/SurvivalMultiTree-pyNSGP）</p><p>日期：2025-04</p><p>arXiv：2504.05756</p><p><a href="https://arxiv.org/abs/2504.05756" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="基於演化符號迴歸的可解釋非線性生存分析">基於演化符號迴歸的可解釋非線性生存分析</h1>
+<p>GECCO 2025</p>
+<h2 id="摘要">摘要</h2>
+<p>生存迴歸（SuR）是建模臨床試驗、半導體製造等重要應用中「時間到事件」的關鍵技術。當前 SuR 演算法屬三類：<strong>非線性黑盒</strong>（適配多資料集但可解釋有限，如樹集成）、<strong>線性玻璃盒</strong>（易解釋但只能建模線性交互，如 Cox 比例風險）、<strong>非線性玻璃盒</strong>（兼適配與可解釋，但實證有諸多限制，如可解釋提升機 EBM、生存樹）。本文探討 <strong>符號迴歸（SR）</strong> 能否帶來既可解釋又準確的非線性玻璃盒生存模型。我們提出<strong>演化、多目標、多表達式的 SR 適配 SuR</strong>。五個真實資料集的實證顯示 SR 在「每模型維度的準確度」上一致勝傳統玻璃盒 SuR 法，與黑盒法準確度相當。並提供質性例子評估 SR 模型的可解釋潛力。（程式碼 github.com/lurovi/SurvivalMultiTree-pyNSGP）</p>
+<p><strong>關鍵詞</strong>：生存迴歸、符號迴歸、遺傳程式設計、多目標優化、可解釋性。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>SuR 是建模分析時間到事件資料的基礎（藥物開發的安全有效性洞見、疾病進展指標如多發性硬化復發、製造業元件故障時間）。SuR 三類（依可解釋與函數形式）：</p>
+<ol>
+<li><strong>黑盒非線性</strong>（NN、隨機森林，捕捉複雜關係但缺透明，醫療中受質疑）;</li>
+<li><strong>玻璃盒線性</strong>（Cox 比例風險，線性易解釋但限預測準確）;</li>
+<li><strong>玻璃盒非線性</strong>（廣義加性模型 GAM、可解釋提升機 EBM、生存樹，平衡複雜與可解釋但有限制）。</li>
+</ol>
+<p><strong>玻璃盒非線性最有前景（Rudin）</strong>，但現有限制：GAM 須手選基函數（多項式/樣條，難且大影響準確與可解釋）;EBM 用梯度提升樹（黑盒）限雙變數交互以可視化，但視覺化數隨雙變數交互成長太多；生存樹有決策樹缺陷（邊界外預測常值 → 泛化差）。黑盒 + 事後解釋（LIME、Shapley）也只<strong>近似模型行為、可能畫錯解釋甚至互相矛盾</strong>。</p>
+<p>為克服這些，本文探討 SR 能否提供既準確又可解釋的生存模型。提出基於 GP 的多目標多表達式 SR 適配 SuR（SR 解 SuR 的工作很少）。<strong>貢獻</strong>：(1) GP-based 搜尋適配 SR 到 SuR（多目標準確 vs 簡單）;(2) 從兩個傳統玻璃盒 SuR 法取 Pareto front 以比較準確-簡單權衡；(3) 實證 SR 比傳統玻璃盒準確度更優（與黑盒相似），且可解釋有望。</p>
+<h2 id="2-背景">2. 背景</h2>
+<p><strong>2.1 生存迴歸（SuR）</strong>：每筆資料含特徵 + 時間 t + 設限指標 δ（δ=1 不良事件發生於 t、δ=0 設限如停止追蹤）。比傳統迴歸複雜在須處理設限（本文考慮最常見的<strong>右設限</strong>）。**生存函數 S(t)**＝活過 t 的機率；<strong>風險函數 h(t)<strong>＝活到 t 者下一刻發生事件的機率。生存資料似然（式 3）。Cox 提出</strong>比例風險假設</strong>（兩組風險比隨時間不變）→ <strong>h(t)=h₀(t)·exp(β·x)</strong>（式 4，基線風險 h₀ 只依 t + 比例貢獻 exp(βx)）;β 經 partial likelihood 優化（式 5，risk set＝t 時仍存活者）;h₀ 用 Breslow/Efron 等估計。Cox 不假設 h₀ 形式故比全參數模型不受限，但比例風險假設可能錯（風險比隨時間變）。</p>
+<p><strong>2.2 符號迴歸與 GP</strong>：SR 發掘最佳描述資料的數學式——不假設預設結構，結構與參數都要找。優勢：非線性高準確 + 潛在可解釋（少量運算/特徵/常數時）；劣勢：結構優化使其 <strong>NP-hard</strong>。GP-based SR 常達 SOTA（演化族群經重組/變異/選擇適者）。</p>
+<h2 id="3-sr-演算法">3. SR 演算法</h2>
+<p>多目標多表達式 GP-based SR 適配 SuR。</p>
+<p><strong>3.1 多表達式表示</strong>：採比例風險假設，但<strong>把 Cox 改成「特徵的函數 f_j(x) 之線性組合」</strong>（式 6）取代直接用特徵。各 f_j 是由 GP 優化結構的數學表達式；<strong>模型維度＝跨表達式用到的相異特徵數</strong>。GP 族群每個體＝遵式 6 的模型；GP 重組/變異改表達式結構與參數，<strong>coordinate descent 擬合線性組合的係數</strong>；表達式用樹編碼。可視為<strong>特徵建構</strong>（f_j 是建構的特徵）。</p>
+<p><strong>3.2 多目標演化</strong>：目標——<strong>CI（右設限資料的 Concordance Index，IPCW 加權，評模型預測生存順序正確性，SuR 既定指標）</strong> vs <strong>維度數（模型中相異特徵數）</strong>。</p>
+<h2 id="4-其他玻璃盒法的-pareto-front">4. 其他玻璃盒法的 Pareto front</h2>
+<p>提程序從傳統玻璃盒 SuR 法取 Pareto front 以公平比較。</p>
+<h2 id="56-實驗與結果">5–6. 實驗與結果</h2>
+<p>五個真實資料集。SR 在「每維度準確度」上一致勝傳統玻璃盒（正則化 Cox、生存樹），與黑盒（梯度提升生存、隨機生存森林）相當。質性結果顯示 SR 模型有可解釋機會。</p>
+<h2 id="7-結論">7. 結論</h2>
+<p>提出演化 SR 適配 SuR，經多目標多表達式演化得準確且可解釋模型。五真實資料集顯示 SR 比傳統正則化 Cox 與生存樹更準，且與黑盒梯度提升生存、隨機生存森林競爭力相當。質性顯示 SR 模型有望可解釋，但<strong>為防數值錯誤用的保護運算可能損害可解釋性</strong>。未來：克服比例風險假設的 SR、用正則化與交叉驗證防過擬合、不靠保護運算處理數值錯誤以提升可解釋。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2504.05756_SR_Survival_Analysis.%E6%91%98%E8%A6%81.html"><code>../summarize/2504.05756_SR_Survival_Analysis.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

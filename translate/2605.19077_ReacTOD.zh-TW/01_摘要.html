@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.19077_ReacTOD.zh-TW.html">回 2605.19077_ReacTOD.zh-TW 目錄</a>　<a href="02_%E7%A5%9E%E7%B6%93%E7%AC%A6%E8%99%9F%E4%BB%BB%E5%8B%99%E6%8B%86%E5%88%86.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>任務導向對話系統（處理交易、預約、服務請求）要求可預測的行為，但能滿足實用延遲的中等規模 LLM 容易產生幻覺與格式錯誤，級聯為不正確的動作（例如飯店訂錯日期）。我們提出 <strong>ReacTOD</strong>——一種有界神經符號架構，將 NLU 重新表述為受確定性驗證管控的自我修正 ReAct 迴圈中的離散工具呼叫。有界 ReAct 迴圈實現迭代自我修正，在 MultiWOZ 上較單次推理提升高達 9.3pp。符號驗證器對每一次對話狀態更新強制執行<strong>動作合規、綱目一致、共指一致</strong>，在被攔截的錯誤上實現 93.1% 的自我修正率，並產出結構化執行軌跡。增量狀態預測與按需歷史檢索保持提示精簡，實證改善參數受限模型的指令遵循。在 MultiWOZ 2.1 上，ReacTOD 建立新的零-shot SOTA：gpt-oss-20B 達 52.71% JGA，超越先前最佳 14pp；Qwen3-8B 僅以 8B 參數達到 47.34%。在 SGD 基準上，Claude-Opus-4.6 在完全端到端（預測領域）評估下達 80.68% JGA，Qwen3-32B 達 64.09%，展示跨基準泛化而無需特定任務訓練資料。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>生產環境中任務導向對話（TOD）系統——處理飯店預訂、餐廳訂位、交通安排——要求可預測、可驗證的 NLU：一個錯誤解析的 slot 值（例如從錯誤回合推斷的入住日期）會傳播為下游 API 呼叫的靜默失敗。此可靠性需求歷來驅使判別式管線架構（如 BERT 進行 IC/SR 順序分類）佔據主導地位，但它們依賴大量特定領域標註資料且需要重新訓練來適應新意圖。</p>
+<p>近期工作轉向以生成式 LLM 驅動提示進行零-shot NLU。FnCTOD（Li et al., 2024）將領域邏輯重構為可執行函數，利用上下文學習。然而，單次生成方法遭受機率變異與忠實幻覺（faithful hallucination）——模型自信地推斷對話中未提及的實體值以完成綱目，對生產對話管線構成重大風險。此外，真實對話的語言複雜性（跨回合共指、隱式價值接受、非線性領域切換）需要多步推理與動態上下文檢索。無界代理框架原則上能處理這些現象，但對開放式推理迴圈與 frontier 級模型的依賴引入不切實際的延遲與計算開銷。</p>
+<p><strong>我們主張</strong>：提升基於 LLM 的對話狀態追蹤（DST）可靠性主要不需要更大的模型，而是需要對推理過程更強的架構控制。我們的關鍵洞察是：LLM 在 DST 上的錯誤<strong>絕大多數是局部的、可糾正的</strong>——格式錯誤的時間值、無效的 slot 名稱，而非對對話的根本誤解。基於此洞察，我們提出 ReacTOD，一種混合神經符號 NLU 架構：將 NLU 分解為有界 ReAct 推理迴圈中的離散工具呼叫，降低 LLM 每步負擔；確定性驗證器在<strong>任何狀態變更前</strong>攔截所有工具輸出，強制執行動作合規、綱目一致、共指一致——使模型能從結構化錯誤回饋中自我修正而無需重處理整個對話。此受限設計降低每步所需的推理容量，使參數高效模型（如 Qwen3-8B）能達成穩健的代理式狀態追蹤而無需 frontier 級算力。</p>
+<p>貢獻三點：(1) <strong>有界代理推理</strong>：受限 ReAct 架構將 NLU 分解為離散工具呼叫並具迭代自我修正，消融實驗顯示最高 +9.3pp 增益。(2) <strong>確定性驗證</strong>：符號驗證器閘控所有狀態變更，攔截常見 LLM 錯誤（無效工具呼叫、幻覺 slot 名稱）。(3) <strong>參數高效零-shot DST</strong>：增量狀態預測與按需上下文檢索保持提示精簡，使 8B 模型超越基於更大 LLM 的先前零-shot baseline。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p><strong>從管線 NLU 到生成式狀態追蹤</strong>：早期的企業 NLU 將 IC 與 SR 視為固定標籤集上的順序分類。JointBERT（Chen et al., 2019）以共享編碼器統一兩者；TRADE（Wu et al., 2019）透過指針生成器網路實現跨領域 slot 轉移。但這些方法仍需大量領域內微調，零-shot 適應性仍是難題。</p>
+<p><strong>LLM 驅動提示與知識蒸餾</strong>：D3ST（Zhao et al., 2022）以自然語言描述取代綱目標記；SERI-DST（Lee &amp; Lee, 2024）動態檢索對話範例；FnCTOD（Li et al., 2024）將領域視為可執行函數建立零-shot SOTA。然而單次生成仍受機率變異與忠實幻覺困擾。知識蒸餾法（Xu et al., 2025b; Aguirre et al., 2024）將綱目硬編碼進模型權重，犧牲零-shot 靈活性。</p>
+<p><strong>工具增強代理與神經符號整合</strong>：ReAct（Yao et al., 2023）展示了 LLM 能交織推理軌跡與特定任務動作，但在 TOD 中部署無界代理引入可靠性風險——Elizabeth et al.（2025）顯示基於 ReAct 的代理在任務成功指標上常次於結構化 baseline。Self-Refine（Madaan et al., 2023）表明無外部接地的不受限自我評估易受確認偏差影響。這些發現支持我們的核心設計原則：將 LLM 限制在狹窄範圍的工具中介子任務，並以確定性符號驗證器閘控所有狀態變更。</p>
+<h2 id="3-方法論節選31-問題形式化與架構總覽">3. 方法論（節選：3.1 問題形式化與架構總覽）</h2>
+<p>給定對話回合（使用者語句 u_t、先前系統動作 a_{t-1}、持久信念狀態 B_{t-1}、意圖 i_{t-1}），架構將 NLU 表述為一個順序的工具增強策略，其<strong>動作空間 A 僅限於工具庫 T</strong>：</p>
+<p>a_k ∼ π(· | u_t, a_{t-1}, B_{t-1}, i_{t-1}, H_{&lt;k}),   a_k ∈ T</p>
+<p>其中 H_{&lt;k} 為代理到推理步驟 k 為止的動作-觀察軌跡。與聯合預測意圖、slot、綱目格式的單次方法不同，此分解將每個子任務隔離為獨立的、可驗證的工具呼叫。工具呼叫首先由確定性驗證器 V 驗證後才執行；只有驗證通過的 τSR 結果才被允許更新 B_t，將狀態追蹤從無界序列生成轉變為<strong>有界神經符號驗證迴圈</strong>。</p>
+<p><strong>增量信念狀態預測</strong>：模型僅預測增量更新 ΔB_t（新提及或變更的 slot），完整狀態以 B_t = B_{t-1} ∪_{upsert} ΔB_t 恢復。</p>
+<p><strong>動態上下文構造</strong>：每個工具的上下文視窗<strong>動態構建</strong>而非預先提供完整綱目與對話歷史。意圖定義包含於系統提示，但 slot 描述僅在 slot 解析時注入當前活躍意圖的部分，避免不相關綱目雜訊。對話歷史預設不包含；代理僅在共指解析需要先前上下文時透過專用歷史工具 τH 按需檢索。此惰性載入策略保持 prompt 極簡——通常僅含活躍綱目、當前信念狀態 B_{t-1}、上一系統語句 a_{t-1} 及當前使用者語句 u_t——降低參數高效模型的認知負荷。</p>
+<blockquote>
+<p><a href="../2605.19077_ReacTOD.zh-TW.html">上一部分 ←</a> | <a href="../2605.19077_ReacTOD.zh-TW.html">下一部分 →</a></p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

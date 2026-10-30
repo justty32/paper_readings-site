@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《語言模型的不確定性量化：黑盒、白盒、LLM 評審與集成評分器套件（Uncertainty Quantification for Language Models: A Suite of Black-Box, White-Box, LLM Judge, and Ensemble Scorers）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Dylan Bouchard, Mohit Singh Chauhan（CVS Health）</p><p>日期：2025-04</p><p>arXiv：2504.19254</p><p><a href="https://arxiv.org/abs/2504.19254" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="語言模型的不確定性量化黑盒白盒llm-評審與集成評分器套件uq-scorers重點摘要">《語言模型的不確定性量化：黑盒、白盒、LLM 評審與集成評分器套件（UQ Scorers）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>UQ Scorers（不確定性量化評分器套件）</strong>：把既有多種 UQ 技術（黑盒一致性、白盒 token 機率、LLM-as-a-Judge）全部<strong>改寫成 0-1 標準化的 response-level 信心分數</strong>，再用一個<strong>可調權重的線性集成（tunable ensemble）<strong>把任意組合的分數加權平均、按使用場景（LLM×資料集）調參，用於</strong>閉卷（closed-book）、生成時（generation-time）的幻覺偵測</strong>；實驗顯示調參後的集成大多勝過任何單一分數，並附開源工具包 <code>uqlm</code>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 在醫療、金融等高風險場景日益普及，但會產生<strong>幻覺（hallucination）</strong>——聽來合理卻與事實不符的內容（連 GPT-4.5 在某些 benchmark 仍高達 37.1% 幻覺率）。傳統偵測法多靠比對 ground truth 或來源文本，只能<strong>部署前</strong>評估，無法對已上線系統做<strong>即時監控</strong>。作者要的是一套<strong>閉卷</strong>（不需資料庫／標準答案／網路）、能在<strong>生成當下</strong>算出<strong>每則回應的信心分數</strong>的通用框架，供實務者直接套用。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>統一標準化</strong>：把三大類 UQ 技術全部轉為 <code>ŝ: 𝒴→[0,1]</code>（分數越高＝越有信心）；<code>ĥ=𝕀(ŝ&lt;τ)</code> 用閾值 τ 判定是否幻覺。</li>
+<li><strong>黑盒 UQ 評分器</strong>（對同一 prompt 以非零溫度採樣 m 個候選回應，比對語意一致性）：Exact Match Rate（EMR）、Non-Contradiction Probability（NCP，NLI 非矛盾機率、雙向）、BERTScore（BSC）、Normalized Cosine Similarity（NCS，句向量餘弦）、Normalized Semantic Negentropy（NSN，語意熵正規化為負熵）。</li>
+<li><strong>白盒 UQ 評分器</strong>（用 token 機率，只需單次生成）：Length-Normalized Token Probability（LNTP，token 機率幾何平均）、Minimum Token Probability（MTP，最小 token 機率）。</li>
+<li><strong>LLM-as-a-Judge</strong>：把「問題＋答案」串接餵給 LLM，要它以 0-100 打分（改編自 Xiong et al.）再正規化到 0-1。</li>
+<li><strong>可調集成（Ensemble）</strong>：<code>ŝ=Σ wₖ ŝₖ</code>，權重 w 非負且和為 1；用一小組已評分（graded）回應，以 optuna 最佳化權重。兩種調參策略：<strong>threshold-agnostic</strong>（先以 AUROC 調權重、再調閾值）與 <strong>threshold-aware</strong>（權重＋閾值以 F1 聯合最佳化）。集成<strong>可擴充</strong>，未來有新分數可直接納入。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>在 4 個 LLM（GPT-4o、GPT-4o-mini、Gemini-2.5-Flash / Flash-Lite）× 6 個 QA benchmark（GSM8K、SVAMP、CSQA、AI2-ARC、PopQA、NQ-Open，各抽 1000 題、m=15）共 24 情境評估。</li>
+<li><strong>集成最強</strong>：AUROC 上 24 情境中 <strong>20</strong> 情境集成勝過所有單一分數；F1 上 <strong>17/24</strong> 勝出。最佳分數 AUROC 從 NQ-Open 的 0.729 到 GSM8K 的 0.986。</li>
+<li><strong>無單一贏家</strong>：單一分數排名隨資料集大幅變動；非集成的最佳分別由 LLM-judge／黑盒／白盒在 11／7／6 情境奪冠。<strong>NLI 類（NSN、NCP）在黑盒中最強</strong>（AUROC 13/24、F1 18/24 為黑盒最佳）。</li>
+<li><strong>評審選擇準則</strong>：LLM 在某資料集自己答題的準確率，正相關於它當該資料集評審的能力（如 Gemini-2.5-Flash 擅長數學、GPT-4o 擅長短答）。</li>
+<li><strong>過濾提升準確率</strong>：以信心分數過濾低信心回應，準確率近乎單調上升（如 GPT-4o 在 GSM8K，τ=0.6 時準確率 0.55→0.93）。</li>
+<li><strong>邊際遞減</strong>：候選回應數 m 增加對黑盒分數的增益遞減（m=1→15 明顯進步，但趨緩），可少採樣以省成本。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>只測「可程式化評分」的 QA（數字／選擇／短答）；<strong>長文生成與程式碼</strong>需 claim 級拆解或執行檢驗，黑盒一致性未必適用。</li>
+<li>只測 4 個 LLM，token 機率分佈／回應變異度不同會影響白盒／黑盒表現；評審表現隨 LLM 與 prompt 大幅變動。</li>
+<li>集成只驗<strong>同分佈（in-domain）</strong>、只用<strong>線性</strong>加權；跨資料集遷移、非線性集成（GAM、MoE、樹）留待未來。</li>
+<li>調參需 graded 資料集（易評分任務可自動產生標籤；難評分任務需少量人工標註再從 production log 增量補充）。</li>
+<li>倫理提醒：信心分數反映的是模型不確定性而非真實正確性，高分可能誘發過度依賴，高風險領域仍須人工審查與公平性監控。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>最直接對應</strong> ai_core <code>deep/aicore_reliable_function_landscape.md</code> 點出的核心缺口「可靠品質分數」：本篇正是把多種 UQ 訊號統一成 <strong>0-1 標準化 response-level 信心分數＋可調 ensemble</strong>，剛好是「把 LLM 呼叫包成可靠函數」時最缺的那個<strong>通用品質量表</strong>。</li>
+<li>這個分數可同時餵兩個治理環節：<strong>§3.3 級聯／成本梯度升級決策</strong>（信心低才往上升級到更貴模型，正是把 FrugalGPT 級聯裡那個「生成評分函式」補上一個原則性、標準化的實作）；以及 <strong>§3.4「拒絕為預設＋憑證准入」治理</strong>（把信心分數當作放行憑證，低於閾值即拒絕或轉人工）。</li>
+<li>與已入庫 <a class="paper-reference" href="2305.05176_FrugalGPT.%E6%91%98%E8%A6%81.html">2305.05176</a> <strong>FrugalGPT</strong> 呼應且互補：FrugalGPT 的級聯缺一個好的信心分數、只能退回啟發式閾值；本篇提供的正是那塊拼圖——一套可調、可擴充、有 benchmark 佐證的信心評分器。</li>
+<li>定位：<strong>框架＋實證＋開源工具</strong>（<code>uqlm</code>，github.com/cvs-health/uqlm），偏工程實務、可即插即用。歸 <strong>I 類</strong>。適合做 <strong>幻覺偵測、response filtering、human-in-the-loop 分流、級聯路由、憑證准入</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2504.19254_UQ_Scorers.zh-TW.html"><code>../translate/2504.19254_UQ_Scorers.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

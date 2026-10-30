@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Teach the Magnitude, Not the Direction 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zechuan Wang、Siyuan Lu、Hongxuan Zhang、Linjian Mo、Chenyi Zhuang、Leilei Gan</p><p>日期：2026-08-13（v1，cs.AI）</p><p>arXiv：2608.13179</p><p><a href="https://arxiv.org/abs/2608.13179" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="teach-the-magnitude-not-the-direction-重點摘要">Teach the Magnitude, Not the Direction 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>CrEST 把多輪多步 agent 訓練的 credit assignment 拆成兩層：turn 級用 verifier reward 決定梯度<strong>方向</strong>（inter-turn，哪一輪對/錯），token 級用 entropy-gated self-teacher 只調<strong>幅度</strong>（intra-turn，哪個 token 該加重），因此保留 RLVR 的 verifier-bounded 上限，同時取得 dense token 訊號。</p>
+<h2 id="方法">方法</h2>
+<ul>
+<li>標準 RLVR（GRPO）把單一 trajectory reward 攤給所有 token，多輪 session 裡會把失敗輪的 token 一起獎勵。On-policy self-distillation（OPSD）給 dense 訊號，但 teacher-bounded，且無 per-token KL clip 時約 100 步內因梯度集中到少數 token 而崩潰。</li>
+<li>CrEST：per-token advantage = turn-segmented GRPO advantage（inter-turn，方向）× 幅度因子 φₜ∈[1, 1+λε]（intra-turn）。φₜ 由 self-teacher（同模型但看得到 ground truth）與 student 的 log-prob 差異 Δₜ 算出，經兩道 gate：direction gate（teacher 與 verifier 方向不一致就整段歸零，這是保住 verifier-bounded 上限的關鍵）、entropy gate（用 token surprisal 的 z-score，把調幅集中在高不確定性內容 token，壓低格式 token 的權重）。</li>
+<li>形式化三性質（附錄證明）：方向保持（最終 advantage 符號恆等於 turn advantage 符號）、偏誤有界（‖Bias‖≤λε·‖∇J_GRPO‖，作者於 λ=0.3, ε=0.28 算出約 8.4%）、符號一致放大。只有 λ 需要調，其餘常數固定。</li>
+</ul>
+<h2 id="作者報告的結果與限制">作者報告的結果與限制</h2>
+<p>作者在 BFCL V3（Qwen3-4B/8B）與 WildToolBench 上報告：CrEST 平均準確率 52.00%（4B）／50.00%（8B），優於 GRPO、MT-GRPO、EnvTuning、OPD、OPSD 全部 baseline；OPSD 在 4B 上（38.75%）甚至低於原始 GRPO（43.63%），作者稱這是 teacher-bounded 上限的直接經驗證據。訓練動態圖顯示 OPSD 前 5% token 吃掉約 77% 梯度量，GRPO 前 10% 約 31%，CrEST 前 10% 約 57%，介於兩者間。Ablation 顯示 inter-turn 與 intra-turn 兩層各自只帶來部分增益（分別 +4.25、+5.12），合併才有 +8.37；拿掉任一 gate 都掉回接近 GRPO 水準。以上均為單一訓練種子、僅在 4B／8B 兩個規模、兩個 benchmark 上的作者自報數字，未做獨立訓練重跑；entropy 作為 token 重要性的代理也承認只是啟發式。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>CrEST 的「verifier 決方向、teacher 只調幅度」原則，對 ai_core 的 commit-time authority／副作用結算是可直接借用的分工模式：任何<strong>已驗證但稀疏</strong>的訊號（如 outcome verifier、hard contract check）應該保留對梯度或決策方向的否決權，任何<strong>密集但未驗證</strong>的訊號（heuristic reward、self-critique、cost 代理）只能拿來調幅度，不能翻轉方向——這正是防止「密集訊號劫持稀疏但可信訊號」的具體工程手法。turn-segmented advantage（同一 trajectory 內失敗輪不牽連成功輪）也對應 ai_core 若要做多步驟任務的<strong>逐步結算</strong>而非整段算總帳，可作為信用分配設計的參考基準。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2608.13179_VerifierBoundedCredit.zh-TW.html"><code>../translate/2608.13179_VerifierBoundedCredit.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

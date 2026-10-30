@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Krites：非同步驗證式語意快取用於分層 LLM 架構（2/2） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2602.13165_VerifiedSemanticCaching.zh-TW.html">回 2602.13165_VerifiedSemanticCaching.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97%E8%A9%95%E4%BC%B0.html">下一節 →</a></p>
+</blockquote>
+<h2 id="1-引言">1. 引言</h2>
+<p>大型語言模型（LLM）已從研究原型過渡為對話助理、搜尋引擎、生產力工具和程式碼助理的核心基礎設施。其部署受到成本、延遲和品質三者制約：每個 prompt 觸發多次昂貴的 transformer 前向傳播，推論通常佔據預算主體。在現代 agent 架構中，這個壓力更加放大——工作流程涉及多步驟（檢索、規劃、工具使用、反思修正）及多次模型呼叫。</p>
+<p>快取是標準的系統復用手段。資訊檢索（IR）系統長期使用結果快取來避免重新計算昂貴的排序管道。在大規模生產中，系統通常採用分層架構：一個由歷史日誌離線填充的靜態快取，加上一個在線填充的動態快取，用於吸收尾部流量與短期趨勢。靜態條目通常由較重型的離線管道策劃（更大模型、安全審查、人工評估），因此每增加一次靜態命中，都在穩定性和可靠性上具有超出比例的價值。</p>
+<p>語意快取將快取擴展到 LLM 工作負載：不再要求完全匹配字串，而是將 prompt 嵌入向量空間，從向量資料庫中檢索最近鄰。若相似度超過閾值則復用快取回應。語意快取在具有重複意圖和改述的工作負載上可大幅降低延遲，尤其對短至中等 prompt（如搜尋查詢與助理呼叫）特別有效。</p>
+<p>儘管分層架構已普遍採用，大多數語意快取仍由單一的全域相似度閾值統一管理：<code>sim(q, h) ≥ τ</code> 命中，否則 miss，兩個層分別設定 <code>τstatic</code> 與 <code>τdynamic</code>。此設計在命中率與錯誤率之間形成硬權衡：降低 τ 回收更多復用機會但增加錯誤命中，提高 τ 減少錯誤但導致更多 backend 呼叫。vCache 的研究表明，正確與錯誤命中的相似度分佈大量重疊，形成一個「相似度灰色地帶」——嵌入幾何本身無法可靠區分改述與不同意圖。</p>
+<p>本文提出 Krites：一種非同步、經 LLM 驗證的語意快取策略，用於分層靜態-動態架構。Krites 在服務路徑上維持標準 GPTCache-style 閾值策略，但當請求 miss 靜態層而最近靜態鄰居落入灰色地帶時，排程一個離線 LLM 法官來判定靜態回應是否適用於新 prompt。核准的配對觸發 auxiliary overwrite，將靜態回應 upsert 進動態快取，使後續請求和改述可直接使用已審查的 curated 答案——隨著時間推移擴大靜態覆蓋範圍，同時保持關鍵路徑延遲不變。</p>
+<h2 id="2-背景與系統模型">2. 背景與系統模型</h2>
+<h3 id="21-向量嵌入與語意搜尋">2.1 向量嵌入與語意搜尋</h3>
+<p>語意快取依賴嵌入模型 Φ，將離散 prompt q 映射為向量 <code>v_q = Φ(q)</code>。兩個 prompt 的相似度以 cosine similarity 度量。語意快取假設當 <code>sim(q, x)</code> 接近 1 時，x 的快取回應大概率對 q 同樣有效。</p>
+<h3 id="22-分層靜態-動態架構">2.2 分層靜態-動態架構</h3>
+<p>生產系統的快取通常分層以平衡品質與新鮮度。我們採用雙層語意快取置於 agentic LLM backend 之前：</p>
+<p><strong>靜態層 C_static</strong>（唯讀）：</p>
+<ul>
+<li>填充：從歷史查詢日誌挖掘高頻 head/torso prompt</li>
+<li>品質：對每個選定 prompt，以較大模型和/或人工審查產出高品質答案</li>
+<li>結構：儲存 <code>(x_i, a_i, v_i)</code> 元組，其中 <code>v_i = Φ(x_i)</code></li>
+</ul>
+<p><strong>動態層 C_dynamic</strong>（讀寫）：</p>
+<ul>
+<li>填充：當快取無法服務時，backend 生成回應並寫入 C_dynamic</li>
+<li>品質：反映線上 agent 管線的即時回應，通常不如靜態條目經過審查</li>
+<li>回收：標準 LRU 或 TTL 策略控制大小</li>
+</ul>
+<p><strong>Agentic backend B</strong>：當兩層都 miss 時，由 agent 系統（檢索、工具、LLM 解碼）產出新回應，支付快取試圖避免的全部推論成本。</p>
+<h3 id="23-基線-gptcache-style-策略">2.3 基線 GPTCache-style 策略</h3>
+<p>基線遵循 GPTCache 的靜態閾值策略：最近鄰查詢後套用固定相似度臨界值決定命中/miss。τ_static 與 τ_dynamic 一次性調校後對所有 prompt 統一適用。Krites 在服務路徑上完全保留此基線策略，僅在靜態 miss 進入灰色地帶後增加非同步處理。</p>
+<h2 id="3-krites-架構">3. Krites 架構</h2>
+<p>Krites 以非同步驗證迴圈擴充靜態閾值基線。服務路徑與閾值保持不變：明顯命中與明顯 miss 完全由靜態與動態層處理。唯一差異：當 prompt 落入相對於靜態層的相似度灰色地帶時，Krites 排程一個背景任務，該任務可能稍後以 auxiliary overwrite 將更高品質的靜態回應覆寫進動態條目。所有面向使用者的決策仍由原始靜態閾值決定，因此 Krites 對觸發驗證的請求保留了基線的延遲與路徑行為。</p>
+<h3 id="31-灰色地帶觸發與任務排程">3.1 灰色地帶觸發與任務排程</h3>
+<p>引入較低的相似度截斷值 <code>σ_min &lt; τ_static</code> 定義靜態候選的灰色地帶。<code>s_static &lt; σ_min</code> 的靜態鄰居被視為明顯不可互換，永不送審；<code>s_static ∈ [σ_min, τ_static)</code> 則被視為歧義，若法官確認 equivalence 則可晉升。</p>
+<p>VerifyAndPromote 由背景工作池執行，包含（i）排隊與速率限制、（ii）去重避免重複判斷同一配對、（iii）重試與退避。因為任務離線，隊列深度僅影響 pointer layer 的填充速度，不影響服務延遲。</p>
+<h3 id="32-auxiliary-overwrite-語意">3.2 Auxiliary overwrite 語意</h3>
+<p>auxiliary overwrite 是耦合靜態與動態層的關鍵機制。當法官核准 <code>(q, static_answer)</code> 配對後，Krites 將 <code>(q, A(h), v_q)</code> upsert 進 C_dynamic。下次 q（或命中此動態鍵的鄰近改述）出現時，系統從動態層提供 curated 靜態答案。</p>
+<p>實作上，overwrite 應為冪等且並行安全：常用做法是為每個動態條目儲存少量元資料（如 &quot;static-origin&quot; bit 與時間戳），並使用 last-writer-wins 或時間戳保護的 upsert。</p>
+<p>Krites 不修改 C_dynamic 的回收策略：晉升的靜態條目與其他動態條目遵循相同的 LRU/TTL 規則。不常被使用的 verified pointer 最終會被回收；若對應查詢在回收後再次出現，則重新走基線路徑並可能觸發新驗證。這保持動態層有界，無須 pinning。</p>
+<h3 id="33-llm-法官需求">3.3 LLM 法官需求</h3>
+<p>法官函數 <code>J(q, h, a)</code> 為二元相容性判定：對給定新 prompt q、快取 prompt h 及快取答案 a，決定以 a 服務 q 是否可接受。部署時以嚴格、rubric-guided 的 LLM prompt 實作，檢查意圖對齊、實體/約束一致性（名稱、位置、時間、數量）與新鮮度/個性化需求，以 temperature 0 返回單一 token（APPROVE/REJECT）。</p>
+<p>實驗主結果為法官無關（judge-agnostic）：在模擬中以基準 equivalence class 作為 oracle 判定，隔離快取策略與法官模型選擇。此外，作者以 Claude Opus 4.5 作為嚴格二元法官在 100 對人工標註灰色地帶樣本上驗證，與人類標註一致 99/100——證明高精度 LLM 基礎驗證在實務上可行。</p>
+<h3 id="34-成本與容量考量">3.4 成本與容量考量</h3>
+<p>Krites 以離線法官呼叫引入額外運算。法官呼叫率受灰色地帶靜態 miss 頻率約束，並由 <code>σ_min</code> 控制：提高 <code>σ_min</code> 減少法官量但也減少回收的靜態命中；降低 <code>σ_min</code> 擴大覆蓋但增加法官成本。</p>
+<blockquote>
+<p>續：<a href="../2602.13165_VerifiedSemanticCaching.zh-TW.html">2. 實驗評估至結論</a></p>
+</blockquote>
+<hr />
+<h2 id="title-krites非同步驗證式語意快取用於分層-llm-架構part-22實驗評估至結論-source-httpsarxivorgabs260213165-arxiv_id-260213165-authors-asmit-kumar-singhhaozhe-wangsantosh-attaluritak-chiamweihua-zhuapple-date-2026-02-v2-2026-03-note-依原文結構逐節翻譯與重述接續-part-1-summary-summarize260213165_verifiedsemanticcaching摘要md">title: Krites：非同步驗證式語意快取用於分層 LLM 架構（part 2/2：實驗評估至結論）
+source: https://arxiv.org/abs/2602.13165
+arxiv_id: 2602.13165
+authors: Asmit Kumar Singh、Haozhe Wang、Santosh Attaluri、Tak Chiam、Weihua Zhu（Apple）
+date: 2026-02 (v2: 2026-03)
+note: 依原文結構逐節翻譯與重述。接續 part 1。
+summary: ../summarize/2602.13165_VerifiedSemanticCaching.摘要.md</h2>
+<h1 id="krites非同步驗證式語意快取用於分層-llm-架構22">Krites：非同步驗證式語意快取用於分層 LLM 架構（2/2）</h1>
+<blockquote>
+<p>前接：<a href="../2602.13165_VerifiedSemanticCaching.zh-TW.html">1. 引言至 Krites 架構</a></p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

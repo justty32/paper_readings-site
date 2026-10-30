@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Part 4: τ-bench、局限與結論 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2607.15516_CacheAwarePrompt.zh-TW.html">回 2607.15516_CacheAwarePrompt.zh-TW 目錄</a>　<a href="02_%E6%88%90%E6%9C%AC%E6%A8%A1%E5%9E%8B%E8%88%87_Crossover_%E5%88%86%E6%9E%90.html">← 上一節</a>　<a href="04_%E5%B1%80%E9%99%90%E8%88%87%E6%9C%AA%E4%BE%86%E5%B7%A5%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="6-實驗">6. 實驗</h2>
+<h3 id="61-1616-dominance-grid">6.1 16/16 Dominance Grid</h3>
+<p><strong>設定</strong>：四個 LongBench-v2 文件（12,191/16,319/21,531/24,576 token）、四個 r∈{2,3,4,6}，共 16 配置。N=10 查詢/格。品質由 Haiku 4.5 self-consistency ×3 評判。總花費 $8.18。</p>
+<p><strong>Crossover 驗證</strong>：r=6 時 ρ_cross=0.942 超過實證 ρ 平台值（~0.89）。實驗精確確認：全部 4/4 r=6 配置中，C（query-aware）比 B（cache-only）便宜。</p>
+<p><strong>結果</strong>：CAPC 在 16/16 配置中最便宜。平均每查詢成本 $0.0073，vs vanilla 節省 89.6%、vs cache-only 節省 48.5%、vs query-aware 節省 64.4%。品質：Vanilla 0.73、Cache-only 0.75、Query-aware 0.67、CAPC 0.66。r=2 時四策略品質差距 ≤0.04。</p>
+<h3 id="62-成本-品質-pareto-sweep">6.2 成本-品質 Pareto Sweep</h3>
+<p><strong>設定</strong>：三個 LongBench-v2 文件（12,191/20,246/27,917 token），六個 r∈{1.5,2,3,4,6,8}，策略 C 和 D。N=6 查詢/文件。總花費 $6.54。</p>
+<p><strong>結果</strong>：27,917-token 文件上 CAPC 完全 Pareto-dominant（0/6 被任何基線支配）。同品質節省：12k doc 上 CAPC r=3 在 q=0.77 節省 53% vs cache-only；28k doc 節省 78%。20,246-token doc 部分 dominant（3/6 被基線支配）。</p>
+<p><strong>Tier-preserving 甜區</strong>：12,191-token 文件實證展示 cache-tier 閾值效應。r=3→4 將壓縮前綴從 4,067（persistent）推至 3,119（hot），每查詢成本從 $0.0057 反彈至 $0.0101（+77%）——單一 ratio 增量。</p>
+<h3 id="63-生產驗證企業工具使用助手ea">6.3 生產驗證：企業工具使用助手（EA）</h3>
+<p><strong>設定</strong>：內部 Claude-based 代理服務工程團隊。Prompt 結構：1,312-token system prompt + 287 MCP 工具定義（93k token schemas），總靜態前綴 ~94,401 token。4 策略 × 15 查詢。</p>
+<p><strong>結果</strong>：CAPC r=3 節省 51.7% vs vanilla（$0.06428 vs $0.13323/查詢）。品質（工具選擇 set-IoU vs vanilla 基線）：CAPC 0.700 vs cache-only 0.703——壓縮未犧牲工具選擇。</p>
+<p><strong>三個超越標題的發現</strong>：(1) Strategy B vs A 差距（−18.3%）遠小於模型預測，因為 Anthropic 隱含 cache 大型 tools= 陣列（§7.1）。(2) CAPC r=2 需要足以抵消壓縮增益的大型 cache write，僅 r=3 才能穩定進入節省。(3) CAPC 的 query-agnostic 壓縮在工具選擇品質上優於 query-aware（0.700 vs 0.603）——query-aware 傾向拋棄模型原本會選擇的工具定義。</p>
+<p><strong>E2E 生產路徑驗證</strong>：通過完整 FastAPI orchestrator、multi-round tool-use loop、lazy tool catalog 的測量確認：CAPC 總成本 −45.5% vs vanilla、−16% vs cache-only、99.1% cache hit rate、最少的 cache write token（0.43M vs vanilla 0.99M）和最少的多輪回合（107 vs vanilla 147，壓縮後 system prompt 更具指令性）。</p>
+<h3 id="64-案例研究graphify-知識圖譜-rag">6.4 案例研究：graphify 知識圖譜 RAG</h3>
+<p><strong>設定</strong>：graphify 在 FastAPI 與 httpx 兩個 codebase。FastAPI 圖：8,610 nodes/15,969 edges/981 communities，8.2MB（~2M token）。CAPC 兩層：Layer 1（cached）含 top-50 god nodes/100 社群摘要/145 INFERRED 語義邊；Layer 2（per-query）以 bge-small top-5 retrieval + source_file dereference 提取 ~40 行原始碼。Layer-1 ~11.5k token（r=2）、~5.2k（r=5, hot tier 邊界）。40 個工程查詢。</p>
+<p><strong>四個發現</strong>：</p>
+<p><strong>F1 — Pareto dominance</strong>：CAPC r=3 品質 0.655，匹配 embedding-RAG（0.655）且擊敗 graphify-native BFS（0.613, +6.8%），同時便宜 24% 並將 0% hit rate 轉為 85%。Pareto frontier: {G-A, G-D r=3, G-D r=2, G-B}。</p>
+<p><strong>F2 — Cache 穩定性跨尺度</strong>：G-B 262k token 前綴與 G-D 均在查詢 10 收斂至 ≈85% hit rate——多伺服器 cache replication 模型在 10× 跨度上通用。</p>
+<p><strong>F3 — Prior dependence</strong>：CAPC 的品質增益與模型對 codebase 的 prior 成反比。FastAPI（模型熟悉）：CAPC vs vanilla 差距僅 +0.8pp。httpx（模型較不熟悉，vanilla Q=0.300）：CAPC r=2 達到 Q=0.730（+142%）。兩端點都實務相關。</p>
+<p><strong>F4 — graphify 原生輸出是 content-free</strong>：Graphify 的 query 機制僅發射結構元數據。在熟悉的 codebase 上冗餘（graphify-native Q=0.613 低於 vanilla 0.647）；在不熟悉的 codebase 上為真正新資訊（graphify-native Q=0.637, +112% vs vanilla）。CAPC Layer 2 的 source_file dereference 在兩種 regime 中補足差距。</p>
+<p><strong>統一律則</strong>：知識圖譜索引內容；當模型需要時，你仍須交付該內容。CAPC 是 KG RAG 的「最後一哩交付層」。發布 capc_graphify_profiler.py——將 CAPC 整合簡化為兩條命令（profile, then ingest），在 FastAPI 上手動配置品質恢復率 ~95%。</p>
+<h2 id="httpx-跨-codebase-複製1705-nodes2828-edges5-小於-fastapicapc-pareto-dominance-更強g-d-r3q0725-00202vs-g-c-embeddingq0705-00312便宜-35-且品質更高cache-hit-rate-收斂至相同-regime8087絕對--節省隨圖大小縮減24-vs-93但相對優勢持續precision-of-the-crossover-model-in-4"><strong>httpx 跨 codebase 複製</strong>：1,705 nodes/2,828 edges（5× 小於 FastAPI）。CAPC Pareto dominance 更強：G-D r=3（Q=0.725, $0.0202）vs G-C-embedding（Q=0.705, $0.0312）便宜 35% 且品質更高。Cache hit rate 收斂至相同 regime（80–87%）。絕對 $ 節省隨圖大小縮減（2.4× vs 9.3×）但相對優勢持續——precision of the crossover model in §4。</h2>
+<h2 id="title-part-4--τ-bench-至結論-arxiv_id-260715516-parent-translate260715516_cacheawarepromptzh-twmd">title: Part 4 — τ-bench 至結論
+arxiv_id: 2607.15516
+parent: ../translate/2607.15516_CacheAwarePrompt.zh-TW.md</h2>
+<h1 id="part-4-τ-bench局限與結論">Part 4: τ-bench、局限與結論</h1>
+<h2 id="65-公開基準驗證τ-bench-retail">6.5 公開基準驗證：τ-bench Retail</h2>
+<p><strong>設定</strong>：τ-bench（NeurIPS 2024），retail 環境，N=50 任務，Sonnet 4.6 agent + Haiku 4.5 user simulator。Reward 來自確定性 DB-state 檢查（0/1 每任務，無 LLM judge），完全可重現。</p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th>Ratio</th>
+<th>Avg $</th>
+<th>Total $</th>
+<th>Reward</th>
+<th>95% CI</th>
+<th>vs Vanilla</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>vanilla</td>
+<td>—</td>
+<td>$0.1244</td>
+<td>$6.222</td>
+<td>36/50=0.720</td>
+<td>[0.58,0.83]</td>
+<td>—</td>
+</tr>
+<tr>
+<td>cache_only</td>
+<td>—</td>
+<td>$0.1252</td>
+<td>$6.257</td>
+<td>37/50=0.740</td>
+<td>[0.60,0.84]</td>
+<td>+0.6%</td>
+</tr>
+<tr>
+<td>query_aware</td>
+<td>3</td>
+<td>$0.1744</td>
+<td>$8.718</td>
+<td>38/50=0.760</td>
+<td>[0.63,0.86]</td>
+<td>+40.1%</td>
+</tr>
+<tr>
+<td>capc</td>
+<td>3</td>
+<td>$0.1145</td>
+<td>$5.727</td>
+<td>36/50=0.720</td>
+<td>[0.58,0.83]</td>
+<td>−7.9%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>結果</strong>：CAPC 最便宜（$0.1145/任務），reward 與 vanilla 完全相等（36/50, z=0.00, p=1.00）。<strong>Query-aware compression 比 vanilla 貴 +40.1%</strong>——首次在公開基準上觀察到 query-aware 壓縮器比完全不壓縮更貴。機制確如 §4 預測：query-aware 對 wiki system block 突變使 cache 前綴每呼叫失效，cache-write 1.64M vs vanilla 0.87M（+87%），淨成本效應 +40.1%。Cache-only 在小前綴工作負載上與 vanilla 統計上無區別（+0.6%）——隱含 caching（§7.1）已捕獲大部分利益。</p>
+<p><strong>三個發現</strong>：(1) CAPC 品質等同 vanilla。(2) Query-aware 即使在 9k-token 小前綴上也比 vanilla 貴（與 EA 的 −31% 節省相反）。EA vs τ-bench 的對比產生 refined characterization：成本效應的符號取決於 mutated fraction of cached prefix（§7.2）。(3) CAPC 在小前綴上的價值主要來自 compression layer——cache-only 在此 regime 無效，但 CAPC 仍節省 −8.5% vs cache-only。</p>
+<h3 id="66-總成本">6.6 總成本</h3>
+<p>全論文 API 花費 $98.96。明細：LongBench-v2 pilot $16.64、EA simulator $9.57、EA production-path $15.98、graphify FastAPI $16.85、graphify httpx $13.00、τ-bench retail $26.92。含 6,300+ Haiku 4.5 self-consistency judge calls。單一研究生或小團隊可在週末重現全文。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

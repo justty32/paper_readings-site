@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《神經符號預測過程監測》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：（程式碼 github.com/axelmezini/nesy-suffix-prediction-dfa）</p><p>日期：2025-09，NeSy × 業務流程管理（BPM）</p><p>arXiv：2509.00834</p><p><a href="https://arxiv.org/abs/2509.00834" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="神經符號預測過程監測重點摘要">《神經符號預測過程監測》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>把 <strong>有限軌跡線性時序邏輯（LTLf）先驗知識「在訓練時」注入自迴歸序列預測器</strong>，解決 BPM 的<strong>後綴預測（suffix prediction）</strong>——既有方法只在<strong>測試時</strong>約束，本文設計<strong>可微邏輯損失</strong>（LTLf 語意軟近似 + Gumbel-Softmax + DeepDFA），與標準預測損失並用，使模型生成的後綴<strong>既準確又邏輯一致</strong>。三個真實 BPM 資料集上，即使 40% 噪聲，約束滿足率仍近 100%，且不損相似度。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li><strong>PPM 後綴預測</strong>：給流程已執行的前綴，預測未來事件序列（後綴）→ 利資源分配與決策。</li>
+<li>純資料驅動深度模型常<strong>連基本邏輯約束都不滿足</strong>（訓練時無顯式整合領域知識）。</li>
+<li>領域知識（時序約束）能：刻畫執行脈絡、應對 concept drift、<strong>過濾資料噪聲</strong>提升穩健。</li>
+<li>既有知識約束序列生成多為<strong>測試時推理</strong>；唯一訓練時整合的 STLnet 針對連續時間 STL，移植到符號域會記憶體爆炸。</li>
+</ul>
+<h2 id="核心方法model-agnostic任何自迴歸模型適用">核心方法（model-agnostic，任何自迴歸模型適用）</h2>
+<ul>
+<li>目標：最大化「自迴歸取樣的軌跡滿足 LTLf 規格」的機率。精確計算需枚舉所有後綴（指數級）→ 設計<strong>快速可微的近似</strong>當訓練目標。</li>
+<li>組合損失：<strong>L = (1−λ)·L_task + λ·L_logic</strong>。</li>
+<li><strong>兩種邏輯損失</strong>：
+<ul>
+<li><strong>局部邏輯損失（LLL）</strong>：<strong>teacher forcing</strong>；利用 LTLf→DFA 的 <strong>failing state（永久違反狀態，從此不可達接受態）</strong>——每步懲罰模型對「導致進入 failing state 的轉移」分配的機率質量 → <strong>活動級即時回饋</strong>。但只適用於 DFA 有 failing state 的公式（<strong>safety 約束</strong>，如 Absence）。梯度穩定、低變異。</li>
+<li><strong>全域邏輯損失（GLL）</strong>：<strong>自迴歸訓練 + 蒙地卡羅取樣完整軌跡</strong>；用 <strong>Gumbel-Softmax</strong> 生可微的近 one-hot 後綴、用 <strong>DeepDFA</strong>（把時序邏輯編成遞迴層）算機率性合規 → <strong>軌跡級監督</strong>，<strong>任何 LTLf 公式皆可</strong>但較貴（訓練時需生整條後綴）。</li>
+</ul>
+</li>
+<li><strong>safety vs liveness</strong>：safety（Absence，「某行為絕不發生」）→ DFA 有 failing state → LLL 適用；liveness（Existence/Response，「某條件終將滿足」）→ 無內在 failing state，只能在軌跡結束時判違反 → 走全域 guidance。</li>
+<li><strong>知識預處理（離線一次）</strong>：LTLf →（ltlf2DFA）DFA；為不受約束的符號加 self-loop；加 EOT 處理（success/failure 終端吸收態）；把 DFA 張量化成 DeepDFA 神經層（轉移矩陣 + 初始/接受向量）。Declare 公式產<strong>多項式大小 DFA</strong>。衝突知識 → 空自動機 → 邏輯損失為常數、只由 task loss 驅動學習（仍可學）。</li>
+</ul>
+<h2 id="實驗">實驗</h2>
+<ul>
+<li><strong>資料</strong>：Sepsis、BPIC 2013、BPIC 2020 三個真實事件日誌；用 Declare Miner 挖約束（min support 0.9）轉 LTLf 合取；<strong>注入 0/10/20/30/40% 噪聲</strong>（隨機替換活動標籤）。</li>
+<li><strong>模型</strong>：LSTM + Transformer（base = 移除邏輯損失的消融）;temperature / greedy 取樣；各配置 15 次。指標：<strong>滿足率（SAT）</strong> + <strong>正規化 Damerau-Levenshtein 相似度</strong>（皆越高越好）。</li>
+<li><strong>結果</strong>：
+<ul>
+<li>邏輯損失<strong>一致提升滿足率</strong>，<strong>噪聲越高優勢越明顯</strong>，<strong>40% 噪聲下仍近 100%</strong>（baseline 隨噪聲顯著退化）;</li>
+<li><strong>相似度與 baseline 相當</strong>（提升滿足率不犧牲學習）→ 知識幫模型<strong>從噪聲中分辨合規軌跡</strong>;</li>
+<li><strong>跨架構通用</strong>（LSTM 與 Transformer 行為一致）;</li>
+<li><strong>邏輯損失還減少收斂所需 epoch</strong>（優化更快，LSTM 尤明顯；低合規資料集上 GLL 比 LLL 更省 epoch）;</li>
+<li><strong>GLL 常達最高峰值</strong>、<strong>LLL 在不同 λ/噪聲下相似度更穩</strong>（λ 太大時 GLL 會犧牲相似度，存在「嚴格執行約束 vs 貼近原序列」的權衡）。</li>
+</ul>
+</li>
+</ul>
+<h2 id="局限與通用性">局限與通用性</h2>
+<ul>
+<li>雖落地 PPM，<strong>原理適用任何離散序列生成</strong>（NLP、神經機器翻譯、tokenize 後的連續域）。</li>
+<li>大規模挑戰與緩解：大詞彙（把無關符號映成單一特殊 token）、長序列（分段、概念級詞彙）、大自動機（Declare 多項式 DFA、離線一次、把規格拆子公式各自 DFA 平行監測）。PPM 規模適中（活動 10–50、軌跡長 10–100、自動機 6–13 態）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>與 <a class="paper-reference" href="2511.14533_NeSy_Perceptual_Uncertainty.%E6%91%98%E8%A6%81.html">2511.14533</a>（NeSy-RL 的 LTLf neural reward machine）、<a class="paper-reference" href="2412.07331_NeSyA.%E6%91%98%E8%A6%81.html">2412.07331</a>（NeSyA 神經符號自動機）同屬「時序邏輯 + 神經」一脈，但本文聚焦<strong>把 LTLf 當訓練時的可微損失</strong>注入自迴歸生成。</li>
+<li>最值得記的兩個機制：<strong>(1) failing state → 局部可微懲罰（safety 約束的逐步監督）</strong>、<strong>(2) Gumbel-Softmax + DeepDFA → 全域可微合規（任意 LTLf）</strong>；以及 <strong>safety/liveness 決定能否做局部 guidance</strong> 的洞見。</li>
+<li>與 <a class="paper-reference" href="2502.03274_Probabilistic_NeSy_Robustness_Verification.%E6%91%98%E8%A6%81.html">2502.03274</a> 同用 DFA/自動機 + 可微，但目的不同（那篇驗證、這篇訓練時約束生成）。</li>
+<li>實用啟示：<strong>邏輯損失對抗噪聲特別有效</strong>（從噪聲訓練資料中守住約束），且<strong>加速收斂</strong>。適合做<strong>約束序列生成、流程預測、把時序規格注入生成模型</strong>的人；有開源實作。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2509.00834_NeSy_Predictive_Process_Monitoring.zh-TW.html"><code>../translate/2509.00834_NeSy_Predictive_Process_Monitoring.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

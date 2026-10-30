@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Vintix II：Decision Pre-Trained Transformer 是可擴展的 In-Context 強化學習者（Vintix II: Decision Pre-Trained Transformer is a Scalable In-Context Reinforcement Learner） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Andrei Polubarov、Alexander Nikulin、Ilya Zisman、Vladislav Kurenkov 等（共 14 人）</p><p>日期：2026-04</p><p>arXiv：2604.05112</p><p><a href="https://arxiv.org/abs/2604.05112" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="vintix-iidpt-是可擴展的-in-context-rl-者">Vintix II：DPT 是可擴展的 In-Context RL 者</h1>
+<h2 id="摘要">摘要</h2>
+<p>In-Context RL（ICRL）能訓練「推論時直接學新任務」的通才 agent。<strong>Algorithm Distillation（AD）</strong> 開創此範式並擴展到多領域，但對沒見過的任務泛化有限。<strong>Decision Pre-Trained Transformer（DPT）</strong> 作為替代展現更強 ICRL，但可擴展性未被建立。本文把 DPT 擴展到多樣多領域環境，用 <strong>Flow Matching</strong> 作為自然訓練選擇（保住其 Bayesian 後驗取樣詮釋）。結果得到一個跨<strong>數百個多樣任務</strong>訓練的 agent，在保留測試集上清楚改善泛化，並在線上與離線推論都勝過先前 AD 擴展，強化「ICRL 是專家蒸餾之外訓練通才 agent 的可行替代」。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>建通用 agent 是核心目標，NLP/CV 已大幅進展，但 RL 在「能處理廣泛任務多樣性的 Large Action Model」上落後。主流做法（GATO 式 Transformer + 離線資料 + RAG）有個關鍵限制：<strong>不利用 reward 作為即時策略修正與適應的外部訊號</strong>。in-context learning 讓 LLM 靠短 prompt 改變行為而不更新參數；把它搬到 RL 就是要讓 agent 在新環境達到 reward-optimizing 行為而不微調。AD 與 DPT 是旗艦，但只在單領域/網格環境展現 in-context 行為，對多樣連續控制的可擴展性未被探索。前作 Vintix（Polubarov 2025）把 AD 擴到多領域，訓練任務上強但<strong>未見任務泛化有限</strong>;DPT 能逼近動作後驗取樣，是更強的骨幹替代。本文把 DPT 擴到跨領域，用 flow-based 策略頭處理複雜多模態連續動作分布，實現對未見任務與參數變異的 in-context 適應。資料集擴到 <strong>700M+ transition（×3.2）、209 訓練任務 / 10 領域、46 評估任務</strong>。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>In-Context RL</strong>：源自 RL²（序列模型編碼任務資訊、線上策略迭代，後繼 AMAGO、RELIC）;model-based（推 belief state 或建 world model 規劃）;context-based imitation（AD 蒸餾學習軌跡、DPT 在最佳動作重標記示範上做後驗取樣）。本文建在 <strong>DPT</strong> 上、擴到多領域連續控制。</li>
+<li><strong>Generalist agent</strong>：多領域從頭訓練（GATO/JAT）+ RAG；或 VLM + action expert（離散化/壓縮 tokenization/flow-based 控制器）；或擴展離線 memory-based meta-RL（AD/DPT）到跨領域。本文走後者，靠 ICRL 與專家示範 prompt 做推論時自我修正，而非靠 VLM 表徵。</li>
+</ul>
+<h2 id="3-方法">3. 方法</h2>
+<ul>
+<li><strong>DPT + Flow 頭</strong>：先前連續動作 DPT 用 Gaussian 頭只得中等結果（無法捕捉多模態、複雜動作後驗的 likelihood mismatch）。本文整合 <strong>rectified-flow 目標 + in-context conditioning</strong>，單一模型表達更豐富動作分布、線上推論時 native 取樣。</li>
+<li><strong>資料集（CND）</strong>：用 Vintix 的 <strong>Continuous Noise Distillation</strong>——漸進對 demonstrator 策略加噪改變其品質、擴大 {s,a,r} tuple 覆蓋（通常提升 test-time 表現）；再用 demonstrator action 重標記（DPT pipeline 要求）。10 領域、209 訓練任務、46 保留任務。</li>
+<li><strong>context 長度 4096 token</strong>。</li>
+</ul>
+<h2 id="5-實驗評估指標對-randomexpert-正規化的-episode-returniqm-聚合4-seed">5. 實驗（評估指標：對 random/expert 正規化的 episode return，IQM 聚合，4 seed）</h2>
+<p>對比 Vintix（線上+離線）與 REGENT（離線 prompted）。</p>
+<ul>
+<li><strong>訓練任務線上 zero-shot</strong>（209 任務、無 context 起步）：多數領域隨部署持續改善 → test-time 適應行為。Kinetix、ControlGym、MuJoCo、MetaDrive 第一 episode 就近 demonstrator（DPT 推強先驗、只需幾 episode 修正）。加 task-specific prompt 全 10 領域改善、平均 <strong>+4.1%</strong>。</li>
+<li><strong>保留任務（46 個）離線 few-shot</strong>：MetaDrive/CityLearn/SinerGym/ControlGym 達 <strong>102% / 78% / 92% / 100%</strong>。對 prompted Vintix：Bi-DexHands <strong>+17%</strong>、MuJoCo 參數變異 <strong>+4%</strong>、Meta-World ML45 <strong>+63%</strong>；對 REGENT：ML45 上 5 個未見任務 <strong>+8.2%</strong>。→ flow-based DPT 提供強 inductive bias，支撐 fully-parametric in-context imitation 的湧現。</li>
+<li><strong>cold-start</strong>：8/10 領域 cold-start 與 prompted 持平，僅 Meta-World ML45 與 Bi-DexHands ML20 落後（後者控制維度高、obs/act 結構可變、訓練任務少）。Meta-World ML1 線上 <strong>85%</strong>（無示範）勝給 100 條專家 episode 的 REGENT <strong>+3%</strong> → 來自部署時自我修正（DPT 實作 context-based Bayesian 後驗取樣）。</li>
+<li><strong>後驗取樣驗證</strong>：固定 query observation o_q，context 從空增到 500 個 (o_q,a,r) tuple，每長度抽 100 個動作。KDE 顯示<strong>後驗式收縮</strong>——短 context 寬且不確定，長 context 收成窄峰、熵單調下降 → 符合 in-context PS。</li>
+<li><strong>prompt 大小消融</strong>（500–4000 transition）：Meta-World/Industrial-Benchmark/SinerGym 隨 prompt 增大改善，其他穩定；受 4096 context 限制。</li>
+</ul>
+<h2 id="5-結論">5. 結論</h2>
+<p>DPT + flow-based 生成策略頭是擴展多領域 ICRL 的強框架。模型在 zero-shot 與 few-shot 都有實質能力，據作者所知是第一個能<strong>同時</strong>在兩種 regime 運作的 Large Action Model；且相較 REGENT 的半參數檢索做法，本文是<strong>全參數</strong>部署、推論期設計選擇更少。資料集 ×3.2 擴展促進大規模跨領域訓練且相容所有主流 ICRL 方法。</p>
+<p><strong>限制</strong>：(1) token-to-parameter 比 <strong>&lt; 1</strong>（最佳約 20）→ 需更大資料與 LAM scaling law 研究；(2) demonstration-less 評估仍落後 prompted → ICRL 強在 exploitation、test-time exploration 弱；(3) 對 input/output 維度不可知的 action model 仍是 open challenge，限制遷移到全新領域。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

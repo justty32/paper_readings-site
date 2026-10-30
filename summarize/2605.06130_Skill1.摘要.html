@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Skill1：技能增強智能體的統一演化》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yaorui Shi, Yuxin Chen（中國科學技術大學／美團／新加坡國立大學／浙江大學／武漢大學）</p><p>日期：2026-05，技能增強智能體／統一 RL 目標／信號分解</p><p>arXiv：2605.06130</p><p><a href="https://arxiv.org/abs/2605.06130" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="skill1技能增強智能體的統一演化重點摘要">《Skill1：技能增強智能體的統一演化》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Skill1</strong>：透過<strong>單一任務結果訊號的頻率分解</strong>（低頻趨勢 credit 選擇、高頻變異 credit 蒸餾），讓一個 policy 同時演化技能選擇（selection）、利用（utilization）與蒸餾（distillation）三種能力——不需要額外 reward model 或輔助 rollout。ALFWorld 97.5%（+2.6）、WebShop 89.7%（+0.6）全面超越所有技能型與純 RL baseline，消融證實任一訊號移除都拖垮全部三項能力。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM agent 擁有一個持久的技能庫（skill library）可跨任務重用成功策略，維護它需要三個耦合能力：<strong>選技能</strong>（從庫內選出相關技能）、<strong>用技能</strong>（以技能為條件執行互動）、<strong>蒸餾技能</strong>（從軌跡萃出新技能進庫）。現有方法的兩個根本問題：</p>
+<ol>
+<li><strong>只訓練部分能力</strong>：SkillRL 凍結選擇機制、RetroAgent 不給選擇梯度、多數方法至少一個階段無梯度訊號——策略學會用技能但老選到次優的。</li>
+<li><strong>多個不一致的 reward 源</strong>：不同階段用不同 reward（任務結果 + 自評品質 + 啟發式匹配分數），三能力共同決定成敗但最佳化目標互相衝突。</li>
+</ol>
+<p>更深層瓶頸是<strong>時序尺度不同</strong>：利用只看當下 episode、選擇在乎跨 episode 的長期有效性、蒸餾關心新經驗是否比庫裡現有技能更好。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>統一 policy 三階段 workflow</strong>（§3.1）：① 選擇——policy 生成自然語言查詢 q→凍結 encoder E 檢索 top-K 候選→policy 重新排序選出最佳技能 z；② 利用——以 z.strat 為條件進行多輪環境互動；③ 蒸餾——從軌跡萃出可重用策略 snew.strat + 場景描述 snew.desc，只在 r(τ)=1 時入庫。庫滿時淘汰 utility×log（使用次數） 最低者。</li>
+<li><strong>信號分解給分</strong>（§3.2，整個框架的核心）：全部從同一任務結果 r(τ) 推導——Rutil = r(τ)（直接成敗分數）；Rrerank = NDCG(σ, argsort(−U(BK)))（排序與技能長期效用一致度）；Rdistill = r(τ) − max U(BK)（當前結果超出庫趨勢量＝技能創新性）。U(s) 以 EMA 維護每技能長期效用趨勢。</li>
+<li><strong>聯合最佳化</strong>（§3.3）：單一梯度步同時更新四個生成段落——查詢 q（跟利用同目標共同梯度）、重排序 σ（REINFORCE，因不同 rollout 的 BK 不同無法群組比較）、動作序列 a1:T（GRPO 群組優勢）、蒸餾技能 snew（獨立的 GRPO 標準化）。J = Jutil + λ1 Jrerank + λ2 Jdistill。</li>
+<li><strong>關鍵設計</strong>：不需要 external teacher 評估技能品質、不需要多餘 rollout 估蒸餾價值、不需要對抗式或自評 auxiliary reward——一切訊號來自 r(τ) 的頻率分解。</li>
+</ul>
+<h2 id="結果qwen25-7b-instructalfworld--webshop">結果（Qwen2.5-7B-Instruct，ALFWorld / WebShop）</h2>
+<ul>
+<li><strong>ALFWorld 97.5%</strong>（六子任務中五項第一），勝 RetroAgent +2.6、GiGPO +6.7、SkillRL +7.6。Pick2 上 +12.8（多子程序組合受益最大）。</li>
+<li><strong>WebShop 89.7% score</strong>，勝所有純 RL 與技能型基線。</li>
+<li><strong>統計顯著</strong>（Welch&#x27;s t-test p=0.021 vs RetroAgent），變異更小（σ=0.6 vs 0.9）。</li>
+<li><strong>決策成本可控</strong>：387–494s/step（1.3–1.7× GRPO），蒸餾壓縮軌跡控制庫膨脹（無蒸餾版成長 2.4× 速度、慢 69%）。</li>
+</ul>
+<h2 id="共演化動態432434">共演化動態（§4.3.2–4.3.4）</h2>
+<ul>
+<li><strong>技能庫多樣性</strong>：統一訓練下使用計數分佈更均勻、top-10% 技能覆蓋更廣策略空間（t-SNE 視覺化）。</li>
+<li><strong>技能品質</strong>：庫天花板 Û 從 0.51→0.91（變異訊號推動探索超越庫邊界的策略）。</li>
+<li><strong>三個能力互相強化</strong>：選擇精度先收斂→高品質技能供應→拉動利用與蒸餾加速→正回饋循環。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>環境覆蓋有限</strong>：只測兩個純文字環境，未測視覺環境或深度搜尋任務。</li>
+<li><strong>庫容量天花板</strong>：5,000 條上限在任務多樣性成長時可能成瓶頸，需更複雜淘汰/階層組織策略。</li>
+<li><strong>凍結 encoder</strong>：all-MiniLM-L6-v2 不可訓練，查詢品質改善限於 policy 端的文字生成，無法從 retrieval embedding 端調整。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>這是 ai_core <strong>§3.6 固化引擎最核心的實作對照</strong>：信號分解（低頻趨勢 crediting 選擇、高頻變異 crediting 蒸餾）直接對應&quot;任務結果控制技能創建頻率與庫過度生成&quot;的設計命題——單一 r(τ) 既是驗證閘門（入庫條件）又是 credit 來源（蒸餾梯度），不依賴任何 auxiliary reward。</li>
+<li>與 SkillLifecycle Survey (2607.10113)、SkillCAT (2606.13317)、SPyCE (2607.13854)、HASP (2605.17734) 並讀：Skill1 補上&quot;RL 統一目標&quot;路線，證明 admission gate（r=1 入庫）＋ 信號分解 （trend vs variation）＋退休策略（utility×log-usage）三項可同時由 RL 驅動。</li>
+<li>適合做 <strong>RL for agents、技能庫治理、credit assignment、GRPO 群組最佳化</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2605.06130_Skill1.zh-TW.html"><code>../translate/2605.06130_Skill1.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

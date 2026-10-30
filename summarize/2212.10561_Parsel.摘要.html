@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Parsel：以組合式分解讓語言模型進行演算法推理（Parsel: Algorithmic Reasoning with Language Models by Composing Decompositions）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Eric Zelikman, Qian Huang, Gabriel Poesia, Noah D. Goodman, Nick Haber（Stanford University）</p><p>日期：2022-12（NeurIPS 2023）</p><p>arXiv：2212.10561</p><p><a href="https://arxiv.org/abs/2212.10561" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="parsel以組合式分解讓語言模型進行演算法推理重點摘要">《Parsel：以組合式分解讓語言模型進行演算法推理》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Parsel</strong>：讓（人或 LLM）先把演算法任務寫成<strong>階層式的自然語言函數描述＋約束</strong>（一種同名中介語言），再對<strong>每個函數各自生成多份候選實作</strong>，最後由 synthesizer <strong>在實作組合空間中搜尋、用測試/約束驗證</strong>並拼裝出可執行程式——把「整段一次寫對」的難題換成「分頭實作＋組合驗證」，並藉<strong>強連通分量（SCC）分解</strong>把組合爆炸控制在最大 SCC 大小內。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>程式語言模型（如 Codex）每多生一個 token 就多一次出錯機會：Chen et al. 的實驗顯示，隨組合步驟增加，直接生成的正確率急遽下滑。人類程式員反而會<strong>把複雜任務拆成可獨立運作（模組化）又能協同（組合性）的小塊</strong>，出錯時可獨立重寫某塊。作者要把這種「分解→實作→組合」的人類推理模式，變成 LLM 可用的通用演算法推理框架。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>三步驟管線</strong>：1) LLM 把自然語言任務分解成階層式自然語言函數描述（即 Parsel program，few-shot；GPT-4 可零樣本）；2) 對每個函數描述，LLM 生成多份模組化候選實作；3) <strong>Parsel synthesizer</strong> 對候選實作的最小組合逐一測試，找出滿足約束者並向上組裝。</li>
+<li><strong>Parsel 語言</strong>：每行是「描述（做什麼，自然語言）」「參考（reference，指示某函數呼叫他處定義的函數）」或「約束（constraint，如 input-output 範例/assert，用來驗證；缺省時可由 LLM 自動生成）」，靠縮排表達階層。</li>
+<li><strong>組合搜尋控制爆炸</strong>：把函數呼叫圖分解成 SCC——複雜度只隨<strong>最大 SCC 大小</strong>指數成長，而非隨函數總數。無環時依拓撲序、以 root 起的後序遍歷（post-order）逐一實作葉→父；互遞迴時對整個 SCC 聯合實作、從實作笛卡兒積隨機取樣驗證。</li>
+<li><strong>無約束函數兩法</strong>：無測試的內層函數改由「測試依賴圖」讓父函數的約束來把關；頂層無測試時則<strong>自動生成測試</strong>、以 CodeT 分數挑最佳實作。</li>
+<li><strong>關鍵性質</strong>：組件生成成本線性、可測試的完整程式數卻隨每函數實作數 k 指數成長（mix-and-match）；改寫某子函數的實作可不動其父（模組化）。</li>
+</ul>
+<h2 id="結果具體數字">結果（具體數字）</h2>
+<ul>
+<li><strong>APPS 競賽級</strong>：pass rate 由先前 14.5% 提升到 <strong>25.5%</strong>（較直接取樣 AlphaCode/Codex 高逾 75%），且常用更小的樣本預算；效能隨評估次數呈 log-linear 上升。</li>
+<li><strong>消融</strong>：把同樣的高階計畫直接翻成 Python（而非經 Parsel 合成），pass@8×16 由 25.5% 掉到 <strong>6%</strong>，且其解出的題是 Parsel 解出題的嚴格子集——證明增益非僅來自 step-by-step 分解本身。</li>
+<li><strong>HumanEval pass@1</strong>：SOTA 由 67% 提升到 <strong>85%（85.1%）</strong>；pass@any 下用 8 個 Parsel 程式達 91.5%（vs 64 個直接生成 82.3%），128 預算下 93.9% vs 84.1%。GPT-4 配 Parsel 多解出 18 題它獨力解不出者（其中 8 題解含 ≥6 個函數）。</li>
+<li><strong>VirtualHome 機器人規劃</strong>：人類評比中 Parsel 產生的計畫被認為更準確的比例達 69%，<strong>逾基線兩倍</strong>。</li>
+<li><strong>人類專家</strong>：一位作者手寫 Parsel 於 6 小時解出 10 題競賽題中的 5 題；GPT-3 生成 Parsel（每題 8 次）僅 2/10——顯示<strong>瓶頸在第一步「分解成好的 Parsel」</strong>，而非 synthesizer。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>高度依賴閉源 LLM：Parsel 是訓練語料罕見的「新語言」，模型天生較弱；且 Codex 存取受限、GPT-4 昂貴、行為可能突變；無 training API。開源 2.7B CodeGen 在 APPS 上 0 解。</li>
+<li>缺乏「需數千行程式的真實複雜任務」benchmark；正確性（相對可執行性）難自動驗證，機器人規劃仍需人評。</li>
+<li>部分依賴自動生成測試，而生成測試可能有誤（故用 CodeT 分數過濾）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>直接對應 ai_core §5「程式碼助手」的雙層架構</strong>：Parsel 就是「上層對規格做結構化抽取（把任務分解成自然語言函數＋約束）生成資產、下層受約束地填碼（對每個函數搜尋實作組合並用測試驗證）」的一個完整、可跑的實例。其把「規格→階層分解→逐函數實作→組合驗證」流程化，正是把 LLM 呼叫<strong>包成可靠函數</strong>、且用確定性的組合/測試層去承接不可靠生成的範式。</li>
+<li><strong>呼應 §3.4「拒絕為預設＋憑證准入」的組合式驗證</strong>：Parsel 的 constraint/test 就是每個函數實作的「准入憑證」——沒通過測試的實作不得進入組裝，synthesizer 只讓通過約束的組合往上遞交。這給了 ai_core 一個具體的「治理＝以測試為憑證」設計樣板，且顯示<strong>組合驗證可讓便宜且各自不完美的實作拼出可靠整體</strong>（生成線性、測試組合指數）。</li>
+<li><strong>與已入庫對照</strong>：同作者的 <strong>STaR</strong> 走「自舉合理化 rationale → 微調」路線改善單模型推理；<strong>ExeDec</strong> 走「執行分解、逐步子目標」的組合泛化路線。Parsel 與兩者互補：不改權重、不靠一次性 CoT，而是把<strong>分解「物化成中介語言」＋以測試驅動組合搜尋</strong>，可作為 ai_core 思考「固化引擎（§3.6）」的線索——被反覆驗證通過的函數實作，天然是可結晶成確定性庫的候選（論文即示範以 21 個函數合出可運作的 Lisp 直譯器）。歸 I 類。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2212.10561_Parsel.zh-TW.html"><code>../translate/2212.10561_Parsel.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

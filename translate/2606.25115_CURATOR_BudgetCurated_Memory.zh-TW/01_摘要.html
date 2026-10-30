@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.25115_CURATOR_BudgetCurated_Memory.zh-TW.html">回 2606.25115_CURATOR_BudgetCurated_Memory.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>端側語言模型 agent 靠「在檢索記憶中累積經驗」而非更新權重來改善。這份記憶是<strong>硬上限且暴露的</strong>：它消耗 RAM 與能量、透過一條細上行抵達同儕、並因「被 agent 讀到的東西可寫入」而成為攻擊面。既有系統各只覆蓋問題的一部分：agentic 記憶無預算地生長、端側方法只憑成功保留條目、投毒多被當成攻擊而非記憶治理問題。我們提出 <strong>CURATOR</strong>——一個「每位元組淨值」分數，治理 agent 經驗記憶的生命週期。核心想法是<strong>讓預算當策展者</strong>：每個條目以「價值減危害、除以位元組」評分，一把尺決定留、傳、信。CURATOR 做三項決策：(1) <strong>KEEP</strong> 在 RAM 與能量預算下淘汰低值位元組；(2) <strong>SHARE</strong> 只在洞見價值超過上行成本時傳送；(3) <strong>TRUST</strong> 以來源把關同儕條目。在 LLM-agent 任務漂移基準與一個含兩個機械臂節點與一個 hub 的真實異質 Jetson 測試台上，CURATOR 把記憶縮 <strong>2.7×</strong>、上行縮 <strong>2.4×</strong>、把注入成功率從 <strong>0.75 降到零</strong>，並在被投毒或過時記憶污染的案例上<strong>提升</strong>準確率。按淨值策展同時降低足跡、能耗、上行與注入成功率，而不降準確率。在此設定下，<strong>按淨值遺忘是讓 agent 變強而非變弱</strong>。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>端側語言 agent 正從純雲端服務轉向本地硬體（Apple、Google、Microsoft、Meta、阿里皆已在手機上跑模型，機器人與邊緣裝置亦然）。它們留在本地以保護隱私並在斷線時仍能工作。部署後仍被期望「在場域內持續改善」而不回傳用戶資料重訓：做法是<strong>累積經驗而非更新權重</strong>——成功與失敗的任務經歷被蒸餾成可重用洞見、寫入外部記憶、推理時檢索。這沒有消除持續學習問題，只是把它從「參數更新」搬到「記憶存取」。伺服器上長大的記憶主要是管理成本；邊緣上它是資源與安全約束。</p>
+<p><strong>三個邊緣約束逼出對同一份記憶的三個決策</strong>：RAM 與能量預算逼出 <strong>KEEP</strong>（哪些累積經驗值得它的位元組？近期性與「按成功重播」會留下過度特化、過時的條目，許多原始經驗逐字保留甚至帶負價值）；因為記憶可被讀到的東西寫入，逼出 <strong>TRUST</strong>（一條被設計成「在攻擊者查詢上有用」的投毒條目，正是純價值濾器會保留的，少數幾條即可把注入成功率拉到 90–99%）；細上行逼出 <strong>SHARE</strong>（哪些蒸餾洞見值得送）。留、傳、信是同一問題的三種形式：一段經驗是否值得它的足跡。</p>
+<p><strong>CURATOR</strong>（Continual, bUdget-cuRated Agent-memory neT-value scOreR）用單一「每位元組淨值」分數，在三個預算下讀同一個量回答三問。貢獻：(1) 把端側經驗記憶治理圍繞單一原則——<strong>預算即策展者</strong>；淨值/位元組是 recency/success 策略缺的狀態變數。(2) 證明單一分數覆蓋完整記憶生命週期；生命週期覆蓋格顯示每個先前方法只落在留/傳/信之一。(3) 提供真機證據與明確投毒分析：跨三骨幹峰值記憶縮 2.7×、每輪上行縮 2.4×、注入從 0.75 降到 0，並在被污染案例上回補準確率；<strong>以 37% 足跡達 oracle 97% 準確率</strong>；真機上能耗/記憶/上行各降到全留的 0.38–0.64。</p>
+<blockquote>
+<p>與直覺相反——遺忘並非以能力換取——按淨值策展記憶讓四條通常互相競爭的軸<strong>同向變好</strong>：足跡、能耗、上行下降，注入成功率下降，任務準確率維持並恰在被過時/投毒記憶毀掉的案例上回升。原因有二：凍結的 agent 抗遺忘，故丟低值位元組代價極小；許多累積的原始經驗帶負價值，移除它是修復而非削弱。</p>
+</blockquote>
+<h2 id="2-背景與動機">2. 背景與動機</h2>
+<p><strong>端側持續學習</strong>：端側語言 agent 主要靠「改變它記得什麼」而非更新權重來適應。本文的 agent 是一個<strong>凍結的 LLM planner</strong>，呼叫固定的底層原語；持續學習因而從參數更新搬到記憶存取。</p>
+<p><strong>邊緣記憶預算</strong>：常駐條目搶固定 RAM、每次檢索與重嵌耗電池能量、與同儕分享用細而間歇的上行。沒有一個預算會隨記憶長大，故「留全部」不是硬體可行的基線。</p>
+<p><strong>記憶作為攻擊面</strong>：記憶可被 agent 讀到的任何東西（觀測、工具輸出、同儕洞見）寫入。單條存活的投毒條目即可在攻擊者選定查詢上操縱 agent；檢索增強記憶中 5 條精製條目即可把注入 ASR 拉到 90–99%。更大的庫只擴大這個開口。表 I 量化「留全部」的代價：足跡停在最大值，新鮮度優先檢索器讓注入 ASR 留在 0.75，窮舉檢索器更達 1.00——<strong>更多記憶在兩種檢索規則下都不更安全</strong>。</p>
+<p><strong>洞見 1（按淨值遺忘）</strong>：淘汰低值經驗代價極小，因為凍結 agent 的技能留在權重而非被丟的位元組裡；且累積經驗價值不均——一條逐字保留的原始軌跡在難案例上可帶負價值，而把同一軌跡蒸餾成抽象洞見能把淨貢獻從 −26.1 移到 +3.3。但<strong>價值本身不夠</strong>：投毒條目被寫得看似有用，純價值濾器會留它；唯有當分數的來源項對可疑來源收費，注入 ASR 才降到零。</p>
+<p><strong>洞見 2（一把尺治留/傳/信）</strong>：三個決策都問「一段經驗是否值得它的成本」，成本可能是常駐位元組、上行位元組、或可疑來源的風險。一個分數能治理三者，因為成本共用一種貨幣。表 II：一個分數同時把足跡縮 2.7×、上行縮過半、注入 ASR 歸零。</p>
+<h2 id="3-系統設計">3. 系統設計</h2>
+<p>CURATOR 用單一分數 ρ 跨三階段治理凍結 LLM agent 的經驗記憶：<strong>profile（剖析）→ score（評分）→ govern（治理）</strong>。剖析維護三個輕量統計（近期查詢嵌入的滑動草圖、每條目對任務結果的無標籤效果估計、來源標籤），開銷可忽略。CURATOR <strong>不更新 agent 參數</strong>，唯一學習組件是 V̂ 內的無標籤有用性頭。</p>
+<p><strong>淨值密度分數</strong>：</p>
+<div class="math block">
+\[\rho(m)=\frac{\hat{V}(m)-\lambda\,\hat{H}(m)}{b(m)}\]
+</div>
+<ul>
+<li><strong>價值</strong> V̂(m) = p(m)·q(m)·a(m)：p 為對近期查詢草圖 q̄ 的 softmax 檢索傾向；q 為條件有用性＝把 m 納入檢索集的平均邊際效用，<strong>無標籤地</strong>以 agent 取樣答案的自洽度當效用、線上校準串流頭追蹤；a 為抽象增益＝原始位元組 / 蒸餾後位元組（壓縮可把逐字負貢獻轉正）。</li>
+<li><strong>危害</strong> Ĥ(m) = η(m) + π(m)：η 為負遷移風險＝特異性 × 嵌入到當前任務中心 μ 的 Mahalanobis 距離（對過擬合遠經歷的條目收費）；<strong>π 為來源風險、是承重項</strong>＝對特徵圖的 logistic 閘控，編碼來源（外部/同儕/自產）、跨會話自我強化次數、與注入指令的相似度；閘權重是<strong>固定先驗</strong>、不線上擬合，不給攻擊者訓練面。</li>
+</ul>
+<p><strong>三預算下三決策（Algorithm 1，一趟）</strong>：</p>
+<ul>
+<li><strong>KEEP</strong>：按 ρ 降序貪婪填入常駐集直到 RAM 預算 B 用盡（密度排序貪婪解連續鬆弛近最佳，O(|M|log|M|)）；將被淘汰者先 Distill，蒸餾後 ρ 可能升足以留下。能量不入分母，改用虛擬佇列 Q(t+1)=[Q(t)+ε(t)−ε̄]₊ 的 drift-plus-penalty 把時均能耗壓在 ε̄ 內。</li>
+<li><strong>SHARE</strong>：對同儕廣告的單一查詢草圖 q̄_p 重投影檢索傾向得 V̂_p（蒸餾有用性 q 與抽象增益 a 不變、只重算傾向），只在 ρ_s = (V̂_p − λĤ)/b &gt; τ 且非冗餘時傳；過一條向量、無原始查詢/軌跡離開裝置；τ 隨剩餘上行縮小而升。</li>
+<li><strong>TRUST</strong>：接收方本地重算 ρ，只在 ρ(m′) &gt; θ 才納入；來源項把投毒條目壓到 θ 下。<strong>同一危害項三次作用於同一對手</strong>：自我強化條目被 KEEP 淘汰、被 SHARE 扣留、被 TRUST 拒絕，無需在三者間重調目標。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

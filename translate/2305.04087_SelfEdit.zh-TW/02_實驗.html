@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.04087_SelfEdit.zh-TW.html">回 2305.04087_SelfEdit.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4 實驗</h2>
+<p>橫跨兩個代表性資料集、九個參數量跨四個數量級的 LLM。探討四個研究問題：(1) 故障感知編輯器能把各 LLM 在競賽程式設計上提升多少（§4.2）；(2) 編輯式方法相較既有重排法的優勢（§4.3）；(3) 補充註解對修正的幫助程度（§4.4）；(4) 編輯輪數對結果的影響（§4.5）。</p>
+<h3 id="41-實驗設定">4.1 實驗設定</h3>
+<p><strong>資料集</strong>：(1) <strong>APPS</strong>——5000 訓練 + 5000 測試題，測試集分 Introductory／Interview／Competition 三難度；(2) <strong>HumanEval</strong>——164 題，給函式簽名、docstring、函式體與若干單元測試。僅用 APPS-train 微調生成模型與編輯器（最大訓練集）；沿用前人（Inala et al.）的切分，取 598 題作驗證集（APPS-dev）。隱藏測資用於評估、不含於題述，與用來取補充註解的範例測資區分。</p>
+<p><strong>基座 LLM</strong>：text-davinci-002（175B）、CodeGen（2B/350M）、InCoder（1B）、GPT-Neo（1.3B/125M）、GPT-J（6B）、PyCodeGPT（110M），在 zero-shot 或 finetune 條件下評估（未用當時封測不可得的 CodeX，以同參數量的 text-davinci-002 替代）。</p>
+<p><strong>編輯器模型</strong>：以 <strong>PyCodeGPT-110M</strong> 微調（因參數小且效能高；早期試 CodeGen-350M 但訓練速度與效能較差）。另設計一個 <strong>in-context learning 變體</strong>：用 text-davinci-002 同時當基座與編輯器（見 §5.2）。</p>
+<p><strong>指標</strong>：pass@k（每題提交 k 份，任一份通過全部隱藏測資即算解出，pass@k 為解出題目百分比），k = {1,5,10}。另設 <strong>sol@k</strong>（給每題 k 份取樣時，正確程式的總數）以顯示編輯器修好的程式數量。標示編輯後結果為 edit-pass@k / edit-sol@k。</p>
+<p><strong>訓練/推論設定</strong>：各 finetuned LLM 最多 10 epoch、學習率 1e-5，依 APPS-dev 驗證損失選最佳檢查點；編輯器同策略訓練，最大輸入長度 1024、輸出 512。補充註解只取題述中的一個範例測資（即使有多個）。推論時 LLM 與編輯器輸出皆用溫度取樣 T=0.8，LLM 取樣預算限 10；每份 LLM 輸出只用編輯器生成一份最終版（故維持固定取樣預算）。全部實驗用 4 張 Tesla V100-32GB。</p>
+<h3 id="42-與基座-llm-比較">4.2 與基座 LLM 比較</h3>
+<p><strong>APPS-dev &amp; APPS-test</strong>（表 2、3）：故障感知編輯器提升了所有九個模型（不論大小與訓練設定）。APPS-dev 上 pass@1 九模型平均由 6.17% 升至 11.67%（<strong>+89%</strong>）；GPT3-175B 於 pass@{1,5,10} 分別 +5.9%、+5.0%、+8.4%。APPS-test 更難（pass@k 數值更小），編輯器仍對各尺寸模型維持顯著提升，pass@1 絕對增益 0.12%–0.7%（多解 6–35 題），sol@10 更能多修正數百份程式。</p>
+<p>觀察到：常出現 <strong>edit-pass@1 &gt; pass@5</strong>，說明編輯候選碼非常樣本高效，可減少所需的 LLM 取樣數；且<strong>小 LLM ＋編輯器可逼近超大模型</strong>——125M 預訓練模型配 110M 編輯器可勝過 1.3B、部分情況勝 6B，相當於把預訓練規模擴大數十倍的增益。</p>
+<p><strong>不同難度</strong>（表 5，以 GPT-J-6B-finetuned 為基座）：各難度皆有提升，但簡單的 Introductory 增益最大（pass@1 +133%）；極難的 Competition 因 LLM 初版太差、編輯器難以救回，增益有限（放大取樣預算 1→10 時略有改善）。</p>
+<p><strong>HumanEval</strong>（表 4）：測遷移力。此資料集要求依函式簽名/註解/範例測資給出函式體；沿用前人的可執行性過濾，只編輯無法通過範例測資的輸出，並把輸入格式改得近似 APPS。編輯器再次提升所有模型全部指標；即便 CodeGen-2B 的 pass@10 未增，sol@10 仍顯著上升，展現對分佈外輸出的修正能力與普適性。</p>
+<h3 id="43-與後處理基準比較">4.3 與後處理基準比較</h3>
+<p>與 SOTA 重排法 <strong>CodeRanker</strong>（Inala et al., 2022；微調 CodeBERT-125M 分類潛在錯誤型別再重排）比較（表 6、附錄表 9）。同以 GPT-Neo-1.3B-finetuned 為基座、相同設定下，本法（+editor）顯著勝過 CodeRanker（+ranker）：APPS-test pass@1 由 0.14% 提到 <strong>0.68%</strong>（CodeRanker 只到 0.3%，本法多解 19 題）。更關鍵的是效率——CodeRanker 每題需 <strong>100 份</strong>取樣才能重排，本法每題只需 <strong>{1,5}</strong> 份輸出即可編出最終解。故本法在「取得 LLM 輸出昂貴」時更具實用價值。</p>
+<h3 id="44-補充註解消融">4.4 補充註解消融</h3>
+<p>移除補充註解、只用題述＋生成碼重訓一個編輯器（其餘不變）。結果（表 7，以 PyCodeGPT-110M-finetuned 為基座）：去掉註解後兩資料集通過率都顯著下降——APPS-dev 仍勝基座，但更難的 <strong>APPS-test 幾乎無提升</strong>。可見失去補充註解指引會嚴重傷害編輯器；把<strong>錯誤訊息當補充註解是取得優異效能的關鍵</strong>。</p>
+<h3 id="45-編輯輪數消融">4.5 編輯輪數消融</h3>
+<p>嘗試對第一輪編輯後的程式再編輯一次（把編輯後程式再跑範例測資取註解、再用同一編輯器修）。結果（表 7「+edit round」）：兩輪編輯在 APPS-dev 的 pass@1 略升，但在 <strong>APPS-test 反而掉分</strong>。推測原因是第二輪存在訓練/測試落差——編輯器是訓練來編輯「LLM 輸出」的，第二輪卻在編輯「它自己的輸出」。此設定下多一輪編輯幫助不大。</p>
+<h2 id="5-討論">5 討論</h2>
+<h3 id="51-與後處理基準的時間成本">5.1 與後處理基準的時間成本</h3>
+<p>用 Google Colab（Tesla T4）建 demo、以 text-davinci-002 為基座在 APPS-test 上評估：每題取 1 份樣本平均約 8.4s，執行器 &lt;0.01s，編輯器 3.7s 得最終輸出，實際使用可接受。相較之下 SOTA 重排法 CodeRanker 需 &gt;110s 取候選清單、再 0.53s 重排。故本框架以<strong>更少總時間與更少 LLM 呼叫</strong>取得更好效能。</p>
+<h3 id="52-in-context-learning-版-self-edit">5.2 In-Context Learning 版 Self-Edit</h3>
+<p>鑑於 LLM 具強大 in-context learning 能力（無需訓練），設計一個免訓練變體：用 <strong>text-davinci-002 同時當基座與編輯器</strong>，把我們構造的補充註解當作提示，讓大模型 zero-shot 自我編輯其輸出。結果（表 8）：APPS-test pass@1 由 7.48 升至 8.94、HumanEval 由 34.76 升至 39.63，明顯優於小編輯器。但此法仍需<strong>大量 LLM 呼叫</strong>、成本較高；如何在發揮 LLM 潛力的同時最佳化資源需求，留作未來工作。</p>
+<h2 id="6-結論">6 結論</h2>
+<p>提出生成後編輯方法 <strong>Self-Edit</strong>，利用 LLM 生成程式碼的執行結果提升競賽程式設計任務的程式碼品質。核心是能編輯、最佳化生成碼的<strong>故障感知程式碼編輯器</strong>。深入評估證明本方法顯著提升 LLM 輸出程式碼的品質。</p>
+<h2 id="局限limitations">局限（Limitations）</h2>
+<ul>
+<li>編輯器受限於算力用<strong>相對小的預訓練模型</strong>實作；不同預訓練模型／架構的效果待進一步理解。</li>
+<li>編輯器資料集偏小（每題僅取樣 10 份）；資料規模與其他構造方式的影響待細究。</li>
+<li>與其他後編輯法<strong>未做嚴格的運算資源對照</strong>（§4.3 對比 CodeRanker 時雙方都用相近參數量的額外模型，但本法用極少 LLM 取樣即勝出）。</li>
+<li>編輯輪數消融中，第二輪存在訓練/測試落差；現有實作未為多輪編輯設計，期望未來設計專用模型。隨 LLM 持續進步，與 LLM 有效互動的策略將是重要研究方向。</li>
+</ul>
+<h2 id="附錄">附錄</h2>
+<p><strong>附錄 A（與 CodeRanker 完整對照，表 9）</strong>：以 GPT-Neo-125M/1.3B、GPT-J-6B（皆 finetuned）為基座、同基座/訓練集/測試基準做公平比較（CodeRanker 未釋出基座權重，故引用其論文數值並自行重現相近的基座結果）。在極少 LLM 取樣下，本法均顯著超越此 SOTA 基準。</p>
+<p><strong>附錄 B（編輯器質性分析，圖 5–7）</strong>：展示 GPT3／CodeGen-2B 生成碼、對應題述（含範例測資）與補充註解，以及編輯器輸出。發現編輯碼與原始輸出相似——尤其<strong>前幾行常與 LLM 輸出完全相同</strong>，後續也部分基於原輸出；統計上兩序列的共同前綴約佔編輯輸出的 <strong>19.10%</strong>（APPS-dev/test），佐證 LLM 輸出對編輯碼的影響。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2305.04087_SelfEdit.%E6%91%98%E8%A6%81.html"><code>../summarize/2305.04087_SelfEdit.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

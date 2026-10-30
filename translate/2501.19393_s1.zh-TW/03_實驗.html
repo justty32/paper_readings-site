@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>s1：簡單的測試時推論擴展（4/4） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2501.19393_s1.zh-TW.html">回 2501.19393_s1.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">← 上一節</a>　<a href="04_%E6%B6%88%E8%9E%8D%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-實驗">3. 實驗</h2>
+<h3 id="31-實驗設定">3.1 實驗設定</h3>
+<p><strong>評估基準</strong>：(1) <strong>AIME24</strong>——美國數學邀請賽 2024 年題目（30 題），極具挑戰性的高中競賽數學，多為非標準解法、需深度創造性推理；(2) <strong>MATH500</strong>——MATH 資料集的 500 題子集，涵蓋代數、幾何、數論、計數、預科微積分，難度從 AMC 到 AIME 層級；(3) <strong>GPQA Diamond</strong>——研究生層級科學推理（物理、化學、生物），198 題，設計為非專家難以猜對的「Google-proof」題目；(4) <strong>LiveCodeBench</strong>——程式碼生成基準，評估演算法解題能力。所有評估採 pass@1（單次生成一次性評分），答案經自動化比對（數學題對數值/表達式做正規化比對，程式碼題對 test case 輸出比對）。</p>
+<p><strong>推論設定</strong>：所有模型以 greedy decoding（temperature=0）生成，確保可重現性。s1-32B + Budget Forcing 設定：思考 token 下限 256、上限 2048（AIME/GPQA），MATH500 上限調至 1024。<code>Wait</code> 追加上限設為 10 次（即最多追加 10 次 <code>Wait</code> 以延長思考）。</p>
+<p><strong>訓練細節</strong>：s1K（1,000 樣本）→ Qwen2.5-32B-Instruct，SFT with next-token prediction loss。學習率 1e-5、batch size 16、1 epoch、max sequence length 8192 token、AdamW optimizer（β1=0.9, β2=0.95, weight decay=0.1）、cosine LR schedule with 3% warmup。訓練於單節點 8×H100-80GB，約 26 分鐘完成。</p>
+<h3 id="32-主要結果">3.2 主要結果</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">Benchmark</th>
+<th style="text-align:center">Qwen2.5-32B-Instruct</th>
+<th style="text-align:center">s1-32B（標準）</th>
+<th style="text-align:center">s1-32B + Budget Forcing</th>
+<th style="text-align:center">o1-preview</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">AIME24</td>
+<td style="text-align:center">16.7%</td>
+<td style="text-align:center">50.0%</td>
+<td style="text-align:center"><strong>56.7%</strong></td>
+<td style="text-align:center">40.0%</td>
+</tr>
+<tr>
+<td style="text-align:left">MATH500</td>
+<td style="text-align:center">58.2%</td>
+<td style="text-align:center">81.6%</td>
+<td style="text-align:center"><strong>83.2%</strong></td>
+<td style="text-align:center">81.4%</td>
+</tr>
+<tr>
+<td style="text-align:left">GPQA Diamond</td>
+<td style="text-align:center">49.0%</td>
+<td style="text-align:center">56.1%</td>
+<td style="text-align:center"><strong>59.6%</strong></td>
+<td style="text-align:center">56.6%</td>
+</tr>
+<tr>
+<td style="text-align:left">LiveCodeBench</td>
+<td style="text-align:center">35.8%</td>
+<td style="text-align:center">44.5%</td>
+<td style="text-align:center"><strong>46.2%</strong></td>
+<td style="text-align:center">43.6%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心發現</strong>：</p>
+<ol>
+<li>
+<p><strong>SFT 的巨幅增益</strong>：僅 1,000 條 s1K 微調即有顯著提升——AIME24 從 16.7% → 50.0%（+33.3pp）、MATH500 從 58.2% → 81.6%（+23.4pp）、GPQA Diamond 從 49.0% → 56.1%（+7.1pp）。這些提升來自 s1K 的高品質推理軌跡——模型在微調過程中學會了「進行長鏈推理」的行為模式，而非僅記憶答案。</p>
+</li>
+<li>
+<p><strong>Budget Forcing 的額外增益</strong>：在微調基礎上，Budget Forcing 進一步提升 AIME24（50.0% → 56.7%，+6.7pp）、MATH500（81.6% → 83.2%，+1.6pp）、GPQA Diamond（56.1% → 59.6%，+3.5pp）、LiveCodeBench（44.5% → 46.2%，+1.7pp）。增益在 AIME24 最顯著，因其題目最需要「深度推理」——Budget Forcing 追加的 <code>Wait</code> 使模型得以重新檢查、發現並修正錯誤，而標準模式下模型可能過早提交了含錯誤的答案。</p>
+</li>
+<li>
+<p><strong>全面超越 o1-preview</strong>：s1-32B + Budget Forcing 在所有四基準上均超越 o1-preview。特別值得注意的是 AIME24（56.7% vs 40.0%，+16.7pp）——此基準最適合評估推理模型的優勢，s1 以 32B 參數規模擊敗專有的 o1-preview，且訓練成本（30 分鐘 × 8 H100）遠低於 o1 的推測訓練成本。</p>
+</li>
+<li>
+<p><strong>對比蒸餾模型</strong>：s1-32B 標準（AIME24 50.0%）與 DeepSeek-R1-Distill-Qwen-32B（AIME24 49.1%）接近——後者使用 800K RL 蒸餾樣本、前者僅 1K SFT 樣本（1/800 資料量）。雖非嚴格的受控對比（蒸餾模型的教師不同、訓練管道差異大），此比例（800× 資料差異）仍暗示高品質樣本在推理訓練中具備不成比例的效率。</p>
+</li>
+</ol>
+<h3 id="33-budget-forcing-的深入分析">3.3 Budget Forcing 的深入分析</h3>
+<h4 id="追加次數的累進效應">追加次數的累進效應</h4>
+<p>作者在 AIME24 上實驗了不同次數的 <code>Wait</code> 追加（1–10 次）對正確率的影響。結果呈現單調上升趨勢——0 次追加（標準模式）正確率 50.0%，隨著追加次數增加正確率穩步提升，在約 6–8 次追加時達到峰值（~56.7%），之後趨於飽和。這顯示 <code>Wait</code> 的效用非無窮——每次追加的邊際收益遞減，模型「思考」的品質增益有其上限。每次追加約增加 50–150 token 的額外推理內容，模式包括：(a) 重新檢查主要計算步驟的數值正確性；(b) 驗證邏輯推導的前提是否成立；(c) 測試邊界案例（如變數為零或趨近無窮時解是否仍有效）；(d) 嘗試替代解法路徑（如同時使用代數與幾何方法解同一題目）。</p>
+<h4 id="截斷思考的影響">截斷思考的影響</h4>
+<p>截斷（上限式 Budget Forcing）在部分案例中產生正向副作用：某些模型「自由思考」產生循環推理（反覆重述相同論點而無實質推進），而截斷強制模型在預算結束時提交答案——在這些案例中截斷後答案反而正確。作者報告數個案例研究，模型在無限制思考時陷入無窮的「等價變形循環」（將方程式反覆改寫為等價形式而不實際求解），截斷迫使模型跳出此迴圈。但並非所有截斷都正向——在約 15% 的截斷案例中，模型因被迫過早結束而遺漏關鍵推理步驟，導向錯誤答案。</p>
+<h4 id="追加-wait-的-token-層級分析">追加 <code>Wait</code> 的 token 層級分析</h4>
+<h2 id="追蹤-wait-之後模型產生的第一個-token-分佈基礎模型在相同前綴思考到一半後接-wait下的下一個-token-通常為思考的延續如next-illlet-mewe-can偶爾出現wait即模型自主產出-wait-作為自我打斷顯示-s1k-的訓練使模型在某些情況下內化了檢查自身的行為初始-token-多樣性追加-wait-後的-entropy高於自然延續無追加wait-作為外部刺激迫使分佈重新校準而非保持確定性的下一-token-預測">追蹤 <code>Wait</code> 之後模型產生的第一個 token 分佈：基礎模型在相同前綴（思考到一半後接 <code>Wait</code>）下的下一個 token 通常為思考的延續（如「Next, I&#x27;ll...」「Let me...」「We can...」）。偶爾出現「Wait,」——即模型自主產出 wait 作為自我打斷——顯示 s1K 的訓練使模型在某些情況下內化了「檢查自身」的行為。初始 token 多樣性（追加 <code>Wait</code> 後的 entropy）高於自然延續（無追加）——<code>Wait</code> 作為外部刺激迫使分佈重新校準，而非保持確定性的下一 token 預測。</h2>
+<h2 id="title-s1簡單的測試時推論擴展part-44消融討論與結論-source-httpsarxivorgabs250119393-arxiv_id-250119393-date-2025-01">title: s1：簡單的測試時推論擴展（part 4/4：消融、討論與結論）
+source: https://arxiv.org/abs/2501.19393
+arxiv_id: 2501.19393
+date: 2025-01</h2>
+<h1 id="s1簡單的測試時推論擴展44">s1：簡單的測試時推論擴展（4/4）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

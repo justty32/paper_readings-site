@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.14591_ALGO.zh-TW.html">回 2305.14591_ALGO.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）擅長依功能描述實作程式碼，但在<strong>演算法問題</strong>上表現不佳——這類問題不只要實作，還要<strong>辨識出合適的演算法</strong>。此外，LLM 生成的程式缺乏正確性保證，需要人工驗證。為此我們提出 <strong>ALGO</strong>：一個以 <strong>LLM 生成的 oracle（參考解）</strong> 導引生成並驗證正確性的演算法程式合成框架。ALGO 先提示 LLM <strong>窮舉所有相關變數的組合</strong>來生成參考 oracle；此 oracle 隨後用於導引任意搜尋策略探索演算法空間、並驗證合成出的演算法。研究顯示 LLM 生成的 oracle 在 88% 的情況下是正確的。以 oracle 作為驗證器，ALGO 能以 <strong>model-agnostic（模型無關）</strong> 的方式與任何既有程式碼生成模型整合以提升其表現。實驗顯示：配備 ALGO 後，一次提交通過率（one-submission pass rate）較 Codex 提升 <strong>8 倍</strong>、較 CodeContests 上的 SOTA 模型 CodeT 提升 <strong>2.6 倍</strong>、在未見過的題目上較 ChatGPT Code Interpreter 提升 <strong>1.3 倍</strong>。測試題集、prompt、驗證器與解答程式、ALGO 生成的測試案例均開源於 https://github.com/zkx06111/ALGO 。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 從自然語言生成程式碼的能力已相當可觀：Codex、CodeGen 在 HumanEval（docstring 到程式碼）上輕鬆超過 30% pass@1。但面對 CodeContests 這類演算法問題便陷入困境——即使給出合理的抽樣上限，達到 10% 準確率仍相當困難；GPT-4 就算拿到題目描述與解題提示，在 LeetCode Hard 上 pass@1 也只有 10.6%。</p>
+<p>**可驗證性（verifiability）**是另一大挑戰。缺乏可驗證性，程式碼生成系統難以在生產環境獲得信任：GitHub Copilot 的使用者據報花超過 20% 的時間在驗證建議的程式碼片段。既有的驗證與重排（reranking）方法，要嘛依賴神經模型預測信心分數，要嘛需要 LLM 生成測試案例來執行程式；但神經驗證器不提供可解釋的回饋，而 <strong>LLM 生成的測試案例常常是錯的</strong>。</p>
+<p>傳統程式合成技術依賴 oracle 驗證合成的程式碼，這些 oracle 通常從形式規格（formal specifications）導出，也可用於 oracle-guided inductive synthesis（OGIS，oracle 導引的歸納合成）框架。但 oracle 的取得往往需要重度人工參與，自動生成 oracle 又很困難——既有策略只能生成偵測崩潰的 safety oracle 或偵測未來改動引入 bug 的 regression oracle，而非演算法程式關鍵的<strong>語意錯誤</strong>。</p>
+<p>受此啟發，我們提出 ALGO。如圖示，ALGO 有兩個模組：<strong>verifier（驗證器）<strong>被指示生成一個不計時間效率的窮舉搜尋演算法，充當</strong>參考 oracle</strong>；**coder（編碼器）**則被要求以任意 prompt 或搜尋策略尋找更高效的解。候選程式的正確性透過「在同一組測試輸入上，其輸出與 oracle 輸出比對」來評估，驗證結果連同失敗的測試案例回饋給 coder 進行修正。</p>
+<p>實驗顯示：參考 oracle 在 88.5% 的問題上正確；oracle 的判定與線上評測系統（online judge）的標準判定一致率為 75%。整合 Codex、CodeT、PG-TD、ChatGPT Code Interpreter 後，一次提交通過率分別提升 8 倍、2.6 倍、1.5 倍、1.3 倍。</p>
+<p><strong>貢獻</strong>：(1) 提出以 LLM 生成參考 oracle 作為驗證器的演算法合成框架 ALGO——model-agnostic，可與任何程式碼生成模型整合，以 oracle 生成的可靠測試案例驗證候選解；(2) 以多個不同的程式碼生成模型做全面評估，顯示 ALGO 能生成高品質的 oracle 與測試案例，帶來顯著的生成品質提升。</p>
+<h2 id="2-演算法合成algorithm-synthesis">2. 演算法合成（Algorithm Synthesis）</h2>
+<p>LLM 擅長生成簡單程式（ChatGPT 在 HumanEval 上輕鬆超過 70% pass@1），卻在 CodeContests 這類複雜演算法問題上掙扎。<strong>我們的假設：演算法問題需要的是高效解，而非直白的暴力解。<strong>為驗證，我們用兩種 prompt 測 ChatGPT：一種直接要求生成符合時限的解；另一種要求</strong>無視時限、用最直白的方式解題</strong>。正確性以人工＋官方測試案例（不計時限）評估，即「正確但低效」也算成功。</p>
+<p><strong>表 1（暴力解 vs 高效解成功率）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>LeetCode</th>
+<th>CodeContests</th>
+<th>HumanEval</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>暴力解成功率</td>
+<td>88.5%</td>
+<td>72.0%</td>
+<td>70.1%</td>
+</tr>
+<tr>
+<td>高效解成功率</td>
+<td>41.2%</td>
+<td>7.90%</td>
+<td>72.5%</td>
+</tr>
+<tr>
+<td>相對差距</td>
+<td>114%</td>
+<td><strong>822%</strong></td>
+<td>-3%</td>
+</tr>
+</tbody>
+</table>
+<p>結果驗證假設：LeetCode 與 CodeContests 上生成暴力解遠比生成高效解容易，而 HumanEval 兩者相當——顯示這是<strong>兩類不同的問題</strong>。據此我們把程式碼合成分為兩類：<strong>functionality synthesis（功能合成）</strong>（HumanEval、MBPP：描述詳盡、可直接翻譯成實作）與 <strong>algorithm synthesis（演算法合成）</strong>（APPS、CodeContests：更抽象、需要高效演算法）。演算法合成器比功能合成器多一項任務：在合成程式碼前，先（隱式或顯式地）<strong>產生解題想法</strong>。本文聚焦演算法合成。</p>
+<p><strong>形式定義</strong>：程式碼生成任務為二元組 (Q, J)，Q 是題目描述，J: P → Bool 是系統評判（system judge），判定程式空間 P 中的程式是否解決了 Q。合成器的目標是產生 P 使 J(P)=True。J 可分解為兩部分：<strong>J_S 檢查語意正確性、J_T 檢查效率是否達標</strong>，J(P) = J_T(P) ∧ J_S(P)。</p>
+<h2 id="3-以-llm-生成-oracle-的演算法合成algo">3. 以 LLM 生成 Oracle 的演算法合成（ALGO）</h2>
+<p>生成暴力解遠比生成高效解容易——<strong>這個巨大的難度落差可以被利用</strong>。ALGO 框架用兩個組件解演算法問題：coder 接收題目描述 Q（以及可選的上一輪驗證結果），生成候選程式 P；verifier 生成參考 oracle，用其輸出驗證候選程式是否正確。<strong>每題只需建立一次 verifier，即可導引任意 coder——這使 ALGO 是 model-agnostic 的。</strong></p>
+<h3 id="31-以-oracle-驗證">3.1 以 Oracle 驗證</h3>
+<p><strong>Oracle 生成</strong>：參考 oracle P_O 與實際解 P_G 的差別在於：P_O 只需語意正確（J_S(P_O)=True），而 P_G 必須又對又快（J_S ∧ J_T = True）。我們利用這個差別：<strong>不設時限時，多數演算法問題都能用窮舉搜尋解決</strong>。如圖 4 所示，我們把窮舉搜尋的流程（對每題都相同）連同題目描述放進 prompt；LLM 擅長在指令清晰時實作程式，因此能生成參考 oracle。（圖 4 要旨：正解是多項式時間的二分搜尋，而生成的 oracle 以指數時間枚舉所有可能的工作分配——慢但對。）</p>
+<p><strong>驗證流程</strong>：處理驗證請求時，須回傳關於 P 正確性的 True/False 判定，以及（可選）使 P 失敗的輸入。我們用一個<strong>輸入產生器程式</strong>依題目約束產生隨機測試輸入，同時餵給受驗程式 P 與 oracle P_O，比對兩者輸出：一致回傳 True；不一致則將失敗的測試案例連同 False 判定回傳給合成器。</p>
+<h3 id="32-程式碼合成策略">3.2 程式碼合成策略</h3>
+<p>合成可以是<strong>一次性</strong>（coder 生成一批解，依驗證結果排序）或<strong>迭代式</strong>（生成→取得驗證結果與錯誤測資→修正，反覆進行）。coder 的搜尋策略可定義為條件分佈 π(P|Q)，並可經由潛變數空間 I 邊際化：π(P|Q) = Σ_I π(P|I)π(I|Q)。ALGO 可容納多種搜尋策略，舉三例：</p>
+<ul>
+<li><strong>Implicit Searcher（隱式搜尋器）</strong>：直接依題目描述從底層模型的分佈抽樣程式，完全依賴模型能力，靠 oracle 事後過濾。</li>
+<li><strong>Instruction Enumerator（指令枚舉器）</strong>：顯式搜尋，I 為預定義指令集——此處選為演算法高階想法的集合（如「Binary Search」「Sorting」）；先抽樣可能的解法演算法，再指示 LLM 以該想法生成程式。</li>
+<li><strong>Iterative Searcher（迭代搜尋器）</strong>：顯式搜尋，接收 verifier 的訊號來精煉輸出；搜尋空間可以是模型的詞彙表，解碼時用搜尋演算法決定下一個 token，以 verifier 的 reward 剪枝候選空間。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

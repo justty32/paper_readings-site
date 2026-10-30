@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2511.00776_CodeHallucinationSLR.zh-TW.html">回 2511.00776_CodeHallucinationSLR.zh-TW 目錄</a>　<a href="02_RQ2%EF%BC%9ANLP_%E7%9A%84%E7%B6%9C%E8%BF%B0%E8%88%87%E7%B7%A9%E8%A7%A3%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>模型幻覺是 LLM 面臨的最關鍵挑戰之一，尤在高風險的程式碼智能任務。本文從四個視角系統綜述程式碼導向 LLM 的幻覺：<strong>第一</strong>，調查 60 篇論文以定義程式碼語境下的幻覺、總結主因（資料噪聲、曝光偏差、語意接地不足），並追蹤 NLP 與軟工社群的近期趨勢。<strong>第二</strong>，更廣地回顧模型幻覺綜述，總結代表性緩解策略（知識增強生成、約束解碼、後編輯）。<strong>第三</strong>，回顧程式碼智能專屬方法，凸顯加劇幻覺的程式碼特有挑戰（語法敏感、嚴格型別系統、外部函式庫依賴），並分析程式分析、符號執行、單元測試等新興任務如何用於偵測/緩解幻覺。<strong>第四</strong>，總結現有評測 benchmark（從靜態指標到編譯/執行正確性等動態檢查），強調需要幻覺導向的 benchmark。最後凸顯關鍵挑戰與未來方向：探討幻覺與泛化的微妙平衡、區分幻覺與一般功能錯誤、以及私有程式庫因缺公開資料使幻覺更難偵測修正的挑戰。本文為理解、評測、緩解 code LLM 幻覺、邁向可靠 AI 奠定基礎並勾勒路徑。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 在程式碼摘要/生成/補全表現亮眼，但易產出<strong>語法正確、貌似合理、卻事實錯誤、不可執行、或與輸入意圖不符</strong>的輸出＝<strong>幻覺</strong>（源自心理學，描述輸出缺乏對輸入或現實的接地）。有研究主張幻覺是生成式推理機制的固有副產物。程式碼任務面臨相同風險但有領域特定代價：程式碼受嚴格語法語義約束、依賴模組元件、經多階段 build/test 管線、且必須執行——核心區別在自然語言供人解讀，PL 須被機器無歧義解析執行同時仍可供人理解。雖 PL 文法約束強（多為上下文無關文法、PDA 建模）但領域特異性更強，故幻覺後果更嚴重（編譯錯誤、安全漏洞）。程式碼智能工作流常含四階段：RAG、模型微調、各種 CoT 推理、迭代精修（圖 1）。</p>
+<p><strong>相較前作</strong>（Lee 等 [67] 僅綜述程式碼生成幻覺），本文四項優勢：(1) 不只生成、擴及摘要/補全/推理等更廣任務；(2) 跨 NLP 與軟工雙視角；(3) 對成因與表現做細粒度分析、擴至架構/語意層（模組化、設計模式違反）；(4) 強調緩解法與幻覺的交互。從三大資料庫（ACM、IEEE、WoS）識別 60 篇研究。<strong>四大 RQ</strong>：RQ1 定義/成因/趨勢；RQ2 NLP 緩解法的發展與分類；RQ3 程式碼專屬緩解法；RQ4 benchmark 與指標。並指出後續研究機會：幻覺與錯誤之別、信心 vs 幻覺、幻覺與泛化能力的關係、私有資料挑戰。</p>
+<h2 id="2-背景">2. 背景</h2>
+<h3 id="21-llm-訓練流程與知識使用">2.1 LLM 訓練流程與知識使用</h3>
+<p>三階段（圖 2）：<strong>預訓練</strong>（大規模無標註文本學語言模式與通識）、<strong>SFT</strong>（標註指令資料提升任務表現）、<strong>RLHF</strong>（對齊人類偏好）。關鍵：RLHF 用負回饋抑制不良 token，而 SFT 缺「哪些 token 不可生成」的顯式訊號，故即使資料多樣，SFT 仍可能強化錯誤 token（尤其常被標註/曝光者）。知識使用技術（圖 3）：<strong>RAG</strong>（從外部知識庫檢索）、<strong>微調</strong>（全參數 vs P-tuning/LoRA 等參數高效法）、<strong>CoT</strong>（中間推理步驟，及 Tree-of-Thoughts、GPT-4o(o3)、DeepSeek-R1 等進階推理）、<strong>agent</strong>（與外部工具/環境互動，迭代計畫-行動-推理）。</p>
+<h3 id="22-程式碼表示的多視角">2.2 程式碼表示的多視角</h3>
+<p>程式碼智能涵蓋生成/補全/搜尋/摘要/修復/翻譯。三個表示視角（圖 5）：(1) <strong>Token 類別</strong>——從詞彙層（token/識別符）、語法語義層（文法結構、PDG）到脈絡語用層（慣用法、編碼慣例、領域約束）；(2) <strong>功能分類法</strong>——Core Logic（核心邏輯：演算法/資料處理）、Supportive Logic（錯誤處理、輔助工具、調用碼）、Verification Logic（測試/斷言碼）；(3) <strong>程式碼智能流程</strong>——從需求理解、程式合成，到後開發（優化、靜態驗證、動態驗證、人在迴路精修）。</p>
+<h2 id="3-方法論">3. 方法論</h2>
+<p>依 Kitchenham [60] + Petersen [103] 確保無偏可重複。<strong>搜尋字串</strong>：程式碼端 <code>(&quot;code generation&quot; OR &quot;code completion&quot; OR &quot;code intelligence&quot; OR &quot;program synthesis&quot;) AND (&quot;hallucination&quot; OR &quot;factual inconsistency&quot; OR &quot;faithfulness&quot;)</code>；NLP 端再加 <code>AND (&quot;review&quot; OR &quot;survey&quot;)</code>。於 2025-05-25 在 ACM、IEEE、WoS 檢索標題/摘要/關鍵詞。去重後得 <strong>60 篇程式碼幻覺研究</strong>（自動檢索 71→去重 61→審查 36，再人工補充）與 <strong>24 篇 NLP 幻覺綜述</strong>（表 1）。<strong>納入/排除準則</strong>：英文、含至少一種程式碼智能方法或為該領域綜述；排除 keynote/灰色文獻、有期刊延伸版的會議論文、未評估效能的新方法。以 Cohen&#x27;s Kappa 量化一致性（試點 0.59「中度」→全量 0.73「高度」），歧見經討論、第三作者仲裁。<strong>資料萃取</strong>（表 2）四類：出版資訊、研究背景、建模技術、benchmark。</p>
+<h2 id="4-rq1定義成因與文獻趨勢">4. RQ1：定義、成因與文獻趨勢</h2>
+<h3 id="41-程式碼幻覺定義">4.1 程式碼幻覺定義</h3>
+<p><strong>程式碼幻覺</strong>＝LLM 在程式碼智能任務的產出<strong>語法正確或語意貌似合理、卻依賴捏造/不存在/脈絡無支撐元素</strong>者 [123]。與一般生成錯誤不同——幻覺源於模型的<strong>過度泛化與不確定下的過度自信機率推理</strong>。綜合 NLP 綜述 [46] 與程式碼分類法 [78,154]，提出統一三維分類（表 3）：</p>
+<ul>
+<li><strong>I. 知識幻覺（Factuality 事實性）</strong>：API 誤用（捏造/誤用真實 API、錯誤方法呼叫或參數型別不符）、函式庫誤用（假設不存在的功能，如 <code>np.linear_regression(X,y)</code>）、語言特性誤用（誤解語言語義/領域構造，如錯誤 <code>async for</code>）。</li>
+<li><strong>II. 功能不對齊（Faithfulness 忠實性）</strong>：功能需求違反（要 merge sort 卻給 bubble sort）、非功能需求違反（效能關鍵卻給 O(n²)）、邏輯流違反（控制邏輯偏離意圖、造成微妙缺陷）。</li>
+<li><strong>III. 環境與相依幻覺（Compatibility 相容性）</strong>：環境衝突（PyTorch&lt;2.0 卻用 <code>torch.compile()</code>）、相依幻覺（假設 <code>openai.ChatAPI</code> 存在）、資源路徑錯誤（寫 <code>/tmp/output.txt</code> 未查目錄）。
+事實性與相容性都涉及正確性，但事實性是程式碼<strong>內在</strong>錯誤（API/語法），相容性是程式碼邏輯正確卻因<strong>環境因素</strong>（缺相依、路徑錯）失敗。</li>
+</ul>
+<h3 id="42-幻覺在-llm-中的進展">4.2 幻覺在 LLM 中的進展</h3>
+<p>幻覺源於病理學/心理學（感知不存在的實體）；對 LLM 指生成內容不忠於輸入或無意義卻語法流暢。LLM 常被「激勵產出自信答案而非表達不確定」（許多評測獎勵作答勝於棄答），這解釋了幻覺程式碼為何貌似合理。</p>
+<h3 id="43-llm-幻覺趨勢">4.3 LLM 幻覺趨勢</h3>
+<p>成因四層（圖 8）：<strong>模型層</strong>（解碼漂移、曝光偏差、知識缺口、虛假泛化）、<strong>提示/輸入</strong>（需求模糊、缺脈絡、過長噪聲提示）、<strong>訓練資料</strong>（低品質/未篩程式碼、領域不匹配）、<strong>專案/環境</strong>（缺相依脈絡、API 版本衝突、環境特定假設）。<strong>趨勢</strong>（圖 6-7）：程式碼幻覺發表 2023 年 5 篇→2024 暴增 20 篇→2025 上半 13 篇；NLP 幻覺綜述 2024 峰值 12 篇。Venue：arXiv 預印本 54%、會議 30%、期刊 16%；貢獻型態：新方法 58%、實證 27%、benchmark 14%、綜述僅 1%（凸顯綜述稀缺）。
+<strong>RQ1 小結</strong>：(1) 幻覺受關注與 LLM 廣泛採用同期；(2) 程式碼幻覺源於模型缺陷、不良提示、噪聲/不匹配訓練資料、執行環境不一致；(3) 分為事實性幻覺、忠實性幻覺、相容性幻覺三類。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>ESAA：LLM 軟體工程自主 Agent 的事件溯源架構（Event Sourcing for Autonomous Agents in LLM-Based Software Engineering） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Elzo Brito dos Santos Filho</p><p>日期：2026-02</p><p>arXiv：2602.23193</p><p><a href="https://arxiv.org/abs/2602.23193" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="esaallm-軟體工程自主-agent-的事件溯源架構">ESAA：LLM 軟體工程自主 Agent 的事件溯源架構</h1>
+<h2 id="摘要與-12-問題背景">摘要與 1–2. 問題背景</h2>
+<p>長程 coding agent 缺少原生 state，context 會退化，且 probabilistic generation 不符合 deterministic execution 的需求。ESAA 以 Event Sourcing／CQRS 分離 agent intention 與 project mutation。Agent 只提出 validated JSON，orchestrator 才能產生 effects、events 與 read model。</p>
+<p>現有 ReAct／multi-agent framework 強在協調，但常依賴 in-memory state 或 snapshot，缺少 immutable audit trail 與 deterministic replay。ESAA 的 source of truth 是 events，不是 repository 當下 snapshot。</p>
+<h2 id="3-架構">3. 架構</h2>
+<p>Canonical artifacts 包括 boundary contract、<code>activity.jsonl</code> 與 <code>roadmap.json</code>。每筆 agent output 必須有 schema version、correlation／task／attempt ID、actor、action、idempotency key 與 payload。Agent 不直接寫檔；patch 經 path、authority、schema 與 idempotency validation 後由 orchestrator 套用。</p>
+<p>Materialized view 是 event stream 的 pure projection。Canonicalization 排序 keys、正規化字串，排除序列化差異；SHA-256 <code>projection_hash</code> 比較 replay 結果與保存 view。</p>
+<p>Multi-agent 以 task claim 與 phase gate 避免重複工作。Append-only store 提供 total order 與 actor attribution，agent 不需把整個歷史放進 prompt，只收到 roadmap 與相關 facts 的 purified view。</p>
+<h2 id="4-方法">4. 方法</h2>
+<p>架構介入固定 pipeline：驗證 output、拒絕違規、由 orchestrator 寫 effect、append event、重投影 roadmap、replay 並 hash verify。公開 repo 以只含 <code>run.init</code> 的 clean state 供重跑。</p>
+<h2 id="5-案例">5. 案例</h2>
+<p>Landing page 有 9 個循序 tasks、49 events，包含 specs、HTML/CSS/JS 與 QA，最後 <code>verify_status=ok</code>。</p>
+<p>Clinical dashboard 有 50 tasks、15 phases、7 components 與 critical path；四 agent 分工 specification、UI/test、implementation、security/docs。15 小時產生 86 events，其中 30 claims、30 completions、17 promotions、8 phase completions、1 init。同一分鐘出現六個 claims，證明並行活動能被 log 序列化。</p>
+<p>但分析時只完成 31/50 tasks、8/15 phases。Table 2 明確標 <code>verify_status=ok (partial)</code>；這是進行中 project 的可重播狀態，不是完整交付成功。</p>
+<h2 id="6-結果與討論">6. 結果與討論</h2>
+<p>兩案 <code>output.rejected=0</code>，顯示受測模型遵守 contract，但沒有 baseline 可估 failure reduction。Replay 可重建 view 並偵測 divergence。事件序列可看 agent specialization 與 phase progression。</p>
+<p>Purified view 避免把 raw long history 放入 prompt。Boundary denial 降低 compromised agent 的 write blast radius。成本估計為每 call 200–500 tokens、每 event 低於一秒、86-event log 約 15KB。</p>
+<h2 id="7-有效性威脅">7. 有效性威脅</h2>
+<p>兩個 controlled cases、temperature 0，不能外推 enterprise repository。Landing page／clinical POC 不涵蓋 CI、migration、monorepo。<code>verify_status</code> 與 <code>output.rejected</code> 測 compliance／reproducibility，不測 design quality、business value、coverage 或 maintainability。n=2 不支援統計結論。</p>
+<h2 id="8-結論">8. 結論</h2>
+<p>ESAA 證明「LLM 提意圖、deterministic reducer 執行」可形成可稽核 vertical slice。未來工作包括 CLI、remote repo、concurrent file conflict、time-travel diff、SWE-bench 與 model checking。</p>
+<p>原文需校正：摘要把 clinical project 描述成成功結束，但正文是 31/50 tasks 的 partial verified state；翻譯以正文與 Table 2 為準。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

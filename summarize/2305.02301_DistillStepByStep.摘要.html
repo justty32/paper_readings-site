@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《逐步蒸餾！用更少訓練資料與更小模型勝過更大的語言模型（Distilling Step-by-Step!）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Cheng-Yu Hsieh, Chun-Liang Li, Chih-Kuan Yeh, Hootan Nakhost, Yasuhisa Fujii, Alexander Ratner, Ranjay Krishna, Chen-Yu Lee, Tomas Pfister（University of Washington / Google Cloud AI Research / Google Research，ACL 2023 Findings）</p><p>日期：2023-05</p><p>arXiv：2305.02301</p><p><a href="https://arxiv.org/abs/2305.02301" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="逐步蒸餾用更少訓練資料與更小模型勝過更大的語言模型distilling-step-by-step重點摘要">《逐步蒸餾！用更少訓練資料與更小模型勝過更大的語言模型（Distilling Step-by-Step!）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Distilling step-by-step（逐步蒸餾）</strong>：不把 LLM 當「產雜訊標籤的機器」，而是當「會推理的老師」——用 CoT prompting 從 LLM 抽出<strong>解釋標籤的自然語言理據（rationale）</strong>，把「預測標籤」與「生成理據」擺成<strong>多任務（multi-task）訓練</strong>去教小模型；理據裡含的任務知識（如「面積＝長×寬」）本來要大量資料才學得到，如今直接注入，於是<strong>用更少資料把更小的模型訓到勝過 LLM</strong>——770M T5 只用某 benchmark 80% 的資料就勝過 540B PaLM，且<strong>部署期完全不需要 LLM</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 雖強但難部署（一個 175B 模型至少要 350GB GPU 記憶體，SOTA 已逾 500B），實務上退而訓練小型專用模型，但兩條既有路都很貴：<strong>finetuning</strong> 需昂貴人工標註；<strong>distillation（蒸餾）</strong> 需大量難取得的無標註資料來讓 LLM 產生偽標籤。核心痛點：兩者都要「大量」訓練資料才能逼近 LLM 表現。本文要同時砍掉「資料量」與「部署模型尺寸」兩項成本。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>兩步驟框架</strong>：
+<ol>
+<li><strong>抽理據（§3.1）</strong>：對無標註資料，用 few-shot <strong>CoT prompting</strong>（prompt 為 （輸入 xᵖ, 理據 rᵖ, 標籤 yᵖ） 三元組示範）驅動 LLM，對每筆輸入同時生出<strong>理據 r̂ᵢ ＋ 標籤 ŷᵢ</strong>。</li>
+<li><strong>多任務訓小模型（§3.2）</strong>：關鍵設計。不是把理據當「額外輸入」（那樣測試期仍離不開 LLM），而是把小模型 f(xᵢ)→(ŷᵢ, r̂ᵢ) 訓成<strong>同時輸出標籤與理據</strong>：損失 ℒ = ℒ_label + λ·ℒ_rationale。輸入前置 task prefix（[label] / [rationale]）切換兩任務。測試期只要 [label]，<strong>不生理據、不呼叫 LLM，零額外開銷</strong>。</li>
+</ol>
+</li>
+<li><strong>為何多任務、而非把 [理據，標籤] 串成單一序列輸出</strong>：ablation 顯示單任務串接（如 Ho et al./Magister et al. 作法）有時反比標準 finetuning 更差；多任務把兩者分開學，穩定且一致更好。</li>
+</ul>
+<h2 id="結果444-個-nlp-benchmarke-snlianlicqasvampllm540b-palm小模型t5">結果（444 個 NLP benchmark：e-SNLI、ANLI、CQA、SVAMP；LLM＝540B PaLM，小模型＝T5）</h2>
+<ul>
+<li><strong>省資料</strong>：對比標準 finetuning，平均少用 &gt;50% 訓練樣本（最多省 &gt;85%）即勝出——e-SNLI 只要 <strong>12.5%</strong> 標註資料就贏過用 100% 資料的標準 finetuning；無標註設定下同樣只要 12.5% 資料即勝過標準蒸餾。</li>
+<li><strong>縮模型</strong>：用最多小 <strong>2000×</strong> 的模型勝過 few-shot CoT 的 540B PaLM（e-SNLI 上 220M T5）；ANLI/SVAMP 用 770M（&gt;700× 小）、CQA 用 11B（&gt;45× 小）。無標註時 4 個資料集有 3 個以 11B T5（&lt;3% PaLM 尺寸）超越 PaLM。</li>
+<li><strong>雙省同時達成</strong>：ANLI 上 <strong>770M 模型＋僅 80% 資料</strong>即勝 PaLM，而標準 finetuning 用滿 100% 資料仍追不上。</li>
+<li><strong>ablation</strong>：理據來自 20B GPT-NeoX 仍有增益，但不及 540B PaLM（老師越大、理據品質越高、增益越大）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>需人工寫 ~10-shot 的 CoT 示範（可用 zero-shot CoT 緩解）。</li>
+<li>訓練期有輕微額外計算開銷（測試期靠多任務設計避開）。</li>
+<li>理據品質是關鍵變數；LLM 在更複雜推理/規劃任務上理據可能不可靠。小模型也會繼承老師 LLM 的偏見。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>對 ai_core §2「貴稀有智能＝資產工廠 vs 便宜高頻智能＝資產消費者」是一個<strong>乾淨的落地範式</strong>：LLM 的角色被限定在<strong>一次性離線生產「理據」這種高價值資產</strong>，產出被結晶進小模型的權重；之後每一次高頻推論都由便宜的確定性小模型消費，<strong>部署期呼叫 LLM 的次數＝0</strong>。這正是 §3.3 成本梯度的終點站——把最貴的節點徹底移出線上熱路徑。</li>
+<li>對 §3.6「固化引擎」給出一個<strong>具體機制原型</strong>：LLM 反覆處理的「怎麼從輸入推到答案」的推理，被理據監督壓成小模型可執行的權重；雖非結晶成「可讀程式碼／抽象庫」，但示範了「把 LLM 智能沉澱成便宜確定性資產」的一條可量測路徑（省 &gt;85% 資料、縮 2000× 模型皆有數字）。</li>
+<li>與已入庫的 <strong>STaR（2203.14465，自產理據自舉、迭代精修同一個大模型）</strong> 恰成對照：STaR 是<strong>同模型自舉</strong>（rationale 用來 fine-tune 產生它的模型本身），本文是<strong>跨模型蒸餾</strong>（大模型產理據→教一個完全不同的、小 500–2000× 的模型），目標不是讓大模型更強，而是<strong>剃除對大模型的部署依賴</strong>。兩者都把「理據」當一等公民監督訊號，但一個朝上（自我進化），一個朝下（沉澱成便宜資產）。適合思考 ai_core「如何讓 LLM 依賴隨系統成熟而遞減」的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2305.02301_DistillStepByStep.zh-TW.html"><code>../translate/2305.02301_DistillStepByStep.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

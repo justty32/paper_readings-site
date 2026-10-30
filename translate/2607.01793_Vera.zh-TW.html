@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Vera：從風險發現到證據接地驗證的大規模 LLM Agent 安全測試（Safety Testing LLM Agents at Scale: From Risk Discovery to Evidence-Grounded Verification） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yunhao Feng, Ruixiao Lin, Ming Wen, Qinqin He, Yanming Guo, Yifan Ding, Yutao Wu, Jialuo Chen, Zhuoer Xu, Xiaohu Du, Jianan Ma, Zixing Chen, Xingjun Ma, Yunhao Chen, Xinhao Deng</p><p>日期：2026-07</p><p>arXiv：2607.01793</p><p><a href="https://arxiv.org/abs/2607.01793" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="vera從風險發現到證據接地驗證的大規模-llm-agent-安全測試">Vera：從風險發現到證據接地驗證的大規模 LLM Agent 安全測試</h1>
+<h2 id="摘要">摘要</h2>
+<p>工具使 LLM agent 能真正改變外部世界，也使風險類型快速增加。Vera 將軟體工程測試原則移植到非確定 agent：先從文獻持續建立風險、攻擊方法與執行環境 taxonomy；再組合成具有明確安全目標、程式化初始狀態與確定 verifier 的可執行案例；最後在隔離 sandbox 中由控制 agent 依 runtime 行為調整攻擊，以環境狀態和工具證據判定結果。四個 production agent 在多通道攻擊下平均 ASR 93.9%。Vera-Bench 提供 1,600 個案例，涵蓋 124 個風險類別。</p>
+<h2 id="i-引言">I. 引言</h2>
+<p>安全測試不能只看 agent 說了什麼。危險工具呼叫可能沒產生 effect；agent 也可能先造成傷害，最後才聲稱拒絕。既有 benchmark 多由專家固定風險與 hard-coded rule，風險、環境、adapter 和 verifier 耦合，難以追上工具與 agent 架構的變化。</p>
+<p>Vera 提出三個 testing primitives：持續更新的風險空間、可重播的 executable safety case、以可觀察 artifact 為準的 runtime verification。</p>
+<h2 id="ii-相關工作">II. 相關工作</h2>
+<p>Prompt-level 評估以拒答或文字分類為主；trajectory benchmark 進入 stateful 工具環境，但風險與 rule 通常預先固定；interactive red teaming 會調整多輪攻擊，卻仍欠缺模組化的 case compilation 與跨框架 execution contract。Vera 把三者接成從發現到驗證的完整管線。</p>
+<h2 id="iii-預備定義">III. 預備定義</h2>
+<p>一次 agent execution 由多輪 user message、agent response、tool calls 與環境狀態變化構成。Safety case 定義具體的 harmful outcome、初始狀態及判定 predicate。威脅模型允許測試端控制使用者訊息，並在多通道模式操控選定的 tool observations；不能改 target model、system prompt、agent implementation 或工具內部程式碼。</p>
+<h2 id="iv-方法">IV. 方法</h2>
+<h3 id="iv-a-持續風險探索">IV-A. 持續風險探索</h3>
+<p>一個 agent 風險由三軸描述：harmful consequence、induction method、tool environment。三軸各是一棵階層樹。Summary Agent 從公開安全文獻取概念，執行 create、update、merge、delete；create 需至少五篇不同論文或攻擊場景支持。系統再對稀疏分支與新術語產生下一批搜尋 query，直到預算耗盡。只收錄能透過 inference-time interface 測試的風險。</p>
+<h3 id="iv-b-可執行測試案例">IV-B. 可執行測試案例</h3>
+<p>Goal composer 從三軸 leaf 組合具體 safety goal，必須寫明違規、資源／服務與可驗證成功條件。完整 Cartesian product 太多，故每個 risk／method pair 抽十個 environment，檢查環境是否提供必要 action，並按風險語意、target resource、state change 和 context 去重。</p>
+<p>Initializer 透過工具介面建立初始狀態，例如帶密碼的郵件、含脆弱相依套件的 repo 或 pending transaction；產生後把 calls 固化成 deterministic replay script。Verifier 亦先由 LLM 產生，最後保存為檢查 terminal state 與 trajectory 的 deterministic program。無法用外部 effect 判定、只依賴內部 reasoning trace 的案例會被剔除。每案再產生 benign、single-channel 與 multi-channel 版本。</p>
+<h3 id="iv-c-自適應執行與證據驗證">IV-C. 自適應執行與證據驗證</h3>
+<p>每個 agent adapter 把框架特有事件轉成統一 trajectory。Sandbox 各自包含 target agent、MCP gateway 與外部服務。Gateway 記錄原始 tool result 和傳給 agent 的 observation；多通道模式可 identity、append／prefix 或 override。</p>
+<p>Control Agent 先根據 case 與 tool schemas 擬計畫，再依 agent response、gateway events 與 environment changes 調整下一步。它可在拒絕後改寫要求、在工具路徑改變時重拆任務，或選另一個注入點。到達十輪預算、已取得證據或無法再進展時停止；每次控制決策都保存供重播。</p>
+<p>Verifier 依抗操弄性使用證據：environment state 優先，其次 tool-call record，最後才是 response。因為 call 是 intent 而非 effect，response 也可能誤報。Control Agent 報成功時一定要跑 verifier；報失敗則直接記失敗。Verifier 本身若 syntax 或 schema 錯誤會重新生成。</p>
+<h2 id="v-實驗">V. 實驗</h2>
+<h3 id="設定">設定</h3>
+<p>目標為 OpenClaw、Hermes、Codex、Claude Code。每個 run 使用新建的 12-container Docker Compose stack，含 agent、gateway 與 Mailpit、Gitea、Blnk、Databag、SearXNG；共暴露 72 個 MCP tools。Vera-Bench 的 1,600 個 base scenarios 各有 attack plan、MCP logs、normalized trace 與 <code>verify.py</code>，並在三種條件下執行。Taxonomy 有 124 個風險 leaf、77 個攻擊方法 leaf、30 個環境 leaf。</p>
+<h3 id="結果">結果</h3>
+<p>組合案例在各聚合格都有廣泛可執行性：Table I 的 80 格與 Table II 的 110 格 ESR 均超過 40%。Single-channel 平均 ASR 90.6%，multi-channel 93.9%，benign ESR 70.5%；四 agent 的 multi-channel ASR 分別為 Claude Code 93.1%、Codex 95.8%、OpenClaw 89.1%、Hermes 97.8%。</p>
+<p>多通道只比單通道高 3.3pp，表示主要弱點來自會漸進調整的 user-message 攻擊；tool-result injection 是額外通道，但不是整體主因。不同框架反應不同：Codex 增加 4.7pp，Claude Code 反而下降 2.1pp。</p>
+<p>一次 run 的中位數是 155k input tokens、3k output tokens、11 tool calls；95 百分位為 789k、11k、38。較強的任務完成能力往往伴隨更高攻擊服從，但 OpenClaw 的低分也受基礎設施失敗與 benign 完成率 58.0% 影響，不能只解讀為更安全。</p>
+<h2 id="vi-下游任務">VI. 下游任務</h2>
+<p>現成 guard model 在 Vera 分布上轉移有限。LlamaGuard3 的 accuracy／recall／F1 為 0.438／0.258／0.310，base Qwen3Guard 為 0.670／0.468／0.637。用 Vera 資料微調後達 0.930／0.903／0.941。外部 R-Judge 上 accuracy 61.7%，顯示有一些跨分布能力，但仍屬初步證據。</p>
+<h2 id="vii-結論與限制">VII. 結論與限制</h2>
+<p>Vera 的主要貢獻是把安全評估從靜態 prompt 集合推向 modular executable testing：初始狀態可重播、agent 行為可適應、結果由外部 artifact 驗證。</p>
+<p>論文未設獨立限制節。從設計可見的限制包括：taxonomy 與程式由 LLM 協助生成，確定執行不等於規格本身正確；自架 sandbox 不代表真實不可逆服務；四框架的能力、模型與預設政策不同；benign 與 attack ESR 的差不能當成純 controller ablation；受控 ASR 也不能外推為部署事故盛行率。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

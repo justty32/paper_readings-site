@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>GAF: Gaussian Action Field as a Dynamic World Model for Robotic Manipulation 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Ying Chai、Litao Deng、Ruizhi Shao、Jiajun Zhang、Liangjun Xing、Hongwen Zhang、Yebin Liu</p><p>日期：2025-06-17（v1，cs.RO）</p><p>arXiv：2506.14135</p><p><a href="https://arxiv.org/abs/2506.14135" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="gaf-gaussian-action-field-as-a-dynamic-world-model-for-robotic-manipulation-重點摘要">GAF: Gaussian Action Field as a Dynamic World Model for Robotic Manipulation 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>GAF 把操作政策的中介表徵從靜態影像或三維幾何提升成帶 motion attributes 的 dynamic Gaussians：同一個場既能查現在場景、預測未來場景，也能從 Gaussian displacement 估計機器人初始動作，再由 diffusion refinement 把幾何上合理但受遮擋雜訊影響的動作修成可執行序列。</p>
+<h2 id="問題與方法">問題與方法</h2>
+<ul>
+<li><strong>問題</strong>：Vision-to-Action 直接從影像預測控制，缺少顯式三維幾何；Vision-to-3D-to-Action 雖能表示空間結構，通常仍把場景當成靜態。操作真正關心的是物件與 gripper 接下來如何一起移動，若中介表徵不含時間，action inference 便只能間接猜測動態。</li>
+<li><strong>V-4D-A 與 Gaussian Action Field</strong>：每個 Gaussian primitive 除了位置、顏色、不透明度、旋轉與尺度，還帶一個可學習的 displacement。兩張未提供外部 pose 的 RGB 影像經共享 ViT 與 cross-view attention 編碼，再由 Gaussian center、appearance parameter 與 motion prediction 三個 heads，重建統一 canonical space 中的 dynamic Gaussian field。</li>
+<li><strong>三種 query</strong>：current query 用目前 Gaussians render novel views；future query 把 displacement 加到 Gaussian centers，render 預測的未來狀態；action query 取出與操作相關的 motion attributes，透過目前與未來 point clouds 的 registration 估計 end-effector 初始動作。這讓世界表徵不是只供視覺化，而能直接被動作規劃查詢。</li>
+<li><strong>Diffusion refinement</strong>：初始動作受部分觀測、遮擋與重建誤差影響，接觸時尤其容易穿透或抓錯位置。系統把初始 gripper trajectory 投影回多視角影像，形成 Actionable RGB Guidance，連同初始動作與 gripper state 餵入 diffusion model 去雜訊。執行後再取得新觀測並重跑整個閉迴路。</li>
+</ul>
+<h2 id="主要實驗與作者自報結果">主要實驗與作者自報結果</h2>
+<p>實驗選用 RLBench 的 <code>9</code> 個操作任務；每個任務以 <code>20</code> 條 demonstrations 訓練，並在 <code>100</code> 個隨機初始化 episodes 上評估（均為作者自報）。比較對象包含 V-A 類的 ACT、Diffusion Policy、R&amp;D-AI，以及 V-3D-A 類的 ManiGaussian。</p>
+<p>場景重建方面，GAF 相對 ManiGaussian 在 current scene 的平均改善為 <code>+11.5385 dB</code> PSNR、<code>+0.3864</code> SSIM 與 <code>-0.5574</code> LPIPS；future prediction 則為 <code>+10.5311 dB</code> PSNR、<code>+0.3856</code> SSIM 與 <code>-0.5757</code> LPIPS（均為作者自報）。作者據此認為 motion-augmented Gaussians 同時保留了 novel-view 幾何細節與時間一致性，能提供較準確的 action prior。</p>
+<p>操作成功率表中的百分比平均值，GAF 為 <code>54.11</code>，當時 SOTA R&amp;D-AI 為 <code>43.78</code>；作者將平均改善報為 <code>10.33%</code>（均為作者自報）。逐任務表中的百分比值，GAF 在 Toilet Seat Down 為 <code>71</code>、Close Microwave 為 <code>83</code>、Lift Lid 為 <code>100</code>（均為作者自報）。附錄的 data-efficiency 實驗另顯示，GAF 用 <code>15</code> 條 demos 已達 peak performance 的 <code>90%</code>（作者自報）。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>GAF 的關鍵不是把另一種三維重建器接到政策前面，而是讓 world representation 本身帶有可查詢的 motion。current、future 與 action 三種 query 共用一套 Gaussian field，讓 perception、prediction 和 control 之間的中介資訊可見；diffusion refinement 再處理顯式 motion estimation 難以消除的接觸誤差。這個分工同時保留幾何可解釋性與資料驅動修正能力。</p>
+<p>作者在 Discussion 明確指出，目前方法專注幾何建模與 motion prediction，缺少 semantic 或 task-level understanding。也就是說，GAF 能估計場景怎麼動，卻不能單靠自身理解自然語言目標或高階任務脈絡。作者把加入 language model、發展成 VL-4D-A，列為後續方向。</p>
+<h2 id="對讀者的價值ai_core-接點">對讀者的價值／ai_core 接點</h2>
+<p>這篇對 ai_core 的啟發，是把 world model 的輸出設計成多個有明確語意的 query，而不是一個只能被下游神經網路默默消化的 latent blob。現在狀態、預測狀態與候選動作各有獨立產物，因而可以分別檢查重建品質、時間一致性與執行可行性。初始 action 與 refined action 的分層也很實用：可解釋的幾何程序先提出有根據的候選，學習式模組只負責修正它在遮擋與接觸上的殘差。若將這種模式用於 ai_core 的固化引擎，便可讓 deterministic component 產生帶 provenance 的初稿，再把生成式修正限制在可驗證的局部範圍；最終執行前仍保留逐層憑證，而不是讓整段決策退化成一次不可追查的端到端猜測。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2506.14135_GAF.zh-TW.html"><code>../translate/2506.14135_GAF.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2412.14076_sDTM_SparseTreeOps.zh-TW.html">回 2412.14076_sDTM_SparseTreeOps.zh-TW 目錄</a>　<a href="02_%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>神經網路在<strong>組合泛化</strong>上持續吃力，缺乏大規模預訓練時更甚。混合式神經符號法雖能展現類人組合泛化，卻陷入符號 AI 的老問題——<strong>可擴展性與彈性差</strong>，根因是其核心仍是符號計算、把可擴展可彈性的神經計算降格為「參數化符號系統」。本文研究一個<strong>統一式</strong>神經符號系統：網路中的變換可同時解讀為符號與神經計算。在兩方面擴展 <strong>可微樹機（DTM）</strong>：(1) 用符號結構的<strong>稀疏向量表示</strong>大幅提升效率；(2) 從受限的 tree2tree 推廣到更一般的 seq2seq。改進後的模型保留原泛化能力，且因存在<strong>一條全神經路徑</strong>，避開了「抬高符號計算凌駕神經計算」之神經符號法的陷阱。</p>
+<hr />
+<h2 id="1-引言">1 引言</h2>
+<p>DL 在語言任務表現亮眼卻難跨出訓練分佈——對<strong>新詞</strong>、<strong>舊詞新語境</strong>、<strong>更長/更深遞迴的新句構</strong>都吃力。資料增強只是降低需泛化的程度，治標不治本。人類靠<strong>組合結構</strong>（內容單元如詞，嵌入如句法樹的結構中）能解讀從未見過的構造（如「At the airport I smiled myself an upgrade」）。純符號法理論誘人但難普及；純連結派（Transformer）則樣本效率與穩健泛化不足。混合式神經符號法雖兼具組合性與彈性，卻因<strong>符號核心</strong>而脆弱。本文走不同路：<strong>符號操作發生在向量空間</strong>——對「向量嵌入的符號結構」做乘加，而非對單個神經元。
+貢獻：(1) <strong>稀疏座標樹 SCT</strong> 表示樹；(2) <strong>位移操作（Bit-Shift Operating）</strong>——SCT 上系統化、平行化的樹操作；(3) <strong>sDTM</strong>——對 DTM 的架構改進，大降參數與記憶體；(4) 把 DTM 推廣到 seq2seq（序列轉樹）；(5) 大量 baseline 對比，證 sDTM 跨多種任務的強泛化。</p>
+<h2 id="2-相關工作">2 相關工作</h2>
+<p>樹結構泛化橫跨 CS/語言學/認知科學；經典 NLP 從文本抽取結構（constituency/dependency parse）。近期分析顯示 seq2seq 模型潛表示含結構資訊，但不證明表示本身是樹狀；受 <strong>TPR</strong> 與 chart parsing 啟發的分析說明表示如何在訓練中逐漸樹化。顯式樹結構網路（樹 RNN/LSTM/Transformer）常<strong>在 OOD 上贏不過非結構版</strong>——可能因泛化需同時具備結構化表示<strong>與</strong>尊重結構的操作。另一線是用神經網路參數化符號系統/模糊邏輯。**VSA（向量符號架構）**在高維空間實作符號演算法但常缺學習元件。本文延伸 Soulos et al.（2023）的 DTM（tree2tree），做出參數更少、記憶體更省的 seq2seq 稀疏版。</p>
+<h2 id="3-在稀疏座標樹上的可微樹操作">3 在稀疏座標樹上的可微樹操作</h2>
+<p>原 DTM 用 <strong>TPR</strong>（張量積）表示樹，維度＝embedding 維 × 節點數，而節點數又隨深度指數成長 → 記憶體很快爆炸。</p>
+<h3 id="31-稀疏座標樹sct">3.1 稀疏座標樹（SCT）</h3>
+<p>要一個把<strong>結構與內容分離</strong>到不同子空間的編碼（不同於 RNN/Transformer 的聯合非分解表示），以便獨立操作兩空間——這是組合性的本質。SCT 源自稀疏座標（COO）格式（索引[整數]、值[任意]、尺寸[整數]；未列索引者值為 0）。賦予結構意義：把索引的一個維度定義為「值向量所佔的樹位置」，採 <strong>Gorn 位址</strong>——索引轉二進位、由右往左讀，0＝左枝、1＝右枝；為區分前導零與左枝，起始位設 1（最高位 1 左邊的 0 皆為未填、非左枝）。<strong>空節點直接跳過</strong> → 大省記憶體。SCT ≡ 把 TPR 的角色基底限制為<strong>標準基底</strong>（見附錄 A.1）。</p>
+<h3 id="32-可微樹操作">3.2 可微樹操作</h3>
+<p>僅需小函式庫三件：<strong>left</strong>（左子，即 LISP 的 car）、<strong>right</strong>（右子，cdr）、<strong>cons</strong>（由左右子樹建新樹）。此三者＋條件分支＋等號檢查即<strong>圖靈完備</strong>。因值與索引分離，不必像原 DTM 預存/套線性變換，改用索引+位移+加法高效計算：</p>
+<ul>
+<li><strong>left</strong>：取偶索引（最低位為 0，即根左側所有節點）及其值，索引<strong>右移</strong>一位。</li>
+<li><strong>right</strong>：對稱，取奇索引、並忽略位置 1（移除舊根）。</li>
+<li><strong>cons</strong>：左右子樹索引<strong>左移</strong>，右子樹索引再 +1，並可給新根節點一個新值。
+要可微地學「多步程式」：對 left/right/cons 三操作與候選樹取<strong>加權和</strong>（操作權重和為 1），結果經 <strong>coalesce</strong>（合併重複索引：同索引的值相加）。（式 1）</li>
+</ul>
+<h2 id="4-稀疏可微樹機sdtm">4 稀疏可微樹機（sDTM）</h2>
+<p>延伸 DTM；計算層級相似但實作大幅省參省記憶體，並能處理 seq2seq。</p>
+<h3 id="41-總覽">4.1 總覽</h3>
+<p>由 <strong>agent / interpreter / memory</strong> 構成。<strong>Interpreter</strong> 執行式 1（套 3.2 位移操作並加權），輸出寫入下一可用記憶槽，最後一槽為輸出。<strong>Agent</strong> 是 Transformer encoder，吃記憶編碼、產出式 1 的輸入（操作權重與兩棵引數樹）；以 <code>&lt;OP&gt;</code>、<code>&lt;ROOT&gt;</code> 兩特殊 token 代表操作與根；每棵寫入記憶的樹會被編成定維 token 餵給 agent；agent 對記憶中諸樹做加權和來軟選引數。<strong>注意</strong>：agent 用 Transformer 隱式參數化條件分支/控制流 → sDTM 仍可能沾染 Transformer 的泛化弱點（結果顯示部分任務泛化問題仍在）。</p>
+<h3 id="42-注意力池化pooling-by-attention">4.2 注意力池化（Pooling by attention）</h3>
+<p>每棵記憶樹需定維編碼。改用 <strong>PMA（Pooling by Multi-head Attention）</strong>：以 query-key 注意力做加權和取代原 DTM 的線性變換。注意力對 key/value 順序置換不變，但池化須考慮樹位置 → 把位置索引轉二進位向量（為避免全正不對稱，<strong>左枝記 −1、右枝記 +1</strong>），與該位 token embedding <strong>串接</strong>後輸入池化（類似 Shiv &amp; Quirk 的樹位置編碼，但用串接+線性混合而非相加）。query 為獨立可學參數、不依輸入。</p>
+<h3 id="43-樹剪枝">4.3 樹剪枝</h3>
+<p>雖然 SCT 讓填得少的樹省記憶體，但模型混合三操作（尤其 cons 會合併兩樹、增大表示）使樹<strong>逐漸變稠密</strong>（任何操作機率永不真為 0）。為保稀疏，<strong>只留 magnitude 最大的 top-k 節點</strong>；k 為可依記憶體調的超參。</p>
+<h3 id="44-詞彙正則化">4.4 詞彙正則化</h3>
+<p>為助詞彙泛化，對 token embedding 加標準多元正態雜訊（餵入前每位置每棵樹各採樣）作為正則化（消融見附錄 A.3，證其重要）。</p>
+<h3 id="45-處理序列輸入輸出">4.5 處理序列輸入輸出</h3>
+<ul>
+<li><strong>seq2tree</strong>：把每個輸入 token 當「只有根節點被佔」的樹，記憶初始化為 n 棵樹（每 token 一棵）。因 agent 注意力置換不變，對前 n 個 token 加<strong>隨機正弦位置編碼</strong>（採遞增整數而非固定位置）以區分同詞異序。因此設定下輸入由下而上處理，<strong>限制只用 cons</strong>——與 Chomsky 極簡方案的單一操作 <strong>merge</strong> 理論對齊。</li>
+<li><strong>seq2seq</strong>：把輸出序列轉樹——有 parser 就用 parser；無則用 **LAUD（左對齊均勻深度葉）**嵌入（非終端節點皆同 → 可硬編 cons 的根引數，插 <code>&lt;EOB&gt;</code> 標枝結束，類似 <code>&lt;EOS&gt;</code>）。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

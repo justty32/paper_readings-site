@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《語言模型級聯（Language Model Cascades）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：David Dohan, Winnie Xu, Aitor Lewkowycz, Jacob Austin, David Bieber, Raphael Gontijo Lopes, Yuhuai Wu, Henryk Michalewski, Rif A. Saurous, Jascha Sohl-dickstein, Kevin Murphy, Charles Sutton（Google Research）</p><p>日期：2022-07</p><p>arXiv：2207.10342</p><p><a href="https://arxiv.org/abs/2207.10342" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="語言模型級聯language-model-cascades重點摘要">《語言模型級聯（Language Model Cascades）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Language Model Cascades（語言模型級聯）</strong>：一篇立場論文（position paper），主張把「重複呼叫單一語言模型」與「把多個模型串接起來」這類做法，統一理解為<strong>一種對字串值隨機變數定義聯合機率分布的機率程式（probabilistic program）</strong>——用擴充到字串型別的<strong>機率程式語言（PPL）<strong>來描述，並把 scratchpad／chain of thought、驗證器（verifiers）、STaR、selection-inference、工具使用等</strong>既有技術全部形式化</strong>為這種程式；作者把由此得到的程式稱為 <strong>language model cascade（語言模型級聯）</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>提示式（prompted）與微調式語言模型已展現亮眼的少樣本能力；在測試期<strong>重複與單一模型互動</strong>、或<strong>組合多個模型</strong>能進一步擴展能力。近期出現大量彼此不同的做法（scratchpad、CoT、learned verifiers、selection-inference、bootstrapping／STaR、工具使用、引導定理證明器等），但它們<strong>各自為政、缺乏統一語言</strong>。</li>
+<li>這些組合本質上都是<strong>機率模型</strong>：可用圖模型（graphical models）語言表達，只是隨機變數的值是<strong>字串</strong>這種複雜資料型別，而非整數／浮點數。一旦涉及<strong>控制流與動態結構</strong>（例如迴圈次數隨資料而定、依停止準則展開），就需要<strong>機率程式設計</strong>的技術，才能在<strong>同一種語言</strong>裡實作各異的模型結構與推論策略。作者要提供的正是這個統一框架。</li>
+</ul>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>核心定義（cascade）</strong>：一個<strong>機率程式</strong>，其中含有<strong>由 LM 取樣的字串值隨機變數</strong>；程式定義了這些變數的聯合分布，可對某些變數做「觀測（observe／condition）」，再對未知變數做推論（infer）。作者用嵌入 Python 的、以 effect handlers＋coroutine 實作的 trace-based PPL 來承載，支援任意控制流與遞迴（受 Pyro／NumPyro／PyMC4 啟發）。</li>
+<li><strong>統一表述</strong>：<code>p(A|Q,θ)</code> 是零樣本問答；加入輔助「思考」變數 T 得 <code>p(A,T|Q)=p(A|T,Q)p(T|Q)</code> 即 scratchpad／CoT；對 T 求和不可行，故用 beam search 的 MAP 近似，或用 Self-Consistency 的前向取樣＋多數投票。</li>
+<li><strong>把既有方法逐一納入框架</strong>：
+<ul>
+<li><strong>Scratchpad／CoT</strong>：問題-思考-答案（Q→T→A）模型，few-shot 三元組作為 plate 內的觀測節點，用祖先取樣（ancestral sampling）推論。</li>
+<li><strong>半監督與 STaR</strong>：少量 (Q,T,A) 監督三元組 DS ＋大量 (Q,A) 對 DL，把 T 當隱變數；STaR 被詮釋為在此級聯上的<strong>隨機 EM</strong>——E 步用拒絕取樣補全能導出正確答案的 thought（失敗則從 <code>p(T|Q,A)</code> 做「rationalization」以近似後驗），M 步再微調。</li>
+<li><strong>Selection-Inference</strong>：兩個互動的 LM 模組——selection 從事實集選子集、inference 依子集推出新事實，可迭代做多步推理。</li>
+<li><strong>Verifiers（驗證器）</strong>：加一個 <code>V∈{0,1}</code> 驗證標籤，訓練獨立模型判斷 thought/answer 是否有效；可在取樣時拒絕錯例、或把 thought 生成器條件在「驗證正確」上（呼應 RL as inference、decision-transformer）；可延伸為 N 步驗證，且驗證器可輸出<strong>自然語言批評</strong>。</li>
+<li><strong>工具使用</strong>：把對外部工具（如計算器、瀏覽器）的呼叫直接寫進程式，即可用 simulation-based inference 等技術做推論。</li>
+<li><strong>Twenty Questions</strong>：把 Alice／Bob 兩代理的對話建模為<strong>兩條互動的馬可夫鏈交換字串</strong>，可視為字串動作的 RL、或條件在目標狀態上的推論問題。</li>
+</ul>
+</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>這是一篇<strong>立場／框架論文</strong>，主要貢獻是<strong>統一形式化</strong>而非大規模實證。唯一報告的實驗是 BIG-bench 的 <strong>Twenty Questions</strong>：用 <strong>LaMDA 137B</strong>、以溫度 1.0、每個概念前向取樣 50 條對話、以目標概念是否出現在 Bob 提問中判成功，模型解出 <strong>29% 的任務</strong>（40 個概念中答對 11 個最不抽象的，如 apple、dinosaur、car、love、beauty）。</li>
+<li>附錄給出可執行的 Python 級聯範例（question_answer、question_thought_answer、self-critique、逐句驗證器、selection-inference、Twenty Questions），以及一個 <code>infer(program, observe=..., examples=...)</code> 的推論 API。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>推論困難是核心技術挑戰</strong>：字串值變數上的機率推論很難；本文除<strong>拒絕取樣</strong>外未評估其他推論／訓練期方法。</li>
+<li>定位是<strong>立場論文</strong>，未做大規模基準比較。</li>
+<li>作者指出的未來方向：把 LM 訓練成「填空」以<strong>模擬後驗推論</strong>（LM 當 proposal／guide 網路，呼應 foundation posteriors）、探索微調而非只用少樣本提示、以及用**機率程式歸納（program induction）**去搜尋能解任務的級聯結構（而非假設固定程式結構）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>這是 ai_core 核心比喻的學術理論框架源頭。</strong> ai_core §1 的關鍵領悟把工作單位描述成「像<strong>符號神經網路——一張計算圖，多數節點是確定性的 shell／py 函式，少數節點是那個隨機的 LLM</strong>」，並把單位視為「<strong>帶 LLM 留白的程序／一整條調用鏈</strong>」。本文正是把「多次 LM 呼叫＋控制流＋其他組件（工具、驗證器、確定性緩衝節點）」<strong>形式化為一個機率程式（cascade）</strong>：確定性節點對應 py/shell 函式，隨機的字串節點對應 LLM 留白。<strong>cascade ＝ ai_core「調用鏈／計算圖」比喻的形式化。</strong> 值得注意的是本文的 Verifier 圖裡明確標出「確定性 buffer 節點（拼接輸入）＋隨機節點」的混合——與 ai_core「多數確定性、少數隨機」的計算圖直觀完全同構。</li>
+<li><strong>庫內對照</strong>：<a class="paper-reference" href="2310.03714_DSPy.%E6%91%98%E8%A6%81.html">2310.03714</a> DSPy 可視為把這種 LM pipeline 進一步<strong>宣告化並可編譯／可優化</strong>的一條路線（本文則停在把 pipeline 統一表述為機率程式、把推論指認為核心難題）。（DSPy 具體內容以其自身條目為準，此處不杜撰。）</li>
+<li>定位：<strong>立場／框架論文</strong>，貢獻是「用擴充到字串的 PPL 統一一整批 LLM 組合技術」這個觀點與最小實作。適合關心 <strong>LLM pipeline／agent 編排、CoT／驗證器／工具使用的統一抽象、把多 LLM 呼叫當機率程式來推論與優化</strong> 的讀者。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2207.10342_LM_Cascades.zh-TW.html"><code>../translate/2207.10342_LM_Cascades.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

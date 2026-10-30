@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Plan Right, Then Plan Tight: Symbolic RL for Efficient Embodied Reasoning 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Xiangli Shi、Xiaomeng Zhu、Ye Tian、Yuchun Guo、Ziyang Sun、Lujie Yin、Yuxuan Zhou、Yufei Huang</p><p>日期：2026-06-30（v1，cs.RO）</p><p>arXiv：2606.31260</p><p><a href="https://arxiv.org/abs/2606.31260" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="plan-right-then-plan-tight-symbolic-rl-for-efficient-embodied-reasoning-重點摘要">Plan Right, Then Plan Tight: Symbolic RL for Efficient Embodied Reasoning 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>SymPlan 把 BDDL 當成資料建構、計畫驗證與強化學習獎勵的共同介面，先讓小型 planner 學會產出目標完整且前置條件合法的動作序列，再用正確性閘門與難度自適應的 GroupAdapt 壓短答案，避免模型為了省 token 先犧牲可執行性。</p>
+<h2 id="問題與方法">問題與方法</h2>
+<ul>
+<li><strong>問題</strong>：語言模型能寫出流暢的動作文字，卻缺少便宜、確定性的環境內檢查；高擬真模擬器又太慢，不適合放進訓練內迴圈。只比字串會漏掉「目標看似達成，但中途用了非法動作」這類錯誤。</li>
+<li><strong>BDDL 資料管線</strong>：已有 BDDL 的任務直接沿用 typed objects、初始謂詞與目標謂詞；只有影片時，系統先從關鍵影格與任務描述草擬 BDDL，再由 LLM verifier 檢查語法、物件一致性與目標可執行性。新目標謂詞若沒有對應動作，action builder 會提出並編譯新的 callable action。</li>
+<li><strong>符號執行器</strong>：引擎逐步檢查 action preconditions、更新謂詞狀態並累積錯誤集合。GCR 衡量完成多少目標；EP 表示所有目標已滿足但容許中途錯誤；SP 則要求 <code>SP = EP ∧ |E| = 0</code>，把結果正確與執行合法分開。</li>
+<li><strong>先正確、再精簡</strong>：符號拒絕取樣先保留最短的 strict-pass 軌跡作 SFT 冷啟動，之後以 GCR、前置條件錯誤與 EP 組成密集獎勵做 DAPO。Short-RL 只在 batch 正確率穩定後施加長度壓力；GroupAdapt 再用同一 batch 的 group pass rate 判斷題目難度，讓困難 prompt 暫時取得較寬容的長度預算，通過率改善後自動收緊。</li>
+</ul>
+<h2 id="作者報告的結果">作者報告的結果</h2>
+<p>在 BEHAVIOR-1000 的 held-out 評估中，符號拒絕取樣蒸餾把 Qwen3-8B 的 SP 從 <code>77.3</code> 提高到 <code>92.3</code>，再加符號獎勵 DAPO 後達 <code>96.2</code>（作者自報）。</p>
+<p>預設 GroupAdapt 組態在同一基準達 <code>97.3</code> SP，平均輸出 <code>207</code> tokens；沒有長度調適的 DAPO 為 <code>96.2</code> SP 與 <code>999</code> tokens。論文據此主張壓縮沒有犧牲主要正確性，但不把它解讀為所有資料集都會增加準確率（作者自報）。</p>
+<p>消融顯示，僅加入正確性閘門的 Short-RL 已把 BEHAVIOR-1000 平均長度由 <code>999</code> 降到 <code>194</code> tokens，同時 SP 從 <code>96.2</code> 升到 <code>96.9</code>；GroupAdapt 的主要作用是重新分配壓縮壓力，保護尚未穩定的困難 prompt（作者自報）。</p>
+<h2 id="局限">局限</h2>
+<p>SymPlan 是高階符號 planner，不是低階控制策略；像煮咖啡這類任務只驗證抽象步驟，不含精細操作技能。部署時還需要即時、穩健地從多視角感知建立 BDDL 物件與初始謂詞，這仍未解決。主要實驗固定使用 Guided prompt，作者也承認 prompt 形式可能影響強模型，因此現有結果不能當成對提示敏感度已充分控制。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>這篇提供一個很實際的固化順序：先建立可執行的語意判準，再談成本。GCR、EP 與 SP 把「做了一部分」「結果到了但過程違規」「完整且合法」分成不同訊號，適合對應 ai_core 的候選規則評估；若只用最終成功的二元標籤，系統會把違規捷徑與真正可靠的程式視為同類。GroupAdapt 則可移植到成本梯度：便宜化不應是固定 token 上限，而應在憑證穩定後才啟動，並依同批候選的通過率調整壓力。這樣「變短」是已證明正確後的最佳化，不會悄悄改寫任務本身。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2606.31260_PlanRightPlanTight.zh-TW.html"><code>../translate/2606.31260_PlanRightPlanTight.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

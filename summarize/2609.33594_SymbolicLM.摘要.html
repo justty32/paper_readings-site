@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>SymbolicLM: Training Language Models as Symbolic Regressors 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jun Yao、Yingfan Hua、Ruikun Li、Shixiang Tang、Bin Liu、Wanli Ouyang、Yan Lu</p><p>日期：2026-09-27（v1，cs.CE）</p><p>arXiv：2609.33594</p><p><a href="https://arxiv.org/html/2609.33594v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="symboliclm-training-language-models-as-symbolic-regressors-重點摘要">SymbolicLM: Training Language Models as Symbolic Regressors 重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>SymbolicLM 用合成的數值觀測、符號公式與物理量綱資訊後訓練語言模型，再以數值回饋修訂候選公式。作者報告在自建和外部基準的成績，但原文把同一準確率指標同時描述為數值容忍度與精確符號還原，解讀時須保留這個歧義。</p>
+<h2 id="問題與方法">問題與方法</h2>
+<p>符號迴歸的輸入是觀測點 <code>(x_i, y_i)</code>，目標是找出能解釋資料的解析式。作者認為，通用語言模型往往需依賴外部搜尋與數值最佳化，純數值殘差也難直接指出結構錯在哪裡；本文同時訓練模型與設計推論期修訂流程。（<a href="https://arxiv.org/html/2609.33594v1#S1">§1～2</a>）</p>
+<ul>
+<li><strong>合成資料 PhysSymbArena</strong>：作者報告約 16 萬條公式、18 億 token。公式以隨機運算樹產生，對輸入取樣並計算輸出，再從 SymPy 的 127 種物理量中為變數與輸出指派同領域的語意和量綱。運算樹自底向上檢查 SI 量綱，不合規的指派會捨棄重取。這些是符合量綱規則的合成描述，不能直接視為實測物理定律。（<a href="https://arxiv.org/html/2609.33594v1#S3">§3、附錄 A.5</a>）</li>
+<li><strong>監督微調</strong>：將數值觀測與物理描述放入提示，模型輸出前序表示的公式，使用 token 交叉熵訓練。這階段把數值到符號表達式的映射直接放進模型。（<a href="https://arxiv.org/html/2609.33594v1#S4.SS2">§4.1～4.2</a>）</li>
+<li><strong>強化微調</strong>：以 GRPO 從每個提示取樣一組候選，在組內正規化回饋。可解析與量綱一致是門檻，未通過則總獎勵歸零；通過後再加權符號結構相似、骨架等同與數值擬合三項。結構相似度比較運算子、函式、變數、常數數量、序列及複雜度；骨架比較將係數以共同佔位符處理，因此不等同於所有常數皆正確。數值項使用截為非負的 <code>R²</code>。（<a href="https://arxiv.org/html/2609.33594v1#S4.SS3">§4.3</a>）</li>
+<li><strong>推論期 SymbolicSGA</strong>：這仍是外部修訂流程。它用資料上的數值適配度排序，保留前五個候選；利用分支提示對最佳式修改變數或子項，或產生不同於較差候選的新式並重用高分子式。作者改用任務提示控制探索／利用，而非原 SGA 的溫度分支。（<a href="https://arxiv.org/html/2609.33594v1#S4.SS4">§4.4</a>）</li>
+</ul>
+<h2 id="作者自報結果">作者自報結果</h2>
+<p>原文的 <code>Acc_τ</code> 在 §5.1 定義為測試點<strong>最大相對誤差</strong>是否落在容忍度 τ 內的指標；表中也報 <code>R²</code> 與 NMSE。以下保留表格標籤，不能直接把 <code>Acc_τ</code> 宣稱為符號精確匹配率。（<a href="https://arxiv.org/html/2609.33594v1#S5.SS1">§5.1、式 2</a>）</p>
+<table>
+<thead>
+<tr>
+<th>PhysSymbArena 方法</th>
+<th style="text-align:right">R² ↑</th>
+<th style="text-align:right">NMSE ↓</th>
+<th style="text-align:right">Acc_τ ↑</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen3-8B</td>
+<td style="text-align:right">0.0179</td>
+<td style="text-align:right">0.9821</td>
+<td style="text-align:right">0.0119</td>
+</tr>
+<tr>
+<td>SymbolicLM，SFT</td>
+<td style="text-align:right">0.7581</td>
+<td style="text-align:right">0.2496</td>
+<td style="text-align:right">0.4375</td>
+</tr>
+<tr>
+<td>SymbolicLM，SFT + RL</td>
+<td style="text-align:right">0.7626</td>
+<td style="text-align:right">0.2451</td>
+<td style="text-align:right">0.4648</td>
+</tr>
+<tr>
+<td>SymbolicLM + SymbolicSGA</td>
+<td style="text-align:right">0.9056</td>
+<td style="text-align:right">0.1061</td>
+<td style="text-align:right">0.5508</td>
+</tr>
+<tr>
+<td>PySR</td>
+<td style="text-align:right">0.8652</td>
+<td style="text-align:right">0.1348</td>
+<td style="text-align:right">0.5059</td>
+</tr>
+<tr>
+<td>SNIP</td>
+<td style="text-align:right">0.8707</td>
+<td style="text-align:right">0.1293</td>
+<td style="text-align:right">0.3676</td>
+</tr>
+</tbody>
+</table>
+<p>表 2 所列完整方法的 <code>Acc_τ</code> 比 SFT 高 0.1133，即 11.33 個百分點；推論期修訂與 SFT、RL 是不同階段，不能將整體增益全部歸給模型內部能力。此表中的完整方法 <code>R²</code>、NMSE 也須按原表保留，勿自行假定兩者相加恆等於 1。（<a href="https://arxiv.org/html/2609.33594v1#S5.T2">§5.2、表 2</a>）</p>
+<p>外部基準表 3 中，SymbolicLM + SymbolicSGA 在 SRBench-Feynman 的 <code>R² / NMSE / Acc_τ</code> 為 <code>0.9569 / 0.0430 / 0.6470</code>；PySR 為 <code>0.9548 / 0.0451 / 0.6386</code>，SNIP 的 <code>R²</code> 為 <code>0.9683</code>。在 LLM-SRBench-Transform，完整方法的三項值為 <code>0.9481 / 0.0519 / 0.4144</code>，PySR 為 <code>0.9390 / 0.0610 / 0.3423</code>。這些是作者報告的特定基準結果，並非所有指標皆勝所有基線。（<a href="https://arxiv.org/html/2609.33594v1#S5.T3">§5.3、表 3</a>）</p>
+<p>附錄物理資訊消融報告，加入物理描述前後 <code>R²</code> 為 <code>0.7678 → 0.7582</code>，<code>ACC</code> 為 <code>0.4297 → 0.4375</code>；依原表方向，數值擬合沒有同步改善。附錄另比較同模型與資料條件下的 SGA 和 SymbolicSGA；其 <code>ACC</code> 為 <code>0.6218 → 0.6471</code>，但附錄用 <code>ACC</code> 而主文表 3 用 <code>Acc_τ</code>，且同名完整方法在表 3 的值為 <code>0.6470</code>，報告未解釋這個小差異。（<a href="https://arxiv.org/html/2609.33594v1#as1_A1.SS3">附錄 A.3～A.4、表 1～2</a>）</p>
+<h2 id="解讀邊界">解讀邊界</h2>
+<ul>
+<li><strong>指標不一致</strong>：作者在 §5.2 將表 2 的 <code>Acc_τ</code> 稱作精確符號還原，但 §5.1 的數學定義是數值容忍度。緒論另稱 SRBench-Feynman 的精確骨架準確率為 57.98%，表 3 完整方法的 <code>Acc_τ</code> 卻為 0.6470；原文未交代兩者關係。本摘要不把它們當作同一數字。（<a href="https://arxiv.org/html/2609.33594v1#S1">§1</a>、<a href="https://arxiv.org/html/2609.33594v1#S5.SS1">§5.1～5.3</a>）</li>
+<li><strong>可重現資訊有限</strong>：主文與附錄說明資料生成與方法，但未清楚交代訓練／測試切分細節、容忍度 τ 的具體值及完整模型訓練設定。作者的重現聲明稱已提供充分細節；本檔觀察與該聲明分開。（<a href="https://arxiv.org/html/2609.33594v1#S5.SS1">§5.1</a>、<a href="https://arxiv.org/html/2609.33594v1#S6">重現聲明</a>）</li>
+<li><strong>本檔補註，非作者自陳</strong>：量綱一致是必要的物理檢查之一，無法單獨證明公式反映真實機制。合成資料和有限外部基準成績也不能直接證明對有噪聲的實測資料、未知物理領域或任意計算預算均有效。</li>
+</ul>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2609.33594_SymbolicLM.zh-TW.html">SymbolicLM 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

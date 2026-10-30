@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_透過解析器動態樹Tree_of_Parsers進行上下文相關解析 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2508.15866_Correctness_Guaranteed_CodeGen.zh-TW.html">回 2508.15866_Correctness_Guaranteed_CodeGen.zh-TW 目錄</a>　<a href="02_%E4%B8%8A%E4%B8%8B%E6%96%87%E7%9B%B8%E9%97%9C%E5%8F%97%E7%B4%84%E6%9D%9F%E8%A7%A3%E7%A2%BC.html">← 上一節</a>　<a href="04_sLua_%E8%AA%9E%E8%A8%80%E8%88%87%E8%A7%A3%E6%9E%90.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-透過解析器動態樹tree-of-parsers進行上下文相關解析">4. 透過解析器動態樹（Tree of Parsers）進行上下文相關解析</h2>
+<p>本文的上下文相關解析設計基於兩個洞見：</p>
+<ul>
+<li>要把上下文資訊注入一整套程式語言的完整 CFG 很困難；但如果只關心<strong>單一語言構件</strong>（例如一個型別標註），在局部建構一個用語意上下文（如附錄 B.2.6）充實過、只接受語義正確程式碼的另一個 CFG，是可行的。</li>
+<li>許多 CFG 規則天然對齊上下文邊界。例如，進入區塊時 scope 會改變，處理完變數宣告後上下文就會更新。</li>
+</ul>
+<p>基於這兩個洞見，本文開發了一個建構「解析器動態樹（ToP）」的兩階段方案。樹中每個節點都關聯一個 CFG，以及為該 CFG 生成的互動式解析器（附錄 A.1）。</p>
+<p>ToP 建構的價值不只限於受約束解碼：它能漸進式地驗證一個未完成程式的語義正確性，可作為強化學習微調 LM（使其更擅長生成語義正確程式碼）的獎勵模型。</p>
+<p><strong>第一階段：把完整 CFG 拆解為模組化 CFG 模板</strong>——首先把目標語言的完整 CFG 拆解成多個模組化 CFG 模板，這些模板留出「槽位（slot）」，在解析過程中由語意上下文填入。本文引入稱為 placeholder 的特殊終端符，標記一個遞迴點：若父解析器的合法終端符集合中含有對應的 placeholder，就需要在此處長出一個子解析器。附錄 B.2 詳細說明了 sLua 完整 CFG 的拆解方式。</p>
+<p><em>範例 4.1</em>：考慮 sLua 字串運算式的一個簡化模組化 CFG：</p>
+<pre><code>str_exp : str_sum
+str_sum : str_atom (&quot;..&quot; str_atom)*
+str_atom : STRING | &quot;(&quot; str_exp &quot;)&quot; | &quot;&lt;STR_PREFIX_EXP&gt;&quot;
+</code></pre>
+<p>此文法匹配可用 <code>..</code> 運算子串接的字串原子。字串原子可以是字面字串（終端符 STRING，其 regex 省略）、加括號的字串運算式，或字串型別的字首運算式（如字串變數、回傳字串的函式、或最終回傳字串的鏈式函式呼叫）。這裡用 placeholder <code>&lt;STR_PREFIX_EXP&gt;</code> 標示：一旦解析器期望這個終端符作為可能結果之一（除了字面字串與加括號的 str_exp 之外），就應該建立一個「字串字首運算式」型別的子解析器（附錄 B.2.7）。</p>
+<p><strong>第二階段：定義解析器樹節點</strong>——接著，為第一階段的每個模組化 CFG 模板定義一種樹節點型別。每個節點實例含有一個由對應 CFG 模板生成的解析器（附錄 A.1），其槽位在解析過程中由語意上下文填入。每個節點支援與第 3 節相同、但針對其模組化 CFG 特化的三個函式：<code>has_finished</code>、<code>next_regex</code>、<code>feed_text</code>。每個節點管理自己的解析狀態，整個上下文相關解析器就是這棵樹的根節點。</p>
+<p>圖 1 說明了 ToP 在解析一個 sLua 局部變數宣告時的演變。解析流程包括：</p>
+<ul>
+<li><strong>取得下一個 regex</strong>：形成 regex 前，節點先檢查其合法終端符集合中是否有 placeholder；若有，為每個 placeholder 建立一個子節點。若合法終端符集合中還有非 placeholder 的終端符，父節點會生出自己的一份副本作為子節點，處理接下來的延續。要生成下一段程式合法內容的 regex：若某節點沒有子節點，回傳其解析器所有合法終端符聯集所代表的 regex；否則回傳其所有子節點 <code>next_regex</code> 的聯集。這個聯集 regex 描述了當前程式所有合法的延續。</li>
+<li><strong>推進解析器狀態</strong>：當一段新片段（如 LM 生成的 token 序列）餵給父節點時，父節點把這段文字轉發給所有子節點。若某子節點解析失敗（表示衝突），該子節點就從父節點中移除。若某子節點在餵入片段後 <code>has_finished</code> 回傳真，父節點的所有子節點都會被移除，並用該完成子節點對應的 placeholder 推進父解析器（若該子節點是父節點的自我副本，則直接用子節點的解析狀態取代父節點的解析狀態）。</li>
+</ul>
+<p>附錄的演算法 2 提供了節點基底類別的虛擬碼。在任何時刻，從根節點到某葉節點的任何路徑，都代表一個<strong>至少存在一個合法完整程式能從這些解析狀態延續生成</strong>的巢狀解析器狀態堆疊。隨著程式碼不斷被消化，會導致衝突的樹分支被剪除，確保只留下合法路徑。</p>
+<p><strong>環境管理（Environment management）</strong>：如同靜態分析，本文假設有一個依已解析程式追蹤的靜態環境（其追蹤方式依語言而定，例如用堆疊追蹤各 scope 中的符號）。在建立一個帶槽位的 CFG 模板節點之前，先查詢當前環境並填入對應的槽位內容。環境會在某些解析器完成解析時（如定義一個局部變數）或消化某些終端符時（如遇到 <code>do</code>/<code>then</code>/<code>end</code> 進出 scope）更新。例如，在範例 4.1 中要生出字串字首運算式子解析器時，需要查詢環境找出所有最終能得出字串型別的符號。雖然 ToP 有多個分支處理未來的歧義，但因環境只依賴已解析的程式，所以整棵樹只需要<strong>一份</strong>環境。</p>
+<p><strong>控制 ToP 的大小</strong>：ToP 的解析時間複雜度與樹的大小成正比。一般而言樹可能會很大，但如果程式語言把能降低解析歧義的規格前置（例如在任何運算式之前先寫型別標註），樹的大小可以大幅縮小。本文刻畫了一種讓 ToP 保持「掃帚形（broom shape）」的情況，確保樹維持精簡。</p>
+<p><strong>假設（A2）（掃帚形 ToP）</strong>：當一個解析器節點 x 生出超過一個子節點時，x 的所有祖先節點都只能有一個子節點。</p>
+<p>附錄的引理 B.1 證明本文的 sLua ToP 滿足此假設。</p>
+<p><strong>滿足不可延伸匹配性質</strong>：為確保 ToP 根節點的 regex 滿足 A1，本文建議一個 look-ahead 策略，要求模組化 CFG 滿足以下假設：</p>
+<p><strong>假設（A3）</strong>：模組化 CFG 中，任何 placeholder 終端符、或違反 A1 的終端符，其後必須接著一組滿足 A1 的非 placeholder 終端符。</p>
+<p>多數流行程式語言天然滿足此假設，因為它們常包含大量分隔符，例如 C 風格語言中敘述後的 <code>;</code>、Lua 中結束區塊的 <code>end</code>、或多種語言中函式呼叫後的 <code>)</code>。（本文禁止用 placeholder 接續 placeholder，以避免遞迴式的 look-ahead。）</p>
+<p><strong>延伸 regex 以滿足不可延伸性的 look-ahead 策略</strong>：當某個終端符或子節點回傳的 regex 違反 A1 時，本文往前查看「接受該終端符或 placeholder 之後」的下一組終端符集合，把匹配該集合的 regex 附加到現有 regex 上。為確保模組化 CFG 不會以違反 A1 的終端符結尾，本文在起始規則末端視需要加入一個「結束符號」槽位。實例化時，查詢父解析器「在接受該子節點 placeholder 之後」的終端符集合，把代表這些終端符聯集的 regex 填入結束符號槽位。套用此策略後為 sLua 得到的範例 regex，可見附錄 C.10。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

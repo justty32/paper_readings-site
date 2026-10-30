@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Neural Field Turing Machine：可微分的空間計算機》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Akash Malhotra, Nacéra Seghouani（LISN，法國）</p><p>日期：2025-08，可微分計算架構</p><p>arXiv：2509.03370</p><p><a href="https://arxiv.org/abs/2509.03370" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="neural-field-turing-machine可微分的空間計算機重點摘要">《Neural Field Turing Machine：可微分的空間計算機》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>NFTM（Neural Field Turing Machine）</strong>：把「神經圖靈機的可微分讀寫機制」搬進<strong>連續空間場（continuous field）</strong>——以<strong>神經控制器 + 連續記憶場 + 可移動讀寫頭</strong>對局部鄰域做更新，在<strong>固定半徑鄰域</strong>下達成 <strong>O(N) 線性複雜度</strong>，並證明<strong>在有界誤差下圖靈完備</strong>（歸約到 Rule 110）；用同一架構統一<strong>符號計算（細胞自動機 Rule 110 / Game of Life）、物理模擬（2D 熱方程 PDE 求解）、感知推論（CIFAR-10 影像修補）<strong>三類任務，且訓練短 rollout 卻能</strong>外推到更長 horizon</strong>。NCA 被證明是 NFTM 的特例。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>現有架構各有缺陷：Transformer 把空間當離散 token 且注意力 O(N²)；擴散模型靠隨機噪聲而非可控更新規則；PINN 只能解 PDE 不通用；NCA 只在固定網格、缺顯式控制器。需要一個<strong>同時保有空間連續性、局部性、演算法通用性</strong>的可微分基底。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>三件套</strong>：空間場 <code>f_t</code>、控制器 <code>C</code>、可移動讀寫頭 <code>h_t</code>。每步控制器讀取以 <code>h_t</code> 為中心、半徑 <code>r</code> 的局部支撐區 <code>S(h_t)</code>，輸出<strong>空間注意力場 <code>A_t(x,y)</code></strong> 與<strong>頭位移 <code>Δh_t</code></strong>。</li>
+<li><strong>更新方程</strong>：<code>f_{t+1}(x)=g(∫A_t(x,y)f_t(y)dy)</code>、<code>h_{t+1}=h_t+Δh_t</code>（<code>g</code> 為逐點非線性）。</li>
+<li><strong>圖靈完備性（命題 1）</strong>：把連續態二值化、半徑固定 <code>r=1</code>，控制器即可複製 Rule 110 局部規則；Rule 110 圖靈完備 → NFTM 繼承。量化保證符號動力學可任意小誤差還原 →「<strong>有界誤差下圖靈完備</strong>」。</li>
+<li><strong>三種實例化</strong>：
+<ol>
+<li><strong>CA</strong>：控制器 MLP 學真值表，頭數＝格數，用 <strong>STE（直通估計器）</strong> 二值化保持可微 → 等價 NCA。</li>
+<li><strong>PDE 求解</strong>：5 點 stencil 算 Laplacian、<strong>異方差高斯似然</strong> 回復空間變化擴散係數 <code>α(x,y)</code>、<strong>兩階段訓練</strong>（teacher forcing → rollout）緩解曝光偏差。</li>
+<li><strong>影像修補</strong>：場＝影像，控制器輸出修正 <code>ΔI</code>＋門控，能量檢查「守衛式」回溯確保單調改善。</li>
+</ol>
+</li>
+<li><strong>複雜度</strong>：固定半徑下 <code>O(N·T·(k+P))</code>，線性於場大小與 horizon，GPU 友善。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>CA</strong>：MLP 控制器精確學會 Rule 110 與 Game of Life，<strong>100 步 rollout 完全匹配真值</strong>，且外推超出訓練 horizon（學到規則而非記憶軌跡）。</li>
+<li><strong>熱方程（全域 α）</strong>：回復擴散係數，多數情形 <strong>MAE &lt; 0.01</strong>（α=0.10/0.15/0.20 誤差 ≤0.001）。</li>
+<li><strong>熱方程（空間變化 α(x,y)）</strong>：重建空間剖面，<strong>平均 PSNR 40.89 dB</strong>。</li>
+<li><strong>CIFAR-10 修補</strong>：訓練 20 步、評估 30 步，PSNR 從 15.2 dB <strong>單調升至 24.5 dB</strong>，且超訓練 horizon 仍持續精修（如迭代求解器，非定深前饋網）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>實驗皆為 <strong>toy 規模</strong>（Rule 110「終究是有限真值表」），無對比基線（作者明言只做 proof-of-concept、把與專用架構的系統性 benchmark 留作未來）。</li>
+<li><strong>自迴歸 rollout 誤差累積</strong> 仍在，兩階段訓練只緩解未消除；長 horizon 穩定性對超參與離散化敏感。</li>
+<li>守恆律、3D 場、自適應時間步進皆為未來方向。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 <strong>F 類（細胞自動機／圖靈機／可微符號計算）的「統一架構」代表</strong>——把 <strong>神經圖靈機（NTM/DNC 的可微讀寫）</strong> 與 <strong>NCA（局部可微更新）</strong> 在「連續空間場」上融合，並用 <strong>Rule 110 歸約</strong>給出有界誤差圖靈完備性證明。</li>
+<li>最值得記：<strong>「控制器＋連續記憶場＋可移動讀寫頭」三件套</strong>；<strong>NCA = NFTM 特例（場離散化、頭固定、Boolean 更新）</strong>；<strong>O(N) 局部性 vs Transformer O(N²)</strong>；以及<strong>測試時計算換準確度</strong>（多 rollout 步＝「想更久」）。</li>
+<li>與 <a class="paper-reference" href="2506.22899_Cells_to_Pixels.%E6%91%98%E8%A6%81.html">2506.22899</a>（NCA Cells to Pixels）、<a class="paper-reference" href="2505.13058_Universal_NCA.%E6%91%98%E8%A6%81.html">2505.13058</a>（通用 NCA）、<a class="paper-reference" href="2506.04912_DiffLogic_CA.%E6%91%98%E8%A6%81.html">2506.04912</a>（DiffLogic CA）同屬 NCA／可微 CA 家族但更上位（顯式控制器＋讀寫頭）；與 <a class="paper-reference" href="2505.11694_NN_as_Universal_FSM.%E6%91%98%E8%A6%81.html">2505.11694</a>（NN as Universal FSM）共享「神經網路即計算機」母題。</li>
+<li>定位：<strong>架構提案＋多領域概念驗證</strong>（含複雜度附錄、開源程式碼）；適合做<strong>可微分演算法推理、神經 PDE 求解、空間推理</strong>的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2509.03370_NFTM_Spatial_Computer.zh-TW.html"><code>../translate/2509.03370_NFTM_Spatial_Computer.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

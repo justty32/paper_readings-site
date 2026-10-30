@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2512.16406_SelfReferential_Graph_HyperNetworks.zh-TW.html">回 2512.16406_SelfReferential_Graph_HyperNetworks.zh-TW 目錄</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>神經網路如何在不依賴外部優化器的情況下自我演化？我們提出 <strong>Self-Referential Graph HyperNetworks（自我參照圖超網路）</strong>——把變異與遺傳的機器嵌入網路本身的系統。透過結合超網路、隨機參數生成與圖表示，自我參照 GHN <strong>自我變異並自我評估</strong>，並把突變率當成<strong>可被選擇的特質</strong>來調整。在帶環境切換的新 RL benchmark（CartPole-Switch、LunarLander-Switch）上，自我參照 GHN 展現快速可靠的適應與湧現的種群動態。在 locomotion benchmark Ant-v5 上演化出協調步態，並透過<strong>自主降低種群變異</strong>集中於有希望的解，展現有潛力的微調能力。我們的發現支持「<strong>可演化性本身可從神經自我參照中湧現</strong>」這個想法。自我參照 GHN 是邁向「更貼近生物演化的合成系統」的一步，為自主、開放式學習 agent 提供工具。</p>
+<p>程式碼：github.com/Joachm/self-referential_GHNs</p>
+<h2 id="引言">引言</h2>
+<p>神經網路的成功多靠梯度法（反向傳播）。但梯度法有持久缺陷——易陷局部極小、病態地景、無法處理不可微目標或離散架構選擇。這激起對演化演算法（EA）的興趣：OpenAI ES、Deep Neuroevolution、population-based NAS 在大規模平行算力下能匹敵或超越梯度學習者，且無導數、population-based 本質適合分布式訓練。</p>
+<p>演化生物學的教訓：<strong>突變的速率與結構很重要</strong>——低變異加速利用但易早熟收斂，高變異助探索但易失去既有適應度。<strong>自適應突變率作為個體可遺傳特質</strong>在開放式系統（適應度地景隨時間劇變）中尤其重要。</p>
+<p>但多數 neuroevolution 把演化機器留在被優化的神經基質<strong>之外</strong>：一個與種群分離的演算法負責對個體產生突變。本文<strong>塌縮這條邊界</strong>——把產生變異的機制嵌入神經網路本身。建於 Graph HyperNetworks 與前人自我參照系之上，提出自我參照 GHN：(i) 對自己的拷貝生成參數更新、(ii) 對這些參數注入隨機可學習變異、(iii) 從而實作「在地化的增減探索機制」。</p>
+<p><strong>三大優勢</strong>：(1) 對不可微/離散架構的無導數最佳化，同時保持全神經、端到端可訓練；(2) 對非靜止任務快速適應（CartPole-Switch、LunarLander-Switch 中種群在突然反轉控制器後幾代內恢復近最優）;(3) 對突變幅度的湧現式控制（早期廣探索、在高適應度「發現」附近銳利利用，無需外部排程）。</p>
+<h2 id="背景">背景</h2>
+<ul>
+<li><strong>HyperNetworks</strong>（HyperNEAT 的推廣）：可微小網路生大主網路權重，類生物基因型-表現型映射；原用於 LSTM 序列建模、CNN 緊湊核生成。</li>
+<li><strong>Graph HyperNetworks（GHN）</strong>：直接在主網路計算圖上操作，用內部 GNN 處理拓撲、給任意未見架構生參數；原為 NAS 的快速 surrogate 評估器。</li>
+<li><strong>自我參照一脈</strong>：Neural Network Quine（網路預測自身權重，但數代後「不育」、因不完美複製失去輔助任務能力）→ recursively fertile 自複製 agent（讓網路成為參數空間的「sink」達多代穩定，部分權重完美拷貝、其餘可變生成）→ Irie 的 <strong>SRWM（自我參照權重矩陣）</strong>（單一 WM 既是程式也是執行期改自身的機制，用自生的 modifier-key/analyser-query/learning rate 以 delta rule 自更新，只有初始狀態靠梯度訓練）→ <strong>SeRANN</strong>（二進位基因型轉成定義架構的 Python 程式，用梯度訓練解分類 + 拷貝自身基因型，拷貝誤差即突變）。<strong>本文不同：對自己的拷貝改參數，演化迴圈中從不含梯度更新</strong>。</li>
+</ul>
+<h2 id="自我參照演化方法">自我參照演化方法</h2>
+<p>GHN ＝ embedding 矩陣 + GNN + 輸出層。GNN 吃「要生權重之網路架構的計算圖」，各 node 有學習 embedding，GNN 依連通性更新各 node 表示，輸出層生參數（輸出固定數量、取前 k 個給較小 node）。</p>
+<ul>
+<li><strong>隨機自參照 hypernetwork</strong>：兩改造——(1) 最終輸出層用<strong>固定隨機基底</strong>（永不改變→避開「需生比自身更多參數的層」的循環悖論）;(2) node 表示不直接送輸出層，而是過小 MLP 生一組<strong>均值固定 0 的多元高斯標準差</strong>，採樣後再送輸出層 → 同一 GHN 對同架構生不同候選權重。</li>
+<li><strong>可調突變率</strong>：每個 node embedding 過 M 個 sigmoid 輸出的線性層，<strong>取 max 當該 node 突變率</strong>去縮放隨機 hypernetwork 最終層輸出（取 max 保留變異產生參數的冗餘）；再永遠加小噪聲（std=0.001，即使突變率全 0 仍有微變異、可重新打開突變）。M 控制「降變異」與「重新打開」的難易，本文 M=5。直覺：種群都差不多差→增大變異探索；少數遠勝→降變異集中資源。</li>
+<li><strong>確定性 hypernetwork 評估 fitness</strong>：除了給下代 GHN 生參數，每個 GHN 也給 policy 網路生參數；policy 在環境得分即該 GHN 的 fitness、用於選擇。</li>
+<li><strong>演化迴圈</strong>：parent 精確拷貝 → 過自己隨機 hypernetwork 生參數加到拷貝（輸入是自己的計算圖，node embedding 也受自參照變異）→ 產出自身變體；隨機初始化一組 GHN，各產 N=2 後代；估所有 parent+後代 fitness（各自確定性 hypernetwork 給 policy 生參數、跑任務）。</li>
+</ul>
+<h2 id="實驗與結果">實驗與結果</h2>
+<p>通用超參：後代參數 clip 到 [−20,20]、標準差 clip 到 [0,2]、隨機 hypernetwork 輸出 clip 到 [−0.1,0.1] 後乘突變率、常數噪聲 std=0.001、node embedding size=32（非廣泛搜尋、preliminary 找到即用）。</p>
+<ul>
+<li><strong>CartPole-Switch</strong>：第 600 代反轉動作解讀（左↔右），第 1000 代轉回，共 1500 代。對比 OpenES、CMA-ES、point-crossover+衰減突變率的 GA、以及自適應突變率法 GESMR（co-evolve 解種群 + 突變率種群）、SAMR（每個解含參數 + 其突變率）。policy＝單隱層 32 tanh MLP，種群 30、elite 10。<strong>結果</strong>：所有對比法都無法在兩次切換後一致恢復；GESMR 製造巨大 pair-wise 距離（變異）仍失敗；<strong>只有自我參照 GHN 的 top 個體在兩次切換後都一致達最高分</strong>（OpenES 第一次切換後就再也回不來，第二次後的「好分數」不算恢復）。</li>
+<li><strong>LunarLander-Switch</strong>：第 600 代反轉輸出順序、第 1000 代轉回。policy＝兩隱層 32 MLP，種群 300、elite 100、fitness 取兩 episode 平均（環境 noisy）。GHN 在三 seed 下都從兩次變化快速恢復，種群變異在切換後出現大峰。</li>
+<li><strong>Ant-v5</strong>（地景固定，只取觀測前 27 維）：policy＝三隱層 32 tanh MLP，種群 150、elite 50、單一突變率、輸出 clip 到 [−1,1]。單調改善，常卡 ~1000 局部最優（站著不動避罰）；突破後種群變異<strong>急降</strong>;1000 代內未達 ~4000 滿分，但穩定 &gt;2000 → 已能運動。每次均值 fitness 上升都伴隨種群變異下降。</li>
+</ul>
+<h2 id="討論">討論</h2>
+<p>把隨機 hypernetwork 嵌入 agent，每個 GHN 產出含可學習、狀態相依噪聲的子權重集，確定性 hypernetwork 生 policy 權重供評 fitness。三 benchmark 上一致：(i) 突然控制器反轉後幾乎瞬間恢復近滿分；(ii) Ant-v5 演化出運動；且種群多樣性在環境變化後升、找到高適應度 niche 後降 → 突變幅度的湧現式控制。</p>
+<p><strong>內化變異的兩優勢</strong>：突變率本身可遺傳 → 選擇能直接偏好「探索行為匹配當前地景崎嶇度」的個體，呼應「evolvability 是可選擇特質」假說。</p>
+<p><strong>缺點</strong>：生成參數更新比從分布抽樣貴得多；GHN 尺寸隨目標網路快速增大（確定性 hypernetwork 由 target 最大 node 需求決定，隨機網路由 GHN 內最大 node 需求決定）→ 大網路使生成更慢。未來可讓突變也作用於<strong>目標網路的架構</strong>（NAS），甚至讓 GHN 變異自己的架構；或結合 Neural Developmental Program 讓發育與演化互動。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

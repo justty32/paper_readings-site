@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《NOVA：工業推薦系統架構演進的「驗證感知」智能體 Harness》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Shaohua Liu 等（Tencent Inc. 騰訊）</p><p>日期：2026-06，智能體架構（多代理 + 架構演進）</p><p>arXiv：2606.27243</p><p><a href="https://arxiv.org/abs/2606.27243" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="nova工業推薦系統架構演進的驗證感知智能體-harness重點摘要">《NOVA：工業推薦系統架構演進的「驗證感知」智能體 Harness》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>NOVA</strong>：騰訊的<strong>分級（level-aware）多代理 harness</strong>，把工業廣告推薦模型的<strong>架構演進</strong>自動化。核心是**「架構梯度（architecture gradient）」<strong>——一個受 SGD 啟發、<strong>非可微</strong>的更新訊號，把「前一次修改 + 驗證診斷 + 離線指標變化 + 軌跡記憶」聚合成「下一步該怎麼改架構」的方向；搭配</strong>靜默失敗感知（silent-failure-aware）多階段驗證級聯**（結構語義→本地可執行→離線有效→線上影響），在昂貴訓練前就攔掉「能跑但架構語義錯」的候選，並把失敗模式記成**禁區方向（forbidden directions）**回饋給搜尋；再以 <strong>L1–L4 任務分級 + AutoRun/Copilot</strong> 把高風險任務路由給人類監督。線上 A/B：選中的 L3 候選在三個 pCVR 目標上 GMV <strong>+1.25%/+1.70%/+2.02%</strong>、預測偏差降 <strong>58.8%/66.7%/37.3%</strong>，一個「論文到生產」週期人工時間縮短 <strong>13 倍以上</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>工業推薦模型靠<strong>架構演進</strong>（RankMixer、TokenMixer-Large、MixFormer…）持續取得品質與商業增益，但開發極依賴專家、難規模化。既有自動化不足：<strong>AutoML 只調超參</strong>（學習率、隱層大小、嵌入維度），而有效增益常需<strong>跨模組拓撲變更</strong>;<strong>通用 LLM coding agent 只優化「能跑的程式」</strong>，但能跑 ≠ 合法的推薦架構——候選可能通過本地測試卻造成<strong>靜默失敗（silent failure）</strong>（如錯誤移除序列遮罩、self-attention 退化成 MLP、改壞 logit 融合路徑），悄悄拉低 AUC/校準/商業指標。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>架構狀態</strong>：每個候選 A_t=(G_t, φ_t, F_t)——模型圖、結構超參、特徵配置。初始 A_0 取自生產程式庫 C；論文來源 P 與靜態知識庫 KB 提供架構先驗與歷史「有效/無效方向」證據；搜尋受 budget B（輪數、token、GPU 時、wall-clock）限制。搜尋單位＝對模型拓撲/特徵路由/互動模組/結構超參的<strong>可行修改</strong>（須滿足形狀相容、dtype 一致、特徵依賴、訓練穩定、線上推論相容等硬約束）。</li>
+<li><strong>架構梯度 g_t = Grad(e_{t−1}, V_t, ΔJ_t, H_t)</strong>：因 A_t 離散且受約束、無標準梯度，改用此結構化更新訊號（類比 SGD，非數學梯度）。聚合前次修改 e_{t−1}、驗證診斷 V_t、離線目標變化 ΔJ_t（用 AUC）、歷史軌跡 H_t（修改/失敗/診斷/指標）。</li>
+<li><strong>靜默失敗感知驗證級聯</strong>（漸進、由輕到重）：① <strong>結構語義閘</strong>（在訓練前，依 <strong>skill specification</strong> 檢查遮罩方向/特徵路由/logit 融合是否符合意圖架構——不只看能否執行）→ ② <strong>本地可執行性</strong> → ③ <strong>離線評估（AUC）</strong> → ④ <strong>線上驗證</strong>。<strong>失敗候選記入軌跡記憶 H 並轉成可重用的禁區方向</strong>，使驗證從「事後過濾器」變成「搜尋訊號的一部分」（verification as gradient denoising）。</li>
+<li><strong>Skill specification</strong>：語義閘由 skill 規格驅動（歷史種子規則 + 累積禁區模式 + LLM 輔助檢查），未覆蓋情形不過度自信拒絕、留給離線/線上評估；一個任務改進的規格可被後續相似架構/失敗模式的任務重用。</li>
+<li><strong>L1–L4 分級 + AutoRun/Copilot</strong>：level 控制修改範圍，mode 由 <strong>skill 規格覆蓋度</strong>決定（已覆蓋→AutoRun 自動跑；未覆蓋或高風險→Copilot 要人類確認）。L1/L2 多 AutoRun、L4 多 Copilot。</li>
+<li><strong>實作</strong>：主代理（Main Agent）編排專門子代理，跑七階段工作流（初始化→…→線上實驗評估），底層記驗證診斷與指標回饋轉成下一輪架構梯度。</li>
+</ul>
+<h2 id="結果生產廣告系統服務逾-10-億用戶對比人類專家迴圈automl通用-coding-agent">結果（生產廣告系統，服務逾 10 億用戶；對比人類專家迴圈、AutoML、通用 coding agent）</h2>
+<ul>
+<li><strong>有效通過率（EPR）最高</strong>：L2 ScaleUp 54.5%、L3 Literature-to-Production 60.0%（L3 LPR 86.7%）;EPR <strong>超過人類專家迴圈兩倍</strong>、大幅勝 coding-agent baseline。</li>
+<li><strong>降低靜默失敗</strong>（相對 coding-agent baseline）。</li>
+<li><strong>效率</strong>：一個「論文到生產」週期的<strong>人工參與時間縮短 13 倍以上</strong>（節省集中在工程師時間、非 GPU 吞吐）。</li>
+<li><strong>線上 A/B</strong>：選中 L3 候選三個 pCVR 目標 GMV +1.25%/+1.70%/+2.02%，pCVR 偏差降 58.8%/66.7%/37.3%。</li>
+<li><strong>消融</strong>：移除論文復現、方案設計、多候選生成、品質評估、或架構梯度回饋各會掉效，證明各組件不可或缺。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>能力邊界</strong>：語義閘只在 skill 規格覆蓋範圍內可靠，未覆蓋/高風險須 Copilot 人類介入（非全自主）；規格累積有冷啟動成本。</li>
+<li>高度綁定<strong>推薦系統/廣告</strong>領域（搜尋單位、驗證規格都是領域特定）；離線只用 AUC 當代理目標。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>「智能體架構」<strong>主題的</strong>工業落地</strong>標竿：把 LLM 多代理、演化式架構搜尋、與<strong>生產級驗證/風險治理</strong>縫成一個可審計的 harness；最值得記的三招——<strong>「架構梯度」聚合多源回饋當非可微更新方向</strong>、<strong>「驗證即梯度去噪」把失敗變禁區方向</strong>、<strong>L1–L4 + AutoRun/Copilot 把自動化程度對齊任務風險</strong>。</li>
+<li>與 <a class="paper-reference" href="2606.26327_EVOM_MetaEvolution_ActorCritic.%E6%91%98%E8%A6%81.html">2606.26327</a> EVOM（LLM 設計代理 + 低保真 PPO 演化 RL 架構）對讀：兩者都「LLM 當架構設計算子 + 演化迴圈」，但 NOVA 更重<strong>生產約束、靜默失敗防護、人機分級</strong>；與 <a class="paper-reference" href="2510.25445_Agentic_AI_Survey.%E6%91%98%E8%A6%81.html">2510.25445</a> 智能體 AI 綜述、<a class="paper-reference" href="2508.00604_Composable_OS_Kernel.%E6%91%98%E8%A6%81.html">2508.00604</a> 可組合 OS 核心、<a class="paper-reference" href="2406.18532_AgentSymbolicLearning.%E6%91%98%E8%A6%81.html">2406.18532</a> Agent Symbolic Learning 並讀，看「智能體 + 自我改進」在真實系統如何被治理。</li>
+<li>定位：工業系統論文 + 大規模線上實證 + 可復現附錄（提示模板、禁區規則、skill 庫範例），適合做 <strong>推薦/廣告系統、AutoML/NAS、LLM coding agent、多代理生產系統、AI 自動化 ML 工程</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2606.27243_NOVA_Verification_Aware_Agent_Harness.zh-TW.html"><code>../translate/2606.27243_NOVA_Verification_Aware_Agent_Harness.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

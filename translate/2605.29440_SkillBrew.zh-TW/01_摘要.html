@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.29440_SkillBrew.zh-TW.html">回 2605.29440_SkillBrew.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>檢索增強的 LLM 智能體日益依賴精心策展的技能庫：一組可重用的文本原則，引導複雜任務上的決策。現有方法通常以僅追加（append-only）的方式擴張這些庫，持續新增技能卻從不刪除冗餘、過時或有害的技能，導致低效且品質低落的儲存庫。本文將技能庫策展形式化為受限多目標問題：一個理想的庫必須對智能體有用、內容多樣、且對查詢分佈提供良好覆蓋率。為此我們引入 SkillBrew——一個多目標策展框架，將技能庫策展形式化為效用約束下的 Pareto-aware 最優化，並透過雙層 propose-then-verify 迴圈求解。我們在兩個公開 benchmark 上進行評估，結果顯示將技能庫視為應被原則性策展的對象——而非持續增長、僅追加的日誌——是邁向建構自我改進 LLM 智能體的重要一步。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>LLM 智能體日益被部署於長期、開放式的任務，跨 episode 累積和重用程序知識的能力決定了下游表現。被廣泛採用的抽象是技能庫：一組可檢索的、精簡的、可重用的文本或可執行產物，編碼智能體如何執行週期性任務。此抽象已被 Anthropic 的 Agent Skills 規範標準化，並被 Claude Code 等現代 agent harness 採用。然而技能庫不是一次性產物：一個同時有用、多樣且覆蓋良好的庫無法透過單次精餾獲得，需要迭代精煉以平衡這些競爭性質。然而如何將技能作為一個庫來構建、精煉、修剪——而非孤立評判每個技能——仍是很大程度上未被探討的問題。</p>
+<p>既有工作可歸為兩種範式（圖 1）：(A) 累積式技能擴張（accumulative skill expansion）——如 Voyager 的自我驗證技能庫、Trace2Skill 的層次化軌跡教訓整合、SkillRL 的失敗驅動技能演化——持續新增技能讓庫隨時間增長；(B) 局部技能級優化（local skill-level optimization）——如 ExpeL 以投票式 ADD/EDIT 操作更新跨任務洞察、EvoSkill 以前 k 名 frontier 選擇、Skill-Pro 以非參數評分閘——根據單一純量策展信號來保留、編輯或移除技能。這兩類方法的策展標準最終坍縮為一個純量，無法解決有用性、多樣性、覆蓋率之間的取捨。</p>
+<p>原則性技能庫策展之所以困難，有三個交織原因。第一，庫的品質本質上是多維度的，且三個標準互相約束：為擴展覆蓋率而新增技能會引入冗餘而降低多樣性，為保留多樣性而修剪技能則減少覆蓋率。第二，功勞分配困難：個別技能的貢獻只能透過昂貴的 rollout 觀察，且受共檢索技能的交互作用混淆。第三，目標函數不可微且查詢昂貴，而可容許的編輯空間是開放的（新技能從軌跡證據合成而非從固定池中選擇），排除梯度優化和窮舉搜尋。</p>
+<p>本文提出 SkillBrew——一個免訓練的迭代技能庫精煉框架，引入第三範式 (C) 全局銀行級優化（global bank-level optimization），透過三項設計選擇解決上述挑戰。第一，以效用為顯式約束、多樣性和覆蓋率為結構正則項，形式化為受限多目標優化——反映「庫必須先有用，組織才重要」的非對稱性。第二，以每技能的反事實重播（leave-one-out rollouts）歸因功勞，為銀行級優化提供精細的 KEEP / REWRITE / REMOVE 證據。第三，以雙層 propose-then-verify 迴圈在非可微且開放的編輯空間中導航：內層以 support split 上的軌跡證據提出候選編輯；外層以 query split 上的 Pareto-aware 選擇驗證，防止過擬合。</p>
+<h2 id="2-相關工作">2 相關工作</h2>
+<h3 id="21-從智能體記憶到智能體技能">2.1 從智能體記憶到智能體技能</h3>
+<p>早期工作賦予智能體跨任務的持久記憶（如 Mem0、MemP、SimpleMem），在推論時檢索過去互動軌跡作為參考。另一條線路則是將原始經驗抽象為技能：Voyager 率先在 Minecraft 中維護不斷增長的程式碼技能庫；ExpeL 從軌跡精餾跨任務洞察；Trace2Skill 透過並行層次分析將軌跡池整合為可遷移技能。此範式已被 Anthropic 的 Agent Skills 規範標準化。然而如何迭代策展這個庫——平衡個別技能的效用與整個庫的多樣性和覆蓋率——仍是開放問題。</p>
+<h3 id="22-技能庫策展">2.2 技能庫策展</h3>
+<p>早期工作（如 Voyager）僅將技能庫視為僅追加的產物，隨成功增長而不精煉或修剪。近期工作引入對個別技能的顯示策展：ExpeL 以投票式操作更新；CoEvoSkills 以代理驗證器提供失敗回饋；Skill-Pro 以線上評分接納和修剪技能；SkillForge 閉合失敗驅動精煉迴圈。然而這些方法中的策展標準坍縮為單一純量信號。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

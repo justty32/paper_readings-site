@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《AutomataGPT：二維細胞自動機的預測與規則集推理》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jaime A. Berkovich、Noah S. David、Markus J. Buehler（MIT 原子與分子力學實驗室 LAMM）</p><p>日期：2025-06，細胞自動機 + GPT</p><p>arXiv：2506.17333</p><p><a href="https://arxiv.org/abs/2506.17333" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="automatagpt二維細胞自動機的預測與規則集推理重點摘要">《AutomataGPT：二維細胞自動機的預測與規則集推理》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>AutomataGPT</strong>：一個僅 ~600 萬參數（dim 256／depth 6／heads 4）的 <strong>decoder-only transformer</strong>，在 100 條二維二元確定性 CA 規則、共 <strong>約 100 萬條模擬軌跡</strong>上從零預訓練，<strong>只靠資料、無任何手工先驗</strong>就能同時解 CA 的<strong>正問題（給規則矩陣 RM + 初始條件 IC → 預測下一狀態 GS2）與反問題（給 IC + GS2 → 反推規則 RM）</strong>；對訓練未見過的規則達 <strong>98.5% 完美單步預測</strong>、規則反推可達 <strong>96% 功能（套用）準確度與 82% 規則矩陣精確匹配</strong>，且性能與「訓練所涵蓋的規則空間廣度」強相關。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>CA 能用簡單局部規則生成交通、生態、組織形態發生、晶體生長等豐富時空行為，但兩件事仍困難：(1) 從現象<strong>自動發現局部更新規則</strong>；(2) 用這些規則做<strong>定量預測</strong>。CA 常「計算不可約」（無解析捷徑），過去普遍認為 AI 難以完美預測；先前工作（LifeGPT 只學單一 Game of Life 規則；Burtsev 只做 1D CA 預測；ASAL 只做模擬空間探索/分類）都<strong>沒碰 2D CA 的預測，也沒做規則反推</strong>。本文補上這兩塊。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>問題形式化</strong>：用 <strong>Moore 鄰域</strong>、置換不變（count-based/isotropic，只看鄰居中為 1 的數量）的二元確定性 CA。每個 cell 的「元狀態（metastate）」＝自身狀態 + 鄰居計數，共 <strong>18 種</strong>；規則矩陣 <strong>RM 為 2×18 二元鄰接矩陣</strong>（每列恰一個 1，代表確定性轉移）。可能的 RM 總數 = 2¹⁸ = 262,144；訓練只用其中 ≤100 條（極小一隅）。</li>
+<li><strong>資料</strong>：16×16 環面（toroidal，週期邊界）grid。隨機生成 RM、隨機生成 IC（用 order-parameter 機率分佈控制密度）、再算出 GS2，組成 IC-GS2-RM 三元組。展平成字串，用保留 token（<code>[R] [BIC] [EIC] [BGS2] [EGS2]</code> 等）做<strong>指令微調式</strong>串接。<strong>自訂 tokenizer 僅 22 個 token</strong>（比 LifeGPT 的 UTF-8 分詞更省、更快）。90%/9%/1% 切訓練/驗證/測試。</li>
+<li><strong>模型與訓練</strong>：基於 <code>x-transformers</code>，RPE 相對位置編碼 + Flash attention，Adam、lr 1e-4、cross-entropy loss，單張 RTX A4000（16GB）即可訓練。正反問題各訓 3 個版本（Nr = 2／10／100 條規則），共 6 個獨立版本，從零訓練。推論時 temperature = 0。</li>
+<li><strong>正問題指標</strong>：GS2 token 正確率 <code>a_GS2</code>；<strong>反問題兩指標</strong>：<code>a_RM</code>（反推 RM 的 token 正確率，不懲罰等效解）與 <code>a_appRM</code>（把反推的 RM 套回 IC 算 GS2 的正確率，衡量「雖不同卻管用」的退化解）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>正問題</strong>：<code>a_GS2</code> 隨訓練規則數 Nr 單調上升。Nr=100 時近完美——<strong>測試集 200 樣本中僅 3 個 GS2 不完美</strong>（98.5% 完美率），相當於「通用可程式化的 2D CA 計算機」，且只見過 &lt;0.04% 的全部規則、極小比例的 IC 配置空間。趨勢是漸進泛化，<strong>非相變式跳變</strong>。</li>
+<li><strong>反問題</strong>：<code>a_RM</code>、<code>a_appRM</code> 皆隨 Nr 上升；完美反推比例上升；<strong>「不合邏輯 RM」的 error fraction 從 Nr=10 到 100 下降超過一個數量級</strong>。<code>a_appRM</code> 一直高於 <code>a_RM</code>（模型常找到<strong>等效退化解</strong>：RM 不同卻能重現動態）。</li>
+<li><strong>歸納偏誤分析</strong>：用三種相異度量（Hamming、Jaccard、Jensen-Shannon 散度）量測「測試規則 ↔ 訓練集最近兩條規則」的距離 <code>D</code>。Nr 越大，準確度與 <code>D</code> 的相關性（回歸斜率）越小 → Nr=100 時 <code>a_appRM</code> 對 <code>D</code> 斜率降到 ~0：<strong>對訓練集越「陌生」的規則反而越會被「創造性」地解出，且創造性不犧牲準確度</strong>。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>僅限 <strong>2D、二元、確定性、16×16 環面、Moore 鄰域</strong>；尚未擴展到更多狀態、更高維、更大 grid、隨機 CA（程式留了 stochastic mode 未用）。</li>
+<li>反問題仍會給出「非真值」的退化解，作者推測**給更長軌跡（更多時間演化資料）**可縮小退化解空間、更逼近真值 RM；採樣溫度對創造性/準確度的影響未探討。</li>
+<li>真實物理系統的落地（生物、組織工程、PDE 互譯）仍屬未來；大規模化的訓練成本未知。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 <strong>F 類（細胞自動機）<strong>裡走「<strong>GPT 當 CA 引擎</strong>」路線的代表，與同類的神經細胞自動機 NCA（<a class="paper-reference" href="2505.13058_Universal_NCA.%E6%91%98%E8%A6%81.html">2505.13058</a>、<a class="paper-reference" href="2506.22899_Cells_to_Pixels.%E6%91%98%E8%A6%81.html">2506.22899</a>）不同：NCA 把更新規則本身做成神經網路（黑箱、不可解釋），AutomataGPT 則</strong>保留可解釋的離散規則矩陣</strong>，同時用 transformer 做正向預測與反向規則發現。</li>
+<li>最值得記：<strong>「廣度勝過深度」——訓練涵蓋的規則空間越廣，對未見規則的泛化越好、歸納偏誤越低</strong>（即使只覆蓋規則空間極小一隅）；以及<strong>退化解/創造性</strong>現象（反推不必命中真值也能重現動態）。</li>
+<li>與作者前作 <strong>LifeGPT</strong>（<a class="paper-reference" href="https://arxiv.org/abs/2409.12182">2409.12182</a>，單一 Game of Life）、Burtsev 的 1D CA transformer 是直接延續/對照；定位為<strong>可行性論文 + 系統性消融</strong>（程式/資料開源於 lamm-mit/AutomataGPT）。</li>
+<li>適合做 <strong>CA 代理模型、規則/方程發現、符號-次符號混合、生物形態發生/物理粗粒化模擬</strong> 的人；作者願景是把真實動態現象抽象成<strong>資料高效的 CA 代理</strong>，甚至接 Omohundro 的 CA↔PDE 轉換做雙向模擬。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2506.17333_AutomataGPT.zh-TW.html"><code>../translate/2506.17333_AutomataGPT.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

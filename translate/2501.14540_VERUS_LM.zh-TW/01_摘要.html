@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2501.14540_VERUS_LM.zh-TW.html">回 2501.14540_VERUS_LM.zh-TW 目錄</a>　<a href="02_%E6%8E%A8%E7%90%86.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>近期一種神經符號推理途徑是<strong>顯式結合 LLM 與符號 solver</strong> 的優勢來解複雜推理。然而現有方法有顯著限制：<strong>任務專屬 prompt 導致泛化差、知識與查詢未分離造成低效、推理能力受限</strong>——這些缺陷妨礙其可擴展性與跨域適用性。本文提出 <strong>VERUS-LM</strong>：採<strong>通用 prompt 機制</strong>、<strong>清楚分離領域知識與查詢</strong>、支援廣泛的不同邏輯推理任務。此框架提升適應性、降低計算成本、並支援更豐富的推理形式（如最優化與約束滿足）。我們在一個新資料集上於多樣推理任務顯著勝過 LLM；在常見推理 benchmark 上與同類 SOTA 競爭力相當，並在困難的 <strong>AR-LSAT</strong> 上大幅超越。VERUS-LM 推進混合推理的邊界，是邁向更通用神經符號 AI 的重要一步。（程式與資料：gitlab.com/EAVISE/bca/verus-lm）</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>邏輯推理是解題、決策、批判思考的核心。GPT-4、Gemini 等 LLM 經 CoT 展現類推理能力的躍進，但<strong>無法保證忠實、透明的推理</strong>——本質上是黑箱機率模型，難確保準確連貫的推理步驟，故其是否「真推理」仍有爭議。符號推理引擎則能導出<strong>可證正確且通常可解釋</strong>的結論，但難解讀模糊的自然語言。這給 NeSy 結合兩者之長創造機會（鬆散對應 Kahneman 的 System 1 快思 / System 2 慢思）。</p>
+<p>但現有 SOTA 有限制：<strong>重度依賴任務專屬 prompt</strong>（經 in-context learning 生符號表示）→ 較不通用、難適配新域；且通常<strong>把每個查詢化約為同一種（或極少數）推理任務</strong>→ 缺乏多功能性。本文提出 <strong>VERUS-LM</strong>：通用 prompt 管線、語意精煉步驟、宣告式知識與問題清楚分離、支援廣泛邏輯推理任務。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>本文聚焦「LLM 耦合顯式符號推理引擎」這類 NeSy（不談 in-context/微調式改進）。現有系統大同小異：給推理問題（領域描述 + 待答查詢），先讓 LLM 生形式表示再交推理引擎解。</p>
+<ul>
+<li><strong>[LLM]+ASP / ASP 管線</strong>：LLM 三次（抽常數→生謂詞→生 ASP 規則），邏輯謎題上比 GPT-4 基線 +71%；或 LLM 抽原子事實 + 手工「知識模組」（領域 ASP 規則）餵 ASP solver。</li>
+<li><strong>LINC</strong>：LLM 生 FOL → FOL 推理器；生 K 個形式化 + K-way 多數投票緩解形式化錯誤；在 FOLIO 競爭力、ProofWriter 顯著提升。</li>
+<li><strong>Logic-LM</strong>：兩大特色——(1) 支援邏輯程式/FOL/CSP/SAT 多種語言；(2) <strong>自我精煉</strong>（LLM 依 solver 回饋迭代修語法錯）。但在多樣的 AR-LSAT 上僅 43.04%。</li>
+<li><strong>SymbCoT</strong>：內部用 in-context 把問題轉 FOL，但<strong>不用獨立推理引擎</strong>——LLM 自己逐步推理（模仿 solver 的 prompt）→ 對語法錯更穩健；在 PrOntoQA/FOLIO/ProofWriter 一致勝 CoT 與 Logic-LM。</li>
+</ul>
+<p>多數方法依賴資料集專屬範例做 in-context、僅支援少數推理任務 → 泛化受限，在多樣的 <strong>AR-LSAT</strong>（LSAT 法學院入學考題）上尤其明顯。</p>
+<h2 id="3-系統設計">3. 系統設計</h2>
+<h3 id="31-需求">3.1 需求</h3>
+<p>現有方法多聚焦單一推理任務；但現實用例（如車險數位助理）使用者會問「我符合投保資格嗎?/為何（不）符合?/依車型保費多少?/改什麼能讓保費最低?」。故兩大需求：(1) 須支援<strong>多種推理模式</strong>（任務專屬 prompt 行不通，由 AR-LSAT 結果為證）;(2) 推理組件須能做不同推理——可用多引擎（如 Logic-LM）但須為每種推理重新形式化（增成本與錯誤），故<strong>偏好用單一支援多種推理的引擎</strong>。</p>
+<p><strong>VERUS-LM 設計需求</strong>：(1) <strong>多功能</strong>（驗證/解釋/最優化…）;(2) <strong>知識複用</strong>（區分「領域知識」與「待執行任務」，知識可被不同任務複用）;(3) <strong>通用</strong>（含 prompt 法在內，皆獨立於推理任務類型或領域）。</p>
+<h3 id="32-推理引擎">3.2 推理引擎</h3>
+<p>選 <strong>IDP-Z3</strong>——<strong>FO(·)</strong> 的推理引擎（古典一階邏輯的豐富擴展：型別、聚合、（歸納）定義等）。它顯式支援<strong>知識庫範式（Knowledge Base Paradigm）</strong>：同一份領域知識可用於多種不同推理任務。</p>
+<p>FO(·) 範例（車險）：詞彙 V 含型別（Customer、Car）、函數（risk_factor: Car→Real、age: Applicant→Int）、常數（car_value、premium…）、謂詞（applicant）；結構 S 給部分符號解釋（age:={Ann→16,Brit→32}）；理論 T 含句子（∀ applicant 須成年；premium=car_value/100×risk_factor(car_type)）。S⊨T 即 S 為 T 的模型。<strong>同一 KB</strong>，IDP-Z3 可：判斷誰符合投保並解釋為何、算保費、「最優化」保費（找風險係數最低車型）——無需改 KB，直接知識複用。FO(·) 表達力足以建模眾多領域，且 FOL 在 LLM 訓練語料中常見故 LLM 對此形式流暢。</p>
+<h3 id="33-verus-lm-架構">3.3 VERUS-LM 架構</h3>
+<p>兩階段（圖 1）：<strong>階段一 知識庫建立</strong>——LLM 把領域知識翻成符號 FO(·) 規格，<strong>此階段不考慮具體問題</strong>，造可複用 KB;<strong>階段二 推理</strong>——才考慮問題，解讀後以適當的 IDP-Z3 推理任務呼叫作答。同域多問只需形式化一次，大幅省算力。</p>
+<h2 id="4-知識庫建立三步">4. 知識庫建立（三步）</h2>
+<h3 id="41-符號抽取">4.1 符號抽取</h3>
+<p>LLM 先辨識領域的型別、函數、謂詞。Prompt <strong>不含特定資料集範例</strong>，只給通用指示 + 三個不出現在任何資料集的通用範例；並要求<strong>為每個符號標註非形式語言意義</strong>供後續使用。</p>
+<ul>
+<li><strong>OWA 變通</strong>：IDP-Z3 不支援開放世界（FOLIO/ProofWriter 需要），它總用<strong>封閉世界假設（CWA）</strong>、要求所有型別（除內建 R/Z）完全列舉。VERUS-LM 在每個型別加一個額外「unknown」元素模擬 OWA——理論上不正確但實務一貫產出正確結果。</li>
+</ul>
+<h3 id="42-公式抽取">4.2 公式抽取</h3>
+<p>LLM 生對應領域描述的 FO(·) theory。給簡短 FO(·) 文法概覽 + 清楚指示 + 兩個步進式範例（每句邏輯配其自然語言意義）；要求<strong>也考慮隱含與常識知識</strong>;prompt 末附前面生成的詞彙與待形式化的問題描述。</p>
+<h3 id="43-自我精煉">4.3 自我精煉</h3>
+<p>雖 LLM 常產出正確邏輯句，仍會錯。引入用推理引擎回饋修錯的自我精煉（受指令式程式設計與 Logic-LM 啟發）。但 Logic-LM 等只管<strong>語法</strong>正確，本文新增<strong>語意</strong>正確一步（用可滿足性檢查）。迭代直到無錯或達上限。</p>
+<ul>
+<li><strong>語法精煉</strong>：solver 報語法錯時，以「LLM 前次錯誤輸出 + solver 錯誤訊息 + 常見語法錯與修法範例」要 LLM 修；詳細錯誤由 IDP-Z3 的程式分析工具 <strong>FOLINT</strong> 提供。</li>
+<li><strong>語意精煉</strong>：KB 語法正確後用<strong>可滿足性檢查</strong>找語意錯。KB 此時應可滿足（只含領域知識的形式化、尚無具體目標）；若已不一致 → 視為 LLM 翻錯，用 IDP-Z3 生的**「最小不可滿足子集」**當解釋去要 LLM 修。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

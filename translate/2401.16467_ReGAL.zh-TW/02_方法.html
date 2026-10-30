@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2401.16467_ReGAL.zh-TW.html">回 2401.16467_ReGAL.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%88%86%E6%9E%90.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-方法">3. 方法</h2>
+<p>ReGAL 分兩相：<strong>訓練/歸納相</strong>學抽象（helper functions），<strong>測試/合成相</strong>用抽象為測試 query 生成程式。給定 （query q, 標準原語程式 p） 示範集，先前處理聚類（§3.1），訓練相分批重構原語程式建立抽象（§3.2），測試相生成「黏合」抽象與原語的程式（§3.3）。訓練用 GPT-3.5；測試用多種 LLM，側重可自由取得的開源模型。</p>
+<h3 id="31-前處理">3.1 前處理</h3>
+<ul>
+<li><strong>加註解（可選）</strong>：讓 GPT-3.5 根據 q 為 p 加註解以對齊查詢與程式，並驗證加註後程式執行結果不變。</li>
+<li><strong>聚類</strong>：抽象必須跨例共享，重構 LLM 需要<strong>多例視野（multi-instance scope）</strong>——一次收到一批相關的 (q,p)。作法：用 OpenAI Ada embedding 嵌入 query，Ward 演算法階層聚類，拓撲排序後分成大小 k 的批。</li>
+<li><strong>課程（curriculum）</strong>：直覺上短而易的程式含有可重用於更難、更組合性程式的抽象，故按 query 平均 token 長度將批排序（由短到長）。</li>
+</ul>
+<h3 id="32-訓練">3.2 訓練</h3>
+<p>訓練輸出：**Code Bank（C）**＝訓練中抽象出的 helper function 庫；**Demo Bank（D）**＝函數使用示範。迭代流程（演算法 1）：</p>
+<ul>
+<li><strong>Stage 1 重構（refactorBatch）</strong>：輸入一批例子、指令與現有 code bank，提示重構 LLM 產出一組新 helper functions H^new 及（適當時）使用這些 helper 的重構版程式。</li>
+<li><strong>Stage 2a 驗證（verify）</strong>：<strong>執行</strong>重構程式並與原程式比對結果，即判定 p̂() = p()。通過驗證的重構程式 (q, p̂) 存為示範供代理未來使用；<strong>只有通過驗證的 helper functions 才加入 C</strong>。同時記錄驗證失敗的程式——它們是 editCodeBank 與 pruneCodeBank 的關鍵依據。</li>
+<li><strong>Stage 2b 回饋重試（retry）</strong>：對未通過驗證者，後續提示中呈現失敗程式、其 helper functions 及<strong>執行的環境回饋</strong>（輸出或錯誤訊息；LOGO 除外，因輸出是影像），LLM 產出新版本，通過驗證則其 helpers 入 C。</li>
+<li><strong>Stage 3a 編輯 Code Bank（editCodeBank）</strong>：有些 helper 因含錯誤抽象而未全數通過單元測試——例如 <code>draw_triangle()</code> 把 small 尺寸寫死，medium 三角形就失敗。每隔 editEvery 批，為每個函數構造提示，展示其通過與失敗的單元測試，請 LLM 提出修改；<strong>改後通過更多單元測試才替換</strong>。</li>
+<li><strong>Stage 3b 修剪 Code Bank（pruneCodeBank）</strong>：修剪「多數單元測試失敗且無法再經編輯改善」的函數。每個函數依「使用它的程式的成功率」計分：s = |P| − Σ_{p∈F} 1/n_p（P/F 為通過/失敗程式集，n_p 為程式 p 用到的函數數）——即每個通過程式 +1，失敗的扣分與程式中函數數成反比（因為失敗天真上可歸咎於程式中任一函數）。函數被使用足夠次數且 s 低於閾值 θ（全部實驗設 0）即修剪。</li>
+</ul>
+<p>訓練可跑多個 epoch。超參數以 dev 集選定（附錄 C），全部提示見附錄 D。</p>
+<h3 id="33-測試">3.3 測試</h3>
+<p>部署一個程式合成（語意剖析）代理逐例預測。對每個測試例，代理以向量相似度從訓練語料檢索 ICL 範例構造提示。<strong>ReGAL 增強代理</strong>可存取訓練資料、code bank 與 demo bank：ICL 預算（所有實驗 10 例）<strong>在原語範例與重構範例間分配</strong>（保留部分原語程式當 ICL 是必要的，因為並非所有測試 query 都能只靠 helper 解決；比例為超參數）。另按「query 與函數名稱/描述的相似度」檢索至多 <strong>20 個相關 helper functions</strong> 串入提示。並採 <strong>ReAct 式提示</strong>：先讓模型思考哪些函數可能相關、再生成程式碼——沒有這些「thought」語句，增強代理幾乎不用任何 helper。</p>
+<h2 id="4-實驗設定">4. 實驗設定</h2>
+<h3 id="41-資料集">4.1 資料集</h3>
+<p>五個資料集的共通點：問題<strong>異質</strong>、需要多個 helper functions（不像排序那種一個函數可解的任務）。</p>
+<ul>
+<li><strong>LOGO</strong>：Turtle 圖形 DSL（<code>forward(dist)</code>、<code>left(theta)</code> 等），基於 Ellis et al.（2021）資料、Wong et al.（2021）重新標註；作者以 AST 規則把 Lisp 式語法<strong>譯成 Python</strong> 並釋出。train/test 200/111，另取 100 dev。</li>
+<li><strong>Date</strong>：BigBench-Hard 日期理解字題。以 Lyu et al.（2023）的 GPT-3.5 預測程式為 <strong>silver programs</strong>，切 66/113/180，訓練切分按正確性過濾。</li>
+<li><strong>TextCraft</strong>：文字環境中合成 Minecraft 物品；每例含目標與 10 條合成指令（含干擾項配方）。不同於原作的互動設定（每步收環境回饋），本文要求代理<strong>一次生成完成整個任務的單一 Python 程式</strong>，更具挑戰。用 depth-2 測試切分，190/50/77。</li>
+<li><strong>MATH</strong>：檢驗 ReGAL 在<strong>無預定義域語言</strong>之域發現函數的能力。用 GPT-4 + Program-of-Thoughts 生成 silver 訓練程式；取難度 1-2 級、Algebra 子集，194/61/74。除 Python 內建外<strong>沒有任何原語</strong>。</li>
+<li><strong>TabMWP</strong>：表格數學字題，同樣用 silver programs，取 1-4 級，194/60/74。</li>
+</ul>
+<h3 id="42-基線">4.2 基線</h3>
+<ul>
+<li><strong>前人工作基線</strong>：LOGO 用 Grand et al.（2023）LILO 的 offline synthesis 數字；Date 跑 Lyu et al.（2023）Faithful-CoT 於本文測試切分；TextCraft 重跑 Prasad et al.（2023）的 ReAct 基線。（方法學差異使本文代理先天佔優，這些數字主要用來顯示本文基線本身之強。）</li>
+<li><strong>基線程式代理</strong>：與 ReGAL 存取<strong>完全相同的資料</strong>但不用抽象——從同一訓練集檢索原語程式當 ICL（同樣 10 例預算），直接檢驗抽象的貢獻。</li>
+</ul>
+<h2 id="5-結果">5. 結果</h2>
+<ul>
+<li><strong>對外部基線</strong>：ReGAL 全勝（LOGO：LILO 41.1 → 基線 45.6 → ReGAL 57.1，CodeLlama-13B；Date：Faithful-CoT 83.3 → 基線 88.9 → ReGAL 90.2，GPT-3.5；TextCraft：ReAct 25.6 → ReGAL 30.8，CodeLlama-34B——ReAct 還多拿了環境回饋）。</li>
+<li><strong>非數學域對自建基線（表 1，3 seeds）</strong>：各模型普遍大幅領先。CodeLlama-13B 受益最大：LOGO 45.6→57.1、Date 42.8→68.9、TextCraft 18.8→26.9。Lemur-70B 與 GPT-3.5 在 LOGO/TextCraft 也有大增益。<strong>最大的模型未必最好</strong>：LOGO 與 TextCraft 上 GPT-3.5 被開源模型（增強後）超越——CodeLlama-13B+ReGAL 在 LOGO 勝無抽象 GPT-3.5 達 <strong>19.2%</strong>（也勝有抽象的 GPT-3.5）。僅以約 200 例跑 ReGAL 訓練，就能把小得多的開源模型推到遠超（可能）大得多的系統。</li>
+<li><strong>數學域</strong>：MATH/TabMWP 無明確域語言、該發現哪些 helper 較不明朗，但 ReGAL 仍普遍改善：GPT-3.5 在 MATH +12.2（43.2→55.4）、CodeLlama-7B 在 TabMWP +11（16.7→27.7，追平 13B 水準）。Lemur 在此二域大量輸出空白，計入標準誤後與基線相當。顯示 ReGAL 能泛化到無清晰域語言之域。</li>
+<li><strong>消融（表 3，CodeLlama-13B，dev）</strong>：去掉任一組件都掉分；<strong>retry 與 curriculum 影響最大</strong>（去 retry：Date 77.0→51.9；換隨機順序：LOGO 55.0→36.3，掉 18.7%）。retry 既增加有用 helper 也擴充 Demo Bank。去 pruneCodeBank：TextCraft 34.1→25.3；去 editCodeBank：Date 77.0→69.6。</li>
+<li><strong>重用性（圖 3）</strong>：CodeLlama-13B 測試程式中，top-5 常用 ReGAL 函數被大量重複呼叫，TextCraft 相對重用最多——證實抽象確實跨例共享。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

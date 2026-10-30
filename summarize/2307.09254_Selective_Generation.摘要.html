@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《可控語言模型的選擇性生成（Selective Generation for Controllable Language Models）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Minjae Lee, Kyungmin Kim（POSTECH GSAI，共同第一作者）, Taesoo Kim（Georgia Tech SCS &amp; SCP）, Sangdon Park（POSTECH GSAI &amp; CSE）</p><p>日期：2023-07（NeurIPS 2024 spotlight）</p><p>arXiv：2307.09254</p><p><a href="https://arxiv.org/abs/2307.09254" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="可控語言模型的選擇性生成重點摘要">《可控語言模型的選擇性生成》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>用**文字蘊涵（textual entailment）**取代 exact-match 當生成任務的正確性指標，定義「蘊涵版偽發現率（FDR-E）」，提出 <strong>SGen^Sup</strong>（監督式）與 <strong>SGen^Semi</strong>（半監督式）兩套選擇性生成演算法，讓語言模型的「棄權（IDK）」不再是啟發式門檻，而是帶 <strong>PAC 機率保證</strong>——以至少 1−δ 的信心，把「答了才算」的錯誤率（幻覺率）控制在使用者指定的 ε 之下。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>選擇性預測（selective prediction）與保形預測（conformal prediction）等「憑證化風險控制」方法已能在分類任務上給出嚴格的錯誤率上界，但套用到語言生成時卡在<strong>正確性指標不對齊（metric misalignment）</strong>：生成任務對同一問題可能有多種語意正確但字面不同的答案，用 EM/F1 判定對錯會把大量正確答案誤判為錯，導致學出的選擇函數過度保守、幾乎全部棄權（本文稱為 vacuous selector）。本文要找一個能容納「多個語意等價答案」且仍可證明機率保證的正確性判準。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>正確性判準改用文字蘊涵</strong>：定義「真答案 y 是否為生成答案 G(x) 的邏輯後果」，即 G(x)∈E_true(y)；並用此定義出**廣義 FDR（FDR-E）**＝在模型「不棄權」的樣本中，生成答案未蘊涵真答案的機率，取代分類版 FDR 中的 EM。</li>
+<li><strong>正確性的 ground truth</strong>：不是自動指標，而是<strong>人工標註的蘊涵標籤</strong>——把生成答案當前提（premise）、真答案的陳述句形式當假設（hypothesis），標「蘊涵／矛盾／中立」；本文在 Natural Questions 上為 GPT-3.5-Turbo、Alpaca-7B 各自新建約 4.6k／7.3k 筆人工蘊涵標註資料集（8:2 切校準/測試）。</li>
+<li><strong>SGen^Sup</strong>：直接把選擇性分類（Geifman &amp; El-Yaniv 2017 的 PAC 二項尾界門檻搜尋法）換上蘊涵標籤，監督式學出選擇函數，控制 P{FDR-E(Ŝ)≤ε}≥1−δ；缺點是需要昂貴的人工蘊涵標註。</li>
+<li><strong>SGen^Semi</strong>：先用 PAC 保形預測在少量標註資料上學一個「蘊涵集合函數」Ê，並給出其偽標籤錯誤率（FER，false entailment rate）的 PAC 上界；再用 Ê 對大量<strong>無標註</strong>資料做偽標籤，把 FER 界＋標註/未標註兩路二項尾界（FNER／NER）透過聯集界（union bound）組合，證出整體 FDR-E 的 PAC 保證（Theorem 1）。實驗中半監督法只用 75% 的人工標註量＋最多 27k/10k 筆無標註樣本，選擇效率（不棄權比例）就追平甚至略超全監督版。</li>
+<li><strong>Neuro-selection functions（多門檻可學特徵選擇函數）</strong>：標準做法是單一分數單門檻（如生成序列的最大概似 f_M1，已知校準很差）；本文改用可學特徵映射 Φ 組合多個評分函數（如自一致性分數 f_M2＝對同題重複取樣後與各次答案的平均蘊涵分數），並讓 SGen^Semi 從多個候選評分函數類別中自動挑出能同時滿足 FDR-E 保證、又最大化選擇效率的組合。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>在 GPT-3.5-Turbo、Alpaca-7B 上，用 EM 當正確性指標的基線（SGen_EM，即把 Geifman &amp; El-Yaniv 方法直接套用生成任務）明顯過度保守、效率很差；改用蘊涵標籤的 SGen^Sup 準確又有效率得多，證實 EM 不適合生成任務。</li>
+<li>SGen^Semi 只用 75% 標註資料就達到接近／超過全監督（SGen^Sup）的選擇效率（GPT-3.5-Turbo：0.7334 vs 0.7535；Alpaca-7B：0.3173 vs 0.2959），且無標註樣本越多、效率越好。</li>
+<li>帶 neuro-selection 的 SGen^Semi 平均選擇效率優於只用單一評分函數的變體（SGen^Semi_NoMS），驗證「多評分函數組合」的價值。</li>
+<li>以 100 次隨機校準/測試切分做壓力測試，證書型方法（SGen^Sup／SGen^Semi）的 FDR-E 確實穩定壓在設定的 ε_S=0.25 之下；相對地，啟發式半監督基線（單純偽標籤、無 PAC 界）<strong>不保證</strong>能守住目標水準，實測確實有時超標。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>需要 i.i.d. 假設，實務資料分布飄移時保證可能失效。</li>
+<li>仍依賴一定量的人工蘊涵標註（半監督只是<strong>降低</strong>而非消除這個成本）。</li>
+<li>作者自陳：實測 FDR-E 相對 ε 的界不夠緊，尤其在 Alpaca-7B 上更明顯，顯示所用的二項尾界／聯集界偏保守，仍有改進空間。</li>
+<li>只處理貪婪解碼（決定性生成器）與開放式問答格式，尚未涵蓋抽樣式生成或更開放的長文生成場景。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本篇精準對應 ai_core <strong>§3.4「治理＝拒絕為預設＋憑證准入」<strong>中「憑證要能給保證而非只有分數」這句話的具體做法：它示範了如何把</strong>任一</strong>不確定性分數（哪怕像庫中已入庫的 2302.09664 語意熵、2303.08896 SelfCheckGPT 自一致性分數，或 2504.19254 UQ 綜合評分器給出的分數）透過 PAC 二項尾界／保形預測，轉成「P（答錯｜已放行）≤ε，信心≥1−δ」這種<strong>可稽核的機率式證書</strong>，而不是停在「分數越高越可信」的啟發式。ai_core 憑證上的「穩定度%」若要真正拿來當准入依據，需要的正是這一層轉換。</li>
+<li>與庫中已有棄權/委派系工作的對照：<strong>1705.08500 Selective Classification</strong> 是本文 SGen^Sup 的直接源頭（同款二項尾界門檻搜尋，本文把它從 EM 換成蘊涵）；<strong>1901.09192 SelectiveNet</strong> 走的是端到端聯合訓練「預測＋棄權」的路線，本文的 neuro-selection function 雖也用可學特徵，但仍是在固定生成器之上做<strong>事後</strong>選擇函數學習，保證來自統計界而非訓練目標；<strong>2006.01862 L2D</strong> 給的是「該不該轉交專家」的一致代理損失，關心排序/決策一致性而非機率上界，本文則是直接給出可證的錯誤率上界。與同樣做 LLM 幻覺機率保證的 <strong>2405.01563 Conformal Abstention</strong> 相比，本文的差異化在於：(1) 用蘊涵而非簡單分數當正確性 ground truth 以處理生成任務多重正解問題，(2) 提出半監督管線把「保形學到的蘊涵集合函數」當偽標籤器，用少量標註撬動大量無標註資料，(3) 用 neuro-selection 把「選什麼分數當門檻依據」也變成可證保證下的可學問題。與 <strong>2412.12767 校準綜述</strong>呼應之處：本文明白指出「單一分數要校準到能直接當門檻」很難（Lemma 4 的前提是分數對真蘊涵集合完美校準），因此才轉向多分數組合的 neuro-selection，而非硬求一個完美校準分數。歸 <strong>I 類</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2307.09254_Selective_Generation.zh-TW.html"><code>../translate/2307.09254_Selective_Generation.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

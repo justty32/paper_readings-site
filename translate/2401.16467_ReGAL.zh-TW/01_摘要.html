@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2401.16467_ReGAL.zh-TW.html">回 2401.16467_ReGAL.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>LLM 日益被用於程式合成（program synthesis），但它們缺乏發展有用抽象所需的<strong>全域視野</strong>：通常一次預測一支程式，反覆重寫相同功能。從零重複生成冗餘程式碼既低效又易錯。為此我們提出 <strong>ReGAL（Refactoring for Generalizable Abstraction Learning）</strong>，一個<strong>無梯度（gradient-free）<strong>方法，透過程式碼重構（refactorization，即在不改變執行輸出的前提下重組程式碼）學習一個可重用函數庫。ReGAL 從一小組既有程式學習，<strong>以執行迭代地驗證並精煉其抽象</strong>。我們發現 ReGAL 發現的共享函式庫讓多樣領域中的程式更容易預測。在五個資料集——LOGO 圖形生成、Date 推理、TextCraft（Minecraft 文字遊戲）、MATH、TabMWP——上，開源與閉源 LLM 用 ReGAL 函數預測程式時準確率皆提升。CodeLlama-13B 的絕對準確率增益達 LOGO 11.5%、date understanding 26.1%、TextCraft 8.1%，在三域中的兩域超越 GPT-3.5。分析顯示 ReGAL 的抽象封裝了常用子程序（subroutines）與</strong>環境動態（environment dynamics）</strong>。程式碼：github.com/esteng/regal_program_learning。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>「LLM 對給定 query 生成可執行程式」的範式已用於電腦視覺、機器人、工具使用與複雜推理。但關鍵是：<strong>每支程式都是獨立生成的</strong>，不參照其他 query 或程式，且僅由原語操作（primitives，領域語言的內建操作）組成。這有兩大關聯的局限：</p>
+<ol>
+<li>
+<p><strong>缺乏重用性（reusability）</strong>：每支程式都是一次性腳本，不被其他例子重用。這增加冗餘並造成不必要的錯誤——兩個例子需要同一子程序時，模型可能一次寫對、另一次寫錯。如圖 1（上）：「僅原語」模型先前已正確生成過九邊形，這次卻把多邊形的角度算錯；而 ReGAL 的 <code>draw_small_9gon()</code> 函數執行正確。</p>
+</li>
+<li>
+<p><strong>缺乏抽象（abstraction）</strong>：共享抽象能讓技能更「觸手可及」而提高準確率。僅用原語生成時，模型必須解讀 query 並推理出到多個原語的正確映射；改用可解釋的抽象後，任務簡化為<strong>從函式庫選函數名</strong>。圖 1（下）：帶抽象的模型把子查詢「a small 9 gon」匹配到 <code>draw_small_9gon()</code>，於是能對其餘程式碼正確推理；僅原語模型則沒能把形狀正確嵌入迴圈。</p>
+</li>
+</ol>
+<p>兩個局限都源自<strong>缺乏全域脈絡</strong>——模型逐例看資料，沒有發展可重用抽象的機制。這與人類寫碼方式大異：開發者從一次性解法起步，但很快為相關問題建立共享抽象與程式片段庫，減少冗餘、提升效率與可讀性。此外<strong>函數是可驗證的</strong>：一旦測試過，將來即可信賴——一次性程式片段做不到這點。而抽象也有<strong>過擬合</strong>風險：<code>draw_9gon_snowflake()</code> 可能完美貼合一例卻不泛化，<code>draw_small_9gon()</code> 才是多場景可用的versatile函數。「用原語產生新程式的能力」與「把子程序編碼為可重用抽象的收益」之間需要平衡——這種彈性與效率的權衡同樣出現在語言、生物、製造與程式設計中。</p>
+<p>ReGAL 以迭代方式精煉抽象：重構程式，並<strong>驗證、修正、修剪</strong>過度特化或錯誤的抽象。它只需兩個要素：一小組使用原語的程式（primitive programs）與一個執行環境（如 Python）。重要的是，ReGAL 可以從 <strong>LLM 生成的程式</strong>學習，<strong>不需任何人工標註</strong>。訓練是無梯度的，靠一個凍結 LLM 做重構。測試階段，LLM 代理為測試 query 預測程式，可存取 ReGAL 的 helper function 庫與其使用示範。</p>
+<p>在五個多樣資料集上，ReGAL 顯著提升多種 LLM（尤其開源模型）的程式準確率：CodeLlama-13B 在 LOGO／Date／TextCraft 分別 +11.5%／+26.1%／+8.1%，超越 GPT-3.5 等更大的模型。§6.3 顯示 ReGAL 用極少例子即可超越基線，訓練集砍半仍有大幅改善。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>程式歸納（program induction）</strong>：DreamCoder（Ellis et al., 2021）用 wake-sleep 貝氏學習結合歸納與合成；Wong et al.（2021）加入語言對齊；Grand et al.（2023）用類似符號搜尋但以 LLM 撰寫抽象文件。這一系工作的符號搜尋依賴以 <strong>λ-calculus</strong> 為域語言的資料結構，而 λ-calculus 不是實際軟體開發用語。ReGAL 改用 <strong>LLM 為基礎的搜尋</strong>，因此可用 Python 這類開發者常用、預訓練語料中大量出現的彈性語言。</li>
+<li><strong>程式合成與工具使用</strong>：Cai et al.（2023）為推理任務歸納工具，但<strong>每任務僅產一個工具</strong>——同質任務（如按字母排序）可行，本文的異質任務則需多個函數。與本文更近的 Yuan et al.（2023）、Qian et al.（2023）、Wang et al.（2024，TroVE）為視覺與數學任務歸納多個工具；本文差異在：強調學習<strong>可被多個 LLM（含多個開源 LLM）共用的 code bank</strong>；聚焦<strong>重構</strong>；且不提供「想要什麼工具」的領域內示例，探究模型在無領域指引下會建出什麼抽象。Wang et al.（2024）也修剪學到的函數，但其方法不含重構；我們透過重構學函數並<strong>週期性編輯</strong>（且修剪）codebank。</li>
+<li><strong>互動域中的歸納</strong>：Wang et al.（2023，Voyager）也在 Minecraft 域歸納函數，但其函數<strong>一次寫成即存</strong>；本文成批重構、在整個訓練過程中反覆測試與精煉，並在多域展現泛化。其他工作為具身規劃學抽象庫（PDDL 運算子或因果文字回饋），ReGAL 則在<strong>可執行程式</strong>空間操作。相較 LLM 任務分解（skills 需人工識別、LLM 反覆從零執行技能），ReGAL 提供自動發現抽象並經 helper functions 重用的途徑。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2306.02707_Orca.zh-TW.html">回 2306.02707_Orca.zh-TW 目錄</a>　<a href="02_%E8%A7%A3%E9%87%8B%E8%AA%BF%E6%A0%A1.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>近期研究聚焦於透過模仿學習（imitation learning）——借助大型基礎模型（LFM）產生的輸出——提升小模型的能力。但這類模型的品質受多項問題影響：模仿訊號來自淺層 LFM 輸出、訓練資料規模小且同質，以及最重要的——缺乏嚴謹評估，導致高估小模型能力，因為它們往往只學會模仿 LFM 的<strong>風格</strong>而非<strong>推理過程</strong>。為解決這些挑戰，我們開發 <strong>Orca</strong>，一個學習模仿 LFM 推理過程的 130 億參數模型。Orca 從 GPT-4 的豐富訊號中學習，包括解釋軌跡、逐步思考過程與其他複雜指令，並在 ChatGPT 的教學助理協助下進行。為促進這種漸進式學習，我們透過審慎的取樣與挑選，運用大規模且多樣的模仿資料。Orca 在 Big-Bench Hard（BBH）等複雜零樣本推理基準上，較 Vicuna-13B 等傳統 SOTA 指令調校模型高出逾 100%，在 AGIEval 上高出 42%。此外，Orca 在 BBH 基準上與 ChatGPT 打平，在 SAT、LSAT、GRE、GMAT 等專業學術考試的零樣本設定（無 CoT）下表現具競爭力（用優化系統訊息時差距僅 4 分），但仍落後 GPT-4。我們的研究顯示，無論是人類或更先進 AI 模型生成的逐步解釋，從中學習都是提升模型能力與技能的一條有前景的路。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>ChatGPT、GPT-4 等大型基礎模型（LFM）在廣泛任務上展現出色的零樣本表現，甚至在律師考試、SAT、GRE、USMLE 等專業考試上達到人類水準。這歸功於模型與資料規模的擴大，以及透過監督學習配對提示與期望行為、加上人類偏好強化學習的第二層訓練。一個有趣的問題浮現：能否用模型自己來監督自身或其他 AI 模型的行為？近期已有大量研究以 ChatGPT、GPT-4 為老師產生大規模資料集，訓練小模型如 Alpaca、WizardLM、Vicuna——這些模型雖能匹配老師的風格，卻常常在推理與理解能力上明顯不足。</p>
+<p>以 13B 的 Vicuna（廣受認可、在 OpenLLM/ChatArena 排行榜名列前茅）為例：用 GPT-4-as-judge 的常見評估方法顯示 Vicuna 保有 ChatGPT 92% 的品質，但更嚴謹地在推理基準對照人類標註評估，Vicuna 在專業學術考試上僅保有 64% 品質，在 BigBench-Hard 上僅 48%。這個落差不僅揭露既有評測方法的侷限，也暴露小模型在推理與理解能力上的顯著落後——這些模型可能能言善道，卻未必具備扎實的推理技能。</p>
+<h3 id="11-既有方法的挑戰">1.1 既有方法的挑戰</h3>
+<p>Gudibande et al. 在近期研究中主張「model imitation is a false promise（模型模仿是空頭承諾）」，因為「要廣泛匹配 ChatGPT 的純模仿路線需要 (1) 大規模蒐集模仿資料集的投入，(2) 遠比現有更多樣、更高品質的模仿資料」。本文反其道而行之，論證這兩個條件其實可以達成，並展現在多個要求高度推理能力的零樣本基準上可縮小與專有 LLM 的差距。具體挑戰如下：</p>
+<p><strong>簡單指令、多樣性有限</strong>：Self-Instruct 流程用初始提示誘發 LFM 產生新指令，過濾低品質或過度相似的回應。但產出的查詢（如「三原色是什麼」「法國首都是哪」）在多樣性與複雜度上有限。Alpaca、WizardLM 皆採用 self-instruct 變體；WizardLM 提出 Evol-Instruct 逐步把初始指令改寫得更複雜，試圖緩解此侷限。Vicuna、Koala 則靠 ShareGPT 社群貢獻的、更接近人類真實對話的自然指令取得亮眼表現。</p>
+<p><strong>任務多樣性與資料規模</strong>：ShareGPT 這類人工貢獻對話資料雖有價值，但偏好創意生成與資訊查詢類任務，訓出的模型可能只捕捉到 LFM 的風格而非推理過程（如 Vicuna 在圖 2、3 中的表現所示），且資料規模也受限。</p>
+<p><strong>有限的模仿訊號</strong>：既有方法僅靠老師產生的 {query, response} pair 做模仿學習，能追蹤老師推理過程的訊號有限。開放模型研究顯示，logits、中間表徵、注意力狀態等更豐富的訊號能大幅提升蒸餾效果，但這些對封閉模型的 LFM 不可得（OpenAI API 確實提供每個 token 的 top-5 logits）；近期工作顯示 LFM 產生的理據（rationale）等更豐富訊號能幫助任務特定的蒸餾。</p>
+<p><strong>評估</strong>：既有指令調校研究的評估協議嚴重受限，多半靠 GPT-4 自動評估——用「給定系統 1（參照）與系統 2（目標）的回應，哪個較好」的提示做成對比較。這種做法問題不少：測試集小（Vicuna 僅 80 題、WizardLM 僅 218 題）、GPT-4 裁判本身有偏見（例如偏好較長文本、對候選呈現順序敏感）。本文將展示這類自動評估會高估小模型相對於 LFM 的能力，因為前者在理解與推理技能上明顯較弱。</p>
+<h3 id="12-核心貢獻">1.2 核心貢獻</h3>
+<p><strong>解釋調校（Explanation tuning）</strong>：用 GPT-4 產生的詳細回應——解釋老師產生答案時的推理過程——來擴充 {query, response} pair，為學生提供額外學習訊號。我們利用系統指令（如「像對五歲小孩解釋」「逐步思考並論證你的回答」等）誘發此類解釋，這與僅用提示和 LFM 回應的傳統指令調校形成對比，後者幾乎沒有機會模仿 LFM 的「思考」過程。</p>
+<p><strong>擴大任務與指令規模</strong>：運用 Flan 2022 Collection（尤其是 FLAN-v2，輔以高品質模板、進階格式與資料增強），從中選擇性取樣構成多樣任務組合，再進一步子取樣生成複雜提示，用以查詢 ChatGPT、GPT-4 等 LFM 建構豐富多樣的訓練集：蒐集 500 萬則 ChatGPT 回應，再從中取 100 萬則取得 GPT-4 回應，並展現 ChatGPT 當教學助理如何幫助漸進式學習。</p>
+<p><strong>評估</strong>：以 GPT-4 自動評估、學術基準（BBH、TruthfulQA）、專業學術考試（AGIEval 的 SAT/LSAT/GRE/GMAT）、安全評估（ToxiGen）多面向評估 Orca，並提供案例研究比較 Orca 與 ChatGPT、GPT-4、Vicuna 的生成與推理能力。</p>
+<h2 id="2-準備知識">2 準備知識</h2>
+<p><strong>2.1 指令調校</strong>：讓預訓練語言模型從 {任務的自然語言描述， 回應} pair 學習的技術，已證實能提升 FLAN、InstructGPT 等模型的零樣本/少樣本表現。Alpaca、Vicuna、WizardLM、Koala 皆採用此法用 GPT 系列大模型輸出訓練小模型，但如 §1.1 所述，共通弱點是任務多樣性、查詢複雜度、訓練資料規模有限，加上評估侷限，高估了此路線的效益。</p>
+<p><strong>2.2 系統指令的角色</strong>：Vanilla 指令調校常用簡短直接的 {輸入， 回應} pair，訓出的小模型追蹤 LFM 推理過程的能力有限。相對地，GPT-4 等新 LFM 的 Chat Completion API 提供「system」角色的<strong>系統指令</strong>，可用自然語言指定語氣、任務、格式與限制，也是提升回應安全性的手段（如「不得生成有害或冒犯內容」「必須尊重使用者隱私」「必須承認自身侷限與不確定性」）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

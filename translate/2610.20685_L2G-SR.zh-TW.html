@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>L2G-SR: Learning to Guide LLM-based Symbolic Regression 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Letian Huang、Xiangyu Wang、Haowei Lin、Di He</p><p>日期：2026-10-14（v1，cs.AI）</p><p>arXiv：2610.20685</p><p><a href="https://arxiv.org/html/2610.20685v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="l2g-sr-learning-to-guide-llm-based-symbolic-regression">L2G-SR: Learning to Guide LLM-based Symbolic Regression</h1>
+<h2 id="摘要與第-12-節問題">摘要與第 1～2 節：問題</h2>
+<p>符號迴歸要從觀測值找出同時具有合適結構與係數的公式。數值誤差能指出擬合程度，卻不一定辨識出值得修改的結構：例如在原點附近 <code>x-x³/6</code> 可近似 <code>sin(x)</code>，兩者運算子不同；<code>exp(1.05x)</code> 與 <code>exp(x)</code> 形式相似，誤差卻可能累積。本文以學得的結構驗證器補充數值回饋，引導 LLM 搜尋；搜尋時目標公式保持隱藏。（<a href="https://arxiv.org/html/2610.20685v1#S1">§1～2</a>）</p>
+<h2 id="第-3132-節結構距離">第 3.1～3.2 節：結構距離</h2>
+<p>給定觀測 <code>D={(x_i,y_i)}</code>，其中 <code>y_i=f*(x_i)+ε_i</code>，目標是在允許的變數、運算子與常數構成的空間中尋找簡潔公式。有限資料可能由不同結構解釋，因此低均方誤差不保證結構相近。</p>
+<p>作者以修改後樹編輯距離 <code>d_str(f,g)</code> 比較候選與參考式，越小越接近。數值子樹抽象為 <code>number</code>、符號常數為 <code>param</code>，加法／乘法節點扁平化；相同標籤及 <code>number</code> 與 <code>param</code> 互換成本為零，其他重標記與單節點增刪成本為一。大小為 <code>s</code> 的子樹增刪成本為 <code>κ(s)=min{s, 0.6(s-5)+5}</code>。加法或乘法根節點比較時，取有序編輯與子節點最低成本指派兩者的較小值。</p>
+<p>再比較三種對應代數視圖：保留候選結構的剖析、一般求值與常數吸收、展開與冪次簡化；每種成本除以該視圖的參考樹大小，取最小值。此度量容忍指定改寫，不等於完整的代數等價判定；數值指數亦被抽象，可能不同卻得到零距離。（<a href="https://arxiv.org/html/2610.20685v1#S3.SS2">§3.1～3.2</a>、<a href="https://arxiv.org/html/2610.20685v1#A1">附錄 A</a>）</p>
+<h2 id="第-3334-節合成資料與驗證器">第 3.3～3.4 節：合成資料與驗證器</h2>
+<p>作者自報資料池含 9,190 萬組目標／候選式。生成程序利用 SRBench/Feynman 真值及 SRBench 上 LLM-SR/PySR 搜尋軌跡提供的結構先驗，獨立合成公式；經常數抽象與符號正規化後，排除與 LLM-SRBench 真值結構相同的訓練配對。候選有獨立隨機抽樣及對目標做局部修改兩類，並均勻抽樣 12 個 TED 區間。觀測點由隨機位置及旋轉的高斯／均勻分布混合生成。（<a href="https://arxiv.org/html/2610.20685v1#S3.SS3">§3.3</a>、<a href="https://arxiv.org/html/2610.20685v1#A2">附錄 B</a>）</p>
+<p>驗證器輸入觀測、候選公式及回歸摘要，預測候選距未知目標的 TED。數值以符號、四位有效數字的尾數與十進位指數編碼；公式以先序 token 加入樹深與從根到節點的路徑。每個變數另計算 12 種簡單變換關係的有號 Pearson 相關，並用相關絕對值降低弱關係的權重。</p>
+<p>訓練分兩階段：先以對稱對比學習對齊觀測與其生成式的嵌入，再以觀測／候選對預測距離。真實距離 <code>d≤1</code> 時用絕對誤差；<code>d&gt;1</code> 時損失為 <code>max(0,1-d̂)</code>，只要求預測至少為 1。作者自報選用的第二階段檢查點依合成驗證集選取，而非依基準測試分數。（<a href="https://arxiv.org/html/2610.20685v1#S3.SS4">§3.4</a>、<a href="https://arxiv.org/html/2610.20685v1#A3">附錄 C</a>）</p>
+<h2 id="第-35-節雙訊號搜尋">第 3.5 節：雙訊號搜尋</h2>
+<p>固定留出搜尋觀測的 20% 計算驗證 MSE。系統維持四個候選島，每輪從選定島抽取候選：一半輪次選驗證 MSE 最低者，另一半選預測 TED 最低者。分析代理查看分數、殘差、變數回歸及歷史，可要求結構比較或殘差探針，再提出四項具體修訂建議；生成代理將建議寫成四個公式。</p>
+<p>系統檢查公式、以 BFGS 擬合常數、簡化並重新擬合，再用兩種訊號評分。每島最多 64 個公式；相同結構只保留驗證 MSE 較低者，超額時按 MSE 與預測 TED 排名各保留最多 32 個。最終在驗證 MSE 接近最佳值的候選中選較簡潔者，並非直接選預測 TED 最小者。（<a href="https://arxiv.org/html/2610.20685v1#S3.SS5">§3.5</a>、<a href="https://arxiv.org/html/2610.20685v1#A4">附錄 D，表 15</a>）</p>
+<h2 id="第-4142-節設定與主要結果">第 4.1～4.2 節：設定與主要結果</h2>
+<p>作者在 LLM-SRBench 評估 240 個式子：Transform 111、Physics 44、Materials 25、Chemistry 36、Biology 24。指標為越低越好的 NMSE 與真實正規化 TED，以及公式層級 <code>Acc_0.01</code>：對保留的每個測試點，最大相對誤差皆不超過 1% 才算該式成功。測試以 float64 計算，依每式相對誤差捨去最多 5% 觀測；非有限預測先消耗此額度。各領域再平均公式結果。（<a href="https://arxiv.org/html/2610.20685v1#S4.SS1">§4.1</a>、<a href="https://arxiv.org/html/2610.20685v1#A5.SS1">附錄 E.1</a>）</p>
+<p>作者自報，在 Llama3.1-8B-Instruct 與 Qwen3-4B-Instruct-2507 的五領域比較中，L2G-SR 的 NMSE 與公式準確率均列所顯示方法第一或第二；可比較的最終公式真實 TED 均為最低。以 Llama 的 Physics 為例，其 NMSE 為 <code>(2.70±1.11)×10^-4</code>，<code>Acc_0.01</code> 為 <code>89.39±3.47%</code>，平均值與樣本標準差取自三個種子。不同基線來源與預算不完全一致：部分數字引用既有工作，RESTART 由作者重現；LaSR 還有大量非 LLM 突變。（<a href="https://arxiv.org/html/2610.20685v1#S4.SS2">§4.2，表 1、圖 3</a>、<a href="https://arxiv.org/html/2610.20685v1#A5.SS5">附錄 E.5，表 22</a>）</p>
+<h2 id="第-4345-節驗證器消融與案例">第 4.3～4.5 節：驗證器、消融與案例</h2>
+<p>作者自報，合成驗證集上所選檢查點的目標值為 0.12613；真實 TED≤1 的平均絕對誤差為 0.13086，對 TED&gt;1 的召回率為 52.63%。搜尋後記錄候選的預測與真實 TED 之 Pearson 相關，依領域為 0.2505～0.5808，顯示其精度隨領域而異。（<a href="https://arxiv.org/html/2610.20685v1#S4.SS3">§4.3，表 2～3</a>）</p>
+<p>Physics 配對消融固定雙角色、工具、擬合、選擇排程與 400 個提案槽，只以驗證 MSE 取代結構路徑的 TED。作者自報，純數值／雙訊號的測試 NMSE 為 <code>(2.264±2.590)×10^-3</code>／<code>(2.702±1.109)×10^-4</code>，準確率為 <code>74.24±10.74%</code>／<code>89.39±3.47%</code>，真實 TED 為 <code>0.361±0.112</code>／<code>0.239±0.010</code>；各為三種子、每種子 44 題的平均與樣本標準差。驗證器消融顯示移除樹位址、數值輸入、相關分支或第一階段訓練，各使合成驗證目標與近距離 MAE 變差。（<a href="https://arxiv.org/html/2610.20685v1#S4.SS4">§4.4，表 4～5</a>）</p>
+<p>Physics 11 的一輪中，TED 輪選取驗證 NMSE 較差（1.019 對 0.0476）但預測 TED 較低（0.504 對 0.758）的親代；作者自報其後代測試 NMSE 達 <code>2.09×10^-15</code>。這是單一案例，展示結構訊號可能引導不同修訂方向。（<a href="https://arxiv.org/html/2610.20685v1#S4.SS5">§4.5，圖 4</a>）</p>
+<h2 id="第-5-節結論與限制">第 5 節：結論與限制</h2>
+<p>作者結合修改後 TED、學得的驗證器與 LLM 雙訊號搜尋，在所測基準觀察到更好的數值與結構結果。因運算資源有限，實驗使用輕量、低成本 LLM；作者提出後續測試較新模型，以及將 LLM 後訓練為結構驗證器或直接改善分析代理。作者亦提醒：合理公式或小結構分數不能證明物理定律，仍須檢驗正確性與有效性。（<a href="https://arxiv.org/html/2610.20685v1#S5">§5 與倫理聲明</a>）</p>
+<p><strong>本檔補註，非作者自陳</strong>：有限觀測與抽象化距離可能讓不同公式難以區分；基準結果及裁切後的誤差不保證未測分布上的科學有效性。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2610.20685_L2G-SR.%E6%91%98%E8%A6%81.html">L2G-SR 摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

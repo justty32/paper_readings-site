@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2403.12031_RouterBench.zh-TW.html">回 2403.12031_RouterBench.zh-TW 目錄</a>　<a href="02_%E8%B7%AF%E7%94%B1%E5%99%A8%E8%A9%95%E6%B8%AC%E7%9A%84%E6%95%B8%E5%AD%B8%E5%85%AC%E5%BC%8F.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>隨著大型語言模型（LLM）應用範圍持續擴大，對有效服務方案的需求日益關鍵。儘管 LLM 用途廣泛，卻沒有單一模型能在兼顧效能與成本下最佳處理所有任務。這個限制催生了「LLM 路由系統」——結合多個模型的優勢，克服單一 LLM 的侷限。然而，缺乏標準化的路由器評測基準，阻礙了這個領域的進展。為填補此缺口，我們提出 <strong>ROUTERBENCH</strong>，一個系統性評估 LLM 路由系統成效的新評測框架，並附上一個涵蓋超過 405k 筆推論結果、來自具代表性 LLM 的完整資料集，以支援路由策略的開發。我們進一步提出 LLM 路由的理論框架，並透過 ROUTERBENCH 對多種路由方式做比較分析，指出其潛力與侷限。這項工作不僅將 LLM 路由系統的發展形式化並向前推進，也為其評測立下標準，為更普及、更經濟可行的 LLM 部署鋪路。程式碼與資料開源於 https://github.com/withmartian/routerbench。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 在學術與產業場景中展現了驚人能力，促使研究者與從業者近乎每天推出新模型。然而 LLM 數量爆炸，讓應用開發者難以為自己的應用挑出最合適的模型——像 GPT-4 這類專有模型效能雖出眾，但 API 定價高昂，經濟成本可觀。</p>
+<p>許多既有工作聚焦於「在維持低成本下提升單一模型能力」：提示技巧（如 CoT）、量化、系統優化等可降低單一模型的服務成本，但隨新模型不斷冒出，這類做法長期未必可行或可擴展。此外，各種價格與效能層級的 LLM 選擇過於龐雜，讓使用者難以挑選與最佳化。</p>
+<p>另一條路是透過「路由（routing）」為每筆輸入挑選最適合的 LLM。路由相對單一模型優化有三個優勢：(1) 輕量——把每個 LLM 當輸入輸出黑盒，不需深入基礎設施細節，靈活且廣泛適用；(2) 能受益於 LLM 多樣性，而單一模型方法難以跟上模型數量的擴張；(3) 單一模型策略常需在效能與其他因素（如單 token 成本）間妥協，路由系統則能靈巧地平衡各種使用者需求。</p>
+<p>路由相關研究已提升成本效率、增強效能、擴大可及性，但<strong>系統化的路由評測基準始終缺席</strong>。我們提出 ROUTERBENCH，第一個專門用來評估「以推論美元成本與效能」衡量路由機制的完整基準。</p>
+<p><strong>三項貢獻</strong>：</p>
+<ol>
+<li>建立涵蓋 LLM 主要任務的完整路由基準，含大量開源與專有模型，可免推論即高效訓練與測試模型路由器，並可彈性擴充新任務與新模型。</li>
+<li>提出理論框架，用以評估路由器在多項指標（尤以美元計價的推論成本與效能為重）上的成效，包含能無縫整合、比較各種路由器與 LLM 的數學公式。</li>
+<li>在廣泛任務上評測路由策略的效率；結果顯示 LLM 服務的金錢成本，在效能相近的情況下，常可相差 <strong>2–5 倍</strong>，凸顯此基準的重要性，也點出未來改進的方向。</li>
+</ol>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p><strong>單一 LLM 增強</strong>：微調需額外訓練與領域資料；CoT、Tree-of-Thoughts 等提示技巧無需微調即可提升表現；Mixture-of-Experts（MoE）在模型內部做路由，把輸入送給特定「專家」。這些方法通常與模型/場景綁定，無法受益於 LLM 數量的爆炸性成長。</p>
+<p><strong>LLM 綜合（Synthesis）</strong>：整合多個 LLM 的輸出成一個增強結果（如 LLM-Blender），或策略性組合小模型以匹敵甚至超越大模型。但這類方法至少需要「生成＋綜合」兩步，增加成本與延遲，不利生產環境。</p>
+<p><strong>路由</strong>：與 LLM 綜合不同，路由能在不對每個候選模型都做推論的情況下，為特定輸入挑出合適模型。可分兩類：</p>
+<ul>
+<li><strong>非預測式路由</strong>：取得多個 LLM 的實際輸出後再挑一個，不經模型輔助的綜合步驟。FrugalGPT 是此類代表——用一個生成評判器評估各 LLM 對某查詢的回答品質，依序呼叫直到答案達到預定品質門檻。另有若干研究整合小型語言模型與 LLM，或用分層推論框架把較複雜的查詢再導向更高階模型。</li>
+<li><strong>預測式路由</strong>：不需先評估輸出即可選出最優 LLM。有的用監督學習演算法（如 Shnitzer et al.），有的用獎勵模型式技巧，還有用「meta-model」以輸入加模型專屬 token 來預測效能分數（如 Šakota et al.）。預測式路由有潛力在不犧牲延遲的前提下帶來顯著的成本與效能改善，目前仍是早期研究方向。</li>
+</ul>
+<p>儘管路由器眾多，卻缺乏系統化評測基準——本文的目標就是填補這個缺口。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

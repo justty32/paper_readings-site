@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_Quality-Diversity_與開放式進化專章 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../evolutionary_computation_LLM.html">回 evolutionary_computation_LLM 目錄</a>　<a href="01_%E7%82%BA%E4%BB%80%E9%BA%BC%E6%8A%8A%E9%80%99_21_%E7%AF%87%E6%94%BE%E5%9C%A8%E4%B8%80%E8%B5%B7%E8%AE%80.html">← 上一節</a>　<a href="03_%E3%80%8C%E6%BC%94%E5%8C%96%E7%99%BC%E7%8F%BE_X%E3%80%8D%E5%85%89%E8%AD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="2-quality-diversity-與開放式進化專章">2. Quality-Diversity 與開放式進化專章</h2>
+<p>這條支線與 §1 部分獨立：它問的不是「誰當變異算子」，而是**「族群該維持什麼樣的多樣性、由誰決定誰存活」**。本批有一組同作者群（Imperial / UMass / Sakana）的姊妹作把這條線推到很深。</p>
+<h3 id="21-核心重構qd--ga--局部競爭函數">2.1 核心重構：QD = GA + 局部競爭函數</h3>
+<p><a class="paper-reference" href="../../summarize/2502.00593_DNS_QD_Local_Competition.%E6%91%98%E8%A6%81.html">2502.00593</a> <strong>DNS（Dominated Novelty Search）</strong> 提出本批最有觀念槓桿的框架：<strong>不要把 QD 當成「跟 GA 不同、有顯式 archive 的東西」，而是「把 GA 的全域競爭換成一個對 fitness 做變換的局部競爭函數」</strong>。在此框架下，MAP-Elites 的網格、Threshold-Elites 的距離閾值，都只是「眾多 competition 函數之一」——archive 從「必要的資料結構」降格為「一種競爭規則的實作」。</p>
+<p>DNS 自己提的競爭函數無參數、自適應：</p>
+<blockquote>
+<p>一個解 i 的 competition fitness ＝「到 k 個<strong>比它更 fit</strong> 的最近鄰的平均 descriptor 距離（dominated novelty score）」；若沒有更 fit 的解（即 Pareto 前緣）→ 設 +∞ 強制保留。</p>
+</blockquote>
+<p>直覺：<strong>一個解該被淘汰，當且僅當它同時 fitness 較差且行為與既有解相似</strong>。於是產生兩股互補壓力——要嘛提升 fitness、要嘛發現與更強解不同的行為。好處是<strong>不需任何 descriptor 邊界/網格先驗</strong>，自然適應可達區域，是 MAP-Elites 的 drop-in 替代品；在不連續/高維/無監督 descriptor 空間都系統性勝過網格法（網格在 descriptor 邊界未知或高維時大量 cell 落在不可達區，浪費有效族群、卡住 stepping stone）。</p>
+<h3 id="22-從手工設計競爭規則到元學習競爭規則">2.2 從「手工設計競爭規則」到「元學習競爭規則」</h3>
+<p><a class="paper-reference" href="../../summarize/2502.02190_LQD_MetaBBO_QD.%E6%91%98%E8%A6%81.html">2502.02190</a> <strong>LQD</strong> 正是建在 DNS 的框架上，把那個 competition 函數<strong>直接學出來</strong>：</p>
+<pre><code class="language-mermaid">graph TD
+    DNS[&quot;DNS [[2502.00593]]&lt;br/&gt;手工設計更好的競爭函數&lt;br/&gt;(dominated novelty score)&quot;]
+    --&gt;|&quot;同框架：QD = GA + competition 函數&quot;| LQD
+
+    subgraph LQD[&quot;LQD [[2502.02190]]：元學習競爭函數&quot;]
+        T[&quot;把 competition 函數參數化成&lt;br/&gt;置換等變 Transformer θ&quot;]
+        T --&gt; META[&quot;Meta-BBO：外層 Sep-CMA-ES 演化 θ&lt;br/&gt;內層在 22 個 BBOB 函數上跑 QD&quot;]
+    end
+</code></pre>
+<p>關鍵設計：族群是<strong>無序集合</strong>，競爭結果不該受排序影響 → 用 Transformer 的<strong>置換等變性</strong>天然符合；inductive bias 極小、能表達幾乎任意競爭規則。<strong>不預埋任何演化原則</strong>（連「保留最高 fitness」都得自己學出來）。</p>
+<p><strong>最驚人的結果——多樣性是工具性目標的「自發再發現」</strong>：即使 meta-objective <strong>只用 fitness</strong>（不獎勵多樣性），學到的 LQD(F) 在 Walker2d 仍達 MAP-Elites 約 <strong>40%</strong> 的 novelty（而純 GA 不到 10%）。元學習在沒被要求的情況下「重新發現」了<strong>維持多樣性是達成高效能的手段</strong>——這是對「為何探索有用」最乾淨的實證再發現。</p>
+<h3 id="2026-09-補入連用什麼座標看多樣性也進入搜尋">2026-09 補入：連「用什麼座標看多樣性」也進入搜尋</h3>
+<p>DNS 與 LQD 改寫的是競爭函數，卻仍把行為描述子視為已知。<a class="paper-reference" href="../../summarize/2608.30983_LanguageDrivenQD.%E6%91%98%E8%A6%81.html">2608.30983</a> <strong>Language-Driven QD</strong> 正好填上這個缺口：LLM 從任務文字與模擬 API 產生成功條件、fitness 與多組 behavior descriptor，multi-BD MAP-Elites 再讓各描述子各自做局部競爭，並用短期探索得到的成功個體數選出後續 fitness。這使規格不再是演化前由專家一次定死的前提，而成為一批要以搜尋成果篩選的可執行候選；相較 LQD 問「學出誰該存活」，它再追問「哪些差異值得被保存」。</p>
+<p>這也收緊了「多樣性即工具」的解讀：成功個體很多，不等於覆蓋了有下游意義的行為。本文在模擬機器人任務中以多條 diversity stream 同時保留容易推動探索與較能描述任務差異的座標，支持 QD 不應只看單一 archive 大小；但所有實驗仍在模擬中，sim-to-real 可遷移性尚待實測，不能把覆蓋率直接當成可部署技能多樣性<a class="paper-reference" href="../../summarize/2608.30983_LanguageDrivenQD.%E6%91%98%E8%A6%81.html">2608.30983</a>。</p>
+<h3 id="23-evolvability-從外部演算法內收進神經基質">2.3 evolvability 從「外部演算法」內收進「神經基質」</h3>
+<p>開放式進化的另一條線是：<strong>讓「產生變異的機制」本身可被選擇</strong>。</p>
+<ul>
+<li>
+<p><a class="paper-reference" href="../../summarize/2406.09020_evolvable_developmental_encoding.%E6%91%98%E8%A6%81.html">2406.09020</a> <strong>可演化發展式編碼</strong>：用外層 CMA-ES 訓練一個「能注意 DNA 字串」的 NCA，以<strong>內層 MAP-Elites 的 QD 分數</strong>當適應度——直接優化「該編碼能否被演化算法高效搜出多樣且高品質解」這個性質。核心洞見：<strong>可以直接學一個「對某黑箱優化器而言易搜尋」的表示</strong>。結果：演化出的基因型→表現型映射越來越可演化（搜得更快、品質與多樣性更高），且字串 DNA 編碼勝過連續向量。</p>
+</li>
+<li>
+<p><a class="paper-reference" href="../../summarize/2512.16406_SelfReferential_Graph_HyperNetworks.%E6%91%98%E8%A6%81.html">2512.16406</a> <strong>自我參照圖超網路（self-referential GHN）</strong> 走得最遠——把「變異與遺傳的機器」<strong>內嵌進神經網路本身</strong>，演化迴圈中從不含梯度。兩個巧思：</p>
+<ol>
+<li><strong>化解自參照的循環悖論</strong>：輸出層用<strong>固定隨機基底</strong>（永不改變），避開「需要生比自身更多參數的層」的悖論。</li>
+<li><strong>突變率＝可遺傳特質</strong>：每個 node 過 M 個 sigmoid 取 max 當該 node 的突變率，去縮放隨機 hypernetwork 輸出 → <strong>evolvability 受選擇</strong>。種群都差不多差時增大變異（探索）、少數遠勝其餘時降低變異（集中資源），全自主、無外部排程。</li>
+</ol>
+<p>反直覺結果：在<strong>非靜止任務</strong>（CartPole-Switch / LunarLander-Switch，演化中途反轉控制器）上，內嵌式自參照<strong>完勝</strong> CMA-ES / OpenES / GESMR / SAMR 的恢復能力——只有它在兩次切換後都一致恢復近滿分；且找到高適應度 niche 後種群變異<strong>自主急降</strong>，呼應「evolvability 是可選擇特質」假說。</p>
+</li>
+</ul>
+<h3 id="24-開放式自我改進與協同演化評估者">2.4 開放式自我改進與「協同演化評估者」</h3>
+<p>開放式進化的終點是<strong>自我改進 agent</strong>（這條線與 <a href="../self_improving_program_synthesis.html"><code>self_improving_program_synthesis.md</code></a> 重疊，此處只補演化視角）：</p>
+<ul>
+<li><a class="paper-reference" href="../../summarize/2505.22954_DarwinGodelMachine.%E6%91%98%E8%A6%81.html">2505.22954</a> <strong>Darwin-Gödel Machine</strong> 用「達爾文式開放式 archive + 自指改碼」自動把編碼能力 SWE-bench 20→50%；精髓是<strong>保留「有趣但次優」的 stepping stones</strong>（有別於只爬山），靠 archive + 親代選擇跳出欺騙性局部低谷。</li>
+<li><a class="paper-reference" href="../../summarize/2606.26294_Red_Queen_Godel_Machine.%E6%91%98%E8%A6%81.html">2606.26294</a> <strong>紅皇后哥德爾機（RQGM）</strong> 補上 DGM 一脈的缺角——<strong>讓「評估標準」本身也一起演化</strong>。靈感正是演化生物學的紅皇后假說：物種不是對著靜止環境最佳化，而是隨競爭者一起改變。核心工程巧思「<strong>受控效用演化</strong>」：把搜尋切成 epoch，epoch 內凍結一個評估者（固定準則→保留既有自我改進保證），只在 epoch 邊界用「在保留真值集上統計顯著勝出」的挑戰者替換它——<strong>用 epoch 凍結把「非靜止目標」化約成一連串「靜止子問題」</strong>，同時保有自我改進保證 + 讓目標可演化。反直覺結果：便宜的學習型評估者反而提升搜尋效率；對抗目標可去除 LLM-judge「偏袒 AI 論文」的偏誤。</li>
+</ul>
+<blockquote>
+<p>§2 一句話收束：<strong>開放式進化的三個關鍵零件——局部競爭（誰存活）、evolvability（變異機制本身可演化）、非靜止目標（評估者也演化）——本批分別由 DNS/LQD、自參照 GHN/可演化編碼、RQGM 攻克；而 LQD「純 fitness 下多樣性自發湧現」是全批最強的「多樣性即工具」實證。</strong></p>
+</blockquote>
+<hr />
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

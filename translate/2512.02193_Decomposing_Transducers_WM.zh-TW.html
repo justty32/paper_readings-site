@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>從單體到模組：分解 transducer 以高效世界建模（From monoliths to modules: Decomposing transducers for efficient world modelling） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Alexander Boyd、Franz Nowak、David Hyland、Manuel Baltieri、Fernando E. Rosas</p><p>日期：2025-12（v2 2026-05）</p><p>arXiv：2512.02193</p><p><a href="https://arxiv.org/abs/2512.02193" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="從單體到模組分解-transducer-以高效世界建模">從單體到模組：分解 transducer 以高效世界建模</h1>
+<h2 id="摘要">摘要</h2>
+<p>世界模型近來被提議當作「AI agent 部署前可在其中訓練與評估的沙箱環境」。逼真的世界模型常有高計算需求，但這往往可藉「真實場景傾向由以模組方式互動的子元件組成」來緩解。本文據此探索一個框架，用以分解由 <strong>transducer</strong>（一類推廣 POMDP 的模型）表示的複雜世界模型。transducer 的<strong>組合</strong>已被充分理解，而我們的結果釐清如何<strong>反轉</strong>此過程，導出在不同 input-output 子空間上運作的<strong>子 transducer</strong>，給出單體世界建模的<strong>可平行化、可解釋</strong>替代，並支援分散式推理。整體而言，這些結果為「真實推理所需的計算效率」與「AI 安全所要求的結構透明」搭橋打下基礎。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>DRL 已造出能在日益複雜環境運作的 agent；隨其更強、更自主並被考慮部署於高風險場景，可靠性／安全性／可解釋性成為核心。一個出路是把世界模型當受控測試台（合成環境中訓練、探測、壓力測試 agent），但沙箱的用處取決於世界模型是否夠忠實以保證模擬行為可遷到真實。</p>
+<p>世界模型可形式化成 transducer（把輸入序列＝動作 → 輸出序列＝觀察/獎勵）。但這轉導常透過<strong>交織動力學</strong>發生（物理過程 + 社交 + 生理 + 工程回饋）；把這一切當單一高維機制建模使學習與推理昂貴、且模糊底層結構。世界模型應<strong>暴露模組性</strong>：不同元件追蹤世界不同面向，仍互動組合出連貫的全域行為。</p>
+<p>先前對轉導模組性的研究多<strong>自底向上</strong>（小元件組成分層網路；factored MDP、reward machine 自底向上設計複雜環境/獎勵）。但對 AI 可解釋性／安全，常面臨<strong>反問題</strong>：給一個龐大糾纏的世界模型，如何在不犧牲預測力下分解成簡單可解釋片段？本文用<strong>計算力學</strong>語言建框架回答此問。關鍵：此 factorisation 不只助理解，更<strong>支援分散式推理</strong>（每個子 transducer 只用與它相關的部分歷史局部更新自己的 belief）。</p>
+<p><strong>路線圖與貢獻</strong>：(1) 介面與 transducer 作世界模型的共同語言（Sec 2）;(2) 世界模型作 transducer 網路的組合（Sec 3，串/並/convergent）;(3) 帶 latent 的分解——Intransducibility（Sec 4.1）;(4) 無 latent 的分解——acausality（Sec 4.2）;(5) transducer 網路的粗粒化（Sec 5）;(6) 分解 causal state 與 belief state（Sec 6，連 ε-transducer 與 PSR）。</p>
+<h2 id="2-預備">2. 預備</h2>
+<ul>
+<li><strong>2.1 介面（interface）</strong>：把 agent/環境功能性地描述成「輸入序列 → 輸出序列」的條件分布族 ℐ(Y|X)。只有<strong>因果介面</strong>（未來輸入 X→_t 不能因果影響過去輸出 Y←_t，即 nonanticipatory）物理可實現、可解讀成電路。本文只處理前饋介面網路（過去輸出不影響未來輸入）。</li>
+<li><strong>2.2 transducer</strong>：用一個隨輸入輸出演化的潛在記憶 R 把記憶從過去帶到未來的重複電路（推廣 MDP/POMDP，貼近 HMM）；以隨機核 <code>T_{r→r'}^{(y|x)}=Pr(Y_t=y,R_{t+1}=r'|X_t=x,R_t=r)</code> 定義，反覆套用並對 latent 序列求和即實作介面。本文設核<strong>與時間步無關</strong>（機械平穩）。<strong>定理 1</strong>：一族 <code>Pr(Y_{0:t}|X_{0:t})</code> 是因果介面 iff 它有 transducer 表示。</li>
+</ul>
+<h2 id="3-組合-transducer-網路">3. 組合 transducer 網路</h2>
+<ul>
+<li><strong>3.1 組合兩個 transducer</strong>：T 與 U 組合成 V；為方便引入核的線性算子 T̂^{(y|x)}（在 latent 向量空間上），輸出序列機率＝算子乘積。<strong>Prop 1</strong>：組合的算子＝各 transducer 線性算子的 <strong>Kronecker 積</strong>（作用於 latent 聯合空間，維度 |𝒮|×|ℛ|）；結合但不交換，是<strong>基本</strong>組合運算。</li>
+<li><strong>3.2 特例</strong>：串聯（U 不依賴 T 的輸入 X）、convergent（T 輸入無關，X 與 Y 匯聚產 Z）、divergent（U 不依賴 Y，X 並行產 Y 與 Z）。gridworld 例：T_env = T_r ∘ (T_x ∥ T_y)，水平/垂直位置並行 → 獎勵 transducer 串接（後者帶記憶 = probabilistic reward machine）。</li>
+<li><strong>3.3 transducer 網路</strong>：N 個 transducer 依因果序編號（n 只能影響 n&#x27;&gt;n，保證無回饋），構成 <strong>DAG</strong>。<strong>Prop 2</strong>：聯合算子＝各 transducer 算子的 Kronecker 積。某節點若無前驅可被 condition out 當輸入。多目標獎勵例（收集 + 配送 transducer 各依位置與庫存，把全域獎勵 factor 成兩互動成分，agent 可分別學收集與配送策略再組合）。Mars rover 例：單體 X→Y 糾纏導航/天氣/電池，可改成導航 T_nav ∥ 天氣 T_sol（輸入無關）→ 電池等三個追蹤不同子系統卻產同一介面的較小 transducer。</li>
+</ul>
+<h2 id="4-透過-factorization-分解-transducer">4. 透過 factorization 分解 transducer</h2>
+<ul>
+<li><strong>4.1 帶 latent 的分解</strong>：4.1.1 用 <strong>Intransducibility</strong> 偵測「一組變數無法由某因果 transducer 生成」;4.1.2 在有 latent 時把高維過程 factor 成稀疏網路。</li>
+<li><strong>4.2 無 latent 的分解</strong>：4.2.1 定義可直接從可觀測訊號量測的 <strong>acausality</strong> 依賴度量；4.2.2 在無顯式 latent 時回復「最小 acausal 的接線圖」。</li>
+<li><strong>4.3 與 causal discovery 的關係</strong>。</li>
+</ul>
+<h2 id="5-粗粒化-transducer-網路">5. 粗粒化 transducer 網路</h2>
+<p>5.1 多尺度視角（可從頂端或底端簡化）;5.2 簡化稀疏網路；5.3 可平行化推理。刻畫何時可合併網路區塊而<strong>不改變可觀測介面</strong>，得世界模型的原則性多尺度粗粒化。</p>
+<h2 id="6-分解-causal-state">6. 分解 causal state</h2>
+<p>連到 ε-transducer 與 predictive state representation，說明最小預測表徵如何<strong>繼承並暴露</strong>底層 transducer 網路的模組結構；開啟把「詮釋 transformer 內部表徵」的努力擴到高維設定。</p>
+<h2 id="7-討論">7. 討論</h2>
+<p>本文以計算力學提供「何時／如何能把複雜 transducer factor 成較簡單互動子 transducer」的形式框架。此分解既助理解，又<strong>支援分散式／局部 belief 更新</strong>的高效推理，是單體世界建模的可平行、可解釋替代。把「組合（自底向上）」與「分解（自頂向下）」統一在 Kronecker 積機制下，在複雜度層級間自由移動。限制：本文僅處理前饋網路，<strong>回饋／遞迴留待未來</strong>；框架以離散 transducer、機械平穩為主，神經高維設定的演算法化與分散式推理效率的實證量測尚待後續。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《DeepDFA：把時序邏輯注入深度學習的序列次符號應用》逐節精要翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Elena Umili, Francesco Argenziano（Sapienza Rome）, Roberto Capobianco（Sony AI）</p><p>日期：2026-02</p><p>arXiv：2602.03486</p><p><a href="https://arxiv.org/abs/2602.03486" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="deepdfa把時序邏輯注入深度學習的序列次符號應用逐節精要翻譯">DeepDFA：把時序邏輯注入深度學習的序列次符號應用（逐節精要翻譯）</h1>
+<blockquote>
+<p>精要式翻譯：保留論證骨幹與關鍵數字。程式碼：github.com/KRLGroup/DeepDFAGrounding、/NeuralRewardMachines</p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>把邏輯知識整合進深度神經網路訓練仍是難題，尤其在<strong>序列/時序延展、且涉及次符號觀測</strong>的領域。我們提出 <strong>DeepDFA</strong>：一個把高階時序邏輯（以 <strong>DFA 或 Moore 機</strong>表達）整合進神經架構的神經符號框架。DeepDFA 把時序規則建模為<strong>連續可微分層</strong>，能把符號知識注入次符號域。展示兩設定：(i) 靜態影像序列分類、(ii) 互動式非馬可夫環境的策略學習。大量實驗中 DeepDFA 勝傳統深度模型（LSTM/GRU/Transformer）與新 NeSy 系統，在時序知識整合上達 SOTA。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>AI 系統需感知＋推理，但深度（強化）學習模型常無法滿足基本邏輯約束。NeSy 旨在整合 raw 資料與結構化符號知識、彌合符號落地問題。既有 NeSy 多注入靜態約束、少設計給「規則隨時間展開」的序列任務（最好用正規表達、DFA、LTLf 表達）；而時序規則廣用於機器人、健康照護、業務流程。少數能處理時序知識者（FuzzyDFA、NeSyA）只用於靜態序列分類。本文提 DeepDFA：一個<strong>連續可微的邏輯層</strong>，能表 DFA／Moore 機，概念上是 <strong>RNN 與符號自動機的混血</strong>，建於 <strong>PFA</strong> 理論，使符號知識可編成與梯度優化相容的神經元件。本文聚焦需感知/落地階段的次符號域：<strong>假設落地函數未知、須由系統用資料＋邏輯知識學得</strong>（符號時序知識常可跨域共享，但感知落地本質域特定、不該硬編）。兩設定：靜態序列分類、非馬可夫 RL。</p>
+<h2 id="2-相關工作">2 相關工作</h2>
+<ul>
+<li><strong>次符號應用的知識整合</strong>：注入先驗邏輯知識的核心挑戰是符號落地（SG）。半監督符號落地（SSSG）兩家：(1) 把知識的連續鬆弛嵌入大網路、對齊鬆弛輸出與高階標籤（xu2018、LTN、DeepProbLog、FuzzyDFA）；(2) 維持硬布林表示、用邏輯溯因週期性修正 SG 函數。多數不考慮時序；少數時序工作中 Donadello 等的模糊 LTLf 不可微；FuzzyDFA（模糊）、NeSyA（機率）是 DFA 的連續可微鬆弛。本文與後兩者類似但基於<strong>機率 Moore 機</strong>、更通用（能注入先驗也能從資料訓練），且<strong>首度把時序知識注入延伸到互動式 RL</strong>。</li>
+<li><strong>帶時序規格的非馬可夫 RL</strong>：多數工作假設布林符號完美可觀測（僅適用符號態環境或已知完美映射的 labeled MDP）；部分假設已知不完美 SG 函數，但不學 SG 只用既有不完美落地器。唯一同設定的 Kuo 等（觀測非符號態＋獎勵、知 LTL 公式但不知符號意義）學的是<strong>不可解釋的次符號表示</strong>且只在多任務有益；本文則<strong>精確學「狀態↔符號」映射</strong>且在單一任務即能加速。</li>
+</ul>
+<h2 id="3-背景用邏輯規範時序模式">3 背景：用邏輯規範時序模式</h2>
+<ul>
+<li><strong>記號</strong>：符號序列＝trace，元素 σ 取自有限字母表 Σ。可類別落地（硬符號）或機率落地（Δ(Σ) 上分佈）。</li>
+<li><strong>DFA 與 Moore 機</strong>：DFA <code>(Σ,Q,δ,q₀,F)</code>，字串轉移 δ* 遞迴定義，接受 ⟺ <code>δ*(q₀,σ)∈F</code>。Moore 機 <code>(Σ,Q,O,q₀,δ,λ)</code> 擴展到非二值輸出，輸出函數 <code>λ:Q→O</code>。</li>
+<li><strong>機率有限自動機（PFA）</strong>：<code>(Σ,Q,μ,δ_p,ρ)</code>，初態分佈 μ、3D 轉移矩陣 <code>T[σ,q,q']</code>、接受分佈 ρ。態分佈遞迴 <code>q̃^(0)=μ</code>、<code>q̃^(i)=q̃^(i-1)·T[σ^(i)]</code>；接受機率 <code>Pr(σ)=μ·T[σ⁽¹⁾]···T[σ⁽ᵀ⁾]·ρ</code>。DFA 是 PFA 的特例。</li>
+<li><strong>LTLf</strong>、其他語言（正規表達、Declare）。</li>
+<li><strong>時序延展任務的 RL</strong>：以 LTLf／DFA 規範非馬可夫獎勵。</li>
+</ul>
+<h2 id="4-deepdfa">4 DeepDFA</h2>
+<ul>
+<li><strong>4.1 神經架構</strong>：把 DFA／Moore 機編成連續可微網路；矩陣形式的 PFA 前向遞迴即可微分層，可 (i) 把知識編成固定參數、(ii) 用損失鼓勵/抑制知識滿足。基於機率 Moore 機故可注入也可學。</li>
+<li><strong>4.2 與文獻關係</strong>：比 FuzzyDFA、NeSyA 更通用（雙向：注入＋學習；且延伸到 RL）。</li>
+</ul>
+<h2 id="5-用-deepdfa-學習與推理">5 用 DeepDFA 學習與推理</h2>
+<ul>
+<li><strong>5.1 半監督符號落地（SSSG）</strong>：落地函數須由資料＋邏輯學得。</li>
+<li><strong>5.2 應用 1：影像串流分類</strong>：DFA 處理 CNN 落地的軟符號序列，末步監督接受/拒絕。</li>
+<li><strong>5.3 應用 2：非馬可夫 RL</strong>：LTLf→DFA→Moore 機，每狀態賦獎勵（終態最大）；on-policy vs off-policy；<strong>獎勵值同時當 RL 訊號與符號落地的高階監督</strong>。</li>
+</ul>
+<h2 id="6-評估">6 評估</h2>
+<ul>
+<li><strong>6.1 影像串流分類</strong>
+<ul>
+<li><strong>MNIST4Declare</strong>：Declare 公式定義在 {a,b}，用 MNIST 的 0/1 影像構造；訓練 trace 長 1–5、測試長 10 與 15（測泛化到更長）、末步監督。對比 LSTM/GRU/Transformer（小模型 24 隱單元反而較好）與 FuzzyDFA、NeSyA；同一 CNN 落地器、各 10 seeds 取最佳 7 次。20 公式平均：<strong>DeepDFA 勝純神經與 NeSy 基線，顯著勝 FuzzyDFA、略勝 NeSyA</strong>。</li>
+<li><strong>CAVIAR（影片事件辨識）</strong>：分類 moving/meeting/no-event；8 訓練＋3 測試序列、平均長 411 幀（最長 1054）；F1 評估。<strong>DeepDFA 最佳 macro F1=0.85（與 NeSyA 相當但標準差更小），純神經基線不超過 0.75</strong>；DeepDFA、NeSyA 只訓 CNN 故參數遠少。</li>
+</ul>
+</li>
+<li><strong>6.2 RL</strong>
+<ul>
+<li><strong>環境</strong>：兩種 Minecraft-like 環境（map 態 vs image 態），落地函數未知。</li>
+<li><strong>獎勵</strong>：LTLf→DFA→Moore 機賦獎勵；測 sparse（三值：終態正、失敗態負、其餘 0）與 dense（基於自動機到最近終態距離的勢能獎勵）；最大累積獎勵縮放到 100。</li>
+<li><strong>對比</strong>：NRM+A2C（獎勵＋符號任務，本法）vs RNN+A2C（只獎勵）vs RM+A2C（獎勵＋符號＋落地，上界）。</li>
+<li><strong>結果</strong>：NRM 介於 RNN 與 RM 之間、常接近 RM（用更少先驗）；dense 下 NRM 幾乎達 RM 最大；class 2 image 環境 NRM 甚至超 RM；RNN 一貫最差、快收斂到次優局部最大。sparse 下三法皆退化——class 1 因回饋不足難正確落地「按序收集」的符號；要避免的符號因即時負獎勵較易落地。即使 RM（完美落地）在極稀疏下也因隨機策略難完成序列。</li>
+<li><strong>小結</strong>：NRM 一貫勝無知識注入的純 DRL；最大效益出現在自動機狀態回饋夠密、能有效落地時。</li>
+</ul>
+</li>
+</ul>
+<h2 id="7-結論與未來工作">7 結論與未來工作</h2>
+<p>DeepDFA 把時序邏輯（DFA／Moore 機）建模為連續可微層，能注入也能學，並跨靜態分類與互動式 RL 注入時序知識，達 SOTA。未來：更複雜時序規格、進階探索以應對極稀疏獎勵、合併兩 codebase。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

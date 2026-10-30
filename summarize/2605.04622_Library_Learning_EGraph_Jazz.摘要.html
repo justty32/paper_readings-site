@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《以 e-graph 在爵士和聲上做庫學習》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zeng Ren, Maddy Bowers, Xinyi Guan, Martin Rohrmeier（EPFL、MIT）</p><p>日期：2026-05，庫學習／程式合成（e-graph、anti-unification、MDL）</p><p>arXiv：2605.04622</p><p><a href="https://arxiv.org/abs/2605.04622" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="library-learning-with-e-graphs-on-jazz-harmony重點摘要">《Library learning with e-graphs on jazz harmony》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>把「爵士和聲的樂句模式發現」直接形式化為<strong>程式合成中的庫學習</strong>：給定一批和弦進行，模型用 DSL（和聲關係作 primitive）枚舉每首曲子的所有推導（parse），再<strong>聯合地</strong>學一套可重用的和聲抽象（library）並用它重寫（refactor）所有推導；關鍵工程貢獻是把<strong>演繹式 parsing 與 e-graph 上的庫學習（babble 演算法）整合在 egglog 裡</strong>——用 e-graph 緊湊表示指數多的等價推導、用 anti-unification 在 e-class 間找最小一般化模板、用 MDL 成本集分析選最優庫，藉此避開「先窮舉所有 parse 再壓縮」會爆炸的 Catalan 數量級組合。三曲概念驗證上，聯合學習把總推導大小由 87 壓到 27（正規化壓縮率 1.5，優於逐曲學習的 1.16），且學出的抽象（ii-V-I、降五度進行等）與爵士理論及專家標註（JHTB）大致相符。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>音樂模式發現（MPD）的兩難：模式要<strong>夠抽象</strong>才能涵蓋非精確重複，又要<strong>夠有分析意義</strong>才能解釋結構——太抽象則匹配氾濫多為瑣碎假陽性，太具體則脆弱抓不到「家族相似」變奏。作者主張「好模式 = 能在許多解釋中重用、能降低語料整體描述長度的抽象」，因此不該用頻率或表面相似度定義，而該用<strong>壓縮效用</strong>。傳統上「從表面推結構化推導」屬於 parsing（假設固定文法）、「從一堆程式抽共用子程序」屬於 library learning（假設已有程式語料），兩者被當成獨立問題；但若要直接從和弦表面學模式，<strong>可用的抽象決定推導空間、而抽象是否有用又取決於它如何參與各曲推導</strong>，兩問題互相依賴、必須聯合求解。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>DSL</strong>：採 Rohrmeier(2020) 爵士和聲文法，但把產生規則<strong>重新詮釋為和聲關係</strong>（如 Descending5th/V-I 是斷言兩和弦滿足音程與性質約束的邏輯謂詞），每個 primitive 以 egglog 邏輯規則編碼。</li>
+<li><strong>Parsing 階段</strong>：在 egglog 內以兩條推論規則跑到飽和，實作 CYK 式動態規劃；所有合法推導以等價類（e-class）緊湊合併，結果類似 Shared Packed Parse Forest（指數多推導壓在一張圖）。再用 root-connectedness 由上而下傳播，濾掉不參與任何完整 parse 的局部片段。</li>
+<li><strong>Anti-unification 階段</strong>：仿 babble，把經典的樹 anti-unification（求兩程式的最小一般化 least general generalization）擴展到<strong>在 e-class 之間</strong>計算；以動態規劃、交錯計算 e-node 與 e-class 的 anti-unifier，避免重複傳播；<code>CanCoOccur</code> 確保只在能共同參與完整 parse 的推導間抽象。</li>
+<li><strong>壓縮（refactor）階段</strong>：候選模板加進 e-graph 當改寫規則、做 equality saturation，把重複結構替換成附參數的高階組合子（Template 程式，方括號表結構組合、尖括號路由引數）。</li>
+<li><strong>成本集分析（cost set）</strong>：每個 e-node/e-class 配一組 <code>(library 子集, 使用成本)</code> 對，自底向上交叉組合、以 beam search 剪枝，實例化 <strong>MDL 目標</strong> <code>L* = argmin (cost(L) + cost(D|L))</code>——抽象只在「編碼節省 &gt; 自身複雜度」時被採用。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>概念驗證限三首低歧義曲（Red Clay 長 13、Valse Hot 15、Sunny 17；庫上限 15、beam 寬 5）——因 egglog 實作尚未能撐大規模聯合推論。</li>
+<li><strong>壓縮</strong>：聯合學習把三曲總推導由文法基線 <strong>87 降到 27</strong>，計入庫儲存成本後正規化壓縮率 <strong>1.5</strong>；逐曲學習雖總推導 28 略小，但庫儲存成本大很多（47 vs 31），壓縮率僅 <strong>1.16</strong>——聯合學習偏好「跨曲可重用」的抽象。</li>
+<li><strong>質性</strong>：學出的抽象與爵士理論相符——<code>f0</code> 屬-主進行、<code>f1</code> 降五度、<code>f2</code> 具體 ii-V-I（被用 4 次）；也有左分支傾向的「不完整構成」抽象（如 <code>f3</code>「缺左側屬和弦的主和弦」，呼應範疇文法的方向性函數應用）。<code>f9</code> 正確以 VI-V 關係解析 Sunny 的 III-VI-ii-V-i（避開小調語境下不成立的應用屬和弦鏈），與 JHTB 專家標註一致。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>僅三曲概念驗證；egglog 實作未對高歧義曲做大規模聯合推論優化。</li>
+<li>壓縮最優未必音樂上合理（Red Clay 開頭主和弦被指派非常規深層結構角色），可能是小語料效應，需更大更多樣資料集驗證。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 G 類中**「庫學習 × e-graph × MDL」的乾淨範例**——直接把 DreamCoder/babble 的「壓縮即發現可重用抽象」搬到非程式碼領域（音樂），凸顯庫學習是一種領域通用的歸納偏置。與 <a class="paper-reference" href="2603.25975_WakeSleep_Schank_Primitives.%E6%91%98%E8%A6%81.html">2603.25975</a>（wake-sleep 重新發現 Schank 事件 primitive）同屬「以壓縮壓力自動發現 primitive」一脈，但本文用 <strong>e-graph + anti-unification</strong> 而非 wake-sleep。</li>
+<li>最值得記：<strong>「parsing 與 library learning 互相依賴、應在 e-graph 上聯合求解」</strong>，以及「用 e-graph + cost set 把『先窮舉再壓縮』的 Catalan 級爆炸（C_{k-1}^N）剪到可行」這個工程關鍵。</li>
+<li>與 <a class="paper-reference" href="2606.07704_FunctionEvolve.%E6%91%98%E8%A6%81.html">2606.07704</a> FunctionEvolve、<a class="paper-reference" href="2602.00929_TheoryCoder2_Abstractions.%E6%91%98%E8%A6%81.html">2602.00929</a> TheoryCoder2 等「學可重用抽象/函式」工作互補；對研究 <strong>DreamCoder/Stitch/babble 系庫學習、e-graph/equality saturation、grammar induction、計算音樂認知</strong> 的人很有參考價值。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2605.04622_Library_Learning_EGraph_Jazz.zh-TW.html"><code>../translate/2605.04622_Library_Learning_EGraph_Jazz.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

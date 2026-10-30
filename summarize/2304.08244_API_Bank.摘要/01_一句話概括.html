@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2304.08244_API_Bank.%E6%91%98%E8%A6%81.html">回 2304.08244_API_Bank.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>API-Bank</strong>：訪談 500 位使用者需求後，把「工具增強型 LLM」的能力明確分成三個遞增層級——<strong>Call（已知 API 時能否正確呼叫）／Retrieve+Call（API 未知時能否先檢索再呼叫單一 API）／Plan+Retrieve+Call（能否連續規劃、檢索、呼叫多個 API 以完成複雜需求）</strong>——建成一套 73 支可執行 API、314 則對話、753 次 API 呼叫的人工標註評測系統，並用五個協作 agent 自動生成 2,138 支 API、1,888 則對話的訓練集（成本僅人工標註的 2%），微調出 Lynx（Alpaca-7B 基底）；結果顯示 GPT-4 在規劃能力上明顯領先，但所有模型在「該不該呼叫、呼叫誰」這一層都暴露出系統性弱點。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>作者指出既有「工具增強 LLM」研究缺乏權威的能力定義與評測基準，導致三個核心問題始終沒有可信答案：(1) 現有 LLM 究竟多會用工具？(2) 如何提升 LLM 用工具的能力？(3) 讓 LLM 有效用工具還有哪些障礙未解？並發現同期基準（APIBench、ToolAlpaca）用 self-instruct 自產評測集，領域窄、真實性不足，會<strong>高估</strong>模型能力（GPT-3.5 在它們的資料上可達 80–90% 準確率，但在 API-Bank 人工構建、更貼近真實場景的評測集上準確率大幅下降）。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>能力分級（源自 500 人訪談）</strong>：依「API 池大小（少量 vs 大量）」與「單輪呼叫數（單次 vs 多次）」兩維度，合併出三個評測層級：<strong>Call</strong>（API 已知、僅測正確呼叫）、<strong>Retrieve+Call</strong>（API 未知、須先用專設的 <strong>API Search</strong>——依關鍵詞與 API 元資訊的句嵌入餘弦相似度取回最相關 API——再呼叫，且規則規定每次呼叫其他 API 前都必須先做一次 API Search）、<strong>Plan+Retrieve+Call</strong>（API 未知且需求不拆解成簡單子查詢，須連續規劃並呼叫多個不同 API 才能完成）。</li>
+<li><strong>資料標準</strong>：域多樣性、API 真實性、API 多樣性、評測真實性（系統可執行、依 LLM 呼叫的實際執行結果評分，而非僅比對文字）。</li>
+<li><strong>評測系統規模</strong>：73 支自建 API（涵蓋天氣查詢到呼叫其他 AI 模型如文生圖，資深工程師耗時 98 人日實作，資料庫類 API 預先灌入初始資料、外部資訊類 API 把檢索結果在特定時間點固定寫死以確保可重現）；人工標註 314 則對話、753 次 API 呼叫，平均每則標註成本 $8，400 則中因品質問題捨棄 21.5%。</li>
+<li><strong>評分方式</strong>：API 呼叫用 <strong>Accuracy</strong>（預測呼叫與標註呼叫是否執行相同的資料庫查詢/修改、回傳結果是否一致）；呼叫後的回應品質用 <strong>ROUGE-L</strong>。</li>
+<li><strong>Multi-agent 訓練資料生成</strong>：發現直接下複雜指令要求 ChatGPT/GPT-4 一次滿足域多樣性、API 真實性、三能力層級等所有標準，可用資料率僅 5%（GPT-4 可提升到 25%）；因此拆成<strong>五個協作 agent</strong>（依序生成領域→生成該領域下的 API（混入 Public APIs 真實範例強化真實性）→隨機選 API 與能力層級造使用者查詢→模擬執行 API 並生成回應→自動品質檢測、淘汰不合格資料約 35%），每則對話成本僅 $0.1，較人工標註省 98%；最終訓練集含 2,138 支 API、1,888 則對話、4,149 次 API 呼叫、涵蓋 1,000 個領域，人工抽檢可用率達 94%（較單純 self-instruct 高 89%）。</li>
+<li><strong>Lynx</strong>：以 LLaMA-7B / Alpaca-7B 為基底，在 API-Bank 訓練集上微調 3 個 epoch（batch size 256、learning rate 2e-5）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>能力隨層級遞減、且各模型模式不同</strong>（Table 3，correctness/ROUGE-L）：Alpaca-7B 與 ChatGLM-6B 在 Call 層級已有約 20% 準確率，但 Retrieve+Call、Plan+Retrieve+Call 幾乎歸零；175B 的 GPT-3 Davinci 反而全面接近 0%（作者歸因於未經指令微調）；GPT-3.5-turbo 全面領先 Alpaca 35 點以上；<strong>GPT-4 在最難的 Plan+Retrieve+Call 上達 70.00% correctness，明顯高於它自己在 Call（63.66%）與 Retrieve+Call（37.04%）的表現</strong>，較 GPT-3.5 提升近 50%，顯示規劃/推理能力是 GPT-4 的強項；Lynx-7B 較 Alpaca-7B 全面提升（Call correctness +25.8 點、總 ROUGE-L +0.35），逼近 GPT-3.5 水準。</li>
+<li><strong>失敗模式分析（Table 4–6，六類錯誤）</strong>：Alpaca 最大宗錯誤是 <strong>No API Call（36.77%，該呼叫卻未生成任何呼叫）</strong>，其次是 False API Call Format（23.65%）與 API Hallucination（15.93%，呼叫了標註中不存在/不相符的 API 名）；微調後的 Lynx，No API Call 大幅下降，但 <strong>API Hallucination 躍居最大宗（61.38%）</strong>——常捏造訓練期見過但與當前使用者意圖無關的假 API；GPT-4 的錯誤幾乎不出現 No API Call 或嚴重幻覺，但 <strong>Failed API Retrieval（未能正確用 API Search 找到該用的 API）占比高達 67.86%</strong>，是其主要弱點，且此問題在微調過的 Lynx 身上幾乎不出現——顯示微調比 in-context learning 更能教會模型「檢索→呼叫」這條管線。</li>
+<li><strong>對照實驗</strong>：用 API-Bank 的 Multi-agent 生成資料微調 Alpaca，以更少訓練樣本（6,184 vs ToolAlpaca 的 10,366）在 Call 能力上追平或略勝 ToolAlpaca 資料集微調的結果，佐證資料品質。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>僅涵蓋英語，作者言明未來語言擴展是待辦。</li>
+<li>僅微調並報告 Lynx-7B，未探索更大規模模型；文中提及公司內部曾訓練更大規模的商用模型，但因匿名審查規範未能報告其結果。</li>
+<li>論文本身未討論小評測子集（Retrieve+Call、Plan+Retrieve+Call 各僅 50 則對話）在統計上的樣本量限制，讀者引用細分數字時宜留意信賴區間較寬。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

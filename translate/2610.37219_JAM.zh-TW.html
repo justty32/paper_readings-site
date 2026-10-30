@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Vision-Language-Action or World-Action? Just Action Models 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yonghao Yu、Lang Huang、Runyi Li、Toshihiko Yamasaki</p><p>日期：2026-10-27（v1，cs.CV）</p><p>arXiv：2610.37219</p><p><a href="https://arxiv.org/html/2610.37219v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="視覺語言動作或世界動作just-action-models">視覺–語言–動作或世界–動作？Just Action Models</h1>
+<h2 id="摘要與第-1-節研究問題">摘要與第 1 節：研究問題</h2>
+<p>視覺–語言–動作模型（VLA）與世界–動作模型（WAM）的比較往往同時改變三件事：骨幹預訓練、對未來觀測的訓練目標，以及推論時保留的模組。作者將它們拆開，問能否不生成影像或影片，仍從軌跡中記錄的未來觀測學習控制。（<a href="https://arxiv.org/html/2610.37219v1#S1">摘要與 §1</a>）</p>
+<p>JAM（Just Action Model）結合預訓練視覺骨幹與動作專家，以動作損失和「預見」（foresight）損失訓練。後者使當前觀測特徵預測凍結編碼器對已記錄未來的表示；未來觀測只作監督目標，不進入動作路徑。部署時丟棄預測頭及目標分支。這不排除骨幹本身來自生成式預訓練；動作專家仍採用 flow matching。（<a href="https://arxiv.org/html/2610.37219v1#S1">§1</a>）</p>
+<h2 id="第-2-節相關研究">第 2 節：相關研究</h2>
+<p>已有控制政策使用未來表示、聯合嵌入、潛在預測或生成畫面。JAM 在既有視覺骨幹特徵上使用獨立的訓練專用預測頭，並在部署時移除它；它不把預測出的未來特徵作為動作輸入，也不以潛在 rollout 規劃。（<a href="https://arxiv.org/html/2610.37219v1#S2">§2</a>、<a href="https://arxiv.org/html/2610.37219v1#A5">附錄 E</a>）</p>
+<h2 id="第-3-節jam-方法">第 3 節：JAM 方法</h2>
+<p>訓練樣本包含當前觀測 <code>f₀</code>、機器人狀態 <code>s₀</code>、指令 <code>c</code>、動作片段及記錄的未來影格。部署政策只從當前觀測、狀態與指令預測動作片段。JAM 的總損失為 <code>L_act + λ_F L_F</code>，其中動作項監督動作，預見項監督骨幹表示。（<a href="https://arxiv.org/html/2610.37219v1#S3.SS1">§3.1</a>）</p>
+<p>預測頭把選定骨幹層的當前觀測 token 映射到未來 anchor 的特徵空間；目標和預測依空間 token 與時間位置計算平均 cosine distance，目標端停止梯度。梯度更新預測頭與政策骨幹。目標的前處理和條件固定時可預先快取；Yak、FLUX.2 與 Qwen 的 anchor 介面也會讀取當前畫面和指令。推論時只編碼當前脈絡，動作專家在 flow-matching 採樣步驟中重用該脈絡。（<a href="https://arxiv.org/html/2610.37219v1#S3.SS2">§3.2</a>）</p>
+<p>作者實作生成式 Wan／Ovis-U1／FLUX.2、自監督 DINOv2 與視覺語言 Qwen3.5 骨幹。DINOv2 骨幹本身不讀語言，指令由獨立文字編碼器供給動作專家；Qwen 共同處理圖像與文字。匹配 FastWAM／ImageWAM 的實驗也比較直接取 VAE 潛在特徵的未來目標。（<a href="https://arxiv.org/html/2610.37219v1#S3.SS3">§3.3</a>）</p>
+<h2 id="第-4-節實驗設定">第 4 節：實驗設定</h2>
+<p>作者先在固定政策架構、資料、最佳化器、訓練預算及部署路徑下，以預見損失取代生成損失；再將共同做法用於不同骨幹。LIBERO 評估 40 題、每題 50 次 rollout；LIBERO-Plus 為固定抽出的 1,506 個擾動任務，每題一次 rollout，所有本地政策共用；RoboTwin 2.0 包含 50 個雙臂任務，分 Clean 與 Randomized 設定。（<a href="https://arxiv.org/html/2610.37219v1#S4.SS1">§4.1</a>、<a href="https://arxiv.org/html/2610.37219v1#A4.SS3">附錄 D.3</a>）</p>
+<p>在 Wan，未來 anchor 的 <code>[1,2]</code> 代表兩個 VAE 時間位置，涵蓋環境步數 4～16 與 20～32；其他骨幹的 <code>[1]</code> 指 16 步後的一張影格。<code>[0]</code> 為當前位置，但 Wan anchor 可透過雙向注意力在該位置隱含未來脈絡，因此不能簡單視為完全不含未來資訊。（<a href="https://arxiv.org/html/2610.37219v1#S4.SS1">§4.1</a>、<a href="https://arxiv.org/html/2610.37219v1#A1.SS2">附錄 A.2</a>）</p>
+<h2 id="第-4244-節主要結果">第 4.2–4.4 節：主要結果</h2>
+<p>作者自報，在各自匹配的固定架構比較中，選用各架構較佳目標後的成功率如下。LIBERO 為四個 suite 的平均；RoboTwin 為 Clean 和 Randomized 平均。（<a href="https://arxiv.org/html/2610.37219v1#S4.SS2">§4.2，表 1</a>、<a href="https://arxiv.org/html/2610.37219v1#S4.SS4">§4.4，表 4–6</a>）</p>
+<table>
+<thead>
+<tr>
+<th>政策</th>
+<th style="text-align:right">LIBERO</th>
+<th style="text-align:right">LIBERO-Plus</th>
+<th style="text-align:right">RoboTwin 2.0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FastWAM</td>
+<td style="text-align:right">97.00%</td>
+<td style="text-align:right">55.31%</td>
+<td style="text-align:right">91.21%</td>
+</tr>
+<tr>
+<td>JAM（Wan）</td>
+<td style="text-align:right">98.15%</td>
+<td style="text-align:right">64.54%</td>
+<td style="text-align:right">91.44%</td>
+</tr>
+<tr>
+<td>ImageWAM（Ovis-U1）</td>
+<td style="text-align:right">92.90%</td>
+<td style="text-align:right">65.27%</td>
+<td style="text-align:right">88.96%</td>
+</tr>
+<tr>
+<td>JAM（Ovis-U1）</td>
+<td style="text-align:right">96.75%</td>
+<td style="text-align:right">79.95%</td>
+<td style="text-align:right">89.90%</td>
+</tr>
+</tbody>
+</table>
+<p>LIBERO-Plus 上作者固定 checkpoint 配對分析的提升分別為 9.23 與 14.67 個百分點；該分析以任務 bootstrap 估計 95% 區間，兩組區間均不含零。RoboTwin 的差距較小。不同時間位置與目標編碼器的效果依架構而異：Wan 的直接 VAE 目標表現強，Ovis-U1 則以預訓練 Yak 目標最佳。（<a href="https://arxiv.org/html/2610.37219v1#S4.SS2">§4.2</a>、<a href="https://arxiv.org/html/2610.37219v1#A4.SS7">附錄 D.7</a>）</p>
+<p>Wan 的骨幹與 anchor 初始化對照顯示：預訓練骨幹配預訓練／隨機 anchor 的 LIBERO 成功率為 97.45%／97.65%，隨機骨幹配兩者為 71.15%／84.40%。隨機 anchor 固定且輸出隨輸入而變，不是對每例獨立抽取雜訊；在此設定，預訓練政策骨幹的重要性與目標 anchor 的角色不同。（<a href="https://arxiv.org/html/2610.37219v1#S4.SS3">§4.3，表 2</a>）</p>
+<p>共同預見目標也適用自監督與視覺語言骨幹。作者自報 LIBERO-Plus 上，DINOv2-L 的 action-only／JAM 為 68.26%／70.39%，Qwen3.5-2B 為 77.03%／81.14%；個別擾動類別並非全部改善。跨骨幹的架構與動作介面不同，不能把分數差歸因於預訓練類型單一因素。（<a href="https://arxiv.org/html/2610.37219v1#S4.SS3">§4.3，表 3</a>、<a href="https://arxiv.org/html/2610.37219v1#A3.SS5">附錄 C.5</a>）</p>
+<h2 id="第-45-節訓練成本">第 4.5 節：訓練成本</h2>
+<p>作者估計，在目標已快取時，每樣本每次更新的線上運算量，FastWAM 到 JAM（Wan）由 15.52 降至 4.19 TFLOPs，減少 73.0%；ImageWAM 到 JAM（Ovis-U1）由 5.81 降至 3.67 TFLOPs，減少 36.8%。單張 GH200 上，所計入操作的實測 GPU 時間分別降低 67.3% 與 37.8%。（<a href="https://arxiv.org/html/2610.37219v1#S4.SS5">§4.5</a>）</p>
+<p>這些是指定操作的估計或量測，非整體訓練成本：快取成本排除一次性目標抽取，FLOP 估算也省略注意力分數、文字編碼與最佳化器更新；快取重用需 anchor、前處理、時間索引和條件固定。（<a href="https://arxiv.org/html/2610.37219v1#A2.SS2">附錄 B.2</a>）</p>
+<h2 id="第-5-節與附錄結論和限制">第 5 節與附錄：結論和限制</h2>
+<p>作者結論是在所測政策中，未來表示監督可取代訓練時的視覺生成目標，同時保留動作推論路徑；這項做法可套用於多種預訓練家族。兩組選定設定各做三次獨立訓練，在固定評估任務與種子下，LIBERO-Plus 成功率均值±樣本標準差為 Wan 的 <code>64.61±0.37%</code>、Ovis-U1 的 <code>79.92±0.43%</code>。（<a href="https://arxiv.org/html/2610.37219v1#S5">§5</a>、<a href="https://arxiv.org/html/2610.37219v1#A4.SS8">附錄 D.8</a>）</p>
+<p><strong>本檔補註，非作者自陳</strong>：這些結果限於文中機器人基準、所選評估子集和訓練條件；對所有真實場景、生成式目標或預訓練架構的優劣不能直接外推。文獻中引用的其他系統沿用各自發表時的評估協定，跨列比較需留意差異。（<a href="https://arxiv.org/html/2610.37219v1#S4.SS4">§4.4</a>）</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2610.37219_JAM.%E6%91%98%E8%A6%81.html">JAM 摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

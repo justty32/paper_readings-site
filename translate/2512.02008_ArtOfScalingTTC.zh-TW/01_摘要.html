@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2512.02008_ArtOfScalingTTC.zh-TW.html">回 2512.02008_ArtOfScalingTTC.zh-TW 目錄</a>　<a href="02_%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>測試時擴展（test-time scaling, TTS）——在推論期間動態分配計算——是提升大型語言模型推理能力的一個有前景方向。然而，對已知的 TTS 策略在相同條件下進行系統比較的研究仍然缺失，且模型類型與問題難度對效能的影響仍不清楚。為填補這些缺口，我們進行了首個大規模 TTS 研究，橫跨 8 個開源 LLM（7B 至 235B 參數）生成的 300 億以上 tokens，於 4 個推理資料集上評估。我們觀察到三個一致趨勢：(1) 沒有單一 TTS 策略普遍主導；(2) 推理模型在問題難度與 trace 長度上展現不同的 trace-quality 模式，形成 short-horizon 與 long-horizon 兩類；(3) 給定模型類型，最優 TTS 效能隨計算預算單調遞增。基於這些洞察，我們提供了一個實用處方來選擇最佳 TTS 策略，考量問題難度、模型類型與計算預算，為有效的推論時擴展提供實用指南。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>測試時擴展（TTS）已成為通過增加推論時計算來增強 LLM 推理能力的有效方法。任何合理的 TTS 策略在定義上會隨著更多計算分配而展現效能改善。然而，最佳 TTS 策略的選擇仍是開放問題。</p>
+<p>早期研究探索了序列擴展方法，要麼人為延伸推理 trace（Muennighoff et al., 2025），要麼在切換方向前鼓勵在單一推理方向內進行更深探索以緩解&quot;underthinking&quot;（Wang et al., 2025b）。更近期的分析質疑了此類序列延伸的益處。Gema et al.（2025）檢驗了設計用於隔離特定推理能力的合成任務，發現更長的推理可能強化錯誤行為、放大錯誤並使推理路徑偏離，從而降低正確率甚至引入安全問題。同樣，Hassid et al.（2025）提出 short-m@k，一種平行 TTS 技術，對 k 個取樣輸出中的 m 個最短推理 trace 進行多數決，結果支持更短更簡潔的推理優於延伸思考。</p>
+<p>先前研究雖提供有價值洞察，但未考慮模型差異且依賴較舊的推理模型。在本工作中，我們使用更近期模型重新審視這些發現，包括 GPT-OSS 與 Qwen3 系列。我們的發現揭示了計算與效能之間的關係跨模型家族有所不同——我們將此差異歸因於其 post-training 演算法的不同。我們提出，不同的 post-training 方法產生了不同的推理視野（reasoning horizon）。Large-horizon 模型能通過更長 trace 維持更深推理，從而在需要更多思考的困難任務上獲得效能增益。Short-horizon 模型則無法生成長連貫 trace，因此最適合優先簡潔推理，無論問題難度如何。</p>
+<p>作為其訓練動態的結果，short-horizon 模型常見於使用 GRPO 或 GRPO-like 演算法的 post-training，與 GRPO 引入的已知長度偏差一致（Yu et al., 2025）。相反，long-horizon 模型通常由能在長 trace 上維持穩定性的替代強化學習方法產生。例如，Qwen3——一個 long-horizon 模型——使用 GSPO 而非 GRPO 進行 post-training（Zheng et al., 2025）。此觀察支持我們的假設：post-training 策略的選擇對推理模型的有效視野起關鍵作用。</p>
+<p>總體而言，我們的工作凸顯了對 TTS 採取模型感知視角的必要性，該視角需考量訓練方法的差異、問題難度與計算可用性，以指導有原則的策略選擇。</p>
+<h2 id="2-預備知識">2. 預備知識</h2>
+<h3 id="21-測試時擴展方法">2.1 測試時擴展方法</h3>
+<p>TTS 策略大致分為平行、序列、混合/元策略與內部計算機制四類。</p>
+<p><strong>平行擴展策略</strong>通過聚合多個獨立取樣的推理 trace 答案來提升效能：Self-consistency（Wang et al., 2023）、Best-of-n 取樣（Snell et al., 2024）、Majority Voting（Lightman et al., 2023）、Multi-Agent Verification（Lifshitz et al., 2025）、Short-m@k（Hassid et al., 2025）。</p>
+<p><strong>序列擴展策略</strong>通過迭代精煉、重啟或回溯延伸推理深度：Chain-of-Thought（Wei et al., 2023）、STaR（Zelikman et al., 2022）、Reflexion（Shinn et al., 2023）、Tree-of-Thought（Yao et al., 2023）、Graph-of-Thoughts（Besta et al., 2024）、AlphaGeometry（Chervonyi et al., 2025）、S1（Muennighoff et al., 2025）。</p>
+<p><strong>混合擴展策略</strong>融合兩軸：Meta-Reasoner（Sui et al., 2025）使用 contextual bandits 動態選擇 TTS 策略、AgentTTS（Wang et al., 2025a）與 START（Li et al., 2025）部署 agent 切換直接生成或更複雜推理、PEARL（Liu et al., 2025）交錯草稿生成與精煉。</p>
+<p><strong>內部擴展策略</strong>修改模型在推論期間內部執行的計算量而不顯式調整外部樣本數：HALT-CoT（Laaouach, 2025）與 SoftCoT++（Xu et al., 2025）在信心高時提前終止。</p>
+<p><strong>沒有策略普遍最優</strong>。多項實證研究強化了無單一 TTS 策略一致主導的觀點（Zhang et al., 2025 的&quot;TTS trilemma&quot;；Snell et al., 2024 的 compute-optimal 分配；Ghosal et al., 2025 與 Hassid et al., 2025 對長 CoT 的批評；Gema et al., 2025 的 inverse-scaling）。</p>
+<p>本研究考慮 FFS（First Finish Search, Algorithm 1）、LFS（Last Finish Search, Algorithm 2）與 beam search。FFS-k@N：取樣 N 個輸出，對最短 k 個做多數決。LFS-k@N：取最長 k 個做多數決。Beam search：維護高機率部分假設的 beam 並隨解碼推進持續更新。</p>
+<h3 id="22-模型">2.2 模型</h3>
+<p><strong>推理模型</strong>：DeepSeek-R1（GRPO 訓練）、R1-32B（R1 蒸餾 32B 變體）、QwQ-32B（較短緊湊 trace）、GPT-OSS-120B（大規模開源 GPT 風格）、Qwen3-32B（STEM/程式碼/常識多域推理）、DAPO-32B（DAPO 演算法，聲稱緩解 GRPO 梯度歸一化偏差）。</p>
+<p><strong>非推理模型</strong>：Qwen3-235B-Instruct（235B 總參數、22B active 的 MoE 指令微調模型）、DeepSeek-Chat（通用對話模型）。</p>
+<h3 id="23-資料集">2.3 資料集</h3>
+<p><strong>AIME 2024/2025-I/2025-II</strong>：高中競賽數學，30 題短答案（0–999 整數），需多步演繹推理，答案置於 <code>\boxed{}</code>。</p>
+<p><strong>GPQA Diamond</strong>：研究生級概念/事實推理（物理/生物/化學），四選一（A–D），最難的專家驗證子集。</p>
+<h3 id="24-度量">2.4 度量</h3>
+<p><strong>正確率</strong>：最終預測匹配 ground-truth 的比例。AIME 為三位整數、GPQA 為 A–D 選項，解析簡潔。</p>
+<p><strong>Token 消耗</strong>：(1) Total tokens：所有 trace 生成的 token 總數；(2) Sequential tokens：必須序列生成的 token 數（= longest trace 長度），估計最小可能延遲。</p>
+<h3 id="25-測量問題難度">2.5 測量問題難度</h3>
+<p>直接法：問題級平均正確率。間接法：平均生成 token 數。兩者正相關（Figure 3）——模型在難題上&quot;思考&quot;更久。但更長 trace 本身不保證更好品質（Gema et al., 2025）。</p>
+<blockquote>
+<p>本檔為 <code>2512.02008_ArtOfScalingTTC.zh-TW.md</code> 的第 <strong>2/2</strong> 部分。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

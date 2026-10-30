@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2408.11042_GraphFSA.zh-TW.html">回 2408.11042_GraphFSA.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E8%AD%89%E8%A9%95%E4%BC%B0.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>許多圖演算法可視為<strong>迭代套用的規則集</strong>，迭代次數隨輸入圖的大小與複雜度而定。現有 ML 架構常難把這類演算法決策表示成<strong>離散狀態轉移</strong>。為此提出新框架 <strong>GraphFSA（Graph Finite State Automaton）</strong>：設計來學一個<strong>在給定圖的每個節點上跑的有限狀態自動機</strong>。先在元胞自動機問題上展示其在直觀演算法情境的能力；為全面實證，建一套多樣的合成問題；主應用則聚焦學更複雜的圖演算法。發現 GraphFSA 展現<strong>強泛化與外推</strong>能力，是表示這類演算法的另一條途徑。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>機器仍難泛化概念與外推到未見輸入：大型語言模型能寫紅綠燈的詩，卻不會兩個大數相乘——因為它對演算法沒有好的表示。我們想教機器某種「<strong>演算法式思考</strong>」：給一個未知過程，機器能否蒸餾出在發生什麼、再到別處套用同一演算法?本文聚焦最簡單的過程之一：<strong>有限狀態自動機（FSA）</strong>——依配方在狀態間跳轉的基本自動機，是「演算法」最簡單卻有趣的版本。但若把許多 FSA 組裝成網路，計算上會強大得驚人（簡單的 Game of Life 已圖靈完備）。</p>
+<p>建基於 Grattarola 等與 Marr/Hütt 的工作，提出 GraphFSA：在圖上學 FSA 的框架，能<strong>抽出可解釋解</strong>並提供<strong>外推到更大圖</strong>的框架。貢獻：(1) GraphFSA 執行框架，解決現有模型在「把演算法決策表示成離散狀態轉移、抽出可解釋解」上的限制；(2) <strong>GRAB（Graph Automaton Benchmark）</strong> 資料生成器，跨不同圖大小/分布系統 benchmark;(3) <strong>Diff-FSA</strong>，一種訓練 GraphFSA 模型的具體途徑，用 GRAB 比較其與多個基線、展示強泛化；(4) 對 GraphFSA 功能與變體的討論與可視化。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>有限狀態自動機（FSA／FSM）</strong>：描述有限狀態系統行為的計算模型（狀態集 + 有限字母觸發的轉移 + 初始態），廣用於模式辨識、解析、協定規格。近來愈多研究結合 FSA 與神經網路（如 de Balle Pigem 學 FSA、Mordvintsev 的可微 FSM）。</li>
+<li><strong>元胞自動機（CA）</strong>：von Neumann 1967 提出的離散計算模型，網格上每格依鄰居狀態的轉移規則演化。近作以 NN 學 1D/2D CA;Neural CA（NCA）、Graph CA（GCA, Marr/Hütt）、<strong>Graph Neural CA（GNCA, Grattarola）</strong>。GNCA 與本文差別：它用<strong>連續</strong>狀態空間且<strong>只學單步轉移</strong>，本文用<strong>離散</strong>狀態並能從多步觀察抽規則。Johnson 等的 FSA 層則是「單一自動機如代理在圖上遊走加邊」，與本文「多個 FSA 同步執行做節點預測」不同。</li>
+<li><strong>圖神經網路（GNN）</strong>：表達力受 <strong>WL 顏色精煉</strong> 限制；算法圖問題需足夠輪數，輪數不足會解不出。可解釋方面有 GNNExplainer、GraphChef（用決策樹替換訊息傳遞層、用 gumbel-softmax 學離散狀態空間）。</li>
+<li><strong>演算法學習</strong>：目標是學底層演算法原理以泛化到更大/未見實例（外推為首要）。GNN 廣用於此；近作（Tang、Veličković、Ibarz）強調外推到更大圖，但多只比訓練集稍大；<strong>外推到大得多的圖仍是難題</strong>。</li>
+</ul>
+<h2 id="3-graphfsa-框架">3. GraphFSA 框架</h2>
+<p>GraphFSA 是在圖結構資料上執行 FSA 的計算框架，靈感取自 Graph CA 與 GNN。<strong>每個節點定義同一個 FSA</strong>（同樣的狀態集與轉移值），但各節點通常處於不同狀態。如 FSA 慣例，<strong>轉移值 + 當前狀態</strong> 共同決定下一態；轉移值由<strong>鄰居節點狀態的聚合</strong>算出。因 FSA 只能處理有限多種聚合，故對聚合函數加相應限制。執行時節點先以代表輸入特徵的狀態初始化，FSA 在所有節點上<strong>同步執行固定步數</strong>，每步算轉移值並執行轉移；結束後每節點達一輸出狀態，做節點分類。</p>
+<h3 id="31-形式定義">3.1 形式定義</h3>
+<p>GraphFSA＝元組 (S, A, T)，作用於圖 G。S 為狀態集、A 為聚合、T 為轉移函數。時刻 t 每節點 v 處於狀態 s_v^t。聚合 A 把鄰居狀態的<strong>多重集</strong>映到<strong>有限域</strong>的聚合值（式 1，⊎ 為多重集、N(v) 為鄰居）。轉移函數 T 取節點當前狀態與其聚合值算出下一步狀態（式 2）。為方便定義大小 |S|×（聚合值數）的<strong>轉移矩陣</strong>；並用大小 |S| 的 one-hot <strong>狀態向量</strong> 表每節點當前狀態。</p>
+<p><strong>聚合函數</strong>：轉移值直接由聚合鄰居狀態多重集而得。本文聚焦<strong>計數聚合</strong>、略提位置聚合。</p>
+<ul>
+<li><strong>計數聚合</strong>：數每個狀態在鄰域出現次數，但域須有限（一般圖拓樸下樸素計數會隨節點數增長）。借分散式計算的 <strong>Stone Age Computing（Emek/Wattenhofer）</strong> 的「<strong>一-二-多</strong>」原則：每鄰居只能分辨某狀態出現 <strong>一次/兩次/多於兩次</strong>。以界限參數 b 一般化（精確計數到 b 為止）；最簡 b=1 即分辨「狀態在不在鄰域」（等於用集合而非多重集）。對 |S| 狀態，每狀態有 (b+1)^|S| 種轉移值 → 表達力 vs 模型大小的 trade-off。</li>
+<li><strong>位置聚合</strong>：有方向的圖（如格點），每個鄰居指派到轉移向量的一個槽；推廣到最大度 d 的圖。</li>
+<li><strong>平均閾值聚合</strong>：用平均值偵測「是否某比例（如 0.5 多數）鄰居在某狀態」。</li>
+</ul>
+<p><strong>起始與終止狀態</strong>：起始態編碼圖問題的離散輸入（CA 起始態，或演算法輸入如 BFS 源點與其他節點不同態）。終止態代表輸出；節點預測任務每類一個終止態。<strong>終止態不可轉出</strong>——一旦到達永不改變。</p>
+<p><strong>表達力（3.2）</strong>：GraphFSA 執行雖似一輪 WL，但一般不同。聚合函數限制了對鄰域的觀察（不能用無界大小的多重集觀察），故 <strong>GraphFSA 嚴格弱於 1-WL</strong>——在更具表達力的聚合 vs 維持簡單/可解釋間 trade-off（狀態空間隨之指數成長）。但 b 夠大時，GraphFSA 在<strong>有界度的受限圖類</strong>上可匹配 1-WL。有限的可能聚合數限制了它，卻也保持機制簡單；評估顯示這能提升學到的 GraphFSA 的泛化。</p>
+<p><strong>可解釋（3.3）</strong>：可視化如 FSA。<strong>完整 FSA 可視化</strong>畫出所有狀態與轉移（節點＝狀態、有向邊＝轉移）。<strong>部分 FSA 可視化</strong>針對大狀態空間，從指定起始態出發跨多個實例追蹤實際發生的轉移，只顯示用到的狀態/轉移。</p>
+<p><strong>可擴展性（Scalability）</strong>：兩維度——圖大小（對節點/邊數<strong>線性時間</strong>，外推大圖佳）與狀態數（受聚合法影響；計數聚合下可能聚合數隨狀態數<strong>指數成長</strong>，須慎選聚合）。</p>
+<h3 id="34-grabgraphfsa-資料生成器">3.4 GRAB：GraphFSA 資料生成器</h3>
+<p>配套執行框架，提供 GRAB 評估學到的狀態自動機。框架只定模型結構、允許不同訓練法；離散轉移使訓練困難。GRAB 為「在圖上學狀態自動機」提供<strong>有 ground-truth 的合成 FSA</strong> 評估框架，支援多種圖大小與分布。<strong>構建流程</strong>：先定 ground-truth GraphFSA（狀態數、起終態數）→ 隨機生成 FSA（為各轉移值選下一態，遵守終止態不可轉出）→ 從預定分布（樹、格、全連接、正則圖、Erdős-Rényi）取圖、隨機初始化起始態 → 套 FSA 算輸出。<strong>強調外推</strong>：建一個含更大圖的外推資料集，若訓練時抽對自動機則應能泛化。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

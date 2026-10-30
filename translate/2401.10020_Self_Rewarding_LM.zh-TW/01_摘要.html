@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2401.10020_Self_Rewarding_LM.zh-TW.html">回 2401.10020_Self_Rewarding_LM.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>我們主張：要達成超人類的智能體，未來的模型需要<strong>超人類的回饋訊號</strong>才能提供足夠的訓練訊號。當前做法通常從人類偏好訓練獎勵模型，因而可能被<strong>人類的表現水準</strong>卡住上限；其次，這些分離而<strong>凍結</strong>的獎勵模型無法在 LLM 訓練過程中一起變好。本文研究 <strong>Self-Rewarding Language Models（自我獎勵語言模型）</strong>：語言模型本身透過 <strong>LLM-as-a-Judge prompting</strong> 在訓練期間提供自己的獎勵。我們展示在 <strong>Iterative DPO</strong> 訓練中，不只指令遵循能力會提升，<strong>給自己高品質獎勵的能力也會提升</strong>。以本方法對 Llama 2 70B 做三輪微調，所得模型在 AlpacaEval 2.0 排行榜上勝過許多現有系統，包括 Claude 2、Gemini Pro 與 GPT-4 0613。雖然仍有許多待探索之處，本工作為「在兩個軸向上持續自我改進的模型」開了一扇門。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>用人類偏好資料對齊 LLM 能大幅提升預訓練模型的指令遵循表現（Ouyang et al., 2022；Bai et al., 2022a）。標準的 RLHF 先從人類偏好學一個獎勵模型，然後<strong>凍結</strong>它，再用 RL（例如 PPO）訓練 LLM。近期的替代方案是完全不訓練獎勵模型、直接用人類偏好訓練 LLM，如 DPO（Rafailov et al., 2023）。兩種做法都被人類偏好資料的<strong>規模與品質</strong>卡住；RLHF 還額外受制於凍結獎勵模型的品質。</p>
+<p>本文改為訓練一個<strong>會自我改進的獎勵模型</strong>：它不被凍結，而是在對齊過程中持續更新，以避開上述瓶頸。關鍵在於打造一個<strong>同時擁有訓練期間所需全部能力</strong>的智能體，而不是把能力拆進獎勵模型與語言模型兩個分離系統。正如預訓練與多任務指令微調能讓任務之間互相遷移，把獎勵建模併入同一個系統，就能讓<strong>獎勵建模任務與指令遵循任務彼此遷移</strong>。</p>
+<p>因此我們提出 Self-Rewarding Language Models，它同時 (i) 作為指令遵循模型，對給定提示生成回應；(ii) 能生成並評估新的指令遵循樣本，加進自己的訓練集。訓練採用類似 Xu et al. (2023) 的 <strong>Iterative DPO</strong> 框架：從種子模型出發，每一輪先做<strong>自我指令創建（Self-Instruction creation）</strong>——由模型對新造的提示生成候選回應，再由<strong>同一個模型</strong>給予獎勵（透過 LLM-as-a-Judge prompting，這本身也可視為一項指令遵循任務）；由生成資料建出偏好資料集，再用 DPO 訓練下一輪模型。</p>
+<p>實驗以 Llama 2 70B 為起點，先在 Open Assistant 上微調，再執行上述訓練。我們發現不只指令遵循表現優於基線種子模型，更重要的是<strong>獎勵建模能力（不再固定）也一起變好</strong>。這意味著模型在某一輪能給自己提供比前一輪<strong>更高品質</strong>的偏好資料集。雖然此效應在真實情境中很可能會飽和，但它提供了一個引人入勝的可能性：得到比「僅由原始人工種子資料訓練出來」更好的獎勵模型（進而更好的 LLM）。</p>
+<h2 id="2-自我獎勵語言模型">2. 自我獎勵語言模型</h2>
+<p>方法假設有一個預訓練基礎模型與少量人工標註的種子資料，目標是建出同時具備兩項技能的模型：</p>
+<ol>
+<li><strong>指令遵循</strong>：對描述使用者需求的提示，生成高品質、有幫助（且無害）的回應。</li>
+<li><strong>自我指令創建</strong>：生成並評估新的指令遵循樣本，加入自己的訓練集。</li>
+</ol>
+<p>這兩項技能讓模型能用 <strong>AI Feedback（AIF）</strong> 迭代地自我對齊。自我指令創建包含「生成候選回應」與「模型自己評判其品質」，即模型<strong>充當自己的獎勵模型</strong>，取代外部獎勵模型的需求；這透過 LLM-as-a-Judge 機制（Zheng et al., 2023b）實作，也就是把「評估回應」表述成一項指令遵循任務。</p>
+<p><strong>圖 1 要旨</strong>：自我對齊分兩步。(i) 自我指令創建——新造的提示交給模型 Mₜ 生成候選回應，同一個 Mₜ 也用 LLM-as-a-Judge prompting 預測自己的獎勵；(ii) 指令遵循訓練——從生成資料中挑出偏好對，用 DPO 訓練得到 Mₜ₊₁。整套流程可以反覆迭代，使指令遵循與獎勵建模能力同時提升。</p>
+<p>由於模型能同時改進生成能力、又透過同一套生成機制充當自己的獎勵模型，<strong>獎勵模型本身也會隨迭代變強</strong>，這偏離了「獎勵模型固定不變」的標準做法，作者相信這能提高自我改進的天花板、移除一項限制性瓶頸。</p>
+<h3 id="21-初始化">2.1 初始化</h3>
+<p><strong>種子指令遵循資料</strong>：給定一組人工撰寫的（指令提示、回應）通用範例，用監督式微調（SFT）從預訓練基礎模型開始訓練。後續稱為 <strong>IFT（Instruction Fine-Tuning）資料</strong>。</p>
+<p><strong>種子 LLM-as-a-Judge 資料</strong>：另給一組（評估指令提示、評估結果回應）範例。這並非嚴格必要（只用 IFT 資料的模型已具備一定的 judge 能力），但我們顯示這類資料能提升表現（見附錄 A.3）。輸入提示要求模型評估「某指令的某回應」的品質；輸出則是一段思維鏈式的理由，接著給出最終分數（本文為滿分 5 分）。所採用的提示格式見圖 2，要求以<strong>五項加法式準則</strong>（相關性、涵蓋度、有用性、清晰度、專業度）評估。後續稱為 <strong>EFT（Evaluation Fine-Tuning）資料</strong>。兩組種子資料在訓練時一併使用。</p>
+<h3 id="22-自我指令創建">2.2 自我指令創建</h3>
+<p>用已訓練的模型自行修改自己的訓練集，為下一輪產生額外訓練資料：</p>
+<ol>
+<li><strong>生成新提示</strong>：以少樣本提示（從原始種子 IFT 資料取樣示範）造出新提示 xᵢ，依循 Self-Instruct（Wang et al., 2023）與 Honovich et al. (2023) 的做法。（註：主實驗中回應與獎勵由待訓模型生成，但<strong>提示是由一個事先固定的模型生成</strong>；附錄 A.5 顯示提示也可由每輪新訓出的模型生成。）</li>
+<li><strong>生成候選回應</strong>：對 xᵢ 用抽樣從模型生成 N 個多樣候選 {yᵢ¹,…,yᵢᴺ}。</li>
+<li><strong>評估候選回應</strong>：用<strong>同一個模型</strong>的 LLM-as-a-Judge 能力，對自己的候選回應給出分數 rᵢⁿ ∈ [0,5]。</li>
+</ol>
+<h3 id="23-指令遵循訓練">2.3 指令遵循訓練</h3>
+<p>訓練先以種子 IFT 與 EFT 資料進行，再用 AI（自我）回饋擴增，稱為 <strong>AIFT（AI Feedback Training）資料</strong>。</p>
+<p><strong>AI 回饋訓練</strong>：構造偏好對（指令提示 xᵢ、勝出回應 yᵢʷ、落敗回應 yᵢˡ）。從 N 個評分過的候選中取<strong>最高分</strong>與<strong>最低分</strong>者組對（依 Xu et al., 2023），若兩者分數相同則丟棄該對。這些偏好對用 <strong>DPO</strong> 訓練。</p>
+<p><strong>圖 2 要旨（LLM-as-a-Judge 提示）</strong>：以加法式 5 分制檢視使用者問題與對應回應——(1) 回應相關且提供了一些相關資訊（即使不完整或含無關內容）加 1 分；(2) 處理了問題的實質部分但未完全解決或未直接作答，再加 1 分；(3) 以有用方式回答了問題的基本要素（無論看起來是否像 AI 助理所寫），加第 3 分；(4) 明顯以 AI 助理視角撰寫、直接而全面地處理問題、組織良好且有幫助（即使在清晰度、簡潔度或聚焦上仍有小幅改進空間），給第 4 分；(5) 回應完美貼合問題、無多餘資訊、反映專家知識、高品質且富洞見，給第 5 分。最後要求：以 100 字內簡述評分理由，並以 <code>Score: &lt;總分&gt;</code> 格式作結。</p>
+<h3 id="24-整體自我對齊演算法">2.4 整體自我對齊演算法</h3>
+<p><strong>迭代訓練</strong>：訓練一系列模型 M₁,…,M_T，第 t 個模型使用由第 t−1 個模型創造的擴增資料。記 AIFT(Mₜ) 為用模型 Mₜ 產生的 AI 回饋訓練資料。</p>
+<p><strong>模型序列</strong>：</p>
+<ul>
+<li><strong>M₀</strong>：未微調的基礎預訓練 LLM。</li>
+<li><strong>M₁</strong>：由 M₀ 初始化，在 IFT+EFT 種子資料上以 SFT 微調。</li>
+<li><strong>M₂</strong>：由 M₁ 初始化，用 AIFT(M₁) 資料以 DPO 訓練。</li>
+<li><strong>M₃</strong>：由 M₂ 初始化，用 AIFT(M₂) 資料以 DPO 訓練。</li>
+</ul>
+<p>此迭代訓練類似 Pairwise Cringe Optimization，具體即 Xu et al. (2023) 提出的 <strong>Iterative DPO</strong>；差別在於該工作使用<strong>外部固定的獎勵模型</strong>。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Distributed Swarm Morphogenesis with Neural Cellular Automata 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Ray Verma、Eliseo Ferrante、Anthony Tzes</p><p>日期：2026-10-26（v2，cs.RO）</p><p>arXiv：2610.31900</p><p><a href="https://arxiv.org/html/2610.31900v2" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="distributed-swarm-morphogenesis-with-neural-cellular-automata">Distributed Swarm Morphogenesis with Neural Cellular Automata</h1>
+<h2 id="摘要與第-iii-節問題與背景">摘要與第 I～II 節：問題與背景</h2>
+<p>群體形態生成要讓機器人透過局部互動組成目標形狀。既有分派與形狀形成方法可決定機器人如何佔位，但通常事先提供幾何或設計組裝規則。本文研究另一層問題：隨隊形生長，如何以離線訓練的局部規則逐步產生可附著位置，而不在部署時提供完整目標位置清單。</p>
+<p>作者以神經細胞自動機（NCA）產生位置，再結合既有分散式位置分派與避碰控制；三者為可替換模組。一般 Growing NCA 在虛擬網格中生長，實際組裝卻是逐步、非同步且只能使用已佔格周圍狀態，作者因而提出離線稀疏保留微調與假陽性損失。（<a href="https://arxiv.org/html/2610.31900v2#S1">§I～II</a>）</p>
+<h2 id="第-iii-ab-節問題設定與局部格架">第 III-A～B 節：問題設定與局部格架</h2>
+<p>考慮 <code>N</code> 台同質全向機器人，一台固定的種子佔據符號方格 <code>(0,0)</code>。目標是包含種子的有限連通格集合 <code>T⊆Z²</code>，每格最多一台且 <code>|T|≤N</code>。完整目標供離線訓練使用，部署時不提供給機器人。已附著的 Advertiser 更新局部 NCA 狀態並公告候選位置；未附著的 Joiner 選擇並接近位置，成功附著後成為 Advertiser。</p>
+<p>機器人測量速度與鄰居相對位置，並廣播符號格座標、NCA 狀態及候選位置。Joiner 利用附近已附著機器人的格座標及相對位置，以剛體最小平方法估計旋轉和平移，將符號格映射至自身座標系。剛開始僅有種子時無法確定格架方向；第一台加入者以局部座標系附著，其與種子之間的方向確立格軸，目標形態不預設全域方向。可觀測到兩台格座標已知且相異的附著機器人後，即可估計平面剛體轉換；更多觀測可用於最小平方法擬合。（<a href="https://arxiv.org/html/2610.31900v2#S3.SS1">§III-A～B，式 1～2</a>）</p>
+<h2 id="第-iii-cd-節位置發現分派與控制">第 III-C～D 節：位置發現、分派與控制</h2>
+<p>每格 NCA 狀態有 RGBA 與內部通道；alpha 表示前景預測。每台 Advertiser 維持以自身為中心的 <code>5×5</code> 狀態區塊，用接收的已佔格狀態更新區塊，再套用共享的 <code>3×3</code> 鄰域更新規則。其四個上下左右鄰格若局部已知未佔用，且更新後 alpha 超過門檻，就公告該格座標及預測狀態。</p>
+<p>若同一格有重複公告，Joiner 將 alpha 平均以評估位置，附著後以其中一份公告的完整細胞狀態初始化新佔格。部署時網路權重固定，局部細胞狀態持續演化。本文沿用 Li 等人的人工光場分派，偏好鄰近且機器人密度低的位置；既有受限控制器將目標轉為速度命令，同時處理追蹤、避碰、速度平滑及安全限制。（<a href="https://arxiv.org/html/2610.31900v2#S3.SS3">§III-C～D</a>）</p>
+<h2 id="第-iii-e-節訓練與稀疏保留微調">第 III-E 節：訓練與稀疏保留微調</h2>
+<p>每個目標形狀離線訓練一個專屬 NCA。先從單一活種子展開 H 個更新步驟，以時間反向傳播最小化終態 RGBA 對參考圖的 MSE；訓練時隨機遮罩各格更新，以模擬非同步。一般 NCA 允許虛擬細胞暫時啟動或超前生長，與只能從已附著機器人周邊逐步加入的實體組裝不同。</p>
+<p>微調時先更新虛擬狀態，選出已佔格四鄰中 alpha 達門檻的未佔候選，再隨機保留部分格為新附著位置。佔用集合只增不減；每步清除已佔格及其相鄰格以外的狀態，並混入普通 NCA rollout，以保留非受限生長能力。假陽性損失對目標背景中超過門檻的 alpha 施加平方懲罰，與終態 RGBA 重建損失加權合併。（<a href="https://arxiv.org/html/2610.31900v2#S3.SS5">§III-E，式 4～10</a>）</p>
+<h2 id="第-iv-a-節模擬與消融">第 IV-A 節：模擬與消融</h2>
+<p>作者自報，模擬權重固定、機器人局部更新非同步，初始位置在場域均勻抽樣，結果取 30 個隨機種子。微調時，候選全不保留機率為 0.15、全保留機率為 0.10；其餘情況先從 <code>[0.1,0.6]</code> 均勻抽取保留機率，再獨立保留候選。狀態通道為 16、前景門檻 0.5、訓練展開長度 <code>[64,96)</code>、假陽性門檻 0.2，格距為 0.5。（<a href="https://arxiv.org/html/2610.31900v2#S4">§IV，表 I</a>）</p>
+<p>作者用目標格集合 <code>T</code> 與時刻 <code>t</code> 已佔格集合 <code>A(t)</code> 的 Dice／F1 衡量形態準確率：<code>F1(t)=2|A(t)∩T|/(|A(t)|+|T|)</code>。飽和時間是此後至結束都與最終 F1 相差不超過 <code>ε_sat=0.05×F1(T)</code> 的最早時間。</p>
+<p>四種形態 Lizard、Tree、Pretzel、Hand-heart 各以 250 台模擬；Tree 另變動機器人數量；圖中快照進度以 <code>F1(t_sat)</code> 為基準。作者報告所示隊形 F1 接近 1，窄通道與受限分支較慢；Tree 擴展實驗的飽和時間約隨數量線性增加，最終 F1 緩慢下降。這些是所測形態與條件下的結果。（<a href="https://arxiv.org/html/2610.31900v2#S4.SS1">§IV-A，圖 2</a>）</p>
+<p>Tree、250 台的微調消融如下，均為作者自報 <code>F1(t_sat)</code> 與標準差：</p>
+<table>
+<thead>
+<tr>
+<th>訓練設定</th>
+<th style="text-align:right">F1</th>
+<th style="text-align:right">標準差</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>標準 Growing NCA</td>
+<td style="text-align:right">0.583</td>
+<td style="text-align:right">0.107</td>
+</tr>
+<tr>
+<td>加稀疏保留微調</td>
+<td style="text-align:right">0.764</td>
+<td style="text-align:right">0.141</td>
+</tr>
+<tr>
+<td>再加假陽性損失</td>
+<td style="text-align:right">0.988</td>
+<td style="text-align:right">0.004</td>
+</tr>
+</tbody>
+</table>
+<p>稀疏保留單獨提高平均 F1，但標準差由 0.107 增至 0.141；加入假陽性損失後平均值提高且變異降低。此消融比較的是訓練設定，並非與其他完整群體組裝系統的對照。（<a href="https://arxiv.org/html/2610.31900v2#S4.SS1">§IV-A，表 II</a>）</p>
+<h2 id="第-iv-bv-節硬體驗證與結論">第 IV-B～V 節：硬體驗證與結論</h2>
+<p>作者自報以 8 台 Crazyflie 四旋翼組裝 E 與 4 兩種格狀形態，展示位置發現、逐步招募及整合控制流程。平台本身缺少所需的相對位置感測，因此實驗使用 Lighthouse 外部追蹤與集中運算提供位置，重建各機器人的局部座標觀測，再由框架輸出機體座標速度命令。這驗證所述資訊介面下的實機執行，尚未驗證完全依賴機載相對感測的系統。（<a href="https://arxiv.org/html/2610.31900v2#S4.SS2">§IV-B，圖 3</a>）</p>
+<p>作者結論是，離線微調可改善逐步組裝下的位置預測，模擬顯示多種形態與較大群體的可行性，小規模硬體實驗展示整合流程。（<a href="https://arxiv.org/html/2610.31900v2#S5">§V</a>）</p>
+<p><strong>本檔補註，非作者自陳</strong>：每個形狀需要專屬離線訓練；有限形態、30 種子與 8 台實機結果不能單獨保證任意形狀、感測條件或更大實體群體的成功。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2610.31900_SwarmNCA.%E6%91%98%E8%A6%81.html">Swarm NCA 摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

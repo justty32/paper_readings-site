@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《以貝氏網路監控 LLM 多代理系統的執行期不確定性》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Bart Custers, Koorosh Aslansefat（University of Hull）</p><p>日期：2026-07，LLM multi-agent system × runtime monitoring × Bayesian network × actuarial modelling</p><p>arXiv：2607.25877</p><p><a href="https://arxiv.org/abs/2607.25877" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="以貝氏網路監控-llm-多代理系統的執行期不確定性重點摘要">《以貝氏網路監控 LLM 多代理系統的執行期不確定性》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>本文把四個 actuarial agents 的輸出 logprobs 壓成 length-normalised feature，聲稱經 calibration 映射為 task-success confidence，再放入表示 workflow dependencies 的 Bayesian network（BN），由 posterior 找出不穩定 stage 並提示人工複核；概念上正確區分了「模型覺得這串 token 常見」與「任務真的做對」，但 calibration 方法與驗證幾乎未報告，BN 也是手工 DAG／CPT 的 proof-of-concept，因此它目前是 <strong>actuarial case prototype 的 uncertainty dashboard</strong>，不是已校準的 correctness monitor 或自動 safety controller。</p>
+<h2 id="最重要的機率語意">最重要的機率語意</h2>
+<p>對輸出 <code>y=(z_1,...,z_L)</code>，論文先取平均 token logprob：</p>
+<p><code>s_i = (1/L_i) Σ_t log p(z_t | z_&lt;t, x)</code></p>
+<p>再令 <code>q_i = exp(s_i)</code>。<code>q_i</code> 是生成 tokens 的 geometric-mean likelihood，能消除 sequence length 對 log-likelihood 總和的直接影響；它仍不是 correctness probability。高機率的模板、流暢錯誤、過度肯定的 review 都可能有高 <code>q_i</code>。</p>
+<p>論文因此加入：</p>
+<p><code>P(X_i = success | q_i) = f_cal(q_i)</code></p>
+<p>其中 <code>X_i</code> 是 agent task 是否成功，<code>f_cal</code> 應由 validation runs 學得。只有這一步真的使用足夠、代表性且有 success labels 的 calibration data，輸出才有資格被解讀為 task-level confidence。原文沒有說 <code>f_cal</code> 是 Platt、isotonic、binning 或其他方法，也沒報 validation runs 數量、split、Brier score、ECE 或 reliability diagram；所以其數值在論文證據下只能稱 confidence-like monitor signal。</p>
+<h2 id="mas-與-bayesian-network">MAS 與 Bayesian network</h2>
+<p>Central Hub 以 star topology 協調四個 agents，不讓它們直接互傳：</p>
+<ul>
+<li>Data Preparation Agent：讀取、清洗、encoding。</li>
+<li>Modelling Agent：建立 predictive model。</li>
+<li>Reviewing Agent：檢查 preparation、performance、consistency 與 modelling decisions，可要求 revision 或 termination。</li>
+<li>Explanation Agent：belief consistency、TCAV concept alignment、age／population density 等敏感屬性的 group-level fairness。</li>
+</ul>
+<p>Agent outputs 和 metadata 放 shared memory。BN 的每個 binary node 表示某個 workflow task 成功／失敗，edge 表示 parent stage 對 child 的條件依賴，joint distribution 依 DAG 分解為 <code>Π_i P(X_i | Pa(X_i))</code>。Root node 可由 calibrated confidence 給 prior；dependent node 的 confidence 進入 CPT。例示的 <code>WorkflowOK</code> 是 AND gate：只有三個 parents 都 pass 時，success probability 才取其 0.99 prior/posterior；任一 parent failure 都壓低結果。</p>
+<p>新 evidence 隨 workflow metadata 加入，Central Hub 更新 posteriors。圖形可指出哪個 stage 本身低 confidence，或哪個 node 對 downstream posterior 影響最大。若 workflow 有 revision，BN 只使用該 stage 的 final accepted output，藉此維持 acyclic。</p>
+<p>這個 BN 不是完整 execution model。它不表示詳細時間順序、priority、repeated execution、feedback loop 或 iterative repair；那些留在 Hub 的 operational logic 裡。</p>
+<h2 id="runtime-monitoring-到底能做什麼">Runtime monitoring 到底能做什麼</h2>
+<p>論文提出三層用途：</p>
+<ol>
+<li>顯示 individual agent 與 overall <code>WorkflowOK</code> posterior，找弱點。</li>
+<li>Reviewing Agent 發現問題時，Hub 可 revision 或 terminate；低 posterior 可標記為需 human review。</li>
+<li>將新 run 和 clean-run uncertainty distribution 比較；離群值可作 warning signal，作者提到未來可用 conformal prediction。</li>
+</ol>
+<p>但論文沒有定義「posterior 低於多少就停止／重跑／降級／交人」、action cost 或 false-alarm trade-off，也未證明 BN posterior 實際驅動了表中 error detection。Runtime monitoring 因而主要是 observation與decision support，不是閉迴路 policy。</p>
+<h2 id="實驗分母與結果">實驗分母與結果</h2>
+<p>三個 local open models：Llama 2 7B、Llama 3.1 8B、Qwen2.5 7B。每個 backend 在原始 actuarial dataset 跑 <strong>10 runs</strong>，另各跑 <strong>20 個 controlled perturbed datasets</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>Backend</th>
+<th style="text-align:right">Clean task success</th>
+<th style="text-align:right">成功分母</th>
+<th style="text-align:right">Mean RMSE</th>
+<th style="text-align:right">Perturbation error detection</th>
+<th style="text-align:right">偵測分母</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Llama 2 7B</td>
+<td style="text-align:right">0.80</td>
+<td style="text-align:right">8/10</td>
+<td style="text-align:right">0.8856</td>
+<td style="text-align:right">0.45</td>
+<td style="text-align:right">9/20</td>
+</tr>
+<tr>
+<td>Llama 3.1 8B</td>
+<td style="text-align:right">0.90</td>
+<td style="text-align:right">9/10</td>
+<td style="text-align:right">0.8839</td>
+<td style="text-align:right">0.65</td>
+<td style="text-align:right">13/20</td>
+</tr>
+<tr>
+<td>Qwen2.5 7B</td>
+<td style="text-align:right">0.80</td>
+<td style="text-align:right">8/10</td>
+<td style="text-align:right">0.8671</td>
+<td style="text-align:right">0.90</td>
+<td style="text-align:right">18/20</td>
+</tr>
+</tbody>
+</table>
+<p>Baseline actuarial model RMSE 是 <strong>0.8853</strong>。Perturbed mean RMSE 分別為 1.0655、1.0728、1.0157。Qwen 的 error detection 和 adaptation 最好；Llama backends 常漏掉嚴重問題，也較少改策略。系統較能察覺 population/distribution shift，對 missing values、sparsity 等不穩定。</p>
+<p>20 個 perturbations 包括低／高 missing values、刪 rows/columns、增加 data、加 column、feature／label noise、distribution shift、fairness tests、counterfactual tests。論文附 row/column change、missingness、target shift、sparsity、PSI、correlation shift 等 severity indicators。</p>
+<p>溫度情境的 <code>P(WorkflowOK)</code>：全 agent <code>T=0.2</code> 為 <strong>87.1%</strong>；data/model 0.2、review/explanation 0.7 為 <strong>69.0%</strong>；全 0.7 為 <strong>59.2%</strong>；一個 agent 提高到 1.2 為 <strong>42.8%</strong>。這證明手工 BN 會按輸入 confidence 與 AND dependencies 降低 posterior，不等於證明 87.1% 的 workflow 在現實中恰有 87.1% 正確率。</p>
+<h2 id="主要限制與原文張力">主要限制與原文張力</h2>
+<ul>
+<li><strong>Calibration 未具體化</strong>：<code>f_cal</code> 只存在於公式與敘述，沒有方法、validation 樣本數、label 定義或 calibration metrics。這是整個 correctness-probability 解讀的關鍵缺口。</li>
+<li><strong>Confidence／uncertainty 混稱</strong>：Table 2 標為 mean workflow uncertainty，但正文將較高值稱 uncertainty score、certainty 或 confidence；例如 agent-level 0.8–0.9 被稱高 uncertainty scores，overall 降到 0.55 又被說 certainty 下降。方向語意不穩定。</li>
+<li><strong>資料交代不足</strong>：正文未命名原始 actuarial dataset、rows/columns、train/validation/test split 或 calibration split，只知道 target 是 claim count；無法由論文重建資料分母。</li>
+<li><strong>BN/CPT 是假設，不是學出的 causal truth</strong>：DAG 與 AND-gate CPT 由設計者指定；若 dependencies 或 conditional probabilities 設錯，漂亮的 posterior 只是精確傳播錯誤假設。</li>
+<li><strong>動態 workflow 被壓平</strong>：revision、feedback loop、priority 與多次 attempt 都只留下 final accepted output；無法區分 intrinsic uncertainty 與 upstream propagated uncertainty，作者也把這列為未來工作。</li>
+<li><strong>小型單案例</strong>：只有一個 actuarial workflow、三個 7B/8B backends、每模型 10 clean runs 和 20 perturbations；沒有跨 domain、larger models、production traffic 或真實 actuary intervention study。</li>
+<li><strong>監控未閉環</strong>：未報 threshold、coverage、false positive/negative、selective risk、human-review workload 或 monitor 自身 latency/cost。</li>
+<li><strong>平均分數幾乎不分 clean/perturbed</strong>：Llama 2 是 0.7345 vs 0.7342、Llama 3.1 是 0.5506 vs 0.5573、Qwen 是 0.6012 vs 0.5833。Qwen 雖偵測 18/20 errors，論文未證明這些偵測由 BN score 而非 Reviewer 的資料檢查造成。</li>
+<li><strong>Task success 和 error detection 定義不透明</strong>：表有比率，但正文未充分說明每次 run 的 mechanical pass/fail rubric；high-stakes claim 應有更強 verifier。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<p>這篇對 Agent Machine 的價值在於把「agent 本步的 intrinsic signal」和「workflow dependency 帶來的 extrinsic uncertainty」分開，並提醒 posterior 需要跟 execution graph 一起傳播。不過可靠 runtime 應補齊三層：先以 outcome evidence 校準每個 typed task，再由真實 event/attempt graph 建 dependency model，最後用明定效用與風險門檻的 policy 決定 retry、fallback、human review 或 stop。少了第一層，BN 只是把模型自信傳得更遠；少了第三層，monitor 只是一張會動的儀表板。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2607.25877_RuntimeUncertaintyMonitoring.zh-TW.html"><code>../translate/2607.25877_RuntimeUncertaintyMonitoring.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

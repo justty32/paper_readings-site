@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Compiled AI：LLM 工作流自動化的確定性程式碼生成（續 4） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.05150_CompiledAI.zh-TW.html">回 2604.05150_CompiledAI.zh-TW 目錄</a>　<a href="02_%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">← 上一節</a>　<a href="04_%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-系統架構">3. 系統架構</h2>
+<p>編譯式 AI 架構由企業工作流自動化中的一個基本不對稱性驅動：生成正確的業務邏輯受益於 LLM 推理，但每天執行該邏輯數千次則不然。執行時 agent 系統合併這兩個階段，在每筆交易呼叫 LLM。我們的架構將它們分離，將 LLM 呼叫限制在一次性的編譯步驟，並為所有後續執行部署經驗證的靜態程式碼。</p>
+<p>此分離產生多項益處。確定性執行消除輸出變異，並在此架構下實現完全可審計性——每個決策可追溯至特定程式碼行，此屬性對 CMS 事先授權合規及 FDA 對 AI 啟用醫療工作流的審計準備至關重要 [FDA, 2025]。靜態程式碼可接受已建立的軟體工程工具：靜態分析、型別檢查、安全掃描與迴歸測試。且因 LLM 離開執行迴圈，prompt injection 的攻擊面縮小——從每筆交易一次 LLM 呼叫減至每編譯工作流類型一次。</p>
+<p><strong>設計原則</strong>。四項原則形塑此架構。<strong>受約束生成</strong>將 LLM 輸出限制為窄域、明確定義的函式（20–50 行）；模板提供基礎設施，界定輸出空間並減少幻覺風險。<strong>編譯優先於直譯</strong>意味著生成碼經驗證、測試並部署為靜態產物——LLM 完全退出執行迴圈。<strong>驗證作為要求</strong>意味著每個產物在部署前通過四階段管線，這之所以可行正是因為我們生成的是程式碼而非直譯配置。<strong>構造即合規</strong>將法規約束（HIPAA、PCI-DSS、SOC 2）直接編碼於模板與提示區塊中，確保生成碼預設繼承合規屬性。</p>
+<p><strong>組件概述</strong>。系統以 YAML 工作流規範為輸入，產出經驗證的 Temporal activity。Orchestrator 接收規範並挑選合適模板、模組與合規約束。Template Library 為常見工作流類型提供經過測試的程式碼樣式：同步處理器、串流處理器、帶檢查點的批次處理器，以及帶 fallback 邏輯的輸入驗證器。Module Library 提供可重用的功能能力，包括帶連線池的資料庫存取、帶重試邏輯的 HTTP 客戶端，以及通知傳遞。Prompt Blocks 編碼領域約束，如 HIPAA 資料處理規則。Orchestrator 將這些組件組合進一個提示、呼叫 LLM 一次以生成業務邏輯，並將組合產物通過四階段驗證管線後才部署。驗證失敗時系統帶錯誤上下文重新生成，而非部署破損產物。圖 2 展示此流程；演算法 1 將其形式化。</p>
+<p><strong>演算法 1：Code Foundry 生成流程</strong></p>
+<pre><code>Require: 工作流規範 S, 模板庫 T, 模組庫 M
+Ensure: 經驗證的 Temporal activity A
+1: t ← SelectTemplate(S, T)
+2: m ← SelectModules(S, M)
+3: p ← AssemblePrompt(S, t, m)
+4: code ← LLMGenerate(p)          ▷ 一次性生成
+5: A ← Assemble(t, m, code)
+6: for stage ∈ {Security, Syntax, Execution, Accuracy} do
+7:     result ← Validate(A, stage)
+8:     if result = FAIL then
+9:         code ← Regenerate(p, result.errors)
+10:        A ← Assemble(t, m, code)
+11:    end if
+12: end for
+13: return A                         ▷ 確定性產物
+</code></pre>
+<p><strong>驗證管線</strong>。四階段各有不同目的。Security 應用靜態分析（Bandit、Semgrep、自訂規則）檢查 SQL injection、命令注入、路徑遍歷與機密暴露。Syntax 執行 AST 解析、型別檢查（mypy）與 linting（ruff）。Execution 以測試 fixtures 進行沙箱執行，驗證成功完成、錯誤處理與輸出結構。Accuracy 以任務特定閾值比對輸出與 golden dataset。</p>
+<p><strong>有界 Agentic 呼叫與安全架構</strong>。某些工作流步驟需要無法完全預編譯的執行時判斷。我們的架構支援有界 agentic 呼叫：生成碼可為特定窄子任務呼叫 LLM（例如從模糊的臨床筆記中抽取結構化欄位），同時整體流維持確定性，在定義的 schema、fallback 邏輯、漂移監控與人類升級閾值下運行。在正確性驗證之外，三閘門安全管線防範 OWASP LLM Top 10 漏洞：Input Gate（DeBERTa-v3 prompt injection 偵測 + Presidio PII 掃描）、Code Gate（CWE-94、CWE-89、CWE-502、CWE-78、CWE-328 的靜態分析），以及 Output Gate（密碼學 canary token 注入以偵測 prompt 洩漏）。Dual LLM 模式分離特權與隔離模型實例。編譯式 AI 將執行時 LLM 呼叫從每筆交易一次減至零，有效消除執行路徑中基於 prompt 的攻擊面。</p>
+<h1 id="compiled-aillm-工作流自動化的確定性程式碼生成續-4">Compiled AI：LLM 工作流自動化的確定性程式碼生成（續 4）</h1>
+<h2 id="4-評估框架">4. 評估框架</h2>
+<p>現有基準主要衡量任務級能力——程式碼正確性或工具使用成功率。雖然必要，但這些指標不足以評估醫療等領域的生產工作流自動化，此處經濟效率、確定性與可靠性比表達力更為關鍵。基準準確度與生產可行性之間的差距已被實證充分記錄：達成 95% 基準準確度的系統可能在多輪生產互動中僅成功 35% [Salesforce, 2025]，且感知到的生產力增益可能與客觀測量顯著偏離 [METR, 2025]。</p>
+<p>因此我們將編譯式 AI 評估為系統產物而非推理 agent，使用跨七大類別的指標：token 效率、延遲、一致性與確定性、可靠性、程式碼品質、驗證管線有效性，以及安全性。Token 效率分析圍繞攤平交易數：</p>
+<pre><code>n* = GenTokens_compiled / (RuntimeTokens_per-tx_runtime − RuntimeTokens_per-tx_compiled)
+</code></pre>
+<p>對於確定性，我們對 N=1,000 個相同輸入測量輸出熵 H = −Σ pi log pi；編譯式 AI 目標為 H=0，對比即使在 temperature=0 下文獻記錄的執行時推理 18–75% 輸出變異 [Ouyang et al., 2023]。可靠性目標遠超過 Salesforce [2025] 的 35% agent baseline。安全指標依據 OWASP LLM Top 10 威脅評估三閘門架構。驗證管線指標——每階段的 FirstPassRate 與 OverallFirstPass——是新穎的；據我們所知沒有先前工作對 LLM 生成的生產程式碼報告這些。全部七大類別的完整指標表作為補充材料提供。</p>
+<h2 id="5-實驗">5. 實驗</h2>
+<p>我們在兩種不同任務類型上進行評估，以證明編譯式 AI 超越單一基準的泛化性，且架構未對特定輸入模態過擬合。</p>
+<p><strong>任務 1：函式呼叫（BFCL）</strong>。Berkeley Function-Calling Leaderboard [Patil et al., 2024] 在 400 個實例上衡量函式呼叫能力，模型必須從自然語言查詢中識別正確函式並抽取參數。此任務在具有乾淨輸入的結構化場景中驗證核心的編譯-vs-執行取捨。</p>
+<p><strong>任務 2：文件智慧（DocILE）</strong>。為對雜訊、語意輸入進行壓力測試，我們在 DocILE 上評估——5,680 張帶退化 OCR 品質、跨數百個供應商的異質格式以及語意模糊的發票文件。DocILE 使用兩個評估指標：KILE（Key Information Line-level Extraction），衡量關鍵欄位（如發票號碼、日期、總金額）的精確匹配準確度；以及 LIR（Line Item Recognition），衡量文件內結構化行項的準確度。此任務也激勵 Code Factory 變體：當純確定性方法因語意複雜度失敗時，封裝聚焦 LLM 呼叫的編譯 activity 提供有原則的中間地帶。</p>
+<p><strong>基線</strong>。我們跨兩項任務比較四種方法：Direct LLM（Claude Opus 4.5，每筆交易一次呼叫）、LangChain 與 AutoGen（相同 LLM 加編排開銷），以及 Compiled AI / Code Factory（LLM 在編譯時呼叫一次；執行時為確定性程式碼）。對於 DocILE，我們另評估 Deterministic 變體（純 regex，無 LLM）以界定非學習方法的下限。所有實驗使用 Claude Opus 4.5（claude-opus-4-5-20251101）於 temperature 0、PydanticAI 進行結構化編排，以及自訂 DSL 執行器處理工作流定義。</p>
+<h1 id="compiled-aillm-工作流自動化的確定性程式碼生成續-5">Compiled AI：LLM 工作流自動化的確定性程式碼生成（續 5）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

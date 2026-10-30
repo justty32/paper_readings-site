@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_評估與局限 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><p>← <a href="../2602.11243_StructMemEval.zh-TW.html">回母檔</a></p>
+<h2 id="4-評估與分析">4. 評估與分析</h2>
+<h3 id="41-retrieval-與問題規模">4.1 Retrieval 與問題規模</h3>
+<p>作者比較 Mem0 codebase 的 retrieval-only baseline（OpenAI <code>text-embedding-3-large</code>、top-10）、Markdown-based Mem-agent 與 Mem0。</p>
+<p>在 tree、state、count 三類，retrieval-only 對小問題尚可，但 task complexity 一超過 retrieval window，accuracy 很快下滑；memory agents 起步可能較差，卻能在更長問題維持能力。這支持 benchmark 確實要求跨更新組織，而不是只做 factual retrieval。增加 retrieval budget 到 top-20 也未解決主集失敗。</p>
+<h3 id="42-架構與-controller">4.2 架構與 controller</h3>
+<p>固定 Gemini 3.1 Pro 時，主集 accuracy 如下：</p>
+<table>
+<thead>
+<tr>
+<th>Agent</th>
+<th style="text-align:right">State</th>
+<th style="text-align:right">Tree</th>
+<th style="text-align:right">Count</th>
+<th style="text-align:right">Recsys</th>
+<th style="text-align:right">Overall</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Retrieval</td>
+<td style="text-align:right">0.00</td>
+<td style="text-align:right">0.00</td>
+<td style="text-align:right">0.00</td>
+<td style="text-align:right">0.22</td>
+<td style="text-align:right">0.06</td>
+</tr>
+<tr>
+<td>EMem</td>
+<td style="text-align:right">0.50</td>
+<td style="text-align:right">0.00</td>
+<td style="text-align:right">0.00</td>
+<td style="text-align:right">0.20</td>
+<td style="text-align:right">0.175</td>
+</tr>
+<tr>
+<td>EMem-G</td>
+<td style="text-align:right">0.57</td>
+<td style="text-align:right">0.00</td>
+<td style="text-align:right">0.00</td>
+<td style="text-align:right">0.19</td>
+<td style="text-align:right">0.19</td>
+</tr>
+<tr>
+<td>Mem-agent</td>
+<td style="text-align:right">1.00</td>
+<td style="text-align:right">1.00</td>
+<td style="text-align:right">0.13</td>
+<td style="text-align:right">0.52</td>
+<td style="text-align:right">0.66</td>
+</tr>
+<tr>
+<td>Mem0</td>
+<td style="text-align:right">0.36</td>
+<td style="text-align:right">0.90</td>
+<td style="text-align:right">0.01</td>
+<td style="text-align:right">0.24</td>
+<td style="text-align:right">0.39</td>
+</tr>
+</tbody>
+</table>
+<p>Retrieval 在推薦選擇題偶爾高於隨機，但其餘近乎全敗。EMem 更有效利用 retrieval budget，仍低於可改寫記憶的 Mem-agent。</p>
+<p>固定 Mem-agent、替換 backbone 的 overall：Gemini 3.0 Flash 0.53、Gemini 3.1 Pro 0.66、GPT-5.5 0.35、DeepSeek-v4-flash 0.46、DeepSeek-v4-pro 0.47。各模型 profile 差異大；count-based 特別困難，兩個 flash model 是 0，最高的 Gemini 3.1 Pro 也僅 0.13。</p>
+<h3 id="43-organization-hints">4.3 Organization hints</h3>
+<p>失敗可分兩類。A 是 LLM 無法遵循所需結構，原因可能是推理、幻覺或 tool-use 問題；B 是模型其實會這套組織法，只是沒有認出當前問題需要它。</p>
+<p>人工 hint 顯著改善多種 agent，且改善幅度常大於 Mem0 與 Mem-agent 的差異。這表示不少失敗屬 B：模型會資料結構，卻沒把自然情境辨認成那個演算法。可是 hints 並未「解完」benchmark。DeepSeek-v4-flash 的 accounting 在詳細提示後仍為 0；較強 Gemini 3.1 Pro 才因 accounting hint 提升。</p>
+<h3 id="44-錯誤分析">4.4 錯誤分析</h3>
+<p>作者以 Claude Sonnet 4.6 協助比較相同 scenario 的 hint／no-hint trajectories，再逐項人工驗證。</p>
+<p>Tree tasks 中，no-hint agent 對 graph partition 沒有一致策略，常只記錄單向關係。例如記下 A 的 colleague 是 B，卻沒更新 B 的 record，之後由 B 出發查不到路徑；也會虛構不存在的人、職稱、公司與 link。Hint 要求每個 vertex 分開並寫入雙向邊後，accuracy 上升。</p>
+<p>State tracking 中，agent 把 user 與 neighbors 分散在不同 records。搬家時只更新 user location，沒有使其他人的 neighbor relation 失效。較好的結構把鄰居依 location 掛在 user state 下，使 transition 不必跨多檔補寫。</p>
+<p>Count-based 的主錯誤不是算術或結構，而是漏記、重複與 hallucination。Agent 可能把同一支出以「drinks」和「beers」記兩次，生成原訊息不存在的 sandwich，或把 €45 與 €48 兩筆 museum 記錄錯誤合併。它在絕大多數單步都正確，但數百次連續寫入只要一次出錯，final settlement 就錯。</p>
+<p>作者歸納兩類主因：沒有組織記憶，尤其在無 hint 時；以及長序列更新中累積出的 spurious memories。</p>
+<h2 id="5-討論與局限">5. 討論與局限</h2>
+<p>StructMemEval 顯示 retrieval-only 無法處理需要持續建構狀態的問題；agentic memory 顯著較好，仍遠非完美。未來一條路是訓練／提示 backbone 更能辨識 knowledge structure，另一條是讓 memory system 本身更容易維護 invariant。</p>
+<p>作者明列兩項局限。第一，主評估因 API 成本沒有跑 multiple random seeds，aggregate sample 雖足以支持整體結論，各 subset accuracy 可能有噪音。第二，分析用了多個 proprietary models，版本會下線；研究期間 Gemini 3 Pro 甚至在不到四個月內停用。作者加入 DeepSeek-v4-pro／flash open-weight models 緩解，但跨版本結果仍不可視作完全受控的同期比較。</p>
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2602.11243_StructMemEval.%E6%91%98%E8%A6%81.html"><code>../summarize/2602.11243_StructMemEval.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

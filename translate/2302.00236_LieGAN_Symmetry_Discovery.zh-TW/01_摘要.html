@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2302.00236_LieGAN_Symmetry_Discovery.zh-TW.html">回 2302.00236_LieGAN_Symmetry_Discovery.zh-TW 目錄</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>等變神經網路（equivariant neural networks）在科學應用上很成功，但<strong>都要求事先知道對稱群</strong>。實務上往往難以判斷該用哪個對稱作為歸納偏置（inductive bias），而強加<strong>錯誤的對稱甚至會損害效能</strong>。本文提出 <strong>LieGAN</strong> 框架，以類似生成對抗訓練的範式，<strong>自動從資料中發現等變性</strong>。具體而言，一個生成器（generator）學習一組作用在資料上的變換，這些變換<strong>保持原始分布不變</strong>並藉此騙過鑑別器（discriminator）。LieGAN 將對稱表示為<strong>可解釋的李代數基底（Lie algebra basis）</strong>，能發現多種對稱，例如旋轉群 SO(n)、以及軌跡預測與頂夸克標記（top-quark tagging）任務中的<strong>受限勞侖茲群 SO(1,3)⁺</strong>。所學到的對稱可直接餵入數個現有的等變神經網路，提升預測的準確率與泛化能力。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>近年等變網路（群等變 CNN、可操控網路 steerable networks、等變訊息傳遞等）藉由把對稱約束「烤進」架構，在科學任務中取得優異的泛化。但這類方法有個前提缺口：<strong>必須先指定對稱群</strong>（SO(3)、SE(3)…）。實務中我們常不知道資料真正的對稱是什麼；若強加了錯誤的對稱，反而會傷害效能。</p>
+<p>核心洞見：<strong>一個分布的對稱，可透過訓練一個生成器來復原</strong>——讓生成器產生的變換作用在資料上後仍保持分布不變。用李代數（Lie algebra）作為參數化能兼顧靈活性與可解釋性：連續群局部上由其李代數的少數幾個生成元（generator）刻畫。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>等變深度學習</strong>：群等變 CNN、可操控核、群等變訊息傳遞網路等，皆以「已知群」為前提設計架構。</li>
+<li><strong>對稱偵測 / 發現</strong>：從晶體學、物理的傳統方法，到近年以機器學習自動偵測對稱的嘗試。</li>
+<li><strong>生成模型</strong>：GAN 用於發掘資料結構；帶潛在群結構的 VAE 等。</li>
+<li><strong>機器學習中的李理論</strong>：以李群 / 李代數指導網路架構設計的新興方向。LieGAN 站在「等變網路」與「對稱發現」的交會處，以對抗訓練把兩者串起來。</li>
+</ul>
+<h2 id="3-背景preliminaries">3. 背景（Preliminaries）</h2>
+<p><strong>李群與李代數</strong>：李群 <span class="math inline">\(G\)</span> 是具備平滑群運算的流形；其在單位元的切空間即李代數 <span class="math inline">\(\mathfrak{g}\)</span>。連續群元素可由李代數基底以指數映射局部參數化：</p>
+<div class="math block">
+\[g = \exp\!\Big(\sum_{i=1}^{K} w_i L_i\Big)\]
+</div>
+<p>其中 <span class="math inline">\(L_i\)</span> 為基底生成元（矩陣），<span class="math inline">\(w_i \in \mathbb{R}\)</span> 為係數（Eq. 對應論文 §3）。</p>
+<p><strong>等變與不變</strong>：函數 <span class="math inline">\(f\)</span> 對群 <span class="math inline">\(G\)</span> <strong>等變</strong>若 <span class="math inline">\(f(g\cdot x)=g\cdot f(x)\)</span>；分布 <span class="math inline">\(\mathcal{P}\)</span> 對 <span class="math inline">\(G\)</span> <strong>不變</strong>若 <span class="math inline">\(P(g\cdot x)=P(x)\)</span>——後者即「資料本身的對稱」，正是 LieGAN 要發現的對象。</p>
+<h2 id="4-方法liegan">4. 方法：LieGAN</h2>
+<p><strong>生成器（對稱產生器）</strong>：把潛在噪音 <span class="math inline">\(z\)</span> 映到李代數係數，再組出群元素
+<div class="math inline">\[\tilde{g}=\exp\!\Big(\sum_{i=1}^{K} w_i L_i\Big),\]</div>
+其中<strong>基底矩陣 <span class="math inline">\(\{L_i\}\)</span> 是可學參數</strong>，張出被發現的李代數；係數 <span class="math inline">\(w\)</span> 由某個分布（如標準常態）取樣，決定「用多少」每個生成元（§3.2）。當允許多個生成元（channel）時，<span class="math inline">\(K\)</span> 控制被發現子空間的維度。</p>
+<p><strong>鑑別器（不變性檢驗器）</strong>：鑑別器 <span class="math inline">\(D_\phi\)</span> 需區分「真實資料 <span class="math inline">\(x\)</span>」與「被變換過的資料 <span class="math inline">\(\tilde{g}\cdot x\)</span>」。若 <span class="math inline">\(\tilde{g}\)</span> 尊重真正的對稱，變換後的樣本應與原分布不可區分，<span class="math inline">\(D_\phi\)</span> 難以分辨。</p>
+<p><strong>對抗目標</strong>：
+<div class="math inline">\[\min_{\theta}\max_{\phi}\ \mathbb{E}_{x\sim\mathcal{P}}[\log D_\phi(x)]+\mathbb{E}_{z}[\log(1-D_\phi(\tilde{g}\cdot x))].\]</div>
+生成器要找到「能騙過鑑別器」的變換，即<strong>保持資料分布不變的作用</strong>（Eq. 4 附近）。</p>
+<p><strong>正則項（讓解成為合理且可解釋的李代數）</strong>：</p>
+<ul>
+<li><strong>標準化（normalization）</strong>：限制生成元的尺度（如控制其範數 / 譜），避免無界成長、維持數值穩定。</li>
+<li><strong>正交結構 / 一致性</strong>：鼓勵所發現的生成元彼此有良好結構（如以某內積下的正交化），使 <span class="math inline">\(\{L_i\}\)</span> 張出的是「真正的李代數子空間」而非任意矩陣子空間；並可用一致性 / 相似度項讓多個生成元彼此區隔開、不塌縮成同一個方向。</li>
+<li><strong>稀疏性 / 偏好少生成元</strong>：以稀疏懲罰鼓勵使用<strong>盡量少、盡量可解釋</strong>的生成元，把用不到的生成元推向零，利於事後辨識所發現群的維度。</li>
+</ul>
+<p><strong>離散群與多通道</strong>：離散對稱可透過限制李代數維度或對連續輸出做事後離散化來處理；框架亦可延伸至高維 / 多通道資料，生成元可作用於全域或各通道。</p>
+<h2 id="5-理論性質">5. 理論性質</h2>
+<p>論文以實證為主，但給出概念性保證：</p>
+<ul>
+<li><strong>可辨識性（up to 李代數同構）</strong>：所發現的基底 <span class="math inline">\(\{L_i\}\)</span> 可在「基底變換 / 同構」意義下復原真正的李代數結構。</li>
+<li><strong>不變 ⇔ 目標低</strong>：若變換真正保持分布不變，鑑別器對變換樣本無從分辨，對抗損失達到平衡。</li>
+<li><strong>收斂於群元素</strong>：在適當正則條件下，<span class="math inline">\(\exp(\sum w_i L_i)\)</span> 隨訓練逼近真正的對稱群作用。</li>
+</ul>
+<h2 id="6-實驗">6. 實驗</h2>
+<p><strong>（a）合成旋轉對稱資料（SO(2)/SO(n)）</strong>：對已知具旋轉不變性的資料，LieGAN 能<strong>準確復原 SO(2) 的生成元矩陣</strong>（反對稱生成元），驗證其能無監督地找回旋轉對稱。</p>
+<p><strong>（b）軌跡 / n 體動力學預測</strong>：在具備旋轉等對稱的粒子動力學任務中，把 LieGAN <strong>發現的對稱</strong>餵給下游等變網路（見 §LieGNN），相較不含對稱先驗的基線，<strong>顯著降低預測誤差、提升泛化</strong>。</p>
+<p><strong>（c）頂夸克標記（top-quark tagging，高能物理）</strong>：資料具<strong>受限勞侖茲群 SO(1,3)⁺</strong>（勞侖茲推動 boost + 空間旋轉）對稱。LieGAN <strong>成功辨識出勞侖茲型的生成元</strong>（含 boost 生成元），把它用於下游分類器後，效能可與<strong>人工設計的勞侖茲等變網路</strong>相競爭——差別在於 LieGAN 是<strong>自動發現</strong>而非手工指定。</p>
+<p><strong>評估面向</strong>：對合成資料以「所發現 <span class="math inline">\(L_i\)</span> 與真值生成元的差異（Frobenius 範數）」衡量；對真實任務以下游準確率 / 迴歸誤差、以及泛化（測試誤差下降）衡量；並以係數稀疏度、生成群元素的聚集程度衡量可解釋性。整體上，把發現的對稱用於下游等變網路，相較非等變或無先驗基線帶來一致的改善。</p>
+<h2 id="7-liegnn-與下游使用">7. LieGNN 與下游使用</h2>
+<p>論文提出 <strong>LieGNN</strong>（以及展示如何把發現的對稱插入現有等變架構）：一旦 LieGAN 給出李代數基底 <span class="math inline">\(\{L_i\}\)</span>，就能據此<strong>構造等變層</strong>（沿發現的群方向做等變 / 不變處理），把「發現的對稱」轉為可訓練網路的歸納偏置，於預測任務中取得準確率與泛化的提升。這使得 LieGAN 不只是「診斷工具」，而是<strong>端到端提升下游模型</strong>的環節。</p>
+<h2 id="8-結論與局限">8. 結論與局限</h2>
+<p><strong>貢獻</strong>：首個以 GAN 範式<strong>無監督發現李群對稱</strong>的框架；把李代數參數化與對抗訓練結合；在合成、科學（高能物理）與軌跡任務上驗證，並示範將發現的對稱用於等變網路。</p>
+<p><strong>局限</strong>：</p>
+<ul>
+<li><strong>可擴展性</strong>：矩陣指數與結構正則在高維李代數上成本高，尚未在很大的群上測試。</li>
+<li><strong>離散群</strong>：連續對稱易發現；離散群需事後閾值化，較不優雅。</li>
+<li><strong>表達力假設</strong>：假設資料對稱是李群，且可能漏掉高度非線性 / 混合階的對稱。</li>
+<li><strong>超參數敏感</strong>：生成元數 <span class="math inline">\(K\)</span> 與各正則權重需調，缺乏有原則的選擇準則。</li>
+</ul>
+<p><strong>未來方向</strong>：延伸到分子 / 蛋白質等更複雜對稱、給出收斂與可辨識性的理論保證、以及高維李代數的高效演算法。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

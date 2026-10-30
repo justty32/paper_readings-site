@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法論 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.29440_SkillBrew.zh-TW.html">回 2605.29440_SkillBrew.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E9%99%84%E9%8C%84_A_%E5%AF%A6%E4%BD%9C%E7%B4%B0%E7%AF%80%E8%A6%81%E9%BB%9E.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-方法論">3 方法論</h2>
+<h3 id="31-問題定義">3.1 問題定義</h3>
+<p>定義 S 為可容許技能空間，每個技能 s ∈ S 是一段可重用的程序知識，可被檢索以引導智能體行為。技能庫定義為子集 B ⊆ S，作為凍結智能體 π_agent 的檢索池。給定任務查詢 t，檢索器 RET 回傳相關技能子集 R_t = RET(B, t)，智能體據此 rollout 軌跡 τ_t = π_agent(t | R_t)。任務分配被劃分為 support set D_support 與 query set D_query；所有三個目標均在 D_query 上從智能體 rollout 計算，而 D_support 保留用於提出候選編輯。</p>
+<h3 id="32-技能庫策展的原則">3.2 技能庫策展的原則</h3>
+<p>三個互補且可能衝突的原則：(1) 有用性（utility）——檢索到的技能是否改善表現；(2) 多樣性（diversity）——庫內技能是否冗餘；(3) 覆蓋率（coverage）——庫的技能在不同任務中被檢索和使用的廣泛程度。本文將它們形式化為受限多目標優化：B* ∈ Pareto-arg max {J_util(B), J_div(B), J_cov(B)}，可行集 F = {B ⊆ S | J_util(B) ≥ η}。效用是主要約束，多樣性和覆蓋率則充當結構正則項——反映「庫必須先有用，組織才重要」的非對稱性。</p>
+<p><strong>有用性</strong>以每技能的反事實貢獻測量。對每個檢索到技能 s 的軌跡 τ，做移除 s 的反事實重播：Δ(τ, s) = r(τ, s) − r(τ, ∅)，其中 r(τ, ·) ∈ [0, 1] 是任務級回報。技能 s 的效用取所有檢索到它的軌跡的平均 Δ，再以檢索頻率加權聚合為銀行級目標 J_util(B)。<strong>多樣性</strong>以技能嵌入的 Gram 矩陣行列式測量：J_div(B) = det(G + εI)^(1/|B|) ∈ (0, 1]，懲罰冗餘或高度相關的技能。<strong>覆蓋率</strong>定義為檢索密度（每個任務中檢索槽被填滿的平均比例）與技能使用率（曾被檢索至少一次的技能比例）的乘積，鼓勵不只頻繁檢索且廣泛使用整組庫而非只依賴少數主導技能。</p>
+<h3 id="33-pareto-aware-技能庫策展">3.3 Pareto-aware 技能庫策展</h3>
+<p>直接求解不可行（S 是開放的、目標只能透過昂貴 rollout 觀察），因此提出雙層 propose-then-verify 框架。</p>
+<p><strong>冷啟動</strong>：先收集不使用技能的軌跡，成功/失敗軌跡送入 Skill Distiller，從失敗模式結合成功軌跡合成初始 ADD 技能 B⁰。</p>
+<p><strong>內層：候選生成</strong>。以 Bⁱ 在 D_support 上 rollout 產生四象限軌跡：(1) TR̄⁺（成功且無檢索）、(2) TR̄⁻（失敗且無檢索）、(3) TR⁺（成功且有檢索）、(4) TR⁻（失敗且有檢索）。無檢索象限 TR̄± 暴露庫中缺失的能力，由 Skill Distiller 以聚類失敗模式和成功軌跡參考生成候選 ADD 技能。有檢索象限 TR± 提供現有技能的反事實證據：Skill Diagnoser 對每個檢索技能做 leave-one-out 重播 τ̃_{t\s}，匯總原本與反事實結果後對每個技能發出 KEEP / REWRITE / REMOVE 判決。Edit Planner 將三類編輯池組合成 K 個候選銀行（保留 KEEP 技能為受保護槽）。</p>
+<p><strong>外層：Pareto-aware 選擇</strong>。對每個候選銀行（含 null 候選＝保持不變），計算客觀輪廓 Φ(B) = (J_util, J_div, J_cov)。先計算非支配 Pareto 前沿，再以 J_util 優先的字典序解決前沿：定義 J_util ≥ u_max − ϵ 的候選為平手池（ϵ = 0.03），若平手池僅一個候選則直接勝出，否則以 J_div 和 J_cov 上的 hypervolume 貢獻打破僵局。此設計保證每回合的不退步性質：J_util(Bⁱ⁺¹) ≥ J_util(Bⁱ) − ϵ。若 null 候選贏得平手，銀行保持不變進入下一輪；迴圈在最大輪數 T 到達時終止。</p>
+<h2 id="4-實驗">4 實驗</h2>
+<h3 id="41-實驗設置">4.1 實驗設置</h3>
+<p><strong>環境</strong>：(1) ALFWorld——文字化內嵌式 benchmark，涵蓋六個家居任務家族（Pick、Look、Clean、Heat、Cool、Pick2），需要組合動作序列；報告 valid_unseen split 上的每任務及整體成功率。(2) WebShop——模擬線上購物 benchmark，需要多步導航、選項客製化和購買決策；報告 test split 上的 Score（平均正規化回報）和 Succ.（每項必要屬性都匹配的比例）。</p>
+<p><strong>基線</strong>（皆使用凍結的 Qwen2.5-7B-Instruct 作為 worker）：(1) 純粹基線——Zero-Shot 和 ReAct；(2) 記憶型——Reflexion、Mem0、MemP、SimpleMem；(3) 技能型——Voyager、ExpeL、EvoSkill、Skill-Pro。所有基線皆為免訓練設定。不包含 SkillRL 等訓練型方法（其聯合更新 worker 策略和銀行）。</p>
+<p><strong>實作細節</strong>：Skill Distiller、Diagnoser、Planner 皆使用 GPT-5.4。ALFWorld：抽樣 200 訓練集為 D_support，valid_seen 為 D_query，valid_unseen 為測試集（seed=42）。WebShop：test split 500 集，抽樣 500/250 goals 為 D_support/D_query（seed=42）。每技能結構化為：標題、原則、when_to_apply 條件。Worker 採用 ReAct 風格提示，混合評分器（BM25 + 密集餘弦相似度，權重 0.30:0.70）檢索 top-3。propose-verify 迴圈 10 輪，Pareto 選擇器 ϵ = 0.03。跨輪共享內容定址反事實快取。所有實驗在單 8×A800 節點上執行。</p>
+<h3 id="42-主要結果">4.2 主要結果</h3>
+<p><strong>基線比較（表 1）</strong>：SkillBrew 在 ALFWorld 上達成 59.0% 整體平均成功率，超越最強技能基線 Skill-Pro 9.7pp、超越 ReAct 27.8pp、超越僅追加的 Voyager 12.0pp。相對於 ReAct，全部六種任務類型均有提升，最大增益為 Heat（+47.7pp）和 Cool（+38.9pp）。WebShop 雙指標皆最佳（Score 59.3%、Succ. 38.4%）。</p>
+<p><strong>跨 worker 泛化（表 2）</strong>：在五種 backbone（Qwen3-4B、Qwen3-30B-A3B、GPT-4o、Gemini-2.5-Pro）上，SkillBrew 一致提升 ReAct baseline。ALFWorld Avg. 增益從 +20.2pp（Qwen3-30B-A3B）到 +41.7pp（GPT-4o）。尤其閉源 worker 改善最顯著：GPT-4o 從 46.4% 升至 88.1%，WebShop Succ. 從 27.2% 升至 65.0%。策展後 Qwen3-4B（60.4%）已接近未策展 Gemini-2.5-Pro（61.8%），暗示好庫可部分補償模型規模。</p>
+<p><strong>技能庫可轉移性（表 3）</strong>：Qwen3-4B 策展的銀行讓 GPT-4o 從 46.4% 升至 78.4%，僅比 GPT-4o 自身銀行低 9.7pp；反向亦然——顯示策展技能編碼的是可遷移程序知識而非 worker 特化產物。</p>
+<h3 id="43-分析">4.3 分析</h3>
+<p><strong>策展迴圈動力學（圖 3）</strong>：銀行大小從冷啟動值收縮至 9–10 輪後穩定，多種 worker 皆收斂。成功率隨迴圈上升（每輪小幅波動但整體增益明確）。第一輪（僅冷啟動）已大幅超越 ReAct baseline。</p>
+<p><strong>目標消融（表 4）</strong>：僅 J_util 時 45.8%，+J_div →51.4%，+J_cov →52.6%，三者全用 →59.0%。J_div 防冗餘，J_cov 懲罰閒置膨脹庫，兩者互補。</p>
+<p><strong>編輯操作消融（表 5）</strong>：僅 ADD 時 47.0%（庫膨脹擠佔檢索槽）；ADD+REWRITE 升至 53.5%；ADD+REMOVE 僅 48.3%（部分正確技能被粗粒度丟棄）。三者全開達 59.0%——REWRITE 是主要救援路徑，REMOVE 僅保留給無法修復的少數。</p>
+<h2 id="5-結論">5 結論</h2>
+<p>我們提出 SkillBrew——一個免訓練框架，透過銀行級優化為 LLM 智能體策展技能庫。SkillBrew 不孤立評判每個技能，也不持續僅追加新技能，而是將整個技能庫作為優化對象，在 Pareto-aware 選擇過程下平衡有用性、多樣性和覆蓋率。在 ALFWorld 和 WebShop 上的實驗顯示，這種銀行級策展產生了更多樣、更可遷移且更有效的技能儲存庫，無論開源還是閉源 worker 均改善智能體表現。這些結果表明未來的自我改進智能體應將技能庫作為全局知識系統來優化，而非作為孤立技能來管理。</p>
+<h2 id="局限">局限</h2>
+<p>(1) 智能體在技能庫優化期間保持凍結，聯合共適應尚未探索。(2) 雖有快取降低反事實成本，仍依賴大量重播 rollout，大規模時成本仍高。(3) 假設任務分佈相對靜態，開放世界延伸是重要方向。儘管如此，這項工作引入了新視角：技能庫不應是僅追加的記憶儲存庫，而是應被全局優化且持續精煉的對象。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

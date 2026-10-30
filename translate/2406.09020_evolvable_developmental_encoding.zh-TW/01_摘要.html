@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2406.09020_evolvable_developmental_encoding.zh-TW.html">回 2406.09020_evolvable_developmental_encoding.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>黑箱優化（如演化算法）的<strong>表示</strong>傳統上靠精細人工構造，這與生物中「DNA→表現型」的映射形成對比——後者是生物複雜性與<strong>可演化性</strong>的核心，且其過程在幾乎所有生命形式間本質相同（反映共同演化起源）。生成模型有望作為黑箱優化的可學表示，但其<strong>本身並非為易搜尋而設計</strong>。本文提出一套系統，能<strong>元學習這樣的表示</strong>：直接優化「一個表示產生 quality-diversity 的能力」。具體地，我們的元學習法能找到一個<strong>神經細胞自動機（NCA）</strong>，其中細胞可在發展過程中注意一條「DNA」字串基因組的不同部分，使其能長出不同的可解 2D 迷宮結構。演化出的基因型→表現型映射<strong>越來越可演化</strong>——不僅搜尋更快，也提升長出產物的品質與多樣性。</p>
+<h2 id="引言">引言</h2>
+<p>用於黑箱優化的演化計算有兩大基本需求：①決定描述有效解的資料結構；②決定優化中修改解的變異操作。對複雜問題，好的表示能大幅增強算子效果（研究者常施加對稱/重複結構或模組性）。但<strong>逐案手工設計「對的」表示很難</strong>，需先辨識設計空間的特性。最優表示在「強調高品質解、使其易達」與「支持解的多樣性、利於探索」間取得平衡。</p>
+<p>除了手工設計，<strong>有高品質解資料集時表示也可被學</strong>。生成模型（GAN/VAE）已能產大量多樣產物，並被與演化結合（在學到的潛空間中搜尋＝latent variable evolution），還可在演化發現的高品質解上進一步訓練以擴展表達力。<strong>然而這些表示並非直接為「易搜尋」優化</strong>——一個含目標產物的表示，只有當優化算法能 navigate 它誘導的適應度地形時才真正有用。</p>
+<p><strong>本文核心洞見</strong>：可以學一個「對某特定黑箱優化算法而言易搜尋」的表示，即它能被演化算法用來產生多樣的高品質解。做法是用一套新穎元學習法 + 發展式編碼的變體——<strong>NCA</strong>。NCA 極富表達力（能編碼大量帶有趣規律的產物而不需特別偏置）。與既往 NCA 不同，本文的 NCA <strong>可條件於一條「DNA」輸入字串、每個細胞在生長時注意它</strong>，使單一 NCA 產生多樣產物（即<strong>分離基因型→表現型映射（NCA） 與基因組輸入（DNA）</strong>）。為找到能產多樣高品質解的 NCA，我們評估其執行 QD 搜尋的能力：對每個 NCA，內迴圈跑 <strong>MAP-Elites</strong>、演化一群 DNA 字串去最大化該 NCA 的 QD 分數。</p>
+<p>我們與「用連續嵌入當基因型」的替代模型比較，並在簡單關卡生成任務上勝出；分析 DNA 如何引導發展；展示映射隨時間更可演化；並用 total disentanglement、information gap 等量度研究演化出的 DNA 基因組性質。</p>
+<h2 id="背景">背景</h2>
+<h3 id="可演化性evolvability">可演化性（Evolvability）</h3>
+<p>演化生物學概念，指系統（族群/個體/遺傳架構）<strong>產生可遺傳表現型變異供天擇作用</strong>的能力。本文定義為「個體產生可遺傳表現型變異的能力」。Lehman et al. 顯示更發散的選擇過程與可演化性有根本連結。本文<strong>透過獎勵個別 NCA 的高 QD 分數來優化可演化性</strong>。另有直接優化可演化性者（Evolvability Search 以後代行為多樣性衡量、Evolvability ES），但這些通常只優化多樣性、不計品質。</p>
+<h3 id="學習表示">學習表示</h3>
+<p>演化計算中學表示歷史悠久但仍不甚理解。最相關的是 Simões et al.（同時演化基因組與基因型→表現型映射），但其映射非發展式、也未為產多樣高品質解優化。監督法（GAN/VAE）能從範例資料直接學表示，並衍生 latent variable evolution。若無高品質解資料集，可用 bootstrapping 在發現的高品質解上反覆訓練生成模型。</p>
+<h3 id="神經細胞自動機nca">神經細胞自動機（NCA）</h3>
+<p>NCA 把傳統 CA 的查表換成學習式神經網路，極富表達力（能長複雜 2D 圖像、遊戲關卡、甚至 3D Minecraft 結構），且對生成過程中的損壞具魯棒性。但<strong>標準 NCA 每個只長一種模式</strong>，限制其作為生成模型的用途。相關工作的克服方式：Sudhakaran et al. 用 one-hot 向量當輸入（每向量對應一類）；Palm et al. 結合 autoencoder 產生分布（但仍需範例資料集）；Earle et al. 放棄單一 NCA、改學一群 NCA（各產不同實例）並用 QD 訓練覆蓋特徵空間。</p>
+<h2 id="方法">方法</h2>
+<p>受生物發展系統啟發，所提編碼應具三性質：①基因型→表現型映射在條件於不同 DNA 時能產<strong>多樣實體</strong>，且每個細胞能注意 DNA 不同部分以引導自組織生長；②此映射描述的潛空間<strong>有結構、易操作/探索</strong>；③<strong>不依賴監督訓練</strong>（至多接收「該領域感興趣性質」的引導、但不需具體範例）。</p>
+<p>性質①靠把生成過程概念化為<strong>隨時間展開的自組織系統</strong>（DNA 基因組在每步偏置狀態更新）達成。性質②靠<strong>把 DNA 參數化為字元字串</strong>（類似 Nasir et al. 的 LLM 法，但<strong>讓模型依編碼被生成過程使用的方式自定義其語言</strong>，可克服「人類語言可能不足以描述發展過程」的限制）。性質③靠 <strong>QD 訓練</strong>達成（不需提供監督範例，只需定義感興趣特徵）；但與 Earle et al. 不同，我們要訓練的不是 NCA 參數而是 <strong>DNA 輸入</strong>。</p>
+<h3 id="注意力引導">注意力引導</h3>
+<p>給定由有狀態元件（細胞/節點）組成的映射，定義引導機制為「對共享基因組的<strong>狀態條件式解碼</strong>」。對 DNA 字串，用標準 <strong>attention</strong>（Bahdanau et al.）：先把 DNA 各字元轉成 token embedding 構成矩陣；以細胞狀態為 query、經 query 與 value 投影（參數由發展模型學）算出<strong>控制（條件）向量</strong>（公式 1）。因 DNA 字串在生成過程中<strong>保持不變、不像 self-attention，故不需 key 投影</strong>。控制向量再更新各細胞內部狀態（公式 2，更新函數為任意可學、輸出與狀態同形的函數）。此機制使：①不同輸入改變發展軌跡、引向不同結果；②因解碼依各元件狀態，元件可學會在發展中扮演不同角色（更具表達力與魯棒）——直接解決 Sudhakaran et al. 受限於 one-hot 目標的問題。</p>
+<h3 id="用-quality-diversity-算法元學習">用 Quality-Diversity 算法元學習</h3>
+<p>要讓映射利用 DNA 結構產多樣輸出，且以<strong>開放式</strong>方式學（不需範例資料集）。<strong>QD 算法</strong>（不需顯式監督、追求發現多樣的高品質解）中，本文用 <strong>MAP-Elites</strong>：結合品質量度、定義感興趣解空間的<strong>行為描述子</strong>、與搜尋用演化算法。每次迭代維護一個 archive（存各描述子組合的最佳解）；演化算法產新解、算其描述子與品質；新描述子組合則加入 archive，否則品質更高才替換。如此漸進最大化描述子空間的高品質覆蓋。</p>
+<p>傳統上 QD 找「能產多樣輸出的一組參數」；本文改用 QD <strong>評估一個基因型→表現型映射產多樣輸出的能力</strong>。給定映射從基因組生成輸出，算其品質與多樣性值即可 QD 優化編碼空間、判斷映射利用基因型表徵能力的好壞。形式上（公式 3），映射 m 的整體適應度＝<strong>覆蓋率（archive 解數 / 描述子分箱決定的最大可存解數）× 累積品質（所有存解的適應度總和）</strong>。若映射是神經網路則仍需擬合其參數：以上述分數為目標，用<strong>演化策略做元訓練</strong>：①初始化映射群體；②每次迭代評估各 m、依分數調整 ES 參數；③迭代後得最佳發展系統集。即<strong>外迴圈優化發展系統，使其用間接編碼的內在結構與變異性產出盡可能多的高品質覆蓋</strong>。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

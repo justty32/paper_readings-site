@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>GAVEL: Graph World Models for Verified and Efficient Long-Horizon LLM Task Planning 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Ruiyang Wang、Hao-Lun Hsu、Swarajh Mehta、Jiwoo Kim、Zhihao Dou、Miroslav Pajic</p><p>日期：2026-09-16（v1，cs.RO）</p><p>arXiv：2609.19315</p><p><a href="https://arxiv.org/abs/2609.19315" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="gavel-graph-world-models-for-verified-and-efficient-long-horizon-llm-task-planning">GAVEL: Graph World Models for Verified and Efficient Long-Horizon LLM Task Planning</h1>
+<h2 id="摘要與問題">摘要與問題</h2>
+<p>大型語言模型能把自然語言任務拆成長序列動作，卻常漏掉前置步驟、違反機器人限制，或在尚未看見物件時錯估搜尋成本。既有 propose-and-check 系統會把每個錯誤交回 LLM 重規劃，但「抓取前未靠近」這類修正其實已由動作前置條件唯一決定，再問一次模型既慢又可能引入新錯誤。純圖編輯規劃器則有相反缺點：它能可靠處理空間重排，卻難從「洗盤子」推得必須操作洗碗機的語意程序。</p>
+<p>GAVEL 的分工是讓 LLM 提供語意程序，顯式圖世界模型負責預演、驗證與可確定的修補；只有需要語意判斷的殘餘錯誤才回到 LLM。多任務且部分可觀測時，系統還保留未見物件的位置分佈，隨新觀察更新信念並重新排序餘下任務。</p>
+<h2 id="問題形式與信念式排序">問題形式與信念式排序</h2>
+<p>環境表示成型別化場景圖 <code>G=(V,E,Phi)</code>。節點包括房間、物件與機器人；邊表示靠近、容器內、上方、持有等關係；一元旗標記錄開啟、烹煮、清洗等狀態。每個 grounded primitive 都有圖上的前置條件與效果，世界模型以此預測動作後果。系統區分不可直接得知的物理圖與機器人的信念圖，未觀察物件則維持房間位置機率分佈。</p>
+<p>多任務排序不把分佈壓成單一最可能房間。GAVEL 按物件在候選房間的機率、房間間最短路徑與估計搜尋代價，計算找到物件的期望成本；再以任務起始成本與任務間轉移成本評估順序。每完成一項任務，觀察會定位已見物件、排除找過但未發現物件的房間，系統隨即重算剩餘順序。這讓先前任務順便取得的資訊能立刻改變後續排程。</p>
+<h2 id="方法理解規劃驗證與修補">方法：理解、規劃、驗證與修補</h2>
+<p>任務理解先把指令拆成子任務，抽取相關物件、已明說的關係與終點目標圖。兩個輕量 adapter 分別負責 grounding 與 goal parsing；未知物件的位置先由關係語意網路產生房間型別分數，再分配到可達的房間實例。</p>
+<p>LLM 為各子任務產生 grounded action sequence。圖世界模型逐步套用動作：檢查距離、affordance、夾爪狀態與容器可達性，更新持有、放置及裝置狀態，並檢查終點目標與跨整段軌跡的安全條件。若抓取失敗只是少了接近動作，模型直接插入導航；物件藏在關閉容器內時，則補上前往容器與開啟。計畫結尾還須關回曾開啟的容器、關閉安全關鍵裝置。只有圖中無法推出唯一修補時，才把結構化錯誤送回 LLM。</p>
+<p>修補迴圈會保存已見過的候選，避免循環；由於一次編輯未必單調改善，系統也保留目前最佳計畫。多任務執行前，候選順序還要把各子計畫串接後再次驗證，以攔下共享輔助物件或狀態造成的跨任務干擾。</p>
+<h2 id="實驗結果">實驗結果</h2>
+<p>作者在 BEHAVIOR-1K 的符號動作層評估，另用保留樓層圖、物件屬性、任務謂詞與導航幾何的輕量執行器擴大量測。比較包含直接 LLM、只回傳驗證錯誤的 SayPlan 式流程、以目標圖差異產生動作的 EPoG 式流程，以及不同信念與排序版本的 GAVEL。</p>
+<p>作者自報：以 Qwen3-8B 規劃單項長程任務時，完整 GAVEL 的成功率為 91.8％；多任務設定成功率為 92.6％；保留完整位置分佈並在執行中重排，相較把物件鎖定在最可能房間的版本，移動距離約減少 5.4％。結果也顯示，直接圖修補能解掉動作語意已確定的錯誤，LLM 回詢則適合留下來處理需要程序常識的部分；兩者不是互相替代。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>GAVEL 把場景圖從被動檢查器提升為能預演動作、維持不確定性並支援排程的世界模型。這個設計讓語言模型專注於「該做什麼程序」，讓形式化模型處理「這一步能不能做、做完會變成什麼、可確定的錯要怎麼補」。實驗支持這種分工也能與更強的 LLM 互補。</p>
+<p>作者明列三項限制。第一，評估停在符號操作層，圖只描述邏輯後果，沒有運動可達性與碰撞等幾何可行性；實體執行仍待驗證。第二，物件位置先驗主要依房間型別，尚未從反覆觀察學到特定環境規律。第三，殘餘失敗多已移到指令 grounding，而非圖上規劃，表示任務理解成為下一個瓶頸。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2609.19315_GAVEL.%E6%91%98%E8%A6%81.html"><code>../summarize/2609.19315_GAVEL.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

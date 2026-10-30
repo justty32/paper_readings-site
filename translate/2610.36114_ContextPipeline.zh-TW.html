@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Context Is a Pipeline, Not a Window: Information Attrition in LLM Agent Harnesses 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yuvraj Sehgal、Mahsa Panahandeh、Naser Ezzati-Jivan</p><p>日期：2026-10-26（v1，cs.SE）</p><p>arXiv：2610.36114</p><p><a href="https://arxiv.org/html/2610.36114v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="context-is-a-pipeline-not-a-windowllm-agent-框架中的資訊耗損">Context Is a Pipeline, Not a Window：LLM Agent 框架中的資訊耗損</h1>
+<ul>
+<li>作者：Yuvraj Sehgal、Mahsa Panahandeh、Naser Ezzati-Jivan</li>
+<li>原文：<a href="https://arxiv.org/html/2610.36114v1">arXiv:2610.36114v1，2026-10-26</a>；本文為精要翻譯，數字與結論依作者報告。</li>
+<li><a href="../summarize/2610.36114_ContextPipeline.%E6%91%98%E8%A6%81.html">對應摘要</a></li>
+</ul>
+<h2 id="摘要與引言">摘要與引言</h2>
+<p>模型的上下文視窗大小與最終答案正確率，未必能顯示工具輸出在送到模型前已損失多少資訊。作者觀察一個使用 Linux 核心追蹤診斷注入故障的 agent：720 次執行中，最大提示僅占 400k 上下文視窗的 5.75%，11,189 筆工具輸出卻有 3,827 筆在送給模型前被截斷，且被截斷者全成為無效 JSON。截斷保留前綴，造成列表前後欄位的證據不對稱。實地診斷正確率與此不對稱相呼應，但是否由截斷造成仍待釐清。受控實驗首先顯示的代價是更多工作，而非必然答錯。<a href="https://arxiv.org/html/2610.36114v1#S1">原文摘要與 §I</a></p>
+<h2 id="ii-把上下文視為管線">II. 把上下文視為管線</h2>
+<p>作者把資訊從產生到下次任務可用分成五段：S1「產生→交付」可能因固定長度前綴截斷而丟失內容；S2「交付→行動」可能因步數預算耗盡而未及使用；S3「行動→保留」若重送歷史，會增加上下文成本；S4「保留→移交」可能漏掉 worker 已發現但未報告的資訊；S5「持久化」在此系統中依設計關閉，並非量到的持久化故障。作者用記錄的發現數與計算次數之比作為 yield，這是工作效率代理指標，並不直接衡量資訊相關性。<a href="https://arxiv.org/html/2610.36114v1#S2">§II</a></p>
+<h2 id="iii-實地觀察機制重播與框架調查">III. 實地觀察、機制重播與框架調查</h2>
+<p><strong>實地紀錄。</strong> 在 720 次執行的 11,189 筆工具結果中，3,827 筆遭截斷。就其中 742 筆被截斷的列表結果而言，較晚出現的欄位只在 4.7% 的呼叫中送達，較早欄位則為 99.3%。這是觀察性結果；同一期間還引入兩個新工具，不能只憑正確率與欄位位置的關聯認定截斷造成準確率變化。<a href="https://arxiv.org/html/2610.36114v1#S3">§III-A</a></p>
+<p><strong>重播。</strong> 作者另以 31 次執行記錄的 864 筆工具結果重播：過長輸出經前綴切割後均為無效 JSON；按資料列處理的替代方式保留有效結構。重播中受影響的是全部呼叫的 2.5%，不可與上述另一組實地資料的約 34% 混為同一分母。另一個 21 容器生產追蹤中，33,370 字元的結果超過 6,000 字元上限；截斷後早期證據保留 30/118 筆，晚期證據保留 0/128 筆。<a href="https://arxiv.org/html/2610.36114v1#S3">§III-B</a></p>
+<p><strong>其他框架。</strong> 對七個固定版本框架的程式碼調查發現，langchain-core 使用 500 字元前綴，smolagents 使用 20,000 字元的中間截取；其餘框架沒有一致的安全替代方案。這是程式碼檢視，並非七個框架的端到端效果比較。<a href="https://arxiv.org/html/2610.36114v1#S3">§III-C</a></p>
+<h2 id="iv-受控實驗">IV. 受控實驗</h2>
+<p>作者在不同設定下共執行 145 次；每類故障使用五份記錄、各重複三次，重複並非新的獨立故障。對 spawned 條件，修復組、一般 S1 前綴截斷組、反轉順序的 S1 截斷組各 15 次，順序單獨對照 10 次。修復組診斷正確 14/15，兩個 S1 組均為 15/15，順序單獨對照為 10/10。作者原本預期反轉順序會降低正確率，結果並不支持該預測；agent 仍可能透過其他強訊號得出正解。<a href="https://arxiv.org/html/2610.36114v1#S4">§IV</a></p>
+<p>中位工具呼叫數依序為修復組 53、一般 S1 組 68、反轉 S1 組 76；中位計算數為 18、32、36，yield 為 0.61、0.34、0.31。故「呼叫增加 43%、計算加倍、yield 由 0.61 降至 0.31」是反轉 S1 相對修復組的比較，不能套到一般 S1。順序單獨對照中位呼叫 48、計算 16、yield 0.61。這些結果顯示在本實驗中，資訊流失可增加工作量，即使最終診斷仍正確。<a href="https://arxiv.org/html/2610.36114v1#S4">§IV</a></p>
+<p>另一真實生產規模追蹤的小樣本測試中，修復組 3/6 正確，S1 組 0/5。此前為建立可用基準已修復交付、提高步數預算並加入分頁（本次未觸發），再以相同追蹤和提示比較；樣本少，不能證明現場整體準確率落差的成因。修復組仍有三次錯誤。<a href="https://arxiv.org/html/2610.36114v1#S4">§IV</a></p>
+<h2 id="v-為何問題不易察覺">V. 為何問題不易察覺</h2>
+<p>大視窗使用率低，不能保證每個工具結果都完整到達；最終答案正確也可能掩蓋額外工具呼叫與計算。其他耗損點同樣不一定表現為立即失敗：作者報告 554 個 worker 中 51% 遇到步數限制，98 個未移交結果；一個重送歷史的例子中，歷史保留上限由 80k 增至 150k 字元，累計 token 由約 303k 增至 545k。這些數字屬於各自觀察的設定，不能當作所有 agent 的普遍比例。<a href="https://arxiv.org/html/2610.36114v1#S5">§V</a></p>
+<h2 id="viviii-效度未來工作與結論">VI–VIII. 效度、未來工作與結論</h2>
+<p>研究限於一個框架、模型及核心追蹤診斷領域；五份記錄的重複執行不足以代表大量獨立故障。作者也指出評分規則在實驗期間更新，涉及 46 次執行；事先列出的預測並非正式註冊報告。實地關聯與小型重播都未證明截斷造成實地準確率下降。未來需以更廣泛的任務、框架與獨立資料隔離各階段影響，並設計保留結構與證據的交付方式。<a href="https://arxiv.org/html/2610.36114v1#S6">§VI</a>、<a href="https://arxiv.org/html/2610.36114v1#S7">§VII</a>、<a href="https://arxiv.org/html/2610.36114v1#S8">§VIII</a></p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

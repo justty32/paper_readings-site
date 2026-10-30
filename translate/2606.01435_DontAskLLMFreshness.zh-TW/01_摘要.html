@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.01435_DontAskLLMFreshness.zh-TW.html">回 2606.01435_DontAskLLMFreshness.zh-TW 目錄</a>　<a href="02_%C2%A72_%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>基於 LLM 的記憶系統日益承擔維護隨時間演變的事實。反覆出現的失敗模式是衝突解決：當同一事實以多個矛盾值出現在記憶中，agent 該回傳哪個值？MemoryAgentBench (MAB) FactConsolidation 任務使此問題明確化：事實被編號，反事實版本以較大序號出現，agent 被告知「較新事實有較大序號」。儘管規則已明確寫出，所有已發表記憶系統均大幅表現不佳：HippoRAG-v2 單跳達 54.0%、BM25 48.0%、Mem0/Contriever 18.0%、Zep/Graphiti（專為時間性記憶設計的時間知識圖譜）僅 7.0%，多跳變體全數 ≤7%。</p>
+<p>我們主張被低估的瓶頸是組裝步驟：既有基線常將衝突解決留給 LLM 中介的檢索/更新/答案生成，而非顯式版本感知聚合。匹配設定比較（相同骨幹/檢索/切片/TOP_K/n=100）顯示，將 LLM 判斷答案管線替換為候選提取 + Python max(serial) 管線，FC-SH +10.8pp（67.2→78.0，事實級切片，gpt-4o-mini）。差距隨上下文擴大：6K +8pp→262K +21pp。結合語意候選提取產生三個結果：gpt-4o-mini FC-SH 78.0%、gpt-4o FC-SH 94.8%、FC-MH 30.2%（gpt-4o-mini，gpt-4o 骨幹升至 51.5%）。匹配 262K 比較擊敗最強已發表系統（HippoRAG-v2）+28pp、最弱（Zep/Graphiti）+75pp；多跳擊敗已發表最佳 FC-MH（7%）+20pp。</p>
+<p>含義：衝突解決的瓶頸在組裝（檢索後聚合），不在儲存。對具顯式版本標記的資料，正確原語是結構化候選提取後確定性聚合。LongMemEval 跨基準檢查（對話記憶，真實時間戳）：機制從 max(serial) 移植到 max(timestamp)，但整體僅平手（57.8% vs 64.4%, n=45）；確定性聚合是當前值衝突解決的正確原語，須與題型感知處理組合。</p>
+<h2 id="1-引言">§1 引言</h2>
+<h3 id="11-謎題">§1.1 謎題</h3>
+<p>基於 LLM 的記憶 agent 日益部署用於維護隨時間演變的資訊。反覆出現的失敗模式是衝突解決：當同一事實以多個矛盾值出現在記憶中，agent 該回傳哪個值？大多數現代記憶系統的慣例很直接：最新事實勝出。然而所有這些系統在 MAB FactConsolidation——一個圍繞顯式規則「較新事實有較大序號」設計的任務——均大幅表現不佳：</p>
+<ul>
+<li>HippoRAG-v2（最佳已發表 RAG）：FC-SH 54.0%</li>
+<li>GPT-4o long-context（262K 完整上下文）：FC-SH 60.0%</li>
+<li>BM25（MAB 最簡單基線，prompt 含新鮮度規則）：FC-SH 48.0%</li>
+<li>MemGPT/Cognee：28.0%；Mem0/Contriever：18.0%</li>
+<li>RAPTOR/GraphRAG/MIRIX：14.0%</li>
+<li>Zep/Graphiti（時間知識圖譜，專為 agent 記憶設計）：<strong>7.0%</strong>（MAB 表 3 最低欄位）</li>
+<li>所有 22 個系統 FC-MH ≤7%</li>
+</ul>
+<p>一個圍繞顯式規則設計的任務，被所有系統——包括專為時間記憶設計的知識圖譜——表現不佳。自然的問題是為什麼。</p>
+<h3 id="12-匹配設定管線比較">§1.2 匹配設定管線比較</h3>
+<p>我們的核心發現是機制性的。固定切片匹配比較（gpt-4o-mini，BM25 TOP_K=10，事實級切片，n=100/格）：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>6K</th>
+<th>32K</th>
+<th>64K</th>
+<th>262K</th>
+<th>AVG [95% CI]</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LLM-judgment（MAB BM25 prompt, T=0.7）</td>
+<td>63</td>
+<td>70</td>
+<td>75</td>
+<td>61</td>
+<td>67.2 [62.5, 71.7]</td>
+</tr>
+<tr>
+<td>Python max(serial)（Headline, T=0.0）</td>
+<td>71</td>
+<td>78</td>
+<td>81</td>
+<td>82</td>
+<td>78.0 [73.7, 81.8]</td>
+</tr>
+<tr>
+<td>Δ</td>
+<td>+8</td>
+<td>+8</td>
+<td>+6</td>
+<td>+21</td>
+<td><strong>+10.8 pp</strong></td>
+</tr>
+</tbody>
+</table>
+<p>兩條管線在三方面耦合不同：(1) resolver（LLM 判斷 vs Python max）、(2) prompt 與輸出格式、(3) LLM 任務（判斷並回答 vs 提取候選）。因此 +10.8pp 是全管線級效果。</p>
+<p>差距擴大指向兩個被消除的 LLM 失敗模式：</p>
+<ol>
+<li><strong>Prior-override</strong>：真實世界強先驗實體（如芬蘭國球「冰球」）＋反事實（「pesäpallo」較高序號）→ LLM 輸出先驗，無視規則</li>
+<li><strong>Serial-comparison drift</strong>：候選池增大→追丟最大序號。基線 64K 75%→262K 61%（14 點降幅）</li>
+</ol>
+<p>結構化候選提取消除兩者：移除實體文本（無 prior-override）、縮小池（序號追蹤不漂移）。LLM 角色窄化為語意候選提取，最終揀選是確定性 Python max(serial)。</p>
+<h3 id="13-三個實證發現n100格4-上下文95-wilson-cis">§1.3 三個實證發現（n=100/格×4 上下文；95% Wilson CIs）</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>管線</th>
+<th>骨幹</th>
+<th>FC-SH Avg</th>
+<th>FC-MH Avg</th>
+<th>vs 最佳已發表</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>SH-conflict + Python max</td>
+<td>gpt-4o-mini</td>
+<td>78.0</td>
+<td>—</td>
+<td>+24pp vs HippoRAG-v2 (54%)</td>
+</tr>
+<tr>
+<td>2</td>
+<td>SH-conflict + Python max</td>
+<td>gpt-4o</td>
+<td>94.8</td>
+<td>—</td>
+<td>+34.8pp vs GPT-4o long-context (60%)</td>
+</tr>
+<tr>
+<td>3</td>
+<td>CAR (Self-Ask + per-hop max)</td>
+<td>gpt-4o-mini</td>
+<td>—</td>
+<td>30.2</td>
+<td>+23pp vs best published (7%)</td>
+</tr>
+</tbody>
+</table>
+<p>總計 2000 次評測。262K 特定差距更大：gpt-4o-mini 82% vs HippoRAG-v2 54%（+28pp）、gpt-4o 93% vs GPT-4o long-context 60%（+33pp）。</p>
+<h3 id="14-為何這很重要">§1.4 為何這很重要</h3>
+<p>Agent 記憶子領域在精緻儲存架構上投入大量工程：知識圖譜（Graphiti、GraphRAG、Cognee）、海馬迴檢索（HippoRAG-v2）、agentic 迴圈（MemGPT、MIRIX）、typed 語意記憶（Memanto）。在衝突解決任務上，所有這些架構都被更簡單的配方匹配或超越：BM25 檢索、LLM 提取候選、Python max() 比較序號。甚至 Zep/Graphiti（專為時間記憶設計）FC-SH 僅 7.0%。瓶頸在組裝，不在儲存。</p>
+<h3 id="15-貢獻">§1.5 貢獻</h3>
+<ol>
+<li>匹配設定比較量化組裝瓶頸（+10.8pp，262K +21pp）</li>
+<li>MAB FactConsolidation 新 SOTA：FC-SH 78.0%/94.8%，FC-MH 30.2%/51.5%</li>
+<li>LLM 失敗位置的機制證據（條件化在事實可證明被檢索到，定位退化至檢索後判斷）</li>
+<li>檢索上界與方法互補性（88.5% 軟天花板；21.3% Python-only，10.5% LLM-only）</li>
+<li>跨基準泛化：max(serial)→max(timestamp) 移植成功，非當前值題型需組合</li>
+<li>可重現性：完整開源程式碼、Langfuse 追蹤、單指令複製腳本</li>
+</ol>
+<h3 id="16-範圍與誠實限制">§1.6 範圍與誠實限制</h3>
+<ul>
+<li>主要評測 MAB FactConsolidation；MQUAKE 反事實未必反映真實衝突模式</li>
+<li>跨基準檢查 n=45、CIs 寬、單一題型</li>
+<li>原則範圍限於當前值衝突解決</li>
+<li>假設來源資料有顯式版本標記（序號/時間戳）</li>
+<li>匹配比較變動超過 resolver 本身；+10.8pp 是全管線級效果</li>
+<li>多跳 30.2% 遠未解決</li>
+</ul>
+<hr />
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

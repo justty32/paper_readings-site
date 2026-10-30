@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《BACON：用分級邏輯做決策問題的全可解釋 AI 模型》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：（程式碼 anonymous.4open.science/r/bacon-net）</p><p>日期：2025-05，可解釋 AI / NeSy</p><p>arXiv：2505.14510</p><p><a href="https://arxiv.org/abs/2505.14510" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="bacon用分級邏輯做決策問題的全可解釋-ai-模型重點摘要">《BACON：用分級邏輯做決策問題的全可解釋 AI 模型》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>BACON</strong> 是一個<strong>全可解釋（不是事後解釋，而是結構即解釋）的決策 AI</strong>：用 <strong>分級邏輯（Graded Logic）/ LSP（Logic Scoring of Preference）決策法</strong> 把特徵聚合成一棵<strong>二元邏輯聚合樹</strong>——每個「神經元」是 <strong>GCD（廣義合取/析取）算子</strong>（由 andness 與 weight 參數化）取代傳統加權和，<strong>從資料訓練</strong>得樹，可剪枝、可抽成純算術函數、可轉人讀報告。乳癌診斷免預處理達 98.07%，並給出與臨床一致的符號決策邏輯。</p>
+<h2 id="背景分級邏輯與-lsp">背景：分級邏輯與 LSP</h2>
+<ul>
+<li><strong>分級邏輯（GL，Dujmović，50 年實務史）</strong>：連續值命題邏輯，是布林邏輯的人本推廣，建模人類常識的「分級感知」——分級真值、分級重要性、分級合取/析取（同時性 vs 可替代性）。</li>
+<li><strong>GCD（Graded Conjunction/Disjunction）</strong>：把合取與析取統一在單一函數，由 <strong>andness α（合取程度）/ orness（析取程度）</strong> 刻畫；<strong>andness-directed GCD</strong> 直接以 α 為輸入。α=1 純合取、α=0 純析取、α=0.5 中性（算術平均）。</li>
+<li><strong>LSP 聚合樹</strong>：二元樹，每聚合器有 <strong>andness + 新進引數權重</strong>；遞迴組成可解釋決策模型（範例：薪資+福利用中性聚合器→薪酬分，再與興趣用軟合取→工作適合度）。</li>
+</ul>
+<h2 id="bacon-架構與訓練">BACON 架構與訓練</h2>
+<ul>
+<li><strong>兩層</strong>：(1) <strong>輸入排列層</strong>（Gumbel-Sinkhorn 網路，探索不同輸入順序）;(2) <strong>二元樹聚合層</strong>（GCD 算子當神經元，取代加權和）→ 可轉成 LSP 聚合樹。</li>
+<li><strong>兩階段訓練</strong>：早期高 Gumbel 噪聲探索排列 → 損失夠低時用<strong>匈牙利演算法</strong>從軟分配抽離散排列 → 凍結排列 → 只 fine-tune 聚合層的 weight 與 andness。核心難題＝在 n! 巨大排列空間找最優（乳癌 30 特徵＝30! 天文數）→ Gumbel-Sinkhorn 隨機探索 + 匈牙利確定凍結。</li>
+<li><strong>損失</strong>＝預測誤差 + 權重正則（用 sigmoid 把每聚合器權重推向 0.5，促平衡聚合）。</li>
+</ul>
+<h2 id="全端可解釋vs-其他法">全端可解釋（vs 其他法）</h2>
+<ul>
+<li><strong>特徵歸因</strong>：每神經元的 (importance, andness) 直接讀出特徵角色——<strong>hard 合取＝必要、soft 合取＝期望、soft 析取＝可選、hard 析取＝充分</strong>。因左結合樹，重要特徵須在樹頂才有大影響 → <strong>隱式特徵重要性排序</strong>，不重要的推到底部可剪。對比 SHAP/LIME（事後近似、不顯示如何組合）、決策樹（只切分不表聚合邏輯）。</li>
+<li><strong>組合透明 + 完整決策路徑</strong>：訓練結果是遵循 LSP 推理的<strong>符號表達式</strong>，提供全域 + 實例級解釋、可從輸入追到輸出。KAN 缺顯式邏輯算子與可追路徑；EBM 無法建模複雜邏輯相依。</li>
+<li><strong>與人類決策對齊</strong>：輸入正規化到 [0,1] 當「陳述真值度」（如 cell size 的真值＝「細胞大」的真度），聚合成全域真值。<strong>唯一明確以「對齊人類推理」為目標</strong>。</li>
+<li><strong>關鍵副產品</strong>：BACON <strong>不收斂</strong> ＝強烈暗示「資料中可能不存在人類可解釋的邏輯」。</li>
+</ul>
+<h2 id="乳癌診斷案例wdbc">乳癌診斷案例（WDBC）</h2>
+<ul>
+<li>569 樣本（357 良性 / 212 惡性），<strong>全 30 特徵免特徵選擇/微調</strong>（僅正規化）→ <strong>98.07%</strong>（黑箱集成可達 99.89% 但不可解釋且需額外處理）。</li>
+<li><strong>剪枝發現只 7/30 特徵關鍵</strong>：concave_points3、concavity1、perimeter3、concavity3、radius2、area2、area3 → <strong>與臨床一致</strong>（惡性細胞較大 area/radius/perimeter + 形狀不規則 concave_points/concavity）。</li>
+<li><strong>LSP 樹揭示決策路徑</strong>：頂部四特徵用<strong>析取</strong>組成「size group」（任一高即大細胞），再與 concave_points3 用<strong>強合取</strong>（惡性須<strong>同時大且不規則</strong>）;concavity1 進 size group 補償小尺寸（凸顯不規則性的決定性）。</li>
+<li><strong>人工微調閾值</strong>（輸出是真值度，閾值可調）：初篩 0.01→recall 100%；臨床診斷 0.46→98.77%；治療規劃 0.63→precision 100%。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>目前限<strong>小問題（≤38 特徵）</strong>（人類可解釋範圍內）;<strong>不支援串接/階層組合</strong>多個 BACON 網路；<strong>左結合樹適合排序不適合分組</strong>（平衡樹更適合分組）。輕量、可剪枝 → 適合邊緣裝置/智慧家電/人形機器人。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批中<strong>最「結構即解釋」<strong>的 NeSy——與 <a class="paper-reference" href="2510.14538_Reasoning_Shortcuts.%E6%91%98%E8%A6%81.html">2510.14538</a>（可解釋性/RS）關心同一目標，但 BACON 不是事後解釋而是</strong>模型結構本身就是符號邏輯樹</strong>；與 <a class="paper-reference" href="2502.01806_Neurosymbolic_Program_Comprehension.%E6%91%98%E8%A6%81.html">2502.01806</a>（NsPC 把規則嵌回模型）相反方向（BACON 直接訓出符號樹）。</li>
+<li>與 KAN（本批 H 類 <a class="paper-reference" href="2501.17896_KAN_Airfoil_Lift.%E6%91%98%E8%A6%81.html">2501.17896</a> 等）正面對比：KAN 用可學樣條近似函數，BACON 用 <strong>andness 參數化的邏輯聚合</strong>——更適合需顯式人讀邏輯的決策任務。</li>
+<li>最值得記：<strong>GCD 算子（andness 統一合取/析取）當神經元</strong> 是個漂亮的可解釋構件；<strong>剪枝→特徵排序、andness→特徵角色（必要/期望/可選/充分）、不收斂→資料無可解釋邏輯</strong> 三個可操作洞見。</li>
+<li>適合做<strong>高風險決策（醫療/金融）的可解釋 AI、需人機協作可調模型、邊緣裝置輕量推理</strong>的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2505.14510_BACON.zh-TW.html"><code>../translate/2505.14510_BACON.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

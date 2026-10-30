@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《SEAgent：以強制存取控制馴服 LLM Agent 系統的權限提升》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zimo Ji, Daoyuan Wu, Wenyuan Jiang, Pingchuan Ma, Zongjie Li, Yudong Gao, Shuai Wang, Yingjiu Li</p><p>日期：2026-01</p><p>arXiv：2601.11893</p><p><a href="https://arxiv.org/abs/2601.11893" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="seagent以強制存取控制馴服-llm-agent-系統的權限提升重點摘要">《SEAgent：以強制存取控制馴服 LLM Agent 系統的權限提升》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>SEAgent 不問模型「這是不是攻擊」，而是在每次 agent、工具、RAG 與跨 agent 通訊時建立資訊流圖，再以 ABAC 型強制政策決定放行、警告或阻擋；在 InjecAgent 與 AgentDojo 的受測攻擊上達到 0% ASR，並把 confused deputy 納入多 agent 權限提升模型。</p>
+<h2 id="問題與威脅模型">問題與威脅模型</h2>
+<p>論文把 agent 權限提升定義為：系統執行了超出使用者意圖所需最小權限的動作。攻擊者可操控惡意使用者輸入、受污染的工具或 RAG 回傳，以及不可信 agent 的訊息，但不能改寫 SEAgent 的可信政策與執行元件。</p>
+<p>這個定義把數種看似分離的攻擊放進同一框架：直接／間接提示注入、RAG poisoning、不可信 agent，以及多 agent 系統中的 confused deputy。最後一類尤其重要：低權限 agent 可把自然語言訊息交給擁有敏感工具的高權限 agent，借後者完成自己無權執行的操作。</p>
+<h2 id="方法">方法</h2>
+<p>SEAgent 有四個元件：</p>
+<ol>
+<li><strong>System View</strong>：每輪建立有向資訊流圖。節點包含使用者、agent、工具與 RAG 資料庫；邊表示呼叫、回傳、檢索或 agent 間傳訊。</li>
+<li><strong>Subject Labeling</strong>：替 agent、工具與資料來源標記物件、動作、敏感度、完整性與隱私等屬性。論文採 LLM 初標、人工複核。</li>
+<li><strong>Policy Database 與 Decision Engine</strong>：以 ABAC 政策描述危險路徑與處置。新工具呼叫出現時，決策器比對 System View 的子圖，執行 allow、prompt 或 deny。</li>
+<li><strong>SEMemory</strong>：每輪清空 agent context 與 System View，只從帶來源的 entity dictionary 選回當前問題所需資訊，再重建 context 與圖，降低跨輪污染與上下文累積。</li>
+</ol>
+<p>關鍵設計是「來源路徑決定權限」，不是只看最終 agent 的身分。可信 agent 接收到不可信 agent 的資料後，不會因此把資料升格為可信授權。</p>
+<h2 id="實驗結果">實驗結果</h2>
+<ul>
+<li><strong>攻擊防禦</strong>：InjecAgent 擴充集涵蓋 app compromise、資料竊取與 RAG poisoning；AgentDojo 涵蓋 Banking、Slack、Travel、Workspace。SEAgent 在所有表列類別皆為 0% ASR。AgentDojo 整體 ASR：naive agent 39.14%、IsolateGPT 0.82%、SEAgent 0%。</li>
+<li><strong>單 agent 功能性</strong>：重建版 API-Bank 共 52 個工具、214 個任務。SEAgent 的良性誤報率在一工具／兩工具任務為 0%，三工具任務為 5.13%；IsolateGPT 分別為 5.26%、18.31%、5.88%。</li>
+<li><strong>不可忽略的反例</strong>：原始 API-Bank 加 SEMemory 時，naive agent 平均正確率 72.97%，SEAgent 為 68.29%，且短上下文下有明顯額外 token 與延遲。論文將其歸因於固定 system prompt 與額外記憶查詢成本。</li>
+<li><strong>多 agent</strong>：AWS travel 的 overall GSR 從 71.97% 升至 74.24%，token 由 4710.83 降至 3180.94；mortgage 的 overall GSR 從 52.46% 升至 63.11%，token 由 5198.62 降至 3171.90。政策檢查平均只增加 0.00586 秒與 0.00307 秒。</li>
+<li><strong>標記可靠度</strong>：80 個 InjecAgent 工具上，LLM 與人工的物件屬性 Cohen’s κ 為 1.0000，動作屬性為 0.8884；論文仍採人工複核，而非把 LLM 標記視為可信根。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>0% ASR 是在已正確標記、政策已配置的受測攻擊集合上，不是對未知攻擊的形式化完備保證。</li>
+<li>confused deputy 與不可信 agent 只以案例研究驗證，缺乏大規模 MAS 攻擊基準。</li>
+<li>主體屬性是靜態的，無法隨執行歷史動態降權；政策與標記仍需人力維護。</li>
+<li>AWS 的工具只有功能描述、沒有真實 backend，故多 agent 實驗未啟用實際工具標記與政策執行，主要驗證 SEMemory 與 runtime overhead。</li>
+<li>論文稱 SEMemory 不引入威脅模型之外的新攻擊面，但 Memory LLM 仍是機率元件；其論證是把攻擊約化到既有類型，不等於證明選回內容必然正確。</li>
+</ul>
+<h2 id="對-freepy-的價值">對 FreePy 的價值</h2>
+<p>SEAgent 支持 FreePy 的一條核心邊界：<code>agent identity ≠ authority</code>。可直接吸收的不是整套框架，而是三個介面：</p>
+<ul>
+<li>ToolRun 的每個 argument 保存來源與完整性標籤，避免只有工具級 permission。</li>
+<li>Decision 在 effect dispatch 前以可重播的資訊流路徑做 complete mediation。</li>
+<li>memory item 帶 source、user、generation 與 invalidation 狀態；喚醒 dormant agent 時重新驗證，不把舊 context 當授權。</li>
+</ul>
+<p>它也留下研究缺口：SEAgent 每輪重設圖，而 FreePy 要處理跨 Round、跨休眠與跨 agent 的持久 provenance；這正是 event journal 與 context manifest 可以比它走得更遠的地方。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

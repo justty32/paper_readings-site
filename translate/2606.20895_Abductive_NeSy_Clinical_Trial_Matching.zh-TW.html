@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>以 LLM 溯因推理與邏輯驗證做神經符號臨床試驗配對（Neurosymbolic Clinical Trial Matching via LLM-Driven Abduction and Logical Verification） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Baiyang Qu, Leonardo Ranaldi, Xi Wang, Marco Valentino（Leicester / Edinburgh / Sheffield）</p><p>日期：2026-06</p><p>arXiv：2606.20895</p><p><a href="https://arxiv.org/abs/2606.20895" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="以-llm-溯因推理與邏輯驗證做神經符號臨床試驗配對">以 LLM 溯因推理與邏輯驗證做神經符號臨床試驗配對</h1>
+<p>University of Leicester / University of Edinburgh / University of Sheffield</p>
+<h2 id="摘要">摘要</h2>
+<p>LLM 為自動化<strong>臨床試驗配對（CTM）<strong>提供了途徑，但對複雜資格條件所需的</strong>確定性驗證</strong>仍力不從心；反之，純符號法雖嚴謹，卻在面對不完整病歷與雜訊臨床證據時崩潰。為彌合此鴻溝，本文研究結合 LLM 與邏輯驗證的混合框架，並提出<strong>溯因式神經符號 CTM（αNeSy-CTM）</strong>：利用 LLM 的語言與世界知識，對含噪、欠定的臨床文字進行推理。大量評估顯示 αNeSy-CTM 大幅勝過純 LLM baseline，相對 zero-shot 最高 <strong>+30%</strong>；且溯因推理確實提升準確率、特異度與穩健性。αNeSy-CTM 與<strong>思維鏈（CoT）高度互補</strong>，暗示可走混合路由策略。本文展示神經符號法對自動化 CTM 的潛力，邁向<strong>可審計、LLM 驅動的下一代臨床應用</strong>。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>臨床試驗是生醫發現通往救命療法的橋樑，但常卡在招募瓶頸。隨試驗協議愈趨龐雜，人工把病歷比對資格條件已不可持續且易錯。LLM 因能處理臨床敘述的語言變體，成為自動化 CTM 的途徑。</p>
+<p>然而<strong>自然語言與形式資格邏輯間的表徵鴻溝</strong>仍是關鍵障礙：CTM 本質需<strong>確定性驗證嚴格數值門檻、時間窗、巢狀邏輯依賴</strong>;LLM 在此高風險場景極不可靠、缺可驗證推理軌跡，無法安全部署。反之符號/規則系統邏輯嚴謹，但面對病歷的片段化、不完整就脆斷。</p>
+<p>本文把試驗–病人配對框成<strong>約束滿足問題</strong>：用 LLM 自動形式化病人檔與資格條件成符號約束，交 <strong>Z3</strong>（SMT 求解器）當確定性邏輯引擎評估。為應對語言噪聲與欠定證據，提出 <strong>αNeSy-CTM</strong>：用 LLM 做<strong>溯因</strong>，從隱含的臨床/語言線索生成明確、最小的證據集，確保資格與病人資訊充分指定以利穩健形式化。</p>
+<p>在 TREC 2021–2023 上實驗：αNeSy-CTM 隨條件複雜度上升而帶來一致的多面向改善。TREC 2023 達 <strong>75.71%</strong> 平均準確率，超越 <strong>58.17%</strong> zero-shot；受控證據擾動下只掉 <strong>2%</strong>（非溯因版掉 <strong>8.5%</strong>）；且與 CoT 互補（αNeSy-CTM 救回 CoT 失敗的 18%，CoT 救回其失敗的 12%）。</p>
+<h2 id="2-方法">2. 方法</h2>
+<p>給定病人描述 P 與試驗報告 T（皆自然語言），CTM 判定資格 y∈{0,1}。難在臨床文字非結構化、條件含嚴格形式約束、病人證據常欠定。</p>
+<h3 id="21-問題形式化">2.1 問題形式化</h3>
+<p>對病人–試驗對定義變數空間 V={v₁,…,v_k}（年齡、既往治療、診斷、時間指標）。醫療約束需<strong>型別域</strong>（整數/實數/布林），在背景理論 𝒯（如線性算術）下評估。資格條件 L=φ(T)（V 上符號約束集）；病人事實 F=ψ(P)（賦值子集）。</p>
+<p>資格轉成 <strong>SMT 問題</strong>：y=1 ⟺ 觀測事實與資格約束的聯合理論在 𝒯 下<strong>至少有一個有效模型</strong>（可滿足）；若有矛盾則 y=0。即 y=1 ⟺ F∪L ⊭_𝒯 ⊥。</p>
+<h3 id="22-神經符號-ctmnesy-ctm">2.2 神經符號 CTM（NeSy-CTM）</h3>
+<p>標準神經符號法三階段：</p>
+<ol>
+<li><strong>自動形式化</strong>：LLM 把資格條件譯成 SMT-LIB 約束（<code>assert (&gt;= Age 18)</code>），從病人檔抽事實賦值（<code>assert (= Age 20)</code>）。</li>
+<li><strong>符號驗證</strong>：用 Z3 把 F 對 L 檢查，回確定性 sat（合格）/unsat（不合格）。</li>
+<li><strong>自我修正迴圈</strong>：Z3 報語法/型別錯 → LLM 收錯誤回饋迭代修正（工具增強推理）。</li>
+</ol>
+<p><strong>例</strong>：試驗要 Age≥18、病歷說 52 歲 → 形式化為 <code>(assert (= Age 52)) (assert (&gt;= Age 18)) (check-sat)</code> → Z3 回 sat（整數算術下無矛盾）。</p>
+<h3 id="23-ctm-的溯因推理αnesy-ctm">2.3 CTM 的溯因推理（αNeSy-CTM）</h3>
+<p>標準法在病人檔與條件完全指定且對齊時有效。但現實中語言噪聲（詞彙變體）與隱含臨床假設會妨礙穩健驗證。<strong>若 L 的變數與 F 不完全匹配 → 整個形式化欠定 → Z3 可能高估資格</strong>。αNeSy-CTM 加一道溯因階段，讓 LLM 補知識與詞彙缺口：</p>
+<ol>
+<li><strong>溯因推理</strong>：給病人檔與條件，LLM 生成一組<strong>保守的、文本支持但未明說</strong>的推斷事實 I（匹配縮寫、治療史、疾病狀態指標）。例「能獨立行走」「日常無限制」可指示低 ECOG 狀態，但不過度賦具體值除非文本明確支持。</li>
+<li><strong>增強驗證</strong>：把溯因輸出與觀測事實、約束合併成 F∪I∪L，再交 Z3 檢查 𝒯-可滿足性。</li>
+</ol>
+<p><strong>例</strong>：病歷「63 歲男、能獨立行走、能採買、生活無需協助」；試驗要 ECOG≥3（意指僅能有限自理、過半清醒時間臥床/坐椅）。溯因階段可推斷低 ECOG（=0 或 1）加入理論 → 這些溯因事實是判定<strong>不合格</strong>的關鍵；標準法下 ECOG 可能仍未指定，使 Z3 無法可靠識別矛盾。</p>
+<h2 id="3-實證評估">3. 實證評估</h2>
+<h3 id="31-設定">3.1 設定</h3>
+<p><strong>資料集</strong>：TREC 臨床試驗 Track 2021–2023，二元資格預測（合格 vs 不合格）。</p>
+<ul>
+<li><strong>TREC 2021</strong>：75 個合成病例對 ClinicalTrials.gov 試驗描述。</li>
+<li><strong>TREC 2022</strong>：50 題，偏重數值顯著證據（列表式檢驗值、門檻比較、治療史約束）。</li>
+<li><strong>TREC 2023</strong>：病人表徵轉向半結構化問卷，碎片化/欠定證據更核心，凸顯缺失資訊下的推理。</li>
+</ul>
+<p><strong>模型</strong>：αNeSy-CTM 對比非溯因 NeSy-CTM（三階段自動形式化-驗證-修正）、純 LLM baseline（Zero-shot、CoT、QuaSAR——步進式自然語言推理 + 符號形式化）。三個 LLM 骨幹（T=0.1）：gpt-oss-120b、olmo-3-32b-think、qwen3-vl-32b-instruct；符號引擎 Z3 v4.12.2。</p>
+<h3 id="32-結果要點">3.2 結果（要點）</h3>
+<ul>
+<li><strong>神經符號法把敏感-特異度權衡推向平衡準確</strong>：純 LLM（Zero-shot/CoT）高敏感（Sens 85–96）卻低特異（Spec 25–56）;NeSy-CTM 把 Spec 拉到 82–90，達更平衡的準確。</li>
+<li><strong>更嚴的邏輯邊界大幅降假陽性</strong>。</li>
+<li><strong>形式驗證在最難、欠定資料集（TREC 2023）增益最大</strong>：αNeSy-CTM 平均準確率 75.71% vs Zero-shot 58.17%。</li>
+<li><strong>平衡分類成為更可靠的人機協作篩選過濾器</strong>。</li>
+</ul>
+<h3 id="3336-消融互補穩健性複雜度要點">3.3–3.6 消融、互補、穩健性、複雜度（要點）</h3>
+<ul>
+<li>消融確認溯因階段對準確、特異、穩健皆有貢獻。</li>
+<li>互補性分析：αNeSy-CTM 與 CoT 各自救回對方失敗案例（18% / 12%），支持混合路由。</li>
+<li>溯因穩健性：受控證據擾動下 αNeSy-CTM 僅掉 2%，非溯因 NeSy-CTM 掉 8.5%。</li>
+<li>複雜度分析評估多階段管線的執行時間成本。</li>
+</ul>
+<h2 id="4-相關工作">4. 相關工作</h2>
+<p>LLM 自動化 CTM、自然語言到形式邏輯的自動形式化、LLM + 符號求解器（SMT/Z3）的神經符號推理。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>本文展示 LLM 驅動的<strong>溯因式神經符號推理</strong>對自動化 CTM 的潛力。透過把配對框成 SMT 問題、用 LLM 自動形式化、Z3 確定性驗證、並以溯因補不完整證據，αNeSy-CTM 在三年 TREC benchmark 上一致勝過純 LLM baseline，並與 CoT 互補。為<strong>可審計、LLM 驅動的下一代臨床 AI 應用</strong>鋪路。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2606.20895_Abductive_NeSy_Clinical_Trial_Matching.%E6%91%98%E8%A6%81.html"><code>../summarize/2606.20895_Abductive_NeSy_Clinical_Trial_Matching.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

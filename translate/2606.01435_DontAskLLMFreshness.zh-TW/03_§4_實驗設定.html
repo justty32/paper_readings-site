@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_§4_實驗設定 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.01435_DontAskLLMFreshness.zh-TW.html">回 2606.01435_DontAskLLMFreshness.zh-TW 目錄</a>　<a href="02_%C2%A72_%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">← 上一節</a>　<a href="04_%C2%A76_%E8%A8%8E%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-實驗設定">§4 實驗設定</h2>
+<h3 id="41-資料集">§4.1 資料集</h3>
+<p>MAB FactConsolidation（選擇性遺忘能力下的衝突解決任務）。兩子任務（單跳/多跳）× 四上下文長度（6K/32K/64K/262K）。MAB 報告 6K 僅在推理模型驗證（表 5），非主系統比較；我們使用全部四長度。共 8 子任務列 × 100 題 = 800 測試實例/管線。FactConsolidation 由 MQUAKE 反事實改寫建構：原事實與反事實串接，反事實以較高序號出現；多對疊加達目標長度。</p>
+<h3 id="42-骨幹模型">§4.2 骨幹模型</h3>
+<ul>
+<li><strong>gpt-4o-mini</strong>（gpt-4o-mini-2024-07-18）：主要骨幹</li>
+<li><strong>gpt-4o</strong>（gpt-4o-2024-08-06）：僅 Ablation C</li>
+<li><strong>o4-mini</strong>：推理模型骨幹（多跳/單跳診斷 sweep，§5.6，非主表）</li>
+</ul>
+<p>所有 MAB 基線使用 gpt-4o-mini 骨幹（per MAB §4.1），比較為 apples-to-apples。</p>
+<h3 id="43-評測管線">§4.3 評測管線</h3>
+<table>
+<thead>
+<tr>
+<th>標籤</th>
+<th>描述</th>
+<th>切片</th>
+<th>新鮮度邏輯</th>
+<th>骨幹</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Headline</td>
+<td>SH-conflict §3.1</td>
+<td>fact-level</td>
+<td>Python max(serial)</td>
+<td>gpt-4o-mini</td>
+</tr>
+<tr>
+<td>LLM-judgment</td>
+<td>BM25+MAB prompt</td>
+<td>fact-level</td>
+<td>LLM 判斷</td>
+<td>gpt-4o-mini</td>
+</tr>
+<tr>
+<td>Ablation A</td>
+<td>SH-conflict chunk-4096</td>
+<td>chunk-4096</td>
+<td>Python max(serial)</td>
+<td>gpt-4o-mini</td>
+</tr>
+<tr>
+<td>Ablation B</td>
+<td>CAR §3.2</td>
+<td>fact-level</td>
+<td>Python max(serial)/hop</td>
+<td>gpt-4o-mini</td>
+</tr>
+<tr>
+<td>Ablation C</td>
+<td>SH-conflict §3.1</td>
+<td>fact-level</td>
+<td>Python max(serial)</td>
+<td>gpt-4o</td>
+</tr>
+</tbody>
+</table>
+<p>LLM-judgment 基線使用 MAB 發表的 BM25 答案 prompt（T=0.7），Headline 使用結構化候選提取後確定性 max(serial)（T=0.0）。兩者使用相同事實級檢索與 TOP_K，但 prompt 格式/輸出格式/溫度/resolver 不同。</p>
+<h3 id="44-超參數">§4.4 超參數</h3>
+<p>TOP_K=10（匹配 MAB）。溫度：確定性管線 0.0、LLM-judgment 基線 0.7（匹配 MAB BM25 預設）。切片策略：fact-level（regex 解析每條事實獨立索引，500–18,000 chunks）；chunk-4096（滑動視窗，~6 chunks@6K、~250 chunks@262K）。BM25：rank_bm25.BM25Okapi（k1=1.5, b=0.75），tokenizer 為 [A-Za-z0-9]+ 小寫。</p>
+<h3 id="45-指標">§4.5 指標</h3>
+<p>SubEM（子字串精確匹配），與 MAB 相同。預測答案 y* 與 ground truth 列表 Y，若 Y 中任元素作為子字串（大小寫不敏感）出現於 y* 即正確。對我們管線非問題（輸出為短實體），但膨脹長上下文 oracle 基線。</p>
+<h3 id="46-計算與可重現性">§4.6 計算與可重現性</h3>
+<p>總 LLM 評測：4400 次（44 格×100 題）。API 成本 ~$3（4 格 gpt-4o ~$2；gpt-4o-mini ~$0.3）。每格 ~5–10 分鐘，20 格主表平行 ~15 分鐘。完整程式碼/prompts/per-question 輸出/Langfuse 追蹤 metadata 於專案倉庫。Headline 實驗單指令：<code>python scripts/13_paper_experiment.py --source factconsolidation_sh_&lt;L&gt;</code>。</p>
+<h3 id="47-基線">§4.7 基線</h3>
+<p>比較 MAB v3 表 3 的 22 個系統（不重新執行以避免實作差異）。系統跨越四家族：long-context FIFO、簡單 RAG（BM25）、嵌入 RAG（Contriever/Text-Embed-3/Qwen3-Embedding）、結構增強 RAG（RAPTOR/GraphRAG/MemoRAG/HippoRAG-v2/Mem0/Cognee/Zep）、agentic 記憶（Self-RAG/MemGPT/MIRIX）。</p>
+<h2 id="5-結果">§5 結果</h2>
+<h3 id="51-主結果表n100格95-wilson-cis">§5.1 主結果表（n=100/格，95% Wilson CIs）</h3>
+<table>
+<thead>
+<tr>
+<th>管線</th>
+<th>骨幹</th>
+<th>6K†</th>
+<th>32K</th>
+<th>64K</th>
+<th>262K</th>
+<th>AVG [95% CI]</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Headline</td>
+<td>gpt-4o-mini</td>
+<td>71</td>
+<td>78</td>
+<td>81</td>
+<td><strong>82</strong></td>
+<td>78.0 [73.7, 81.8]</td>
+</tr>
+<tr>
+<td>LLM-judgment baseline</td>
+<td>gpt-4o-mini</td>
+<td>63</td>
+<td>70</td>
+<td>75</td>
+<td>61</td>
+<td>67.2 [62.5, 71.7]</td>
+</tr>
+<tr>
+<td>Ablation A (chunk-4096)</td>
+<td>gpt-4o-mini</td>
+<td><strong>87</strong></td>
+<td>84</td>
+<td>79</td>
+<td>73</td>
+<td>80.8 [76.6, 84.3]</td>
+</tr>
+<tr>
+<td>Ablation B (CAR, multi-hop)</td>
+<td>gpt-4o-mini</td>
+<td>34</td>
+<td>27</td>
+<td>33</td>
+<td>27</td>
+<td>30.2 [26.0, 34.9]</td>
+</tr>
+<tr>
+<td>Ablation C (gpt-4o backbone)</td>
+<td>gpt-4o</td>
+<td><strong>99</strong></td>
+<td>92</td>
+<td>95</td>
+<td>93</td>
+<td><strong>94.8</strong> [92.1, 96.5]</td>
+</tr>
+</tbody>
+</table>
+<p>†6K 使用 MAB 發表的 6K rows；MAB 僅在推理模型驗證中報告 6K。</p>
+<p>三個頭條發現：(1) Headline gpt-4o-mini FC-SH 78.0%，+24pp vs HippoRAG-v2 (54%)；(2) gpt-4o FC-SH 94.8%，+34.8pp vs GPT-4o long-context (60%)；(3) CAR FC-MH 30.2%，+23pp vs 最佳已發表 (7%)。</p>
+<h3 id="52-與已發表系統比較262k">§5.2 與已發表系統比較（262K）</h3>
+<table>
+<thead>
+<tr>
+<th>系統</th>
+<th>FC-SH @262K</th>
+<th>FC-MH @262K</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ours (gpt-4o)</td>
+<td><strong>93.0</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Ours (gpt-4o-mini)</td>
+<td>82.0</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Ours (CAR, gpt-4o-mini)</td>
+<td>—</td>
+<td><strong>27.0</strong></td>
+</tr>
+<tr>
+<td>GPT-4o (long-context)</td>
+<td>60.0</td>
+<td>5.0</td>
+</tr>
+<tr>
+<td>HippoRAG-v2 (best published)</td>
+<td>54.0</td>
+<td>5.0</td>
+</tr>
+<tr>
+<td>BM25 (MAB chunk-512 default)</td>
+<td>48.0</td>
+<td>3.0</td>
+</tr>
+<tr>
+<td>Zep/Graphiti (temporal KG)</td>
+<td>7.0</td>
+<td>3.0</td>
+</tr>
+</tbody>
+</table>
+<p>匹配 262K 比較，我們的管線在 FC-SH 與 FC-MH 均超越所有已發表系統。差距在架構最精緻的系統上最大：Zep/Graphiti 低於我們 gpt-4o 結果 86pp。甚至最簡單的已發表基線（BM25 48%）低於我們 gpt-4o 結果 45pp。</p>
+<h3 id="53-匹配設定管線比較gpt-4o-minifact-level">§5.3 匹配設定管線比較（gpt-4o-mini，fact-level）</h3>
+<p>LLM-judgment vs Headline：AVG +10.8pp，McNemar χ²=14.6, p&lt;0.001。差距在長上下文擴大（6K +8pp→262K +21pp）。chunk-4096 匹配比較：確定性 80.8% vs LLM-judgment 61.0%（+19.8pp），大於 fact-level +10.8。</p>
+<p>切片策略比較：fact-level vs chunk-4096 平均平手（78.0 vs 80.8，CIs 重疊），但曲線相反——chunk-4096 短上下文勝、fact-level 長上下文勝（262K 82 vs 73）。</p>
+<h3 id="54-上下文長度穩健性">§5.4 上下文長度穩健性</h3>
+<p>LLM-judgment 基線在 262K 急劇退化（61%，從 64K 75% 下降 14 點）。確定性管線不退化：gpt-4o-mini 71–82%、gpt-4o 92–99%。退化非因檢索——條件化在反事實可證明被檢索到的題目上，基線仍從 78%（64K）降至 66%（262K）。基線 14 點降幅中約 10 點是可檢索事實的誤判。</p>
+<h3 id="55-檢索上界與方法互補性">§5.5 檢索上界與方法互補性</h3>
+<p>LLM-judgment ∪ Headline 聯集準確率（n=400 pooled）：88.5%。即 88.5% 題目至少一管線可解——給出固定 TOP_K 管線的軟天花板 ~88–95%。方法互補：56.8% 兩者正確、21.3% Python-only、10.5% LLM-only、11.5% 皆錯。Headline +10.8pp 淨差距來自 +21pp Python 獨贏 -10.5pp LLM 獨贏。McNemar χ²=(85-42)²/(85+42)=14.6, p&lt;0.001。</p>
+<h3 id="56-fc-mh-結果與失敗模式分析">§5.6 FC-MH 結果與失敗模式分析</h3>
+<p>CAR FC-MH 27–34% 跨四長度。骨幹擴展：gpt-4o-mini 30.2%、o4-mini 43.2%、gpt-4o 51.5%。gpt-4o+CAR (51.5) &gt; o4-mini+CAR (43.2)——剛性逐跳管線未利用 o4-mini 推理能力。交叉現象：6K CAR 傷害 o4-mini（52 vs plain 80——模型已端到端解決，分解僅增加 hop-1 失敗面），但 32K CAR 挽救它（42 vs plain 14 已崩潰）。平均每題 2.56 hops，86% hops 成功執行。</p>
+<p>失敗模式定性（262K 約 30 題錯誤抽查）：主語混淆 ~25%、謂語語意間隙 ~25%、保守空提取 ~10%、反事實不在 TOP_K ~10%、真實先驗多數勝 ~10%、序號平手 ~5%、其他 ~15%。最常見 CAR 失敗模式：hop-1 幻覺（LLM 偶爾提取不匹配問題意圖的實體，鏈中斷）。</p>
+<h3 id="57-跨基準泛化longmemeval-知識更新">§5.7 跨基準泛化（LongMemEval 知識更新）</h3>
+<p>在 LongMemEval 知識更新題型（對話記憶，真實時間戳，n=45，gpt-4o-mini）：</p>
+<table>
+<thead>
+<tr>
+<th>管線</th>
+<th>正確</th>
+<th>準確率</th>
+<th>95% CI</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Baseline (BM25+LLM-freshness)</td>
+<td>29/45</td>
+<td>64.4%</td>
+<td>[49.8, 76.8]</td>
+</tr>
+<tr>
+<td>Ours (extract+max(timestamp))</td>
+<td>26/45</td>
+<td>57.8%</td>
+<td>[43.3, 71.0]</td>
+</tr>
+<tr>
+<td>Δ</td>
+<td>-3</td>
+<td>-6.6pp</td>
+<td>CIs 重疊，統計平手</td>
+</tr>
+</tbody>
+</table>
+<p>確定性管線未擊敗 LLM 基線——但失敗非新鮮度錯誤：3 題 Yes/No（提取器回傳逐字事實而正確答案需 &quot;Yes&quot; 前綴）、1 題歷史/相對（「之前的狀態」→max(timestamp) 取當前而非前一狀態）、1 題聚合/過濾（需按事件時間過濾而非最新提及）。這強化論點：max() 是當前值衝突的正確算子，需與題型感知處理組合。</p>
+<h3 id="58-成本-品質權衡">§5.8 成本-品質權衡</h3>
+<table>
+<thead>
+<tr>
+<th>管線</th>
+<th>每查詢成本</th>
+<th>FC-SH Avg</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LLM-judgment baseline</td>
+<td>$0.0001</td>
+<td>67.2%</td>
+</tr>
+<tr>
+<td>Headline (gpt-4o-mini)</td>
+<td>$0.0001</td>
+<td>78.0%</td>
+</tr>
+<tr>
+<td>Ablation A (chunk-4096)</td>
+<td>$0.0001</td>
+<td>80.8%</td>
+</tr>
+<tr>
+<td>Ablation B (FC-MH CAR)</td>
+<td>$0.0003</td>
+<td>30.2% (FC-MH)</td>
+</tr>
+<tr>
+<td>Ablation C (gpt-4o)</td>
+<td>$0.005</td>
+<td>94.8%</td>
+</tr>
+</tbody>
+</table>
+<h2 id="gpt-4o-mini-管線基本上免費00001查詢對-7880-準確率足夠的應用為最優選擇gpt-4o-管線-0005查詢-提供-94817pp-以-50-成本">gpt-4o-mini 管線基本上免費（$0.0001/查詢）。對 78–80% 準確率足夠的應用為最優選擇。gpt-4o 管線 $0.005/查詢 提供 94.8%，+17pp 以 50× 成本。</h2>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

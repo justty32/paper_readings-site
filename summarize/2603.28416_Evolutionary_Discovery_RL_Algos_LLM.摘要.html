@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《用大型語言模型演化發現強化學習演算法》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：（Örebro University, Sweden — Machine Perception and Interaction Lab）</p><p>日期：2026-03，演化／LLM／RL 演算法發現</p><p>arXiv：2603.28416</p><p><a href="https://arxiv.org/abs/2603.28416" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="用大型語言模型演化發現強化學習演算法重點摘要">《用大型語言模型演化發現強化學習演算法》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>把 <strong>REvolve</strong>（用 LLM 當演化變異算子的 reward-function 發現系統）從「發現獎勵函數」推到「<strong>發現整個 RL 學習更新規則（update rule）</strong>」——直接在<strong>可執行的更新規則程式碼空間</strong>做島嶼種群（island）演化搜尋，每個候選＝一套完整訓練程序（一個 loss 函數 + 輔助狀態更新）;<strong>刻意禁用 actor-critic、TD 誤差、value bootstrapping</strong> 等正統機制以逼出非正統演算法；每個候選用完整訓練 run 在 Gymnasium 上端到端評估，演化後再用 LLM 提議超參區間做後處理微調。發現的演算法（CG-FPD、DF-CWP-CP）在 10 個環境上與 SAC/PPO/DQN/A2C 競爭；有趣的是被禁掉 TD 後，演化竟自發收斂到「世界模型 + 規劃蒸餾」這類 model-based 結構。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>RL 演算法的核心是<strong>學習更新規則</strong>，但它幾乎總是手工設計且固定。已有自動化只碰架構、超參、訓練訊號；少數碰更新規則（Oh 2020 可微更新函數、Co-Reyes 2021 結構化 loss 表達式）也只在<strong>受限的參數化表示</strong>內搜尋，產不出「以可執行訓練邏輯表達的根本不同更新規則」。更新規則空間是<strong>離散程式結構</strong>，梯度法與局部最佳化都不適用（小改動就質變學習動態、超參高度敏感），故需 population-based 演化；但更新規則是緊耦合訓練程序，盲目 mutation/crossover 幾乎只產出無效變體——因此需要 LLM 當「能提出連貫、可執行修改」的引導機制。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>形式化</strong>：RL 演算法 ≡ 更新規則 f，其核心是可微 loss <code>L_f(θ, ξ_t; D_t)</code>（θ 為固定 trunk 的策略參數，ξ 為更新規則引入的所有輔助可訓練元件/內部狀態）；在<strong>固定策略架構、optimizer、訓練迴圈</strong>下，每個不同 f 即一個不同 RL 演算法。</li>
+<li><strong>演化骨架（承 REvolve）</strong>：島嶼種群 + LLM 當變異算子；每代 LLM 提議連貫變體（mutation 編輯一個程式 / crossover 融合兩個），訓練評估後選擇更新種群。</li>
+<li><strong>強制非正統</strong>：變異時<strong>禁止顯式實例化 actor-critic 分解、bootstrapped value targets、TD 更新</strong>（只在演化搜尋期施加此約束）→ 逼出新穎更新規則。</li>
+<li><strong>適應度</strong>：每候選在 5 個訓練環境 × 5 seeds = 25 runs 端到端訓練，取各環境訓練中的最佳評估回報，用環境特定 reference bounds 正規化到 [0,1] 後跨環境聚合成單一 scalar fitness。</li>
+<li><strong>後演化超參優化</strong>：對 top 演算法，LLM 讀完整實作 + 環境規格，提議每個內部 scalar 的可行數值區間 → 評估穩健性、改善固定預算下的穩定性（因為 RL 對內部 scalar 極敏感、穩定 A 的超參常對 B 失效）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>演化進度</strong>：GPT-5.2 與 Claude 4.5 Opus 各跑兩 seed，最大 fitness 隨代單調上升；GPT-5.2 全程更高（末代 fitness 0.65–0.69）vs Claude 4.5 Opus（0.37–0.47，未產出有競爭力候選，後續排除）。</li>
+<li><strong>兩個發現的演算法</strong>：<strong>CG-FPD</strong>（Cross-Entropy Guided Fractal Plan Distillation，潛在表示 + 動力學學習 + 規劃當教師訊號 + 蒸餾式策略更新）與 <strong>DF-CWP-CP</strong>（Dual-Flow Confidence World Planning with Controllability Prior，世界模型 + 信心 + 雙流策略正則 + 可控性先驗）。</li>
+<li><strong>泛化</strong>：在 10 個環境（5 訓練 + 5 未見）上，經後演化超參調後與 PPO/A2C/DQN/SAC（相同 256×256 MLP）相比的最佳評估回報具競爭力；但學習曲線常<strong>非單調、末端不穩</strong>，靠 best-checkpoint 才達競爭水準。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>每代約 30 小時 wall-clock（4×A100 40GB）、每候選 25 個完整訓練 run——<strong>極其昂貴</strong>。</li>
+<li>適應度只在 5 個訓練環境算 → 有過擬合風險（故額外用 5 個未見環境測泛化）。</li>
+<li>學習動態非單調、訓練末端不穩，需靠 best checkpoint 取得最終效能。</li>
+<li>Claude 4.5 Opus 表現明顯較差，結果對 LLM backbone 敏感。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 D 類**「演化發現 RL 演算法」<strong>的最新里程碑——直接對標 <a class="paper-reference" href="2101.03958_Evolving_RL_Algorithms.%E6%91%98%E8%A6%81.html">2101.03958</a>（Co-Reyes 等的 Evolving RL Algorithms，搜尋結構化 loss 圖）與 <a class="paper-reference" href="2402.05828_Temporally_Aware_RL_Algorithms.%E6%91%98%E8%A6%81.html">2402.05828</a>（Temporally-Aware RL Algorithms），但把搜尋空間從「受限參數化/符號 loss」拉到</strong>完整可執行訓練邏輯**，並用 LLM 解決「盲目變異多半無效」的痛點。</li>
+<li>最值得記：**「禁用 actor-critic/TD/bootstrap 反而逼出 model-based 世界模型+規劃結構」**這個自發現象——暗示 RL 演算法空間中 model-based 是一個強吸引子；以及 <strong>「RL 演算法對內部 scalar 極敏感 → 演化後須 LLM 補一輪超參搜尋」</strong> 的工程教訓。</li>
+<li>與 <a class="paper-reference" href="2601.21847_READY_Reward_Discovery_MetaBBO.%E6%91%98%E8%A6%81.html">2601.21847</a> READY（演化發現 reward 而非 update rule）、<a class="paper-reference" href="2606.26327_EVOM_MetaEvolution_ActorCritic.%E6%91%98%E8%A6%81.html">2606.26327</a> EVOM（演化發現 actor-critic 架構而非 update rule）同屬「LLM-guided 演化發現 RL 元件」家族，但各打不同層（更新規則 / 獎勵 / 架構）。</li>
+<li>定位：方法 + 實證論文，適合做 meta-RL、AutoRL、LLM-as-evolutionary-operator、演算法發現的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2603.28416_Evolutionary_Discovery_RL_Algos_LLM.zh-TW.html"><code>../translate/2603.28416_Evolutionary_Discovery_RL_Algos_LLM.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

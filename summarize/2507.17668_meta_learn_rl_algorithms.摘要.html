@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《我們應該如何元學習強化學習演算法？》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Alexander D. Goldie, Zilin Wang, Jaron Cohen, Jakob N. Foerster, Shimon Whiteson（Oxford / FLAIR）</p><p>日期：2025-07，元學習 RL 演算法的方法比較</p><p>arXiv：2507.17668</p><p><a href="https://arxiv.org/abs/2507.17668" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="我們應該如何元學習強化學習演算法重點摘要">《我們應該如何元學習強化學習演算法？》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>這是第一份<strong>橫向比較「元學習演算法本身」的大規模實證研究</strong>：在 RL 場景下，把「黑箱演化（ES）、黑箱蒸餾（同尺寸/縮小）、符號蒸餾（PySR）、LLM 提案（o3-mini）」四五種「meta-learning algorithm」套到同一批「meta-learned algorithm」（LPO、LPG、OPEN、No Features）上，從<strong>分布內/外回報、樣本成本、訓練/測試時間、可解釋性、可擴展性</strong>多面向比較，最終給出實用設計準則——<strong>有好的暖啟動函數時優先用 LLM 提案（樣本高效、泛化最佳）；幾乎總值得試「同尺寸黑箱蒸餾」換取免費泛化；符號表示難擴展到多輸入/遞迴演算法；輸入多時只能靠黑箱</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>元學習（從資料自動發現演算法、取代人工設計）對 RL 特別有潛力，但<strong>過去幾乎沒有「不同元學習法之間」的直接比較</strong>——大家都只跟手工 baseline 比，導致不清楚各法的優劣與適用場景。本文補上這個空白。</p>
+<h2 id="核心概念區分圖-1">核心概念區分（圖 1）</h2>
+<ul>
+<li><strong>meta-learned algorithm（被學的演算法）</strong>：取代 RL 訓練流程中某個元件。本文選 4 種覆蓋不同特性（輸入數、是否遞迴、影響環節）：
+<ul>
+<li><strong>LPO</strong>：取代 PPO 的 mirror drift 損失函數（少輸入、前饋）。</li>
+<li><strong>LPG</strong>：取代 actor-critic 更新規則（19 輸入、backward-LSTM 遞迴、用 meta-gradient 訓）。</li>
+<li><strong>OPEN</strong>：為 RL 設計的學習式優化器，條件於可塑性損失/探索/非平穩等特徵（20 輸入，前饋與遞迴兩版）。</li>
+<li><strong>No Features</strong>：只用參數/梯度/動量的簡單優化器。</li>
+</ul>
+</li>
+<li><strong>meta-learning algorithm（怎麼學）</strong>：①黑箱 ES 演化；②黑箱蒸餾（同尺寸＝正則化；縮小＝欠擬合或助泛化）；③符號發現（因每程式計算圖不同難向量化，僅理論提及、不實測）；④符號蒸餾（用 PySR 把黑箱蒸成符號式）；⑤LLM 提案（基於 DiscoPOP，暖啟動 + o3-mini 推理迭代）。</li>
+</ul>
+<h2 id="關鍵結果iqm16-seeds">關鍵結果（IQM、16 seeds）</h2>
+<ul>
+<li><strong>LPO</strong>：所有蒸餾表現相近、常小幅提升泛化不傷分布內；<strong>LLM 分布內較差但分布外（o.o.d.）最佳</strong>（因提案都很接近 PPO 暖啟動）。重泛化選 LLM，要兼顧內外選同尺寸蒸餾。</li>
+<li><strong>No Features</strong>：Ant 上黑箱學不起來→蒸餾也救不了（限制：<strong>老師爛蒸餾無能為力</strong>）；<strong>LLM 全面最強</strong>（梯度優化在語料中常見、輸入易懂、又有調好的學習率）。</li>
+<li><strong>前饋 OPEN</strong>：輸入多→<strong>LLM 與符號蒸餾雙雙慘敗</strong>（符號收斂成近常數；LLM 連輸入都常用錯、產生報錯）；同尺寸蒸餾仍小幅助泛化。</li>
+<li><strong>遞迴 LPG / 遞迴 OPEN</strong>：蒸餾對 LPG 有助（大網路 200k 參數，正則化降方差）；對遞迴 OPEN 因展開太長而蒸餾失敗；LPG 無法暖啟動故排除 LLM（凸顯 <strong>LLM 須有起點</strong>的限制）。</li>
+<li><strong>總表（表1）</strong>：黑箱學習＝樣本高/慢/不可解釋/最可擴展；蒸餾＝免額外樣本；<strong>LLM＝樣本低/快/可解釋/中等擴展</strong>；符號蒸餾＝可解釋但難擴展。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>因成本高，每演算法只跑<strong>單一 seed、不調 meta 超參</strong>；符號發現未實測；未探索蒸餾的架構改變（如蒸成 transformer）；LLM 對超參敏感度未深究。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 D 類「meta-learning / 演化 RL」的<strong>方法選型指南</strong>：不是提新演算法，而是回答「該用哪種元學習法」。最值得記的是<strong>表 1 的多維權衡</strong>與四條設計準則。</li>
+<li>與符號迴歸路線呼應：<strong>符號表示在 RL 高維/遞迴下擴展性差</strong>，與 SR 論文（如 SyMANTIC）關於「AST 搜尋空間隨樹大小指數成長」的觀察一致。</li>
+<li>適合做 meta-RL、學習式優化器/損失函數、LLM 驅動演算法發現、蒸餾的人；附開源元學習函式庫。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2507.17668_meta_learn_rl_algorithms.zh-TW.html"><code>../translate/2507.17668_meta_learn_rl_algorithms.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

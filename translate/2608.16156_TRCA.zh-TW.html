@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>TRCA: Transition-wise Rubric Credit Assignment 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Huan Zhang、Mingju Chen、Dongxu Zhou、Can Lv、Heng Chang、Sen Cui、Faguo Wu、Shiji Zhou</p><p>日期：2026-08-17（v1，cs.AI）</p><p>arXiv：2608.16156</p><p><a href="https://arxiv.org/abs/2608.16156" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="trca-transition-wise-rubric-credit-assignment-for-long-horizon-llm-agents">TRCA: Transition-wise Rubric Credit Assignment for Long-horizon LLM Agents</h1>
+<h2 id="摘要與第-1-節問題">摘要與第 1 節：問題</h2>
+<p>長程 agent 訓練多用 sparse 終局 outcome，PPO／GRPO／RLOO 只給 trajectory 級監督，無法區分同一 trajectory 內哪些 action 有益、哪些有害。既有的 step-level 方案要嘛引入需要大量標註或推論成本的 process reward model（PRM），要嘛用成功軌跡當結構錨點傳播 credit（如 GiGPO、GraphGPO），但後者的有效性完全依賴成功軌跡的可得性。</p>
+<p>作者用 Qwen2.5-1.5B-Instruct 在多個長程任務上抽樣，發現 96.5% rollout 未達終局成功，85.6% 的訓練組完全沒有成功軌跡。但進一步人工標註加 LLM judge 分析顯示，失敗軌跡中仍有 72.2% 的 action 帶有可診斷的 transition 訊號（如有效執行或可量測的進度）。這指向一個問題：能否在沒有成功錨點、也不用額外訓練 evaluator 的情況下做可靠的細粒度 credit assignment？</p>
+<h2 id="第-3-節方法">第 3 節：方法</h2>
+<p><strong>Rubric 設計（3.2）</strong>：對每個任務類型，離線由 LLM 生成三類 rubric：Evidence（揭露任務相關實體/屬性/事實）、Invalidity（格式錯誤或不可執行的動作）、Execution（滿足任務子目標的動作）。訓練期間不再呼叫額外 judge model；rubric item 是否被滿足由 rule-based 的 transition 評估產生二元判定 O_{i,t,j}。</p>
+<p><strong>Foundational Rubric Reward（3.3）</strong>：每個被觸發的 rubric item 依類別給有號貢獻（Evidence／Execution 正、Invalidity 負），除以該類別 item 數 M_c 做正規化避免受 rubric 清單長度影響，同一 transition 的所有貢獻加總即為該 transition 的 Foundational reward，只分配給對應 step 的 action token。</p>
+<p><strong>Breakthrough Rubric Reward（3.3）</strong>：Foundational 會重複獎勵同一 rubric 條件被多次滿足，稀釋真正關鍵步驟的相對優勢。Breakthrough 用累積覆蓋率 C_{i,t,j}=max_{k≤t} O_{i,k,j} 構造 cumulative potential Φ_{i,t}（只計 Evidence／Execution，不計 Invalidity，因為後者已由 Foundational 懲罰），reward 是 potential 的 temporal difference：只有「這一步首次滿足此前未滿足的條件」才有分數。</p>
+<p><strong>Policy Optimization（3.4）</strong>：兩種 reward 以 λ 混合成 r^TRCA，疊加到 sparse 環境 reward（只在終局非零）上，算出帶折扣的 completion-aware return R_{i,t}。依環境特定資訊（頁面類型、任務謂詞等）把相似決策情境的 step 分組，在組內做 z-score 正規化得到 step-relative advantage A^S；再與 episode-relative advantage A^E（trajectory 級 GRPO 式 z-score，組內無成功時設為 0）相加，套進 PPO 式 clipped 目標訓練，可加 KL 正則。</p>
+<h2 id="第-4-節實驗作者自報">第 4 節：實驗（作者自報）</h2>
+<p><strong>ALFWorld／WebShop</strong>：Qwen2.5-1.5B 上 TRCA 整體成功率 92.0%（ALFWorld）、WebShop 分數 90.5%／成功率 78.4%，相較 GiGPO 分別 +5.3、+7.4、+13.4 個百分點；相較次強的 GraphGPO 也有 +3.8、+2.9 分。Qwen2.5-7B 上同樣全面領先，WebShop 成功率達 83.8%。</p>
+<p><strong>Search-augmented QA</strong>：涵蓋 NQ、TriviaQA、PopQA（單跳）與 HotpotQA、2Wiki、MuSiQue、Bamboogle（多跳）。Qwen2.5-3B 平均分 45.4%，優於 IGPO（+8.2）、GiGPO（+3.3），且在全部 7 個資料集上單項最佳；Qwen2.5-7B 平均分 48.4%，同樣領先所有比較方法。</p>
+<p><strong>樣本效率（4.4）</strong>：ALFWorld Pick_two 任務，僅 1.92K 條軌跡時 TRCA 就把成功率從 11.5% 拉到 34.6%；3.84K 條軌跡時達 69.2%，超過 GRPO 用 6.40K 條軌跡的 46.7%。Pick_cool 任務上 3.84K 條達 53.8%，逼近 GRPO 6.40K 條的 57.7%，作者稱少用約 40% 樣本。</p>
+<p><strong>Ablation</strong>：拿掉 Foundational 或 Breakthrough 任一項在 ALFWorld、WebShop、SearchQA 三個場域都退化，拿掉 Breakthrough 的降幅更大，作者解讀為「新覆蓋的 rubric 條件對關鍵動作的 credit 特別重要」。</p>
+<p><strong>λ 敏感度</strong>：ALFWorld 上掃 λ∈{0.2,…,1.0}，λ 越大越偏重 Breakthrough，對 Heat／Cool 等困難子任務有利，但 λ=1.0（完全捨棄 Foundational）整體成功率從 92.0%（λ=0.8）掉到 88.3%，作者選 λ=0.8 為經驗最佳平衡。</p>
+<h2 id="結論">結論</h2>
+<p>作者的核心論點：失敗不代表沒有監督，未成功的軌跡在其誘發的 state transition 裡仍蘊含大量可驗證證據。TRCA 把 credit 綁定在環境觀察到的變化而非稀缺的終局成功，在具身互動、網頁導覽、搜尋推理三類長程任務上一致提升表現、收斂速度與樣本效率，尤其在 rollout 預算有限時效果明顯。論文未單獨列出「限制」章節，但方法本身依賴離線生成的 rubric 品質與 rule-based transition 評估的正確性，這部分未做獨立於作者評測管線的第三方驗證。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2608.16156_TRCA.%E6%91%98%E8%A6%81.html"><code>../summarize/2608.16156_TRCA.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《HORMA：先組織、再檢索的階層式記憶導航》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Hao-Lun Hsu, Nikki Lijing Kuang, Boyi Liu, Zhewei Yao, Yuxiong He（Duke University / Snowflake AI Research）</p><p>日期：2026-06，LLM agent × 階層式工作記憶 × 強化學習檢索</p><p>arXiv：2606.11680</p><p><a href="https://arxiv.org/abs/2606.11680" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="horma先組織再檢索的階層式記憶導航重點摘要">《HORMA：先組織、再檢索的階層式記憶導航》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>HORMA 把 agent 記憶拆成兩個不同時間尺度的問題：高能力 LLM 先把原始軌跡整理成帶來源連結的檔案系統式階層，再由一個可用 <code>ls</code>、<code>grep</code>、<code>cat</code>、<code>select</code>、<code>done</code> 的輕量 agent 導航檢索；後者以 evidence-overlap reward 做 GRPO，目標是在有限 context 中找出「最少但足夠」的證據，而不是把語意相近片段一股腦塞回 prompt。</p>
+<h2 id="問題與關鍵判斷">問題與關鍵判斷</h2>
+<ul>
+<li>保留完整歷史會造成 context overload、資訊稀釋、延遲與成本；摘要、folding 等壓縮又會不可逆地丟失細節。</li>
+<li>常見 external memory 是扁平片段集合加 embedding top-k，難以保存時間順序、因果依賴與更新後的有效狀態。</li>
+<li>memory construction 與 retrieval 不該一起用稀疏 task reward 訓練。前者的影響延遲很久，後者卻直接位於每一步推論的 critical path；兩者綁在一起會產生 credit-assignment gap。</li>
+</ul>
+<h2 id="方法">方法</h2>
+<h3 id="grounded-workspace">Grounded workspace</h3>
+<ul>
+<li>每次 interaction／dialogue turn 的 raw trajectory 先進 timestamped directory，不被摘要取代。</li>
+<li>manager 再建立 entity log、event summary、state tracker 等結構化 notes；note 帶 temporal metadata 與 raw trajectory reference，摘要失真時仍可回到來源。</li>
+<li>manager 與 retriever 都只能透過可執行的檔案操作碰 workspace，使操作可觀察、可追蹤，也讓 construction 與 retrieval 可以分開改良。</li>
+</ul>
+<h3 id="記憶管理技能演化">記憶管理技能演化</h3>
+<p>Memory manager 由 domain-agnostic prompt 起步。作者對照 raw history 與 managed context 的成敗，分成兩種反例：</p>
+<ul>
+<li><code>D_exo</code>：raw history 成功、managed context 失敗，表示整理過程漏掉資訊。</li>
+<li><code>D_end</code>：managed context 成功、raw history 失敗，表示結構化記憶減輕 hallucination、lost-in-the-middle 或噪音干擾。</li>
+</ul>
+<p>LLM 對成對軌跡產生 feedback，再把跨任務 feedback 彙整成新的 management skills。這是非參數式、文字型的 iterative refinement，不更新 manager 權重。</p>
+<h3 id="導航式檢索">導航式檢索</h3>
+<p>Retriever 將階層 workspace 當成環境，用 Bash 導航；<code>select</code> 把已確認內容加入 context，<code>done</code> 表示證據足夠。訓練使用 GRPO，reward 是 retrieved context 與 ground-truth evidence 的 Jaccard overlap：相關證據漏拿會扣分，無關或重複內容拿太多也會扣分。</p>
+<h2 id="實驗結果">實驗結果</h2>
+<ul>
+<li><strong>ALFWorld</strong>：134 個任務、6 類型。Claude Sonnet 4.5 版本的 HORMA 在 1,950／2,200 input-token 限制下成功率為 <strong>56.7%／73.9%</strong>，同時位於 interaction steps 與 tokens per step 的較佳 Pareto 區域。</li>
+<li><strong>LoCoMo</strong>：519 個 QA 來自 3 段對話，另 7 段用於 Qwen 3.5 4B retriever 訓練。Claude retriever 的 HORMA LLM-judge overall 為 <strong>51.6</strong>，接近無限制 context 的 55.9，且高於 truncation 32.2。</li>
+<li><strong>LongMemEval</strong>：367 個 QA。Claude retriever 的 HORMA overall 為 <strong>55.9</strong>，高於 no-limit 20.4 與 truncation 34.1；這同時說明長 context 本身可能因 information dilution 比選擇性記憶更差。</li>
+<li>conversational tasks 中，各 HORMA variant 每題多在 1,000 tokens 內；論文報告 LoCoMo 只用各 baseline 的 <strong>3.07%–22.17%</strong> tokens，LongMemEval 為 <strong>1.24%–16.19%</strong>。</li>
+<li>Qwen 3.5 4B retriever 只用 LoCoMo 訓練，加入 skills + GRPO 後，LoCoMo <strong>32.6→42.2</strong>、LongMemEval <strong>40.6→58.0</strong>，retrieval calls 也下降；LongMemEval 結果超過 Claude retriever 的 55.9。</li>
+<li>memory manager 是瓶頸：低品質組織即使換上更強 retriever，改善仍小。skill library 在 LongMemEval 四輪後長到 <strong>63 skills</strong>。</li>
+</ul>
+<h2 id="局限與閱讀提醒">局限與閱讀提醒</h2>
+<ul>
+<li>論文沒有獨立 limitations 章節。由設定可見，workspace 品質高度依賴 frontier proprietary model；作者自己也證明 Qwen 3.5 4B 的低品質 construction 無法由強 retriever 補救。</li>
+<li>主結果多用 Claude Sonnet 4.5 同時擔任主 agent、manager、retriever，成本與 model drift 會影響重現。</li>
+<li>retrieval reward 需要 ground-truth evidence overlap，適合 benchmark training，真實任務通常沒有這種標註。</li>
+<li><code>select</code> 所謂「verified content」是 agent 的選擇動作，不等於外部事實驗證；來源連結提高可稽核性，但不自動保證 note 正確。</li>
+<li>ALFWorld 的 small/large 限制只差 250 tokens，conversation benchmarks 則採 10K／50K 上限；不能把三者的效益視作同一種 scaling 證據。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<p>這篇最值得帶回 Agent Machine 的不是「把記憶做成資料夾」這個表面設計，而是三個語意分離：raw event 與 derived note 分離、construction 與 retrieval 分離、強模型的慢速整理與小模型的 critical-path navigation 分離。它直接支持 context pager 以 manifest 組裝 view、每個摘要保留 source refs，以及把 cache／summary 視為可重建的派生狀態，而非權威事實。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2606.11680_HORMA.zh-TW.html"><code>../translate/2606.11680_HORMA.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

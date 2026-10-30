@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2211.15458_ReLM.zh-TW.html">回 2211.15458_ReLM.zh-TW 目錄</a>　<a href="02_ReLM.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>雖然大型語言模型（LLM）以能生成自然流暢文本著稱，但外界日益擔憂其負面效應——資料記憶化、偏見、不當語言。LLM 的複雜度與生成能力使得驗證（並修正）這些問題變得困難。本文提出 <strong>ReLM</strong>：一個用<strong>標準正則表達式（regular expression）<strong>來驗證與查詢 LLM 的系統。ReLM 把各式語言模型評測</strong>形式化</strong>，將複雜的評測規則化約為簡單的正則查詢。我們在記憶化、性別偏見、毒性、語言理解上的實驗顯示：相較最先進的 ad-hoc 查詢，ReLM 達到最高 <strong>15× 的系統效率</strong>、<strong>2.5× 的資料效率</strong>，並提升統計與提示調校（prompt-tuning）的涵蓋度。ReLM 為「LLM 驗證」這個日益重要的問題提供了一個有競爭力且通用的基線。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM（如 GPT-3、PaLM）廣泛用於 NLP，但即便是看似簡單的<strong>驗證 LLM 行為</strong>都令人憂心：LLM 可能回吐記憶的訓練資料、編碼偏見、產出不當內容。現有測試多為 <strong>ad-hoc</strong>：維護者用 LLM 專屬工具把測試邏輯硬編碼，使用者靠擴充程式或供給模板參數（動輒數百萬行 JSON）加題，因此難維護、難修改、難擴充——把「期望的 LLM 行為」轉成可執行的測試向量，責任全落在使用者身上。</p>
+<p>以「測 LLM 是否知道華盛頓生日」為填空題為例（圖 1）：</p>
+<ul>
+<li><strong>(a) 多選題</strong>：給少數幾個日期讓模型排序。但一年 12 月、一月 31 天、上千年份＝數百萬候選，日期選法會偏誤評測——換入更可能的候選答案就翻盤，易假陽性。</li>
+<li><strong>(b) 自由作答</strong>：允許任意補全，卻要對照「正確日期的所有表示法」評分任意字串，幾乎不可控（每個回應如「1732 年的今天」或「a farm」都要考慮並評分）。</li>
+<li><strong>(c) 結構化查詢</strong>：對 <code>&lt;Month&gt; &lt;Day&gt;, &lt;Year&gt;</code> 這種模式的所有日期查詢，兼得 (a) 的精確與 (b) 的通用，且<strong>保證</strong>只從期望字串集合抽樣。ReLM 發現 GPT-2XL 排名最高的預測其實錯誤（正解落在前 10），而小號 GPT-2 連 (a) 都分辨不出。</li>
+</ul>
+<p><strong>ReLM＝Regular Expression engine for Language Models</strong>，是首個「把查詢表達成完整測試模式集合」的系統，讓實務者直接量測「大到無法枚舉」的字串集合上的 LLM 行為。成功關鍵是用<strong>從正則導出的圖表示</strong>緊湊地表示解空間，再編譯成 LLM 專屬表示並執行——使用者不需理解 LLM 內部實作。程式化一個驗證任務只需兩步：① 用正則形式化「感興趣的字串集合」、② 指示引擎如何枚舉與評分。記憶化＝在 LLM 中找到訓練資料樣本；偏見＝取樣句子中資料的共現；毒性＝在生成句中找到侮辱詞；知識＝賦予正解更高機率。</p>
+<p><strong>四項貢獻</strong>：(1) 對 LLM 預測的正則表達式形式化（不像多選有限、也不像自由作答會冒出雜訊答案，ReLM 結果永遠良定義）；(2) 辨識並建構兩類常用推理查詢——<strong>條件生成與無條件生成</strong>，並首次以自動機支援「同一字串的多種替代編碼」；(3) 設計實作「正則→推理引擎」，高效把正則映為有限自動機，含最短路徑與隨機走訪，秒級輸出且 GPU 使用率具競爭力；(4) 在四類任務上以 GPT-2 系列評測，展示 15× 加速或 2.5× 資料效率。</p>
+<h2 id="2-背景與相關工作">2. 背景與相關工作</h2>
+<h3 id="21-llm-驗證版圖的變遷">2.1 LLM 驗證版圖的變遷</h3>
+<p>Transformer 是眾多 LLM 骨幹。自回歸模型（GPT 家族）把任務規格寫進輸入（prompt）以適配下游任務；遮罩模型（BERT 家族）以微調轉移。近年 LLM 在許多基準上超越人類，令人擔憂標準基準已不足以追蹤進展，需要更嚴謹且全面的驗證，涵蓋：① 輸入與輸出空間的字串、② 足夠難以形成「評分曲線」的內容、③ 依領域（記憶化、偏見、毒性、知識）拆解的多樣模型行為。目前黑箱評分主要兩式：多選題（給 2–10 個補全打分取最可能者）與自由作答（任意補全），兩者都把答案（多半逐字）比對參考解。LLM 驗證因而類比軟體工程對「LLM 輸出空間字串」的單元測試（GPT-2 的輸出空間達 10^4000 之譜）。</p>
+<h3 id="22-指定-llm-的輸入輸出">2.2 指定 LLM 的輸入/輸出</h3>
+<p>LLM 輸入輸出多為字串，構造字串輸入稱 <strong>prompt engineering</strong>；測試字串輸出多可視為填空（fill-in-the-blank）測試的推廣——即人類心理學的 <strong>cloze test</strong>，也是遮罩式 LLM 的訓練原語（自回歸 LLM 對遮罩有因果約束）。測試設計本身是活躍領域：有人專注對抗性輸入，有人請專家精調輸入以測特定能力，有人主張用大而精構的資料集連帶測偏見。</p>
+<h3 id="23-以形式語言表達輸入輸出">2.3 以形式語言表達輸入/輸出</h3>
+<p>許多 LLM 任務有精確的輸入/輸出關係，可用<strong>形式語言</strong>研究。字母表 Σ 是有限符號集（符號可代表 ASCII 字元、LLM token 等）；字串是符號序列；語言 L 是 Σ* 的子集。<strong>正則表達式</strong>在字串字面量上加入「或（a|b）」與「零或多次重複（a*）」，等價於<strong>有限狀態自動機</strong>（狀態集 Q、符號集 Σ、轉移函數 δ、初態 q₀、終態集 F 構成的有向圖）。**Transducer（轉換器）**是有輸出符號與邊權的自動機推廣，把一種語言映到另一種，並支援差集、交集、組合等代數運算。本文大量用到 cloze 類語言：若前提為字串 α 後接模式/遮罩 β，測試即在其串接語言 L=αβ 上進行。</p>
+<h3 id="24-用形式語言測試-llm">2.4 用形式語言測試 LLM</h3>
+<p>LLM 對海量字串賦機率，須有<strong>決策規則</strong>把機率轉成「字串是否屬於某語言」的二元判定。自回歸 LLM 以左到右逐 token 預測形成總機率 <code>p(x₁…xₙ)=∏ p(xᵢ|x₁…xᵢ₋₁)</code>。決策規則常烘進解碼：top-k 拒絕不在前 k 名的 token、貪婪（greedy）即 k=1、top-p 用分佈截斷。一個自然規則是「該字串在此解碼方案下能被吐出（p(x)&gt;0）就納入語言」。LLM 生成可含<strong>輸入前綴（prefix）<strong>α——不受解碼規則影響、定義上就在語言內；輸出可為</strong>開放（β=Σ*，自由作答）<strong>或</strong>封閉（可用「或」枚舉，多選）</strong>。既然未增強的 LLM 是正則語言，此程式模型同等強大。本文聚焦驗證任務：在給定 LLM 決策規則（如 top-k）下，把任務以形式語言表述並求解。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_ToolkenGPT：掌握海量工具 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.11554_ToolkenGPT.zh-TW.html">回 2305.11554_ToolkenGPT.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-toolkengpt掌握海量工具">3. ToolkenGPT：掌握海量工具</h2>
+<p><strong>背景與記法</strong>：LLM 把詞 token 序列 s=(t_1,…,t_n) 的機率建模為各步條件機率之積，每個 token 來自詞彙表 𝒱。下一 token 分佈為 P(t_i|t_&lt;i)=softmax(W_ν·h_{i-1})，其中 h_{i-1}∈ℝ^d 是當前脈絡最後的隱狀態，W_ν∈ℝ^{|𝒱|×d} 是詞 token 的嵌入矩陣（即 LM head）。給定工具集 𝒯={τ_1,τ_2,…}，目標是讓 LLM 呼叫其中一個子集來解題；工具既可回傳結果幫助文字生成（如計算），也可影響真實環境（如機器人動作）。呼叫工具要先選工具、再輸入參數（如圖 1 例：選 <code>square</code> 工具、生成運算元 16、執行得 256 注回生成流）。</p>
+<h3 id="31-框架總覽">3.1 框架總覽</h3>
+<p>核心是把工具明確表述為 token（toolken），每個 toolken 參數化為一個 embedding 向量，全部組成矩陣 W_τ∈ℝ^{|𝒯|×d}。推理時 LLM 預設在 reasoning mode 生成下一 token，而<strong>工具嵌入矩陣與 W_ν 拼接</strong>，使 LLM 一致地看待詞 token 與 toolken：</p>
+<blockquote>
+<p>P(t_i|t_&lt;i) = softmax([W_ν; W_τ]·h_{i-1})   （式 1）</p>
+</blockquote>
+<p>其中下一 token 可以是詞 token 或 toolken（t_i ∈ 𝒱∪𝒯），[;] 為拼接。此表述天然支援<strong>加新工具＝擴充 W_τ</strong> 的快速適應。</p>
+<p>要執行工具，一旦其 toolken 被預測為下一 token，LLM 就切到 <strong>tool mode</strong> 生成參數：暫停生成、把當前脈絡接到另一段 prompt；該 prompt 含<strong>該預測工具專屬</strong>的脈絡內示範，以特殊語法 <code>[tool](arguments)</code> 展示如何生成參數。相較於完全依賴 in-context learning 的先前方法（ReAct 等），本框架<strong>只把「補參數」這件易事留給 in-context learning</strong>，且單一工具可有充裕的 context 空間放大量示範（近似經典的分而治之）。參數補齊後送去執行，回傳值注回 reasoning mode 的文字。</p>
+<h3 id="32-學習-toolken-embedding">3.2 學習 toolken embedding</h3>
+<p>框架凍結原始 LLM 參數，只引入 toolken embedding W_τ 這一極小訓練開銷——<strong>唯一要優化的就是 W_τ</strong>。不同於 prompt tuning / prefix tuning，它<strong>不需梯度流經 LLM 主體</strong>，訓練更穩定高效，記憶體幾乎等同推理。加入新工具時可方便地擴充 embedding，後續在含該工具的示範資料上訓練會逐步精煉它。且不同於只吃少量範例的 in-context learning，ToolkenGPT 能從海量示範調 toolken embedding。</p>
+<p><strong>訓練資料格式與目標</strong>：如同嬰兒透過大人示範學新工具，本文主要以工具示範學 toolken embedding（可為領域內訓練資料，或 LLM 合成的資料）。以圖 1 為例，&quot;the area is 256 square feet…&quot; 被 tokenize 為 s=(&quot;the&quot;,&quot;area&quot;,&quot;is&quot;,&quot;2&quot;,&quot;5&quot;,&quot;6&quot;,&quot;square&quot;,&quot;feet&quot;,…)。需要一條<strong>平行序列</strong> s&#x27;，把工具回傳值的位置換成 toolken 與 <code>[N/A]</code>：s&#x27;=(&quot;the&quot;,&quot;area&quot;,&quot;is&quot;,&quot;[square]&quot;,&quot;[N/A]&quot;,&quot;[N/A]&quot;,&quot;square&quot;,&quot;feet&quot;,…)。即 s 中 (&quot;2&quot;,&quot;5&quot;,&quot;6&quot;) 是工具結果該填入之處，s&#x27; 對應的第一個 token 取為該工具呼叫的 toolken，其後 token 填 <code>[N/A]</code> 表示 loss 計算時略過。於是給定配對資料集 𝒟={(s,s&#x27;)}，訓練目標為：</p>
+<blockquote>
+<p>ℒ(W_τ) = Σ_{(s,s&#x27;)∈𝒟} Σ_{i=1}^N −log P(t&#x27;<em>i|t</em>&lt;i)·𝟙_{t&#x27;_i≠[N/A]}   （式 2）</p>
+</blockquote>
+<p>其中 P(·) 由式 1 定義，指示函數在 t&#x27;_i 為 <code>[N/A]</code> 時忽略該 token。因此<strong>訓練過程與 reasoning mode 的推理高度一致</strong>：要呼叫工具，LLM 唯一要做的就是在開頭預測出 toolken，回傳值再填回文字；<code>[N/A]</code> 用來跳過工具回傳值的生成。</p>
+<p><strong>取得配對資料的兩種方式</strong>：（1）<strong>有現成 ground truth</strong>——有些資料集本身附工具呼叫，如 KB 中支撐答案的事實、解數學題的計算軌跡，預處理成配對資料做監督學習。（2）<strong>用 LLM 合成示範</strong>（近似 self-instruct，直觀理解為把 LLM 內部知識<strong>蒸餾</strong>進新的 toolken embedding）：用工具文件加少量帶特殊語法的示範提示 LLM（如 <code>The capital of U.S. is &lt;capital&gt;(&quot;U.S.&quot;)=&quot;Washington D.C.&quot;</code>），LLM 便能生成新的使用範例並以相同語法標出工具呼叫，再定位並處理成配對資料。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

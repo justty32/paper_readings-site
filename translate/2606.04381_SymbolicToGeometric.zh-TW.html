@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>From Symbolic to Geometric: Enabling Spatial Reasoning in Large Language Models 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Chen Chu、Bita Azarijoo、Li Xiong、Khurram Shafique、Cyrus Shahabi</p><p>日期：2026-06-03（v1，cs.LG）</p><p>arXiv：2606.04381</p><p><a href="https://arxiv.org/abs/2606.04381" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="from-symbolic-to-geometric-enabling-spatial-reasoning-in-large-language-models">From Symbolic to Geometric: Enabling Spatial Reasoning in Large Language Models</h1>
+<h2 id="摘要與問題">摘要與問題</h2>
+<p>大型語言模型看似能做空間推理，許多時候其實是在離散文字符號上重組模式。地名、座標與關係詞能喚起訓練語料裡的關聯，卻不是對連續空間做幾何運算。碰到距離、拓撲、相對位置或多實體一致性，這種符號式做法容易幻覺、累積計算誤差，也難泛化到訓練時沒見過的地點。外部地圖與計算工具能補救個別任務，但增加延遲與脈絡交換成本，也沒有讓模型本身獲得幾何表示。</p>
+<p>作者提出空間語言模型 SLM，把位置當成與文字並列的第一級模態。模型不只讀地名或座標字串，而是直接接收學到的空間向量，在推論過程中近似面積、長度、距離、拓撲與比較等幾何函式。論文另建空間指令資料集來對齊幾何表示、原子運算與自然語言，並提出 SpatialEval 評估屬性、距離、拓撲與相對位置推理。</p>
+<h2 id="方法幾何表示與交錯接地">方法：幾何表示與交錯接地</h2>
+<p>SLM 以 Geo2Vec 作統一空間編碼器，將點、道路、建築與區域等異質地理實體映入同一向量空間；向量同時承載形狀與絕對位置，再經空間 adapter 投影到語言模型的詞嵌入空間。統一表示的目的，是讓不同實體類型共用內部幾何函式，不必為每種符號格式另學一套規則。</p>
+<p>地理實體會與自然語言交錯出現。提示中的實體以 <code>&lt;NAME&gt; &lt;PHRASE&gt; &lt;GEO&gt;</code> 表示，其中 <code>&lt;GEO&gt;</code> 在模型內被對應的空間向量取代。評估時，作者以索引代替真實地名，避免模型靠既有地名知識答題；同一題有多個實體時，索引分別對應各自的幾何向量。這項設計把「知道某地的名字」與「能從位置表示推理」拆開。</p>
+<h2 id="空間指令資料與-spatialeval">空間指令資料與 SpatialEval</h2>
+<p>指令資料採問答形式，並把複雜問題拆成原子空間函式。單一實體題監督面積或長度等屬性；關係題處理距離、包含、相交與位於內部；限定條件題則組合多個原子函式，比較候選實體。答案把運算軌跡放入 <code>&lt;geo_think&gt;</code> 結構，使模型學到實體接地與函式組合，而不只模仿最後答案。</p>
+<p>為增加語句多樣性，作者先收集各題型的種子問題，再用大型語言模型做保持空間意圖的提示演化。演化後的複雜問題由代理在限定的原子函式集合中規劃呼叫，記錄最小且接地正確的函式軌跡，最後蒸餾回模型。代理只參與訓練資料建構，正式推論不需要呼叫外部幾何工具。</p>
+<p>SpatialEval 分開測試單一實體屬性與多實體關係。實驗資料涵蓋都市尺度的興趣點、道路與建築，以及國家尺度的行政區多邊形；訓練與測試實體彼此分離。基線包含開源與商用語言模型、視覺語言模型，以及直接在空間表示上訓練的預測器。文字模型拿到明確座標，SLM 則拿到幾何向量，藉此比較符號表示與幾何表示。</p>
+<h2 id="實驗作者自報">實驗（作者自報）</h2>
+<p>整體結果顯示，文字座標基線在數值與多實體關係題上常產生無效回答或高誤差；指令微調雖改善格式遵循，仍落後直接使用幾何表示的方法。SLM 在不同實體類型與未見地區上較穩定，也能把訓練中學到的原子操作組合到未見的查詢結構。</p>
+<p>效率比較使用相同骨幹與相同距離題。SLM 平均只需 30 個輸入 token、30.7 個輸出 token，推論時間為 1.9 秒。作者將其解釋為固定長度幾何表示的優勢：符號式顯式計算要展開長推理，代理式方案則需額外交換工具脈絡。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>論文把空間推理能力的焦點從文字中有沒有地理知識，轉到模型能不能直接操作幾何表示。SLM 以統一向量接地異質實體，再用結構化指令資料教會模型組合幾何函式；實驗支持這種表示比座標字串與純文字地名更準確、更有效率。</p>
+<p>限制也很清楚。SLM 的準確度受底層空間表示品質約束，原文特別指出面積估計仍是現有表示學習的難題。訓練與測試集中於指定地理資料與空間題型，代理式方法也只納入效率比較，沒有作為準確度基線。作者把一般 GeoQA 與更廣泛的語意組織列為後續方向，因此目前結果不能直接外推到任意地理問答。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2606.04381_SymbolicToGeometric.%E6%91%98%E8%A6%81.html"><code>../summarize/2606.04381_SymbolicToGeometric.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

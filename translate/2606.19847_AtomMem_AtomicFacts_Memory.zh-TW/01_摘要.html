@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.19847_AtomMem_AtomicFacts_Memory.zh-TW.html">回 2606.19847_AtomMem_AtomicFacts_Memory.zh-TW 目錄</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>LLM 展現強大推理與生成能力，但固定上下文窗口限制了跨多會話互動的長期資訊累積與重用。既有記憶增強系統常以粗糙不穩的方式構建記憶，依賴低效的記憶表示或不穩定的無約束更新。為此我們提出 <strong>AtomMem</strong>，一個為「高價值密度儲存」與「穩定記憶演化」而設計的長期記憶系統。AtomMem 引入 <strong>Fact Executor</strong>，從長篇互動中選擇性抽取高價值原子事實作為高效記憶表示；隨後把這些事實組織成分層事件結構與時間檔案，捕捉連貫的情節脈絡並追蹤隨時間動態演化的用戶屬性；檢索時激活聯想記憶圖以連結碎片化記憶。在 LoCoMo 基準上的實驗確認 AtomMem 在各種推理任務上達到 SOTA，為部署智慧個人化 agent 提供可擴展且經濟可行的解。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 已被擴展成能進行跨日甚至跨月多輪對話的互動 agent，要求 agent 累積並組織有用記憶。但受固定長度上下文窗口約束，既有模型常難在長上下文中維持連貫與準確檢索，導致實際失敗：忘記用戶偏好、重複先前已解問題、與既定事實矛盾。</p>
+<p>越來越多工作探索以外部記憶模組增強 LLM（如 Mem0 用圖資料庫增強關係組織、A-Mem 在無預定規則下啟用動態記憶演化）。然而既有系統仍面臨根本兩難：<strong>存原始對話</strong>最大化資訊保留但讓 RAG 被冗餘噪聲淹沒、迫使模型處理無關上下文；反之<strong>濃縮表示</strong>緊湊卻不可避免地丟細節並隨時間累積 LLM 生成的噪聲。因此在「高資訊密度」與「上下文保真」間取得平衡至關重要——<strong>精確可靠的底層記憶表示，是任何有效記憶系統的根本前提</strong>。</p>
+<p>此外用戶記憶<strong>本質動態</strong>：偏好、經驗、目標隨時間演化，要求系統有效累積並維持一致的用戶狀態。近期工作探索動態記憶演化，但這些方法通常依賴頻繁的 LLM 驅動改寫來更新既有條目；雖啟用靈活組織與持續適應，<strong>無約束更新引入嚴重不穩定</strong>——幻覺或錯誤編輯可反覆修改同一記憶條目，導致失控膨脹與原事實的破壞。再者有用記憶常分散於多會話，而當前系統多依賴對孤立項的扁平檢索，難捕捉跨會話複雜關聯。</p>
+<p>AtomMem 以原子事實為核心，把用戶互動組織成分層記憶結構、透過圖式聯想召回激活相關記憶。核心是一個 SFT 微調的 Fact Executor，從原始對話抽取自包含原子事實（選高價值資訊並做指代消解、時間錨定等輕量推理）。原子事實作為記憶的基本語義單元，使 AtomMem 能透過語義與時間推理把新資訊關聯到既有事件或創建新事件，把孤立事實轉成情節記憶；以累積事實證據構建時間檔案記憶，增量追蹤穩定屬性並適應偏好遷移、同時保留歷史；檢索時激活記憶圖（透過實體重疊、共享事件、對話延續連結事實）促進關聯記憶召回。</p>
+<p><strong>貢獻</strong>：(1) 提出以原子事實為核心、透過圖式聯想召回生成記憶感知回應的長期記憶框架，為 LLM agent 提供穩定可擴展的長期儲存；(2) 引入原子事實抽取模組，把噪聲原始對話轉成帶結構化元資料的自包含儲存單元，並釋出高品質資料集；(3) 在長期基準上一致勝過 SOTA 基線，簡化的事實級變體以極低成本達競爭性表現，完整模組設計再帶顯著增益。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p><strong>RAG</strong>：以外部非參數知識增強模型（REALM 證明顯式檢索改善開放域 QA；後續以查詢處理、神經重排優化檢索品質；ActiveRAG、Self-RAG 引入動態檢索時機與輸出批判）。<strong>記憶增強 LLM agent</strong>由其主要記憶抽象定義：部分系統把記憶表示為文字經驗或高層反思（Think-in-Memory 存演化的歷史思考；RMM 跨粒度動態摘要）；第二類聚焦符號/關係記憶（RET-LLM 三元組、Mem0 知識圖）；MemGPT、MemoryOS 以顯式分層介面管理記憶；A-Mem、MEM1 探索自組織或學習式策略。評測資料集如 LoCoMo、LongMemEval 評超長對話記憶，PERMA 測動態用戶剖析與偏好演化。</p>
+<h2 id="3-方法">3. 方法</h2>
+<p>AtomMem 把非結構化對話流轉成結構化、檢索友善的記憶表示：先抽自包含原子事實、把相關事實整併成情節事件記憶、以時間檔案動態建模用戶狀態；檢索時透過記憶圖激活相關記憶並整合生成最終回應。</p>
+<p><strong>3.1 原子事實抽取</strong>：隨互動變長，有用資訊稀疏分布於噪聲對話輪，且原始對話常依賴隱式上下文（未消解代詞、相對時間參照），孤立檢索時變模糊。目標是把原始對話會話轉成一組結構化、自包含的原子事實 F。為此引入 SFT 訓練的 Atomic Fact Extractor，做必要去噪與輕量推理（如指代消解）。由於生成高品質原子事實需複雜推理，僅靠啟發式規則或零樣本提示效果次優，故以兩階段資料構建流水線建高品質資料集 𝒟，訓練一個輕量 LLM：給定指令 I 與對話上下文 C，最大化目標原子事實 F 的似然。</p>
+<p><strong>3.2 事件記憶</strong>：透過語義與時間推理，把新原子事實關聯到既有事件或創建新事件，將孤立事實轉成情節記憶。</p>
+<p><strong>3.3 狀態演化：時間檔案建模</strong>：從累積事實證據增量追蹤穩定用戶屬性、適應偏好遷移，同時保留歷史資訊——這是相對無約束改寫的穩定更新設計。</p>
+<p><strong>3.4 圖式聯想召回</strong>：檢索時激活記憶圖，透過實體重疊、共享事件、對話延續三條關係通道連結事實。基於種子事實 R_seed 構建查詢特定局部子圖，沿關鍵詞、事件、對話輪三個關係通道擴展候選鄰居（分別捕捉主題相似、事件共現、局部時間鄰近），以多通道轉移矩陣 + 個人化 PageRank（PPR）排序候選事實。</p>
+<pre><code class="language-mermaid">flowchart LR
+  D[原始多會話對話] --&gt; FE[Fact Executor · SFT&lt;br/&gt;抽原子事實+指代消解+時間錨定]
+  FE --&gt; AF[原子事實庫]
+  AF --&gt; EV[事件記憶 · 分層情節]
+  AF --&gt; TP[時間檔案 · 穩定屬性+偏好遷移]
+  EV &amp; TP &amp; AF --&gt; G[聯想記憶圖&lt;br/&gt;實體/事件/對話三通道 + PPR]
+  G --&gt; R[記憶感知回應]
+</code></pre>
+<h2 id="4-實驗">4. 實驗</h2>
+<p><strong>主結果</strong>（表 1）：AtomMem 在所有指標達 SOTA。單跳任務穩定領先；在需長上下文整合與複雜推理的多跳與時間任務上，比最強基線 LightMem 的 J-score 各高 <strong>5.5% 與 31.1%</strong>；開放域任務 J-score 拉到 <strong>64.58</strong>（MEM0 為 54.17）。分層記憶架構成功彌合查詢與遠端歷史脈絡的語義鴻溝，追蹤隱式敘事連結而非表面相似。</p>
+<p><strong>成本效率</strong>：儘管有記憶構建開銷，總 token 消耗比高效能的 Mem0 降約 <strong>61.4%</strong>——把冗餘對話流壓成緊湊高價值原子單元，避免檢索時上下文被低效 token 淹沒。</p>
+<p><strong>Flat 變體</strong>：AtomMem-Flat（無分層事件結構、僅檢索原子事實）顯著勝過在原始對話歷史上運作的標準 LoCoMo 基線——在多跳推理把 F1 從 20.97 拉到 37.03（相對 +76.6%），且用所有方法中<strong>最少的 token（722k）</strong>。此結果有力證明：<strong>記憶儲存品質至上，精巧的系統編排無法彌補有缺陷的記憶表示或資訊損失</strong>。</p>
+<p><strong>消融</strong>（表 2）：Flat 變體用簡單扁平檢索仍顯著勝標準 LoCoMo 基線，證明結構化原子事實提供高度優越的記憶表示。去時間檔案使單跳 F1 從 56.66 掉到 50.91，說明追蹤穩定用戶屬性關鍵；去圖召回使多跳明顯下降，凸顯孤立原子事實無關係鏈無法解遠端依賴。事件層權重分析顯示 w_e=0.7 為最佳折衷（過低退化為事實級語義搜尋、過高被全域事件相關性主導而檢索到語義不對齊的事實）。</p>
+<h2 id="結論">結論</h2>
+<p>AtomMem 以原子事實為核心、組織成分層事件與時間檔案、以聯想記憶圖檢索，在 LoCoMo 上達 SOTA 且大幅省 token，為部署智慧個人化 agent 提供可擴展且經濟可行的長期記憶解。核心訊息：<strong>底層記憶表示的品質是長期記憶系統的根本前提</strong>。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

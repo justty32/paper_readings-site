@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>EM-NeSy：神經符號學習的期望最大化（EM-NeSy: Expectation Maximization for Neurosymbolic Learning） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Annegret Seibt, Luc De Raedt, Giuseppe Marra（KU Leuven 計算機科學系）</p><p>日期：2026-06</p><p>arXiv：2606.14463</p><p><a href="https://arxiv.org/abs/2606.14463" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="em-nesy神經符號學習的期望最大化">EM-NeSy：神經符號學習的期望最大化</h1>
+<p>KU Leuven 計算機科學系</p>
+<h2 id="摘要">摘要</h2>
+<p>神經符號（NeSy）模型整合神經網路與符號推理以達穩健、可解釋的 AI。SOTA NeSy 模型要求符號組件以可微方式表達，常使近似推論的使用變得複雜。我們提出 <strong>EM-NeSy</strong>，把機率式 NeSy 學習鑄成<strong>期望最大化（EM）演算法</strong>的一個實例。<strong>期望步（E 步）</strong>：經機率推論，計算「給定標籤下、神經預測符號的後驗」。<strong>最大化步（M 步）</strong>：依此後驗，<strong>僅穿過神經組件</strong>用梯度下降更新神經參數。此形式化釋放 EM 演算法在 NeSy 學習上的全部潛力：讓 NeSy 自然延伸到近似推理，<strong>不需對符號組件做任何額外修改或可微性要求</strong>；且在精確推論下<strong>還原標準端到端梯度式 NeSy</strong>。實驗證明 EM-NeSy 的可擴展性與計算效率。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>NeSy 結合神經網路的感知強項與符號邏輯的推理能力，使系統能處理原始感測資料、同時對高階概念維持結構化可解釋推理。連續神經與離散符號邏輯的整合可經數值或模糊鬆弛實現。De Raedt 提出公式</p>
+<blockquote>
+<p><strong>Neurosymbolic = Neural + Logical + Probabilistic</strong></p>
+</blockquote>
+<p>凸顯機率語意為連結神經與邏輯組件的自然選擇（以原則性方式建模神經輸出間的不確定性）。此範式被 SOTA NeSy 廣泛採用：對神經輸出做機率推論，使其能<strong>端到端</strong>訓練神經組件——即先穿過符號、再穿過神經組件反傳梯度。</p>
+<p>雖機率易微分，但<strong>精確機率推論是 #P-hard</strong>，並非總可行——且訓練時常不必要（近似推論常足以提供學習訊號）。然而訴諸近似推論時，可微性會變棘手：抽樣本質不可微（已有大量梯度估計子 / reparameterization 研究）；Pearl 信念傳播、對偶分解 / LP 鬆弛式近似 MAP 推論等迭代法雖理論可微，但對其所有迭代反傳實務上開銷巨大。</p>
+<p>我們提出基於 EM 的 NeSy 學習法。<strong>E 步</strong>：算「給定目標標籤下、神經預測符號變數的後驗」。<strong>M 步</strong>：依 E 步後驗，僅穿過神經組件本身用梯度下降更新其參數。因此<strong>不論可微與否，E 步可用任何符號推論引擎（精確或近似）</strong>——這是重大操作優勢，可採用任何專用、最佳化過的軟體，不論符號框架為何。且 EM-NeSy 在精確推論下還原標準 NeSy。</p>
+<p><strong>主要貢獻</strong>：</p>
+<ul>
+<li>把 NeSy 學習重鑄入（傳統上全機率的）EM 框架，使能用 Generalized EM、Stochastic EM、Hard EM 等進階變體以增彈性與可擴展性；</li>
+<li>提出整合<strong>任何</strong>機率推論引擎的通用框架，無需符號推論過程可微；</li>
+<li>跨多種精確與近似推論方法的實驗評估，證明有效性與通用性。</li>
+</ul>
+<h2 id="2-預備知識">2 預備知識</h2>
+<ul>
+<li>2.1 EM 演算法：對數似然 log p(y|θ)=log Σ_z p(y,z|θ) 因對隱變數求和常不可解，EM 交替 E/M 步。</li>
+<li><strong>隱變數模型</strong>（圖 1a）：subsymbolic 輸入 X、隱符號變數 Z、符號輸出 Y。一般學習任務＝從 subsymbolic 輸入 X 預測符號輸出 Y。</li>
+<li><strong>例 2.1（Visual Sudoku）</strong>：輸入 9×9 手寫數字格，標籤僅為「是否構成有效數獨」、無單一數字監督。神經組件對每格輸出數字機率分布；符號組件編碼數獨規則，用這些機率算「整格為有效數獨配置」的似然；該似然再用來訓練。</li>
+</ul>
+<h2 id="3-em-nesy-學習框架">3 EM-NeSy 學習框架</h2>
+<ul>
+<li>證明精確推論下與標準 NeSy 等價。</li>
+<li>提出 EM 專屬近似以加速收斂；Stochastic EM 用學習率 γ 做多次小步，較單大步更穩、適合大規模 / 串流資料。</li>
+</ul>
+<h2 id="4-推廣到替代推論方案">4 推廣到替代推論方案</h2>
+<ul>
+<li><strong>抽樣式</strong>：取樣 z 並以似然值 p(y|z) 加權。但若似然不可解或確定性（如數獨），權重變確定性、且因證據極稀疏而塌成 0（取樣到有效 9×9 數獨配置機率極低）→ 需 ABC-EM 等變體。</li>
+<li><strong>迭代式</strong>：信念傳播等。</li>
+<li><strong>約束 M</strong>：數獨中 M 可為「同行 / 列 / 宮的數字對須相異」；加法任務中為「和的每位數正確」；網格路徑規劃中為「各格是否在路徑上」。</li>
+<li><strong>特例</strong>：Relational Neural Machines（RNM）是 EM-NeSy 的一個顯著特例。</li>
+</ul>
+<h2 id="5-6-相關工作與實驗">5-6 相關工作與實驗</h2>
+<p>評估可擴展性與彈性，回答數個問題；用 <strong>3 個廣用 NeSy benchmark</strong>（皆弱監督、結合視覺感知與符號推理）：</p>
+<ul>
+<li><strong>Multi-Digit MNISTAdd</strong>：輸入 2n 張 MNIST 影像序列，表示兩等長數相加（如 n=3 的 495+037）。</li>
+<li><strong>Visual Sudoku</strong>：4×4 或 9×9 MNIST 影像格，監督僅為「是否為有效數獨」的二元標籤。</li>
+<li><strong>Warcraft 路徑規劃</strong>：12×12 或 30×30 視覺格、五種地形不同代價，監督為「左上到右下最短路」的二元遮罩。</li>
+</ul>
+<p><strong>基線</strong>：A-NeSI、I-MLE、EXAL、Scallop、與基於知識編譯的精確推論（DeepStochLog DSL、Semantic Loss SL、Semantic Probabilistic Layer SPL）。精確法與 Scallop（top-k 近似）皆端到端可微、靠知識編譯，<strong>可擴展性受限</strong>；對路徑規劃尤其不適（最短路是大型組合 argmin，與邏輯式知識編譯不對齊）。</p>
+<p><strong>表 1（MNISTAdd 準確率 / 訓練時間）節錄</strong>：</p>
+<ul>
+<li>4 位數：A-NeSI 93.28%、DSL（精確）92.70%、BP-std 92.16%、<strong>BP-EM（本文）92.53%</strong>。</li>
+<li>15 位數：A-NeSI 55.88%、EXAL 62.62%、<strong>DSL 逾時</strong>、BP-std 72.79%、<strong>BP-EM 74.85%</strong>。</li>
+<li>100 位數：EXAL 6.67%（372min）、DSL 逾時、<strong>BP-EM 9.20%（~13min）</strong>——精確法在此規模逾時，BP-EM 仍可訓練且訓練時間大幅縮短。</li>
+</ul>
+<p><strong>表 2（Visual Sudoku）節錄</strong>：4×4 與 9×9；A-NeSI、Scallop、SL（精確）對比 BP-std / BP-EM / ABC-EM（本文），EM 變體在確定性 / 稀疏證據下仍可學。</p>
+<h2 id="結論要旨">結論（要旨）</h2>
+<p>EM-NeSy 把 NeSy 學習鑄成 EM：E 步用任意（精確 / 近似）引擎算後驗、M 步只更新神經組件（梯度不穿符號），解除「符號組件須可微」的限制，並在精確推論下還原標準 NeSy；實驗顯示其可擴展性與計算效率，能達到精確法逾時的規模。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2606.14463_EM_NeSy.%E6%91%98%E8%A6%81.html"><code>../summarize/2606.14463_EM_NeSy.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

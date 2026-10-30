@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>VLA-OS: Structuring and Dissecting Planning Representations and Paradigms in Vision-Language-Action Models 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Chongkai Gao、Zixuan Liu、Zhenghao Chi、Junshan Huang、Xin Fei、Yiwen Hou、Yuxuan Zhang、Yudi Lin、Zhirui Fang、Zeyu Jiang、Lin Shao</p><p>日期：2025-06-21（v1，cs.CV）</p><p>arXiv：2506.17561</p><p><a href="https://arxiv.org/abs/2506.17561" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="vla-os-structuring-and-dissecting-planning-representations-and-paradigms-in-vision-language-action-models-重點摘要">VLA-OS: Structuring and Dissecting Planning Representations and Paradigms in Vision-Language-Action Models 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>VLA-OS 用同一套 VLM、planning head 與 action head 組件，控制比較直接產生動作、單模型內整合規劃、雙模型階層規劃三種 VLA 範式，結論是視覺落地的規劃表示通常優於長篇語言推理，而 Hierarchical-VLA 的穩健性最好，代價是訓練與推論較慢。</p>
+<h2 id="方法架構">方法架構</h2>
+<ul>
+<li><strong>要拆開的混淆</strong>：現有 VLA 同時更換骨幹、訓練資料、規劃表示與整合方式，排行榜差異無法歸因。VLA-OS 固定可替換的 Qwen2.5 VLM 骨幹與統一 action head，將額外 head 參數限制在 VLM 的約 5%，再只改規劃範式與表示，讓比較接近控制實驗。</li>
+<li><strong>VLA-OS-A</strong>：ActionOnly-VLA。影像與語言由 VLM 編碼，獨立 transformer action head 以 block-wise causal attention 讀取 VLM、proprioception 與 action token；另有融合多視角 RGBD 點雲的三維版本。</li>
+<li><strong>VLA-OS-I</strong>：Integrated-VLA。單一模型外接語言、視覺與 image foresight 三種 planning head。implicit 版本只把規劃當輔助訓練目標，推論時不執行 planning head；explicit 版本先生成規劃，再讓 action head 讀取 planning head 的各層表示。</li>
+<li><strong>VLA-OS-H</strong>：Hierarchical-VLA。規劃與低階 policy 是兩個沒有梯度連接的網路，後者同時取得原始影像、proprioception 與顯式規劃結果。這個隔離讓 action policy 有機會用原始觀測修正規劃文字或視覺 token 的小錯，而不是讓錯誤一路滲入共同 hidden state。</li>
+<li><strong>三種規劃表示</strong>：language reasoning 包含任務、子任務、移動理由、gripper 位置與 bounding box 等欄位；visual reasoning 用 location token 表示物件框、末端執行器 flow 與 affordance；image foresight 則生成短期未來第三人稱影像。作者在剛體、可變形物、二維與三維、模擬與真實、夾爪、靈巧手與雙臂任務上比較它們。</li>
+</ul>
+<h2 id="作者報告的結果">作者報告的結果</h2>
+<p>先看模型本身的 sanity check。從頭訓練、採 0.5B 骨幹的 VLA-OS-A-S，在四個 LIBERO suite 的平均成功率為 85.6，LIBERO-Long 為 66.0；平均值高於微調 OpenVLA 的 76.5、CoT-VLA 的 81.1 與 DiT Policy 的 82.4，也與微調 π0-FAST 的 85.5 接近，但仍低於 π0 的 94.2（作者自報）。這支持作者先把 VLA-OS 當成合格實驗平台，再談範式差異。</p>
+<p>在 LIBERO-Long 的表示比較中，implicit Integrated-VLA 使用語言、視覺、image foresight 的成功率依序為 68.0、71.0、72.5，語言加 image foresight 為 73.3；Hierarchical-VLA 單用三種表示依序為 63.5、69.0、71.7，三者合用達 74.2（作者自報）。explicit Integrated-VLA 多數組合反而低於 ActionOnly baseline，作者把主因指向規劃序列遠長於 action 序列所造成的累積錯誤，以及 action head 缺少原始視覺與語言輸入，難以自行修正。</p>
+<p>跨任務比較顯示，LIBERO-Long 上 ActionOnly、Integrated、Hierarchical 的成功率為 66.0、73.3、74.2；雙臂 PerAct2 則為 21.0、28.0、29.0（作者自報）。在 COLOSSEUM 擾動設定的泛化分數上三者為 6.1、6.2、7.4；先在 LIBERO-90 預訓練 planning head 後，Integrated 與 Hierarchical 分別達 79.1 與 79.8（作者自報）。整體趨勢支持規劃能幫助任務表現，而階層式拆分在泛化與規劃正確性上較穩。</p>
+<p>代價出現在效率與持續學習。作者報告 Hierarchical-VLA 訓練成本與推論延遲較高，語言 planning head 的自迴歸生成又是三種表示中最慢者。持續學習時，ActionOnly、Integrated、Hierarchical 的 forward transfer 為 0.71、0.75、0.80，但 negative backward transfer 也由 0.32 升至 0.43、0.45（作者自報）：加入規劃有助新任務遷移，同時更快忘掉舊任務。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>這篇最穩健的結論不是「所有系統都該階層化」，而是表示與介面會改變規劃能否真正幫到控制。視覺與 image foresight 較貼近 policy 所需的空間資訊；把顯式規劃 hidden state 深度耦合進 action head，反而可能放大累積錯誤。Hierarchical-VLA 多數指標較佳，但需要額外模型與推論階段。</p>
+<p>作者列出的邊界包括：尚未涵蓋 latent action、影片生成、scene flow 等規劃設計；沒有研究 embodiment transfer、sim-to-real 或二維到三維遷移；訓練資料少於一萬條 trajectory，不能把小資料下「骨幹宜維持在 0.5B、總模型低於 1B」的觀察外推到 OXE 等大規模預訓練（作者自報）。（本檔補註，非作者自陳）比較雖廣，仍是特定 head 設計與 imitation learning 設定下的經驗結果。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>VLA-OS 示範了 ai_core 很需要的一種實驗紀律：要判斷規劃層是否有用，先固定 backbone、資料與低階執行器，再只替換表示與介面。否則任何端到端提升都可能只是參數量、資料量或 action head 改良的副產品。這套 composable family 的價值在「可歸因」，不只在模組可插拔。</p>
+<p>Hierarchical-VLA 的優勢也對應到錯誤隔離。規劃輸出應是低階 policy 可檢查、可忽略、可用原始觀測修正的顯式建議，而不是不可逆地混入共同 hidden state。對 ai_core 的意圖翻譯層而言，這等於要求固化程式碼仍能看到原始需求與環境狀態；中介表示有錯時，執行層才有第二條證據路徑，而不會把上游幻覺當成唯一真相。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2506.17561_VLAOS.zh-TW.html"><code>../translate/2506.17561_VLAOS.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

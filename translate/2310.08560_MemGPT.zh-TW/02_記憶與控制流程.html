@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_記憶與控制流程 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><p>← <a href="../2310.08560_MemGPT.zh-TW.html">回母檔</a>｜<a href="03_%E5%AF%A6%E9%A9%97%E8%88%87%E7%B5%90%E8%AB%96.html">下一節</a></p>
+<h2 id="2-memgptmemorygpt">2. MemGPT（MemoryGPT）</h2>
+<h3 id="21-main-context-與-external-context">2.1 Main context 與 external context</h3>
+<p>Main context 是本次 LLM inference 的 prompt tokens，只有放在其中的資料才可由 processor 直接存取。External context 位於 fixed window 外，必須明確搬回 main context 才能被模型看到。</p>
+<p>Main context 由三個連續區段構成：</p>
+<ol>
+<li>System instructions：唯讀，描述 MemGPT control flow、memory levels 與 functions。</li>
+<li>Working context：固定大小、透過 functions 讀寫的 unstructured text，用來保存 user facts、preferences 與 agent persona。早期介面與附錄 prompt 稱它為 core memory。</li>
+<li>FIFO queue：近期 user/agent messages、system alerts、function calls 與 results。第一格保存被 eviction 訊息的 recursive summary。</li>
+</ol>
+<p>External context 有兩種主要儲存：</p>
+<ul>
+<li>Recall storage 是完整 message database。Queue manager 將所有 incoming messages 與 LLM outputs 都寫入；搜尋舊訊息時，結果附加回 FIFO 才會重新 in-context。</li>
+<li>Archival storage 是可寫入任意長文字物件的 database，保存文件與 agent 主動歸檔的長期資訊。文件實驗使用 PostgreSQL、pgvector、HNSW 與預先計算的 embeddings。</li>
+</ul>
+<h3 id="22-queue-manager-與-memory-pressure">2.2 Queue manager 與 memory pressure</h3>
+<p>新訊息到達後，queue manager 把它加入 FIFO、組合全部 prompt tokens、觸發 inference，再將輸入與輸出持久寫入 recall storage。</p>
+<p>Context 接近 warning threshold 時，例如 window 的 70%，manager 插入 system message，提醒 LLM 即將 eviction。Agent 可趁此時把重要資訊寫入 working/core context 或 archival storage。</p>
+<p>到 flush threshold，例如 100% 時，manager 強制清出 queue 空間，例如移除相當於 window 50% 的 messages；舊 recursive summary 與被移除內容合成新 summary。Evicted messages 不再立即可見，但仍永久留在 recall storage，可經 function search 找回。</p>
+<p>這與傳統 virtual memory 不完全相同：page selection 不是由可信 kernel 依 access bit 決定，而由 LLM 在 prompt warning 下主動寫記憶，加上 queue manager 的固定 eviction／summary policy。</p>
+<h3 id="23-function-executor">2.3 Function executor</h3>
+<p>LLM completion tokens 可表示 function call。Executor parse output，驗證 function arguments；通過後執行，並把結果或 runtime error，例如 working context 已滿，送回 LLM。Retrieval 支援 pagination，避免單次結果撐爆 context。</p>
+<p>Instructions 提供兩類資訊：memory hierarchy 各層用途，以及可存取／修改記憶的 function schema。所謂 autonomous memory edit／retrieval，實際是模型依這些自然語言 instructions 自行選擇 tools。Parser 保證 call 可解析，不保證記憶敘述為真或更新政策正確。</p>
+<h3 id="24-control-flowevents-與-function-chaining">2.4 Control flow、events 與 function chaining</h3>
+<p>MemGPT 由 events 觸發 LLM inference。Event 可是 user message、memory-capacity warning、使用者登入／文件上傳等 interaction，也可由 timer 定期產生，使 agent 在沒有即時 user prompt 時運行。</p>
+<p>實務任務常需連續 functions，例如翻多頁結果或從多份文件組合證據。Function call 若帶 <code>request_heartbeat=true</code>，executor 將結果加入 context 後立即再次呼叫 LLM；這形成 function chaining。若沒有 heartbeat，agent yield，不再 inference，直到下一個 external event 或 scheduled interrupt。</p>
+<p>因此論文所稱 interrupt 是 event-driven wakeup；heartbeat 是 cooperative continuation。它們不是硬體 interrupt、thread preemption 或 durable workflow recovery。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

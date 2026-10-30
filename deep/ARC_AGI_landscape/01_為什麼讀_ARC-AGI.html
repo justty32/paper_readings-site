@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_為什麼讀_ARC-AGI · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../ARC_AGI_landscape.html">回 ARC_AGI_landscape 目錄</a>　<a href="02_%E5%90%84%E7%AF%84%E5%BC%8F%E4%BB%A3%E8%A1%A8%E4%BD%9C%E5%B0%8D%E7%85%A7%E8%A1%A8.html">下一節 →</a></p>
+</blockquote>
+<h2 id="0-為什麼讀-arc-agi">0. 為什麼讀 ARC-AGI</h2>
+<p>ARC-AGI（Abstraction and Reasoning Corpus）是 François Chollet 於 <a class="paper-reference" href="../../summarize/1911.01547_Measure_of_Intelligence.%E6%91%98%E8%A6%81.html">1911.01547</a> 提出的基準，它的特殊地位來自一個簡單卻苛刻的設計哲學：<strong>它要測的是「在全新任務上的泛化（智力本質）」，而不是「可事先準備的任務技能」。</strong></p>
+<p>Chollet 在 <a class="paper-reference" href="../../summarize/1911.01547_Measure_of_Intelligence.%E6%91%98%E8%A6%81.html">1911.01547</a> 立下整個領域的概念地基，三個必須記住的論點：</p>
+<ol>
+<li><strong>技能 ≠ 智力</strong>：無限的先驗（寫死規則）或無限的訓練資料（密採樣情境）都能「買到」任意任務上的技能，卻完全不反映系統自身的泛化力（DeepBlue、OpenAI Five 都極脆弱、無法遷移）。</li>
+<li><strong>智力 = 技能習得效率</strong>：用演算法資訊論把智力重新定義為「在控制先驗、經驗、泛化難度下的技能習得效率」——即「把先驗與經驗轉成可應對未來不確定性之技能的轉換率」。</li>
+<li><strong>開發者感知泛化（developer-aware generalization）</strong>：任務必須對開發者也是新的，杜絕寫死解；ARC 的隱藏測試集刻意與公開任務「質性不同」。</li>
+</ol>
+<p>ARC 本身是 400 訓練 + 600 評估題的少樣本網格謎題（10 色、最大 30×30、每題約 3.3 對示範、像素級全對才算解開），且 Chollet 明言<strong>理想解法是「建一套編碼 Core Knowledge 先驗的 DSL，由示範對搜尋候選程式」</strong>——這句話為後續整個「ARC 即程式合成」的傳統定調。Core Knowledge 四類先天先驗（物件性與基本物理、能動性與目標導向、數與計數、基本幾何與拓撲）成為所有求解器的設計指南針。</p>
+<p>五年後，ARC Prize 競賽（<a class="paper-reference" href="../../summarize/2412.04604_ARC_Prize_2024.%E6%91%98%E8%A6%81.html">2412.04604</a> 2024、<a class="paper-reference" href="../../summarize/2601.10904_ARC_Prize_2025.%E6%91%98%E8%A6%81.html">2601.10904</a> 2025）把這個理念落地成全球賽事，催生了本文要盤點的整片解法版圖。</p>
+<hr />
+<h2 id="1-arc-解法的範式地圖">1. ARC 解法的範式地圖</h2>
+<p>ARC 沒有單一銀彈。把本批論文按「<strong>如何把『規則』表示出來、如何在測試時找到它</strong>」排列，會浮現七大範式。它們並非互斥——SOTA 系統往往是其中數條的拼裝。</p>
+<pre><code class="language-mermaid">graph TD
+    ARC[&quot;ARC-AGI 謎題&lt;br/&gt;少樣本 I/O 範例 + 新測試輸入&lt;br/&gt;像素級全對才算解開&quot;]
+
+    ARC --&gt; IND
+    ARC --&gt; TRD
+    ARC --&gt; TTT
+    ARC --&gt; VIS
+    ARC --&gt; MDL
+    ARC --&gt; VSA
+    ARC --&gt; MEM
+
+    subgraph IND[&quot;① 歸納式程式合成｜先求函式 f 再套用&quot;]
+        I1[&quot;DSL 枚舉/神經引導&lt;br/&gt;GridCoder [[2411.17708]]&quot;]
+        I2[&quot;LLM 產 Python 程式&lt;br/&gt;BARC-歸納 [[2411.02272]] · SOAR [[2507.14172]]&quot;]
+        I3[&quot;連續潛在程式搜尋&lt;br/&gt;LPN [[2411.08706]]&quot;]
+        I4[&quot;轉導篩歸納假設&lt;br/&gt;SYNTRA [[2509.17393]]&quot;]
+    end
+
+    subgraph TRD[&quot;② 轉導式直接預測｜神經網路直出輸出網格&quot;]
+        R1[&quot;BARC-轉導 [[2411.02272]]&quot;]
+        R2[&quot;Product of Experts&lt;br/&gt;[[2505.07859]]&quot;]
+    end
+
+    subgraph TTT[&quot;③ 測試時訓練｜逐題臨時更新權重&quot;]
+        W1[&quot;LoRA TTT [[2411.07279]]&quot;]
+        W2[&quot;LongT5 + TTT [[2603.06590]]&quot;]
+    end
+
+    subgraph VIS[&quot;④ 視覺式｜影像到影像翻譯&quot;]
+        V1[&quot;VARC / ViT [[2511.14761]]&quot;]
+    end
+
+    subgraph MDL[&quot;⑤ 壓縮 / MDL｜最短描述長度即解&quot;]
+        M1[&quot;CompressARC [[2512.06104]]&quot;]
+    end
+
+    subgraph VSA[&quot;⑥ 向量符號｜高維分散式表示 + 雙歷程&quot;]
+        S1[&quot;VSA / HRR [[2511.08747]]&quot;]
+    end
+
+    subgraph MEM[&quot;⑦ 概念記憶｜不動權重的測試時持續學習&quot;]
+        C1[&quot;ArcMemo [[2509.04439]]&quot;]
+    end
+
+    HUMAN[&quot;人類平均 ≈ 60.2%（最佳 97.8%）&lt;br/&gt;[[1911.01547]]&quot;]
+    IND -.對照.-&gt; HUMAN
+    TRD -.對照.-&gt; HUMAN
+</code></pre>
+<h3 id="七大範式的核心思想一覽">七大範式的核心思想一覽</h3>
+<ul>
+<li><strong>① 歸納式程式合成（induction）</strong>：合成一段可執行程式 <code>f</code>，使 <code>f(x_train)=y_train</code>，再套用 <code>y_test=f(x_test)</code>。優點是<strong>可被執行回饋驗證</strong>（知道何時成功），擅長精確計算與多概念組合。內部又分離散 DSL 枚舉（GridCoder）、LLM 產 Python（BARC、SOAR）、連續潛在搜尋（LPN）三種程式表示。</li>
+<li><strong>② 轉導式直接預測（transduction）</strong>：神經網路直接 map 到 <code>y_test</code>，無顯式函式。擅長模糊的知覺型概念（對稱、重力、補洞），但無法自證對錯。</li>
+<li><strong>③ 測試時訓練（TTT）</strong>：推論時用範例對臨時更新模型參數（每題一組 LoRA），把「結構新穎任務」轉成「分布內任務」。是 2024/2025 兩屆 Kaggle 冠軍的主路。</li>
+<li><strong>④ 視覺式（VARC）</strong>：主張 ARC 本質是視覺問題，把謎題當影像到影像翻譯，用原版 ViT 從零訓練，繞過語言中介。</li>
+<li><strong>⑤ 壓縮 / MDL（CompressARC）</strong>：把求解重新表述為「找能印出整個謎題的最短自含程式」，由奧坎剃刀推論最短程式會以正確解填空；把組合搜尋變成可微優化。</li>
+<li><strong>⑥ 向量符號（VSA）</strong>：用超維計算（HRR）把抽象物件編成 4096 維向量，整合 System 1 啟發式 + System 2 受限搜尋，主打認知/生物合理性。</li>
+<li><strong>⑦ 概念記憶（ArcMemo）</strong>：把解題軌跡蒸餾成概念級、模組化、自然語言的抽象，未來查詢時選擇性檢索注入 prompt——不動權重的測試時持續學習。</li>
+</ul>
+<hr />
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

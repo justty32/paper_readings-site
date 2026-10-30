@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_OPTO：以_Trace_Oracle_進行優化 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2406.16218_Trace.zh-TW.html">回 2406.16218_Trace.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="2-opto以-trace-oracle-進行優化">2. OPTO：以 Trace Oracle 進行優化</h2>
+<p><strong>預備</strong>：計算圖 g 是一個 DAG，節點代表物件（張量、字串等），邊表示輸入—輸出關係。無父節點者為根（輸入）、無子節點者為葉（輸出）；部分輸入被標記為<strong>可訓練參數</strong>。工作流的執行軌跡＝從輸入計算輸出時被呼叫的操作序列及其執行結果，可表為上述計算圖。</p>
+<h3 id="21-opto-問題定義">2.1 OPTO 問題定義</h3>
+<p>一個 OPTO 問題實例由三元組 <strong>(Θ, ω, T)</strong> 定義：Θ 是參數空間，ω 是問題的<strong>脈絡（context）</strong>，T 是 <strong>Trace Oracle</strong>。每輪迭代中，優化器選定參數 θ ∈ Θ（可為異質），Trace Oracle 回傳 <strong>trace feedback τ = (f, g)</strong>：g 是以 DAG 表示的執行軌跡（參數在 g 的根節點中），f 是對 g 的<strong>某一個輸出節點</strong>給的回饋。優化器依脈絡 ω 用 τ 更新參數，進入下一輪。</p>
+<p>輸出回饋 f 是泛用的：分數、梯度、自然語言的提示/解釋、console 訊息皆可。脈絡 ω 提供解讀 f 的不變資訊與已知的附帶資訊（如參數應滿足的性質），對一個 OPTO 實例固定不變（類似指令或問題定義）；f 則隨 θ 與計算 g 而變。例如 ω 可以是「最小化損失函數」而 f 是損失值；ω 也可開放式如「遵循回饋」而 f 描述輸出該如何改。本文聚焦 f 與 ω 可精簡文字化的 OPTO 問題。<strong>OPTO 與黑箱設定的差異</strong>在於執行軌跡 g 展示了通往輸出的計算路徑，提供從 f 與 ω 建構參數更新方向的資訊：只有 f 的點值評估時不清楚參數如何改進；有 g 記錄產生輸出的函數時就能推導更新方向（如梯度）。注意 g 的結構在每輪迭代可以不同（工作流會隨輸入與參數改變）。</p>
+<p><strong>OPTO 涵蓋的既有問題示例</strong>：(1) 神經網路＋反向傳播——參數＝權重、g＝神經計算圖、f＝損失、ω＝「最小化損失」，反向傳播＋梯度下降可嵌入為一個 OPTO 優化器；(2) RL——參數＝policy、g＝軌跡（狀態/動作/獎勵的圖模型）、f＝成功旗標、ω＝「最大化回報」；(3) LLM 代理的 prompt 優化——參數＝prompt、g＝代理的計算圖、f＝對行為的回饋（分數或自然語言）。附錄 C 另有程式碼除錯（g＝stack trace、f＝編譯器錯誤訊息、ω＝「不出錯」）、ML pipeline 超參數調校、多代理協作等例。</p>
+<h2 id="3-trace下一個-autodiff">3. Trace：下一個 AutoDiff</h2>
+<p>Trace 把 OPTO 從抽象概念變為現實，是實作 Trace Oracle 的輕量 Python 工具。透過 OPTO 框架，Trace <strong>把優化器設計與領域特定組件分離</strong>，使通用優化器得以跨多樣領域工作。</p>
+<h3 id="31-trace-的設計">3.1 Trace 的設計</h3>
+<p>兩個原語（primitives）：</p>
+<ul>
+<li><strong>node</strong>：Python 物件的包裝器。被包裝的物件註冊為計算圖中的唯一節點；node 可設為 trainable（成為 OPTO 參數），宣告參數時還可用自然語言描述參數應遵守的<strong>約束</strong>。</li>
+<li><strong>bundle</strong>：把 Python 方法轉為操作子（operator）的裝飾器。被裝飾函數的 docstring 與原始碼被記錄為操作子的定義，用以推斷輸出回饋應如何改變參數。bundle 裝飾的函數也可設 trainable——<strong>此時該方法的程式碼本身成為參數</strong>。</li>
+</ul>
+<p>使用流程：使用者以 node/bundle 宣告參數、定義工作流的概念區塊；建立 OPTO 優化器（可選提供 ω，OptoPrime 預設為「遵循回饋」）；定義對計算結果提供回饋的機制（類比於神經網路訓練中定義損失函數）。之後重複：(1) 執行被裝飾的工作流，後端建 DAG；(2) 呼叫 <code>backward</code> 啟動輸出回饋向參數的傳播（<strong>執行錯誤也被當作回饋</strong>），Trace 抽取連接參數與輸出的最小子圖 g，把 τ=(f,g) 交給優化器；(3) 呼叫優化器 <code>step</code> 更新參數。</p>
+<h3 id="32-用-trace-原語做有效的執行追蹤">3.2 用 Trace 原語做有效的執行追蹤</h3>
+<p>把工作流表示為計算圖有多種抽象層級——從整個過程抽象為單一大操作子，到列出所有底層步驟。在 Trace 中抽象層級由 bundle 的施加方式決定（bundle 之下的所有步驟被抽象為一個操作子）。不同選擇是圖複雜度與操作子描述負擔的取捨：全部抽成一個操作子則圖平凡但需大量描述；暴露所有底層操作子則圖過度雜亂。<strong>我們認為此問題類似神經網路架構設計</strong>，建議定義操作子時模仿工作流的白板系統圖（whiteboard system diagram）層級。另一設計問題是資訊該放脈絡 ω 還是操作子描述：建議在 bundle 定義時提供操作子描述，讓 Trace 自動產生工作流特定資訊，而同一個 ω 可跨許多工作流共用。</p>
+<h3 id="33-反向回饋傳播實現-opto-的-trace-oracle">3.3 反向回饋傳播：實現 OPTO 的 Trace Oracle</h3>
+<p>Trace 用遞迴圖遍歷演算法（演算法 1）以反拓撲序傳播回饋；搭配不同的 propagator 可實作各種前向—反向方案，<strong>包括反向傳播本身</strong>（訊息＝梯度、propagate 回傳 Jacobian 轉置乘梯度和）。我們提出通用的 <strong>Minimal Subgraph Propagator（MSP，演算法 2）</strong>：傳播 trace feedback τ=(f,g)，g 以優先佇列實作。兩演算法合併即實現 OPTO 的 Trace Oracle——抽取參數節點與輸出之間的最小子圖。</p>
+<p><strong>定理 1</strong>：對 N 節點、最大度 W 的圖，演算法時間複雜度 O(WN²logN)、空間複雜度 O(WN)（反向傳播為 O(WNd²) 與 O(d)，d 為張量最大維度）。差異源於：在最一般的計算圖與回饋設定下，被傳播的回饋沒有常數大小、需要完整子圖。<strong>定理 2</strong>：對一般 N 節點計算圖，最壞情況下被傳播的回饋需 Ω(N) 描述長度才能建構改進方向。實務上 MSP 只涉及合併引用的優先佇列，多數計算發生在前向傳播與優化器 step，差異可忽略（除非最小子圖達百萬節點）。</p>
+<h2 id="4-第一個-opto-優化器的設計optoprime">4. 第一個 OPTO 優化器的設計：OptoPrime</h2>
+<p><strong>子圖表示</strong>：核心挑戰是如何向 LLM 表示執行軌跡子圖 g（含各種圖結構與異質資料）使其能推理參數更新的下游效應。我們利用 LLM 卓越的<strong>程式撰寫與除錯能力</strong>，把 trace feedback (f,g) 呈現為<strong>擬演算法問題</strong>：子圖 g 表示為一份程式碼執行報告，含 #Code（圖結構偽程式碼）、#Definitions/#Documentation（操作子描述）、#Variables（可改參數）、#Constraints、#Inputs、#Others（中間值）、#Outputs、#Feedback 等欄位，然後 prompt LLM 依據對輸出的回饋 f 更新 g 中的參數。注意這些程式行<strong>不是真實程式</strong>，而是 bundle 定義的計算圖。</p>
+<p><strong>參數更新</strong>：以 ReAct-CoT 風格 prompt <strong>單次查詢</strong> LLM，要求基於圖生成推理（reasoning）與參數修改建議（suggestion，JSON 格式）；若能從回應抽取建議即更新參數。</p>
+<p><strong>優化記憶</strong>：僅靠當輪的圖與回饋在某些場合資訊不足（如回饋是獎勵但無獎勵生成方式的描述）。為穩健性，OptoPrime 內建基本記憶模組，追蹤過往的參數—回饋對作為 in-context 範例。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

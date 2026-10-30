@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2109.05093_PICARD.zh-TW.html">回 2109.05093_PICARD.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>針對文本資料預訓練的大型語言模型有<strong>不受約束的輸出空間</strong>：每一步解碼都可能產出上萬個子詞（sub-word）token 中的任何一個。當它們被微調（fine-tune）去生成 SQL 這類受約束的形式語言（formal language）時，常產生無效程式碼、使輸出不可用。我們提出 <strong>PICARD</strong>（程式碼開源於 github.com/ElementAI/picard），一種透過<strong>增量解析（incremental parsing）約束語言模型自迴歸解碼器</strong>的方法：在每個解碼步驟<strong>剔除不可接受的 token</strong>，幫助模型找到合法的輸出序列。在具挑戰性的 Spider 與 CoSQL text-to-SQL 翻譯任務上，PICARD 把表現平平的微調 T5 模型變成了 state-of-the-art 的解決方案。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>大型預訓練語言模型在下游任務上成果豐碩，但我們<strong>控制與約束其輸出</strong>的能力仍非常有限。許多企業應用因為要求語言模型尚無法提供的嚴謹與精確而遙不可及。若目標是 SQL 這類形式語言，我們希望模型能精確、可證明地遵守 SQL 規格的一切詞法、文法、邏輯與語義約束——只靠預訓練，語言模型無法滿足這些正確性要求。</p>
+<p>在 text-to-SQL 翻譯領域，受約束解碼（constrained decoding）最普遍的解法是<strong>讓無效 SQL 不可被表示</strong>：限制自迴歸解碼只能產生能正確解析為 SQL 抽象語法樹（AST）的 token 序列（Yin &amp; Neubig 2018; Lin et al. 2019; Wang et al. 2020），近期亦有半自迴歸（semi-auto-regressive）的改良（SmBoP, Rubin &amp; Berant 2021）。這些方法雖有效，但共同代價是需要<strong>自訂的特殊控制 token 詞彙表或自訂模型架構</strong>（或兩者皆需），因而<strong>與通用預訓練語言模型解碼器不相容</strong>。另一條侵入性較低、相容性較高的路是不約束生成過程、改為<strong>事後按合法性過濾已完成的 beam 假設</strong>（Suhr et al. 2020; Lin et al. 2020），但代價是需要非常大的 beam size。</p>
+<p>我們以一種新穎的增量解析約束解碼方法 <strong>PICARD</strong>（&quot;Parsing Incrementally for Constrained Auto-Regressive Decoding&quot; 的縮寫）解決上述代價：</p>
+<ul>
+<li>PICARD <strong>相容於任何現有的自迴歸語言模型解碼器與詞彙表</strong>（包括但不限於大型預訓練 transformer），且不需要很大的 beam size。</li>
+<li>PICARD <strong>完全不介入模型的預訓練或微調</strong>，可在**推理期（inference time）**輕鬆、可選地啟用。</li>
+<li>PICARD <strong>直接作用於語言模型的輸出</strong>——在 text-to-SQL 場景中即 SQL 程式碼的可讀表面形式（surface form），無需中間表示。</li>
+</ul>
+<p>實驗發現：在 Spider 資料集上，<strong>帶 PICARD 的 T5-Base 可勝過不帶的 T5-Large；帶 PICARD 的 T5-Large 亦勝過不帶的 T5-3B</strong>；借助 PICARD，T5-3B 在 Spider 與 CoSQL 上被推升到 state-of-the-art。</p>
+<p><strong>圖 1 要旨</strong>：在 Spider 開發集上，開啟 PICARD（檢查每假設的 top-2/-4/-8 token 預測）後，各尺寸 T5 的 exact-set-match 準確率都隨 beam size 上升；關閉 PICARD（none）時 beam search 幾乎不帶來增益。</p>
+<h2 id="2-picard-方法">2. PICARD 方法</h2>
+<p>PICARD <strong>改寫（warp）模型的預測分數</strong>，可平凡地整合進語言模型自迴歸解碼既有的 greedy search 與 beam search 演算法。其輸入是當前假設（hypothesis）的 token id 序列，以及模型語言建模頭（LM head）對詞彙表中每個 token 預測的 log-softmax 分數。PICARD 亦可存取 <strong>SQL schema 資訊</strong>——特別是資料表與欄位名稱、以及哪個欄位屬於哪張表。</p>
+<p>每個生成步驟中，PICARD 先把預測限縮到<strong>機率最高的 top-k 個 token</strong>，再對未通過其多重檢查者<strong>指定 −∞ 分數</strong>（圖 2：被拒 token 記 −∞，通過者保留原分數，top-k 之外自動排除）。這些檢查由基於<strong>單子解析組合子（monadic parser combinators）</strong>（Leijen &amp; Meijer 2001, Parsec）的<strong>快速增量解析</strong>（attoparsec 函式庫）實現。PICARD 有四種模式控制檢查的完備程度：<strong>off（不檢查）、lexing（詞法）、parsing without guards（無守衛解析）、parsing with guards（有守衛解析，最高模式）</strong>。通過高模式的預測必通過低模式，反之不然。</p>
+<h3 id="21-詞法檢查lexing">2.1 詞法檢查（Lexing）</h3>
+<p>Lexing 模式只在<strong>詞法層</strong>檢查輸出：嘗試把部分的、去 token 化的模型輸出轉成以空白分隔的 SQL 詞法項序列——關鍵字（如 select）、標點（如括號）、運算子（+、−）、字面值（SQL 條件中的字串與數字）、識別子（別名、表名、欄名）——<strong>不管這些詞法項出現的順序</strong>。如此 PICARD 便能偵測關鍵字拼寫錯誤、拒絕對給定 SQL schema 無效的表名/欄名。例如 Spider 開發集 dog_kennels 資料庫的問題「每位專業人員的 email、手機與家用電話是什麼？」，微調的 T5-Large 預測了 <code>select email_address, cell_phone, home_phone from professionals</code>，但正確欄位是 cell_number 而非不存在的 cell_phone——此錯在 lexing 模式即被攔下。</p>
+<h3 id="22-無守衛解析parsing-without-guards">2.2 無守衛解析（Parsing without Guards）</h3>
+<p>高於 lexing 的最低解析模式在<strong>文法層</strong>檢查輸出：嘗試把去 token 化的模型輸出解析為代表預測 SQL 查詢 AST 的資料結構。與 lexing 不同，<strong>關鍵字與子句的順序在此有意義</strong>。PICARD 能拒絕無效的查詢結構（如缺 from 子句、子句/關鍵字順序錯誤），並偵測一系列 SQL 表達式組合問題：</p>
+<ol>
+<li>若匹配到 <code>tid.cid</code> 模式，但 id 為 tid 的表不含 id 為 cid 的欄位，該解析被拒。</li>
+<li>若先匹配 <code>alias.cid</code>、後匹配 <code>tid as alias</code>，而 tid 不含 cid，該解析亦被拒；綁定到表別名的子查詢也有等價規則。</li>
+<li>禁止在同一 select 作用域（scope）中<strong>重複綁定同一表別名</strong>，但允許遮蔽（shadowing）外層作用域定義的別名（巢狀 SQL 查詢中會發生）。</li>
+</ol>
+<h3 id="23-有守衛解析parsing-with-guards">2.3 有守衛解析（Parsing with Guards）</h3>
+<p>最高解析模式中，PICARD 在組裝 SQL AST 時進行稱為**守衛（guards）**的額外分析：</p>
+<ul>
+<li>若匹配 <code>tid.cid</code> 或 <code>alias.cid</code>，守衛要求表 tid 或別名 alias <strong>最終須被帶入作用域</strong>（加進 from 子句），且別名須解析到一個確實含有欄位 cid 的表或子查詢。</li>
+<li>若匹配裸欄位 <code>cid</code>，另一守衛要求最終<strong>恰有一張</strong>含該欄位的表被帶入作用域。</li>
+</ul>
+<p>守衛<strong>急切（eagerly）執行</strong>，以求盡早失敗（fail fast），在最早可能的時刻把無效假設踢出 beam——最早發生在解析完 from 子句之後。只有靠守衛，PICARD 才能拒絕如「What are the makers and models?」一題中微調 T5-Large 的錯誤預測 <code>select maker, model from car_makers</code>——正確的表應是 model_list，因為它是 Spider car_1 schema 中唯一同時含 maker 與 model 兩欄的表。</p>
+<p>還可設想更多檢查與守衛（如比較運算兩側型別須相同、union/except/intersect 所選欄位型別須匹配），留待未來工作。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

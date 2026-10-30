@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../1901.09192_SelectiveNet.zh-TW.html">回 1901.09192_SelectiveNet.zh-TW 目錄</a>　<a href="02_%E8%A6%86%E8%93%8B%E7%8E%87%E6%BA%96%E7%A2%BA%E5%BA%A6.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>我們探討深度神經網路中的選擇性預測問題（selective prediction，亦稱 reject option），並提出 <strong>SelectiveNet</strong>——一個內建拒絕選項的深度神經架構。既有的拒絕機制多半是對一個已訓練好的網路，在其預測信心分數上設一個閾值。相對地，SelectiveNet 被訓練成<strong>同時、端到端地</strong>最佳化分類（或迴歸）與拒絕。結果是一個針對「被覆蓋的定義域」最佳化過的深度神經網路。在我們的實驗中，於多個知名分類與迴歸資料集上都展現出一致改善的 risk-coverage 取捨，因而在深度選擇性分類上取得新的 state-of-the-art 結果。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>在許多任務關鍵的機器學習應用（自駕、醫療診斷、家用機器人）中，偵測並控制統計不確定性至關重要。選擇性預測的目標是學出「知道自己不知道什麼」的預測模型——只要對某個預測不夠有信心，模型就可以棄權。</p>
+<p>Reject option 的想法早在 60 多年前由 Chow（1957）研究，此後在許多假設類別與學習演算法上都有探討，主要沿著兩條路線：<strong>成本導向（cost-based）<strong>模型（最小化一個追蹤棄權使用者指定成本的損失函數）；以及以</strong>信心代理函數</strong>（functional margin、最近鄰距離等）為基礎的機制。</p>
+<p>本文聚焦於深度神經網路（DNN）的選擇性模型。最相關的前作是 Geifman &amp; El-Yaniv（2017b），展示如何對任一（已訓練好的）模型，用任意信心估計函數建構出<strong>機率校準的</strong>選擇性分類器；其中效果最好的信心代理之一，正是實務上常用的簡單 Softmax Response（SR）估計量。</p>
+<p>本文在「使用者指定目標覆蓋率」的棄權約束框架下，<strong>端到端</strong>最佳化一個內建拒絕選項的神經網路，使其對所要求的覆蓋率切片達到最佳。從學習理論角度並不難論證：為每一個覆蓋率切片學一個專屬的拒絕模型，理應優於「從一個已訓練網路萃取信心率再拒絕」。作者用一個譬喻說明：Alice 與 Bob 要考期末考，宣布考卷會涵蓋課程 10 個主題各出一題、學生只需選答其中 5 題；Alice 只準備最簡單的 5 個主題，Bob 卻被媽媽逼著把 10 個主題都讀熟——你猜誰會考得比較好？</p>
+<p><strong>貢獻</strong>：(1) 一個以內點最佳化法（Potra &amp; Wright, 2000）變體、針對指定覆蓋率切片最佳化的 selective loss 函數；(2) SelectiveNet：一個端到端學習選擇性分類模型的三頭網路；(3) 用於迴歸的 SelectiveNet：提供 MC-dropout 或集成方法之外，第一個替代方案；(4) 在四個分類與迴歸資料集上，相較 MC-dropout 與 SR 展現顯著實證優勢。</p>
+<h2 id="2-選擇性預測問題形式化">2 選擇性預測問題形式化</h2>
+<p>給定特徵空間 𝒳、標籤空間 𝒴 與分布 P(X,Y)。預測函數 f:𝒳→𝒴 的真實風險為 R(f)≜E_P[ℓ(f(x),y)]，ℓ 為給定的損失函數（如 0/1 誤差或平方損失）。給定 i.i.d. 抽樣的標記集合 S_m，f 的經驗風險為 r̂(f|S_m)。</p>
+<p><strong>選擇性模型</strong>（El-Yaniv &amp; Wiener, 2010）是一對 (f,g)，其中 g:𝒳→{0,1} 是選擇函數：g(x)=1 時輸出 f(x)，g(x)=0 時輸出「don&#x27;t know」。g 也可以是軟版本 g:𝒳→[0,1]，決策可機率式或依閾值決定。</p>
+<p>選擇性模型的表現用<strong>覆蓋率</strong> φ(g)≜E_P[g(x)]（𝒳 中未被拒絕區域的機率質量）與<strong>選擇性風險</strong> R(f,g)≜E_P[ℓ(f(x),y)g(x)]/φ(g) 量化。風險可以與覆蓋率互換，整體表現剖面由 risk-coverage 曲線刻畫。經驗版本 r̂(f,g|S_m)、φ̂(g|S_m) 定義類似。</p>
+<p>最佳選擇性模型有兩種定義方式：給定覆蓋率約束最佳化風險，或反之。本文採前者：對給定覆蓋率 0&lt;c≤1 與假設類別 Θ，
+θ* = argmin_θ R(f_θ,g_θ)，s.t. φ(g_θ) ≥ c。（式 2）
+本文中 Θ 是給定深度網路架構下 f、g 的參數集合。（可用 Geifman &amp; El-Yaniv (2017b) 的技術把「控制覆蓋率、最佳化風險」的模型轉為「控制風險、最佳化覆蓋率」的模型。）</p>
+<h2 id="3-相關工作">3 相關工作</h2>
+<p>Reject option 文獻極廣，主要集中在 SVM、最近鄰、boosting 等假設類別（Fumera &amp; Roli, 2002; Hellman, 1970; Cortes et al., 2016a; El-Yaniv &amp; Wiener, 2015）。常見做法是在已訓練的預測模型上外加一個選擇機制；Cortes et al.（2016b）首先提出<strong>聯合學習</strong>預測器與選擇函數，本文延續此路線。</p>
+<p>對 NN 而言，簡單有效的做法是對一個「已針對全部樣本最佳化過」的預訓練網路，在其信心分數上設閾值（Cordella et al., 1995; De Stefano et al., 2000; Wiener &amp; El-Yaniv, 2012）。Geifman &amp; El-Yaniv（2017b）把此技術延伸到 DNN，展示如何用任意信心分數函數導出選擇性分類器，並給出測試時選擇性風險的高信心保證；文中討論兩種信心分數：<strong>Softmax Response（SR）</strong>（softmax 層最大活化值）與 <strong>MC-dropout</strong>（Gal &amp; Ghahramani, 2016，用多次帶 dropout 前向傳播的統計量估計信心）。據作者所知，MC-dropout 是唯一針對單一網路、非貝葉斯的信心分數萃取技術，但代價是每次預測可能需要數百次前向傳播。另一族信心分數函數基於多模型集成統計（Lakshminarayanan et al., 2017; Geifman et al., 2018）；本文聚焦單一分類器的選擇性分類，並指出延伸到選擇性分類器集成應屬直接。</p>
+<h2 id="4-selectivenet">4 SelectiveNet</h2>
+<h3 id="41-selectivenet-架構">4.1 SelectiveNet 架構</h3>
+<p>SelectiveNet 是在單一 DNN 內同時最佳化 f(x) 與 g(x) 的選擇性模型 (f,g)。輸入先經過 main body block（若干 DNN 層或子區塊，可為卷積、全連接或遞迴架構，視任務而定），最後一層稱為表徵層（representation layer）。SelectiveNet 有三個輸出頭：</p>
+<ul>
+<li><strong>prediction head f(x)</strong>：實作預測函數，最終層依任務為 softmax（分類）或線性（迴歸）。</li>
+<li><strong>selection head g(x)</strong>：實作選擇函數，最終層固定是<strong>單一 sigmoid 神經元</strong>。</li>
+<li><strong>auxiliary head h(x)</strong>：預測與 f 相同的任務，僅用於訓練，目的是豐富／強化 main body 學到的特徵。</li>
+</ul>
+<p>三個頭的內部架構可依任務調整，但 g 的最終層恆為單神經元 sigmoid。推論時，樣本 x 輸入網路後，<strong>若且唯若 g(x)≥0.5 才輸出 f(x)</strong>，否則棄權。</p>
+<h3 id="42-selectivenet-最佳化">4.2 SelectiveNet 最佳化</h3>
+<p>選擇性預測目標即式 (2)。為了在訓練中強制覆蓋率約束，本文採用<strong>內點法（Interior Point Method, IPM）</strong>（Potra &amp; Wright, 2000）的一種變體，把約束最佳化轉成無約束目標（對 S_m 樣本取平均）：</p>
+<p>L_(f,g) ≜ r̂_ℓ(f,g|S_m) + λΨ(c − φ̂(g|S_m))，Ψ(a) ≜ max(0,a)²</p>
+<p>其中 c 為目標覆蓋率、λ 為控制約束相對重要性的超參數、Ψ 為二次懲罰函數。輔助頭 h 用與 f 相同的標準損失函數訓練：L_h = r̂(h|S_m)，此損失<strong>完全不考慮</strong>覆蓋率。總訓練目標為選擇損失與輔助損失的凸組合：</p>
+<p>L = αL_(f,g) + (1−α)L_h</p>
+<p><strong>為何需要 h</strong>：若沒有輔助頭，SelectiveNet 會在準確的低階特徵尚未建構完成前，就過早聚焦於訓練集中覆蓋率 c 的那個子集，導致過擬合到「錯誤的」子集。輔助頭讓 main body 在整個訓練過程都持續暴露於全部訓練樣本；若 α 取得很小，選擇性風險會明顯變差。所有實驗固定 α=0.5，未做超參數搜尋。</p>
+<p><strong>（Table 1 摘錄）</strong>：CIFAR-10 上，SR 與 SelectiveNet 在各目標覆蓋率下的實測測試覆蓋率均低於目標（constraint violation）；例如目標覆蓋率 75% 時，SR 實測僅 64.16%，SelectiveNet 為 80.17%——但<strong>方向相反</strong>，SelectiveNet 反而略微「超覆蓋」，兩者平均違反幅度分別為 SR 11.98% vs. SelectiveNet 3.63%。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗設計 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.16198_REACoder.zh-TW.html">回 2604.16198_REACoder.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗設計">4 實驗設計</h2>
+<ul>
+<li><strong>基準</strong>：APPS（300 題，來自 Codeforces/LeetCode 等平台，依難度分入門/面試/競賽）、CodeContests-raw（165 題，Google DeepMind 競賽程式基準）、CodeContests（165 題，增加隱藏測試案例數量以嚴格評估）、xCodeEval（300 題，大規模競賽級基準，分簡單/中等/困難）、LiveCodeBench-Lite（近期線上評測環境的真實問題，反映當代程式碼生成的難度與風格）</li>
+<li><strong>基線</strong>：零樣本 + 8 個先進方法——推理類：SCoT（結構化思維鏈）、Self-Collaboration（多階段協作）、ICoT（難度感知路由）；後處理類：Self-Repair（執行回饋修復）、SpecFix（行為分岐分析+最小文字修補）、𝜇Fix（規格誤解緩解）、Specine（需求迭代補充）</li>
+<li><strong>LLM</strong>：DeepSeek-v3.2-Chat、Qwen3-Coder-30B-A3B-Instruct、GPT-5-mini、Gemini-3-Flash-Preview</li>
+<li><strong>指標</strong>：Pass@1（k=1，對齊真實開發場景中通常僅考慮單一生成結果）；另報告時間開銷（平均執行時間）與 token 開銷（含提示與生成 token）</li>
+<li><strong>實現</strong>：程式碼生成溫度=0（提高穩定性）、其他步驟=0.2；最大問題數=20；最大迭代=10；公開測試用於迭代中決定是否終止、最終結果僅報告隱藏測試以避免評估偏誤與資料洩漏；每實驗重複三次取平均</li>
+</ul>
+<h2 id="5-實驗結果">5 實驗結果</h2>
+<h3 id="51-整體性能rq1">5.1 整體性能（RQ1）</h3>
+<p>REA-Coder 在所有 20 個設定中保持最優 Pass@1。五基準相對現有 SOTA 平均提升：APPS +7.93%、CodeContests-raw +30.25%、CodeContests +26.75%、xCodeEval +8.59%、LiveCodeBench-Lite +8.64%。按範式分組：超越推理類方法平均 30.34%、後處理類平均 19.51%。</p>
+<p>增益在較難基準上更顯著——需求約束越複雜越容易誤解、對齊增益越大。在較弱模型上提升更大（Qwen3-Coder 平均 +38.13%、DeepSeek-v3.2 +15.66%、Gemini-3-Flash +6.16%、GPT-5-mini +5.39%），但強模型上仍保持增益——說明需求對齊即使對已具備強程式碼生成能力的模型也有價值。</p>
+<p>效率方面：REA-Coder 耗時與 token 高於零樣本和推理方法（符合預期，因其多階段需求對齊流程），但相較同類需求對齊後處理方法（SpecFix、Specine）成本相當，且 Pass@1 在所有設定中持續更高，額外成本是可接受的取捨。</p>
+<h3 id="52-消融研究rq2">5.2 消融研究（RQ2）</h3>
+<ul>
+<li><strong>WO-QA</strong>（移除問答式需求對齊階段、僅保留生成與遮罩驗證）：平均掉 5.82%（範圍 0.42%–12.57%），證明問答標定誤解→補強需求步驟有效性。</li>
+<li><strong>WO-MASK</strong>（移除遮罩式驗證階段、僅保留需求對齊與生成）：平均掉 9.99%（範圍 4.65%–17.14%），證明遮罩恢復→比對→回饋步驟在檢查生成碼是否忠實反映需求方面的貢獻，且其影響大於移除問答對齊——表示「生成後驗證需求是否被真正內化」比「生成前校準理解」更關鍵。</li>
+</ul>
+<h3 id="53-迭代次數影響rq3">5.3 迭代次數影響（RQ3）</h3>
+<p>從 1 到 10 輪平均提升 19.80%。增益集中於早期（1→5 輪 +12.18%），後期邊際遞減（5→10 輪 +6.29%）但仍持續改善。基線方法（Self-Collaboration、Self-Repair、𝜇Fix、Specine）多在後期飽和，REA-Coder 則持續穩步進步——表示 REA-Coder 能更好地利用額外迭代進行進一步需求對齊與精煉。僅 1 輪時 REA-Coder 即已超越所有基線，證明上游需求對齊本身即可有效提升基礎性能。</p>
+<h2 id="6-分析">6 分析</h2>
+<h3 id="61-首次程式碼生成性能">6.1 首次程式碼生成性能</h3>
+<p>REA-Coder_f（僅經問答式需求對齊的首次生成，無遮罩驗證、無迭代）在所有設定中一致超越零樣本。在 Qwen3-Coder 上提升尤為顯著（APPS +210.44%、LiveCodeBench-Lite +113.82%、xCodeEval +344.67%）;DeepSeek-v3.2 上亦持續強勁（CodeContests-raw +32.79%、CodeContests +31.96%、LiveCodeBench-Lite +40.84%）;GPT-5-mini 與 Gemini-3-Flash 上仍穩定增益（如 GPT-5-mini 在 LiveCodeBench-Lite +20.23%）。這驗證了 REA-Coder 的核心設計原則：<strong>需求對齊應盡可能提前到生成之前</strong>，而非依賴程式碼產生後的執行回饋。</p>
+<h3 id="62-需求維度影響">6.2 需求維度影響</h3>
+<p>逐一移除各維度後測量性能變化：所有維度均有正向貢獻，非單一主導因素。需求目的（Requirement Purpose）影響最大（移除後性能降 12.09%），表示「明確程式預期達成什麼」對正確生成最為核心。範例說明（Explanations of Examples）次之，表示範例的價值不僅是展示輸入輸出對，更是解釋底層轉換邏輯。建議開發者指定需求時應優先關注此兩面向。</p>
+<h3 id="63-案例研究">6.3 案例研究</h3>
+<p>兩個代表性案例：(1) 需求對齊階段修正邊界案例誤解——2n×2n 正方形的切割問題中，模型未正確理解中心對稱約束而錯誤判斷最小 2×2 案例；REA-Coder 通過問答標定此錯誤、在對齊需求中澄清邊界案例與等價條件，引導生成正確程式碼。(2) 僅需求對齊仍不足——原子鍵結數量輸出順序任務中，問答對齊後模型掌握主要解題邏輯但仍輸出錯誤順序；遮罩恢復暴露此殘留偏差，回饋驅動下一輪修補，最終生成正確程式碼。</p>
+<h3 id="64-威脅與有效性">6.4 威脅與有效性</h3>
+<p>外部威脅：以四個不同 LLM 與五個廣泛使用的基準評估，覆蓋多樣問題特性與難度；以 Pass@1 為主要指標直接度量功能正確性；基線橫跨推理與後處理兩類。內部威脅：遵循近期研究慣例嚴格控制實驗設置（溫度、迭代預算）、重複三次報告平均、p&lt;0.05；僅公開測試用於終止判斷，排除對 LLM 的執行回饋以純評估需求對齊效果。</p>
+<h2 id="7-相關工作">7 相關工作</h2>
+<p>既有程式碼生成方法分為兩線：(1) 推理式生成——通過設計更好的提示策略（SCoT、ICoT）或多階段協作（Self-Collaboration、MetaGPT、AgentCoder）強化推理過程；(2) 後處理改善——直接基於執行回饋修復程式碼（Self-Edit、PerfCodeGen），或進一步偵測需求與生成結果不匹配後精煉需求或程式碼（ClarifyGPT、𝜇Fix、Specine、SpecFix）。儘管方法各異，它們共享「模型已正確理解需求」的假設——本文正是挑戰此假設並以需求對齊作為解決方案。</p>
+<h2 id="8-結論">8 結論</h2>
+<p>本文提出 REA-Coder，將需求對齊確立為程式碼生成的第一級關注點——在生成前系統性校準模型對需求的理解、在生成後通過遮罩恢復驗證對齊深度、跨迭代逐步收斂。在四 LLM 與五基準上的實驗證明其一致超越最先進基線，驗證了「需求對齊應盡早進行」的核心原則。消融研究確認兩個階段各有實質貢獻，迭代分析揭示需求誤解主要集中於早期迭代。未來工作將探索更有效的對齊規則以進一步提升需求對齊品質。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

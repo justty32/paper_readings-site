@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_我們的型別約束方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2504.09246_TypeConstrained.zh-TW.html">回 2504.09246_TypeConstrained.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E6%93%B4%E5%85%85%E5%88%B0_TypeScript.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-我們的型別約束方法">3. 我們的型別約束方法</h2>
+<h3 id="31-一個簡單型別語言-l_b">3.1 一個簡單型別語言 L_B</h3>
+<p>定義一個簡單型別、Turing-complete 的語言 <code>L_B</code>，其文法與型別系統泛用、近似 TypeScript/Java/Go（略偏 TypeScript）。</p>
+<ul>
+<li><strong>語法（Figure 4）</strong>：含運算式、帶型別註記的變數與函式定義、控制流。運算式分<strong>base expression</strong>（識別子、字面量、分組、匿名函式）與 <strong>extension expression</strong>（二元運算子、函式呼叫、成員存取——對既有運算式施加後綴運算子形成更複雜運算式）；此區分對 §3.4 建構運算式自動機很有用。</li>
+<li><strong>運算式型別規則（Figure 5）</strong>：採用 Bierman 等人的 safeFTS（TypeScript 的型別安全子集）之子集，得以沿用其 soundness 結果。用標準型別環境 Γ（識別子：型別 對），<code>Γ ⊢ e : T</code> 表示 e 在 Γ 下型別為 T。二元運算子有預定義簽章（如 <code>number + number : number</code>）、函式呼叫須參數符合簽章、成員存取 <code>e.n</code> 用輔助函式 <code>lookup(S,n)</code> 取型別。</li>
+<li><strong>敘述與型別環境（Figure 6）</strong>：<code>Γ1 ⊢ s ↣ Γ2</code> 表示執行敘述 s 後環境由 Γ1 變 Γ2。變數宣告引入識別子（須未定義）；block/ite/fun 內部須維持有效環境但不外洩（fun 例外：函式簽章最終加入外部環境）；seq 沿執行傳遞環境。</li>
+<li><strong>回傳型別（Figure 7）</strong>：<code>Γ ⊢ s : R</code> 表示敘述序列 s 保證回傳 R 型別的值——回傳運算式須符函式宣告回傳型別，且<strong>每條執行路徑都須回傳</strong>（if-then-else 兩分支須回傳同型別）。</li>
+<li><strong>語言定義</strong>：程式 s ∈ L_B 當且僅當 (i) 合乎 Figure 4 文法，且 (ii) 依 Figure 5–7 型別規則 well-typed。</li>
+</ul>
+<h3 id="32-prefix-automaton-定義">3.2 Prefix automaton 定義</h3>
+<p>自動機 <code>A := ⟨Σ, Q, δ, I, F⟩</code>（字母、狀態、轉移函式、初始態、接受態）。轉移函式 δ 定義 Q 上的有向圖 G；A 接受的語言 <code>L(A) := {s | γ(I,s)∩F ≠ ∅}</code>（γ 為遍歷函式）。兩個可歸納證明的可達性性質：(P1) 路徑可任意切分；(P2) 若 <code>s◦s′</code> 可達某狀態，則 <code>s</code> 也可達某狀態。</p>
+<ul>
+<li><strong>定義 2（prefix property）</strong>：對自動機 A，若 <code>∀q∈γ(I,s): ∃s′: γ(q,s′)∩F ≠ ∅</code>（每個可達狀態都存在通往接受狀態的路徑），則 A 是 <strong>prefix automaton</strong>。直覺上：以字串 s 到達某狀態，即意味 s 是 L(A) 某成員的前綴。</li>
+<li><strong>Lemma 1</strong>：若 A 是 prefix automaton，則 <code>L(A)_p = L_r(A)</code>（前綴語言等於「可達語言」＝能到達某狀態的所有輸入）。證明用 (P1)(P2) 與定義 2。</li>
+<li><strong>從 prefix automaton 到 completion engine</strong>：定義 <code>CE_{L(A)}(s) := γ(I,s)≠∅</code>。因目標語言是 L 而非 L(A)，須確保 <strong><code>L(A) ⊆ L</code></strong>——如此所有受約束生成都落在 L 內（即都 well-typed）；反之 <code>L(A) ⊇ L</code> 只保證每個 L 中字串都能被表達、但不保證每次生成有效。理想是 <code>L(A)=L</code>。作者的最終自動機覆蓋 L_B 一個<strong>顯著但不完整</strong>的子集（為保證演算法終止，不涵蓋實務罕見的高階型別，§3.4 詳述）。</li>
+<li>Σ 取 <strong>Unicode 字元</strong>集，使 completion engine 與 LLM 詞表無關（呼叫時逐字元處理採樣到的 token）。並先介紹幾個 base prefix automata：Union、Concatenation、Kleene-Star、Terminal（固定非空字串）、Empty（空語言），後續組合成更複雜自動機。</li>
+</ul>
+<h3 id="33-識別子字面量型別的-prefix-automata">3.3 識別子、字面量、型別的 prefix automata</h3>
+<ul>
+<li><strong>字面量</strong> <code>A_l := A_num ∪ A_str ∪ A_bool</code>：由對應正規表達式的 DFA 定義，並<strong>剪掉到不了接受態的狀態</strong>以確保 prefix property。</li>
+<li><strong>識別子</strong> <code>A_x</code>：Γ 中已定義識別子的 terminal 自動機之聯集。</li>
+<li><strong>型別</strong> <code>A_T := A_{type-lit} ∪ A_{type-fun}</code>：函式型別 <code>(p)=&gt;T</code> 遞迴於 A_T；遞迴定義有效（初始態有限、接受集可判定、保持 prefix property）。這些自動機解析的語言與 L_B 對應成分<strong>完全相符</strong>。</li>
+</ul>
+<h3 id="34-運算式的-prefix-automaton核心">3.4 運算式的 prefix automaton（核心）</h3>
+<ul>
+<li><strong>無限制運算式 A_e</strong>：base 自動機（A_x, A_l, A_(e), A_{(p)=&gt;e}）與 extension 自動機（A_{⊙e}, A_{.n}, A_{(e)}）的聯集，透過遞迴調整轉移函式 δ_e——從當前自動機的接受態加出邊到擴充自動機的初始態。狀態上標 <code>q_Y^X</code> 追蹤「已解析字串 X、當前活躍自動機 A_Y」與<strong>當前表達的型別</strong>，據此判定擴充是否合法並在需要時轉入型別受限運算式。例：狀態 <code>q_42</code>，加法 <code>+e</code> 語法上可用（42 是 number，<code>number+number:number</code> 合法）但函式呼叫 <code>(e)</code> 不可用；且為使 <code>+e</code> 合法，<code>e</code> 須為 number，於是把 <code>I_{+e}^{42}</code> 設為 <code>A_+ ◦ (A_e ↓ number)</code> 的初始態。</li>
+<li><strong>型別受限運算式 A_e ↓ T</strong>：須判定部分運算式 s 能否補全成棲居型別 T。因擴充可無限施加、無法窮舉，作者設計<strong>兩層演算法</strong>：
+<ol>
+<li><strong>derivable(q_s)（可導出型別）</strong>：s「不加擴充」時所有可棲居型別的集合。Table 1 給各類部分運算式的規則（字面量用 <code>pmatch</code> 部分比對；識別子取 Γ 中前綴相符者的型別；成員存取用 <code>lookup</code> 等）。<strong>Lemma 2</strong>：derivable(q) 恰回傳所有「存在不含擴充的後綴 s′ 使 <code>Γ ⊢ s◦s′ : T</code>」的 T。</li>
+<li><strong>type reachability（Algorithm 2）</strong>：<code>reachable(T,G)</code> 在抽象型別圖上做 DFS，從當前型別 T 找目標型別 G——每個二元運算子簽章 <code>T⊙X:S</code> 建 T→S 邊，每個成員建 T→lookup(T,n) 邊，函式型別 <code>(p)=&gt;R</code> 連到回傳型別 R。標記已訪型別避免環路。<strong>因自參照成員</strong>（如 Java 的 clone、TS 的 valueOf，型別 <code>()=&gt;T</code>）可無限導出高階函式，於 Line 6 加入啟發式 <code>pruneSearch</code>（基於 Gvero 等人的結果，剪掉「複雜度高於目標/來源型別、且不含未探索原始型別」者）以保證終止。</li>
+</ol>
+</li>
+<li><strong>可靠性與不完備性</strong>：搜尋是 <strong>sound（Lemma 3：若 reachable(T,G) 成立，則存在擴充序列 y 使 <code>Γ ⊢ e◦y : G</code>）</strong>，這足以保住 prefix property；但為終止而<strong>不完備</strong>（可能拒絕合法但高複雜度的型別，實務影響小）。<strong>Corollary 4 + Lemma 5</strong>：<code>A_e ↓ T</code> 與 <code>A_e</code> 都是 prefix automaton 且解析的是 L_B well-typed 運算式的子集。</li>
+</ul>
+<h3 id="35-敘述的-prefix-automata">3.5 敘述的 prefix automata</h3>
+<p><code>A_s := A_decl ∪ A_expr ∪ A_ret ∪ A_block ∪ A_fun ∪ A_ite</code>（遞迴定義）。宣告自動機接受除既有識別子外的所有字串；回傳敘述在函式外是空語言、在函式內把運算式限制到函式回傳型別。</p>
+<ul>
+<li><strong>追蹤型別環境</strong>：一般依 seq 規則傳遞識別子；在 block/ite/fun 解析後丟棄區域環境；fun 額外把函式簽章與參數加入函式體環境、把簽章加入後續敘述環境。</li>
+<li><strong>保證回傳型別</strong>：A_fun 追蹤宣告回傳型別與已遇回傳敘述，只接受「所有回傳值符型別、所有執行路徑都回傳」的狀態；若尚未在所有路徑回傳，就<strong>強制再生成一個敘述</strong>（因總能用字面量表達所需型別，恆能補上正確回傳敘述，不違反 prefix property）。</li>
+<li><strong>Lemma 6</strong>：<code>A_M := A_s</code> 是 prefix automaton 且 <code>L(A_M) ⊆ L_B</code>。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_系統與不確定性量化 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><p>← <a href="../2607.25877_RuntimeUncertaintyMonitoring.zh-TW.html">回母檔</a>｜<a href="03_%E8%A9%95%E4%BC%B0%E8%88%87%E9%99%90%E5%88%B6.html">下一節</a></p>
+<h2 id="3-multi-agent-system-設計">3. Multi-agent system 設計</h2>
+<p>Framework 是 centralized star topology。Central Hub 以 message passing 協調四個 agents，沒有 direct agent-to-agent communication：</p>
+<ul>
+<li>Data Preparation：ingestion、cleaning、encoding。</li>
+<li>Modelling：建立 predictive models。</li>
+<li>Reviewing：評估 data preparation、model outputs、performance、consistency 與 modelling decisions。</li>
+<li>Explanation：internal beliefs、concept alignment 與 fairness guardrails。</li>
+</ul>
+<p>Shared memory 保存前序 outputs 與 metadata。Reviewer 發現問題時，Hub 可要求 revision 或終止。每個 agent task 再拆成 planning、code generation、evaluation、explanation 等 layers，減少單一 prompt 複雜度。</p>
+<p>Explanation Agent 使用 TCAV 做 concept alignment，並比較 age、population density 等敏感群組的 predicted／observed outcomes。Backends 是可在 local machine 快速執行的 Llama 2 7B、Llama 3.1 8B、Qwen2.5 7B。</p>
+<h2 id="4-不確定性量化">4. 不確定性量化</h2>
+<h3 id="41-從-token-logprob-到-task-confidence">4.1 從 token logprob 到 task confidence</h3>
+<p>輸出序列 <code>y=(z_1,...,z_L)</code> 的機率分解為：</p>
+<p><code>p_θ(y|x) = Π_t p_θ(z_t | z_&lt;t, x)</code></p>
+<p>取 log 後變成各 token logprob 的總和。因長輸出天然累積更多負 logprob，作者使用平均值：</p>
+<p><code>s_i = (1/L_i) Σ_t log p_θ(z_t | z_&lt;t, x)</code></p>
+<p>並轉成 bounded feature：</p>
+<p><code>q_i = exp(s_i)</code></p>
+<p>這只是模型對已生成 token sequence 的平均 likelihood。流暢卻錯誤的文字仍可有高 <code>q_i</code>，所以不能寫成 <code>P(correct)=q_i</code>。</p>
+<p>論文另定義 calibration：</p>
+<p><code>P(X_i=success | q_i) = f_cal(q_i)</code></p>
+<p><code>X_i</code> 表示 agent <code>i</code> 是否成功完成 task，<code>f_cal</code> 應由 validation runs 估計，產生的 calibrated value 再成為 BN probabilistic evidence。</p>
+<p>原文未交代 <code>f_cal</code> 的形式、validation sample count、資料切分、success labels，也沒有 Brier score、ECE 或 reliability curve。故下文所稱 task confidence 是 framework 中的估計量，不是已被論文充分驗證的 empirical correctness probability。</p>
+<h3 id="42-bayesian-networks">4.2 Bayesian networks</h3>
+<p>每個 BN node <code>X_i</code> 是 workflow task success/failure，edge 是 direct conditional dependency。Joint distribution 分解為：</p>
+<p><code>P(X_1,...,X_n) = Π_i P(X_i | Pa(X_i))</code></p>
+<p>沒有 parents 的 nodes 使用 calibrated confidence 作初始 prior；dependent nodes 的 confidence 參與 CPT。論文例子中，<code>WorkflowOK</code> 的三個 parents 採 AND gate：只有全部為 true 時，<code>WorkflowOK=true</code> 才取 0.99 prior 或 evidence 更新後 posterior。</p>
+<p>這是 execution trace 的抽象，不是完整 agent control logic。BN 不表示 direct parents 之外的 temporal ordering、task priority、repeated execution、feedback loops 或 iterative revisions。若 agent 要求 revision，只把 final accepted stage output 當 evidence，使 graph 保持 acyclic、易解釋。作者將 dynamic BN 與 influence diagram 留給未來工作。</p>
+<h3 id="43-inference-與-runtime-monitor">4.3 Inference 與 runtime monitor</h3>
+<p>Agents 把 uncertainty measurements 寫入 metadata，Hub 抽取後更新 BN evidence 與 posteriors。Graph 可顯示 individual nodes 及 overall workflow 的 confidence，找出高 uncertainty 或強烈影響 downstream 的 node。</p>
+<p>溫度 scenarios 的 <code>P(WorkflowOK)</code> 是：全部 agents <code>T=0.2</code> 時 87.1%；data/model 0.2、review/explanation 0.7 時 69.0%；全部 0.7 時 59.2%；其中一個 agent 提高至 1.2 時 42.8%。例圖中多數 stage 約 80%，組合後 final workflow 約 55%。</p>
+<p>這些數字顯示 BN 依預設 dependency 與 evidence 做概率傳播。它們尚不能直接解讀為「重複 100 次會有 55 次正確」，因論文沒有展示 task-level calibration validity。</p>
+<p>Monitor 可以協助 Reviewer／Hub revision、termination 或 human review，也可把新 run 與 clean-run distribution 比較，將 large deviation 作 warning。作者只把 conformal prediction 描述為可採用的後續方法；未定義 posterior threshold、automatic action、review budget 或 false-alarm cost。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

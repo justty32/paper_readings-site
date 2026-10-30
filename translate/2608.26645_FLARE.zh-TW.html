@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>FLARE: A Failure-Aware Framework for Autonomous Correction and Recovery in Visual-Language Robotic Manipulation 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Ganlong Zhao、Zijia Tang、Xingping Chen、Zhanghui Kuang、Ye Tian、Guanbin Li</p><p>日期：2026-08-27（v1，cs.RO）</p><p>arXiv：2608.26645</p><p><a href="https://arxiv.org/abs/2608.26645" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="flare-a-failure-aware-framework-for-autonomous-correction-and-recovery-in-visual-language-robotic-manipulation">FLARE: A Failure-Aware Framework for Autonomous Correction and Recovery in Visual-Language Robotic Manipulation</h1>
+<h2 id="摘要與問題第-1-節">摘要與問題（第 1 節）</h2>
+<p>視覺—語言—動作模型雖能處理複雜、長時程的操作任務，遇到漏抓、掉落、碰撞或姿態偏移時卻很脆弱。作者把根因放在資料，而不只放在模型：人類示範昂貴，資料多半只有成功軌跡，且機器人姿態隨任務進度單調變化。模型因而容易把特定手臂姿態誤認成進度訊號，也從未見過物體翻倒之類需要復原的狀態。</p>
+<p>FLARE 依環境是否仍處於有效任務軌跡，把錯誤分成兩類。ID 錯誤只讓機器人落在少見姿態，環境本身仍可繼續，適合「Retry」；OOD 錯誤已破壞環境狀態，原任務策略無法挽救，必須先執行「Reset」。論文的目標不是要求策略永不失誤，而是讓它能判斷並恢復。</p>
+<h2 id="方法第-3-節">方法（第 3 節）</h2>
+<h3 id="retry擾動與橋接">Retry：擾動與橋接</h3>
+<p>作者先把人類示範拆成可組合的子任務片段，再在片段之間插入兩段動作。擾動段把手臂移到隨機、少見的姿態，刻意打破機器人姿態與環境進度的相關；橋接段再把手臂帶回下一個有效子任務的起始姿態。訓練時不把無意義的擾動動作當目標，只使用「橋接後接續任務」的序列。模型因此學會從多種手臂姿態重新進入正確步驟，而不是把單一姿態當成任務進度。</p>
+<h3 id="reset由多模態模型挖掘失敗並學復原技能">Reset：由多模態模型挖掘失敗並學復原技能</h3>
+<p>Retry 無法修復翻倒物體等 OOD 狀態。FLARE 先讓具備 Retry 能力的模型執行任務並收集失敗影片，再由多模態大型語言模型離線判斷失敗類型、需要重置的物體與發生時點。人員只需針對少量、以物體為中心的重置技能收集示範，再以相同的擾動與橋接程序擴增。任務資料、Retry 資料與 Reset 資料共同形成技能庫，各技能以獨立語言指令及 LoRA 配接器表示。</p>
+<p>部署時，多模態模型在線監看執行。ID 錯誤由任務策略自行重試；偵測到 OOD 錯誤時，監看器改載入對應的 Reset 配接器，待環境回到有效狀態後再切回任務配接器。這是一個高層監看器調度低層專門策略的閉迴路，而非讓語言模型直接生成每一步控制。</p>
+<h2 id="實驗與分析第-45-節作者自報">實驗與分析（第 4、5 節，作者自報）</h2>
+<p>模擬評估涵蓋接觸密集的 RoboMimic 操作任務。FLARE 的平均成功率為 84.0%，對照的 Phoenix 為 57.8%；作者指出，增益同時來自較強的 VLA 骨幹與 Retry／Reset 設計。困難初始化條件下的改善通常更明顯，符合擾動與橋接用來解除姿態—狀態耦合的設計動機。</p>
+<p>真實機器人驗證使用 Piper 手臂、頂視與腕視攝影機，測試長時程堆疊與接觸密集插入。FLARE 在 Insert U-shaped Block 的成功率為 55.0%。作者也以消融顯示，移除 Reset 會降低表現；改用人工指示則仍有提升空間，表示線上多模態監看的判斷品質是瓶頸之一。重置技能本身對複雜物體姿態較弱，尤其需要抓起翻倒物體、調姿後重新直立時，現有夾爪能力會限制整體復原率。</p>
+<h2 id="結論與局限第-6-節broader-impact-and-future-work">結論與局限（第 6 節、Broader Impact and Future Work）</h2>
+<p>FLARE 的核心貢獻是把失敗恢復拆成可由資料直接支援的兩種能力：Retry 透過姿態擾動與橋接，處理仍在有效任務軌跡上的偏差；Reset 透過失敗影片分析與物體中心技能，修復已離開任務分佈的環境。兩者合併後，VLA 能在執行、復原與續作之間循環。</p>
+<p>作者明示的局限是，目前 Reset 依賴預先定義的技能庫，難以處理未見過、非標準或需要多步協作的複雜失敗；高度複雜的物體調姿也受硬體能力限制。擴充技能仍需資料收集與標註，而線上持續學習尚未納入。後續方向包括由大型視覺語言模型生成臨時復原序列、以主動學習吸收新失敗，以及在動態環境、柔性物體與人機協作的長時程任務上驗證。作者並強調，復原動作仍須受預先安全限制約束，操作員應保有緊急接管權。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2608.26645_FLARE.%E6%91%98%E8%A6%81.html"><code>../summarize/2608.26645_FLARE.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《神經元會夢見 primitive 運算子嗎？wake-sleep 壓縮重新發現 Schank 事件語意》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Peter Balogh</p><p>日期：2026-03，庫學習／程式合成（DreamCoder wake-sleep、MDL）</p><p>arXiv：2603.25975</p><p><a href="https://arxiv.org/abs/2603.25975" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="do-neurons-dream-of-primitive-operators重點摘要">《Do Neurons Dream of Primitive Operators?》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>把 <strong>DreamCoder 的 wake-sleep 庫學習</strong>搬到「事件狀態轉換」領域，檢驗一個 1972 年的認知科學假說：Roger Schank 手工提出的概念依存 primitive（ATRANS 持有轉移、PTRANS 位置移動、MTRANS 資訊轉移、INGEST 攝入…）能否<strong>單憑壓縮壓力（MDL）自動從資料中被重新發現</strong>？把事件表示成 before/after 世界狀態三元組對，從 4 個通用狀態變化 primitive 出發，wake 階段搜尋能解釋每個事件的運算子組合、sleep 階段把高頻模式抽成新庫項（specialization≈Huffman、composition≈BPE）。結果：系統自動發現對應 Schank 核心 primitive 的特化運算子（MOVE_PROP_has≈ATRANS、CHANGE_location≈PTRANS、SET_knows≈MTRANS、SET_consumed≈INGEST），也發現複合運算子（mail = ATRANS∘PTRANS）與 Schank 未列的情緒/目標狀態運算子。合成資料上學出的庫的貝氏 MDL 落在 Schank 手工 primitive 的 4% 內、卻能解釋 100% 事件（Schank 僅 81%）；真實 ATOMIC 常識資料上對比更戲劇：Schank primitive 只解釋 10%，學出的庫解釋 100%，且主導運算子是心理/情緒變化（CHANGE_wants 20%、CHANGE_feels 18%、CHANGE_is 18%）而非物理動作——這些 Schank 原始分類學裡都沒有。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>語意 primitive 是否存在？Schank 1972 主張任何描述事件的句子都可分解為一小組 primitive 動作，但批評者認為這些 primitive 任意、不完整、只反映創造者直覺，隨統計 NLP 興起而式微，「primitive 是否存在」一問被擱置。作者用新工具——<strong>庫學習</strong>——重審：若 Schank primitive 真是基本的，它們應能從同一種壓縮壓力（MDL：自動找出能最小化「庫 + 程式」總描述長度的抽象）中湧現。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>世界狀態表示</strong>：狀態 = 三元組集合 <code>(主體, 關係, 物件)</code>；事件 = (before, after) 狀態對 + 自然語言描述；狀態差 <code>Δ = (新增三元組, 移除三元組)</code>。</li>
+<li><strong>運算子 DSL</strong>：運算子模板 = 名稱 + 帶型別槽（entity/location/property/value）+ remove/add 模式（以 $ 變數綁定槽）。<strong>Seed 庫只有 4 個極通用運算子</strong>：<code>SET</code>（加事實）、<code>UNSET</code>（移事實）、<code>MOVE_PROP</code>（轉移：source 失去 destination 得到）、<code>CHANGE</code>（值替換）——它們能表達任何狀態變化但無語意承諾。</li>
+<li><strong>Wake 階段</strong>：給目標差 Δ* 與庫 L，beam search（寬 30、深度 ≤3、運算子按 arity 升序＝偏好特化）找出組合差匹配 Δ* 的程式。</li>
+<li><strong>Sleep 階段（兩類抽象）</strong>：① <strong>Specialization</strong>（≈Huffman）——把某通用運算子按操作關係分組，若 MOVE_PROP 在 ≥k 事件上 property=&quot;has&quot;，提出 <code>MOVE_PROP_has</code> 把該槽硬編、降 arity 1、每用省 1 bit；② <strong>Composition</strong>（≈BPE）——若 <code>o_A→o_B</code> 在 ≥k 程式中相鄰出現，合併成複合運算子（綁定統一）。兩者皆用 MDL 節省 <code>savings = n·c_old − (c_lib + n·c_new)</code> 評估。</li>
+<li><strong>Pruning</strong>：收斂後移除「實際使用不足以攤平庫成本」的運算子。</li>
+<li><strong>雙 MDL</strong>：簡化 MDL（計結構單元）作搜尋啟發；貝氏 MDL（−log₂頻率作運算子選擇、log₂|實體池|作綁定）作最終模型比較（經 Bayes factor），對應 DreamCoder「搜尋用代理目標、評估用完整生成模型」的慣例。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>湧現順序即 Huffman</strong>：ATRANS、PTRANS、MTRANS 在迭代 1 最先被發現——對應 Huffman 先給最高頻符號最短碼。具體算例：ATRANS 特化後每用省 1 bit，資料中 110 個 ATRANS 型事件共省 110 bit，遠超加入它的 5-bit 庫成本（用 5 次即回本）；MAIL 複合每用省 4 bit。</li>
+<li><strong>合成資料</strong>（14 模板、7 類別）：學出庫的貝氏 MDL 在 Schank 手工 primitive 的 <strong>4% 內</strong>，且解釋 <strong>100%</strong> 事件 vs Schank <strong>81%</strong>。</li>
+<li><strong>真實 ATOMIC 常識資料</strong>：Schank primitive 只解釋 <strong>10%</strong>，學出的庫解釋 <strong>100%</strong>；主導運算子為 <strong>CHANGE_wants(20%)、CHANGE_feels(18%)、CHANGE_is(18%)</strong>（心理/情緒/屬性變化），皆不在 Schank 原始分類學——顯示真實事件的 primitive 庫比 Schank 提的豐富得多，且心理/情緒運算子主導物理動作運算子。</li>
+<li>也做了 train/test 切分（泛化）與 Bayes factor 模型比較，並把方法與 JEPA/世界模型連結（JEPA 學連續潛在預測器提供知覺接地，本法學離散可組合可解釋運算子提供符號結構，二者互補）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>事件須先表示成結構化 before/after 三元組（依賴已結構化的資料如 ATOMIC，非從原始文字端到端）。</li>
+<li>primitive 庫品質受 seed 運算子與 DSL 表達力限制；wake 用 beam search（深度 ≤3）非完備搜尋。</li>
+<li>「重新發現 Schank」是資訊論意義上的對齊，非語言學完備性證明。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 G 類中**「wake-sleep 庫學習作為認知科學假說檢驗工具」的範例**——把 DreamCoder 的 MDL 壓縮直接拿來問「人類概念 primitive 是否資訊論上被證成」，並給出可量化答案（4%、100% vs 81%/10%）。與 <a class="paper-reference" href="2605.04622_Library_Learning_EGraph_Jazz.%E6%91%98%E8%A6%81.html">2605.04622</a>（e-graph 在爵士和聲上做庫學習）同屬「以壓縮壓力自動發現可重用 primitive」一脈，但本文用 wake-sleep + Huffman/BPE 類比、非 e-graph。</li>
+<li>最值得記：<strong>「specialization≈Huffman、composition≈BPE，事件 primitive 是事件語意的 Huffman 碼」</strong> 這個壓縮視角；以及「Schank 的物理 primitive 資訊論上成立但不完整，真實常識由心理/情緒運算子主導」這個實證發現。</li>
+<li>與 <a class="paper-reference" href="https://arxiv.org/abs/2606.23408">2606.23408</a>（LLM 夢見離散演算法）、<a class="paper-reference" href="2602.00929_TheoryCoder2_Abstractions.%E6%91%98%E8%A6%81.html">2602.00929</a> TheoryCoder2 等「發現可重用抽象」工作互補；對研究 <strong>DreamCoder/wake-sleep、MDL 壓縮、概念 primitive、世界模型/JEPA、常識知識表示</strong> 的人很有參考價值。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2603.25975_WakeSleep_Schank_Primitives.zh-TW.html"><code>../translate/2603.25975_WakeSleep_Schank_Primitives.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_評估 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2312.07104_SGLang.zh-TW.html">回 2312.07104_SGLang.zh-TW 目錄</a>　<a href="02_%E4%BB%A5_RadixAttention_%E9%AB%98%E6%95%88%E9%87%8D%E7%94%A8_KV_%E5%BF%AB%E5%8F%96.html">← 上一節</a></p>
+</blockquote>
+<h2 id="6-評估">6. 評估</h2>
+<p>在多樣 LLM workload 上評估，並做消融與案例研究。SGLang 以 PyTorch 實作，含來自 FlashInfer 與 Triton 的自訂 CUDA kernel。</p>
+<p><strong>設定（6.1）</strong>：</p>
+<ul>
+<li><strong>模型</strong>：稠密 Llama-2、稀疏 MoE Mixtral、多模態 LLaVA 圖／影片、API 模型 GPT-3.5；開源權重 7B–70B、float16。</li>
+<li><strong>硬體</strong>：多數在 AWS EC2 G5（NVIDIA A10G 24GB），7B 用單卡、較大模型多卡 tensor parallelism；部分在 A100（80GB）。</li>
+<li><strong>基線</strong>：Guidance（v0.1.8，llama.cpp 後端）、vLLM（v0.2.5，預設 API server；註：RadixAttention 已部分整合入新版 vLLM，故用較早版本比較）、LMQL（v0.7.3，HF Transformers 後端）。除非另述，不開啟會改變計算結果的優化，使各系統算出相同結果。</li>
+<li><strong>Workload</strong>：5-shot MMLU、20-shot HellaSwag（用 <code>select</code> 選最高機率答案）；ReAct agent 與 generative agents（重放原論文軌跡）；GSM-8K 的 Tree-of-thought、tip 生成的 Skeleton-of-thought；用 branch-solve-merge 的 LLM judge；正則指定 schema 的 JSON 解碼；4 輪多輪對話（每輪輸入 256–512 token，短輸出 4–8 token／長輸出 256–512 token）；DSPy RAG 管線官方範例。</li>
+<li><strong>指標</strong>：吞吐（大 batch 求最大吞吐，programs/second）與延遲（單程式無批次、平均延遲）。</li>
+</ul>
+<p><strong>端到端效能（6.2）</strong>：</p>
+<ul>
+<li>開源權重（圖 5/6，Llama-7B）：吞吐<strong>最高提升 6.4 倍、延遲最低降至 3.7 分之一</strong>，來自 KV 快取重用、程式內並行、更快受約束解碼。各基準加速原因：MMLU 重用 5-shot 範例 KV（減 prefill、降首 token 延遲、更大 batch）；HellaSwag <strong>兩層共享</strong>（few-shot 範例＋多選題共同題幹）；ReAct/generative agent 重用 agent 模板與先前呼叫；ToT/SoT <strong>並行化</strong>單一程式內生成呼叫；JSON 解碼靠壓縮 FSM 一次多解；多輪對話重用聊天歷史（<strong>短輸出加速明顯，長輸出因共享少、解碼主導幾乎無加速</strong>）；DSPy RAG 重用共同 context 範例。<strong>命中率 50%–99%</strong>，cache-aware 排程平均達<strong>最優命中率的 96%</strong>（圖 13）。部分後五個基準排除 LMQL/Guidance（LMQL token 級處理慢＋後端未優化，Guidance 缺批次與並行）。</li>
+<li>大模型 tensor parallelism（圖 7，Mixtral-8x7B、Llama-70B）：加速趨勢與小模型相似，優化可泛化；此處略去 Guidance/LMQL（缺高效 tensor parallelism）。</li>
+<li>多模態（<strong>表 2</strong>）：LLaVA image 0.18→<strong>1.15 image/s</strong>、LLaVA-NeXT video 0.02→<strong>0.10 frame/s</strong>（vs 作者原始 HF 實作），最高約 <strong>6 倍</strong>。對圖片算 hash 當基數樹 key，重用同圖 image token 的 KV。</li>
+<li><strong>生產部署</strong>：SGLang 部署於 <strong>Chatbot Arena</strong>。一個月後 RadixAttention 命中率：LLaVA-Next-34B <strong>52.4%</strong>、Vicuna-33B <strong>74.1%</strong>（來自共同系統訊息、常重用範例圖、多輪聊天歷史），Vicuna-33B <strong>首 token 延遲平均降 1.7 倍</strong>。</li>
+<li>API 模型：GPT-3.5 從 Wikipedia 頁抽三欄位，few-shot 下 API 推測執行準確率高，因一次抽三欄位使 input token 成本<strong>約降 3 倍</strong>。</li>
+</ul>
+<p><strong>消融研究（6.3）</strong>：</p>
+<ul>
+<li><strong>命中率 vs 延遲/吞吐</strong>（圖 8ab，ToT 基準，用 runtime 部分停用匹配 token 取得）：命中率越高 → batch 越大、吞吐越高、延遲越低。</li>
+<li><strong>RadixAttention 有效性</strong>（圖 8c）：對比 No Cache／No Tree-Structure（改用表式快取）／FCFS／Random Schedule／No Frontend Parallelism／No Frontend Hint／Full optimizations——每個元件都是達最佳效能所必需；停用前端並行與 hint 也導致次優，<strong>凸顯前端語言與 runtime 協同設計的重要性</strong>。</li>
+<li><strong>RadixAttention 開銷</strong>：在無重用機會的 ShareGPT 基準，100 請求 74.3 秒中僅 <strong>0.2 秒</strong>用於維護資料結構（<strong>&lt;0.3%</strong>，樹操作複雜度線性且小），故可<strong>預設開啟</strong>。</li>
+<li><strong>壓縮 FSM 有效性</strong>（JSON 解碼）：吞吐提升 <strong>1.6 倍</strong>（一次多解）；且需預處理狀態機並跨批重用，否則每請求重做預處理會使吞吐反<strong>低 2.4 倍</strong>。</li>
+</ul>
+<h2 id="7-相關工作">7. 相關工作</h2>
+<p>多項工作探索 KV 快取重用（許多與本文並行）。<strong>RadixAttention 獨到地首倡「把 KV 快取當基於樹的 LRU 快取」</strong>，是首個同時支援多層共享、cache-aware 排程、前端-runtime 協同排程與分散式的方案。vLLM 與 ChunkedAttention 只探索簡單重用（如系統 prompt 共享），不涵蓋多層樹狀共享或 LRU；PromptCache 提出前綴之外的模組化重用但可能使準確率掉最多 43%；HydraGen、FlashInfer、ChunkedAttention 聚焦 CUDA kernel 優化、無 LRU 概念；APIServe、LLM-SQL 針對特定應用（外部 API 交錯、關聯式資料庫）研究重用但無基數樹或 cache-aware 排程。</p>
+<p>LLM 程式與 agent 框架方面：Guidance、LMQL、DSPy、LangChain、AutoGen、LLM Compiler 等。Guidance 與 LMQL 最類似 SGLang（§2 比較過）；本文創新在於<strong>為所提程式模型設計的新 runtime 優化</strong>。SGLang 相容其他框架並能加速它們（如評估中的 DSPy 範例），也相容眾多常見推論優化（continuous batching、paged attention、FlashAttention、各式 KV 量化等）。</p>
+<h2 id="8-未來方向與結論">8. 未來方向與結論</h2>
+<p><strong>未來方向</strong>：支援更多輸出模態；讓 RadixAttention 跨記憶體階層（DRAM、Disk）運作；RadixAttention 內的模糊語意匹配；在 SGLang 之上提供更高階原語；修復 cache-aware 排程的飢餓問題；強化 SGLang 編譯器做進階靜態優化（排程、記憶體規劃）。</p>
+<p><strong>結論</strong>：SGLang 是高效編寫與執行結構化語言模型程式的框架，透過 RadixAttention、壓縮有限狀態機與語言直譯器等新優化，大幅提升複雜 LM program 的吞吐與延遲，是開發進階提示技術與 agent 工作流的有力工具；原始碼開源。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2312.07104_SGLang.%E6%91%98%E8%A6%81.html"><code>../summarize/2312.07104_SGLang.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

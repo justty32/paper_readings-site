@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>SymboUQ: Symbolic Uncertainty Quantification for Spatial Reasoning in LLMs 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Dahai Yu、Lin Jiang、Rongchao Xu、Guang Wang</p><p>日期：2026-08-01（v1，cs.AI）</p><p>arXiv：2608.00417</p><p><a href="https://arxiv.org/abs/2608.00417" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="symbouq-symbolic-uncertainty-quantification-for-spatial-reasoning-in-llms-重點摘要">SymboUQ: Symbolic Uncertainty Quantification for Spatial Reasoning in LLMs 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>SymboUQ 用符號稽核器逐步執行 LLM 的空間推理宣稱，並把「能否轉成符號」與「符號執行後能否得到確定判定」拆成兩件事，再依每條推理軌跡的實際可驗證程度，動態組合約束、模型表徵與解碼信號來估計最終答案可靠度。</p>
+<h2 id="問題與方法">問題與方法</h2>
+<ul>
+<li><strong>問題</strong>：流暢的推理鏈可能含錯誤方向、包含關係或狀態更新，token 信心卻未必反映語意錯誤。形式驗證器雖能提供更直接的證據，但「成功解析」不等於「能判定」；實體未 grounding、前提不足或前序宣稱已造成矛盾時，解析出的關係仍可能未知或無法評估。</li>
+<li><strong>Layout Auditor</strong>：系統將支援的自然語言關係正規化為 <code>z=(u,rho,v)</code>，涵蓋方向、包含、排除、距離、拓撲、位置與路徑端點。方向關係轉成差分約束，以 Bellman–Ford 的負環偵測判定布局是否可行；其他關係則套用反向、對稱、遞移、不相容、包含與功能性位置規則。每個宣稱依序得到 entailed、contradicted、unknown 三值判定，若前序脈絡已不可行則另標 not-evaluable。未知與無法評估都不算正面證據。</li>
+<li><strong>可信脈絡與假設脈絡</strong>：可信脈絡只含場景與先前在 grounded replay 中被蘊含的宣稱；實際主設定採假設脈絡，將所有先前可符號化宣稱暫作工作假設，以抓出推理鏈的自我矛盾。這種判定是相對於先前承諾的條件式一致性，不等於那些前提已被證實，論文另以可信脈絡版本做消融。</li>
+<li><strong>Determinacy Profile</strong>：<code>pi(r)</code> 是整條 trace 中可符號化宣稱的比例，<code>d(r)</code> 是已解析宣稱中仍可評估且得到 entailed 或 contradicted 的比例，無法評估的後續宣稱留在分母，因此前序矛盾會降低 determinacy。整體適用度為 <code>delta(r)=pi(r)d(r)</code>。profile 不含判定正負，只描述驗證器在這條 trace 上實際覆蓋多少。</li>
+<li><strong>DARC 組合器</strong>：候選證據含約束式 scorer、凍結表徵上的 probe 與解碼分數。系統用目標域驗證集淘汰近乎隨機的候選，必要時翻轉方向，再把原始分數、<code>pi(r)</code> 交互項與 <code>delta(r)</code> 交互項交給帶正則化的 logistic composer。適用度只調整各證據的邊際貢獻，不直接充當信心分數，也不硬性把低 determinacy 的約束證據歸零。</li>
+</ul>
+<h2 id="作者自報的結果">作者自報的結果</h2>
+<ul>
+<li>五個空間推理基準、四個凍結 backbone 共 <code>20</code> 個設定中，SymboUQ 的 AUROC 全部高於只做分數 stacking 的版本，其中 <code>19</code> 個達顯著；相對各設定最強的外部 baseline，平均 AUROC 約高 <code>8%</code>，class-balanced Brier loss 約低 <code>7%</code>（作者自報）。</li>
+<li>在 Mistral-7B 上，StepGame 的 AUROC／class-balanced Brier loss 由 scores-only stacking 的 <code>0.811</code>／<code>0.178</code> 改善至 <code>0.844</code>／<code>0.164</code>；SpaceNLI 則由 <code>0.760</code>／<code>0.196</code> 改善至 <code>0.792</code>／<code>0.187</code>。五個資料集的 AUROC 增益介於 <code>0.032</code> 至 <code>0.052</code>（作者自報）。</li>
+<li>Layout Auditor 的 entailed precision 為 <code>0.81</code> 至 <code>0.87</code>，contradicted precision 為 <code>0.64</code> 至 <code>0.74</code>；在假設脈絡下，<code>12.9%</code> 的矛盾判定、但只有 <code>2.4%</code> 的蘊含判定依賴未驗證的先前宣稱。這說明局部證據有用，但並非均勻可靠（作者自報）。</li>
+<li>約有 <code>128</code> 個目標域標籤時開始出現有用的轉移排序。報告的雙分數快取特徵路徑含 <code>8.13M</code> 個可訓練參數，訓練需 <code>9.0</code> 分鐘，吞吐量為每秒 <code>159.3</code> 條 trace；這些效率數字不含生成與共用表徵抽取（作者自報）。</li>
+</ul>
+<h2 id="結論與局限">結論與局限</h2>
+<p>這篇把驗證器的角色界定得很準：它不是全知裁判，而是一個覆蓋範圍隨輸入改變的證據來源。parse coverage 只能表示宣稱進得了形式語言；determinacy 才表示執行後真的產生可用判定。實驗顯示，利用這個差別調整多種可靠度信號，比固定平均或只靠目標域 stacking 更穩。</p>
+<p>限制也與這個設計同源。稽核器受 ontology 與 parser 邊界限制，不支援的表達沒有符號證據，錯誤 grounding 會直接造成錯誤判定；假設脈絡能抓自相矛盾，卻讓部分結論依賴未驗證前提，而 determinacy 衡量的是可執行覆蓋，不是 grounded proof。DARC 還需要有標籤的目標域驗證集做篩選、組合與校準，因此不是零樣本方法。效率結果排除了生成與共用特徵抽取，也不能直接當成端到端成本。</p>
+<h2 id="對讀者的價值ai_core-接點">對讀者的價值／ai_core 接點</h2>
+<p>SymboUQ 為 ai_core 的憑證准入補上一個容易漏掉的維度：除了記錄「檢查通過或失敗」，還要記錄檢查器對這次輸入究竟有沒有管轄權。可符號化、可判定、已蘊含、已矛盾、未知與因前序衝突而無法評估，應是不同狀態；把未知當通過，會讓沒有證據看起來像正面證據。<code>delta(r)=pi(r)d(r)</code> 可作為每次執行的 coverage metadata，讓固化引擎依適用度調整規則證據、模型信心與其他監測訊號的權重。更重要的是，論文保留可信脈絡與假設脈絡兩套語意，提醒系統把「與自己先前說法一致」和「由外部可信前提推出」分開記帳；這對 provenance、回滾與審計都比單一布林驗證結果實用。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2608.00417_SymboUQ.zh-TW.html"><code>../translate/2608.00417_SymboUQ.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

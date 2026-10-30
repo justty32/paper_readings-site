@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>TemporalFlow-VLA: Learning Physically Grounded Execution History for Long-Horizon Robot Manipulation 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jiarui Yang、Yehao Lu、Yuning Su、Yu Zhong、Yufeng Xie、Yazhou Zhang、Haiyu Lan、Kaixiang Lu、Peiwen Lin、Chuang Wang、Junwei Liang、Enyu Li</p><p>日期：2026-08-27（v1，cs.RO）</p><p>arXiv：2608.26821</p><p><a href="https://arxiv.org/abs/2608.26821" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="temporalflow-vla-learning-physically-grounded-execution-history-for-long-horizon-robot-manipulation">TemporalFlow-VLA: Learning Physically Grounded Execution History for Long-Horizon Robot Manipulation</h1>
+<h2 id="摘要與問題">摘要與問題</h2>
+<p>VLA 常以當前影像、指令與機器人狀態預測下一段動作。長程操作裡，相似畫面可能來自不同歷史：夾取失敗會看似尚未夾取，同一末端姿態也可能處於接近、搬運或復原階段。單純加入多幀雖提供資訊，模型卻未必理解先後順序與物理變化。作者的診斷顯示，普通多幀基線對移除歷史敏感，對打亂歷史順序卻近乎不敏感，表示它使用了歷史內容，卻沒有可靠編碼時間結構。</p>
+<p>TemporalFlow-VLA 不在推論時另跑光流或軌跡模型，而是在訓練時用機器人運動學產生可解釋的 robot-surface temporal flow，監督兩個緊湊的時序 query。動作 expert 只能經這兩個 query 讀取歷史，迫使歷史資訊先被壓成與執行相關的物理變化表徵。</p>
+<h2 id="方法運動學時序流">方法：運動學時序流</h2>
+<p>系統從三個時間點的頭部相機影像取歷史。較近的 query 摘要最近半個 action chunk，較遠的 query 摘要前一整個 chunk。訓練標籤由記錄的關節狀態、URDF 幾何與相機校準決定：先在來源時間渲染機器人表面及所屬 link，把可見表面點轉回 link 座標，再用目標時間的正向運動學搬移並投影到政策影像平面。只有投影仍在畫面內、link 身分相同且三維殘差通過門檻的對應才保留。</p>
+<p>像素位移經影像大小正規化，再在 patch 內做 masked mean，形成稀疏的 flow target。這項輔助監督只限制機器人表面，但時序路徑仍讀取完整 RGB，所以物件與場景變化仍可透過動作損失進入表徵。標籤離線產生，不需人工光流註記；部署時渲染器、幾何管線與 flow decoder 都會移除。</p>
+<h2 id="階層-query-與動作介面">階層 query 與動作介面</h2>
+<p>較近 query 只讀取語言、近端歷史、當前影像與自身；較遠 query 還可讀取較早影像及較近 query，形成單向的短程到長程階層。兩個 query 各用獨立 decoder 重建相應時間尺度的 flow，訓練目標是原有 action flow-matching loss 加上時序重建 loss。</p>
+<p>關鍵遮罩限制是，action token 能讀取當前 VLA 上下文與兩個 query，不能直接讀取歷史 image patch。如此一來，效能提升不能只歸因於擴大上下文；歷史必須先通過有物理語意的窄介面。消融也顯示，未受 flow 監督的相同 query 容量雖優於直接多幀，完整監督版本在長程任務仍較好。</p>
+<h2 id="非同步歷史特徵快取">非同步歷史特徵快取</h2>
+<p>若每次重規劃都同步編碼全部歷史影像，重疊幀會反覆走視覺骨幹。作者在執行目前 action chunk 時，把相機觀察放進帶時間戳的 ring buffer，背景程序先算好未來需要的歷史視覺特徵。下一次重規劃只同步編碼當前影像，再從快取取出兩份歷史特徵。快取消除的是歷史影像編碼，不會跳過 joint transformer 內的時序 query；episode 開頭資料不足時則先停用快取。</p>
+<h2 id="實驗結果">實驗結果</h2>
+<p>模擬評估涵蓋 LIBERO 與 RoboTwin，並以移除或打亂歷史、直接多幀、無 flow 的雙 query、單一時間尺度及完整模型做控制比較；另在實體機器人上測試多階段杯子堆疊與瓶子裝箱。作者自報：LIBERO 平均成功率為 97.63±0.26％；RoboTwin 隨機化條件平均成功率為 84.2％；實體三杯堆疊的平均成功率達 77.8％。整體趨勢是短任務不一定領先，但操作階段愈多，顯式歷史表徵的優勢愈清楚。打亂歷史通常比移除歷史造成更高的離線動作損失，也支持模型確實使用時間順序，而非只多看幾張圖。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>TemporalFlow-VLA 把「提供更多歷史畫面」改成「指定歷史表徵應學會哪種物理變化」。其訓練期運動學監督具可解釋性，部署期則只留下緊湊 query 與快取，不需顯式 motion estimator。模擬與實體結果都把主要收益指向多階段操作。</p>
+<p>作者明言，目前只採固定的歷史觀察集合，沒有系統探索歷史幀數、時間間隔與任務類型之間的關係。不同操作可能需要不同時間範圍與取樣密度；最佳 temporal horizon 與 sampling granularity 尚待研究。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2608.26821_TemporalFlowVLA.%E6%91%98%E8%A6%81.html"><code>../summarize/2608.26821_TemporalFlowVLA.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

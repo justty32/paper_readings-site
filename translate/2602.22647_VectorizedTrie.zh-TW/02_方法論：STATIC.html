@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法論：STATIC · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2602.22647_VectorizedTrie.zh-TW.html">回 2602.22647_VectorizedTrie.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-方法論static">4. 方法論：STATIC</h2>
+<h3 id="41-問題形式化">4.1 問題形式化</h3>
+<p>設 V 為語意 token 詞彙量、L 為 SID 固定長度、C ⊂ V^L 為受約束子集。定義約束函數 F_t(y_{&lt;t}, y_t) = I(∃c∈C s.t. (y_{&lt;t}, y_t) ⊑ c)，若附加 y_t 到前綴 y_{&lt;t} 產生 C 中的合法前綴則回傳 1。目標是在<strong>僅推論期</strong>強制 P(y_t|y_{&lt;t}) = 0 當 F_t = 0，且以最低延遲開銷達成。</p>
+<h3 id="42-基於稀疏過渡矩陣stm的-trie-轉換">4.2 基於稀疏過渡矩陣（STM）的 Trie 轉換</h3>
+<p>核心構想：將前綴樹展平為 CSR 稀疏過渡矩陣。令前綴節點總數為 S，將每個唯一節點對應至狀態整數 s ∈ [S]。定義稀疏矩陣 T ∈ Z^{S × |V|}：T_{s,v} = s_next（若從 s 經 token v 存在過渡到 s_next），否則為 0（0 表示終端&quot;sink&quot;狀態）。</p>
+<p><strong>矩陣建構</strong>（離線）：三陣列 CSR 表示如下：</p>
+<ul>
+<li><strong>Row Pointers (P)</strong>：儲存每狀態 s 的合法過渡索引範圍</li>
+<li><strong>Column Indices (C)</strong>：儲存觸發過渡的合法 token ID v</li>
+<li><strong>Values Array (V)</strong>：儲存目標狀態節點 ID s_next</li>
+</ul>
+<p>以圖 1 為例：從 Node 4 提取過渡時，row_start = P[4] = 5，row_end = P[5] = 7，切片得 C[5:7] = [2,3]（合法 token 2 與 3），V[5:7] = [6,7]（分別導向 Node 6 與 Node 7）。</p>
+<h3 id="43-加速器原生解碼演算法">4.3 加速器原生解碼演算法</h3>
+<p>為在硬體加速器上達成高吞吐量，將有效性檢查重構為向量化查詢。關鍵機制：</p>
+<ul>
+<li><strong>過渡狀態向量 n_t</strong>：追蹤每條 beam 在 trie 中的當前節點索引。</li>
+<li><strong>混合稠密／稀疏查詢</strong>：前 d 層使用預計算稠密遮罩張量 D ∈ R^{|V|^d}（標記哪些長度-d 前綴存在於 C），做極快的 O(1) 查詢；但 D 的儲存成本在 d ≥ 3 時爆炸（|V|^d 指數增長），因此 d ≤ 2，後續層依賴 CSR 稀疏矩陣。</li>
+</ul>
+<p>每步解碼流程（Algorithm 1）：</p>
+<ul>
+<li><strong>Phase 1（Log-Space Projection）</strong>：LogSoftmax(L_t) → log-probabilities。</li>
+<li><strong>Phase 2（Constraint Masking）</strong>：若 t-1 &lt; d，呼叫 DenseLookup 做稠密查詢；否則呼叫 VNTK（Algorithm 2）做稀疏矩陣查詢，將無效 token 設為 -∞。</li>
+<li><strong>Phase 3（Beam Search）</strong>：結合遮罩後機率與累積分數，選取 top-M 序列。</li>
+<li><strong>Phase 4（State Update）</strong>：以 Gather 提取對應的 tokens、分數與約束狀態 n_t，用於下一輪。</li>
+</ul>
+<h3 id="44-實作與硬體最佳化">4.4 實作與硬體最佳化</h3>
+<p><strong>核心工程挑戰</strong>：處理前綴樹的動態特性（節點的子女數量不一）於靜態執行模型中。指標追逐無效率：TPU 上動態分支觸發代價高昂的圖重編譯或強制序列 while 迴圈（阻止硬體管線化）；GPU 上不匹配的子女數導致 warp divergence。</p>
+<p><strong>分支無關過渡內核（VNTK, Algorithm 2）</strong>：定義 B_ℓ = max_{n∈N_ℓ} b_n^ℓ 為層級 ℓ 的最大分支因數（一次性計算）。關鍵操作：</p>
+<ul>
+<li><strong>Boundary Lookup</strong>：idx_start = P[n_curr]，N_child = P[n_curr+1] - idx_start</li>
+<li><strong>Speculative Slicing</strong>：以 DynamicSlice 固定切片 B_ℓ 個元素（不問實際子女數），讀取 d_col（候選 token ID）與 d_val（目標節點 ID）</li>
+<li><strong>Sanitization</strong>：以 Range(B_ℓ) 生成索引向量，建立 m_valid = (J &lt; N_child) 遮罩，用 Where 對超額欄位清零</li>
+<li><strong>Projection</strong>：以 Scatter 將稀疏有效性列表投射為稠密布林遮罩 m，直接套用至 log-probability</li>
+</ul>
+<p>此設計確保 TPU 算術單元完全飽和，整步解碼為單一靜態計算圖。額外優化包括：</p>
+<ul>
+<li><strong>堆疊 CSR 佈局</strong>：將 Column Indices 與 Values 堆疊為 (N_edges, 2) 張量，單次記憶體交易同時獲取候選 token ID 與目標節點 ID，減半隨機記憶體存取。</li>
+<li><strong>稠密遮罩優化</strong>：前 d 步以少量靜態記憶體換取最計算密集層的顯著吞吐量增益。</li>
+<li><strong>跨平台可移植</strong>：JAX/XLA 上的 jnp.take (Gather) 可直譯為 PyTorch/Inductor 上的 torch.gather。</li>
+</ul>
+<blockquote>
+<p><a href="../2602.22647_VectorizedTrie.zh-TW.html">←上一部分</a></p>
+</blockquote>
+<h2 id="5-youtube-大規模部署">5. YouTube 大規模部署</h2>
+<h3 id="51-實驗設置">5.1 實驗設置</h3>
+<p>YouTube 影片推薦語料庫：SID 長度 L = 8，token 詞彙 |V| = 2048，可推薦語料庫規模約 1-10 億項目。d = 2（前 2 層用稠密遮罩 D ∈ R^{2048×2048}），後續層用 CSR。模型為 Gemini-based 生成式檢索模型（類似 PLUM），3B 稠密參數（非 MoE），batch size = 2（每晶片），beam size M = 70。所有實驗於 Google TPU v6e 進行。</p>
+<h3 id="52-系統效率分析">5.2 系統效率分析</h3>
+<p>約束集：「7 天內上傳」的新鮮影片子集，約 2000 萬高品質項目。比較基線（表 1）：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>延遲開銷 (ms)</th>
+<th>佔推論比例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Unconstrained</td>
+<td>+0.0</td>
+<td>-</td>
+</tr>
+<tr>
+<td>PPV Exact</td>
+<td>+34.1</td>
+<td>260%</td>
+</tr>
+<tr>
+<td>CPU Trie</td>
+<td>+31.3</td>
+<td>239%</td>
+</tr>
+<tr>
+<td>Hash Bitmap</td>
+<td>+12.3</td>
+<td>94%</td>
+</tr>
+<tr>
+<td>PPV Approximate</td>
+<td>+1.56</td>
+<td>11.9%</td>
+</tr>
+<tr>
+<td><strong>STATIC (Ours)</strong></td>
+<td><strong>+0.033</strong></td>
+<td><strong>0.25%</strong></td>
+</tr>
+</tbody>
+</table>
+<p>STATIC 比 CPU Trie 快 <strong>948 倍</strong>，比 PPV Exact 快 <strong>1033 倍</strong>，比 PPV Approximate 快 <strong>47 倍</strong>。關鍵洞察：PPV 雖為「片上」且向量化，但二分搜尋的 O(log|C|) I/O 複雜度（疊加對 logits 數量的線性縮放）是瓶頸；STATIC 以單次 VNTK 內核將 I/O 複雜度降至 O(1)。</p>
+<h3 id="53-可擴展性">5.3 可擴展性</h3>
+<p><strong>記憶體用量</strong>（見附錄 B）：每 100 萬約束項約需 90 MB HBM（上限）。20M 項目上限約 1.5 GB（實務上 ≤ 75%）。主因：儲存成本由約束集的 trie 節點數主導，早期層的稠密遮罩貢獻恆定（17.3 MB）。</p>
+<p><strong>延遲縮放 （圖 2-3）</strong>：</p>
+<ul>
+<li>對 |C|（10^5 → 10^8）：STATIC 延遲亞線性，幾乎常數。PPV Exact/CPU Trie 大幅縮放（最高 38.7 ms / OOM）。</li>
+<li>對 |V|（256 → 32k）：STATIC 延遲近乎常數——前 d=2 層的 O(1) 稠密查詢吸納了大量分支，後續層的最大分支因數理論上線性縮放但實務上保持小常數。目前所有生產系統 |V| ≤ 8192 [8, 37]，STATIC 在此範圍內始終保持極低延遲。</li>
+</ul>
+<h3 id="54-線上-ab-測試">5.4 線上 A/B 測試</h3>
+<p>在 YouTube 短影片產品「Home Feed」部署 STATIC 強化的 PLUM 模型，以「7 天新鮮度」為約束。結果（表 2）：</p>
+<ul>
+<li><strong>7 天新鮮影片觀看 +5.1%</strong> [95% CI: 5.0%, 5.2%]</li>
+<li><strong>3 天新鮮影片觀看 +2.9%</strong> [2.8%, 3.0%]</li>
+<li><strong>點擊率 (CTR) +0.15%</strong> [0.01%, 0.29%]</li>
+<li><strong>策略用戶滿意度 +0.15%</strong> [0.03%, 0.27%]</li>
+</ul>
+<p>STATIC 達成 100% 約束合規——無約束模型常生成舊影片 SID，STATIC 嚴格僅生成 7 天內的新鮮影片。</p>
+<h2 id="6-冷啟動檢索amazon-reviews-資料集">6. 冷啟動檢索（Amazon Reviews 資料集）</h2>
+<h3 id="61-設置">6.1 設置</h3>
+<p>為每個 Amazon Reviews 子資料集獨立訓練 RQ-VAE（L = 4，|V| = 256，每子集 10–20k 項目）。基於 Gemma 1B 稠密架構，batch size = 16，beam size M = 20，TPU v6e。</p>
+<h3 id="62-冷啟動結果">6.2 冷啟動結果</h3>
+<p>實驗方法：以「最舊評論的年齡」定義項目年齡，分離最新 2%（及 5%）項目為冷啟動集合，過濾掉不含冷啟動項目的訓練序列。比較方法：(1) Unconstrained beam search；(2) Constrained Random Guessing；(3) Dense Retrieval（雙塔模型）；(4) STATIC。</p>
+<p>結果（表 3，Recall@1 %）：</p>
+<table>
+<thead>
+<tr>
+<th>子資料集</th>
+<th>方法</th>
+<th>2% 冷啟動</th>
+<th>5% 冷啟動</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Beauty</td>
+<td>Unconstrained / Const. Random / Dense / <strong>STATIC</strong></td>
+<td>0.00 / 0.42 / 0.88 / <strong>4.29</strong></td>
+<td>0.00 / 0.17 / 0.63 / <strong>1.60</strong></td>
+</tr>
+<tr>
+<td>Sports &amp; Outdoors</td>
+<td>同上</td>
+<td>0.00 / 0.27 / 0.85 / <strong>1.24</strong></td>
+<td>0.00 / 0.11 / 0.36 / <strong>1.17</strong></td>
+</tr>
+<tr>
+<td>Toys &amp; Games</td>
+<td>同上</td>
+<td>0.00 / 0.42 / 0.49 / <strong>4.39</strong></td>
+<td>0.00 / 0.17 / 0.44 / <strong>2.25</strong></td>
+</tr>
+</tbody>
+</table>
+<p>STATIC 在所有設置中大幅優於無約束（皆 0%）、隨機猜測與稠密檢索——證明<strong>僅靠受約束填碼即可實現非平凡的生成式檢索冷啟動效能</strong>。</p>
+<h2 id="7-結論">7. 結論</h2>
+<p>生成式檢索承諾將 LLM 應用於下一代推薦系統，但其工業採用一直受限於輸出空間控制能力的缺失。本文在前綴樹約束與向量化硬體之間架起了橋梁。STATIC 框架將指標追逐的 trie 查詢轉化為向量化稀疏矩陣運算，實現比替代方案快 47–1033 倍的加速，並在服務數十億用戶的生產環境中展示了嚴格約束可以規模化強制執行而不損害服務延遲，同時證明僅靠受約束填碼即可改善冷啟動效能。</p>
+<p><strong>未來工作</strong>：目前 CSR 過渡矩陣建構為離線過程，開發動態稀疏更新以支援即時庫存變更（無需完全重編譯模型）是重要延伸方向。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

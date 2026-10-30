@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_提出的_Flow · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2401.08500_AlphaCodium.zh-TW.html">回 2401.08500_AlphaCodium.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-提出的-flow">3. 提出的 Flow</h2>
+<h3 id="31-概觀">3.1 概觀</h3>
+<p>由於程式生成問題的複雜性，我們觀察到單一 prompt 最佳化、甚至 chain-of-thought prompt，都無法有意義地提升 LLM 在 CodeContests 上的準確率。模型難以理解問題，持續產出錯碼，或產出「過了公開測試卻無法泛化到未見私有測試」的碼。適合自然語言任務的常見 flow 對程式生成未必最佳——後者有個未被開發的潛力：<strong>反覆執行生成的碼、並對已知範例驗證它</strong>。</p>
+<p>我們發現，與其用 NLP 的 prompt engineering 技巧，不如採用專門的<strong>程式生成與測試導向 flow</strong>，圍繞「反覆執行並根據輸入輸出測試修復生成的碼」的迭代過程。兩個關鍵元素：(a) 在預處理階段生成額外資料（如自我反思、公開測試推理）；(b) 用額外 AI 生成測試擴充公開測試。</p>
+<p>flow（圖 1(a)）分兩大階段：</p>
+<ul>
+<li><strong>預處理階段</strong>：線性 flow，AlphaCodium 用自然語言推理問題。</li>
+<li><strong>程式碼迭代階段</strong>：迭代階段，AlphaCodium 對特定測試生成、執行、修復解答碼。</li>
+</ul>
+<h3 id="32-flow-各階段">3.2 Flow 各階段</h3>
+<ul>
+<li><strong>問題反思（Problem reflection）</strong>：用 bullet points 描述問題，涵蓋目標、輸入、輸出、規則、限制及其他相關細節。</li>
+<li><strong>公開測試推理（Public tests reasoning）</strong>：解釋每個測試輸入為何導致該輸出。</li>
+<li><strong>生成候選解（Generate possible solutions）</strong>：用自然語言生成 2-3 個候選解。</li>
+<li><strong>排序候選解（Rank solutions）</strong>：以正確性、簡單性、健壯性排序並選「最佳解」（不必選最有效率者）。</li>
+<li><strong>生成額外 AI 測試（Generate additional AI tests）</strong>：額外生成 6-8 個多樣的輸入輸出測試，盡量覆蓋原公開測試未涵蓋的情況與面向。</li>
+<li><strong>初始解答碼（Initial code solution）</strong>：目標是生成一個合理接近正確碼的初始碼，好讓後續 run-fix 迭代更易成功。流程：挑一候選解、生成對應碼、跑選定的公開與 AI 測試；重複直到通過或達嘗試上限；以第一個通過測試的碼、或輸出最接近者（見附錄 D）作為後續步驟的 base 碼。</li>
+<li><strong>在公開測試上迭代（Iterate on public tests）</strong>：從 base 碼起，反覆對公開測試執行；若某測試失敗，依錯誤訊息嘗試修復。</li>
+<li><strong>在 AI 生成測試上迭代（Iterate on AI-generated tests）</strong>：延續 run-fix 迭代到 AI 生成測試，並使用「test anchors」（見第 4 節）。</li>
+</ul>
+<h3 id="33-額外洞見">3.3 額外洞見</h3>
+<p>首先，flow 依賴<strong>知識累積</strong>——由易到難推進，沿途累積知識與洞見以助更難的階段。例如第一步「問題反思」的輸出，可作為「生成候選解」等較難步驟的 prompt 輸入；預處理階段的輸出用來輔助最關鍵的程式碼迭代階段。</p>
+<p>另一關鍵觀察：對 AI 而言，<strong>生成更多測試比生成完整解答碼容易</strong>。生成額外測試主要靠理解問題與基本 brute-force/邏輯推理，不必真正「解出」問題；而生成正確解答碼需要完整的演算法解、等同於能正確解任何輸入輸出對。因此我們可以多生 AI 測試，用它們來改善程式生成階段。我們進一步要求模型聚焦原公開測試未涵蓋的面向（如大輸入、edge case）來放大這些測試的貢獻。</p>
+<p>也注意：<strong>有些步驟可合併成單次 LLM 呼叫</strong>，圖 2(a) 是概念性 flow。實務上，結構化輸出讓多個階段能併入單次呼叫，以節省資源，或因為模型同時做特定任務時表現更好。</p>
+<h2 id="4-程式碼導向的設計概念">4. 程式碼導向的設計概念</h2>
+<p>本節呈現我們發現對解程式生成問題有益的設計概念、技巧與最佳實踐；圖 1 的 flow 大量使用之。</p>
+<ul>
+<li>
+<p><strong>YAML 結構化輸出</strong>：要求模型輸出符合給定 Pydantic class 的 YAML，是本 flow 的關鍵元件（範例見圖 3：generate possible solutions 階段，Pydantic 定義了 Solution 的 name/content/why_it_works/complexity 等欄位）。結構化輸出消除了「prompt engineering」大部分的麻煩與暗黑知識，讓複雜任務能以直白、類程式碼的方式呈現，也讓我們能取得涉及多階段、體現有邏輯有條理思考過程的複雜答案。雖然較新的 GPT 版本內建 JSON 輸出支援，我們主張 <strong>YAML 對程式生成任務更合適</strong>（見附錄 B）。</p>
+</li>
+<li>
+<p><strong>透過 bullet points 分析做語意推理</strong>：要 LLM 對某議題推理時，要求輸出為 bullet points 格式能得到更好結果。條列鼓勵對問題的深入理解，強迫模型把輸出切成有邏輯的語意段落。例如以 bullet points 做問題自省（圖 2(b)），每個 bullet 代表對問題不同部分（總體描述、目標與規則、輸入結構、輸出結構）的語意理解。</p>
+</li>
+<li>
+<p><strong>LLM 生成模組化碼時表現更好</strong>：要 LLM 生成單一冗長函式時結果差——碼常含 bug 或邏輯錯誤，且單一巨石式碼傷害迭代修復能力（模型即使拿到錯誤訊息也難以定位與修復）。明確要求模型「把生成的碼拆成有意義名稱與功能的小子函式」時，能得到 bug 更少、迭代修復成功率更高的碼。</p>
+</li>
+<li>
+<p><strong>soft decisions 加雙重驗證（double validation）</strong>：LLM 不擅長需要嚴格、非平凡決策的程式任務。以「為問題生成額外測試」為例，模型生的測試常有些根本是錯的。雙重驗證加一步：給定生成的輸出，要模型<strong>重新生成同樣的輸出、並在需要時修正它</strong>（例如給定生成的 AI 測試，要模型重生同樣測試並修正錯誤輸出）。我們發現這比直接問「這個測試對嗎」的 yes/no 問題更有效。</p>
+</li>
+<li>
+<p><strong>推遲決策、避免直接提問、留探索空間</strong>：對複雜議題直接提問時，我們一貫看到幻覺與錯答。對策是採由易到難逐步累積資料的 flow：先做最易的任務（問題自省、公開測試推理）→ 再生成額外 AI 測試與候選解 → 取得上述答案後才進入實際程式生成與 run-fix 迭代。另一例：與其獨選單一演算法解，我們寧可<strong>排序多個候選解</strong>，在生成初始碼時給最高分者優先權但不排他。既然模型可能出錯，最好避免不可逆決策，留下探索與用不同候選解迭代的空間。</p>
+</li>
+<li>
+<p><strong>Test anchors（測試錨點）</strong>：即使有雙重驗證，有些 AI 生成測試仍會是錯的，這讓對其迭代很棘手——測試失敗時，是碼錯還是測試錯？直接問模型「誰錯了」常招致幻覺與被改壞的碼。對策是 test anchors：</p>
+<ul>
+<li>先對<strong>已知正確的公開測試</strong>迭代；完成後把所有通過的測試設為<strong>錨點測試</strong>。</li>
+<li>再逐一對 AI 生成測試迭代；某測試通過就加入錨點清單。</li>
+<li>某測試失敗時，<strong>假設是碼錯</strong>並嘗試修碼；但<strong>要求修後的碼也必須通過所有已取得的錨點</strong>。如此錨點能保護我們免於被改壞的碼。</li>
+<li>另一優化：把 AI 生成測試由易到難排序，讓迭代早期就取得錨點，供後續對更複雜 AI 測試迭代時作保護。</li>
+</ul>
+</li>
+<li>
+<p><strong>對我們無效的方法</strong>：見附錄 C。</p>
+</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

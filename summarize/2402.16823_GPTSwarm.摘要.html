@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《GPTSwarm：語言智能體作為可優化的圖（GPTSwarm: Language Agents as Optimizable Graphs）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Mingchen Zhuge, Wenyi Wang, Louis Kirsch, Francesco Faccio, Dmitrii Khizbullin, Jürgen Schmidhuber（KAUST / Schmidhuber lab）</p><p>日期：2024-02</p><p>arXiv：2402.16823</p><p><a href="https://arxiv.org/abs/2402.16823" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="gptswarm語言智能體作為可優化的圖重點摘要">《GPTSwarm：語言智能體作為可優化的圖》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>GPTSwarm</strong>：把 LLM 智能體系統統一表示為<strong>可優化的計算圖</strong>——<strong>node＝一個操作</strong>（LLM 推論／工具使用／函數呼叫）、<strong>edge＝操作之間的資訊流</strong>，智能體是圖、swarm 是多智能體組成的複合圖；在此表示上做兩層自動優化——<strong>節點層 prompt 優化</strong>（固定其他 prompt 逐一改）＋<strong>邊層圖結構優化</strong>（把離散選邊重構為 DAG 上的機率分佈、用 <strong>REINFORCE</strong> 學連線分佈），從而自動改進單體 prompt 與跨智能體編排（甚至自動剪除無用／對抗智能體）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>各種人工設計的 prompt engineering 與多智能體框架（COT、ToT、Reflexion、AutoGPT、CAMEL、AutoGen、MetaGPT…）產出大量<strong>互不相容的程式碼庫</strong>，且智能體的提示方案與編排工作流全靠人工工程；既有多智能體系統多半<strong>不優化智能體社會的結構本身</strong>。作者要一個統一抽象＋自動優化機制。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>統一抽象</strong>：語言智能體＝有向無環圖 G=(N, E, F, o)（節點 N、邊 E、計算例程 F、輸出節點 o）；swarm＝把 K 個智能體圖聯集、再加上連接不同智能體節點的邊 ℰ 而成的複合圖，新增邊＝智能體間<strong>溝通通道</strong>。COT／ToT／Self-Consistency 都能用此圖表示。</li>
+<li><strong>邊優化（edge optimization）</strong>：d 條潛在邊有 2^d 種配置且效用因 tokenization 不可微 → 重構為連續優化：對每條邊 e_i 指定機率 θ_i，在「DAG 上的機率分佈 D_θ」上求 max E_{G∼D_θ}[u_τ(G)]；用 <strong>REINFORCE</strong>（Williams 1992）＋Adam 做無偏梯度上升更新 θ。</li>
+<li><strong>節點優化（node optimization）</strong>：多數節點都在提示 LLM；靠圖帶來的<strong>關注點分離</strong>假設「固定其他 prompt、逐一更新每個節點級 prompt」即足夠；用一個改進算子 I（如 OPRO）吃（prompt、功能描述 d_n、節點輸入-輸出歷史 h_n）產出更好 prompt。HumanEval 上以挑選有效示範例（demonstration）方式實作。</li>
+<li><strong>開源框架</strong>：Node/Graph/CompositeGraph 類別、Operations vs Agents、Dataset/PromptSet/Evaluator，支援 41 種檔案分析、網搜、索引記憶，async 平行。</li>
+</ul>
+<h2 id="結果具體數字">結果（具體數字）</h2>
+<ul>
+<li><strong>MMLU 對抗設定</strong>：邊優化能把混入對抗智能體的 swarm 分數漸近拉回單體基線，<strong>自動剪除無用／對抗智能體與邊</strong>；協作設定（7 個角色化 IO）比基線 +2.1%±1.1%。</li>
+<li><strong>Mini Crosswords</strong>：邊優化十次迭代達 0.575（初始 0.465）；換 GPT-4-Turbo 評估達 <strong>0.800</strong>，勝過先前 SOTA 的 ToT（GPT-4 0.675）。控制邊數的消融證明增益非來自邊變多。邊優化後再接節點優化 → 0.668。</li>
+<li><strong>HumanEval</strong>：節點優化把準確率從 <strong>0.76 提升到 0.88</strong>。</li>
+<li><strong>GAIA</strong>（僅用框架、未做優化）：7×ToT+self-consistency 平均 <strong>18.45</strong> vs GPT-4-Turbo 9.70（+90.2%），Level 2 <strong>+260.2%</strong>。</li>
+<li><strong>成本效率</strong>（vs DyLAN，MMLU 3T3A）：準確率相當（0.8301 vs 0.8366）但優化成本 <strong>$5.32／0.9h vs $105.93／25.4h</strong>（約 1/20）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>只優化智能體<strong>之間</strong>的邊，各智能體<strong>內部</strong>節點拓撲未動態優化（作者列為未來工作）。</li>
+<li>GAIA 實驗未套用邊／節點優化，僅示範框架通用性。</li>
+<li>規模化難題：智能體數超過 100 時，維持溝通效率與穩健性是重大挑戰。</li>
+<li>邊優化需多次取樣圖並評估效用，優化階段 token／成本可觀（見附錄 F）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>幾乎逐字對映 ai_core §1「系統像符號神經網路計算圖」</strong>：GPTSwarm 把整個 agent 系統顯式寫成計算圖——node＝操作、edge＝資訊流——與你的核心心智模型同構。差別是 ai_core 追求「多數確定性節點＋少數 LLM」，而本文的 node 多半仍是 LLM 呼叫；可把 GPTSwarm 當成「同一張圖抽象、但把節點確定化程度往 LLM 端擺」的參照物，反推你要往確定性端剃除到什麼程度。</li>
+<li><strong>兩層優化直接可借用</strong>：node 級 prompt 優化＝改進「把 LLM 包成可靠函數」的那顆節點；<strong>edge 級 REINFORCE 學連線分佈＝在圖層面自動決定資訊該怎麼流</strong>——對 ai_core 的**級聯路由（§3.3）**是一個「用 RL 學路由拓撲」的具體演算法樣板（不同於 FrugalGPT 的閾值級聯，這裡學的是整張 DAG 的邊機率）。</li>
+<li><strong>拓撲層治理</strong>：MMLU 對抗實驗顯示邊優化會<strong>自動把無用／對抗智能體剪除、斷開其邊</strong>——這是一種「以效用為准入、預設不連接、有貢獻才保留連線」的機制，恰可呼應 ai_core §3.4「<strong>拒絕為預設＋憑證准入</strong>」——只是這裡的「憑證」是 REINFORCE 學到的效用貢獻，治理發生在<strong>拓撲層</strong>而非呼叫層。</li>
+<li><strong>對固化引擎（§3.6）的反面提醒</strong>：本文把智能體協作結晶為一張<strong>學到的邊分佈</strong>（近似確定性的圖結構），但節點本身仍是 LLM——它固化的是「編排」而非「案例邏輯」；ai_core 若要固化，關鍵反而在把高頻節點從 LLM 換成確定性程式碼，而 GPTSwarm 的圖抽象正好提供「該固化哪顆節點」的定位框架。</li>
+<li>定位：<strong>框架＋方法論文＋概念驗證</strong>，ICML 2024，開源（gptswarm.org）。適合做 <strong>多智能體編排、agent 系統圖抽象、RL 學圖結構／路由、prompt 自動優化</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2402.16823_GPTSwarm.zh-TW.html"><code>../translate/2402.16823_GPTSwarm.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

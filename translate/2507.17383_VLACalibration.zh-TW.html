@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Confidence Calibration in Vision-Language-Action Models 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Thomas Zollo、Richard Zemel</p><p>日期：2025-07-23（v1，cs.RO）</p><p>arXiv：2507.17383</p><p><a href="https://arxiv.org/abs/2507.17383" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="confidence-calibration-in-vision-language-action-models">Confidence Calibration in Vision-Language-Action Models</h1>
+<h2 id="摘要與問題第-1-節">摘要與問題（第 1 節）</h2>
+<p>可靠的機器人不只要常常成功，還要知道自己有多可能成功。若一個校準良好的策略報出某個信心水準，具有同樣信心水準的一批任務，其實際成功比例也應與之相符。這對會直接在物理世界行動的視覺語言動作模型（Vision-Language-Action model，VLA）尤其重要：可信的信心可讓安全監控器在危險操作前改寫指令、停止執行或轉交人類。</p>
+<p>然而，VLA 的校準仍缺乏系統研究。作者問四件事：任務成功與校準誤差是否互相牴觸；能否利用同義指令集成改善信心；校準品質如何沿任務進度變化；各動作維度是否有不同的誤校準。論文以 OpenVLA 與 LIBERO 做基準測試，並提出兩種不改變既有動作選擇的輕量修正：prompt ensemble 與 action-wise Platt scaling。</p>
+<h2 id="校準定義與基線第-3134-節">校準定義與基線（第 3.1～3.4 節）</h2>
+<p>策略在時間步 <code>t</code> 接收視覺、語言與先前動作的歷史，輸出下一動作分布；論文把抽出的純量信心 <code>c_t</code> 解讀為，在當前歷史與選定動作下，整項任務最後成功的機率。完美校準的條件是 <code>P(Y=1|C=c)=c</code>。對以離散 token 表示各自由度的 VLA，基線作法先取每個動作維度所選 token 的機率，再跨維度取平均。這類平均可避免自由度較多的機器人僅因輸出較長而顯得信心較低。</p>
+<p>評估同時使用 ECE、Brier score 與 NLL。ECE 看報告信心和經驗成功率是否一致，但固定輸出母體成功率也可能得到很低的 ECE；Brier score 與 NLL 是 proper scoring rule，能補上預測是否有區辨力的問題，其中 NLL 對高信心失敗懲罰更重。三者合看，才不會把「可靠但毫無資訊」的信心當成好結果。</p>
+<h2 id="兩種校準方法第-3536-節">兩種校準方法（第 3.5～3.6 節）</h2>
+<p><strong>Prompt ensemble</strong> 把指令措辭視為潛在隨機變數。輔助 LLM 先產生語意等價的改寫，VLA 分別對每個版本產生動作與信心，最後平均信心。其直覺是抵銷純粹由選字造成的變異；批次推論下可並行處理，無須重新訓練 VLA。</p>
+<p><strong>Action-wise Platt scaling</strong> 則針對各動作維度各自擬合一組仿射轉換，再經 sigmoid 後平均。單一全域 Platt scaling 假設所有維度能用同一修正，但夾爪開合與罕見的手腕旋轉在訓練資料裡分布不同，可能一個過度自信、另一個信心不足。逐維度修正只改報出的信心，不改已選定的 token。</p>
+<h2 id="主要實驗第-4143-節作者自報">主要實驗（第 4.1～4.3 節，作者自報）</h2>
+<p>作者自報：實驗涵蓋 LIBERO Spatial、Object、Goal 三個任務套組，以及完整精度、八位元與四位元量化三種 OpenVLA 版本。每套組有十個任務，每個任務採五十種隨機初始化，合計五百次試驗。九種模型與套組組合皆呈現相同趨勢：任務錯誤率較低時，校準誤差也較低，因此提升任務能力與取得可靠信心並未顯示根本衝突。</p>
+<p>作者自報：prompt ensemble 為每個原始指令產生二十個改寫。在跨模型、資料集與四種指標的三十六次量測中，集成每次都降低校準誤差；ECE 的降幅最高達百分之四十，平均超過百分之二十，Brier score 與 NLL 的平均降幅約為百分之五至十。改用不同的改寫提示仍優於基線；增加納入集成的改寫數，通常也持續降低誤差。</p>
+<h2 id="任務時間與動作維度第-4445-節作者自報">任務時間與動作維度（第 4.4～4.5 節，作者自報）</h2>
+<p>作者自報：跨三套組與兩種模型版本的六種設定，當信心只取當下時間步時，校準從任務開始到約完成一半明顯改善，之後持平或退回原先水準；成功與失敗軌跡的平均信心差距也常在中段最大。這支持一種風險監控方式：先讓機器人執行經認證安全、不接觸物體的前綴，取得更多感知脈絡後再決定是否介入。滑動視窗平均在任務中段常改善 Brier score，但不保證改善 ECE；把全部歷史信心平均則可能提高區辨力，卻因壓縮變異而變得過度自信。</p>
+<p>作者自報：token 型 OpenVLA 的低階命令分成七個動作維度。逐維度稽核發現 ECE 可相差最高五倍，且沒有一個維度在所有設定中固定最好或最差。action-wise Platt scaling 一致優於全域 Platt scaling 與 temperature scaling，部分案例的 ECE 改善超過百分之二十，且不改動作、幾乎不增加執行成本。純量信心會遮住維度間差異，VLA 校準因此不能直接照搬一般分類器的方法。</p>
+<h2 id="討論結論與局限第-57-節">討論、結論與局限（第 5～7 節）</h2>
+<p>研究顯示，VLA 的誤校準至少有三種可利用的結構：語言措辭引入的變異、沿任務時間改變的資訊量，以及不同動作維度的資料分布。prompt ensemble 消除部分語言通道噪音；時間感知監控尋找較可信的介入點；逐維度縮放則修正不同自由度的系統性偏差。這些結果建立的是初步研究議程，而非可直接保證安全的完整方案。</p>
+<p>主要局限是所有實驗都使用 LIBERO 模擬器中微調的 OpenVLA，架構與領域多樣性有限。模擬便於反覆重置與大量 rollout，卻無法忠實呈現真實機器人的感測雜訊、延遲與磨耗。其他環境、embodiment，以及 diffusion、連續迴歸與 flow-matching 控制器仍待驗證；如何把任務中段較可靠的信心真正接入選擇性執行、人類介入或規劃，也仍是開放問題。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2507.17383_VLACalibration.%E6%91%98%E8%A6%81.html"><code>../summarize/2507.17383_VLACalibration.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

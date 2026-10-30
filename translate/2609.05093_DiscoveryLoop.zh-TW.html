@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>LLM-Guided Program Evolution for Circle Packing: Breaking 10 Packomania Records for $28 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Wes Sander</p><p>日期：2026-09-04（v1，cs.AI）</p><p>arXiv：2609.05093</p><p><a href="https://arxiv.org/abs/2609.05093" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="llm-guided-program-evolution-for-circle-packing-breaking-10-packomania-records-for-28">LLM-Guided Program Evolution for Circle Packing: Breaking 10 Packomania Records for $28</h1>
+<h2 id="摘要與問題">摘要與問題</h2>
+<p>Discovery Loop 想回答一個務實問題：若沒有研究機構的分散式叢集，只用單一 LLM、單機與小額預算，還能保留多少 LLM-guided program evolution 的效果？作者選擇 Packomania 的 csqv 問題，目標是在單位正方形內放置可變半徑圓，使半徑總和最大，同時保證圓不越界、不重疊。</p>
+<p>系統從一個 multi-start penalty L-BFGS-B 與 LP 半徑最佳化的 seed solver 開始。LLM 每輪看完整 champion 程式、各 target 記分板與近期想法紀錄，然後輸出一份完整 replacement solver，不是 patch。這讓候選可以大改架構，也避免 patch 合併衝突。</p>
+<h2 id="方法">方法</h2>
+<p>控制器每輪建 prompt、呼叫 LLM、抽出想法與 Python 程式，再平行跑所有 target。獨立 verifier 與 solver 不共享程式碼，會重新計算半徑總和、檢查邊界及圓間重疊，並做嚴格 feasibility shrink 以排除浮點誤差。候選總分高於 champion 才取代它，失敗候選則丟棄。</p>
+<p>系統另為每個 target 保存歷來最佳結果，而不是只保存整體 champion。若較早 solver 只在某個 target 特別強，它的解仍會留下。Prompt 也攜帶最近十二項嘗試及結果，讓模型知道哪些方向有效、哪些已失敗（作者自報）。</p>
+<p>Plateau detector 檢查最近四輪，若全數遭拒或沒有程式、沒有新 champion，或總改善低於零點零一，就停止（作者自報）。這項規則是事後套回實際 run 評估，並未在該次 run 中提前終止。</p>
+<h2 id="實驗與主要結果">實驗與主要結果</h2>
+<p>作者在消費級電腦上以 Claude Fable 5.1 執行，評估十二個 target，每個 target timeout 為一百二十秒，並行 worker 為六個（作者自報）。實際 run 共十五輪，LLM 成本二十七點七二美元，wall-clock 約八小時（作者自報）。</p>
+<p>作者自報在指定範圍內有十個 target 超越 Packomania 舊紀錄，改善幅度為百分之二點四至五點四，且投稿已獲 Packomania 接受。需要注意的是，原文結果表把這十項紀錄的首次改善都標為 iter 0，也就是 seed solver；後續 LLM 演化提升的是整體搜尋結果與個別解，不應把「首次打破十項紀錄」全歸到後續生成的候選。</p>
+<p>成本集中在前期。作者自報前六輪花四點九六美元，aggregate total 從五十九點三九升至五十九點九六；其後九輪花二十二點七六美元，只再升至五十九點九八。以事後 plateau 規則回放，系統會在第九輪後停止，花費十三點九五美元而非二十七點七二美元，最終總和只少零點零零六（作者自報）。</p>
+<p>LLM 產生的候選依序引入 basin hopping、contact-graph polish、hexagonal lattice 初始化、island-model 平行搜尋、KKT-Newton polish 與 defect migration。這些是程式結構與搜尋算子的改變，不只是調參；但每項方法的獨立貢獻沒有以控制實驗拆開衡量。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>Discovery Loop 顯示，一個短小的 controller、完整程式替換、細緻回饋與獨立驗證，就能在低成本環境中維持可用的 program evolution。它也把「何時停止」變成一等問題：後半段成本快速上升，新增品質卻極小。</p>
+<p>作者列出四項限制。系統只在單一、便宜評估的問題上展示；只保留一個 champion，沒有 population 帶來的探索多樣性；成功依賴模型產生可執行 Python 的能力，另一次 MIPLIB 實驗的 code generation failure rate 達百分之七十五（作者自報）；固定 target 很快進入 plateau，實務上必須擴展 target 或接受報酬遞減。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2609.05093_DiscoveryLoop.%E6%91%98%E8%A6%81.html"><code>../summarize/2609.05093_DiscoveryLoop.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

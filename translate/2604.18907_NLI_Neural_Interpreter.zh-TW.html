@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>以神經詮釋語言進行梯度式程式合成（Gradient-Based Program Synthesis with Neurally Interpreted Languages） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Matthew Macfarlane 等（NSERC、CIFAR AI Chairs program 支持；致謝 François Chollet）</p><p>日期：2026-04</p><p>arXiv：2604.18907</p><p><a href="https://arxiv.org/abs/2604.18907" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="以神經詮釋語言進行梯度式程式合成nli">以神經詮釋語言進行梯度式程式合成（NLI）</h1>
+<h2 id="摘要">摘要</h2>
+<p>本文提出 <strong>Neural Language Interpreter（NLI）</strong>——一個架起符號與神經程式合成之間鴻溝的新架構。透過<strong>學一個離散、類符號的語言</strong>與一個<strong>可微的解釋器</strong>，NLI 結合符號系統的<strong>組合強度</strong>與神經網路的<strong>靈活性</strong>。我們證明 NLI 在具挑戰性的組合泛化（compositional generalisation）任務上<strong>勝過既有神經法、並與符號法 competitive</strong>；消融確認<strong>離散、序列的潛在程式</strong>是此成功的關鍵。</p>
+<h2 id="1-引言--2-問題陳述">1. 引言 / 2. 問題陳述</h2>
+<p>神經程式合成靈活但組合泛化差；符號法泛化強卻不靈活、難端到端可微。NLI 旨在兼得兩者之長。問題設定為 <strong>programming-by-example</strong>：模型只看輸入輸出對，須做到<strong>系統性泛化</strong>。</p>
+<h2 id="3-離散序列推論">3. 離散序列推論</h2>
+<h3 id="31-訓練目標">3.1 訓練目標</h3>
+<ul>
+<li><strong>重建損失 L_rec</strong>：解釋器執行所推得的程式須重現目標輸出。</li>
+<li><strong>編碼器正則化損失</strong>：約束編碼器（inductor）的程式表徵。</li>
+</ul>
+<h3 id="32-inductor離散程式表徵學習">3.2 Inductor：離散程式表徵學習</h3>
+<p>把輸入輸出對編碼成<strong>離散 token 序列</strong>（類符號程式）；離散性透過 Gumbel-Softmax 等機制實現（§4.3 專門分析）。</p>
+<h3 id="33-interpreter遞迴神經程式執行">3.3 Interpreter：遞迴神經程式執行</h3>
+<p>一個<strong>可微解釋器</strong>逐步執行 token 程式：每層（執行步）條件於恰好一個 token，採嚴格<strong>遞迴/序列</strong>流。此遞迴設計正是長度泛化能力的來源（致謝 François Chollet 早期關於「神經程式應透過遞迴 by design 處理長度泛化」的啟發對話）。</p>
+<h3 id="34-搜尋神經程式">3.4 搜尋神經程式</h3>
+<p>三種推論策略：<strong>Base Inference</strong>（直接取編碼器輸出）、<strong>Prior Search</strong>（從編碼器抽樣）、以及主力 <strong>Gradient Search</strong>（在潛在空間以梯度優化程式）。test-time 梯度搜尋是泛化的關鍵啟用者。</p>
+<h2 id="4-實驗">4. 實驗</h2>
+<p><strong>benchmark</strong>：自訂組合泛化套件 + DeepCoder benchmark 的組合版（Shi et al., 2023）。自訂套件用固定長度序列（20），含三 split：<strong>Shift-L</strong>（訓練於小位移、測試於更大未見位移＝長度泛化）、<strong>Shift-P</strong>（反向：訓練於大位移、測試於小位移＝原語抽取）、<strong>Comp-I</strong>（訓練於單一原語、測試時須組合它們）。</p>
+<p><strong>基線</strong>：In-Context Learning（ICL）、Test-Time Training（TTT）、Latent Program Network（LPN）及其離散變體（D-LPN）。NLI 評估三種推論：Base、Prior Search、Gradient Search。所有模型三隨機種子、報平均。</p>
+<h3 id="41-神經模型的組合泛化">4.1 神經模型的組合泛化</h3>
+<p>所有模型訓練 100k batch（size 512），於 in/out-of-distribution 測試 split 評估。因 NLI 與基線推論成本差異，為公平也對基線做「增加 decoder 層的匹配算力」訓練——但這反而降 ID 效能且無泛化，故 Table 1 報告較佳的低推論 2 層 decoder 結果。</p>
+<p>所有模型在 <strong>ID</strong> 測試近完美（皆能解類訓練分布的任務）。但在更難的 <strong>OOD</strong> split：所有基線與 NLI 的非搜尋變體<strong>無法泛化</strong>——ICL 與 LPN/D-LPN 在 Shift-L、Shift-P 上 OOD 近 <strong>0%</strong>，搜尋型 LPN 在 Comp-I 僅微幅進步仍未解出。相對地，<strong>NLI + Gradient Search 跨三 benchmark 展現強組合泛化</strong>：<strong>Shift-L 達 99%</strong>（從小位移外推到更大未見位移）、<strong>Comp-I 達 91%</strong>（合成如複合程式）、<strong>Shift-P 達完美 100%</strong>（只訓練於複雜程式後「反編譯」出原語）。這確認 NLI 達成<strong>系統性泛化</strong>，由梯度式搜尋啟用；base encoder 與 prior search 變體則與 ICL/TTT/LPN 基線一樣無泛化。</p>
+<p><strong>4.1.1 學到的程式表徵</strong>：學到的 code 展現原語的<strong>系統性重用</strong>——模型一致以 token 231 表示單次左移、token 476 表示兩步移，較大程式由這兩塊積木組合；OOD 的八次位移也（經梯度搜尋）表示為這些原語的混合，凸顯<strong>泛化來自重用而非記憶</strong>（圖 2）。</p>
+<h3 id="42-nli-泛化能力的來源消融">4.2 NLI 泛化能力的來源（消融）</h3>
+<p>base 模型 OOD 準確率近完美；逐一移除組件：<strong>移除遞迴執行、或移除 inductor/interpreter 任一的離散性</strong>，OOD 準確率<strong>崩到近 0%</strong>——顯示離散 inductor 程式、離散解釋器、遞迴動態三者皆為泛化所必需。移除 <strong>skip token</strong> 降至中等（模型能自學 skip，但專用 token 利更快更穩訓練）。<strong>編碼器損失</strong>的益處視組合類型而定：對 Shift-P（需表徵原語以組更短程式）有用，對長度泛化（把已見原語組成更長程式）則無影響。</p>
+<h3 id="43-gumbel-softmax--44-擴展-test-time-程式搜尋--45-deepcoder">4.3 Gumbel-Softmax / 4.4 擴展 test-time 程式搜尋 / 4.5 DeepCoder</h3>
+<p>進一步分析離散化機制、test-time 搜尋規模、以及在擴大原語數與程式複雜度的 DeepCoder 組合版上的表現。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>本文提出 <strong>Neural Language Interpreter</strong>，架起符號與神經程式合成之間的鴻溝：透過學一個離散、類符號的語言與一個可微解釋器，NLI 結合符號系統的組合強度與神經網路的靈活性。NLI 勝過既有神經法、與符號法 competitive；消融確認<strong>離散、序列的潛在程式</strong>是成功關鍵。</p>
+<p><strong>局限與未來</strong>：主要瓶頸是 <strong>test-time 潛在搜尋的計算成本</strong>（雖對過擬合異常穩健、受限預算下仍 robust）；擴展到更難問題需更高效推論（<strong>演化/局部搜尋</strong>為有望方向）。問題變難時程式長度與詞彙增大，可能引發梯度消失/爆炸（實驗未見但大規模或需架構改動）。當前解釋器表達力受限：每層只條件於一個 token（無法做帶參原語如 <code>add(k)</code>），執行嚴格序列、無條件分支。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2604.18907_NLI_Neural_Interpreter.%E6%91%98%E8%A6%81.html"><code>../summarize/2604.18907_NLI_Neural_Interpreter.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

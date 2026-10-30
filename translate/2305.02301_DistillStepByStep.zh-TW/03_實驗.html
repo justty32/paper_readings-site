@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.02301_DistillStepByStep.zh-TW.html">回 2305.02301_DistillStepByStep.zh-TW 目錄</a>　<a href="02_Distilling_step-by-step.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4 實驗</h2>
+<p>依序驗證：(§4.1) 比標準 finetuning／蒸餾用更少樣本達到更好表現（提升資料效率）；(§4.2) 用小得多的模型超越 LLM（大幅降部署成本）；(§4.3) 同時用最少資料與最小模型勝過 LLM；(§4.4) ablation 理解各組件影響。</p>
+<p><strong>設定</strong>：LLM 用 <strong>540B PaLM</strong>；下游用 <strong>T5</strong> 模型（以公開預訓練權重初始化）。CoT prompting 盡量沿用 Wei et al.，新資料集自行編寫範例。</p>
+<p><strong>資料集</strong>：4 個 benchmark、3 類 NLP 任務——<strong>e-SNLI</strong>、<strong>ANLI</strong>（自然語言推論）；<strong>CQA</strong>（常識問答）；<strong>SVAMP</strong>（算術應用題）。</p>
+<h3 id="41-減少訓練資料">4.1 減少訓練資料</h3>
+<p>對比兩種最常見方法：有人工標籤時的<strong>標準 finetuning</strong>、只有無標資料時的<strong>標準任務蒸餾</strong>（把老師 LLM 的預測標籤當 ground-truth）。此組實驗固定小模型為 <strong>220M T5-Base</strong>，比較不同可用樣本數下的表現。</p>
+<ul>
+<li><strong>勝過標準 finetuning、且用少得多的有標樣本</strong>（圖 4）：在各種標註樣本數下都一致更好；只用 e-SNLI 全量的 <strong>12.5%</strong> 即勝過用 100% 全量的標準 finetuning；在 ANLI、CQA、SVAMP 上分別減少 <strong>75%、25%、20%</strong> 所需樣本即勝出。</li>
+<li><strong>勝過標準蒸餾、且用少得多的無標樣本</strong>（圖 5）：4 個資料集皆然；e-SNLI 只要 12.5% 無標資料即勝過用 100% 的標準蒸餾。</li>
+</ul>
+<h3 id="42-減少模型尺寸">4.2 減少模型尺寸</h3>
+<p>固定用 100% 資料，比較不同尺寸 T5（<strong>220M Base、770M Large、11B XXL</strong>）與 LLM。LLM 基線兩種：<strong>Few-shot CoT</strong>（直接 prompt 540B PaLM 不再 finetune）與 <strong>PINTO tuning</strong>（本文把 Wang et al. 擴充到問答以外任務；在 PaLM 輸出上再 finetune 一個 220M T5，可視為帶額外參數的 LLM finetuning 法）。圖 6（有標）／圖 7（無標）以「部署模型尺寸」為 x 軸、任務表現為 y 軸。</p>
+<ul>
+<li><strong>各種模型尺寸下都優於標準基線</strong>：在 ANLI 上提升最顯著——Distilling step-by-step 平均比標準 finetuning／蒸餾各高 <strong>8%／13%</strong> 準確率。</li>
+<li><strong>用小得多的模型勝過 LLM</strong>（圖 6，有標）：4 個資料集皆能以更小 T5 勝過 few-shot CoT 與 PINTO——e-SNLI 用 220M（&gt;<strong>2000×</strong> 小）、ANLI 與 SVAMP 用 770M（&gt;<strong>700×</strong> 小）、CQA 用 11B（&gt;<strong>45×</strong> 小）。</li>
+<li><strong>僅用無標資料</strong>（圖 7）：4 個中有 3 個超越老師 LLM——以 <strong>11B T5（&lt;3% PaLM 尺寸）</strong> 勝過 540B PaLM 的 few-shot CoT。在 SVAMP 上蒸餾模型較弱，推測因資料量小（僅 800 筆）。</li>
+<li><strong>無標資料增強</strong>：用 <strong>ASDiv</strong>（2,305 筆類似數學應用題）增強 SVAMP 訓練集，兩法都受益；但即使加了無標樣本，標準蒸餾仍追不上 few-shot CoT，而 Distilling step-by-step 能更有效地榨取新樣本價值，用 &lt;3% PaLM 尺寸的 T5 追平 few-shot CoT。</li>
+</ul>
+<h3 id="43-以最小模型與最少資料勝過-llm">4.3 以最小模型與最少資料勝過 LLM</h3>
+<p>以 LLM 表現為錨點，探索勝過它所需的最省資源（樣本數＋部署模型尺寸）。圖 8（有標）／圖 9（無標）以樣本數為 x 軸、表現為 y 軸、模型尺寸以陰影面積大小表示。</p>
+<ul>
+<li><strong>用小得多的模型＋更少資料勝過 LLM</strong>：e-SNLI 上用小 <strong>2000×</strong> 的模型（220M T5）＋僅 <strong>0.1%</strong> 全量資料即勝過 few-shot CoT；ANLI（無標）用小 45× 的模型＋50% 無標集勝出。</li>
+<li><strong>標準法需更多資料或更大模型</strong>：e-SNLI 上 Distilling step-by-step 用 0.1% 資料即超越 LLM，標準 finetuning 需更多資料才追平；ANLI 上 Distilling step-by-step 用 <strong>770M＋僅 80% 訓練集</strong>即勝 PaLM，而標準 finetuning 即使用滿全量也難匹敵、須換更大模型才能補上差距。</li>
+</ul>
+<h3 id="44-進一步-ablation">4.4 進一步 ablation</h3>
+<p>固定小模型為 220M T5、用 100% 資料。</p>
+<ul>
+<li>
+<p><strong>可搭配不同尺寸的、訓練得宜的 LLM</strong>（表 1）：改用較小的 <strong>20B GPT-NeoX</strong> 抽理據，相較標準 finetuning 仍有增益，但提升幅度小於用 540B PaLM——推測較大的 PaLM 提供品質更高、對學習更有益的理據。</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>抽理據的 LLM</th>
+<th>e-SNLI</th>
+<th>ANLI</th>
+<th>CQA</th>
+<th>SVAMP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>標準 finetuning</td>
+<td>N/A</td>
+<td>88.38</td>
+<td>43.58</td>
+<td>62.19</td>
+<td>62.63</td>
+</tr>
+<tr>
+<td>Distilling step-by-step</td>
+<td>20B</td>
+<td>89.12</td>
+<td>48.15</td>
+<td>63.25</td>
+<td>63.00</td>
+</tr>
+<tr>
+<td>Distilling step-by-step</td>
+<td>540B</td>
+<td>89.51</td>
+<td>49.58</td>
+<td>63.29</td>
+<td>65.50</td>
+</tr>
+</tbody>
+</table>
+</li>
+<li>
+<p><strong>多任務訓練遠勝「單任務把理據與標籤串成一序列」</strong>（表 2）：另一種做法是把理據 r̂ᵢ 與標籤 ŷᵢ 串成單一序列 [r̂ᵢ, ŷᵢ] 當目標輸出訓練（如 Magister et al./Ho et al. 的 ℒ_single，式 5）。結果顯示多任務一致更好，而單任務串接<strong>有時反比標準 finetuning 更差</strong>（如 ANLI、CQA）——此現象在 Wiegreffe et al. 等亦被觀察到：單純把理據與標籤預測當同一個聯合任務，可能損害標籤預測表現。這印證了多任務設計的必要，也凸顯必須<strong>謹慎對待理據</strong>才能釋放其真正效益。</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>e-SNLI</th>
+<th>ANLI</th>
+<th>CQA</th>
+<th>SVAMP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>標準 finetuning</td>
+<td>88.38</td>
+<td>43.58</td>
+<td>62.19</td>
+<td>62.63</td>
+</tr>
+<tr>
+<td>單任務訓練</td>
+<td>88.88</td>
+<td>43.50</td>
+<td>61.37</td>
+<td>63.00</td>
+</tr>
+<tr>
+<td>多任務訓練</td>
+<td>89.51</td>
+<td>49.58</td>
+<td>63.29</td>
+<td>65.50</td>
+</tr>
+</tbody>
+</table>
+</li>
+</ul>
+<h2 id="5-討論">5 討論</h2>
+<p>提出 Distilling step-by-step：從 LLM 抽理據當有資訊量的監督去訓練小型任務專用模型。它既減少了整理任務專用小模型所需的訓練資料，也降低了達到（乃至超越）原 LLM 表現所需的模型尺寸，是一個相較既有方法更資源高效的「訓練到部署」範式。</p>
+<p><strong>局限</strong>：(1) 需使用者為 few-shot CoT 提供 ~10-shot 示範（可用 zero-shot CoT 緩解）；(2) 用理據訓練有輕微訓練期計算開銷，但測試期靠多任務設計自然避開（只預測標籤、不生理據）；(3) LLM 在更複雜的推理與規劃任務上推理能力有限，未來應刻劃「理據品質如何影響 Distilling step-by-step」。</p>
+<p><strong>倫理聲明</strong>：下游小模型的行為會繼承較大老師 LLM 的偏見；期望減少 LLM 反社會行為的研究進展同樣能用於改善小型語言模型。</p>
+<h2 id="附錄要點">附錄（要點）</h2>
+<ul>
+<li><strong>A.1 實作</strong>：在 A100×16 GPU 上訓練。T5-Base(220M)/T5-Large(770M)：lr=5e-5、batch=64、max input=1024、最多 10000 步；T5-XXL(11B)：lr=5e-5、batch=32、max input=1024、最多 4000 步。結果為 4 次隨機run 平均並附標準誤。</li>
+<li><strong>A.2 資料集統計</strong>（表 3，訓/驗/測）：e-SNLI 549,367 / 9,842 / 9,824；ANLI（用 R1 split）16,946 / 1,000 / 1,000；CQA 8,766 / 975 / 1,221；SVAMP 720 / 80 / 200。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2305.02301_DistillStepByStep.%E6%91%98%E8%A6%81.html"><code>../summarize/2305.02301_DistillStepByStep.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

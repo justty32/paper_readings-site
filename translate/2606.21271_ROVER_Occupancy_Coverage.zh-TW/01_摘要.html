@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.21271_ROVER_Occupancy_Coverage.zh-TW.html">回 2606.21271_ROVER_Occupancy_Coverage.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>稀疏獎勵是 RL 核心難題（抵達目標前無資訊訊號）。內在獎勵方法以最佳化 novelty、預測誤差、skill diversity 等<strong>非平穩目標</strong>注入監督訊號。雖有效，但這些方法常<strong>要求外在（稀疏）reward 可被評估</strong>（線上或離線 relabel 存下的 transition）。這對 multi-task、meta、continual RL 特別棘手——那裡 agent 與環境的互動通常是 <strong>reward-free</strong> 的。本文提出一個方法，<strong>預訓練可遷移的探索策略</strong>，在下游任務時快速適應稀疏獎勵。我們的目標<strong>最大化占用測度的狀態空間覆蓋</strong>，可用熵最大化表述。其演算法實作 <strong>ROVER</strong> 利用 RL 的算子化表述，以學到的 resolvent 世界模型估計占用，繞開密度與熵估計的常見障礙。ROVER 進一步引入<strong>虛擬 &quot;sink&quot; 狀態</strong>處理未探索區，平衡「已知狀態的覆蓋」與「向未見區的擴張」、防止學習中的「擴張-崩塌」週期行為。在 tabular 與像素式稀疏導航任務上，ROVER 產生比標準免獎勵 baseline 更均勻的聚合覆蓋、更強的下游初始化。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>稀疏獎勵下，訓練起點的行為對下游學習至關重要。免獎勵預訓練讓 agent 在 reward 指定前互動，可透過資料、表徵、世界模型、策略預條件下游問題。但<strong>資料/表徵型遷移常假設下游 reward 能離線評估（relabel 存下的 transition）</strong>——這在 multi-task、meta、continual 稀疏獎勵中不成立（有意義回饋只在 agent 真抵達目標時線上出現）。</p>
+<p>許多免獎勵目標由覆蓋驅動：最大熵/狀態邊際目標求廣占用、預測誤差/好奇心獎勵相對學到模型的 novelty、skill-diversity 鼓勵可區分結果。實務上常用<strong>隨資料/密度估計/表徵/輔助模型而變的非平穩代理物</strong>最佳化，導致<strong>預訓練時發現很多狀態、最終策略折扣占用卻集中一小塊</strong>。</p>
+<p>本文聚焦「下游 reward 在預訓練與任何後續離線 relabel 階段都不可用」的策略遷移。把免獎勵策略預訓練形式化為 <strong>occupancy coverage</strong>：學一個平穩 Markov 策略，其折扣狀態占用廣布於可達狀態空間。把占用測度嵌入 RKHS、最小化其平方 Hilbert 範數（在核誘導的相似度下懲罰集中占用）；此目標等價於最大化 order-2 metric Rényi 熵，tabular 下也等價 MMD 匹配均勻測度（Prop.1）。實作為 <strong>ROVER</strong>：學表徵、閉式估占用的 kernel mean embedding、對其平方範數算策略梯度，用 policy mirror descent 閉式解策略改進。關鍵組件是<strong>虛擬 sink 狀態</strong>增廣學到的轉移算子以處理無支撐的 state-action 區、防止擴張-崩塌。</p>
+<p><strong>貢獻</strong>：(1) 把 occupancy coverage 形式化為 target-free RKHS 目標，並關聯到 MMD 匹配、Rényi-2 多樣性、位能理論能量最小化；(2) 從學到的轉移模型導出 operator-based 策略更新；(3) 引入 sink-state 增廣並實證它在部分資料下穩定覆蓋。</p>
+<h2 id="2-問題陳述occupancy-coverage">2. 問題陳述：Occupancy Coverage</h2>
+<p>折扣 MDP 的折扣狀態占用 <code>d^π(B)=(1−γ)Σ_t γ^t P_π(x_t∈B)</code>。稀疏獎勵探索常試圖（顯式或隱式）攤開占用，標準作法是求「占用最大熵」的策略（最大熵探索、狀態邊際匹配 min D(d^π,u)）。最接近的是 <strong>MEPOL</strong>，但它靠手選狀態度量、難擴展到高維（如原始影像），故 ROVER 用學到的 latent-kernel 表述。其他方法間接實現同目標：APT 用粒子熵代理、RND/好奇心用預測誤差作時變 novelty、skill-diversity 用 latent 條件的可區分結果。</p>
+<p>實務難點：許多實作把覆蓋準則<strong>耦合到移動的輔助物</strong>（predictor、密度估計、最近鄰幾何、skill discriminator），其非平穩性會產生「短暫發現新區卻不保留在最終折扣占用」的策略。</p>
+<p>用 kernel mean embedding 把覆蓋表為占用間的差異：<code>μ_ρ=∫ϕ(x)ρ(dx)</code>、<code>MMD²(ρ,q)=‖μ_ρ−μ_q‖²</code>。</p>
+<blockquote>
+<p><strong>Proposition 1</strong>：𝒳 有限、Dirac 核、u 均勻 ⟹ <code>‖μ_{d^π}‖²=Σ_x d^π(x)²</code> 且 <code>argmin MMD²(d^π,u) = argmin ‖μ_{d^π}‖²</code>。兩目標差一個與 π 無關的常數。</p>
+</blockquote>
+<p>於是用 <strong>target-free 自相似度目標</strong> <code>J(π)=‖μ_{d^π}‖²=∬k(x,y)d^π(dx)d^π(dy)</code>——懲罰把質量放到「核下相似的狀態對」。對正規化非負核，J(π) 是 d^π 的 order-2 多樣性倒數；Dirac 核下是碰撞機率倒數、log(1/J) 是 order-2 Rényi 熵。學到表徵空間裡應讀作「表徵的均勻」而非原始觀察的均勻。</p>
+<h2 id="3-演算法rover">3. 演算法：ROVER</h2>
+<p>用 MDP 的算子表述使占用目標可計算。轉移算子 T、策略算子 P_π，狀態分布 ν_{t+1}=TP_π ν_t，折扣占用有 <strong>resolvent 形式</strong> <code>d^π=(1−γ)(Id−γTP_π)⁻¹ν₀</code>。把 T、P 提升到 mean embedding，目標重寫為 <code>J(π)=‖(1−γ)(Id−γTP_π)⁻¹μ_{ν₀}‖²</code>。<strong>Algorithm 1（ROVER 預訓練迴圈）</strong> 交替「資料收集」與三步：表徵學習、轉移算子估計、policy mirror descent。</p>
+<ul>
+<li><strong>Step 1 表徵學習</strong>：學 ϕ_θ（L1 正規化 latent），用 <strong>InfoNCE 對比損失</strong> 對齊預測的下一狀態表徵 Wψ_θ(x,a) 與 ϕ_θ(x&#x27;)（batch 內負樣本）。對比是實作選擇，可換 BYOL 等。</li>
+<li><strong>Step 2 轉移算子估計</strong>：以 conditional mean embedding 估算子＝把 state-action 特徵線性映到 next-state 嵌入，正則化最小平方（kernel ridge regression）閉式解 <code>T̂_n=Φ^⊤(K+λId)⁻¹Ψ</code>。其 sandwich 形式使下面的策略更新可計算。</li>
+<li><strong>Step 3 Policy Mirror Descent</strong>：對 resolvent 微分 J(π) 得 functional gradient，由 kernel trick 閉式評估（Thm.2 對偶梯度）。<strong>PMD</strong> 保證每步 π 仍是合法條件分布；最佳化歷史壓進累積係數向量 Σc_{π_s}。</li>
+</ul>
+<h3 id="31-sink-state-增廣">3.1 Sink-State 增廣</h3>
+<p>T̂_n 只被資料中觀察到的 state-action 特徵支撐：對遠離支撐的 (x,a)，kernel 向量 ≈0 ⟹ T̂_n ψ(x,a)≈0。因目標最小化 RKHS 範數，這個零預測會被<strong>誤當「低成本延續」</strong>——其實只代表「學到的算子無資料可預測」。Fig.1（上排，零記憶更新）顯示後果：先前覆蓋區從下一次算子擬合的支撐中消失，策略在前幾房間振盪（<strong>擴張-崩塌</strong>）。</p>
+<p>故增廣狀態空間一個虛擬吸收態 s_{Sε}，把「未被訓練輸入解釋的殘差質量」路由到 s_{Sε} 而非零向量（shifted ridge，式17）。Prop.3：k(x,a)≈0 時 T̄_n ψ̄(x,a)≈ϕ̄_{Sε}。Prop.4：增廣估計仍有 sandwich 形式（block-diagonal），PMD 代數不變、只多一個顯式「無支撐」分量。Thm.5：sink-state 目標分解 <code>‖μ̄(π)‖²=‖μ̂(π)‖²+ε²m_{Sε}(π)²</code>——對「把占用放到未探索區」給明確成本 ε²，平衡擴張與保留。Fig.1（下排）：有 sink 時策略擴張同時保留連通覆蓋。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

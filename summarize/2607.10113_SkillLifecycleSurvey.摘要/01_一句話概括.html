@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Dynamic Agent Skills：技能庫的生命週期綜述與分類學》重點摘要（續 局限與價值） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2607.10113_SkillLifecycleSurvey.%E6%91%98%E8%A6%81.html">回 2607.10113_SkillLifecycleSurvey.摘要 目錄</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Yubo Li（CMU）的 TMLR 綜述</strong>：掃描 124 篇 2023–2026 論文後，把動態技能庫定義為 <strong>lifecycle-managed、verified、evolving artifact stores</strong>。核心貢獻是三件工具：<strong>(1) 六感分類學</strong>區分論文裡「skill」的六種結構性歧義（可執行程式碼／NL 啟發式／SKILL.md 套件／參數化 adapter／記憶軌跡／能力標籤）；<strong>(2) 八階段生命週期架構</strong>：證據取得→提案→驗證/准入→組織/儲存→檢索/組合→維護/修復→蒸餾/可移植性→治理/溯源，把 124 篇論文可比地放進同一個架構；<strong>(3) 十算子詞彙</strong> {Add, Refine, Merge, Split, Prune, Distill, Abstract, Compose, Rewrite, Rerank} 作為跨系統比較的通用語言。最重要的實證結論（經消融或收斂性 benchmark 證據支撐）：<strong>准入閘門（admission gates）重複被證明重要</strong>、驗證器品質在 skill-aware RL 中往往是決定性的工程選擇、<strong>平面檢索在~百級技能庫規模會退化</strong>、中等以上庫規模時維護（Prune/Merge/Repair）變成剛需。對 ai_core 而言，這篇就是 §3.6 固化引擎目前最缺的那份&quot;退役/收斂&quot;機制的地圖——它把技能生命週期形式化為可編輯記錄 ⟨C, π, T, R, φ, ν, ≺⟩ 與庫級狀態轉移 Lt→Lt+1，直接給出標準算子語義與驗證架構選型。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM agent 的「可重用技能」已成為活躍研究方向（Voyager/LATM 的程式碼技能、OpenClaw/SkillClaw 的 SKILL.md、SkillFlow 的社群 registry），但領域內存在三個根本混亂：</p>
+<ol>
+<li><strong>&quot;skill&quot;一詞過載</strong>：不同論文用 skill 指六種結構上完全不同的東西（程式碼 vs NL 教訓 vs SKILL.md 套件 vs LoRA adapter vs 記憶案例 vs 能力標籤），無法跨論文比較。</li>
+<li><strong>技能庫被當成靜態物件</strong>：多數系統把技能庫當作&quot;授權一次、偶爾版更、與軌跡弱連結&quot;的提示片段集合——但實際部署中，任務、工具、base model、安全約束都在漂移，靜態庫會過時。</li>
+<li><strong>缺乏共享詞彙與 benchmark 協定</strong>：更新操作命名不一致（同一件事在不同論文叫 refine/repair/merge/consolidate），benchmark 多只報終端效能、不報庫軌跡、不報使用率與效益的落差。</li>
+</ol>
+<p>這份 survey 的貢獻不是另一套方法，而是<strong>給一個共同的語言與架構</strong>讓後續可比。</p>
+<h2 id="核心貢獻">核心貢獻</h2>
+<h3 id="1-六感分類學six-sense-taxonomytable-1">1. 六感分類學（Six-Sense Taxonomy，Table 1）</h3>
+<p>依 artifact 是否 executable/edit/portable/inspectable/有 verification handle，把 skill 分成六類：</p>
+<ul>
+<li><strong>可執行程式碼</strong>：Voyager, LATM, SAGE, ASI, SkillOps（有單元測試/合約驗證）</li>
+<li><strong>NL 啟發式</strong>：ERL, RetroAgent, EvolveR（只能間接驗證）</li>
+<li><strong>SKILL.md 套件</strong>：MetaClaw, Memento, Trace2Skill, AutoRefine, SkillGrad（L1 路由/L2 指令/L3 程式碼的漸進揭露）</li>
+<li><strong>參數化 adapter</strong>：SkillsCrafter, SKILL0, SELAUR（權重差、僅行爲探針驗證）</li>
+<li><strong>記憶/軌跡</strong>：SimpleMem, MUSE, CASCADE（邊界案例，介面不完整）</li>
+<li><strong>能力標籤</strong>：Co-Evolving, GEA（無強健編輯體）</li>
+</ul>
+<h3 id="2-可編輯技能記錄與庫級轉移3">2. 可編輯技能記錄與庫級轉移（§3）</h3>
+<p>把 SoK-Skills 四元組 ⟨C, π, T, R⟩（適用/策略/終止/介面）擴充成七元組：</p>
+<pre><code>St = ⟨Ct, πt, Tt, Rt, φt, νt, ≺t⟩
+</code></pre>
+<p>新增 φ（編輯欄位——proposal kernel 產生候選版本）、ν（驗證欄位——admission predicate）、≺（譜系關係——版本取代鏈）。庫級轉移：</p>
+<pre><code>Lt+1 = T(Lt, τt, rt) = Apply(⃗ut(τt, rt), Lt)
+</code></pre>
+<p>其中 ⃗ut 取自十算子詞彙。<strong>靜態庫是 ⃗ut ≡ ∅ 的特例</strong>。</p>
+<h3 id="3-八階段生命週期架構5">3. 八階段生命週期架構（§5）</h3>
+<table>
+<thead>
+<tr>
+<th>階段</th>
+<th>設計問題</th>
+<th>代表算子</th>
+<th>典型失敗</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>證據取得</td>
+<td>什麼觀察能證成庫變更？</td>
+<td>—</td>
+<td>雜訊證據、非平穩效益</td>
+</tr>
+<tr>
+<td>提案</td>
+<td>證據如何轉為 artifact？</td>
+<td>Add, Abstract</td>
+<td>任務特化或過度泛化</td>
+</tr>
+<tr>
+<td>驗證/准入</td>
+<td>什麼閘門決定候選進庫？</td>
+<td>Refine, Rewrite</td>
+<td>看似合理但錯的技能、verifier hacking</td>
+</tr>
+<tr>
+<td>組織/儲存</td>
+<td>准入後 artifact 放在哪？</td>
+<td>Split, Merge, Rerank</td>
+<td>平面檢索崩潰、結構過時</td>
+</tr>
+<tr>
+<td>檢索/組合</td>
+<td>哪些技能影響下次行動？</td>
+<td>Rerank, Compose</td>
+<td>使用≠效益、distractor 負載</td>
+</tr>
+<tr>
+<td>維護/修復</td>
+<td>如何保持庫緊湊正確？</td>
+<td>Prune, Merge, Refine, Rewrite</td>
+<td>無界增長、負遷移</td>
+</tr>
+<tr>
+<td>蒸餾/可移植</td>
+<td>什麼在外在內之間移動？</td>
+<td>Distill, Abstract</td>
+<td>參數崩潰、相容性失效</td>
+</tr>
+<tr>
+<td>治理/溯源</td>
+<td>編輯可被審計/歸因/回滾？</td>
+<td>Add–Prune 序列</td>
+<td>技能注入、洩漏、歸因丟失</td>
+</tr>
+</tbody>
+</table>
+<h3 id="4-七個實證模式9經證據分級">4. 七個實證模式（§9，經證據分級）</h3>
+<ol>
+<li><strong>准入閘門重要</strong>（A/B 級）：curated skills 勝過 unverified self-generated skills，跨十餘方法收斂。</li>
+<li><strong>驗證器品質在 skill-aware RL 中決定性</strong>（B 級）：CoEvoSkills surrogate verifier 移除掉 30 分，CODE-SHARP 從 24.3%→41.0% 靠 learned gate。</li>
+<li><strong>平面檢索在~百級規模退化</strong>（B/C 級）：Single-Agent-Skills 的受控曲線：16→97%, 64→92%, 128→78%, 256→64%。</li>
+<li><strong>弱 backbone 相對增益大</strong>（C 級）：跨系統收斂但非受控效應量。</li>
+<li><strong>聚焦庫常勝全面庫</strong>（B/C 級）：distractor load 機制。</li>
+<li><strong>中等以上規模時維護變成剛需</strong>（B 級）：AutoRefine 關掉維護→35.6%→31.1%、4.5x 庫膨脹、利用率 0.71→0.08。</li>
+<li><strong>寫入時抽象通常強於讀取時抽象</strong>（B/C 級）：Trace2Skill/CASCADE/SimpleMem 的 write-time compression 一致勝 read-time summarizer。</li>
+</ol>
+<h3 id="5-八個安全表面11">5. 八個安全表面（§11）</h3>
+<p>技能注入（ClawSafety 平均 69.4% ASR）、供應鏈投毒（26.1% 技能含漏洞模式）、有害但有效的技能、憑證洩漏（76.3% 需 NL+code 聯合分析）、掃描器偽陽性與上下文敏感性、技能竊取、領域發布準備度、歸因與組合誤用。</p>
+<h1 id="dynamic-agent-skills技能庫的生命週期綜述與分類學重點摘要續-局限與價值">《Dynamic Agent Skills：技能庫的生命週期綜述與分類學》重點摘要（續 局限與價值）</h1>
+<h2 id="局限論文-limitations-章">局限（論文 Limitations 章）</h2>
+<ul>
+<li>語料凍結於 2026-05-31，後續作品可能改變個別模式證據。</li>
+<li>搜尋協定為迭代搜尋+滾雪球非 PRISMA 式，假陰性可能（尤其不使用&quot;skill&quot;一詞的工具/記憶/工作流論文）。</li>
+<li>證據異質：方法論文、benchmark、基礎設施、安全論文的證據效力不同，lifecycle framework 用來對齊證據角色而非排名。</li>
+<li>算子詞彙刻意粗糙，不定義封閉性/結合律或編輯組合律；不是 agent 開發環境的完整操作語意。</li>
+<li>多數結論是架構性而非因果性，不提供跨論文排行榜。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 I 類&quot;系統架構／智能體&quot;的<strong>地圖級作品</strong>——不是發明新方法，而是給整個技能庫領域一個共同語言。對 ai_core 而言，這篇直接對應 <strong>§3.6 固化引擎最核心的缺口：技能庫的退役與收斂機制</strong>。論文的形式化工具（七元組記錄、十算子詞彙、八階段生命週期）可以直接作為設計&quot;技能庫生命周期管理器&quot;的規格書。</li>
+<li>最值得記的三個實證結論：(1) <strong>准入閘門重要</strong>——curated &gt; unverified self-generated；(2) <strong>平面檢索在~百級規模退化</strong>——庫越大不等於越好；(3) <strong>維護是剛需</strong>——只 Add 不 Prune/Merge 的庫會自我毀滅。這三個結論共同指向：ai_core 的固化引擎不能是純 append-only 的，必須有 retirement/convergence 機制。</li>
+<li>對正在設計 agent 技能系統的人，這篇的 Table 1（六種 skill 語義）、Table 2（生命週期設計問題）、Table 4（驗證架構）、Table 3（分類學家族）、Table 7（七個實證模式）和 Table 10（八個開放問題）可以直接當設計決策檢查表。</li>
+<li>作者 Yubo Li（CMU），TMLR 發表，OpenReview 公開審查，為目前該領域最完整的 lifecycle 視角綜述。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../../translate/2607.10113_SkillLifecycleSurvey.zh-TW.html"><code>../translate/2607.10113_SkillLifecycleSurvey.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

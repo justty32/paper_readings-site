@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《神經符號 AI 中的推理》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Son Tran, Edjard Mota, Artur d&#x27;Avila Garcez</p><p>日期：2025-05-22（v1），50 頁，書章（book chapter, cs.AI/cs.LO）</p><p>arXiv：2505.20313</p><p><a href="https://arxiv.org/abs/2505.20313" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="神經符號-ai-中的推理重點摘要">《神經符號 AI 中的推理》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>這是 NeSy「第三波」旗手 <strong>Garcez</strong> 等人的書章：提出<strong>邏輯波茲曼機（Logical Boltzmann Machine, LBM）</strong>——一個基於<strong>能量（energy-based）<strong>的神經符號系統，能把</strong>任意命題邏輯公式</strong>精確編碼進一個<strong>受限波茲曼機（RBM）</strong>，並<strong>用定理證明「邏輯模型 ↔ 能量極小值」的等價（soundness）</strong>；於是「推理＝能量最小化／取樣」，把符號推理與資料學習真正統一在同一個神經網路裡。</p>
+<h2 id="定位與動機1">定位與動機（§1）</h2>
+<ul>
+<li>與當前 LLM/CoT 路線對立：LLM 的推理能力是<strong>事後（post-hoc）用 benchmark 量</strong>、靠調整輸入（CoT）救場；NeSy 則是<strong>先給形式語意，再證明網路能可靠推理</strong>，控制的是<strong>架構或損失函數</strong>而非輸入。</li>
+<li>LLM 的硬傷：幻覺（hallucination）、回吐版權內容（regurgitation, NYT 控告 OpenAI）、合成資料自我退化（self-impairing）、簡單乘法/規劃/ARC 仍會錯；「scale is all you need」未兌現 AGI。</li>
+<li>主張：第三波 AI＝NeSy；循環是 <strong>「train a little, reason a little, repeat」</strong>（學一點→形式化推理→把知識壓回網路）。可把「驗證過的模組」疊在大網路輸出端，當公平性/安全性 guardrail。</li>
+</ul>
+<h2 id="核心技術從邏輯到-rbm23">核心技術：從邏輯到 RBM（§2–3）</h2>
+<ul>
+<li><strong>RBM</strong>：兩層、對稱（雙向）連接的能量函數網路；聯合機率 ∝ e^(−E/T)；用對比散度（Contrastive Divergence）訓練。</li>
+<li><strong>關鍵轉換鏈</strong>：任意 WFF → <strong>嚴格 DNF（Strict DNF, SDNF）</strong> → RBM 能量函數。
+<ul>
+<li><strong>SDNF</strong>：對任一真值賦值，至多一個合取子句為真（full/canonical DNF 是其特例）。</li>
+<li><strong>Theorem 1（健全性核心）</strong>：任一 SDNF 可映成一個 RBM 能量函數，使得<strong>滿足公式的賦值＝能量極小值</strong>（且不滿足者被映成極大值）。每個 disjunct → 一個隱藏神經元，<strong>隱藏單元數隨 disjunct 數線性成長</strong>。</li>
+<li>計算瓶頸只在「WFF→SDNF」轉換（可能昂貴）；若知識已是 <strong>CNF</strong>，可<strong>直接轉 RBM</strong>（§3.6.1，空間複雜度 O(m·2^k)，靠 RBM 平行推理化解），免經 SDNF。</li>
+</ul>
+</li>
+<li><strong>推理＝兩種等價操作</strong>（§3.3）：
+<ul>
+<li><strong>取樣（Gibbs sampling）</strong>：在已指定變數條件下對未指定變數取樣，等價於搜尋滿足賦值（Lemma 2）。</li>
+<li><strong>降自由能（free energy）</strong>：自由能項是被信心值 c 縮放的負 softplus；滿足子句愈多自由能愈低，且呈<strong>線性相關</strong>。</li>
+</ul>
+</li>
+<li><strong>XOR、Nixon diamond</strong> 等例展示直譯成 RBM。</li>
+</ul>
+<h2 id="實驗結果">實驗結果</h2>
+<h3 id="推理高效找出所有解351">推理：高效找出所有解（§3.5.1）</h3>
+<ul>
+<li>對一類有 2^N×2^M 賦值、其中 2^M 個為解的公式，LBM 用 Gibbs 取樣找<strong>全部</strong>滿足賦值。</li>
+<li><strong>準確率 100%</strong>（凡接受的樣本必滿足公式，由 Theorem 1 保證）;<strong>取樣量遠小於搜尋空間</strong>：M=20,N=10 時約 750 萬樣本即達 100% 覆蓋，而可能賦值約 10 億 → 比率僅 ~10⁻²;M=30,N=10 更低。時間隨 N 指數成長但<strong>尺度遠低於</strong>搜尋空間。</li>
+</ul>
+<h3 id="學習知識資料優於三組基線352">學習：知識＋資料優於三組基線（§3.5.2）</h3>
+<ul>
+<li>7 個 ILP benchmark（Mutagenesis、KRK、UW-CSE、Alzheimer 的 amine/acetyl/memory/toxic）。</li>
+<li>對手：<strong>Aleph</strong>（純符號 ILP）、<strong>CILP++</strong>（神經符號）、標準 <strong>RBM</strong>（純神經）。</li>
+<li>LBM 以背景知識（BK）的子句初始化（每子句一隱藏單元，BK 可在學習中被修正），<strong>7 項中 5 項最佳</strong>;BK 可從資料學到時 LBM≈RBM 但訓練更快；alz-acetyl（重度依賴 BK 正確性）唯 Aleph 勝。</li>
+</ul>
+<h3 id="satmaxsat364">SAT／MaxSAT（§3.6、§4）</h3>
+<ul>
+<li><strong>SAT solver</strong>：CNF→RBM，把離散 SAT 轉成連續最佳化（sigmoid 鬆弛 + 最小化可微自由能）。Gibbs 適用 &lt;40 變數；TensorFlow 梯度 &gt;20 變數易陷局部極小；<strong>Scipy 的 dual_annealing / differential_evolution 可解到約 100 變數</strong>。仍<strong>不敵頂尖符號 SAT solver</strong>，但<strong>不需訓練資料、不需 backtracking/unit-propagation</strong>，且本質是神經網路（利於與學習整合）。</li>
+<li><strong>MaxSAT</strong>：用 <strong>dual annealing</strong>（全域＋局部混合搜尋）。對 6 個 MaxCut 實例（各 1260 子句、300 秒上限）對比頂尖 solver <strong>Loandra</strong>：Loandra 平均滿足 1089、LBM 1078（6 中 5 略輸但差距小）。</li>
+<li>也能實作 <strong>Penalty Logic</strong>（加權公式/非單調），且<strong>不需 Penalty Logic 所需的高階 Hopfield 網路</strong>（Lemma 3，Nixon diamond 為例）。</li>
+</ul>
+<h3 id="整合學習與推理一階邏輯邏輯層5">整合學習與推理：一階邏輯邏輯層（§5）</h3>
+<ul>
+<li>把 LBM 當<strong>邏輯層疊在 CNN 上</strong>：Faster-RCNN 抽特徵 → 神經迴歸器（NNR）實作謂詞真值 → LBM 依連接詞組合（一階規則 isOfType/partOf）。</li>
+<li>語意影像詮釋（PartOf 關係）任務 AUC：對比 <strong>DLN、LTN、CNLP</strong>，LBM 在 part-of 勝 LTN、≈CNLP，物件類型預測勝三者。推理結果可反向傳播更新 CNN。</li>
+</ul>
+<h2 id="nesy-的挑戰與大方向67">NeSy 的挑戰與大方向（§6–7）</h2>
+<ul>
+<li><strong>非單調邏輯</strong>：常識推理需「跳到結論再修正」，難形式化；LLM 從資料學常識較易但難解釋 → NeSy 可助理解。</li>
+<li><strong>規劃</strong>：AGI 需把目標拆子目標、在部分資訊下推理；開放情境需<strong>可符號操作的顯式抽象描述</strong>（非純相似度/距離 pattern matching）。</li>
+<li><strong>從錯誤中學習</strong>：呼應 Kahneman 快/慢思考——在符號描述層受控才能保證安全；核心挑戰＝從複雜網路<strong>抽取對的抽象層級描述</strong>、健全地推理與重用。</li>
+<li><strong>問責（accountability）大於監管</strong>：全球監管不可行，數位技術自身（可驗證 NeSy 模組）才是更安全 AI 的路；以線上博弈防沉迷為案例談「問責生態系」。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>與 A 類綜述的「形式化前沿」呼應，但這篇給出<strong>一條完整、可證明的能量基底實作</strong>：邏輯 ↔ RBM 等價有定理、推理有實驗、學習贏 benchmark、還延伸到 SAT/MaxSAT 與一階邏輯邏輯層。</li>
+<li>與 <a class="paper-reference" href="2507.09751_Sound_Complete_NeSy_LLM.%E6%91%98%E8%A6%81.html">2507.09751</a>（LLM 當解釋函數、容忍矛盾）、<a class="paper-reference" href="2507.11127_Defining_Neurosymbolic_AI.%E6%91%98%E8%A6%81.html">2507.11127</a>（推理＝積分）、<a class="paper-reference" href="2401.01040_Cognitive_AI_NSAI_Survey.%E6%91%98%E8%A6%81.html">2401.01040</a>（系統/硬體視角）互補：本篇是**「把符號塞進神經網路權重、用能量最小化做推理」**的可驗證模組路線。</li>
+<li>適合想做<strong>可疊加 guardrail／公平性安全性約束層</strong>、或想理解「神經網路如何當大規模平行邏輯推理器」的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2505.20313_Reasoning_in_NeSy.zh-TW.html"><code>../translate/2505.20313_Reasoning_in_NeSy.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

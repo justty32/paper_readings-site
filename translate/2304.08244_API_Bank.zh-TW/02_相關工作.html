@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_相關工作 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2304.08244_API_Bank.zh-TW.html">回 2304.08244_API_Bank.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="6-相關工作">6. 相關工作</h2>
+<p>既有研究讓 LLM 運用搜尋引擎、Python 直譯器等外部工具補充模型知識：Socratic Models 組合多模態預訓練模型；WebGPT、ReAct 用搜尋 API 檢索知識；Toolformer、ART、ToolkenGPT、TRICE 結合搜尋/問答/翻譯 API 與計算器解各類任務；ChatGPT Plugins、TaskMatrix.AI 展示與海量 API 整合的潛力；LATM、CREATOR 用 GPT-4 製造工具。但研究者對本文三個核心問題仍所知有限，API-Bank 是第一個為此設計的基準。</p>
+<h2 id="7-實驗">7. 實驗</h2>
+<p>以 LLaMA-7B 為基礎，用 API-Bank 訓練集微調 Lynx（3 epoch、batch size 256、learning rate 2e-5）。基線模型：GPT-3 Davinci、GPT-3.5-turbo（gpt-3.5-turbo-0613）、GPT-4（gpt-4-0613）、ChatGLM-6B、Alpaca-7B。</p>
+<h3 id="72-主要結果">7.2 主要結果</h3>
+<p>表 3（Correctness／Rouge，依 Call／Retrieve+Call／Plan+Retrieve+Call／Total）：Alpaca-7B 24.06%／5.19%／0.00%（Total 15.19%）；ChatGLM-6B 23.62%／13.33%／0.00%（16.42%）；GPT-3 Davinci 0.50%／1.48%／0.00%（0.57%，幾乎無工具使用能力）；GPT-3.5-turbo 59.40%／38.52%／22.00%（47.16%）；<strong>GPT-4 63.66%／37.04%／70.00%</strong>（60.24%，唯獨在最難的 Plan+Retrieve+Call 大幅領先自己在其他層級的表現，較 GPT-3.5 提升近 50%）；Lynx-7B（微調）49.87%／30.37%／20.00%（39.58%，較 Alpaca-7B 呼叫正確率 +25.8 點、總 ROUGE-L +0.35，逼近 GPT-3.5）。</p>
+<p>各模型表現隨所需能力提升遞減。GPT-3 Davinci 表現異常低，作者歸因於未經指令微調、無法理解呼叫指令。GPT-3.5 較 Alpaca 高出 35 點，但從 Call 到 Retrieve+Call 下降 21%、再到 Plan+Retrieve+Call 又降 17%，因為檢索與規劃需要超越指令理解的推理能力；GPT-4 的 Plan+Retrieve+Call 表現大幅躍升，作者歸因於其推理規劃能力強項。值得注意：GPT-3.5、ToolAlpaca 等同期基準上 GPT-3.5 可達 80–90% 準確率，但在 API-Bank 上明顯較低——因為 API-Bank 評測集人工構建、貼近真實場景，而同期基準由 self-instruct 生成、領域狹窄。</p>
+<h3 id="73-錯誤分析">7.3 錯誤分析</h3>
+<p>六類錯誤定義見附錄 A.1。<strong>Alpaca</strong>（表 4）：No API Call 36.77%（最大宗）、False API Call Format 23.65%、API Hallucination 15.93%、Invalid Input Parameters 7.96%、Miss Input Parameters 1.17%——微調後 Lynx 的 No API Call 大幅下降，顯示 Alpaca 原生訓練資料的呼叫模式與實際 API 呼叫有落差；zero-shot prompt 下模型只能靠指令說明學格式，微調則顯著改善格式正確率。<strong>Lynx</strong>（表 5）：<strong>API Hallucination 61.38%</strong>（最大宗，模型呼叫與 Ground Truth 不符、甚至捏造訓練期見過但與當前意圖無關的假 API）、Has Exception 16.40%、Invalid Input Parameters 8.47%、False API Call Format 6.88%、No API Call 5.29%、Miss Input Parameters 1.59%——輸入參數相關的三類錯誤合計占 32%（如傳入 placeholder、日期格式錯誤、傳公司名而非股票代碼）。<strong>GPT-4</strong>（表 6）：<strong>Failed API Retrieval 67.86%</strong>（最大宗，未能有效用 API Search 找到該用的 API，此問題在微調後的 Lynx 上幾乎不出現，顯示微調較 in-context learning 更能教會「檢索→呼叫」管線）、False API Call Format 17.86%（常因同時發起多個呼叫、違反格式規定）、Invalid Input Parameters 7.14%、Miss Input Parameters 7.14%。</p>
+<p>作者提出三個未來方向：改良 API 呼叫方法（直接生成受限於可用 API 數量、加檢索工具又面臨幻覺挑戰）、強化 API 解碼演算法（嚴格遵守參數定義）、擴大訓練資料規模。</p>
+<h3 id="74-資料集比較">7.4 資料集比較</h3>
+<p>以 ToolAlpaca 訓練資料（400+ 真實工具 API、50 類別、3,938 實例，轉換後 10,366 筆）微調 Alpaca，與 Lynx（僅 6,184 筆訓練樣本）比較呼叫能力：Lynx Accuracy(Call) 54.64／Rouge(Call) 39.80，略勝 ToolAlpaca 微調版本的 53.88／39.75——樣本更少卻表現略優，佐證 Multi-agent 資料合成的品質。</p>
+<h2 id="8-結論">8. 結論</h2>
+<p>API-Bank 是首個工具增強型 LLM 基準（1,008 領域、2,211 支 API、2,202 則對話），三項關鍵發現：(1) 現有 LLM 已具一定 API 使用能力，但穩定可靠地服務使用者仍有進步空間；(2) 建構多樣高品質訓練資料是提升工具使用能力的有效路徑；(3) 正確呼叫與嚴格遵循 API 文件仍是 LLM 的重大挑戰。</p>
+<h2 id="9-局限">9. 局限</h2>
+<p>(1) 僅涵蓋英語，語言擴展留待未來工作；(2) 僅微調並報告 Lynx-7B，未探索更大規模模型；(3) 公司內部曾訓練更大規模的商用工具增強 LLM，但因匿名審查規範，本文無法報告其結果。</p>
+<h2 id="10-倫理聲明">10. 倫理聲明</h2>
+<p>訪談參與者事先被告知回饋將用於產品開發與可能發表為論文，不揭露個人隱私；所有 API 工具皆原創實作，不侵犯既有商業軟體；標註者時薪 15 美元，高於當地法定最低工資。</p>
+<h2 id="附錄要點">附錄要點</h2>
+<ul>
+<li><strong>A.1 錯誤定義</strong>：API Hallucination（預測 API 名稱與 Ground Truth 不符）；Has Exception（觸發 Ground Truth 不應出現的例外）；Invalid Input Parameters（輸入參數無效）；False API Call Format（呼叫格式無法解析）；No API Call（未偵測到呼叫）；Missing Input Parameters（缺少必要參數）。</li>
+<li><strong>A.3 範例</strong>：測試集 API 依領域分布（表 8）：Account Management 7、Information Query and Processing 22、Health Management 8、Schedule Management 19、Smart Home 6、Finance Management 6、Others 5；並提供訓練/測試集領域與 API 範例，以及 Call、Retrieve+Call、Plan+Retrieve+Call 三種能力各一則完整範例對話。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2304.08244_API_Bank.%E6%91%98%E8%A6%81.html"><code>../summarize/2304.08244_API_Bank.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

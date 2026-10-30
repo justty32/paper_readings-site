@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_結果 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.19077_ReacTOD.zh-TW.html">回 2605.19077_ReacTOD.zh-TW 目錄</a>　<a href="02_%E7%A5%9E%E7%B6%93%E7%AC%A6%E8%99%9F%E4%BB%BB%E5%8B%99%E6%8B%86%E5%88%86.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-結果">5. 結果</h2>
+<h3 id="51-零-shot-dst-表現表-1">5.1 零-shot DST 表現（表 1）</h3>
+<p>ReacTOD 在兩個基準上一致超越所有提示 baseline（見表 1）。Qwen3-8B 以 47.34% Overall JGA / 68.11% Domain Avg. JGA 超越 FnCTOD+GPT-4（38.71%/62.59%），儘管 backbone 小得多。公平重評的 FnCTOD+Qwen3-32B（40.36%）進一步確認增益來自架構設計，而非模型容量——ReacTOD+Qwen3-8B 以近 7pp 超越。gpt-oss-20B 以 52.71% Overall JGA / 71.77% Domain Avg. JGA 創 MultiWOZ 最佳，甚至超越已微調的 DistDST baseline（45.2%）。</p>
+<p>SGD 上（更複雜：16 領域 26 服務、細粒度綱目區分），ReacTOD+Claude-Opus-4.6 達 80.68% 平均服務 JGA，超越重現的 SRP baseline（45.20%）──儘管在更難條件下（預測領域+單一 session vs SRP 的 gold label+按領域隔離）。所有生產可用模型（8B–32B）均超越 SRP baseline。</p>
+<p><strong>跨模型比較</strong>：(1) gpt-oss-20B 在 MultiWOZ 與 60% 更大的 Qwen3-32B 相當（52.71% vs. 51.53%），得益於原生思考模式與內建工具呼叫進行更深度的每步推理；但 SGD 上 Qwen3-32B 領先（64.09% vs. 62.92%），暗示綱目複雜度增加時原生工具呼叫的優勢減弱。(2) Qwen3-8B 在雙基準上超越較大的 Gemma3-12B（MultiWOZ: 47.34% vs. 45.11%; SGD: 57.31% vs. 55.58%）——儘管無 ReAct 迴圈時落後（39.29% vs. 42.73%, 表 2）。這表明模型的<strong>結構化多步推理能力</strong>是代理式 DST 表現更強的預測因子，優於原始參數數量。</p>
+<h3 id="52-消融實驗表-2">5.2 消融實驗（表 2）</h3>
+<p>表 2 展示有界 ReAct 迴圈在所有 backbone 模型上一致且顯著提升。MultiWOZ 上，gpt-oss-20B 的完整 ReacTOD pipeline 與無 ReAct 迴圈的分解變體（IC+SR 獨立呼叫，無迭代）相比：52.71% vs. 43.39%（+9.32pp）；Qwen3-8B：47.34% vs. 39.29%（+8.05pp）。SGD 上 Qwen3-8B 增益最大（+11.82pp）——較小模型在綱目更複雜時受益不成比例，因為驗證器有更多機會捕獲錯誤。Gemma3-12B 迴圈增益最小（+2.38pp），與其較弱的推理/代理基準表現一致。</p>
+<h3 id="53-效率分析表-3">5.3 效率分析（表 3）</h3>
+<p>以 LLM 呼叫次數與輸出 token 數為硬體無關代理指標（見表 3）。所有模型中位數回合恰為 2 次 LLM 呼叫（強制的 IC+SR），平均 1.83–2.19 次；P99 為 3–6 次（Gemma3-12B 最高 6.00，與其較弱的單次準確率一致）。Token 消耗反映推理策略差異：Qwen3 與 Gemma3 產出緊湊（150–166 avg），gpt-oss-20B 約 3x（448 avg, 1611 P99，因原生思維鏈 token），Claude-Opus-4.6 介於其間（207 avg）。</p>
+<p><strong>驗證器啟動分析</strong>（Qwen3-8B, MultiWOZ 7372 回合）：683 回合（9.3%）觸發至少一次驗證器修正，產出 1,606 則回饋訊息。動作合規占最多（498 回合， 6.8%）：最常見違規為未先呼叫 τIC 即嘗試提交 slot 值（771 則訊息）、未定義工具呼叫（222）、同回合重複呼叫（77）。綱目一致（177 回合， 2.4%）：無效列舉值（如 area slot 給 &quot;Cambridge&quot; 而非 {centre, east, north, south, west}，274 則）、幻覺 slot 名稱（58）、未識別意圖名（47）。共指一致最少（44 回合， 0.6%）：標記 157 次泛用實體參照（模型輸出 &quot;restaurant&quot;/&quot;hotel&quot; 而非實際名稱），引導其調用 τH。受影響的 683 回合中，636 次在結構化回饋後自我修正，僅 47 次耗盡 Kmax=6——<strong>93.1% 整體恢復率</strong>（動作 91.6%、綱目 91.5%、共指 95.5%）。</p>
+<p><strong>驗證器隔離實驗</strong>：ReAct 迴圈活躍但驗證器關閉的變體下，Qwen3-8B 從 47.34% 降至 43.00%（−4.34pp），確認<strong>結構化錯誤回饋</strong>（而非僅額外推理嘗試）驅動自我修正增益。</p>
+<h2 id="6-局限">6. 局限</h2>
+<ul>
+<li><strong>綱目依賴</strong>：零-shot 是對訓練資料而言，但仍需預先配置領域綱目（意圖定義、slot 描述、類型註解）；MultiWOZ 缺結構化綱目元資料，需人工註解。在不完整、有雜訊或無綱目的設定下效能可能進一步下降。</li>
+<li><strong>LLM 成本</strong>：每回合多次推理請求，在成本敏感或高吞吐生產部署中是限制因素。</li>
+<li><strong>能力上限</strong>：自我修正要求模型能解釋錯誤回饋並修正輸出（Gemma3-12B 增益最小即為明證）。</li>
+</ul>
+<p><strong>未來工作</strong>：(1) 組件隔離消融——惰性 vs. 完整綱目注入的對照（特別在 SGD 26 服務的上下文負荷下），以及始終開啟 vs. 按需歷史檢索的比較。(2) 對話管理擴展——引入更多工具如「等待/澄清待處理」與「重複/確認」，使 ReacTOD 邁向完整的代理式對話管理器。</p>
+<h2 id="7-結論">7. 結論</h2>
+<p>ReacTOD 是一種有界神經符號架構，將 NLU 分解為受驗證器閘控的離散工具呼叫，在受限的 ReAct 迴圈內運作。在 MultiWOZ 2.1 上建立新零-shot SOTA：gpt-oss-20B 達 52.71% Overall JGA（超越 FnCTOD+GPT-4 14pp），8B 的 Qwen3-8B 達 47.34%（超越 FnCTOD+Qwen3-32B 的 40.36%）。在 SGD 上，Claude-Opus-4.6 達 80.68% per-service JGA（端到端），Qwen3-32B 達 64.09%。代理迴圈是關鍵差異因子：貢獻 MultiWOZ 最高 +9.3pp、SGD 最高 +11.82pp，但計算仍然有界——中位數回合僅 2 次 LLM 呼叫（150–207 avg tokens）。確定性符號驗證器捕獲並修正常見 LLM 錯誤（格式錯誤值、無效 slot 名、幻覺實體）在抵達對話狀態之前，於攔截錯誤上達 93.1% 自我修正率，每回合產出完全可檢查的執行軌跡。<strong>通過將生成靈活性限制於狹窄任務並將控制流委託符號邏輯</strong>，ReacTOD 證明——可靠的零-shot 代理式 NLU 不需要 frontier 級模型；結構化推理能力與確定性防護措施比參數數量更重要。</p>
+<hr />
+<table>
+<thead>
+<tr>
+<th>MultiWOZ 2.1</th>
+<th></th>
+<th>SGD</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Approach</td>
+<td>Overall JGA</td>
+<td>Appro.</td>
+<td>Avg. Svc. JGA</td>
+</tr>
+<tr>
+<td>FnCTOD (GPT-4)</td>
+<td>38.71%</td>
+<td>FnCTOD</td>
+<td>—</td>
+</tr>
+<tr>
+<td>FnCTOD (Qwen3-32B)*</td>
+<td>40.36%</td>
+<td>SRP (Claude)*</td>
+<td>45.20%</td>
+</tr>
+<tr>
+<td><strong>ReacTOD (Qwen3-8B)</strong></td>
+<td><strong>47.34%</strong></td>
+<td><strong>ReacTOD (Qwen3-8B)</strong></td>
+<td><strong>57.31%</strong></td>
+</tr>
+<tr>
+<td><strong>ReacTOD (Qwen3-32B)</strong></td>
+<td><strong>51.53%</strong></td>
+<td><strong>ReacTOD (Qwen3-32B)</strong></td>
+<td><strong>64.09%</strong></td>
+</tr>
+<tr>
+<td><strong>ReacTOD (gpt-oss-20B)</strong></td>
+<td><strong>52.71%</strong></td>
+<td><strong>ReacTOD (gpt-oss-20B)</strong></td>
+<td><strong>62.92%</strong></td>
+</tr>
+<tr>
+<td><strong>ReacTOD (Claude-Opus-4.6)</strong></td>
+<td><strong>61.29%</strong></td>
+<td><strong>ReacTOD (Claude-Opus-4.6)</strong></td>
+<td><strong>80.68%</strong></td>
+</tr>
+</tbody>
+</table>
+<p>*公平重現。所有 ReacTOD 結果為零-shot（無訓練資料，端到端預測領域）。SGD SRP baseline 使用 gold domain label。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

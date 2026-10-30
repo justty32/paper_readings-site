@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2406.11695_MIPRO.zh-TW.html">回 2406.11695_MIPRO.zh-TW 目錄</a>　<a href="02_%E5%84%AA%E5%8C%96%E5%99%A8.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>語言模型程式（Language Model Programs，即由模組化 LM 呼叫組成的精細 pipeline）正推進諸多 NLP 任務，但建構這些 pipeline 需要打造「對所有模組同時有效」的 prompt。本文研究 LM program 的 <strong>prompt 優化</strong>：如何在<strong>無法取得模組級標籤或梯度</strong>的前提下，更新這些 prompt 以最大化下游指標。為使問題可解，我們把它<strong>因式分解</strong>為「優化每個模組的自由形式指令（instructions）與 few-shot 示範（demonstrations）」，並提出數項策略來（i）打造「任務接地（task-grounded）」的指令、（ii）在模組間處理信用分配（credit assignment）。我們的策略包含：(i) 具「程式與資料意識」的指令提案技術；(ii) 一個<strong>隨機 mini-batch 評估函式</strong>，用以學習目標函式的<strong>代理模型（surrogate model）</strong>；(iii) 一套**元優化（meta-optimization）**程序，逐步精煉 LM 如何構造提案。據此我們開發出 <strong>MIPRO</strong> 優化器，用當前最強開源模型 Llama3-8B 在七個多樣 LM program 中的五個上勝過各 baseline，最多提升 <strong>13% 準確率</strong>。新優化器與 benchmark 已釋出於 DSPy（http://dspy.ai）。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>用 LM 解複雜任務常需套用精巧的 prompting 技術（CoT、Program-of-Thought 等），並把它們串成多階段 pipeline。這類 <strong>LM program</strong> 透過系統化組合與工具使用持續推進 NLP。然而今日的 LM program 多半靠「prompt engineering」——人工試錯地打造 prompt，逼特定 LM 執行 pipeline 的每一步。</p>
+<p>近期如 APE、OPRO、EvoPrompt 提出了 <strong>prompt optimizer</strong>（在字串空間搜尋高效 prompt 的演算法），但這些工作<strong>多半無法直接套用到多階段 LM program</strong>——因為我們對個別 LM 呼叫缺少金標籤或評估指標。Khattab 等人（DSPy，2024）研究如何把任意 LM pipeline 表述為：各 LM 呼叫的指令、示範、權重都是可朝任意指標優化的參數；但他們提出的優化器<strong>無法為多 prompt pipeline 調指令</strong>。</p>
+<p>我們要在弱假設下高效優化任意 LM program（尤其多階段者）的 prompt，與 DSPy 程式模型的抽象一致：<strong>不假設</strong>能取得 LM 權重、log-prob，也<strong>沒有</strong>中間階段的手寫指標或標籤；只需要程式本身、一個待優化指標、以及一組訓練輸入（依指標可能含最終輸出）。</p>
+<p>我們指出兩大挑戰：<strong>(1) 提案挑戰</strong>——可能 prompt 的空間大到難解，且隨模組數增加而惡化，故「提出少數高品質指令」至關重要；<strong>(2) 信用分配挑戰</strong>——需同時優化參數化各模組 prompt 的眾多變數，必須有效推斷各變數配置的影響以分配搜尋力氣。</p>
+<p><strong>三項貢獻</strong>：(1) 形式化 LM program 優化問題（§2），並提出含「三種提案 + 三種信用分配」策略的演算法設計空間（§3）；(2) 釋出涵蓋七任務的 benchmark（§5）；(3) 建構並評估一組代表性演算法（§4），其中 <strong>MIPRO（Multi-prompt Instruction PRoposal Optimizer）</strong> 在七任務中五項勝出，最多提升 13%。並歸納五個實務教訓（§6）。</p>
+<h2 id="2-問題陳述">2. 問題陳述</h2>
+<p>考慮由 m 個模組組成的 LM program Φ，各模組用某個 LM。每模組 i 由 prompt 模板 p_i 定義，模板含一組變數（開放槽）v，例如 few-shot QA 的模板有「指令、示範、目標問題」等變數。令 <strong>V</strong> 為 Φ 所有 prompt 模板用到的變數集合，<strong>V↦S</strong> 為把變數全指派為字串 S 的一個總指派，Φ_{V↦S} 表示在該指派下執行的程式。目標是找一個總指派，使 Φ 在 trainset D（含輸入 X 與可選的 metadata X′，如標籤）上對指標 μ 的表現最大化：</p>
+<blockquote>
+<p>Φ* = argmax_{V↦S} (1/|D|) Σ_{(x,x′)∈D} μ(Φ_{V↦S}(x), x′)</p>
+</blockquote>
+<p>此問題難解，因為：(i) 每個字串可取任意值；(ii) 指標 μ 只在<strong>整個任務層級</strong>提供監督，故 V 中每個變數都是 latent；(iii) 不能取用 LM 的梯度或 embedding，排除了許多 RL 與 prompt-tuning 演算法；此外 (iv) 系統設計者的資料集 D 通常很小；(v) 評估 Φ 的 LM 呼叫預算也小。</p>
+<p>很多時候我們只想優化 V 的一個子集。本文假設每個 prompt p 有一個「自由形式指令」變數 i，與一組 K 個「示範」變數 {d_{i1},…,d_{ik}}，其餘變數設為常數。</p>
+<p><strong>通用框架（Algorithm 1）</strong>：以 optimizer M 與未優化程式 Φ 為主參數。M 具 Initialize、Propose、Update、ExtractOptimizedSets 四方法與內部狀態。每次迭代：M.Propose 生成提案（V↦S_k）→ 從 D 抽 size-B 的 mini-batch → 在該 batch 上算平均分數 σ → M.Update 依觀察到的驗證分數更新內部狀態。此框架把 OPRO、APE 等既有做法一般化到 LM program。</p>
+<h2 id="3-設計-lm-program-優化器">3. 設計 LM Program 優化器</h2>
+<p>我們要在最少化「呼叫 Φ 的次數（Alg.1 第 10 行）與取樣提案次數（第 8 行）」的前提下，有效實例化 Algorithm 1，並著重處理<strong>提案</strong>與<strong>信用分配</strong>兩挑戰。</p>
+<h3 id="31-提案問題">3.1 提案問題</h3>
+<p>為使近似優化可行，須能高效抽出貼合任務/程式/資料/指標的候選 prompt。我們用另一個 LM 當 <strong>proposer LM</strong>，並考慮三種策略：</p>
+<ul>
+<li><strong>Bootstrapping Demonstrations（自舉示範）</strong>：一種簡單卻極有效的拒絕取樣策略。從 trainset 抽輸入 x，跑 Φ(x) 產生各模組的輸入/輸出軌跡 τ；若整體輸出經 μ 評分成功（μ(Φ(x),x′) ≥ 門檻 λ），就把軌跡中各模組的值都當作該模組的<strong>候選標註示範</strong>。問題於是化簡為「在模組內與跨模組挑選示範組合」作為 few-shot 範例。Khattab 等人發現這常勝過手寫示範。</li>
+<li><strong>Grounding（接地）</strong>：如何引導 proposer 為某模組寫出高效指令？假設提供相關脈絡（資料屬性、程式、成功範例）能讓它寫出更貼任務的指令。故建一個零樣本 LM program，用以 (i) 刻畫原始資料集 D 的模式、(ii) 摘要程式控制流、(iii) 自舉程式示範、(iv) 收集先前評估過的各階段 prompt 及其在 train 集上的分數；把這些作為脈絡「接地」提案指令的 LM（構造細節見附錄 C）。</li>
+<li><strong>Learning To Propose（學習如何提案）</strong>：每種提案策略都有超參數（如指令生成溫度、是否用資料摘要/程式控制流接地）。最佳配置常依任務/程式/proposer LM 而異——例如資料摘要對邏輯推理任務可能關鍵，卻可能讓小型 proposer 在熟悉的事實問答上分心。故把提案超參數參數化，用<strong>貝氏模型</strong>跨多次試驗學出「對給定任務/程式/LM 何種提案策略有效」。</li>
+</ul>
+<h3 id="32-信用分配">3.2 信用分配</h3>
+<p>提案可組合成眾多配置。要搜此空間，須辨識各具體選擇對程式表現的貢獻。提出三種解法：</p>
+<ul>
+<li><strong>Greedy（貪婪）</strong>：分別對單一階段提案並評估。此法限制了「把錯誤誤歸到錯的階段」，但效率差——因為 (i) 改動須逐一施行、(ii) 某些階段的改動要等別的階段先改好才會反映在程式層級表現上。初步實驗顯示它並不比其他方法更有效，卻帶來明顯更差的時間複雜度。</li>
+<li><strong>Surrogate（代理模型）</strong>：為更高效地做信用分配，採用貝氏學習——以「能高效優化多 latent 變數函式」著稱。代理模型從過往評估學會預測不同參數組合的品質，讓後續探索聚焦於有前景的區域。實作上用 <strong>Optuna 的 Tree-structured Parzen Estimator（TPE）</strong> 對「LM program 參數組合的品質」建貝氏模型；其<strong>多變量版本能建模參數選擇間的聯合貢獻</strong>，故可<strong>聯合優化</strong>程式變數。缺點：只能在<strong>固定的既有提案集合</strong>上優化，過往評估的學習無法反過來改進提案本身。</li>
+<li><strong>History-Based（基於歷史）</strong>：假設「給足夠強的 LM 一段過往評估歷史，它就能做信用分配」，從而免去顯式代理模型，並讓 proposer 同時完成信用分配與提出更好指令。依 OPRO 路線，把「評估過的指令及其分數」放進脈絡，讓 proposer 據此輸出新指令。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

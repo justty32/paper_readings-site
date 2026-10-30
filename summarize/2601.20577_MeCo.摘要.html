@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《MeCo：藉由相似任務記憶化增強 LLM 驅動的多機器人協作》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Baiqing Wang, Helei Cui, Bo Zhang（西北工業大學）, Xiaolong Zheng（北京郵電大學）, Bin Guo, Zhiwen Yu（西北工業大學）</p><p>日期：2026-02</p><p>arXiv：2601.20577</p><p><a href="https://arxiv.org/abs/2601.20577" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="meco藉由相似任務記憶化增強-llm-驅動的多機器人協作重點摘要">《MeCo：藉由相似任務記憶化增強 LLM 驅動的多機器人協作》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>LLM 多機器人協作 + 任務級記憶化（memoization）</strong>：將「快取並復用」原則引入 LLM 驅動的多機器人任務規劃——當新任務與快取中的歷史任務相似時，S-Planner 直接基於參考軌跡生成運動計畫而無需調用 LLM，相似度測試則根據機器人工作空間重疊程度分為高/低兩類策略，在 MeCoBench 上實現平均 30% 成功率提升、55% 規劃時間節省、最高 70% token 消耗降低。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>現有 LLM 驅動的多機器人協作方法（RoCo、EMOS、ReCA 等）將每個任務視為獨立單元，即使面對相同或相似的任務仍從頭調用 LLM 重新規劃，造成大量 token 消耗與規劃延遲。不同於簡單的「完全相同任務復用」，辨識「相似但不完全相同」的任務並復用其規劃——尤其是在多機器人環境中——更具挑戰性：目標物體的位置與種類可能不同，但核心目標（如分類包裹、清掃物品）與固有約束（機器人數量、固定資源）保持不變。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>雙模式相似度測試</strong>：根據機器人工作空間重疊程度將任務分為兩類——低重疊任務（如 Sweep Floor、Sort Cubes、Make Sandwich、Arrange Cabinet）使用點映射 Π 保證目標物體僅在同一區域內進行受限幾何變換；高重疊任務（如 Pack Grocery、Move Rope）使用重複使用率 α（歷史可復用軌跡長度/目前任務所需總長度）衡量，並證明成功率隨 α 單調遞增。</li>
+<li><strong>S-Planner（相似運動規劃器）</strong>：低重疊任務直接繼承動作序列並根據姿態差異決定復用現有軌跡或調用 RRT 重新規劃；高重疊任務進行回溯檢查（back checking）與碰撞檢查（collision checking）以截取歷史軌跡的可復用段落，再自適應選取關鍵採樣點引導 RRT 規劃。</li>
+<li><strong>連續規劃模組</strong>：當 S-Planner 失敗時，LLM 從失敗步驟繼續規劃而非從頭開始——將當前環境狀態存入 prompt，使 LLM 僅修補失敗部分。</li>
+<li><strong>選擇性快取與去重</strong>：基於 LFU 策略的快取淘汰機制——快取滿時保留使用頻率最高的 k 個任務，並過濾掉有效步驟數超過基線的冗餘任務（如物體先放置於錯誤位置再修正）。</li>
+</ul>
+<h2 id="關鍵發現數據">關鍵發現/數據</h2>
+<ul>
+<li><strong>隨機場景（S1）</strong>：成功率平均提升 29%，規劃時間減少達 78%（Make Sandwich），token 消耗平均降低 73%，其中 Move Rope/Make Sandwich/Sort Cubes 降幅超過 90%。</li>
+<li><strong>完全相似場景（S2）</strong>：成功率平均提升 32%，token 消耗平均降低 82%，Move Rope 規劃時間減少 77%。</li>
+<li><strong>完全相異場景（S3）</strong>：效能與基線持平——MeCo 不引入額外開銷，僅在低相似度時增加約 6% 規劃時間。</li>
+<li><strong>消融實驗</strong>：移除相似度測試後成功率平均下降 12%、token 增加最多 189%（Move Rope）；移除 S-Planner 後成功率下降約 30%、規劃時間暴增 222%；移除連續規劃模組使 LLM 重複推理導致 token 與時間顯著上升。</li>
+<li><strong>快取容量效應</strong>：高重疊任務存在最優快取大小（Pack Grocery 約 30）、超過後搜尋開銷反彈；低重疊任務則快取越大越好。</li>
+<li><strong>選擇性快取消融</strong>：移除後成功率下降 33%、規劃時間增加 32%、token 上升 47%。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>相似度閾值 α/p 與最大快取任務數 k 需針對不同任務手動調整，缺乏自動化機制——作者建議未來探索自監督或 meta-learning 自動學習最佳參數。</li>
+<li>目前僅依賴文字描述與空間資訊，未整合視覺/聽覺等多模態輸入。</li>
+<li>快取策略僅基於使用頻率（LFU），未考慮任務複雜度或規劃成本等更豐富因素。</li>
+<li>實驗限於桌面操作臂場景（RoCoBench 六項任務），未擴展至移動機器人導航或異構機器人協作。</li>
+<li>非結構化場景中低重疊任務的區域劃分假設可能不成立——作者建議退階為高重疊模式處理。</li>
+</ul>
+<h2 id="對讀者的價值ai_core-接點">對讀者的價值（ai_core 接點）</h2>
+<ul>
+<li>本文是 <strong>ai_core §3.6 固化引擎</strong>的直接示範與理論支撐：MeCo 的「任務記憶化」即為固化復用——當系統辨識出當前任務與歷史任務高度相似時，將 LLM 推理結果固化為確定性 S-Planner 軌跡，跳過神經推理環節，僅在失敗時回退至 LLM。這正是固化引擎的核心運作邏輯：<strong>行為一旦被驗證為可復用模式，即從「每次推理」退化成「查找+套用」的確定性程式碼路徑</strong>。</li>
+<li><strong>固化判定閾值</strong>：MeCo 的相似度閾值機制（α）為固化引擎提供了可操作的「是否固化」判定標準——當重用率超過閾值，固化是安全的；低於閾值則保持 LLM 推理。這可作為 ai_core 行為固化模組的工程模板。</li>
+<li><strong>快取策略作為固化記憶管理</strong>：MeCo 的選擇性快取與 LFU 去重機制直接對應固化引擎中的「固化記憶管理」——哪些行為值得保留、何時淘汰、如何保證多樣性以避免過擬合。</li>
+<li>本文與 2603.26944（LTN 規則修剪）、2604.23377（推理捷徑的約束式分析）構成 ai_core「可靠性主題」的補充文獻群：前兩者討論神經符號系統中的約束與捷徑問題，本文則從工程角度展示「如何將已驗證的神經推理結果固化為確定性系統」的完整管線。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2601.20577_MeCo.zh-TW.html"><code>../translate/2601.20577_MeCo.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

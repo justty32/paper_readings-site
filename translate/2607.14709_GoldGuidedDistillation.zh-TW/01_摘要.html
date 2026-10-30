@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2607.14709_GoldGuidedDistillation.zh-TW.html">回 2607.14709_GoldGuidedDistillation.zh-TW 目錄</a>　<a href="02_%E5%88%86%E6%9E%90.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>混合表格與文本的財務問答需要多來源推理與精確數值計算。大型語言模型（LLM）雖能生成中間推理步驟，但自然語言推理軌跡容易出現算術錯誤，使其成為蒸餾的不可靠監督來源。本文在程式化蒸餾的基礎上，提出以<strong>經執行驗證的 Python 程式</strong>取代自由形式文本推理軌跡，將可靠數值推理從大教師模型傳遞給緊湊的學生模型。方法以金標推導（gold derivation）引導教師端的程式合成，只保留執行正確且產出金標答案的程式，確保高品質監督訊號。我們進一步引入<strong>迭代恢復階段</strong>重新審視教師失敗的範例，使學生得以恢復並納入新驗證的程式至訓練中。在 TAT-QA 上的實驗證明此框架對混合財務推理極為有效：最佳 7B 學生在測試集上達 87.00 EM / 87.18 F1，大幅超越 72B 教師（78.46 EM），以及傳統與強 LLM 基準方法（含 TAGOP 與 TAT-LLM）。這些結果表明，經執行驗證的程式化蒸餾為訓練較小模型執行可靠數值推理提供了一個有效且可擴展的框架。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>財務問答需整合多來源資訊並在許多情況執行精確數值推理。Chain-of-Thought（CoT）提示雖使 LLM 能生成中間推理步驟，但其最終答案仍容易出現算術錯誤，使自然語言推理軌跡成為蒸餾的不可靠監督來源。</p>
+<p>Program-of-Thought（PoT）透過將推理表達為可執行程式並將計算委派給外部解譯器來解決此限制。然而，將此類可靠推理有效地轉移至較小模型仍是挑戰——蒸餾品質關鍵取決於<strong>中間推理軌跡的正確性</strong>。</p>
+<p>本文研究一個<strong>金標引導的程式化蒸餾框架</strong>：教師以金標推導為引導合成可執行 Python 程式，只保留產出金標答案的程式，形成高品質蒸餾監督訊號。在此基礎上，引入<strong>迭代恢復階段</strong>：對教師未能解決的範例，從學生取樣候選程式，只保留經執行驗證的正確解，從而將監督擴展到教師的原始覆蓋之外。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p><strong>混合表格文本問答</strong>：TAT-QA 等財務基準需複雜數值推理與多來源證據聚合。早期方法（TAGOP）依賴剛性萃取管線與預定義符號操作，難以彌合人類表現的差距；後續轉向 LLM，如 TAT-LLM 展示 LLM 可透過將推理分解為逐步階段、成功處理離散表格文本推理。</p>
+<p><strong>可程式化推理</strong>：CoT 的文本推理軌跡容易出現算術幻覺；PoT 以可執行程式表達推理、將計算委派給外部解譯器，確保財務 QA 所需的精確計算。PaD（Program-aided Distillation）進一步以自動可驗證程式碼取代文本推理軌跡來改善蒸餾品質。</p>
+<p><strong>迭代自改進</strong>：STaR 與 Rejection Sampling Fine-Tuning（RFT）證明模型可透過生成、驗證並訓練多個候選推理路徑來自主任我改進。</p>
+<p>先前工作的兩大開放挑戰：(1) 蒸餾品質高度依賴中間軌跡品質，不完美或自然語言軌跡可能傳播錯誤；(2) 如何將迭代生成驗證策略用於<strong>擴展監督超越教師已解決的範例</strong>。</p>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="31-概述">3.1 概述</h3>
+<p>提出一個程式化蒸餾框架，訓練緊湊語言模型生成可執行推理程式用於混合財務問答。核心概念：將推理表達為 Python 程式，最終答案透過<strong>程式碼執行</strong>而非模型的內部算術獲得。兩階段：(1) 教師驅動蒸餾——大模型生成高品質可執行程式；(2) 迭代自改進——學生模型對教師失敗範例生成新程式，只保留執行正確者。</p>
+<h3 id="32-phase-1教師驅動蒸餾">3.2 Phase 1：教師驅動蒸餾</h3>
+<p>給定財務上下文 C（表格 T + 段落 P）與查詢 q，教師生成 Python 程式 π。為確保準確執行軌跡並引導教師完成複雜多步計算，將 TAT-QA 的金標推導 d 注入教師 prompt。以 DSPy（MIPROv2）進行 prompt 優化以嚴格格式化輸出為可執行程式碼：<code>π = Teacher(C, q, d)</code>。</p>
+<p>生成的程式 π 在沙箱 Python 解譯器中執行。只保留無編譯錯誤、且產出完全正確數值答案（EM=1）及單位的程式。學生模型以 LoRA 在此高品質蒸餾資料集 D_T 上進行監督微調。學生的最佳化目標為僅以 C 和 q 為條件生成 π（不接觸金標推導 d）的對數似然。</p>
+<h3 id="33-phase-2迭代拒絕取樣與自改進">3.3 Phase 2：迭代拒絕取樣與自改進</h3>
+<p>第一輪僅保留教師生成且經執行驗證的程式，教師失敗的範例歸入失敗集 D_wrong。為恢復這些更難的案例，引入第二輪訓練（受 RFT 與 STaR 啟發）。</p>
+<p>從 Phase 1 學生模型出發，對每個 (C, q) ∈ D_wrong 以較高解碼溫度（T=0.7）取樣 5 個候選程式 π̂_k。每個候選經相同沙箱執行過濾器評測：若執行成功且產出金標答案，則加入恢復集 D_rec。隨後在擴增資料集 D_Total = D_T ∪ D_rec 上進行第二輪 LoRA 微調。此階段讓學生從<strong>經執行驗證的自生成程式</strong>中學習，超越教師的原始覆蓋。</p>
+<h3 id="34-推理">3.4 推理</h3>
+<p>推理時，已訓練的學生模型根據 (C, q) 生成可執行程式 π̂，由 Python 解譯器執行以產生最終數值答案。此設計將所有數值計算委派給確定性執行，模型只需專注於推理。</p>
+<h2 id="4-實驗設置">4. 實驗設置</h2>
+<p><strong>資料集</strong>：TAT-QA 混合財務表格與文本問答。學生模型輸入為表格、相關段落與自然語言問題；教師額外納入金標推導。因方法需要可執行程式碼，排除缺少推導的範例，得約 8:1:1 切分：6,603 訓練／834 開發／831 測試。答案類型與來源分佈在三切分中一致，以僅從表格的算術題（≈57%）與需表格＋文本者（≈25%）為主。</p>
+<p><strong>基線</strong>：(1) TAGOP——專為 TAT-QA 設計的傳統模型；(2) 參考模型——未微調的 Qwen2.5-7B-Instruct（學生）與 Qwen2.5-72B-Instruct（教師，含/不含提示）；(3) TAT-LLM（LoRA 與全微調 FFT 兩版本）。</p>
+<p><strong>訓練</strong>：教師 Qwen2.5-72B-Instruct、學生 Qwen2.5-7B-Instruct。DSPy + 手動 prompt 精煉強制結構化輸出：Python 程式碼必須印出最終 JSON <code>{&quot;ans&quot;: ..., &quot;scale&quot;: ...}</code>。Phase 1：LoRA（r=8, α=16, dropout=0.05, lr=2×10⁻⁴, 1 epoch, batch=1×4 accumulation）。比較 Attention-only（q/k/v/o proj）與 Attention+MLP（含 gate/up/down proj）兩種配置。Phase 2：每題取樣 5 候選，執行驗證後加入第二輪微調。最終模型以開發集選定。</p>
+<p><strong>評測指標</strong>：官方 TAT-QA 指標，同時考量答案與單位。span/multi-span 經正規化後計 EM 與 token-overlap F1；multi-span 以順序不變的匈牙利匹配計算；數值答案轉字串後評測。執行或解析失敗標記為 null（0 EM/F1）。</p>
+<h2 id="5-結果">5. 結果</h2>
+<p><strong>主結果</strong>：最佳學生模型（Attention+MLP, Round 2）測試集達 <strong>87.00 EM / 87.18 F1</strong>，超越 72B 教師含提示（78.46 EM / 78.73 F1）與 TAT-LLM FFT（82.67 EM / 83.07 F1），更遠超 TAGOP（47.05 EM）。</p>
+<p><strong>Phase 1 結果</strong>：教師在金標推導提示下 5,190/6,603 訓練題被保留（78.6%）。Round 1 學生即已全面超越所有基線：Attention+MLP 達 84.72 EM / 84.80 F1。</p>
+<p><strong>Phase 2 結果</strong>：Attention-only 從失敗集恢復 781 題、Attention+MLP 恢復 979 題。第二輪後注意-only 測試 EM 從 84.12→85.08，注意+MLP 從 84.72→87.00。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

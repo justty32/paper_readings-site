@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《VERUS-LM：結合 LLM 與符號推理的多功能框架》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Benjamin Callewaert, Simon Vandevelde, Joost Vennekens</p><p>日期：2025-01；ICLP 2025（EPTCS 439, 2026, pp.47–62）</p><p>arXiv：2501.14540</p><p><a href="https://arxiv.org/abs/2501.14540" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="verus-lm結合-llm-與符號推理的多功能框架重點摘要">《VERUS-LM：結合 LLM 與符號推理的多功能框架》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>針對「LLM 翻成形式語言→外部 solver 求解」這類 NeSy 系統的三大通病——<strong>任務專屬 prompt（難泛化）、知識與查詢不分離（低效）、推理能力受限</strong>——KU Leuven 提出 <strong>VERUS-LM</strong>：用<strong>通用 prompt</strong>、<strong>把領域知識與查詢徹底分離</strong>（同一知識庫答多種問題）、支援 <strong>8 種推理任務</strong>，並以 <strong>IDP-Z3／FO(·) 的知識庫範式（Knowledge Base Paradigm）</strong> 當推理核心。在多樣的 <strong>AR-LSAT</strong> 上比次佳系統高約 25%。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>既有 SOTA（Logic-LM、LINC、[LLM]+ASP、SymbCoT）都「LLM 生形式表示 → solver 解」，但：</p>
+<ol>
+<li>重度依賴**資料集專屬範例（in-context learning）**→ 換領域要手工調 prompt;</li>
+<li>把每個查詢化約成<strong>同一種（或極少數）推理任務</strong>→ 現實中使用者問題五花八門（最優化、生成解、推後果、生成解釋）缺乏多功能性；</li>
+<li>每種推理常要把領域知識<strong>重新形式化</strong>→ 計算成本與出錯風險高。</li>
+</ol>
+<h2 id="核心設計">核心設計</h2>
+<ul>
+<li><strong>推理引擎＝IDP-Z3，邏輯＝FO(·)</strong>（古典一階邏輯的豐富擴展：型別、聚合 aggregate、（歸納）定義）。其 <strong>知識庫範式</strong>＝<strong>同一份領域知識可被多種推理任務複用</strong>，無需改 KB。</li>
+<li><strong>兩階段</strong>（圖 1）：
+<ul>
+<li><strong>階段一：知識庫建立（KB Creation）</strong>——LLM 把領域知識翻成可複用的 FO(·) 規格，<strong>此時不看具體問題</strong>。三步：①<strong>符號抽取</strong>（型別/函數/謂詞，prompt 不含資料集範例、只給通用指示 + 為每符號標註自然語言意義）;②<strong>公式抽取</strong>（生 FO(·) theory，附文法概覽 + 兩步進式範例 + 要求考慮隱含/常識知識）;③<strong>自我精煉（self-refinement）</strong>——<strong>語法精煉</strong>（用 IDP-Z3 的 FOLINT 錯誤訊息修）+ <strong>語意精煉</strong>（用<strong>可滿足性檢查</strong>：KB 此時應可滿足，若不一致代表翻錯，用 IDP-Z3 生「最小不可滿足子集」當解釋去修）。比 Logic-LM 只修語法多了<strong>語意一層</strong>。</li>
+<li><strong>階段二：推理（Inference）</strong>——逐查詢：偵測推理任務 → 抽取資訊 → 呼叫 IDP-Z3 → 格式化回自然語言。</li>
+</ul>
+</li>
+<li><strong>OWA 變通</strong>：IDP-Z3 只支援封閉世界（CWA），對 FOLIO/ProofWriter 需開放世界 → <strong>每個型別加一個「unknown」元素</strong>模擬 OWA（理論不嚴謹但實務一貫正確）。</li>
+</ul>
+<h2 id="8-種推理任務bert-分類器偵測">8 種推理任務（BERT 分類器偵測）</h2>
+<p>①模型生成/擴展 ②可滿足性 ③最優化 ④傳播（propagation，定哪些原子在所有模型恆真/假）⑤解釋 ⑥定值域（determine range）⑦相關性（relevance）⑧邏輯蘊涵。1–7 是 IDP-Z3 直接提供、8 易實作 → 印證 IDP-Z3 的多功能性。</p>
+<ul>
+<li>用 <strong>BERT 句子分類器</strong>（自製 1000+ 問題訓練）偵測任務，準確率 <strong>92.6%</strong>。</li>
+<li><strong>資訊抽取</strong>：簡單任務用 **SLM（Phi 3.5 mini, 3.8B）+ 文法約束解碼（GNBF grammar）**強制輸出符合 KB 型別 → 小模型即達大模型水準、可在筆電跑、省成本又保資料安全；<strong>複雜公式（如蘊涵的 φ）需大 LLM</strong>。</li>
+<li><strong>multi-step 模式</strong>：拆巢狀複雜問題為一序列獨立推理步再合併（類 CoT）。</li>
+</ul>
+<h2 id="實驗">實驗</h2>
+<ul>
+<li><em><em>驗證（自製 DivLR，115 問、8 任務、6 領域含偽 BMI 的 B</em> 域）</em>*：V-SLM/V-LLM <strong>一致勝過單獨 SLM/LLM</strong>（平均 80.3/91.8 vs 39.5/66.7）。SLM 在 BMI 域明顯較差——<strong>它不肯只抽資訊、反而自己算 BMI</strong>（訓練資料記憶污染）;LLM 在偽 BMI 域 B* 也掉分（記死了真 BMI 定義無法用新定義推理），但 <strong>VERUS-LM 的推理引擎大幅削弱此效應</strong>。</li>
+<li><strong>SOTA 對比（Table 4）</strong>：PrOntoQA/ProofWriter/FOLIO/LogicalDeduction/AR-LSAT。前四個 benchmark 各系統相近（VERUS-LM 至多比最佳低 5%，且<strong>不用資料集專屬 prompt</strong>）;<strong>AR-LSAT：VERUS-LM 68.36 vs 次佳 43.91（高約 25%）</strong>，且<strong>平均最高 85.02、標準差最低 11.49</strong>（最穩）。歸功於：通用性（不用任務專屬範例）、FO(·) 表達力（如聚合「至少 3 張 CD 特價」#{...}≥3）、支援多推理任務。</li>
+<li><strong>自我精煉效果（Table 6）</strong>：語法精煉平均 +11.2% 執行率；語意精煉再 +10% 執行率；total accuracy 顯著上升。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>無形式正確性驗證</strong>（NeSy 此類方法通病：NL 有歧義、LLM 會錯）→ 擬引入無邏輯經驗的領域專家 in-the-loop。</li>
+<li>FO(·) 表達力有限（不適高階邏輯/真 OWA）；語意精煉假設可滿足（如假新聞推理場景不適用）；繼承 solver 局限（超大域 SAT）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>與 <a class="paper-reference" href="2502.09100_LLM_Logical_Reasoning_Survey.%E6%91%98%E8%A6%81.html">2502.09100</a>（LLM 推理綜述 §5.4）正好對應——VERUS-LM 是「LLM 翻形式 + solver」這條線的<strong>集大成改良</strong>；與 SymbCoT（全 LLM 無 solver）形成對照（VERUS-LM 保留 solver 換取可證正確）。</li>
+<li>最值得借鏡的兩個設計：<strong>「知識庫範式」把知識與查詢分離</strong>（同一 KB 答多問、省算力）、**語意精煉（可滿足性檢查）**補上 Logic-LM 只修語法的缺口。</li>
+<li>與 <a class="paper-reference" href="2509.07665_DeepGraphLog.%E6%91%98%E8%A6%81.html">2509.07665</a> 同出 KU Leuven（DTAI），但 DeepGraphLog 走可微 GNN+ProbLog、VERUS-LM 走 LLM+IDP-Z3 經典 solver，是兩種 NeSy 路線。</li>
+<li>適合想做<strong>自然語言→形式 KB→多任務推理</strong>的應用（如保險/法務問答助手），且在意換領域不想重寫 prompt 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2501.14540_VERUS_LM.zh-TW.html"><code>../translate/2501.14540_VERUS_LM.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

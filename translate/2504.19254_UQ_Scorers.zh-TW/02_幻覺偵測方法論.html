@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_幻覺偵測方法論 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2504.19254_UQ_Scorers.zh-TW.html">回 2504.19254_UQ_Scorers.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E8%A8%8E%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-幻覺偵測方法論">3. 幻覺偵測方法論</h2>
+<h3 id="31-問題陳述">3.1 問題陳述</h3>
+<p>把「LLM 回應是否含幻覺（定義為任何非事實內容）」建模為<strong>二元分類</strong>。定義一組二元分類器，把由 prompt <code>xᵢ</code> 生成的回應 <code>yᵢ</code> 映到 0 到 1 的信心分數：<code>ŝ: 𝒴→[0,1]</code>。給定閾值 τ，二元幻覺預測為 <code>ĥ(yᵢ;·,τ)=𝕀(ŝ(yᵢ;·)&lt;τ)</code>——信心分數低於 τ 即判定幻覺（<code>ĥ=1</code> 代表預測有幻覺）。</p>
+<p>真實標籤 <code>h(yᵢ;yᵢ*,xᵢ)</code> 由比對生成回應與正確參考答案 <code>yᵢ*</code> 得到：不正確為 1、否則為 0。當 <code>yᵢ*</code> 已知時直接比對最準；但部署時生成當下拿不到 <code>yᵢ*</code>，故 h 只作為<strong>離線 oracle</strong> 用於評估與（必要時）調參。框架用生成時可得的不確定性訊號以 <code>ĥ</code> 逼近 h，符合閉卷設定。所有分數轉換／正規化到 <code>[0,1]</code>，分數越高代表信心越高（許多分數本就落在 <code>[0,1]</code> 免正規化）。</p>
+<h3 id="32-黑盒-uq-評分器">3.2 黑盒 UQ 評分器</h3>
+<p>黑盒評分器利用「同一 prompt 的回應變異」評估語意一致性：對 prompt <code>xᵢ</code> 以<strong>非零溫度</strong>生成 m 個候選回應 <code>ỹᵢ={ỹᵢ₁,…,ỹᵢₘ}</code>，與原始回應 <code>yᵢ</code> 比對。</p>
+<ul>
+<li><strong>Exact Match Rate（EMR，公式 3）</strong>：適用有唯一封閉答案的任務，計算原始回應與各候選回應完全相符的比例（指示函數平均）。</li>
+<li><strong>Non-Contradiction Probability（NCP，公式 4）</strong>：較寬鬆，是 BSDetector 的組件。用 NLI 模型把每對 <code>(yᵢ,ỹᵢⱼ)</code> 分為 entailment／neutral／contradiction，取矛盾機率；NCP＝1 減去對所有候選的平均<strong>雙向</strong>矛盾機率（NLI 不對稱，故取雙向平均）。NLI 模型用 <code>microsoft/deberta-large-mnli</code>。</li>
+<li><strong>BERTScore（BSC，公式 5-6）</strong>：用情境化詞向量算兩文本間 token 對的最大餘弦相似度，得 precision 與 recall，取 F1；BSC＝原始回應與各候選回應 BERTScore F1 的平均。</li>
+<li><strong>Normalized Cosine Similarity（NCS，公式 7）</strong>：用 sentence transformer 把輸出映到向量空間，算原始回應與各候選回應餘弦相似度的平均，再「除以 2、加 1/2」正規化到 <code>[0,1]</code>。</li>
+<li><strong>Normalized Semantic Negentropy（NSN，公式 8-9）</strong>：以 Farquhar et al. 的 semantic entropy（SE）為基礎——用 NLI 依互相 entailment 把回應分群，對「原始＋候選」整組回應算一個熵值（不區分原始與候選）。SE 無界不利正規化，故取離散版並定義 NSN＝<code>1 − SE/log(m+1)</code>，<code>log(m+1)</code> 用來正規化支集，使其落在 <code>[0,1]</code> 且分數越高信心越高。</li>
+</ul>
+<h3 id="33-白盒-uq-評分器">3.3 白盒 UQ 評分器</h3>
+<p>利用生成回應的 token 機率，只需<strong>單次生成</strong>。</p>
+<ul>
+<li><strong>Length-Normalized Token Probability（LNTP，公式 10）</strong>：對回應各 token 機率取「長度正規化的聯合機率」，即 token 機率的<strong>幾何平均</strong>（有界、易解讀，不因序列長短失真）。</li>
+<li><strong>Minimum Token Probability（MTP，公式 11）</strong>：取回應中所有 token 機率的<strong>最小值</strong>作為信心分數（最不確定的那個 token 決定整體信心）。</li>
+</ul>
+<h3 id="34-llm-as-a-judge-評分器">3.4 LLM-as-a-Judge 評分器</h3>
+<p>把「問題-回應」對串接，餵給 LLM 並附精心設計的指令 prompt，要它評估回應正確性。指令改編自 Xiong et al.，要 LLM 以 <strong>0-100</strong> 打分（越高＝越確定回應正確），再正規化到 0-1。完整 prompt 見附錄 A。</p>
+<h3 id="35-集成評分器">3.5 集成評分器</h3>
+<p>提出可調集成：K 個二元分類器的<strong>加權平均</strong> <code>ŝ=Σₖ wₖ ŝₖ</code>，其中 <code>Σwₖ=1</code>、<code>wₖ∈[0,1]</code>。因部分組件依賴同 prompt 的候選回應，集成以 <code>(ỹᵢ, w)</code> 為條件。調參需要一組 LLM 回應樣本、每則回應的 K 個信心分數、以及對應的二元幻覺標籤 <code>h</code>（作為分類目標的 ground truth）。給定分類目標函數，用最佳化程序調權重 w（使用 <strong>optuna</strong> 預設設定）。若目標<strong>與閾值無關</strong>，可先調權重再調閾值 τ；若目標<strong>依賴閾值</strong>，則權重與閾值<strong>聯合</strong>調。因評分器表現同時受資料集與 LLM 影響，權重是<strong>逐場景（選定 LLM×資料集）調參</strong>，所得權重用於同域（in-domain）部署。細節見附錄 B。</p>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-實驗設定">4.1 實驗設定</h3>
+<p>用公開 QA benchmark（含問題與答案），確保答案格式多樣：兩個數字答案（<strong>GSM8K、SVAMP</strong>）、兩個選擇題（<strong>CSQA、AI2-ARC</strong>）、兩個開放式短答（<strong>PopQA、NQ-Open</strong>）。每個 benchmark 抽 1000 題。每題用四個 LLM——<strong>GPT-4o、GPT-4o-mini、Gemini-2.5-Flash、Gemini-2.5-Flash-Lite</strong>——各生成 1 個原始回應與 <strong>m=15</strong> 個候選回應（溫度 1.0；m 較大以確保黑盒比較穩健，實務可用較少）。每則回應用同一 LLM 的候選回應算全套黑盒分數，取 log 機率算白盒分數，並用同四個 LLM 算 LLM-as-a-Judge 分數。評分全由 <code>uqlm</code> 計算（單機 n1-standard-16＋單張 T4 GPU，每個 LLM-資料集組合約 0.5-3 小時）。</p>
+<h3 id="42-實驗結果">4.2 實驗結果</h3>
+<p><strong>Threshold-Agnostic 評估（AUROC）</strong>：以 AUROC 為目標調集成權重，用 5-fold 交叉驗證取平均 AUROC。24 個 LLM-資料集情境中，最佳分數 AUROC 從 NQ-Open（GPT-4o）的 <strong>0.729</strong> 到 GSM8K（Gemini-2.5-Flash-Lite）的 <strong>0.986</strong>；19/24 情境最佳分數 AUROC &gt; 0.8。<strong>集成在 20/24 情境勝過所有個別組件</strong>。單一分數排名隨情境大幅變動：非集成最佳分別由 LLM-judge／黑盒／白盒在 <strong>11／7／6</strong> 情境奪冠；<strong>NLI 類（NSN、NCP）在黑盒中 13/24 情境最佳</strong>。LLM 評審中 GPT-4o 與 Gemini-2.5-Flash 穩定勝過各自的小版本（GPT-4o 在 13/24、Gemini-2.5-Flash 在 10/24 為最佳評審），且 Gemini-2.5-Flash 偏強於數學（6/8）、GPT-4o 偏強於短答（6/8）。兩個白盒分數表現幾乎相同。</p>
+<p>表 1 摘錄各 LLM 的最佳分數 AUROC（節選）：AI2-ARC 一列四個 LLM 的最佳分數皆為 <strong>LNTP</strong>（白盒），其餘資料集多為 <strong>Ensemble</strong>。例如 GPT-4o：NQ-Open 0.729、PopQA 0.798、GSM8K 0.979、SVAMP 0.938、CSQA 0.844、AI2-ARC 0.860。</p>
+<p><strong>Threshold-Optimized 評估（F1）</strong>：以 F1 為目標<strong>聯合</strong>調權重與閾值，5-fold 交叉驗證；個別分數則用 grid search 選 F1 最佳閾值。結果與 AUROC 大致一致：<strong>集成在 17/24 情境 F1 最佳</strong>；NLI 類（NSN、NCP）在 18/24 情境勝過其他黑盒；數學題 Gemini-2.5-Flash 評審 8/8 最佳、短答 GPT-4o 評審 6/8 最佳——且與它們作為原始 LLM 答題時在同 benchmark 的最高準確率一致。兩白盒分數再度幾乎相同。</p>
+<p><strong>Filtered Accuracy@τ</strong>：計算「信心分數超過閾值 τ 的回應子集」上的模型準確率，τ 取 0,0.1,…,0.9（τ=0 即全樣本不過濾）。以各類最佳分數過濾後，準確率隨閾值近乎<strong>單調上升</strong>。例如 Gemini-2.5-Flash-Lite 在 PopQA 用最佳白盒分數，準確率從基線 0.35 升到 τ=0.6 時的 0.61；GPT-4o 在 GSM8K 用集成，τ=0.6 時達 0.93（基線 0.55）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

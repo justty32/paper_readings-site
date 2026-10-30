@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2512.04189_BEP_Binary_Error_Propagation.zh-TW.html">回 2512.04189_BEP_Binary_Error_Propagation.zh-TW 目錄</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p><strong>二值神經網路（BNN）<strong>把權重與激活限制為二值，大幅降低算力、記憶體與能耗，特別適合資源受限裝置。但因變數離散，<strong>以梯度法訓練 BNN 困難</strong>。主流的量化感知訓練（QAT）用替代梯度繞過此問題，卻須維護全精度潛在權重、反向用浮點算術 → 喪失訓練時的二值效率。既有的局部學習規則則不適合全域信用分配與多層誤差反傳。本文提出 <strong>BEP（Binary Error Propagation）——第一個建立反傳鏈式法則之原則性離散類比的學習演算法</strong>：讓以二值向量表示的誤差訊號在多層間反向傳播；BEP 完全在二值變數上運作，所有前向與反向計算僅用位元運算。關鍵地，這使 BEP 成為</strong>第一個能端到端二值訓練 RNN</strong> 的方案。在 MLP 與 RNN 上分別最高提升 <strong>+6.89%</strong> 與 <strong>+10.57%</strong> 測試準確率；已開源。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>權重/激活限為 ±1 的 NN 適合資源受限環境。BNN 的主要優勢在以 <strong>XNOR、Popcount</strong> 等輕量位元運算取代昂貴浮點，大幅降複雜度。但 sign 激活不可微，傳統梯度法無法直接用，導致兩大解法：</p>
+<ul>
+<li><strong>QAT（最普遍）</strong>：維護全精度潛在權重、用 <strong>STE</strong>（把 sign 導數近似為有界區間內的 identity）繞過 → 但梯度計算與權重更新仍靠 FP，二值效率只在前向、且訓練/推論動態有落差。</li>
+<li><strong>純二值無梯度法</strong>（統計物理啟發）：直接在二值權重上操作。近期擴展用固定隨機分類器在各層產<strong>局部</strong>誤差訊號訓二值 MLP，但<strong>信用分配局部、誤差不從輸出端到端傳</strong> → 無法用於 RNN。</li>
+</ul>
+<p>研究問題：<strong>能否在純二值域內，做多層全域信用分配並反傳誤差？</strong> 本文提出 <strong>BEP</strong>——首個全二值誤差反傳演算法，建立 BP 鏈式法則的二值類比；為穩定學習用整數隱權重提供突觸慣性、緩解災難性遺忘；前後向全靠 XNOR、Popcount、增減運算。</p>
+<p><strong>貢獻</strong>：(1) 形式化全二值 BP 演算法，端到端傳播二值誤差訊號，建立梯度式 BP 的離散類比；(2) 證明 BEP 能訓 MLP 與 RNN，克服局部與梯度法的限制。直接結果：消除全精度梯度與權重更新的需要，學習階段也只用位元運算。MLP 最高 +6.89% 勝前 SOTA;RNN 首見端到端二值訓練、平均 +10.57% 勝 QAT。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>QAT</strong>：維護潛在 FP 參數、前向二值化、對潛在參數用 STE 算梯度；雖強，但仍是「對離散問題用連續優化」，靠 FP、訓練/推論有落差。</li>
+<li><strong>純二值優化</strong>：早期統計物理（單層感知器組合優化）、模擬退火、演化策略；避開連續鬆弛但靠隨機擾動（隨機翻權重）、缺結構化逐層信用分配，深層難擴展。</li>
+<li><strong>局部學習規則</strong>：CP+R（Clipped Perceptron with Reinforcement）、訊息傳遞，引入整數隱變數表突觸信心；多層版用固定隨機分類器產逐層局部誤差，但缺端到端任務損失傳播，排除了 RNN。BEP 引入全域信用分配機制彌合此缺口。</li>
+</ul>
+<h2 id="3-bep-演算法">3. BEP 演算法</h2>
+<p>監督分類設定，資料 {x^μ, c^μ}。</p>
+<h3 id="31-架構與前向">3.1 架構與前向</h3>
+<p>兩部分：可訓練二值主幹 + 固定任務輸出層。輸入二值化 a_0=bin(x)（影像用中位數閾值、表格用溫度計編碼）。</p>
+<p><strong>主幹</strong>：L 層全連接。每層兩矩陣——<strong>整數隱權重 H_l∈ℤ</strong>（突觸慣性，受限 B-bit 整數 [−2^{B−1}, 2^{B−1}−1]）與<strong>可見二值權重 W_l=sign(H_l)∈{±1}</strong>。前向 z_l=W_l·a_{l−1}、a_l=sign(z_l)。</p>
+<p><strong>輸出層</strong>：把二值特徵 a_L 映到目標。用固定隨機 <strong>±1 矩陣 P</strong>（每類一原型向量 ρ^c），logits ŷ=P·a_L，預測類 ĉ=argmax_c ŷ_c。固定不訓更實用有效。</p>
+<h3 id="32-二值誤差反傳">3.2 二值誤差反傳</h3>
+<p>誤差驅動：當 ŷ_{c^μ} − max_{c≠c^μ} ŷ_c &lt; r·K_L（r∈(0,1] 為 margin、K_L 為末隱層大小=最大可能 logit）才觸發更新。</p>
+<p>定義各層<strong>期望激活 a*_l</strong>（理想 ±1 目標）從末層往回傳：</p>
+<ul>
+<li><strong>末層</strong>：a*_L = argmax_a ⟨a, ρ^{c^μ}⟩ = ρ^{c^μ}（解析）。</li>
+<li><strong>中間層</strong>：目標 argmax_a ⟨a*<em>{l+1}, sign(W</em>{l+1}·a)⟩ 是 2^{K_l} 組合搜尋；<strong>鬆弛</strong>為去掉 sign、最大化 ⟨a*<em>{l+1}, W</em>{l+1}·a⟩（增大預激活幅度並對齊符號；不需全域最優，只需引導更新方向）。</li>
+<li><strong>反向門控</strong>：加二值門控向量 g_{l+1}，只讓 |z_{l+1,i}|≤ν·K_l（接近決策邊界 0）的神經元通過誤差，排除近飽和神經元；ν∈[0,1] 可調。定義 gated 內積 ⟨a,a&#x27;⟩_g=Σ_i g_i a_i a&#x27;_i。</li>
+</ul>
+<p><strong>Lemma 1</strong>：argmax_{a∈{±1}} ⟨b, Wa⟩_g 的唯一解為 <em><em>a</em> = sign(W^⊤(g⊙b))</em>*。結合末層基例得遞迴：</p>
+<p>a*<em>l = ρ^{c^μ}（l=L）;sign(W</em>{l+1}^⊤(g_{l+1}⊙a*_{l+1}))（l&lt;L）</p>
+<p>此即 BEP 的基石——<strong>全二值的鏈式法則</strong>，把二值誤差訊號傳遍 BNN。</p>
+<h3 id="33-權重更新">3.3 權重更新</h3>
+<p>得 a*<em>l 後更新 H_l：ΔH_l = sign(a*<em>l·(a</em>{l−1})^⊤) = a*<em>l·(a</em>{l−1})^⊤ ∈{±1}（古典 Hebbian 感知器規則的矩陣推廣；K_l=1 時退化為 CP 更新）。經<strong>稀疏遮罩 M</strong>（把層內神經元分組、組內只更新最易修正的錯誤感知器 → 更均勻分布更新、更穩、更好泛化）。聚合更新 H_l ← H_l + 2Σ</em>{μ∈ℳ}(M_l^μ⊙ΔH_l^μ)。遮罩實現「組內 winner-takes-update」（只更新最不穩定單元 → 界定每樣本改的突觸數、防過度強化已自信神經元，等效離散資料相依的學習率控制）。加 CP+R 隨機強化步（h ← h+2·sign(h)，機率 p_r·√(2/(πK_l))）。並用按準確度排程的組大小（停滯時增到下一個 K_l 的除數 → 後期更稀疏更穩）。</p>
+<h3 id="34-與梯度式-bp-的類比">3.4 與梯度式 BP 的類比</h3>
+<p>BEP 是古典 BP 計算圖的二值重構：二值期望激活 a*<em>l ↔ 誤差訊號 δ_l；經 W</em>{l+1}^⊤ 反投影 ↔ 連續誤差傳播；二值門控 ↔ 激活導數 σ′(·)（飽和時阻斷誤差）；稀疏遮罩 ↔ 學習率（η 控幅度、遮罩控稀疏）。</p>
+<h3 id="35-bep-tt遞迴架構">3.5 BEP-TT（遞迴架構）</h3>
+<p>BEP 的全域誤差傳播直接擴展到 RNN（需顯式時間信用分配、局部法不可行）。按時間展開得二值 BPTT 類比 <strong>BEP-TT</strong>；二值 RNN 做 many-to-one 序列分類，狀態 s_t=sign(W_xs·a_t + W_ss·s_{t−1})。共享權重須累積所有時間步/觸發樣本的更新再套用。</p>
+<h2 id="4-實驗">4. 實驗</h2>
+<p>兩目標：(i) 對標前 SOTA 二值 MLP 訓練法；(ii) 展示全域信用分配的通用性（用於二值 RNN）。</p>
+<ul>
+<li><strong>MLP</strong>（2/3 隱層；Random Prototypes、FashionMNIST、CIFAR-10、Imagenette 的 AlexNet 特徵；5 次平均；對比 SOTA 局部法與 Larq 的 QAT）：BEP 與局部法<strong>皆顯著勝 QAT</strong>;BEP 在最小參數量一致勝局部法——最高 +6.89%、+1.22%、+3.70%、+2.85%；參數增大差距收斂、僅高參數 CIFAR-10（3 層）略落後。凸顯全域誤差傳播對二值 MLP 信用分配的重要，且 BEP 無需 FP 梯度即勝局部法與 QAT。</li>
+<li><strong>RNN</strong>（Sequential-MNIST + 30 UCR 時序）：BEP 首個端到端二值 RNN 訓練法，平均比 QAT +10.57%。</li>
+<li><strong>門控 ν</strong>：調控反向訊號與訓練動態（消融）。</li>
+</ul>
+<h2 id="5-結論與未來">5. 結論與未來</h2>
+<p>BEP 是首個全二值誤差反傳演算法，建立 BP 鏈式法則的離散類比，全程位元運算、無 FP 潛在權重/替代梯度，訓練與推論皆享二值效率，並首次實現端到端二值 RNN 訓練。未來探索更深網路、更多架構與硬體實作。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2512.04189_BEP_Binary_Error_Propagation.%E6%91%98%E8%A6%81.html"><code>../summarize/2512.04189_BEP_Binary_Error_Propagation.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

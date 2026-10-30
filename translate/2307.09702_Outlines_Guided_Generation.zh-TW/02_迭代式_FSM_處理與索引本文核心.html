@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_迭代式_FSM_處理與索引本文核心 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2307.09702_Outlines_Guided_Generation.zh-TW.html">回 2307.09702_Outlines_Guided_Generation.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%BB%B6%E4%BC%B8%E5%88%B0%E8%BF%AD%E4%BB%A3%E5%BC%8F%E5%89%96%E6%9E%90CFG.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-迭代式-fsm-處理與索引本文核心">3. 迭代式 FSM 處理與索引（本文核心）</h2>
+<p>我們用狀態機來框定正則引導生成。此框架能精確指定「正則比對如何被任意開始與停止」，因此能在 s̃ᵢ₊₁ 各次取樣之間<strong>輕易且高效地續接</strong>，也說明遮罩如何在<strong>不對 V 做執行期評估</strong>的情況下算出。</p>
+<p><strong>正則表達式＝5-tuple 有限自動機</strong>（Sipser 定義 1.5）：</p>
+<blockquote>
+<p><strong>定義 1（有限自動機）</strong>：一個有限自動機／有限狀態機由 (Q, Σ, δ, q₀, F) 給定，其中 Q 是有限狀態集、Σ 是有限字母表、δ : Q × Σ → Q 是轉移函數、q₀ ∈ Q 是起始狀態、F ⊆ Q 是接受狀態集。</p>
+</blockquote>
+<p>詞彙表 V 中字串的字元取自 Σ（即 V ⊂ P(Σ)）；為簡化，FSM 狀態 Q 以整數表示。此表述讓我們能<strong>精確判定：取樣單一詞彙 token s̃ₜ₊₁ 後，引導正則的 FSM 停在 Q 中哪個狀態</strong>。這些 FSM 狀態便可在 Algorithm 2 的取樣過程中被<strong>追蹤</strong>，用以高效續跑狀態機，而<strong>不必每次都從成長中序列的開頭重讀</strong>。</p>
+<p><strong>Example 1（浮點數正則）</strong>：以正則 <code>([0-9]*)?\.?[0-9]*</code>（生成浮點數）為例，令詞彙表僅含 <code>&quot;A&quot;</code>、<code>&quot;.&quot;</code>、<code>&quot;42&quot;</code>、<code>&quot;.2&quot;</code>、<code>&quot;1&quot;</code>。生成起於 FSM 狀態 0，演算法<strong>遮掉 <code>&quot;A&quot;</code></strong>（不被 FSM 接受），此時只能取 <code>&quot;.&quot;</code>、<code>&quot;42&quot;</code>、<code>&quot;.2&quot;</code>、<code>&quot;1&quot;</code>。若取 <code>&quot;.2&quot;</code>，FSM 前進到狀態 3，此時只有 <code>&quot;42&quot;</code>、<code>&quot;1&quot;</code> 是合法補全，取樣前遮掉其他；若改取 <code>&quot;1&quot;</code>，FSM 前進到狀態 1，此時 <code>&quot;.&quot;</code>、<code>&quot;.2&quot;</code>、<code>&quot;1&quot;</code> 等為合法、遮罩不變。（圖 1 即此正則的 FSM 遮罩過程。）</p>
+<h3 id="核心構造一把正則編譯成-fsm-後離線對詞彙表建索引">核心構造一：把正則編譯成 FSM 後，離線對詞彙表建索引</h3>
+<p><strong>問題</strong>：逐一遍歷詞彙表判斷合法下一 token，仍是最大瓶頸。<strong>解法</strong>：用正則表達式的 FSM <strong>預處理詞彙表、建立一份索引</strong>。關鍵在於——<strong>要考慮「從每一個可行 FSM 狀態出發」</strong>，因為詞彙表裡的字串可能匹配正則的<strong>任意片段</strong>，而這些片段隱含地就是<strong>FSM 的狀態</strong>。</p>
+<p><strong>Algorithm 3（find_sub_sequences：找出 FSM M 接受字串 v 所走過的狀態子序列）</strong>：</p>
+<ul>
+<li>對「能讀入 v 首字元 v₀ 的所有狀態 r」（即 δ⁻¹(·, v₀)，轉移函數在 v₀ 上的原像）逐一嘗試作為<strong>起始狀態</strong>；</li>
+<li>從 r 起沿 δ 逐字元走 FSM（walk）：若某字元 vᵢ 無轉移（δ(r, vᵢ)=∅）就放棄此起始狀態、換下一個；否則把每步到達的狀態附加進路徑 p；</li>
+<li>回傳一組子序列，每條記錄「FSM 接受該字串時走過的狀態」。</li>
+</ul>
+<p><strong>Algorithm 4（map_states_to_vocab：構造映射 σ）</strong>：對詞彙表每個字串 v，用 Algorithm 3 取得其被接受的狀態子序列集合 Z；對每條子序列 z，把 v 加入 σ(z₀)（z₀＝該子序列的起始狀態）。最終得<strong>映射 σ : Q → P(V)</strong>——把每個 FSM 狀態，連到「在該狀態下會被 FSM 接受的詞彙子集」。</p>
+<p><strong>為何是 O(1)</strong>：把 Algorithm 2 單步循環最後到達的 FSM 狀態，去對映射 σ 查詢，即可高效取得該狀態下合法的詞彙子集。<strong>用雜湊表（hash-map）實作 σ，可使 Algorithm 2 的遮罩步驟平均只花 O(1)</strong>。此外，σ 是在 token 取樣程序<strong>之外</strong>構造，其執行期成本實質上無關緊要——雖然理論上需要正比於 FSM 狀態數 |Q| 的記憶體。所幸對「非病態」的正則×詞彙表組合，並非每個詞彙字串都會被 FSM 接受，也並非每個 FSM 狀態都對應到 V 中某字串，故記憶體通常可控。</p>
+<h3 id="31-示例實機">3.1 示例（實機）</h3>
+<p>以 GPT2-medium（355M）配 Outlines 展示正則引導生成：<code>generate.regex(model, r&quot;\s*([Yy]es|[Nn]o|[Nn]ever|[Aa]lways)&quot;, ...)</code> 把「1+1=2?」的自由續寫收斂為 <code>Always</code>；<code>r&quot;\s*19[0-9]{2}&quot;</code> 強制生成四位年份（Chomsky 出生年 → <code>1952</code>）；IP 位址正則 <code>((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(...)</code> 強制輸出成 IP 格式（如 <code>2.2.6.1</code>）。相對地，未引導版本則自由發散、格式不受控。</p>
+<h3 id="32-與現行方法比較">3.2 與現行方法比較</h3>
+<p>為展示索引法效率，與 <strong>Guidance</strong> 函式庫做簡單比較。撰文當時 Guidance 採<strong>部分正則比對——每步都從取樣序列開頭重做</strong>，且每步須遍歷 LLM 詞彙表（N = 50,257）。作者用 Guidance 與 Outlines 各自對「產生合法 Python 變數名（正則 <code>[^\W\d]\w*</code>）」計時（用 timeit，單一 loop、單一 repeat，即每個 max_tokens 只取一個樣本）。結果：隨 max_tokens 增加，Guidance 的執行時間<strong>顯著攀升</strong>（圖示 runtime 隨生成 token 數迅速拉高至上百秒量級），Outlines 幾乎持平。作者聲明：除非有造成大落差的配置疏失，否則此隨「最大取樣 token 數」的縮放差異相當明顯，正指示了該做法內含的計算問題。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

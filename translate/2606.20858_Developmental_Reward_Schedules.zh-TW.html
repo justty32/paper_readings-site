@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>深度強化學習中發育型獎勵排程的演化發現（Evolutionary Discovery of Developmental Reward Schedules in Deep Reinforcement Learning） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Alan Nadelsticher Ruvalcaba（Georgia Institute of Technology + University of Pennsylvania）</p><p>日期：2026-06</p><p>arXiv：2606.20858</p><p><a href="https://arxiv.org/abs/2606.20858" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="深度強化學習中發育型獎勵排程的演化發現">深度強化學習中發育型獎勵排程的演化發現</h1>
+<p>Georgia Tech College of Computing + UPenn School of Engineering and Applied Science</p>
+<h2 id="摘要">摘要</h2>
+<p>RL 中獎勵組成的時間結構通常手工設計且全程固定，使「動機優先序如何推進」幾乎未被探索。本文提出一個演化框架，發現<strong>發育型獎勵排程</strong>——三個生物啟發的動機分量（<strong>agency 能動性、novelty 新奇、reactivity 反應性</strong>）透過隨訓練動態變化的<strong>時變權重</strong>組合。在兩個稀疏獎勵 MiniGrid 任務（DoorKey-6×6、KeyCorridorS3R1）上，比較四個演化演算法（CMA-ES、xNES、DE、L-SHADE）對「純外在動機 baseline（主比較點）+ 三個手工法」的泛化能力。在 DoorKey-6×6 上，所有演化法都勝非演化 baseline，<strong>L-SHADE 最佳——相對純外在 baseline 約 +11.4% 的相對均值提升</strong>。在 KeyCorridorS3R1 上，<strong>CMA-ES 整體最佳</strong>，其餘演化法泛化較弱、較不可靠。有趣的是，發現的排程<strong>偏離我們定義的發育排序</strong>——novelty 在兩任務都一致成為早期主導訊號。整體而言，本文把演化最佳化定位為發育型獎勵排程發現的有前景途徑，並暗示<strong>計算設定中演化認為最優的，可能異於生物中的最優</strong>。</p>
+<p>程式碼：github.com/alannadels/Evolutionary_RL</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>在人類與哺乳類中，多巴胺獎勵系統由一組隨發育推移、非任意的內外在動機訊號驅動：新生兒先發現行為-事件因果（agency）、嬰兒發展對中等複雜刺激的新奇偏好（novelty）、青少年呈現striatal 高反應獎勵系統（reactivity，在前額葉控制成熟前達峰）、最後成熟目標導向行為在皮質-紋狀體連結發育後才出現。這個進程反映一個功能最優的動機發育策略——演化本身隨時間發現的。</p>
+<p>但多數 RL 把獎勵組成的時間結構當固定設計選擇，讓其生物與演化基礎的動態未被探索。本文提出演化途徑直接補此缺口：替 RL agent 發現某任務的功能最優發育型獎勵排程——像演化對生物所做的那樣，讓演化去發現它。方法定義一個受動機-認知發育啟發的複合獎勵（agency、novelty、reactivity 三分量各對應一個成熟階段），三分量的時變權重被參數化、由演化外層最佳化，agent 則用 PPO 在 MiniGrid 內層訓練。<strong>演化最佳化不受任何特定發育排序的先驗偏置</strong>。</p>
+<h2 id="2-相關工作三條線交叉">2. 相關工作（三條線交叉）</h2>
+<ul>
+<li><strong>RL 中的發育學習</strong>：把發育心理學/神經科學翻成計算設計——RL 模型擬合人類行為時，最佳參數隨年齡系統性不同（兒童高探索溫度、不同學習率；成人低探索、更有效率的 outcome weighting）；漸進擴展可觀測的「感知發育」課程加速學習。課程學習（curriculum learning）也認識到「經驗順序重要」（簡到難）。但<strong>這些都沒處理「agent 被什麼驅動、動機該如何隨訓練演進」</strong>——本文要補此。</li>
+<li><strong>RL 中的內在動機</strong>：count-based 訪問獎勵、novelty-based 探索獎勵（state-action 或 latent 差異）、self-attention curiosity（隨掌握而消退）——但<strong>沒人處理內外在分量的權重該如何隨訓練演進</strong>。</li>
+<li><strong>RL 中的演化方法</strong>：DE 在 neuroevolution 勝 GA/ES;GA+novelty search 在欺騙性環境勝任一單獨者；Proximal ES（CMA-ES + surrogate + 梯度局部搜尋）降樣本複雜度。<strong>Oh et al. 證明演化 meta-learning 能在 held-out benchmark 上超越手工 RL 演算法（含 PPO）——他們發現的是學習規則本身，本文把同原則用到不同目標：不是發現「agent 如何學」，而是「被什麼驅動、跨什麼發育弧」</strong>。據作者所知，無前人把演化最佳化用於發育型獎勵排程發現，也無計算研究直接把演化出的動機軌跡與生物發育favored 的序列對比。</li>
+</ul>
+<h2 id="3-方法">3. 方法</h2>
+<p>複合獎勵（含四分量，三個生物啟發 + 稀疏任務）：</p>
+<p><code>r(t) = r_task + λ[α(t)·r_agency + β(t)·r_novelty + γ(t)·r_reactivity]</code></p>
+<p>其中 r_task 為稀疏環境獎勵：成功時 <code>1 − 0.9·(steps/steps_max)</code>、否則 0。</p>
+<p><strong>兩相框架</strong>（Fig. 1）：</p>
+<ul>
+<li><strong>Phase 1 演化搜尋</strong>：EA（CMA-ES/xNES/DE/L-SHADE）演化 θ∈ℝ¹⁵ → 建出排程 α(t),β(t),γ(t)；用固定 seed 的 PPO 訓練候選 θ;fitness 評估＝50 episodes、只用稀疏獎勵。</li>
+<li><strong>Phase 2 排程泛化</strong>：固定演化出的最佳 θ*，用 10 個 seed 重訓 PPO；最終評估＝每 seed 50 episodes、只用稀疏獎勵；報跨 seed mean ± std。</li>
+</ul>
+<p>agent 為 MLP，環境為 MiniGrid。</p>
+<h2 id="45-實驗與結果">4–5. 實驗與結果</h2>
+<ul>
+<li><strong>DoorKey-6×6</strong>：所有演化法都勝非演化 baseline;<strong>L-SHADE 最佳，相對純外在 baseline 約 +11.4% 相對均值提升</strong>。</li>
+<li><strong>KeyCorridorS3R1</strong>：<strong>CMA-ES 整體最佳</strong>；其餘演化法泛化較弱、較不可靠（部分遜於外在 baseline）。</li>
+<li><strong>關鍵發現</strong>：發現的排程偏離預設發育排序——<strong>novelty 在兩任務都一致成為早期主導訊號</strong>。這暗示計算上演化認為最優的，可能異於生物上的最優。</li>
+</ul>
+<h2 id="結論與展望">結論與展望</h2>
+<p>結果把演化最佳化定位為「發育型獎勵排程發現」的有前景途徑，並傳達：<strong>生物啟發的動機架構，若用演化最佳化發現而非手工規定，可為深度 RL 的獎勵函數設計提供有原則且有效的基礎</strong>。限制包括任務規模小（兩個 MiniGrid）、KeyCorridor 上多數演化法不夠穩健、以及每候選需完整 PPO 訓練帶來的演化成本。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

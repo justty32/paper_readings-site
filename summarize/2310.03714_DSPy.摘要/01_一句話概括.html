@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2310.03714_DSPy.%E6%91%98%E8%A6%81.html">回 2310.03714_DSPy.摘要 目錄</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>DSPy</strong> 是一個把 LM pipeline 抽象成「<strong>文字轉換圖（text transformation graph）</strong>」的程式設計模型：不再手寫脆弱的 prompt 字串，而是用 <strong>signatures（自然語言 I/O 宣告）+ modules（可參數化、可組合的 prompting 技術，如 ChainOfThought、ReAct）</strong> 描述 pipeline，再由 <strong>teleprompters（優化器/編譯器）自動 bootstrap few-shot 示範或指令、甚至 finetune 小模型</strong>，把宣告式程式編譯成能最大化指定指標的自我改進 pipeline；在 GSM8K 與 HotPotQA 兩個案例上，短短幾行 DSPy 便讓 GPT-3.5 與 llama2-13b-chat 自我 bootstrap 出勝過標準 few-shot 與專家手寫 prompt 的系統。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>現有 LM pipeline（含 LangChain、Semantic Kernel、LlamaIndex 等框架）普遍以<strong>手寫死的「prompt 模板」</strong>（靠反覆試誤湊出的長字串）實作各步 LM 呼叫。作者論證此法<strong>脆弱且不可擴展</strong>——概念上就像手動調分類器權重：同一段 prompt 字串換 pipeline、換 LM、換資料域、甚至換輸入就可能失效；多階段 pipeline 裡多個 LM 呼叫要彼此配合更放大此問題。作者要把「建 LM pipeline」從<strong>操弄自由字串</strong>推向<strong>寫程式</strong>——由編譯器自動生成優化過的 LM 呼叫策略與 prompt。</p>
+<h2 id="核心方法">核心方法</h2>
+<p>DSPy 貢獻三層抽象（程式以 Python 表達，走 PyTorch 式 define-by-run 計算圖）：</p>
+<ul>
+<li><strong>Signatures（簽章）</strong>：以自然語言型別宣告一個文字轉換要做什麼（如 <code>question -&gt; answer</code>、<code>english document -&gt; french translation</code>），只講「做什麼」不講「怎麼 prompt」；欄位名承載語意角色，由 DSPy 展開成對 LM 的指令，並負責結構化格式化與解析。</li>
+<li><strong>Modules（模組）</strong>：把既有 prompting 技術封裝成可套用任意 signature 的模組。核心是 <code>Predict</code>（存 signature、選用 LM、示範清單）；更複雜的有 <code>ChainOfThought</code>、<code>ProgramOfThought</code>、<code>MultiChainComparison</code>、<code>ReAct</code> 等，可互換套用。<strong>關鍵是「參數化」</strong>——一次 LM 呼叫的參數包括：(1) 要呼叫哪個 LM、(2) prompt 指令與各欄位前綴字串、(3) <strong>最重要的 few-shot 示範</strong>；DSPy 主打自動生成與挑選示範。工具（如 <code>dspy.Retrieve</code>，支援 ColBERTv2/Pyserini/Pinecone）亦為模組。</li>
+<li><strong>Teleprompters（優化器）＝編譯的引擎</strong>：<code>compile</code> 時傳入程式、（少量、可只含輸入無標註的）訓練集、一個驗證指標，回傳優化後的新程式。典型 teleprompter 走三階段：
+<ol>
+<li><strong>候選生成</strong>：遞迴找出所有 <code>Predict</code> 節點，為每個節點生成候選參數（指令、欄位描述、<strong>最重要的示範</strong>）。<code>BootstrapFewShot</code> 會用 teacher（或零樣本版程式）在訓練輸入上模擬執行、以高溫多次取樣，透明追蹤多階段 trace，再<strong>用指標過濾出能通過的 trace 當示範（即 self-bootstrap）</strong>、丟掉壞例。</li>
+<li><strong>參數優化</strong>：以隨機搜尋、HyperOpt（TPE）、Optuna 等在候選中挑選（<code>BootstrapFewShotWithRandomSearch</code>/<code>WithOptuna</code>）；或用 <code>BootstrapFinetune</code> 拿示範去更新小 LM 權重。</li>
+<li><strong>高階程式優化</strong>：修改控制流，最簡形式是 ensemble（bootstrap 多份程式並行、以多數投票等歸約）。</li>
+</ol>
+</li>
+</ul>
+<p>「<strong>編譯＝自動 bootstrap 示範／指令</strong>」是全篇核心：LM 雖不可靠，卻擅長為多階段設計搜尋解；良好分解的程式通常能找到幾個通過 signature 與指標約束的訓練例，據此迭代自我 bootstrap。標註需求極低——通常只需最終輸出的標籤（甚至無標籤），中間步驟由 bootstrap 補齊，換 pipeline 只要重新編譯而非重新標註。</p>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>總體宣稱</strong>：編譯數分鐘內，幾行 DSPy 讓 GPT-3.5 與 llama2-13b-chat 自我 bootstrap 出勝過標準 few-shot 的 pipeline（GPT-3.5 一般 <strong>&gt;25%</strong>、llama2-13b-chat <strong>&gt;65%</strong>），也勝過用專家手寫示範的 pipeline（GPT-3.5 高達 <strong>5–46%</strong>、llama2 <strong>16–40%</strong>）。編譯成 T5-Large（770M）、llama2-13b-chat 等開源小模型後，可與依賴專家手寫 prompt 鏈的 GPT-3.5 方案競爭。</li>
+<li><strong>案例一 GSM8K（數學應用題）</strong>：三個程式（vanilla <code>Predict</code>、CoT、ThoughtReflection 多鏈反思）。bootstrap 編譯把簡單程式從 <strong>33%→82%</strong>（GPT-3.5）、<strong>9%→47%</strong>（llama2-13b-chat）（見表 1，整體 4–20%→49–88%）。bootstrap 可匹敵或超越用人工推理鏈（+human CoT）的效果。</li>
+<li><strong>案例二 HotPotQA（多跳問答，fullwiki + ColBERTv2）</strong>：程式含 vanilla、CoT RAG、ReAct、BasicMultiHop（迭代兩跳生成查詢）。編譯把品質從 <strong>32%→46%</strong>（GPT-3.5）、<strong>22%→41%</strong>（llama2-13b-chat）（Sec 7）；multihop 最佳，bootstrap 能讓 llama2-13b-chat 逼近 GPT-3.5。finetune 出的 <strong>T5-Large（770M）</strong> multihop 僅用 200 標註 + 800 無標註輸入即達 <strong>39.3% answer EM / 46.0% passage 準確率</strong>，推論成本比專有 LM 低數個量級。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>本文自陳為<strong>程式設計模型的提出 + 編譯器初步實證</strong>：優化聚焦於 bootstrap 示範，指令/欄位描述優化與更進階策略（RL、貝式超參、LM 回饋）多屬未來工作。</li>
+<li>高階程式優化目前只實作到 ensemble；動態（測試期）bootstrap、自動回溯等留待未來。</li>
+<li>對「資訊抽取、低資源合成資料生成」等更廣任務只提及已有大量社群程式，未在受控實驗下報告。</li>
+<li>與外部文獻的數字多為<strong>非正式比較</strong>（評估方法與測試樣本差異大），非嚴格對齊。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>與 ai_core 北極星的直接學術對應</strong>：ai_core（<code>（內部參照）</code> §1）把系統看成「<strong>符號神經網路／計算圖</strong>——多數節點是確定性 shell/py 函式、少數是 LLM」，並要把 prompt/pipeline 當<strong>可優化物</strong>、走「自我改進工作流」。DSPy 正是把 LM pipeline <strong>宣告化（signatures/modules）＋ 自動編譯優化（teleprompters 自動 bootstrap few-shot／指令）</strong> 的最直接落地：它的「文字轉換圖」＝把 LLM 呼叫組成的<strong>可優化計算圖</strong>，「編譯」＝自我改進工作流。三層抽象（signature／module／teleprompter）幾乎逐一對上 ai_core 的「宣告介面／可組合節點／優化器」構想。</li>
+<li><strong>關鍵差異（務必記住）</strong>：DSPy <strong>仍以 LLM 為核心去優化 prompt/示範</strong>，把「怎麼呼叫 LLM」做到最好；它<strong>未走</strong> ai_core「<strong>逐步剃除 LLM 依賴、把節點固化成確定性程式碼</strong>」的方向——DSPy 的節點骨幹永遠是 LM 呼叫（頂多 finetune 成更小的 LM），確定性 shell/py 函式只以工具（Retrieve/SQL/PythonInterpreter）身分外掛，不是優化終點。ai_core 更激進：LLM 是「昂貴稀有的生產資產」，理想是把驗證過的行為抽出成便宜確定性程式。</li>
+<li><strong>庫內對照</strong>：<a class="paper-reference" href="../2406.18532_AgentSymbolicLearning.%E6%91%98%E8%A6%81.html">2406.18532</a>（Agent Symbolic Learning）明確把 DSPy 列為「<strong>只優化孤立組件</strong>」的代表，主張<strong>整體聯合優化 prompt＋工具＋pipeline</strong>，並用非監督「語言損失」做部署後自我進化；DSPy 則以 bootstrap 示範為主要優化對象、且其搜尋式編譯需可用指標定義（該文指出這對軟體開發/創意寫作等真實任務不適用）。兩篇一起讀，可看清「pipeline 當可優化物」這條線上，DSPy（宣告化+編譯 few-shot）→ Agent Symbolic Learning（語言梯度聯合優化）→ ai_core（進一步剃除 LLM）的光譜。</li>
+<li>定位：<strong>框架/程式設計模型論文 + 實證</strong>，開源（github.com/stanfordnlp/dspy），是 DSP（Demonstrate–Search–Predict）的第二代。適合做 <strong>LM pipeline 宣告化、prompt/few-shot 自動優化、把 LLM 呼叫組成可優化計算圖、自我改進工作流</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../../translate/2310.03714_DSPy.zh-TW.html"><code>../translate/2310.03714_DSPy.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_自我修正作為事後提示Post-Hoc_Prompting · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2310.01798_CannotSelfCorrect.zh-TW.html">回 2310.01798_CannotSelfCorrect.zh-TW 目錄</a>　<a href="02_%E5%A4%A7%E5%9E%8B%E8%AA%9E%E8%A8%80%E6%A8%A1%E5%9E%8B%E8%83%BD%E8%87%AA%E6%88%91%E4%BF%AE%E6%AD%A3%E6%8E%A8%E7%90%86%E5%97%8E%EF%BC%9F.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-自我修正作為事後提示post-hoc-prompting">4. 自我修正作為事後提示（Post-Hoc Prompting）</h2>
+<p>儘管推理上失效，自我修正在某些場合確有亮眼成果（Self-Refine、Constitutional AI、moral self-correction）。從形式上看，自我修正可視為一種 <strong>post-hoc prompting</strong>：提示施加在 LLM 的回應之上（相對地，標準提示稱 pre-hoc prompting）。<strong>自我修正能改善回應的情境，是它能提供 pre-hoc 提示給不了的有價值指示或回饋</strong>——例如要讓回應更安全時，很難只靠 pre-hoc 指令讓模型第一次就生成完全無風險的回應，此時自我修正可透過細粒度的事後檢查提升安全性。但對推理任務，「審查你先前的答案並找出問題」這類回饋 prompt 未必帶來實質益處。</p>
+<p>再者，即使觀察到修正後的顯著改善，也須細究 prompt 設計。<strong>若要求可以輕易寫進初始指令</strong>（輸出須含某些詞、程式碼須高效、情感須強烈負面），更省成本的策略是把要求直接（且明確地）嵌入 pre-hoc prompt，而非事後當回饋餵。以 Self-Refine 的受限生成任務（用 20-30 個概念造連貫句）為例：與其讓模型先找缺漏概念、再經回饋引導補入，不如一開始就指示「寫一段合理的段落，包含以上<em>全部</em>概念」——這一要求在 Self-Refine 的 pre-hoc prompt 中並未明示。我們據此造了個「作者隨手寫、未經任何優化」的基線 prompt（象徵 true zero-shot 設定），以概念覆蓋率為指標（表 5）：</p>
+<table>
+<thead>
+<tr>
+<th>設定</th>
+<th>呼叫數</th>
+<th>CommonGen-Hard</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Standard Prompting（Madaan et al. 原 prompt/原結果）</td>
+<td>1</td>
+<td>44.0</td>
+</tr>
+<tr>
+<td>Self-Correct（Madaan et al. 原結果）</td>
+<td>7</td>
+<td>67.0</td>
+</tr>
+<tr>
+<td>Standard Prompting（我們復現其 prompt）</td>
+<td>1</td>
+<td>53.0</td>
+</tr>
+<tr>
+<td>Self-Correct（我們復現）</td>
+<td>7</td>
+<td>61.1</td>
+</tr>
+<tr>
+<td><strong>Standard Prompting（我們隨手寫的 prompt）</strong></td>
+<td><strong>1</strong></td>
+<td><strong>81.8</strong></td>
+</tr>
+<tr>
+<td>對上行輸出再套其 Self-Correct</td>
+<td>7</td>
+<td>75.1</td>
+</tr>
+</tbody>
+</table>
+<p>隨手寫的初始 prompt（81.8）勝過 Self-Refine 修正後的結果；再套其修正 prompt 反而降到 75.1（且大量輸出因格式問題失敗、需多次重生——自我修正的另一潛在缺點）。我們的用意不是爭論「是否存在能勝過隨手 prompt 的 post-hoc prompt」，而是呼籲更批判地檢視自我修正實驗：<strong>用精心打造的 post-hoc prompt 去「自我修正」一個由劣質 pre-hoc prompt 生成的回應，是沒有意義的。公平比較應在 pre-hoc 與 post-hoc 提示上投入同等心力</strong>；考量自我修正可觀的 token 成本，研究者與開發者應審慎衡量它相對於 pre-hoc prompt 的真實效益。</p>
+<h2 id="5-討論">5. 討論</h2>
+<p><strong>自我修正對「使回應對齊特定偏好」可能仍有益。</strong> 首先重申：我們並非宣稱自我修正無用。改變回應風格、增強安全性等任務中它可有效運用；但當任務是 LLM 難以判斷初答錯誤、難以評估初答正確性的（如本文研究的推理任務），自我修正便不見效。</p>
+<p><strong>利用外部回饋做修正。</strong> 一旦引入外部回饋，敘事就改變了：CRITIC 顯示 LLM 與搜尋引擎、計算機等外部工具互動時能更有效地驗證並修正回應；Self-Debug 等顯示用執行器與單元測試確認程式碼運作，LLM 能改善生成、更好地解決推理任務；另有工作在高品質資料集上訓練 verifier 或 critique 模型來驗證/精煉輸出。日常使用中人類提供的回饋亦然——高品質的外部回饋直觀上有益。</p>
+<p><strong>以自我一致性作為自我驗證手段。</strong> 表 1 的 oracle 設定準確率高得多，暗示 LLM 的搜尋空間內可能存在正確答案；若有穩健的驗證流程引導方向，結果可望提升。途徑之一是外部回饋，另一是 self-consistency——如 Tree of Thoughts 便以逐步驗證搭配自我一致性增強推理。</p>
+<p><strong>Pre-hoc vs post-hoc 提示。</strong> post-hoc 的延遲與成本較高；若「回饋」可編碼進初始指令，pre-hoc 是更優選擇，也應把功夫更多放在 pre-hoc prompt engineering。但當要利用必須伴隨回應給出的外部回饋時，post-hoc 更合適。</p>
+<p><strong>比較準則。</strong> 第一，比較自我修正方法與其他基線時，應報告推論成本（呼叫數或 token 數），並納入<strong>同呼叫數/回應數的 self-consistency</strong> 作基線。第二，避免「劣質 pre-hoc prompt ＋精心 post-hoc prompt」的不對等設計。第三，方法利用外部回饋時應考量回饋是否合理：<strong>自動呼叫外部工具、或從環境接收回饋，可視為合理；用 ground-truth 標籤判斷回應正確與否，只能視為 oracle。</strong></p>
+<h2 id="6-結論">6. 結論</h2>
+<p>我們的研究顯示 <strong>LLM 尚無能力自我修正其推理</strong>。期望這些模型內在地辨識並糾正自身的不準確，至少以當前技術水準而言可能過於樂觀。這凸顯了在真實應用中部署 LLM 時，持續改進與多管齊下方法的必要。研究者與實務者應以明辨的視角看待自我修正概念——認識其潛力，也認清其邊界。</p>
+<h2 id="7-局限與更廣影響">7. 局限與更廣影響</h2>
+<p>雖然我們的探索橫跨多種自我修正策略、prompt 與任務，但仍可能存在能在特定基準上增強推理的特定 prompt 或策略——只是搜尋它們可能不自覺地依賴外部回饋（人類洞見或訓練資料），且同等的搜尋功夫也可用在 pre-hoc prompt 上。本研究可能使某些應用的自我修正研究卻步，但我們樂觀地認為它會把未來研究導向更務實的方向——尤其是利用外部回饋的方向。多項相關工作已呈現與我們一致的發現：<strong>無外部回饋的自我修正是相對弱的基線</strong>。但社群中仍瀰漫模糊：部分文獻把標籤使用的關鍵細節放在不顯眼處、或未澄清其「自我修正」策略其實納入了外部回饋，連領域專家都對自我修正何時、如何運作感到不確定。標題「LLM 尚無法自我修正推理」並非對自我修正技術的全盤否定，而是行動呼籲。為求清晰，我們建議：<strong>當語境不嚴格符合內在自我修正設定時，省去 self-correction / self-critique 中的「self」，改用「藉外部工具/回饋修正」等較不易混淆的措辭</strong>。最後，鑑於 LLM 難以純憑固有能力自我修正推理，<strong>對「LLM（與 AI 系統）透過自我改進自主演化」的任何無根據的樂觀（或恐懼），我們敦促採取更審慎的看法</strong>。</p>
+<h2 id="附錄擇要">附錄擇要</h2>
+<ul>
+<li><strong>附錄 A</strong>：完整 prompt 與實例。GSM8K 修正成功例（禮物袋題：初答誤解 0.75 袋/人的題意，修正後改對）；修正失敗例（優格題：初答 75.00 正確，「審查」後模型硬找出不存在的錯、改成 37.50）；不改答案例（綿羊題：審查稱「無問題」、維持正確答案）；CommonSenseQA 對改錯例（擊劍題：初答 (E) 刺傷正確，審查時模型腦補「規範賽事用鈍劍」而改成 (D) 競賽）。</li>
+<li><strong>附錄 B</strong>：GSM8K 換用三種回饋 prompt（「找出問題」／「先判斷對錯、錯才找問題」／「驗證你的答案並解釋」），兩輪後準確率 74.4～75.4，皆不及標準提示的 75.9——結果一致、變異低。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2310.01798_CannotSelfCorrect.%E6%91%98%E8%A6%81.html"><code>../summarize/2310.01798_CannotSelfCorrect.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

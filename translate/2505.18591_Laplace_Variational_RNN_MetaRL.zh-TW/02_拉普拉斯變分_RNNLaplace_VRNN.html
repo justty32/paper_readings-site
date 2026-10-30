@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_拉普拉斯變分_RNNLaplace_VRNN · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2505.18591_Laplace_Variational_RNN_MetaRL.zh-TW.html">回 2505.18591_Laplace_Variational_RNN_MetaRL.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81_%E6%A6%82%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-拉普拉斯變分-rnnlaplace-vrnn">4. 拉普拉斯變分 RNN（Laplace VRNN）</h2>
+<p>對變分任務後驗 <span class="math inline">\(q(z)\)</span> 做相對簡單的拉普拉斯近似，用於式 (2)/(4) 的下界。核心：用此把點估計法（base RNN）擴展成在訓練任一時點可用分布。</p>
+<ul>
+<li>把預測的分布參數當 helper 變數，視映射為<strong>學到的摘要統計（MAP 估計）</strong>；<span class="math inline">\(\mu\)</span> 由 RNN 自迴歸計算。</li>
+<li>對 <span class="math inline">\(q\)</span> 做<strong>均場假設</strong>（式 5），得欲近似的目標函數；對在 <span class="math inline">\(\mu\)</span> 處線性化的對數後驗做<strong>二階 Taylor 展開</strong>、指數化、再正規化；假設 <span class="math inline">\(\mu\)</span> 為 MAP，得<strong>拉普拉斯近似</strong>（式 6），其中協方差由對數後驗 Hessian 給出。</li>
+<li><strong>時序聚合</strong>：對每步後驗的期望，假設<strong>高斯密度卷積</strong> → 結果仍為高斯、<strong>參數相加</strong>（式 7/8，Bromiley 2003）。即：RNN 把最近幾步隱狀態與協方差相加得輸出高斯；實務用較小窗口控成本。</li>
+<li><strong>MAP 假設之風險</strong>：假設 <span class="math inline">\(\mu\)</span> 為 MAP（即式 3 攤銷取等）相當嚴格；函數類不足時會在變分對數後驗的 Taylor 展開引入一階誤差、近似變差。且多數 RNN 不對預測模型求和隱狀態，與本式失配。下節以實驗探究這些技術假設。</li>
+</ul>
+<h3 id="特例便宜關鍵">特例（便宜關鍵）</h3>
+<p>取 <span class="math inline">\(q\)</span> 為標準高斯 + <span class="math inline">\(z\)</span> 無資訊先驗時，對數後驗 Hessian 化為 <strong>RNN 狀態 Jacobian 對 <span class="math inline">\(\mu\)</span> 的外積和</strong>，給出逆協方差（式 9），可用 **forward accumulation（JAX）**廉價計算。</p>
+<h3 id="後驗預測">後驗預測</h3>
+<p>若策略對 <span class="math inline">\(z\)</span> 線性，全模型退回一種高斯過程；本文改用另一神經網路建此項以增表達力。策略由<strong>後驗預測</strong>定義，以 <strong>Monte-Carlo 採樣</strong>計算（式 10）→ 誘導出<strong>有限混合策略</strong>（對應 posterior sampling，Osband 2013）。<span class="math inline">\(\mu\)</span>、策略參數端到端聯合訓練。訓練時發現當樣本數 <span class="math inline">\(&gt;1\)</span> 時<strong>輸出聚合</strong>更穩——故訓練時對 logits（或連續情形對參數分布的均值/方差）做樣本平均。</p>
+<h2 id="5-實驗驗證">5. 實驗驗證</h2>
+<p>對 RNN-based 記憶式元 RL agent 套用本法（不改架構）需若干簡化（僅非平穩對數後驗假設需省去式 7 的均值聚合；平穩因式分解不需）。三個研究問題：(1) <strong>效用</strong>：能否給非貝葉斯基線有用的後驗統計？(2) <strong>敏感度</strong>：哪些模型假設經驗上有效？(3) <strong>效能</strong>：當作 VI 替代品時是否至少與既有法持平？</p>
+<p>基線：點估計 <strong>RNN（LSTM）</strong>；<strong>VRNN</strong>（Chung 2015，以 RNN 輸出變換預測高斯均值與協方差）。RNN/VRNN 假設<strong>平穩因式分解</strong>後驗（式 1 的簡化、最貼近真生成過程）。間歇對 RNN 做快照、在參數網格上微調出 Laplace VRNN 與 VRNN。所有實驗跨多 seed 重複，報 95% 雙側信賴區間。</p>
+<h3 id="51-監督式學習">5.1 監督式學習</h3>
+<p>在<strong>無噪 1D 迴歸</strong>任務（Fourier 展開採樣參數生成資料集）測試；訓練最小化監督下界（KL 權重）；測試算與真生成分布的<strong>預測交叉熵（CE）</strong>，每步以 Monte-Carlo 估後驗預測。</p>
+<p><strong>變體</strong>：Laplace VRNN 用**平穩假設（Stationary，紅）**與 <strong>Markovian 假設（Sum，綠）</strong>；前者對 <span class="math inline">\(D\)</span> 中每點在每步算協方差，後者對每對相鄰步求和協方差。測對角與滿協方差。</p>
+<p><strong>結果（圖 1）</strong>：預測 CE 起初下降，當資料集超過訓練所見長度後略升。<strong>stationary Laplace VRNN 非從頭使用（紅）會嚴重退化</strong>（尤其滿協方差）——可能後驗過寬、點估計過尖，導致樣本對預測模型而言離分布。反之 <strong>Markovian（綠）在所有情況至少與基線持平</strong>，且訓練後仍提供 RNN 的貝葉斯後驗。圖 2 顯示：對累加協方差的綠線做 post-hoc Laplace（最右列），後驗<strong>越來越自信卻不收斂到穩定分布</strong>。</p>
+<h3 id="52-強化學習">5.2 強化學習</h3>
+<p>在<strong>隨機 5-臂 bandit</strong> 與<strong>稀疏獎勵確定性 gridworld</strong> 上測（用 recurrent PPO 近似式 4）。bandit 從 Dirichlet 先驗採獎勵機率、策略只條件於採樣模型假設（如 Thompson sampling）、考驗對模型採樣噪聲的穩健性；gridworld（Zintgraf 2021）隨機生成起點/終點、agent 把任務建模為 <strong>Bayes-adaptive MDP</strong>（策略條件於模型樣本 + 當前狀態）。</p>
+<p><strong>變體</strong>：windowed stationary Laplace（紅，截斷歷史以改善否則 <span class="math inline">\(O(t^2)\)</span> 的協方差計算）；兩個 Markovian 變體（<span class="math inline">\(O(t)\)</span>）——**proper-Markovian（藍）**求和每個 state-action 的均值與協方差，另一只求和協方差（綠）。</p>
+<p><strong>結果</strong>：</p>
+<ul>
+<li><strong>後驗統計演化（圖 2）</strong>：貝葉斯法的後驗熵可靠下降、相鄰後驗 KL 近零（理想行為）。微調時相似（除 stationary 紅）。<strong>最關鍵：累加協方差的綠變體做 post-hoc 後驗時，熵穩定下降、但相鄰後驗 KL 越來越大</strong>；反之 post-hoc VRNN（灰）與 stationary（紅）保持恆定、無資訊。這顯示<strong>確定性 RNN 未收斂到穩定隱狀態</strong>：學到的估計子<strong>越來越自信卻不一致</strong>（延伸 Xiong 2021）。</li>
+<li><strong>訓練回報（圖 3）</strong>：確定性法（黑）效能強、噪聲最低、訓練最快；<strong>Laplace VRNN 勝過 baseline VRNN</strong>。proper-Markovian（藍）在 bandit 早期學更快但 gridworld 退化。bandit 上所有貝葉斯法噪聲顯著、僅達次線性累積後悔；gridworld 上各法皆達次線性後悔。</li>
+<li><strong>總結</strong>：所有貝葉斯變體在確定性預訓練後 <strong>post-hoc 套用皆不退化</strong>；Laplace VRNN 回報通常與 VRNN 持平；唯 **Markovian + 累加協方差（綠）**能產出有洞見的後驗統計。三個研究問題均獲確認。</li>
+</ul>
+<h2 id="6-結論">6. 結論</h2>
+<p>描述了如何在 zero-shot 元 RL 脈絡把拉普拉斯近似套到 RNN 模型——一個把既有循環網路廉價轉成貝葉斯模型的方法，讓訓練好的 agent 更準地建模任務不確定性。在監督與 RL 任務上驗證效用、模型假設依賴性、與 VI/點估計基線的對比（不退化效能）：<strong>可在訓練任一時點、不改模型或訓練程序，把非貝葉斯模型可靠地轉成貝葉斯後驗</strong>；反觀 VI 需改架構與訓練設置卻僅持平或更差。</p>
+<p><strong>局限</strong>：需算 Jacobian、受高斯限制；RNN agent 需多種機率模型簡化（某些配置），其引入偏差待究；本法<strong>只能觀察、不能修正</strong>非貝葉斯 agent 的過度自信。<strong>未來</strong>：朝統計上嚴謹的表徵學習、或透過分布偏移偵測改善元 RL 探索。</p>
+<h3 id="附錄重點">附錄重點</h3>
+<ul>
+<li><strong>A 推導</strong>：監督式/RL 的下界、後驗因式分解（Lemma 1）、拉普拉斯變分循環模型最終形（A.3.1，含「均值求和」討論與 Prop. 2 的 forward-accumulation 逆協方差）。</li>
+<li><strong>B 實作</strong>：模型架構與優化細節（LSTM、recurrent PPO、參數網格）。</li>
+<li><strong>C 補充結果</strong>：監督、bandit、gridworld 的補充（含求和均值+協方差的藍變體表現居中等）。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2505.18591_Laplace_Variational_RNN_MetaRL.%E6%91%98%E8%A6%81.html"><code>../summarize/2505.18591_Laplace_Variational_RNN_MetaRL.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_AutoMix · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2310.12963_AutoMix.zh-TW.html">回 2310.12963_AutoMix.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-automix">4. AutoMix</h2>
+<p>三步驟：<strong>解答生成</strong>（用小模型 LMᵢ，初始 i=1，產生答案 A_s）→ <strong>自我驗證</strong>（同一 LMᵢ 評估 A_s）→ <strong>選擇性路由</strong>（驗證建議時挑更大的 LMⱼ，j&gt;i；否則回傳 A_s）。</p>
+<h3 id="41-自我驗證">4.1 自我驗證</h3>
+<p>用 few-shot 驗證器 V 檢驗 LMᵢ 的輸出。不同於「另造新問題來驗證」的做法，本文把驗證框成<strong>蘊涵任務</strong>：判斷 LMᵢ 生成的答案是否與提供的上下文一致。驗證器估計 v = p(correct = 1 | A_s, C, q)。估計機率的方式：以<strong>高採樣溫度從驗證器（LMᵢ 自己）採樣 k &gt; 1 次</strong>，機率＝判「正確」的比例（實驗中 k=8、溫度 0.7–1；因主要成本在上下文，8 次採樣的邊際成本可忽略）。所有任務共用<strong>同一個 4-shot 驗證提示</strong>，完全不訓練驗證器。驗證提示格式：給上下文、問題、AI 生成答案，要求「基於上下文與問題評估 AI 答案是否正確，給出判斷與理由，在 Correct/Incorrect 中擇一」。示例（圖 2）：上下文講神農氏約公元前 2737 年飲茶，LLaMA2-13B 答「He took it in 1990」，同一個 13B 當驗證器即指出「上下文未提及 1990 年」而判 Incorrect。</p>
+<h3 id="42-路由器">4.2 路由器</h3>
+<p>路由器決定接受 LMᵢ 的輸出、或把查詢路由給某個 LMⱼ（j&gt;i）。它可視為<strong>元驗證器（meta-verifier）</strong>：在 few-shot 驗證器的評估之上再加一層信心評估。驗證器只判斷答案是否被上下文蘊涵，<strong>不考慮問題本身難度</strong>——例如處理無解（Unsolvable）查詢時，呼叫更大模型浪費資源又不增效；好的路由器要能靠驗證機率與訓練資料的趨勢，決定不再往上送。鑑於 LLM 自我修正的已知困難，AutoMix 的路由<strong>採非 LLM 的機制</strong>，避免幻覺與推理錯誤逐級放大。兩種路由策略：</p>
+<ul>
+<li><strong>閾值法（Thresholding）</strong>：兩模型情形（N=2）下，驗證機率 v ≥ t 就回傳 LM₁ 答案，否則路由給 LM₂。直覺：高機率＝驗證器有信心可信。調整 t 可探索成本—效能取捨。</li>
+<li><strong>POMDP 路由器</strong>：只有在效能差距值得成本代價時才該把查詢送給更大 LM，而系統真實狀態（各模型在此題的表現）不可觀察，故把路由器表述為 POMDP。<strong>狀態</strong> S = ⟨i, Perf_LM₁, …, Perf_LM_N⟩（目前所在模型索引＋各 LM 在該資料點的效能指標）；<strong>動作</strong>＝保留目前 LMᵢ 的答案，或路由給某個更大 LM；<strong>觀察</strong> Ω＝LMᵢ 的驗證器輸出 v，讓 POMDP 更新 belief 狀態 b（S 上的機率分佈）——例如驗證器信心高，暗示目前 LM 效能已夠、不必切換到更貴模型。<strong>觀察機率</strong> P(o|s) 直接在訓練集上估計（各狀態下驗證機率的期望）；因狀態連續，改用<strong>非參數高斯核密度估計（KDE）</strong>：先學聯合分佈 P(S,O) 與 P(S)，再取條件機率 P(o|s) = P(s,o)/P(s)。<strong>報酬函數</strong> R = P − λ·C（P 為整體效能、C 為整體成本、λ 依使用者偏好調節兩者平衡）。求解用 AdaOps POMDP solver（粒子濾波表示 belief）；推論時從均勻初始 belief 出發，依驗證器觀察更新，採取最大化期望報酬的動作。</li>
+</ul>
+<h3 id="擴展到三個以上模型55-與附錄-c">擴展到三個以上模型（§5.5 與附錄 C）</h3>
+<p>引入中型模型（MLM）後流程相同：SLM 先答並自驗，其驗證機率作為觀察，動作可為 1) 回報 SLM 答案、2) 直接在 MLM 或 LLM 上推論並回報、3) 在 MLM 上推論<strong>並再驗證</strong>。若選 3)，AutoMix 同時擁有 SLM 與 MLM 兩個驗證機率，觀察訊號更豐富，POMDP 決策更有依據（如 SLM 驗證不確定＋MLM 驗證中性 → 更可能路由到 LLM）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

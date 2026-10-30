@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2504.10253_TinyverseGP.zh-TW.html">回 2504.10253_TinyverseGP.zh-TW 目錄</a>　<a href="02_%E8%A8%8E%E8%AB%96%E3%80%81%E9%A1%98%E6%99%AF%E8%88%87%E6%9C%AA%E4%BE%86%E5%B7%A5%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>多年來遺傳程式設計（GP）持續演進，提出許多變體，尤其在<strong>如何表示解（solution representation）<strong>上各異。GP 本質是程式合成演算法，能應對多個問題域。但現有基準工作</strong>碎片化</strong>——不同表示彼此不比較、效能不跨域量測。本文提出統一框架 <strong>TinyverseGP</strong>（靈感取自 tinyGP），支援<strong>多種表示與多個問題域</strong>，含<strong>符號迴歸、邏輯合成、策略搜尋</strong>。</p>
+<p><strong>關鍵詞</strong>：遺傳程式設計、實作、基準、符號迴歸、邏輯合成、Python。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>GP 屬隨機化搜尋啟發式範式，由 Cramer（1985）首倡用於程式自動發現，後經 Koza（1992）以 GP 驅動的階層結構搜尋普及，催生符號迴歸等主要應用域。隨後分類、數位電路設計等域興起，揭示對不同解編碼的需求——如 <strong>linear</strong>（Perkis 1994）、<strong>graph-based</strong>（Miller &amp; Thomson 2000，即 Cartesian GP）、<strong>grammar-guided</strong>（Ryan et al. 1998）等表示。新表示與新應用的交互催生多元版圖，但也帶來<strong>碎片化與封閉化</strong>，阻礙統一、跨域知識的發展。過時的真實問題被當基準、綁進各域專屬套件，<strong>跨域評估帶來巨大實作開銷</strong>。</p>
+<p>本文朝統一框架邁出一步，結合表示模型與基準。<strong>TinyverseGP</strong> 靈感取自 <strong>tinyGP</strong>（Sipper 2019），遵循「每個變體保持極簡實作」的哲學；共用概念放<strong>共同庫</strong>，易整合新表示、易支援新域。意在打造一個協作空間，納入不同變體與問題域、利於理解各表示的特性。作為起點，本文展示 <strong>tree-based 與 graph-based GP</strong> 在邏輯合成、符號迴歸、策略搜尋三域的整合。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<h3 id="遺傳程式設計">遺傳程式設計</h3>
+<p>GP 是演化搜尋方法、屬隨機化搜尋啟發式，原為電腦程式合成而提出。目標是把一群候選程式朝給定搜尋問題的功能規格演化；核心是把族群反覆轉換成 fitness 更佳的新族群。傳統用<strong>解析樹</strong>（受 LISP S-運算式啟發）表示程式。常用變異算子：<strong>子樹交叉</strong>（兩樹交換子樹）與<strong>子樹變異</strong>（把子樹換成隨機生成的新子樹）。</p>
+<h3 id="gp-的問題域">GP 的問題域</h3>
+<p>因 GP 本質是搜尋電腦程式，可直接套用至各種 ML 任務（通常僅需提供該任務的文法規格）。如迴歸／分類用數學運算子＋條件分支構成文法；<strong>策略搜尋</strong>可找估計某狀態下動作價值的函數（退化為符號迴歸問題），或找回傳最佳動作的程式（文法含分支與迴圈）；若把文法限制到對應運算子集，GP 也能搜尋<strong>布林函數</strong>（通常由啟發式或窮舉處理）。</p>
+<h3 id="符號迴歸sr">符號迴歸（SR）</h3>
+<p>SR（Koza 1992）找一個精準且精簡描述資料的迴歸模型數學式；給定點集，尋找對應函數。</p>
+<h3 id="邏輯合成ls">邏輯合成（LS）</h3>
+<p>LS（Hachtel &amp; Somenzi 1996）以啟發式法視之，是合成布林運算式的黑箱優化任務；如 SR，要合成的式子須匹配（布林）函數的正確輸入-輸出映射。GP 處理的 LS 主要瞄準合成匹配布林函數真值表的布林運算式。</p>
+<h3 id="策略搜尋">策略搜尋</h3>
+<p>策略搜尋focus在透過與環境互動找最大化效能的決策策略（Sutton &amp; Barto 2018）。環境形式化為 <strong>馬可夫決策過程（MDP）</strong>，含狀態空間、動作空間、未知轉移機率分佈、獎勵函數、初始狀態分佈與折扣率。策略對給定狀態的每個動作賦機率；與 MDP 互動蒐集時序 episode；策略 fitness 以**回報（return）**量測。</p>
+<h2 id="3-gp-中的基準">3. GP 中的基準</h2>
+<p>GP 基準多年被批缺乏嚴謹，源於領域碎片化（McDermott et al. 2012）。有論點主張改善基準的第一步是<strong>標準化</strong>，以確保有挑戰性的環境與不同 GP 版本（及 ML 替代法）間的公平比較。重大進展之一是程式合成的兩套基準 <strong>PSB1</strong>（Helmuth &amp; Spector 2015）、<strong>PSB2</strong>（Helmuth &amp; Kelly 2021），涵蓋多樣的入門至大學程度編碼題。此外其他域的基準如 <strong>SRBench</strong>、<strong>GBFS</strong> 也已出現，近年並發掘新問題域。</p>
+<h3 id="srbench符號迴歸的活基準">SRBench：符號迴歸的活基準</h3>
+<p>Orzechowski et al.（2018）比較了一批 SR 法與傳統 ML，回應「兩者缺乏比較」的批評，結果顯示 SR 在準確度上是不透明模型的有力替代、且回傳<strong>可解釋</strong>模型。La Cava et al.（2021）進一步把新演算法納入，名為 <strong>SRBench</strong>，提供共用 Python 介面與已驗證安裝環境的協作環境，讓外部同行能複現基準。此努力橫跨多場競賽，其一更導出一篇凸顯 SR 領域（不只 GP）仍面臨挑戰的論文（de Franca et al. 2024，SRBench++）。</p>
+<h3 id="gbfs通用布林函數基準套件">GBFS：通用布林函數基準套件</h3>
+<p><strong>GBFS</strong>（Kalkreuth et al. 2023）是高度通用的邏輯合成基準套件，旨在便於全面評估 GP 模型效能、並簡化既有結果的可複現性。涵蓋七類布林函數精選問題：算術、傳輸、比較、計數、混合、奇偶、密碼學。多數問題具<strong>多輸出</strong>特性（如數位加法器或乘法器函數）。</p>
+<h3 id="強化與策略學習">強化與策略學習</h3>
+<p>近年為強化學習（RL）開發了多種基準，針對遊戲、規劃、機器人等多元用例。廣用平台 <strong>Gymnasium</strong>（Towers et al. 2024）提供評估 RL 核心能力的多樣環境；<strong>Atari Learning Environment (ALE)</strong> 提供標準化挑戰測試床。在 Gymnasium 上對 GP 做基準已有探索（Amaral et al. 2022）。</p>
+<h2 id="4-提出的框架">4. 提出的框架</h2>
+<h3 id="主要動機">主要動機</h3>
+<p>現有 GP 框架版圖在表示與應用域兩方面都碎片化。我們肯認過往為廣泛使用 GP 所做的實作努力，但既有實作多為提供<strong>終端使用者體驗</strong>（替使用者選最合適表示、降負擔）。然而在<strong>跨域基準與理解不同表示</strong>上明顯有缺口——正如「Genetic programming needs better benchmarks」（McDermott et al. 2012，獲 2022 SIGEVO Impact Award）所揭示，並催生了 SRBench、GBFS 等對競爭演算法提供嚴格公平比較準則的倡議。</p>
+<h3 id="關鍵特性與屬性">關鍵特性與屬性</h3>
+<p>第一版聚焦於構成 TinyverseGP 基礎設施的下列特性，整體採物件導向設計以確保前述設計目標：</p>
+<ul>
+<li><strong>輕量表示模組</strong>：每個表示繼承一個 <strong>model 基類</strong>，促進不同表示間的一致性。每個表示在一個 tiny 模組內實作，處理候選程式的<strong>初始化、解碼、繁殖（breeding）、評估</strong>，貼合各模型需求。</li>
+<li><strong>廣泛應用範圍</strong>：TinyverseGP 已可套用至多個差異極大、需不同評估方式的問題，展現工具的多功能性。</li>
+<li><strong>基準支援</strong>：提供接 <strong>SRBench</strong> 與 <strong>GBFS</strong> 的介面（涵蓋組合合成的兩個問題域）；並提供接 <strong>Gymnasium</strong> 策略學習基準的介面——以一個 <strong>agent 類</strong>實作來橋接 GP 模型與環境。</li>
+</ul>
+<h2 id="5-頂層架構">5. 頂層架構</h2>
+<p>TinyverseGP 混合<strong>物件導向設計</strong>與<strong>模組化</strong>兩種範式以建立高效可重用架構。模組化也利於封裝多元技術方法、維持有組織且可解釋的程式結構（預期框架未來會更大更異質）。</p>
+<p><strong>圖 1</strong> 給出模組化架構總覽：<strong>GP 模組是框架核心</strong>，現架構讓進一步整合更省力；既有的其他 GP 模型 Python 實作可輕易整合進已有的框架 model（已提供處理函數／終端集、超參與模型配置等核心功能）。</p>
+<p><strong>圖 3</strong>（類別層級）說明基本架構：GP 範式最常處理的是<strong>黑箱問題</strong>（訓練資料給已知輸入-輸出對）；<strong>策略搜尋</strong>則套用於 agent 依策略在環境中執行動作並獲獎勵的情境——為此提供一個 <strong>agent 類</strong>，從對應 GP 模型接收候選策略。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

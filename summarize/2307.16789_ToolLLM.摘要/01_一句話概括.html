@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2307.16789_ToolLLM.%E6%91%98%E8%A6%81.html">回 2307.16789_ToolLLM.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p>ToolLLM 是一套「資料構建＋模型訓練＋評測」三位一體的工具使用框架：從 RapidAPI 收集 16,464 個真實 REST API 建成 ToolBench，用<strong>深度優先搜尋決策樹（DFSDT）<strong>取代單鏈 ReAct 來標註可回溯的多步解答路徑，訓練出可媲美 ChatGPT 的開源模型 ToolLLaMA，並搭配一個</strong>神經 API 檢索器</strong>與自動評測器 ToolEval，證明「上萬規模的工具庫」本身需要一整套資料生成、搜尋策略與檢索基礎設施，而不只是換一個更大的 prompt。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>開源 LLM（如 LLaMA）在工具使用上遠遜於 ChatGPT／GPT-4，原因是既有指令微調資料集普遍存在三個限制：(1) 侷限於少量、非真實或未執行的 API；(2) 只涵蓋單一工具情境，未反映真實世界常需多工具串接的需求；(3) 用 CoT 或 ReAct 做推理標註，難以應付複雜指令——即便 GPT-4 用 ReAct 標註複雜指令的通過率也偏低，導致人工/自動標註本身就走不下去。ToolLLM 要同時解決「上萬 API 塞不進脈絡」「多工具指令的解答路徑難標註」「工具使用能力難以自動評測」三個規模化問題。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>ToolBench 三階段自動構建</strong>（全程用 ChatGPT/gpt-3.5-turbo-16k，minimal human supervision）：①<strong>API 收集</strong>——從 RapidAPI Hub 爬 10,853 個工具（53,190 個 API），依可用性與回應品質過濾後留下 3,451 個工具、16,464 個 API，橫跨 49 大類；②<strong>指令生成</strong>——採樣 API 組合，用 ChatGPT + few-shot seed examples 生成單工具（I1）、同類別內多工具（I2）、同 collection 內多工具（I3）三種指令，共約 20 萬筆（指令， 相關 API）配對，其中 I2/I3 也是訓練 API 檢索器的資料；③<strong>解答路徑標註</strong>——把多步決策鑄成多輪對話，讓 ChatGPT 依「Thought / API Name / Parameters」格式呼叫真實 API 取得真實回應，最終保留 126,486 筆（指令， 解答路徑）。</li>
+<li><strong>DFSDT（深度優先搜尋決策樹）</strong>：針對 CoT/ReAct 兩個病灶——① 錯誤傳播（一步錯、步步錯，卡在幻覺 API 或錯誤調用的迴圈裡出不來）② 探索受限（單鏈只探一條路，即使 GPT-4 也常找不到解）——DFSDT 讓模型在每個節點評估多個候選子節點，可以選擇沿有希望的路徑前進，也可以呼叫「Finish by Giving Up」放棄該節點、回溯展開新節點；為控制成本，實作上不做子節點排序（避免 O(n log n) 次 LLM 呼叫比較），改用前序遍歷（pre-order traversal）的近似版：無需回溯時等同 ReAct 一樣便宜，需要回溯時又能逼近完整 DFS 的解題率。ReAct 可視為 DFSDT 的退化情形，因此用 DFSDT 標註出的資料訓練出的模型，推論時仍可選擇用 ReAct 或 DFSDT 執行。</li>
+<li><strong>API Retriever（工具目錄的檢索層）</strong>：16,000+ API 不可能全塞進 LLM 脈絡，必須先篩選。用 Sentence-BERT 對（指令， 相關 API）配對做對比學習，把指令與 API 文件各自編碼成向量、以相似度檢索；相較 BM25、OpenAI text-embedding-ada-002 兩個基線，NDCG@1/@5 大幅領先（平均 NDCG@1 78.0 vs Ada 49.6、BM25 18.5）。推論時把檢索器排名前 5 的 API 餵給 ToolLLaMA，取代人工指定的 oracle API 集合。</li>
+<li><strong>ToolLLaMA 訓練</strong>：以 DFSDT 標註資料微調 LLaMA-2 7B，用位置插值（positional interpolation）把脈絡長度從 4096 擴到 8192 以容納冗長的 API 回應；並設計 API 回應壓縮（用 ChatGPT 分析回應 schema、去除不重要欄位，超過 1024 token 再截斷）解決真實 API 回應過長塞爆脈絡的問題。評測分三層泛化：未見過的指令（同工具集）、未見過的工具（同類別）、未見過的類別。</li>
+<li><strong>ToolEval</strong>：因為 API 有時效性、且每個指令的「正確解答路徑」不唯一，無法標註固定 ground truth，因此仿 AlpacaEval 用 ChatGPT 當自動裁判，給出兩個指標——<strong>Pass Rate</strong>（在有限步數內是否成功完成指令，依「可解／不可解指令」與「Finish 類型」定義規則化的 Pass/Fail/Unsure 判準，多次取樣多數決）與 <strong>Win Rate</strong>（對兩條解答路徑依資訊豐富度、真實性、推理品質、里程碑數、探索廣度、成本六項準則比較優劣）；經人工比對，Pass Rate 與 Win Rate 分別與人類標註達 87.1%／80.3% 的一致率。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>DFSDT 顯著優於 ReAct 與同成本重試多次的 ReAct@N</strong>：基於 ChatGPT 的通過率平均 63.8 vs ReAct@N 44.5 vs ReAct 35.3；且指令越複雜（I2、I3 多工具情境）DFSDT 增益越明顯，說明它能解出「不論重跑幾次 ReAct 都解不出」的難題。</li>
+<li><strong>主實驗（Pass Rate/Win Rate，oracle API 情境）</strong>：Vicuna、Alpaca 完全零分（0/0），顯示既有指令微調資料完全沒覆蓋工具使用；ToolLLaMA+DFSDT 平均 Pass Rate 66.7、Win Rate 60.0，明顯超越 Text-Davinci-003（43.1/46.3）與 Claude-2（22.6/43.5），逼近教師模型 ChatGPT+DFSDT（69.0/64.8），僅次於 GPT-4+DFSDT（71.1/70.4）；且各模型換用 DFSDT 都比 ReAct 明顯提升，ChatGPT+DFSDT 甚至通過率超過 GPT-4+ReAct。</li>
+<li><strong>API Retriever 接上 ToolLLaMA 後，用檢索到的 top-5 API 取代 oracle API 集合，效果反而略優於 oracle</strong>（因為許多 oracle API 有功能更好的替代品，被檢索器成功找到），驗證檢索器在上萬 API 池中的實用可靠性。</li>
+<li><strong>OOD 泛化到 APIBench</strong>（TorchHub / TensorHub / HuggingFace 三域）：ToolLLaMA 完全未見過該領域的 API 與指令，搭配自家檢索器仍在 HuggingFace、TorchHub 的 AST 準確率上超越專為 APIBench 訓練的 Gorilla-ZS+BM25；搭配 oracle 檢索時，ToolLLaMA 全面優於 Gorilla-ZS+Oracle。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>Pass Rate／Win Rate 判準本身依賴 ChatGPT 當裁判，即便與人類一致率達八成，作者也承認工具使用評測遠比對話複雜——「同一指令可能存在無限多條正確解答路徑」，人類專家彼此對「哪條路徑更好」的意見一致率也偏低（例如有人偏好少量 API 快速給答，有人偏好窮舉交叉驗證），評測本身仍是未解問題。</li>
+<li>論文未提供 DFSDT 相對 ReAct 的 API 呼叫成本倍數等更細緻的效率-品質權衡分析；DFSDT 的「省略排序、改前序遍歷」是一個為壓低 OpenAI API 呼叫成本而做的近似設計，效果依賴「排名最高節點通常是最先生成的節點」這一經驗觀察，並非理論保證。</li>
+<li>API 檢索器只做「指令→API」單輪召回，未处理 API 隨時間下線／變更（RapidAPI 的時效性問題）對長期可用性的影響；ToolBench 主要語言為英文、API 亦以 RapidAPI 生態為主，跨語言/跨平台工具庫的可遷移性未驗證。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

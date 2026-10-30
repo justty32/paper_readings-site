@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_遞迴技能演化 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2602.08234_SkillRL.zh-TW.html">回 2602.08234_SkillRL.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="33-遞迴技能演化">3.3 遞迴技能演化</h2>
+<p>靜態技能庫無法預見代理會遇到的所有情境。隨著策略改進與探索新的狀態空間，代理將面臨現有技能不足以提供指導的情境。我們在強化學習過程中引入遞迴技能演化，使技能庫與代理策略共演化。</p>
+<p><strong>冷啟動監督微調（SFT）</strong>：基礎代理尚未學會如何有效利用技能——僅將技能提供給未經調整的模型收益有限。我們因此使用教師模型 M_T 生成 N 個技能增強推理軌跡 D_SFT = {(d_i, S_i, τ*_i)}，展示如何在決策中檢索、解讀並應用技能。基礎模型隨後在這些示範上進行微調，最小化交叉熵損失。結果模型 π_θsft 同時作為 RL 訓練的起點與 KL 正則化的參考策略 π_ref。</p>
+<p><strong>遞迴演化機制</strong>：初始技能庫包含基線任務-行動原則。每個驗證 epoch 後，監控各任務類別 C 的成功率 Acc(C)。為確保針對性增長，演化僅對 Acc(C) &lt; δ 的類別觸發。我們使用多樣性感知的分層取樣策略收集失敗軌跡 T_val^-：軌跡按類別分組、按失敗嚴重程度（負獎勵）排序、以輪詢取樣選取以維持類別熵。教師模型分析失敗模式：識別當前技能未覆蓋的失敗模式、提出覆蓋這些缺口的新技能、建議對被證明無效的現有技能進行修正。技能庫隨之更新：SkillBank ← SkillBank ∪ S_new。這形成良性循環：代理改進→遇到新挑戰→技能庫擴展→進一步改進。</p>
+<p><strong>RL 策略優化</strong>：使用 GRPO 進行技能增強策略優化。對每個任務（含描述 d），代理先檢索相關技能，然後從當前策略 π_θ 取樣 G 條完整軌跡。每條軌跡獲得二元獎勵 R_i = r(τ^(i)) ∈ {0, 1}。歸一化優勢 A_i 由群組內獎勵標準化計算。策略根據 GRPO 目標更新，其中重要性比率 ρ_i 基於技能增強上下文計算，KL 懲罰項錨定於 π_ref = π_θsft，確保 RL 優化在保留技能利用能力的同時改進任務效能。完整訓練程序見演算法 1。</p>
+<p><strong>實現細節</strong>：基礎模型 Qwen2.5-7B-Instruct，教師模型 OpenAI o3；GRPO 學習率 1e-6，批次大小 16，群組大小 8，梯度累積 4 步；任務特定技能檢索 K=6；失敗軌跡收集閾值 δ=0.4。</p>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-實驗設置">4.1 實驗設置</h3>
+<p><strong>環境</strong>：(1) ALFWorld——基於文字的 ALFRED 具身 AI 基準，代理須透過文字命令導航與互動完成家庭任務；(2) WebShop——模擬網路購物，代理在逼真的網路介面中導航以尋找符合使用者規格的商品；(3) 七項搜尋增強 QA 任務——NQ、TriviaQA、PopQA（單跳）與 HotpotQA、2Wiki、MuSiQue、Bamboogle（多跳）。</p>
+<p><strong>基線</strong>：(1) 閉源 LLM：GPT-4o、Gemini-2.5-Pro；(2) 提示式代理/記憶方法：ReAct、Reflexion、Mem0、ExpeL、MemP；(3) RL 方法：RLOO、GRPO；(4) 記憶增強 RL：EvolveR、MemRL、Mem0+GRPO、SimpleMem+GRPO。QA 任務另比較 Search-o1、Search-R1、ZeroSearch、StepSearch。</p>
+<h3 id="42-主要結果">4.2 主要結果</h3>
+<p><strong>相比提示式方法的顯著增益</strong>：SkillRL 在 ALFWorld 達 89.9%、WebShop 達 72.7% 成功率，大幅超越最佳提示式基線。此差距顯示，雖然上下文學習可利用過往經驗，但無法從冗長軌跡中蒸餾出可執行知識，也未能從根本上調整代理策略。</p>
+<p><strong>優於原始 RL</strong>：SkillRL 一致超越標準 RL 基線。由於 SkillRL 以 GRPO 為基礎優化器，ALFWorld 上相比 GRPO 的 12.3% 絕對改善（77.6%→89.9%）直接歸因於技能增強機制而非演算法變異。在 Cool 與 Pick2 等複雜子任務中，SkillRL 分別超越 GRPO 23.0% 與 22.8%，證明結構化技能先驗在稀疏獎勵環境中有效加速策略學習。</p>
+<p><strong>優於記憶增強 RL</strong>：SkillRL 大幅超越現有記憶增強 RL 框架。MemRL（僅用 RL 更新記憶庫而凍結策略）在 ALFWorld 僅達 21.4%，無法適應複雜環境。EvolveR（聯合更新策略與記憶庫）有所改善（43.8%），但受限於其對粗糙軌跡儲存的依賴。我們實現的 Mem0+GRPO（結合最先進提示式記憶與優化策略）在 ALFWorld 達 54.7%，仍落後 SkillRL 約 35.2 百分點。這些結果驗證了核心假設：有效經驗遷移需要高層次技能抽象與共演化技能庫，而非簡單的軌跡壓縮或提示式記憶檢索。</p>
+<p><strong>超越閉源模型</strong>：SkillRL（Qwen2.5-7B）在 ALFWorld 上超越 GPT-4o 達 41.9%、超越 Gemini-2.5-Pro 達 29.6%，證明有效技能學習可補償模型規模，使小型開源模型透過結構化經驗知識達到更優的任務效能。</p>
+<p><strong>搜尋增強 QA</strong>：平均得分 47.1%，超越 Search-R1（38.5%）與 EvolveR（43.1%）。SkillRL 在 Bamboogle（多跳推理）上超越 EvolveR 19.4%，證明階層式技能有效指導多步資訊合成。且對未見資料集（TriviaQA、2Wiki）保持競爭力，確認蒸餾出的搜尋策略是任務無關的。</p>
+<h3 id="43-分析">4.3 分析</h3>
+<p><strong>消融實驗</strong>：(1) 移除階層結構（僅保留任務特定技能）在 ALFWorld 下降 13.1%、WebShop 下降 11.3%；(2) 以原始軌跡取代技能庫下降最劇（25%），直接支持抽象優於記憶的核心動機；(3) 冷啟動 SFT 移除下降約 20%，確認基礎模型需初始示範階段才能學會適應性檢索與利用抽象技能；(4) 關閉動態演化下降 5.5%，證明技能庫作為動態組件的重要性。</p>
+<p><strong>技能庫成長</strong>：初始 55 項（12 通用 + 43 任務特定），動態演化後成長至 100 項（20 通用 + 80 任務特定），各任務類別均衡擴展。</p>
+<p><strong>上下文效率</strong>：SkillRL 平均提示長度低於 1,300 tokens，較原始記憶方法（約 1,450 tokens）減少約 10.3%，同時達到更高效能。</p>
+<p><strong>演化動態</strong>：具技能演化的 SkillRL 在 60 訓練步內達到 &gt;80% 成功率，無演化版本需約 90 步才達到較低峰值，證明動態引入新技能與修正既有技能為代理提供了及時的策略指導以克服局部最優，更高的效能天花板驗證技能庫與策略的共演化使代理能適應靜態記憶方法無法解決的日益複雜的任務情境。</p>
+<p><strong>質性分析</strong>：案例顯示代理能有效整合通用與任務特定技能進行推理決策，說明代理不僅在記憶軌跡，而是發展了對任務邏輯的結構化理解。</p>
+<h2 id="5-相關工作">5. 相關工作</h2>
+<p>涵蓋 LLM 代理（ReAct、Reflexion、AutoGen、CAMEL）、代理中的記憶機制（從靜態 RAG 到自我改進式記憶），以及代理技能與強化學習的演化趨勢。SkillRL 將技能庫視為與代理策略共演化的動態組件，利用 RL 精煉技能與策略——這與以往將記憶視為靜態或輔助來源的方法形成根本區別。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>SkillRL 是一個技能增強強化學習框架，透過將原始軌跡蒸餾為精簡、可復用的技能，並在訓練期間實現動態技能演化，在 ALFWorld 與 WebShop 上達到最先進效能，同時使用遠少於基於記憶方法的上下文。我們的工作證明「從經驗到技能的抽象化」是建構有能力且樣本高效代理的強大原則。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

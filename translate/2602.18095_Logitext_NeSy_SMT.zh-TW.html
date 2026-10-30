@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>神經符號語言推理即可滿足性模理論（Neurosymbolic Language Reasoning as Satisfiability Modulo Theory） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Hyunseok Oh、Sam Stern、Youngki Lee、Matthai Philipose（首爾大學 / UMass Amherst / Microsoft）</p><p>日期：2026-02</p><p>arXiv：2602.18095</p><p><a href="https://arxiv.org/abs/2602.18095" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="神經符號語言推理即可滿足性模理論smt">神經符號語言推理即可滿足性模理論（SMT）</h1>
+<p>首爾大學 / UMass Amherst / Microsoft</p>
+<h2 id="摘要">摘要</h2>
+<p>自然語言理解需要<strong>交織文字推理與邏輯推理</strong>，但大型語言模型（LLM）常無法可靠地做這件事。現有神經符號系統把 LLM 與求解器結合，但只限於<strong>完全可形式化</strong>的任務（數學、程式合成），對「只有部分邏輯結構」的自然文件束手無策。本文提出 <strong>Logitext</strong>——一個把文件表示成<strong>自然語言文字約束（NLTC）<strong>的神經符號語言，讓部分邏輯結構顯式化。我們開發一個演算法，把</strong>基於 LLM 的約束評估</strong>與<strong>可滿足性模理論（SMT）求解</strong>整合，實現文字－邏輯的聯合推理。在一個新的內容審查基準，以及 LegalBench 與 Super-NaturalInstructions 上，Logitext 同時提升準確率與覆蓋率。本工作是<strong>首個把 LLM 推理當成一個 SMT 理論</strong>，將神經符號方法延伸到完全可形式化領域之外。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 在自然語言邏輯推理上仍不可靠，常產生不一致或不完整的結果；邏輯求解器雖能提供保證，卻只限完全可形式化的領域。現有 LLM+求解器神經符號系統有兩大限制：</p>
+<ol>
+<li>只能處理完全可形式化的設定，無法自然處理「文字＋邏輯」混雜的文件。</li>
+<li>多採<strong>分階段（staged）架構</strong>——LLM 一次形式化、求解器執行——排除了許多自然語言任務所需的「文字與邏輯推理迭代交織」。</li>
+</ol>
+<p><strong>範例</strong>：政策「一則貼文若<strong>同時</strong>仇恨且為立即威脅就須移除」。「仇恨」「立即威脅」無法完全形式化，但可表示成 NLTC；Logitext 用邏輯合取串接這些文字約束，使決策同時取決於邏輯結構與文字判斷結果。</p>
+<p><strong>貢獻</strong>：（概念） 證明交織文字／邏輯推理的必要、刻畫分階段法的限制；（語言） 提出 Logitext，把文件表示成與 SMT 求解器對接的 NLTC；（NLTC 求解器） 提出解 NLTC 並擴展 SMT 框架的演算法；（評估） 在新內容審查基準上勝過分階段基線，在 LegalBench 與 SNI 上改善準確與覆蓋。</p>
+<h2 id="2-文字理解中的文字邏輯交織推理">2. 文字理解中的文字／邏輯交織推理</h2>
+<p>以內容審查政策示範。一份多頁政策定義「破壞性行為」「立即威脅」等概念，配上任務描述與輸入訊息後變成 LLM prompt。</p>
+<h3 id="21-自然文字中的組合式-vs-組合爆炸式推理">2.1 自然文字中的組合式 vs 組合爆炸式推理</h3>
+<ul>
+<li><strong>組合式（compositional）推理</strong>：判斷某訊息是否「破壞性（d）」或「立即威脅（t）」——需先一輪文字推理評估每個子句 <code>C_i</code>，再做邏輯求值。看似只需文字推理的 <code>t</code>，其實 <code>C6</code>（「表達暴力或滅絕意圖」）依賴先前 <code>C4</code>、<code>C5</code> 的邏輯析取，凸顯交織的好處。</li>
+<li><strong>組合爆炸式（combinatorial）推理</strong>：受約束生成（給定部分賦值，生成滿足整個政策的訊息）需「邏輯求解器提議候選賦值 → 生成器合成文字 → 失敗則換賦值重試」。高覆蓋生成更難：要生成涵蓋<strong>所有</strong>滿足賦值的訊息，本質上要求邏輯求解與文字合成迭代協作。</li>
+</ul>
+<h3 id="22-邏輯推理鴻溝">2.2 邏輯推理鴻溝</h3>
+<p>定義「推理鴻溝」＝（LLM 做文字推理＋求解器做邏輯推理） 與 （LLM 獨自處理整個 prompt） 的效能差。</p>
+<ul>
+<li><strong>組合式鴻溝</strong>：小模型大，強模型縮小；同模型內隨任務複雜度（互動子句數）增大。</li>
+<li><strong>組合爆炸式鴻溝</strong>：差距驚人——即便 SOTA 的 GPT-5 也<strong>漏掉 SMT 求解器（Z3）能枚舉的 &gt;99% 滿足賦值</strong>，GPT-4o-mini 全任務失敗。<strong>此鴻溝不隨模型規模縮小</strong>。Logitext 即為彌合這些鴻溝而設計。</li>
+</ul>
+<h2 id="3-logitext語言表示與求解器">3. Logitext：語言、表示與求解器</h2>
+<p>把傳統文字 prompt 標註成 Logitext 程式（§3.1），解析成一組混合 NLTC（§3.2），再用 LLM 求解器 <code>NLSolver</code> 配邏輯求解器產生最終回應（§3.3）。</p>
+<h3 id="31-logitext-語言">3.1 Logitext 語言</h3>
+<p>把純文字 prompt 擴展成<strong>混合文字／邏輯文件</strong>，支援<strong>部分形式化</strong>：只標需要邏輯結構的部分。四種構件：</p>
+<ul>
+<li><strong>變數宣告</strong>：<code>(M:str, d, t, …)</code>，可為布林或字串（字串須顯式定型，如 <code>M:str</code>）。</li>
+<li><strong>文字 let 綁定</strong>：<code>{{let C1 = [[子句]] where 子子句 is 變數}}</code>——把文字子句綁到邏輯變數，並把子句內的子子句關聯到外部變數。</li>
+<li>子句間的<strong>邏輯定義</strong>：如 <code>d = C1 and C2 and (C3 or C4 or C5)</code>、<code>t = C6 and C7</code>。</li>
+</ul>
+<h3 id="32-自然語言文字約束nltc">3.2 自然語言文字約束（NLTC）</h3>
+<p>把文件解析成混合的文字／邏輯約束集合，使「文字判斷」與「符號約束」能協同。</p>
+<h3 id="33-解-nltc">3.3 解 NLTC</h3>
+<p>SMT 求解器逐步賦值並跨理論（字串/浮點/集合）傳播後果；加入 NLTC 後，傳播需<strong>迭代解文字約束</strong>以保持與布林條件一致。<code>NLSolver</code> 用 LLM 做 <code>LLMPropose</code>（提議賦值）與 <code>LLMVerify</code>（驗證約束），整合進既有 SMT 框架——<strong>等於把 LLM 當成一個 SMT theory solver</strong>。三類任務統一為 <code>check()</code> 約束檢查（分類 / 部分約束生成 / 覆蓋生成）。</p>
+<h2 id="4-評估">4. 評估</h2>
+<h3 id="41-基準與設定">4.1 基準與設定</h3>
+<ul>
+<li><strong>內容審查（CMOD，新建）</strong>：五份多頁政策（毒品 22 子句、政治 8、宗教 6、霸凌 21、詐騙 12）。</li>
+<li><strong>LegalBench（LB）</strong>：5 項任務，每項 20–50 行、2–4 標註子句。</li>
+<li><strong>Super-NaturalInstructions（SNI）</strong>：5 項任務，每項 3–10 行、2–5 標註子句。
+三種設定：任務執行（TE，分類準確率）、文字實例生成（TIG）、文字覆蓋生成（TCG）。</li>
+</ul>
+<h3 id="42-結果">4.2 結果</h3>
+<ul>
+<li><strong>TIG</strong>：用 GPT5 / GPT5-nano 皆能透過 <code>check()</code> 可靠生成有效賦值；弱模型 GPT5-nano 近飽和，直接 prompt 強模型 GPT5 反退化（複雜 CMOD 政策最明顯）。</li>
+<li><strong>TCG</strong>：固定 3000s 預算下覆蓋更廣（尤其 GPT5-nano）；候選生成用求解器枚舉而非反覆 LLM 呼叫，<strong>快很多</strong>；求解階段瓶頸在 NLSolver 呼叫。</li>
+<li><strong>TE</strong>：在 CMOD、NI 上勝過 few-shot 與「生成並執行程式碼」基線，但 <strong>LegalBench 上反而較弱</strong>。兩大錯誤源：(i) LLM 把單一子句 <code>C_i</code> 判錯，而純 LLM 用整體推理反而對（穩健性短板）；(ii) 列表「x, y, and z」本為舉例卻被標成合取。擴充至每任務 100 樣本後，TE 10 項勝 7、LegalBench 5 項勝 4、SNI 5 項勝 3。子句層級推論其實多半正確（子句準確率遠高於整份文件準確率）。</li>
+</ul>
+<h2 id="5-相關工作--6-結論">5. 相關工作 / 6. 結論</h2>
+<p>首個把 LLM 推理形式化為 SMT 理論、支援「部分邏輯結構」推理的框架。在受約束生成與分類上跨多基準提升效能，同時點出子句層級穩健性與標註處理的待解問題。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2602.18095_Logitext_NeSy_SMT.%E6%91%98%E8%A6%81.html"><code>../summarize/2602.18095_Logitext_NeSy_SMT.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

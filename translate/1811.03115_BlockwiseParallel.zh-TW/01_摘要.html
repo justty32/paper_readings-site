@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../1811.03115_BlockwiseParallel.zh-TW.html">回 1811.03115_BlockwiseParallel.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E4%BD%9C%E8%88%87%E8%A8%93%E7%B7%B4.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>近年深度自迴歸 seq2seq 模型在多種任務上表現亮眼。雖然循環（recurrent）、卷積（convolutional）、自注意力（self-attention）等常見架構在「每層計算量」與「訓練時關鍵路徑長度」之間各有取捨，但<strong>生成本質上仍是序列式的</strong>。為突破此限制，我們提出一種新穎的<strong>分塊平行解碼（blockwise parallel decoding）<strong>方案：平行地對多個時間步做預測，再</strong>回退（back off）到某個評分模型所驗證通過的最長前綴</strong>。對於能夠平行處理輸出序列的架構，這帶來理論上可觀的生成加速。我們以最先進的自注意力模型在機器翻譯與影像超解析（super-resolution）上實證驗證：在<strong>不損品質</strong>下較貪婪解碼（greedy decoder）達成最多 <strong>2 倍</strong>的迭代縮減，或以輕微品質下降換取最多 <strong>7 倍</strong>縮減。就牆鐘時間（wall-clock）而言，我們最快的模型較標準貪婪解碼有最多 <strong>4 倍</strong>的實時加速。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>神經自迴歸 seq2seq 模型已成為機器翻譯、摘要、語音合成等任務的事實標準。Transformer 與卷積 seq2seq 等近期架構的共同特徵，是<strong>更強的平行計算能力</strong>，更契合當今大規模平行的硬體加速器。然而這些進展只加快了訓練——推論時輸出<strong>仍是一次一個 token 逐一生成</strong>，對許多實務應用構成重大挑戰。</p>
+<p>已有一系列工作嘗試加速自迴歸模型的生成：通用方法包含機率密度蒸餾（probability density distillation）、subscaling、以及「先自迴歸生成一段離散潛變數短序列、再據此平行生成」（Kaiser et al., 2018）；也有較針對特定應用者，如機器翻譯的非自迴歸 Transformer（Gu et al., 2018）。在語音合成這類高輸出局部性的任務上已達數個數量級的加速，但據我們所知，機器翻譯上已發表的改進要嘛加速幅度小得多，要嘛以顯著品質代價換取。</p>
+<p>本工作提出一個簡單的演算法技巧，善用某些架構（如 Transformer）<strong>能平行為所有輸出位置評分</strong>的能力。我們訓練自迴歸模型的變體，使其能對「基礎模型所建模的下一個位置」之外的<strong>多個未來位置</strong>做預測。測試時，用這些提議模型（proposal models）獨立且平行地預測接下來數個位置；再用基礎模型平行為每個位置評分，找出「這些預測中若用貪婪解碼也會產生」的最長前綴。若該前綴長度大於一，我們就能跳過一或多次貪婪解碼迴圈。</p>
+<p>實驗中，本技巧在<strong>不損品質</strong>下約使生成速度加倍；配合知識蒸餾與近似解碼策略，機器翻譯的迭代加速可達最多 <strong>5 倍</strong>、影像超解析 <strong>7 倍</strong>（分別對應牆鐘 3 倍與 4 倍）。與前述其他技術不同，本法<strong>能以最小改動疊加在既有模型上</strong>，程式碼已開源於 Tensor2Tensor。</p>
+<h2 id="2-貪婪解碼greedy-decoding">2 貪婪解碼（Greedy Decoding）</h2>
+<p>給定輸入序列 x=(x_1,…,x_n)，欲預測輸出序列 y=(y_1,…,y_m)（如翻譯的原文/譯文、超解析的低/高解析影像）。常見作法是學一個自迴歸評分模型 p(y∣x)，按左到右分解：log p(y∣x)=Σ_j log p(y_{j+1}∣y_{≤j},x)。推論即求 y*=argmax_y p(y∣x)。因輸出空間指數大、精確搜尋不可行，改用<strong>貪婪解碼</strong>：從空序列與 j=0 開始，反覆以最高分 token 延伸 ŷ_{j+1}=argmax p(y_{j+1}∣ŷ_{≤j},x)，直到滿足終止條件（語言任務遇到 end-of-sequence，影像任務解碼固定步數）。</p>
+<h2 id="3-分塊平行解碼blockwise-parallel-decoding">3 分塊平行解碼（Blockwise Parallel Decoding）</h2>
+<p>標準貪婪解碼產生長度 m 的輸出需 m 步，即便模型能用固定次數的序列運算高效評分亦然。雖然「窮舉長於一個 token 的延伸」在大詞表下不可行，我們仍可訓練一組<strong>輔助模型</strong>來提議候選延伸，藉此利用模型內的平行性。</p>
+<p>令原模型 p_1=p，並假設另學到一組輔助模型 p_2,…,p_k，其中 p_i(y_{j+i}∣y_{≤j},x) 是「給定前 j 個 token，第 (j+i) 個 token 為 y_{j+i}」的機率。我們提出下列分塊平行解碼演算法（圖 1），它<strong>保證產出與貪婪解碼相同的 ŷ</strong>，卻可少至 m/k 步。從空預測與 j=0 起，重複三個子步驟直到終止：</p>
+<ul>
+<li><strong>Predict（預測）</strong>：取塊預測 ŷ_{j+i}=argmax p_i(y_{j+i}∣ŷ_{≤j},x)，i=1,…,k。</li>
+<li><strong>Verify（驗證）</strong>：找最大的 k̂，使對所有 1≤i≤k̂ 都有 ŷ_{j+i}=argmax p_1(y_{j+i}∣ŷ_{≤j+i−1},x)。依 ŷ_{j+1} 之定義必有 k̂≥1。</li>
+<li><strong>Accept（接受）</strong>：以 ŷ_{j+1},…,ŷ_{j+k̂} 延伸 ŷ，並令 j←j+k̂。</li>
+</ul>
+<p><strong>圖 1（三步舉例）</strong>：預測子步中，貪婪模型與兩個提議模型獨立且平行地預測出「in、the、bus」。驗證子步中，貪婪模型為三個獨立預測評分（適時條件於前面的獨立預測）；用 Transformer 或卷積 seq2seq 時這三次計算可平行完成。第三個位置的最高機率預測是「car」，與獨立預測的「bus」不符，故接受子步只把 ŷ 延伸至含「in、the」，再做下一批 k 個獨立預測。</p>
+<p>在預測子步中，因 p_1,…,p_k 是各自獨立的模型，每個預測可平行算出，相較單次貪婪預測幾乎不多花時間。驗證子步則找出「本會由 p_1 產生」之長度 k 延伸的最長前綴；若評分模型能以少於 k 步處理這 k 個 token，且有超過一個正確，整體便省時。接受子步以已驗證前綴延伸假設；一旦基礎模型與提議模型開始分歧就提早停止，如此<strong>保證還原出與 p_1 貪婪解碼相同的輸出</strong>。</p>
+<p>此方案能否提升解碼效能，關鍵在於基礎模型 p_1 能否<strong>平行執行驗證子步中的所有預測</strong>。實驗用 Transformer：雖然解碼期間的總運算量與預測數成平方，但<strong>必要的序列運算數不隨輸出長度改變</strong>，故能平行執行多個位置的驗證而不多花牆鐘時間。</p>
+<h2 id="4-合併的評分與提議模型combined-scoring-and-proposal-model">4 合併的評分與提議模型（Combined Scoring and Proposal Model）</h2>
+<p>用 Transformer 評分時，第 3 節的版本每步需<strong>兩次模型呼叫</strong>：預測子步平行呼叫 p_1,…,p_k 一次、驗證子步呼叫 p_1 一次。即使輔助模型完美，也只把呼叫數從 m 降到 2m/k，而非理想的 m/k。</p>
+<p>若假設一個<strong>合併的評分與提議模型</strong>，可把第 n 次驗證子步與第 (n+1) 次預測子步合併，將呼叫數再從 2m/k 降到 <strong>m/k+1</strong>。具體而言，設有單一 Transformer 在驗證子步中以固定運算數算出 p_i(y_{j+i′+i}∣ŷ_{≤j+i′},x)（對所有 i,i′=1,…,k）——可透過把最終投影層維度乘上 k 倍、每個位置算 k 個獨立 softmax 來實作。把預測子步得到的 k 個未來預測代入後呼叫模型，即得所需輸出。如此在算出 k̂ 之際，下一輪預測子步所需的 p_i(y_{j+k̂+i}∣y_{≤j+k̂},x) 也已一併算好，故兩子步可合併，除首輪外每輪把呼叫數減半。</p>
+<p><strong>圖 2（合併示意）</strong>：合併評分與提議模型後，前一次驗證子步可與下一次預測子步合而為一，使每輪只需呼叫模型一次而非兩次，將解碼所需的模型呼叫數減半。注意驗證子步中雖須為每個位置計算提議，所有預測仍可平行進行。</p>
+<h2 id="5-近似推論approximate-inference">5 近似推論（Approximate Inference）</h2>
+<p>以上方案產出與標準貪婪解碼完全相同的輸出。<strong>放寬驗證準則</strong>可換取額外加速，代價是可能偏離貪婪輸出。</p>
+<h3 id="51-top-k-選擇">5.1 Top-k 選擇</h3>
+<p>不要求預測與評分模型的預測精確相符，改要求它落在前 k 名內：ŷ_{j+i}∈top-k_{y_{j+i}} p_1(y_{j+i}∣ŷ_{≤j+i−1},x)。</p>
+<h3 id="52-基於距離的選擇">5.2 基於距離的選擇</h3>
+<p>若輸出空間有自然距離度量 d，可將「與最高分元素精確相符」改為近似相符：d(ŷ_{j+i}, argmax p_1(…))≤ε。影像生成時取 d(u,v)=|u−v|，即某色彩通道內強度差的絕對值。</p>
+<h3 id="53-最小塊大小">5.3 最小塊大小</h3>
+<p>某步的第一個非貪婪預測可能就錯，使該步只加入單一 token。為確保最小加速，可要求每步至少加入 1&lt;ℓ≤k 個 token；令 ℓ=k 即固定塊大小 k 的平行解碼。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

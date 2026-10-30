@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>FindingDory: A Benchmark to Evaluate Memory in Embodied Agents 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Karmesh Yadav、Yusuf Ali、Gunshi Gupta、Yarin Gal、Zsolt Kira</p><p>日期：2025-06-18（v1，cs.CV）</p><p>arXiv：2506.15635</p><p><a href="https://arxiv.org/abs/2506.15635" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="findingdory-a-benchmark-to-evaluate-memory-in-embodied-agents-重點摘要">FindingDory: A Benchmark to Evaluate Memory in Embodied Agents 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>FindingDory 把 embodied memory 從「看完長影片回答問題」推到真正的行動測試：agent 先取得一段含導航與物件搬動的長期經驗，之後必須回想物件、位置、互動次序與時間關係，選出正確目標，再靠低階政策走到那裡；因此 benchmark 能分清楚錯的是記憶檢索、空間判斷，還是最後一段導航。</p>
+<h2 id="問題與-benchmark-設計">問題與 benchmark 設計</h2>
+<ul>
+<li><strong>問題</strong>：長影片問答常用選擇題，也不要求模型把記憶化成動作。embodied agent 則必須從大量多模態歷史中找出相關事件，追蹤互動造成的場景變化，最後完成導航或操作。只測文字答案，會把這三件事壓成一個模糊分數。</li>
+<li><strong>兩階段 episode</strong>：experience collection 階段由可存取 simulator 特權資訊的 scripted oracle 導航、抓取並重新放置物件，留下影像、pose 與行動紀錄；interaction 階段換成受測 agent，依模板指令回想先前歷史並行動。單段經驗長 <code>400</code> 至 <code>3500</code> frames，含 <code>2</code> 至 <code>11</code> 次 pick-and-place 互動（均為作者自報）。</li>
+<li><strong>記憶任務</strong>：題型涵蓋物件回想、是否互動、條件式互動、屬性、空間關係、房間造訪、互動順序、時間點、耗時，以及有序或無序的多目標重訪。共 <code>60</code> 個任務模板，並可藉增加互動數程序化擴展難度（作者自報）。動態場景尤其重要，因為物件位置會被前一階段改變，靜態 semantic map 不足以回答「最後在哪裡」。</li>
+<li><strong>可自動驗證的資料生成</strong>：benchmark 建於 Habitat 與 HSSD。作者以 PDDL predicate 為模板目標條件，自動產生有場景約束的指令與成功判定；train／validation 分別有 <code>82,174</code>／<code>5,876</code> 個 task instances（作者自報）。</li>
+</ul>
+<h2 id="基線與評估方式">基線與評估方式</h2>
+<p>高階模組讀完整互動影片或分段文字摘要，預測一個可作為目標狀態的歷史 frame；低階模組再以 ImageNav policy 或 deterministic map-based policy 導航到該 frame 對應的位置。作者評估 GPT-4o、Gemini-2.0-Flash、Qwen2.5-VL、Gemma-3，也微調 Qwen 直接預測正確 frame indices。</p>
+<p>指標刻意拆成兩層。HL-SR 檢查高階政策是否選到有效目標，HL-SPL 再懲罰沒有選最近有效目標的情況；LL-SR 與 LL-SPL 衡量低階實際到達與路徑效率。另有只看距離的 DTG-SR 與忽略空間接近度的 SC-SR，用來判斷模型究竟是沒認出語意目標，還是認得目標卻無法精準定位。</p>
+<h2 id="主要實驗與作者自報結果">主要實驗與作者自報結果</h2>
+<p>凍結 VLM 在各任務類別上的成功率普遍偏低：GPT-4o 為 <code>27.3%</code>，Gemini-2.0-Flash 為 <code>25.7%</code>，Qwen2.5-VL 與 Gemma-3 落在 <code>13–16%</code>（均為作者自報）。文字記憶 agent 整體最差，表示把視覺歷史壓成 caption 後，容易丟失區分目標所需的細節。</p>
+<p>SFT Qwen 相對所有 frozen VLM 平均改善 <code>25%</code>（作者自報），證明模型經適當監督後確實能利用較長影片；但多目標任務仍只有接近 <code>20%</code>，離可解上限 <code>99%</code> 很遠（均為作者自報）。Frozen VLM 增加輸入 frames 時沒有穩定改善，甚至會因未過濾的密集觀測而退步。</p>
+<p>錯誤分析顯示，高階語意辨識與精確空間定位是兩回事。模型較能辨認大型 receptacle 出現在哪些 frames，卻常選不到距離最近、足以完成任務的 viewpoint。當高階 Qwen 接上低階政策後，ImageNav 的成功率明顯下降；map-based policy 較好，但成功率仍有 <code>25%</code> 的相對下降（作者自報）。這說明把記憶答案交給控制器時，介面上的 distribution shift 本身就是主要瓶頸。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>FindingDory 的結論很直接：現有 VLM 能在短片段辨認物件，卻還不擅長從長期、多次互動且會改變的場景歷史中，取回正確事件並形成可執行的空間目標。單純擴大 context window 不是解法；SFT 與記憶壓縮較有希望，但高階記憶推理仍須和低階可達性一起設計。</p>
+<p>作者在 Limitations 小節明列四項限制：現有低階 controller 不擅長在大環境走最短路，會遮蔽真正的記憶能力；Magic Grasp 讓物件瞬間移到 gripper，動作不自然且視覺變化可能被忽略；互動物件常比 distractor 看得更近、更頻繁，曝光不平衡仍可能留下捷徑；interaction 階段目前只有 navigation，尚未納入依賴長期記憶的 manipulation 任務。</p>
+<h2 id="對讀者的價值ai_core-接點">對讀者的價值／ai_core 接點</h2>
+<p>這篇對 ai_core 最重要的提醒，是「有取回相關記憶」不能直接等同「任務完成」。一條可靠管線至少要分開記錄：檢索是否找到正確事件、選出的狀態是否是最有效的目標、執行器是否真的能抵達。HL-SR／HL-SPL 與 LL-SR／LL-SPL 正好是一組可借用的分層憑證，能避免端到端失敗只得到一個沒有診斷力的總分。benchmark 的反捷徑設計也值得參考：真正的記憶測試必須讓環境狀態會變、有同類 distractor，並要求輸出轉成行動；否則系統可能只是靠當下可見資訊或曝光頻率猜中，卻被誤認為擁有長期記憶。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2506.15635_FindingDory.zh-TW.html"><code>../translate/2506.15635_FindingDory.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>AgentCompile（續）：實驗、相關工作與限制 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.07665_AgentCompile.zh-TW.html">回 2606.07665_AgentCompile.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97%C2%A74.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>Transformer 推論日益依賴專業編譯器與執行期支援，但真實模型圖仍需要語意決策：哪些區域值得特化，哪些 CUDA 實作家族可行。我們提出 <strong>AgentCompile</strong>，一個 LLM 引導的 CUDA 推論編譯器，將 LLM 輸出僅用作諮詢性搜尋元資料。系統從編譯器產生的區域摘要與有界候選空間出發，LLM 提出語意標籤、候選優先序、參數提示與風險註解；編譯器透過模板具體化 CUDA 候選、檢查介面與硬體約束、實證驗證候選、以量測延遲選擇實作，並在特化不受支援或無利可圖時回退。在端對端自迴歸生成中，AgentCompile 於五個代表性工作負載上，相較 PyTorch eager 在 Qwen3-1.7B、Qwen3-4B、Llama-3.2-1B-Instruct 分別獲得平均 <strong>5.66×、4.05×、4.26×</strong> 加速。專案將開源。</p>
+<h3 id="與-ai_core-36-的對應">與 ai_core §3.6 的對應</h3>
+<p>AgentCompile 體現了 <strong>LLM 引導編譯＝固化</strong>（ai_core §3.6）的核心精神：LLM 作為語意搜尋層，在編譯器確定的有界空間內提供排序偏好與語意假設，但候選產生、約束檢查、驗證、選擇與回退全部由確定性編譯器機制執行。這正是將 LLM 推理固化到工程管線的明確實例。</p>
+<h2 id="導論">導論</h2>
+<p>現有最佳化路徑分別處理推論堆疊不同層次但留下重要缺口。PyTorch eager 保留大量 Python dispatch、動態快取管理與逐 token 啟動開銷。torch.compile 透過融合與編譯圖片段降低開銷，但長上下文生成仍暴露動態快取更新、圖中斷、形狀變化與 attention/GEMM 成本。vLLM 最佳化請求排程與分頁 KV 快取，與區域級核特化互補。直接要求 LLM 生成 CUDA 程式碼存在風險：核正確性取決於索引、同步、記憶體邊界、dtype、啟動配置、佈局假設與硬體行為。</p>
+<p><strong>核心挑戰</strong>：使用 LLM 的語意優勢，但不將正確性關鍵決策移至編譯器之外。AgentCompile 讓 LLM 解釋圖片段、排序實作家族、建議參數，而可執行候選仍受圖元資料、模板可用性、硬體限制、驗證與量測約束。</p>
+<p><strong>三項貢獻</strong>：(i) 將 LLM 引導推論最佳化形式化為編譯器定義候選空間內的語意搜尋；(ii) 實作編譯器控制管線，將 LLM 建議對映到模板生成 CUDA 候選，僅經檢查/驗證/基準測試/回退允許接入；(iii) 分離端對端增益與自訂 GEMV、CUDALinear、自訂 KV 快取、融合解碼核、CUDA Graph 重播、LLM 引導聲稱後，評估混合推論執行期。</p>
+<h2 id="問題形式化2">問題形式化（§2）</h2>
+<p>給定被捕捉推論圖 G=(V,E)，AgentCompile 僅替換可安全由 CUDA 特化的圖區域。對每個區域 r 與目標硬體 H，編譯器建構可執行候選空間 C(r,H)。LLM 接收編譯器產生的區域摘要 S(r)，回傳諮詢元資料：</p>
+<pre><code>LLM(S(r), C(r,H)) = (ℓr, πr, ηr, ρr)
+</code></pre>
+<p>ℓr 為語意標籤、πr 為候選偏好序、ηr 為參數提示、ρr 為風險註解。這些輸出被視為假設：不受支援標籤、無效參數、跨越硬性圖邊界的建議被編譯器拒絕。最終選擇 c* = arg min T(c)；無效或無加速者退回框架路徑。</p>
+<h2 id="方法3八階段管線混合執行期">方法（§3）：八階段管線＋混合執行期</h2>
+<h3 id="31-圖分析器區域建構">§3.1 圖分析器：區域建構</h3>
+<p>分析器在 LLM 被諮詢前決定哪些運算可形成候選區域。非計算節點（placeholder、reshape、transpose、broadcast 等）作為邊界元資料處理。連續逐點運算、激活、softmax、norm、歸約節點可在相容 dtype/佈局下合併。Matmul 節點通常獨立。就地操作、副作用、未解析別名、不支援 dtype、模糊動態形狀形成硬邊界。基於規則的辨識分配語意類別：GEMM、GEMM+epilogue、softmax 類、RMSNorm 類、逐元素鏈、歸約後逐點。LLM 僅在語意層有用時被呼叫（混合區域、複雜 GEMM epilogue、歸約-逐點區域），其標籤可細化優先序或風險註解，但區域邊界僅在通過確定性依賴/別名/副作用檢查後才被接受。</p>
+<h3 id="32-確定性-cuda-規劃器">§3.2 確定性 CUDA 規劃器</h3>
+<p>規劃器將每區域轉換為有界核計畫集合，而非要求 LLM 發明實作。融合規劃器根據區域大小、副作用、dtype 一致性、佈局相容性選擇單核/完全融合/不融合/部分融合。排程規劃器將模式對映到模板家族：tiled/Tensor-Core GEMM、逐列 softmax、區塊/warp 歸約、逐列正規化、網格逐元素核、解碼導向 GEMV。記憶體與平行化選擇附加向量寬度、共享記憶體策略、網格/區塊形狀、warp 對映、歸約策略。計畫排名前過濾：共享記憶體使用、執行緒數、向量對齊、歸約語意、模板可用性、啟動簽名必須匹配目標區域與硬體。LLM 接收結構化候選摘要，可重新排序頂部候選或建議參數（向量寬度、每區塊執行緒數、展開因子）；建議僅在已屬枚舉計畫空間時被接受，多樣性過濾器保留多模板家族。LLM 影響搜尋順序與風險註解，從不直接產生或允許可執行 CUDA。</p>
+<h3 id="33-cuda-程式碼生成驗證與選擇">§3.3 CUDA 程式碼生成、驗證與選擇</h3>
+<p>模板庫：向量化逐元素核、歸約、數值穩定 softmax、LayerNorm/RMSNorm、tiled GEMM、Tensor-Core GEMM、解碼導向 GEMV。</p>
+<p><strong>生成式 GEMV 核</strong>是自迴歸解碼最重要的生成家族（每次解碼步驟批量大小 M=1）：權重儲存為 [N,K] 佈局使每輸出欄讀取連續權重列；256 執行緒區塊歸約；對齊時使用 128-bit 向量化載入；以 warp shuffle 歸約部分和（非共享記憶體樹），避免 bank conflict 並減少同步開銷；雙路徑 adaptive-N 策略針對大 N 改變輸出平行化以保持足夠常駐區塊。相較通用 GEMM，移除非必要 GEMM 機制與佈局處理，更匹配低算術強度、單列解碼工作負載。</p>
+<p>候選入場：編譯失敗移除 → 介面檢查（形狀/dtype/佈局/簽名）→ 數值比對（有參考路徑且在 dtype 適當容差內）→ 結構/煙霧測試 → 選擇性記憶體安全工具。基準測試選擇器僅量測經驗證候選，選取每區域最快者；LLM 信心分數從不直接選核。</p>
+<h3 id="34-執行期整合邊界">§3.4 執行期整合邊界</h3>
+<p>混合執行期區分三類實作：(1) <strong>管線生成核</strong>—編譯器管線產生（僅此類支援編譯器生成聲稱）；(2) <strong>執行期整合核</strong>—手寫 Triton/C++ 擴展：fused RoPE（Q/K 旋轉嵌入單次 Triton 啟動）、fused residual-RMSNorm（殘差加法+正規化，float32 累加）、fused activation-multiply（MLP gating）、fused GEMV epilogue（Gate/Up GEMV+SiLU/GELU，Down GEMV+殘差）；(3) <strong>第三方核</strong>—FlashAttention、cuBLAS。</p>
+<p><strong>CUDALinear</strong> 替換 PyTorch nn.Linear，建構時預轉置權重，M=1 GEMV 路徑，可退 cuBLAS（prefill 或 CUDA Graph）。用 C++ 擴展降低 Python dispatch。</p>
+<p><strong>FlashKVCacheManager</strong> 預分配固定 KV 緩衝、GPU 端追蹤層序列長度、匯入 HuggingFace DynamicCache prefill 狀態。實際 attention 由 FlashAttention with KV cache update API 執行。</p>
+<p>以 Qwen3-1.7B（28 層）為例：每層 7 投影，融合 epilogue 後 4 個 attention 投影走生成 GEMV，3 個 MLP 投影用融合執行期核，約 57%/43% 元件拆分（元件帳目，非隔離加速歸因）。</p>
+<h1 id="agentcompile續實驗相關工作與限制">AgentCompile（續）：實驗、相關工作與限制</h1>
+<ul>
+<li><strong>arXiv</strong>: 2606.07665v1 [cs.PL], 2026-06-04</li>
+<li><strong>前篇</strong>: <a href="../2606.07665_AgentCompile.zh-TW.html">part1</a></li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

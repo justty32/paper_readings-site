@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Meta Models: Models that Model Learning 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Peihang Li、Ziming Liu</p><p>日期：2026-10-27（v1，cs.LG）</p><p>arXiv：2610.37001</p><p><a href="https://arxiv.org/html/2610.37001v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="meta-models預測其他模型如何學習">Meta Models：預測其他模型如何學習</h1>
+<h2 id="摘要與第-1-節研究問題">摘要與第 1 節：研究問題</h2>
+<p>一個訓練實驗留下配置、進度與測量結果。作者將預測新實驗的最終損失、學習曲線與配置選擇視為同一個訓練反應函式的不同查詢：以歷史記錄作為脈絡，輸入配置 <code>q</code> 與進度 <code>t</code>，預測 <code>L̂(q,t)</code>。其他測量，例如下游準確率，也可作為預測目標。（<a href="https://arxiv.org/html/2610.37001v1#S1">摘要與 §1</a>）</p>
+<p>本文研究凍結權重的表格模型 TabPFN：把訓練配置與觀測當數值資料，提供已標記的歷史例子作脈絡。作者亦以 KAN 學出與尺度相關的超參數參考座標，再提供給 TabPFN；最後在進行中的大型訓練執行上保存預測，與後續觀測比較。（<a href="https://arxiv.org/html/2610.37001v1#S1">§1</a>）</p>
+<h2 id="第-2-節tabpfn-作為-meta-model">第 2 節：TabPFN 作為 meta-model</h2>
+<p>作者沿用 Marin、StepLaw 的執行層級分割，並測 Marin-MoE 與 DataDecide。不同任務有各自的歷史脈絡、輸入與目標處理；損失預測的是相對於各語料縮放律的殘差，再加回偏移。ID 指已觀察模型尺度內、用於選擇設定的資料；OOD 是較大模型。除非另行說明，查詢執行的實測損失不放入脈絡。表中的「zero-shot」指 TabPFN 無任務專用權重更新，並非沒有標記脈絡或 ID 設定選擇。（<a href="https://arxiv.org/html/2610.37001v1#S2">§2，表 1</a>、<a href="https://arxiv.org/html/2610.37001v1#A2.SS2.SSS1">附錄 B.2.1</a>）</p>
+<p>作者自報，最終損失 MAE（越低越好）如下；每個方法分別依 ID MAE 選設定，保留該設定的 OOD 結果，NCPL 論文值和作者以釋出權重重現值分列：（<a href="https://arxiv.org/html/2610.37001v1#S2">§2，表 1</a>）</p>
+<table>
+<thead>
+<tr>
+<th>語料與方法</th>
+<th style="text-align:right">ID MAE</th>
+<th style="text-align:right">OOD MAE</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Marin：NCPL 論文／重現</td>
+<td style="text-align:right">0.0109／0.0115</td>
+<td style="text-align:right">0.0168／0.0189</td>
+</tr>
+<tr>
+<td>Marin：TabPFN</td>
+<td style="text-align:right">0.0080</td>
+<td style="text-align:right">0.0178</td>
+</tr>
+<tr>
+<td>StepLaw：NCPL 論文／重現</td>
+<td style="text-align:right">0.0097／0.0096</td>
+<td style="text-align:right">0.0223／0.0204</td>
+</tr>
+<tr>
+<td>StepLaw：TabPFN</td>
+<td style="text-align:right">0.0063</td>
+<td style="text-align:right">0.0227</td>
+</tr>
+</tbody>
+</table>
+<p>因此 TabPFN 在兩個 ID 比較較低，但 Marin OOD 的 NCPL 論文值更低，StepLaw OOD 的兩個 NCPL 值均更低。曲線結果也依語料而異：作者指出 Marin OOD 的 TabPFN 較高誤差主要來自訓練早期。（<a href="https://arxiv.org/html/2610.37001v1#S2.SS2">§2、§2.2</a>）</p>
+<h2 id="第-2122-節配置與軌跡">第 2.1–2.2 節：配置與軌跡</h2>
+<p>在 Delphi-HP 的 3,737 次超參數掃描中，作者每次保留一個寬度、batch 與 token 預算組合，使用其他 23 個組合作脈絡。24 組內的平均排序 Spearman 相關，作者報 TabPFN 0.967、XGBoost 0.875。對資料混合比例，TabPFN 在五領域混合的四個尺度勝過所評估的參數律，但兩領域混合及部分 RedPajama 設定則由參數律較佳。（<a href="https://arxiv.org/html/2610.37001v1#S2.SS1">§2.1</a>）</p>
+<p>對 MoE 加入專家數與路由等欄位後，同一凍結骨幹可用歷史 MoE 執行預測曲線；作者自報 OOD 曲線 MAE 比 MoE 微調的 NCPL 約低 70%。該 NCPL 介面缺少專家欄位，因此這是實際系統比較，不能單獨歸因於骨幹。DataDecide 預測的是脈絡中已出現的資料配方在更大模型上的結果，並非未見配方的泛化。（<a href="https://arxiv.org/html/2610.37001v1#S2.SS2">§2.2</a>）</p>
+<h2 id="第-2324-節其他目標與脈絡更新">第 2.3–2.4 節：其他目標與脈絡更新</h2>
+<p>作者也以不同脈絡預測參數範數、梯度範數及下游表現；範數趨勢可部分捕捉，峰值時間與單次梯度尖峰仍不準確。在 DataDecide 的 750M–1B 保留執行上，作者報十項 OLMES 平均準確率 MAE 為 1.62 個百分點，同歷史 checkpoint 脈絡的 XGBoost 為 3.40；目標是最後可用評估，未必是完整訓練終點。（<a href="https://arxiv.org/html/2610.37001v1#S2.SS3">§2.3</a>）</p>
+<p>作者將目標執行前 20% 的觀測加入歷史脈絡，在七個 Delphi 保留執行上，剩餘曲線逐執行平均 MAE 從 0.05787 降至 0.02537，下降 56.2%；七個執行只有四個改善。這是固定骨幹更新脈絡，並非每個執行都有收益。（<a href="https://arxiv.org/html/2610.37001v1#S2.SS4">§2.4</a>、<a href="https://arxiv.org/html/2610.37001v1#A2.SS7">附錄 B.7</a>）</p>
+<p>離線重播配置選擇時，三個 TabPFN 政策共用兩次初始評估。作者自報 12 個 OOD 條件、總預算五次評估下，只用歷史、加入初始結果但不再更新、持續加入已揭露結果的平均最佳已找到 regret 分別為 0.1398%、0.0473%、0.0394%。這些是既有測量的重播，未證明前瞻訓練算力節省。（<a href="https://arxiv.org/html/2610.37001v1#S2.SS4">§2.4</a>、<a href="https://arxiv.org/html/2610.37001v1#A2.SS8">附錄 B.8</a>）</p>
+<h2 id="第-3-節kan-配置座標">第 3 節：KAN 配置座標</h2>
+<p>作者以兩個小 KAN 從 StepLaw 訓練組內表現最佳的執行，學習模型大小與 token 預算對學習率、batch 大小的參考值；將實際配置與參考值的對數差加入原始欄位。TabPFN 權重保持凍結，測試執行結果不進 KAN 擬合。模型大小邊的對數線性關係是預先施加的外推假設，學到的關係不宣稱普遍成立。（<a href="https://arxiv.org/html/2610.37001v1#S3">§3</a>、<a href="https://arxiv.org/html/2610.37001v1#A3.SS1">附錄 C.1</a>）</p>
+<p>作者自報相對預設 TabPFN 路徑，StepLaw OOD 的最終損失 MAE 由 0.02273 降至 0.01608，曲線 MAE 由 0.03666 降至 0.03093，選擇 regret 由 0.4271% 降至 0.0838%；ID 的區間包含零。預設路徑混合語料，而 KAN 路徑只用 StepLaw 脈絡；作者另報同 StepLaw 脈絡對照，OOD 平均誤差與 regret 也改善。（<a href="https://arxiv.org/html/2610.37001v1#S3">§3</a>、<a href="https://arxiv.org/html/2610.37001v1#A3.SS1">附錄 C.1，表 9</a>）</p>
+<h2 id="第-4-節marin-hero-run-前瞻預測">第 4 節：Marin Hero Run 前瞻預測</h2>
+<p>對約 535B 總參數、23B 啟用參數的公開 MoE 執行，作者在 2026-08-25 將 V0 預測存入版本控制，使用四個較小 ladder 執行與 Hero 前 3.84% 的五次觀測；未使用 KAN。作者稱之為預註冊，但這是版本控制時間戳，並非獨立註冊平台。（<a href="https://arxiv.org/html/2610.37001v1#S4">§4</a>、<a href="https://arxiv.org/html/2610.37001v1#A4.SS1">附錄 D.1</a>）</p>
+<p>作者報告，至 9 月 24 日可取得的 14 個後續 checkpoint，V0 的 Paloma macro loss MAE 為 0.0216，名目 90% 區間涵蓋 14/14；官方縮放律 MAE 0.0576，僅給 ladder 資料的 TabPFN 為 0.0788。執行於第 58,020 步標為崩潰，最後計分評估在第 56,999 步、進度 14.61%；預測完整訓練終點 2.031（區間 [1.850, 2.455]）仍未驗證。（<a href="https://arxiv.org/html/2610.37001v1#S4">§4</a>、<a href="https://arxiv.org/html/2610.37001v1#A4.SS1">附錄 D.1</a>）</p>
+<p>預測本身在後續評估前凍結，評分規則卻在前兩個結果到達後才定稿；官方律未看到 Hero 前綴，資訊量與 V0 不同。此案例不能單獨證明 ladder 資料相對只用前綴的增益。（<a href="https://arxiv.org/html/2610.37001v1#S4">§4</a>）</p>
+<h2 id="第-56-節與附錄限制與成本">第 5–6 節與附錄：限制與成本</h2>
+<p>作者指出未見資料配方、新訓練條件下可靠外推，以及以等預算前瞻實驗證明決策改善仍待解決。較低預測誤差本身不能證明節省算力。（<a href="https://arxiv.org/html/2610.37001v1#S5">§5–6</a>）</p>
+<p>作者自報，獨立 joint-context 基準在單張 H200 上處理 1,905 個最終損失查詢需 1.79 秒，但這不是主表所有選擇與預測路徑的端到端時間，也不含基礎模型預訓練。附錄另述 679 組設定的 TabPFN 調整搜尋耗 9.9 H200 GPU 小時；零權重微調不代表選擇與搜尋免費。（<a href="https://arxiv.org/html/2610.37001v1#S2">§2</a>、<a href="https://arxiv.org/html/2610.37001v1#A1.SS4">附錄 A.4</a>、<a href="https://arxiv.org/html/2610.37001v1#A3.SS3">附錄 C.3</a>）</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2610.37001_MetaModels.%E6%91%98%E8%A6%81.html">Meta Models 摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

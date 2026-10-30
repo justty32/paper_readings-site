@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>WALL-E 2.0: World Alignment by NeuroSymbolic Learning improves World Model-based LLM Agents 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Siyu Zhou、Tianyi Zhou、Yijun Yang、Guodong Long、Deheng Ye、Jing Jiang、Chengqi Zhang</p><p>日期：2025-04-22（v1，cs.AI）</p><p>arXiv：2504.15785</p><p><a href="https://arxiv.org/abs/2504.15785" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="wall-e-20-world-alignment-by-neurosymbolic-learning-improves-world-model-based-llm-agents">WALL-E 2.0: World Alignment by NeuroSymbolic Learning improves World Model-based LLM Agents</h1>
+<h2 id="摘要與問題第-1-節">摘要與問題（第 1 節）</h2>
+<p>LLM agent 在遊戲、VR/AR、醫療、自駕等開放世界任務裡不夠可靠，主因是 LLM 先驗常識驅動的推理和環境的實際動態有落差，導致預測未來狀態出錯、幻覺、違反環境規則。世界對齊（對齊環境動態）相較人類偏好對齊還不充分，多數既有 agent 又是 model-free 的，直接在真實環境執行動作、不先在世界模型裡驗證，帶來安全風險與次優軌跡。</p>
+<p>作者提出 WALL-E 2.0，免訓練管線：分析已探索軌跡與世界模型預測軌跡，學出環境專屬、補足 LLM 先驗的符號知識（action rules、knowledge graph、scene graph），轉成可執行 code rules 把 LLM 變成 neurosymbolic 世界模型；再提出 RL-free、model-based agent，以 MPC 運作，用 LLM agent 當高效 look-ahead 優化器取代傳統 MPC 昂貴的線上採樣。相較 WALL-E 1.0，2.0 版新增歸納學習的 knowledge graph、動態建構的 scene graph，整合成統一世界模型。</p>
+<h2 id="方法第-3-節">方法（第 3 節）</h2>
+<p>環境形式化為 POMDP；因部分可觀測，policy 只拿得到觀測、拿不到隱狀態。NeuroSymbolic Learning of Code Rules 分四階段（3.1）：</p>
+<p><strong>Stage 1 軌跡探索</strong>：把世界模型預測任務簡化成二元分類——轉移會成功或失敗，而非直接預測完整下一步觀測（觀測可由成敗推得，直接預測更易受隨機因素干擾）。比對真實軌跡與預測軌跡，分成預測正確、預測錯誤兩集合。真實軌跡用來歸納新規則；錯誤集合當診斷集，供 Stage 4 剪枝評估。</p>
+<p><strong>Stage 2 學習符號知識</strong>：action rules（決定性轉移）由 LLM 對歷史轉移做歸納推理，抓決定性限制，例如「對動作 make，若 table 不在 near_objects 裡，動作失敗」；knowledge graph（POMDP 限制）依軌跡建有向標籤圖，節點是物品/材料/地點，邊帶 require、consume、enable 等標籤代表前置與消耗關係；scene graph（補全部分可觀測）記錄實體/地點及其空間關係，每步從觀測更新。</p>
+<p><strong>Stage 3 翻譯成 code rules</strong>：LLM 把符號知識翻成 Python 函式，格式為 <code>CodeRule(obs, action, KG/SG) -&gt; feedback, suggestion, flag</code>，flag 是布林值，feedback/suggestion 是規則失敗時自動生成的說明與建議。</p>
+<p><strong>Stage 4 規則剪枝（規則庫治理核心）</strong>：規則數隨互動累積增長，需剪枝避免冗餘。規則統一結構為「若狀態條件則成功/失敗，否則空」；規則啟動、輸出非空、又糾正了某個原本預測錯誤的轉移時，稱該轉移被此規則覆蓋。剪枝形式化成最大覆蓋最佳化：在規則數上限 K 下挑出覆蓋錯誤轉移數最大的最小規則子集（K 越大效果越好），貪婪演算法每輪挑新增覆蓋量最大的規則，直到無法新增覆蓋或撞到 K，過程淘汰只覆蓋「本來就對」轉移的規則，以及被更全面規則涵蓋的冗餘規則。</p>
+<h3 id="model-predictive-control32">Model-Predictive Control(3.2)</h3>
+<p>agent 每步問世界模型「這動作會怎樣」，世界模型給預測，code rules 檢查一致性：衝突時規則結果覆蓋 LLM 預測，並給 feedback、建議、flag 引導 agent 調整，直到被接受或達迭代上限（Algorithm 2）。相較傳統 MPC 依賴隨機採樣，這裡靠 LLM 先驗與推理當 look-ahead 優化器。整體是 MPC 與 NeuroSymbolic Learning 交替迭代（Algorithm 3），免訓練下持續適應。</p>
+<h2 id="實驗第-4-節作者自報">實驗（第 4 節，作者自報）</h2>
+<p><strong>Benchmark</strong>：Mars（基於 Crafter 改版，靠修改地形/生存設定/任務依賴產生反常識世界，測試 situated inductive reasoning）；ALFWorld（家居模擬環境，134 個測試任務）。</p>
+<p><strong>Mars 主結果</strong>：相較 PPO、DreamerV3、ReAct、Reflexion、Skill Library、IfR、WALL-E 1.0，reward 提升 16.1%–51.6%，score 至少提升 61.7%。DreamerV3 絕對 reward 更高但訓練用了 100 萬環境步，WALL-E 2.0 只用 5,600 步（0.56% 預算）。反常識場景下各方法普遍下降 3.3%–97.1%，WALL-E 2.0 重新對齊後 reward 至少提升 21.8%、score 至少提升 51.6%。vs SOTA IfR:reward 3.6→6.7、score 4%→15.3%，分別超越 17.9%、51.6%，因 IfR 只學自然語言規則、易受先驗干擾，WALL-E 2.0 多學 KG/SG 且用 code rules 強制遵守。</p>
+<p><strong>ALFWorld</strong>（Table 2，GPT-3.5-Instruct 骨幹）：平均成功率 98%（Pick 100、Clean 100、Heat 96、Cool 100、Examine 100、Picktwo 94），4 次迭代達成，優於 WALL-E 1.0/RAFA（95%）、AdaPlanner（91%）、人類表現（91%）。</p>
+<p><strong>NeuroSymbolic Learning 有效性（4.4）</strong>：cover rate（原本預測錯的轉移被新符號知識糾正的比例）隨迭代從 0% 升到 92.3%，reward 隨之從 3.6 升到 6.7；對照組 skill library reward 只到 4.5，5 次迭代內 WALL-E 2.0 多提升 32.8%。</p>
+<h2 id="消融實驗45作者自報mars">消融實驗（4.5，作者自報，Mars）</h2>
+<p><strong>符號知識類型（Table 3）</strong>：三者合用 reward 6.7/score 15.3/ALFWorld 98%；只用 action rules（code rules 形式）5.1/8.3/95%，降 23.9%/45.8%；只用 KG/SG（prompt learning 形式）4.4/5.2/88%，降 34.3%/66.0%。</p>
+<p><strong>Agent 與世界模型配置（Table 4）</strong>：純 LLM agent 無世界模型 3.6/4.0；加純 LLM 世界模型 3.8/4.1，幾乎無幫助；LLM+symbolic agent 無世界模型 5.5/7.4；LLM agent 配 LLM+symbolic 世界模型（主設定）6.7/15.3 全表最高；兩邊都加反降到 6.3/13.1。符號知識放世界模型提升約 46.3%，放 agent 約 30.9%。</p>
+<p><strong>規則剪枝消融（Table 5）</strong>：不剪枝時 reward 從 6.7 暴跌到 1.5、score 從 15.3 跌到 1.6；規則上限越小效能越差（limit 5:6.2/12.8；limit 3:5.7/9.5；limit 1:4.3/8.1）。</p>
+<p><strong>附錄 D 規則範例</strong>：規則編號依動作分開計數，因剪枝不連續。Mars 例：「對 mine，若無 stone_pickaxe 或更好的鎬，mine iron 會失敗」，翻成對應的 Python 檢查函式，feedback/suggestion 由 LLM 自動生成。</p>
+<h2 id="結論與局限第-5-節附錄-f">結論與局限（第 5 節、附錄 F）</h2>
+<p>透過 neurosymbolic knowledge learning 對齊環境動態後，LLM 能有效當 agent 世界模型：免梯度、程式碼形式整合 action rules、knowledge graph、scene graph，彌合 LLM 先驗與特定環境落差，Mars、ALFWorld 上成功率超越 baseline 16.1%–51.6%，ALFWorld 4 次迭代創下 98% 新紀錄。</p>
+<p>局限：目前框架只產生「動作是否符合環境動態」的轉移層級規則，未涵蓋更抽象的整體規劃規則。許多環境本身有隨機動態（例如 Mars 夜間採集常因敵對生物失敗但偶爾成功），目前流程一律把這類情境歸為失敗，是後續值得投入的方向。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2504.15785_WALLE2.%E6%91%98%E8%A6%81.html"><code>../summarize/2504.15785_WALLE2.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

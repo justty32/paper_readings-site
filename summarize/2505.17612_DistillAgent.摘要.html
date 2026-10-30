@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Agent Distillation：把 LLM Agent 蒸餾進小模型：搭配檢索與程式碼工具》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Minki Kang (KAIST)、Jongwon Jeong (UW-Madison)、Seanie Lee (KAIST)、Jaewoong Cho (KRAFTON)、Sung Ju Hwang (KAIST/DeepAuto.ai)</p><p>日期：2025-11-05（NeurIPS 2025）</p><p>arXiv：2505.17612</p><p><a href="https://arxiv.org/abs/2505.17612" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="agent-distillation把-llm-agent-蒸餾進小模型重點摘要">《Agent Distillation：把 LLM Agent 蒸餾進小模型》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>提出的 <strong>Agent Distillation</strong> 框架不蒸餾 LLM 的「答案」，而是蒸餾 LLM agent 的**「思考—行動—觀察」完整互動軌跡**，讓小模型（sLM，0.5B–7B）學會像 agent 一樣<strong>自行搜尋（retrieval）、寫 Python 碼（code execution）、根據工具回饋修正</strong>，而非死記靜態推理鏈（CoT）。搭配 <strong>First-Thought Prefix</strong>（借 CoT 首步推理修復 agent prompt 的分佈偏移）和 <strong>Self-Consistent Action Generation</strong>（test-time 多重採樣+過濾無效程式碼+多數一致投票），讓 0.5B/1.5B/3B 蒸餾 agent 的均分勝過以 CoT 蒸餾的下一級 1.5B/3B/7B 模型，尤其在 out-of-domain 的事實（HotPotQA/Bamboogle/MuSiQue/2Wiki）與數學（MATH/GSM-Hard/AIME/OlymMATH）推理任務上泛化更強。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>CoT 蒸餾（teacher 生推理鏈→student 模仿）在需要<strong>稀有知識或精確計算</strong>時常失敗：小模型硬記 teacher 的推理步驟卻缺乏驗證機制，容易幻覺（hallucination）。例如「2010 年投 $100 買 AAPL，2020 值多少？」——CoT 蒸餾的學生遇到換股票代碼（NVDA）時算錯 split 次數，因學生只是背了 AAPL 的推論而非學到「檢索+計算」。</p>
+<h2 id="ai_core-關聯2-工廠消費者">ai_core 關聯：§2 工廠→消費者</h2>
+<p>本論文直接對應 <strong>ai_core §2 的「貴稀有智能＝資產工廠 vs 便宜高頻智能＝資產消費者」</strong> 分工：大 LLM（32B）充當「工廠」——生成高品質 agent 軌跡（思考→寫碼→觀察→修正）——然後以知識蒸餾將完整問題解決行為<strong>批次灌注進消費級小模型（0.5B–3B）</strong>，讓便宜的小模型端側也能展現類 agent 的決策—執行動作—工具使用能力。這是 ai_core 願景的核心路徑：把 LLM 的產物（軌跡）轉化成永久的、可重複使用的「agent 行為資產」。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>Agent Distillation（AD）</strong>：與 CoT 蒸餾對比——CoT 只蒸餾「想什麼（thoughts）」，AD 蒸餾「想什麼（Thought）→做什麼（Action，Python code）→看到什麼（Observation）」整輪迴圈。損失函數只在 thought + action token 上計算（observations 由環境提供，不計入 loss）。基底框架為 CodeAct（smolagents）。</li>
+<li><strong>First-Thought Prefix（FTP）</strong>：原因——instruction-tuned LLM 用 agent prompt 時，初始推理步驟常比用 CoT prompt 差（分佈偏移）。解法——先用 CoT prompt 生成第一步推理，再把該步當成 prefix 餵進 agent prompt 繼續生成完整軌跡。<strong>FTP 僅用於 teacher 生成軌跡，student 推論時不需要</strong>。</li>
+<li><strong>Self-Consistent Action Generation（SAG）</strong>：小 agent 推論時常產出無效程式碼（parse error / 執行錯誤）。SAG 每步採樣 N=8 條（高溫 nucleus sampling），用輕量 interpreter 過濾掉報錯的、保留執行成功者、挑出 observation 最一致（多數投票）的作為最終 action；全失敗則取一個錯誤、用 interpreter 回饋供下一步修正。</li>
+<li>訓練：teacher=Qwen2.5-32B-Instruct，student=0.5B/1.5B/3B/7B Qwen2.5-Instruct。LoRA rank=64 全線性層，2 epochs。Wikipedia 2018 作 KB，e5-base-v2 embedding。HotPotQA(1000)+MATH(2000) 訓練，過濾錯誤軌跡得約 2000 條訓練軌跡。</li>
+</ul>
+<h2 id="關鍵結果8-基準in-domain--out-of-domain">關鍵結果（8 基準，in-domain + out-of-domain）</h2>
+<ul>
+<li><strong>跨規模一致提升</strong>：0.5B agent ftp+sag Avg=21.90，勝 CoT 7B (33.54) 尚未，但對比同規模 CoT baseline——0.5B AD 30.55 vs CoT 15.90（+14.65）；1.5B AD 36.60 vs CoT 24.64（+11.96）；3B AD 42.68 vs CoT 32.16（+10.52）。</li>
+<li><strong>跨級超越</strong>：0.5B agent 平均 30.55 &gt; 1.5B CoT (24.64)；1.5B agent (36.60) &gt; 3B CoT (32.16)；3B agent (42.68) &gt; 7B CoT (33.54)。</li>
+<li><strong>Out-of-domain 強勢</strong>：尤其在 OlymMATH 和 AIME 等困難數學上 agent 大幅領先——0.5B AIME：CoT 0.0→AD(+ftpsag) 3.3；3B OlymMATH：CoT 5.0→AD(+ftpsag) 11.5。</li>
+<li><strong>FTP 效果</strong>：在 MATH500 難度 Level 4–5 和 AIME 上 FTP 顯著提升，但對 HotPotQA 偶有負效（FTP 鼓勵 agent 直接陳述事實而非檢索，增加幻覺風險）。</li>
+<li><strong>SAG 效果</strong>：顯著降低 parse error + execution error，對 0.5B 模型尤為明顯（圖 7）；test-time 自一致優於 CoT 的 self-consistency（圖 5）。</li>
+<li><strong>Code-specific 模型增益有限</strong>（表 3）：Qwen-Coder 做 teacher 學生差別不大——「code knowledge 不是學生瓶頸」。</li>
+<li><strong>跨模型家族驗證</strong>：Llama-3.2-1B 和 Phi-4-mini 上均一致改善（表 4）。</li>
+</ul>
+<h2 id="局限作者自陳">局限（作者自陳）</h2>
+<ul>
+<li>僅用 Qwen2.5 系（未測 LLaMA/Gemma）；僅用單一 teacher（32B，未測更大/GPT-4）；未探索每題多軌跡的效應；未觸及 embodied/web agent。FTP 有時內部陳述事實而不檢索，增加幻覺。Agent 蒸餾未直接提升核心推理能力（RL in tool-augmented env 可補充）。程式碼安全（sandbox）仍待解決。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>這是第一份把 <strong>LLM agent 行為蒸餾進 sub-3B 模型</strong>的系統性研究，展示「不蒸餾答案、蒸餾行動過程」的可行性。最值得記：<strong>Agent Distillation &gt; CoT Distillation 尤其在 out-of-domain</strong>；<strong>FTP 解決 instruction-tuned LLM 的 agent-prompt 分佈偏移</strong>；<strong>SAG 是針對小模型程式碼產出脆弱的 test-time 修正</strong>；<strong>蒸餾後的 token 生成量不顯著增加（圖 6：事實型多用檢索 token，數學型用 for-loop 反而更少 token）</strong>。</li>
+<li>適合任何關注 small agent、知識蒸餾、tool-augmented LLM、on-device AI 的研究者與工程師。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2505.17612_DistillAgent.zh-TW.html"><code>../translate/2505.17612_DistillAgent.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

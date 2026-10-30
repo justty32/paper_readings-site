@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.13647_FlowCompile.zh-TW.html">回 2605.13647_FlowCompile.zh-TW 目錄</a>　<a href="02_FlowCompile_%E6%96%B9%E6%B3%95.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4 實驗</h2>
+<h3 id="41-設定">4.1 設定</h3>
+<p><strong>指標</strong>：任務準確性與端到端延遲（在單一 H100 GPU 上以 vLLM 測量）。偏好感知評估使用預期效用（expected utility）：U(c; α) = α Acc(c) + (1 − α) LES(c)，其中 LES 為延遲效率分數，α 控制準確性–延遲偏好。代理評估使用 Spearman 相關、pairwise agreement 與校正後 MAE（cMAE）。</p>
+<p><strong>設計空間</strong>：三維度——模型大小（Qwen-3 家族：0.6B/1.7B/4B/8B/14B）、推理預算（10 至 16,000 tokens，以 budget forcing 強制）、工作流結構（基於 AFlow，各子代理可選擇性執行，SelfEnsemble 僅在 ≥2 分支啟動時執行）。</p>
+<p><strong>資料集</strong>：四個 benchmark——數學推理（GSM8K, MATH-500）、多跳問答（HotpotQA）、程式碼推理（LiveCodeBench）。1:4 分割為 profiling 集（20%）和測試集（80%）。</p>
+<p><strong>基線</strong>：(1) 單模型（Qwen3-32B, QwQ-32B）；(2) 固定工作流（所有子代理使用相同模型）；(3) 路由基線（KNN router、MaAS、Pref-Aware Router、Pref-Aware MaAS）。</p>
+<h3 id="42-代理驗證">4.2 代理驗證</h3>
+<p><strong>前沿一致性</strong>：在可窮舉評估的受限設計空間上（HotpotQA: 252 配置，LiveCodeBench: 80 配置），代理估計的前沿與實測前沿匹配良好，代理選出的配置在實測空間中構成高品質前沿。</p>
+<p><strong>局部排序保留</strong>：從 compiled set 取樣 20 個配置進行完整測試集評估，平均 pairwise agreement 達 accuracy 0.90 / latency 0.95。MATH-500 是 accuracy 估計最具挑戰性的案例，但代理仍保留大部分成對排序。偏差校正後平均 latency error 4.4 秒、accuracy error 2.3 百分點。</p>
+<h3 id="43-已編譯配置的端到端品質">4.3 已編譯配置的端到端品質</h3>
+<p><strong>準確性–延遲權衡</strong>：FlowCompile 在所有 benchmark 上持續以可比或更高準確性實現更低延遲。Accuracy-priority 配置在與完整 Qwen3-14B 工作流基線相當的準確性下實現平均 3.4× 加速（LiveCodeBench 達 6.4×）；latency-priority 配置實現平均 12.7× 加速且保持競爭力準確性。</p>
+<p><strong>偏好感知評估</strong>：異質偏好設定下（每個查詢隨機抽樣 α），FlowCompile 在所有 benchmark 上達到最高預期效用，平均優於最強基線 +7.9。固定偏好設定下，FlowCompile 在所有偏好值上實現最高平均效用，而偏好感知路由基線僅在較窄偏好範圍內有效。</p>
+<p><strong>質性分析</strong>：已編譯配置形成可解釋的操作區間——latency-priority 配置偏好較簡單的工作流和低成本模型–預算選擇，accuracy-priority 配置將計算分配給任務關鍵階段。對數學推理，accuracy 來自選擇性啟動額外推理階段及為關鍵階段分配更大預算或更強模型；對問答，主要變化在模型和預算分配而非工作流結構；對程式碼推理，主要結構性調節器是修復嘗試次數。</p>
+<h3 id="44-額外分析">4.4 額外分析</h3>
+<p><strong>逐查詢路由</strong>：將 FlowCompile 與 KNN router（k=20）結合，讓路由器在 compiled set 中為每個查詢選擇配置。GSM8K 上預期效用從 89.2 提升至 91.8，MATH-500 上從 84.2 提升至 90.5。分析顯示路由器雖未觀察難度標籤，其選擇的配置仍與問題難度相關——簡單題分配較低延遲配置、難題分配更高計算配置。</p>
+<p><strong>跨 benchmark 轉移</strong>：在 MATH-500 上 profiling 的子代理資料復用於 GSM8K 編譯（無重新 profiling），轉移後的 profiles 保留強延遲相關性（0.94）、合理準確性相關性（0.76）和有競爭力的預期效用（86.43），表明可跨相關任務復用 profiles 以降低編譯成本。</p>
+<p><strong>消融研究</strong>（HotpotQA）：設計空間從僅 model choice（69.7）→ 加入 budget（83.2）→ 再加入 structure（88.4），預期效用持續提升。參考模型消融：以 GPT-5-mini 或 Qwen3-1.7B 替代 GPT-5 進行子代理資料誘導，產生的前沿高度一致，表明只要參考模型能生成合理的工作流軌跡，編譯管線就具有穩健性。</p>
+<h2 id="5-結論">5 結論</h2>
+<h2 id="flowcompile-是結構化-llm-工作流的優化編譯器我們主張結構化工作流優化應被視為編譯問題而非僅是執行期路由通過將工作流優化轉化為可復用的編譯期產物flowcompile-使配置能在多樣化部署需求下被選擇和適應更廣泛地我們的結果推動工作流編譯成為未來-llm-應用的系統抽象其中效率可控性和適應性必須在工作流層級進行管理">FlowCompile 是結構化 LLM 工作流的優化編譯器。我們主張結構化工作流優化應被視為編譯問題，而非僅是執行期路由。通過將工作流優化轉化為可復用的編譯期產物，FlowCompile 使配置能在多樣化部署需求下被選擇和適應。更廣泛地，我們的結果推動工作流編譯成為未來 LLM 應用的系統抽象，其中效率、可控性和適應性必須在工作流層級進行管理。</h2>
+<h2 id="part-44-parent_file-260513647_flowcompilezh-twmd">part: 4/4
+parent_file: 2605.13647_FlowCompile.zh-TW.md</h2>
+<h2 id="限制">限制</h2>
+<p>FlowCompile 專為執行圖和子代理介面在執行前已指定的<strong>結構化 LLM 工作流</strong>設計。此範圍匹配許多程式化工作流系統，但較不直接適用於執行軌跡在推理時動態建構的開放式代理系統（如具有無界工具使用模式的 ReAct 風格代理）。將工作流編譯擴展到此類動態設定將需要額外的軌跡抽象或線上工作流圖建構機制。</p>
+<p>FlowCompile 還依賴工作流層級代理進行編譯期搜尋。儘管實驗在前沿一致性和局部排序保留方面驗證了代理的有效性，代理仍是一個近似而非精確模擬器。其有效性取決於獨立誘導的子代理 profiles 能否捕捉子代理之間的主要互動，包括不同上游配置產生的中間輸入。代理驗證結果表明此類分佈偏移在所評估的工作流中未實質性影響前沿結構，使 FlowCompile 能可靠識別高品質配置。更顯式地建模這些偏移可進一步提高編譯器的估計準確性，並將其有效性擴展到更異質和複雜的工作流。</p>
+<h2 id="更廣泛影響">更廣泛影響</h2>
+<p>FlowCompile 旨在通過編譯跨越準確性–延遲權衡的可復用配置集來改善結構化 LLM 工作流的效率。一個潛在的正面影響是：此類優化可降低推理成本和延遲，使結構化 LLM 系統在實際部署約束下更易於使用。通過暴露多個操作點而非單一配置，FlowCompile 也可幫助實踐者基於資源預算和任務需求做出更透明的部署決策。</p>
+<p>同時，FlowCompile 是 LLM 工作流的優化框架，本身不保證底層模型或工作流輸出的安全性、公平性、隱私性或事實可靠性。若應用於高風險領域（如臨床、法律或金融決策支援），已編譯的配置應以領域特定的驗證、監控和保護措施進行評估。更高效的工作流執行也可能在負責任使用不當的情況下降低部署有害或不可靠 LLM 應用的成本。因此，FlowCompile 應被視為效率和配置優化層，而非應用層級安全性評估和負責任部署實踐的替代品。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

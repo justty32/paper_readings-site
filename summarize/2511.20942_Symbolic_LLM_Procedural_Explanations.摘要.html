@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《透過受限生成改進程序技能解釋：符號-LLM 混合架構》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：（Ivy 團隊；致謝 Georgia Tech Spencer Rugaber；NSF/AI-ALOE 資助）</p><p>日期：2025-11，AI for Education / NeSy</p><p>arXiv：2511.20942</p><p><a href="https://arxiv.org/abs/2511.20942" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="透過受限生成改進程序技能解釋符號-llm-混合架構重點摘要">《透過受限生成改進程序技能解釋：符號-LLM 混合架構》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>AI 教育</strong>場景的符號-LLM 混合：教程序技能時，LLM 的解釋常<strong>流暢但淺薄</strong>，缺了老師期望的結構邏輯——<strong>因果（步驟依狀態）、目的（步驟服務目標）、分解（問題拆子目標）</strong>。本文用 <strong>TMK（Task-Method-Knowledge）符號模型當「主動鷹架」約束 LLM 生成</strong>：TMK 層定義可推理空間（有限狀態機 + 目標階層 + 守衛條件），LLM 層在此結構界內合成解釋。系統 <strong>Ivy</strong> 顯示符號約束一致提升「how/why」解釋的結構品質，<strong>分解維度提升最大</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>Ivy（2025 春部署於研究生 AI 課）回答程序技能問題，流暢但缺結構：<strong>causality</strong>（步驟如何依狀態）、<strong>teleology</strong>（步驟為何服務總目標）、<strong>decomposition</strong>（問題如何拆子目標）。</li>
+<li>技能遷移（有意義學習的標竿）需理解「為何/如何」程序有效，非表層流暢 → <strong>提升解釋的推理結構是教學價值的核心</strong>。</li>
+<li>既有 <strong>TMK-Basic</strong> 只捕捉目標 + 機制，<strong>未顯式編碼因果轉移、目標階層、形式分解</strong> → 引導出的答案流暢但泛泛。</li>
+</ul>
+<h2 id="核心設計">核心設計</h2>
+<ul>
+<li><strong>TMK-Structured</strong>（本文）把三種推理結構顯式化：<strong>因果轉移（有限狀態機 FSM）、目的連結（目標階層）、階層分解（目標抽象）</strong>。</li>
+<li><strong>受限生成架構</strong>：分離<strong>符號控制（TMK 層：FSM/目標階層/安全條件/轉移）<strong>與</strong>生成解釋（LLM 層：詮釋 TMK、生成解釋）</strong>。LLM 在 TMK 結構界內生成 → 措辭靈活但<strong>邏輯不漂移</strong>（TMK 定義合法的移動與理由空間）。</li>
+<li>範例「守衛與囚犯（Guards and Prisoners）」：<code>ReturnGuardMechanism</code> 是一等模組——typed I/O、明確 start/success/failure 狀態、各狀態標為 operation 或 subgoal;<strong>轉移由因果守衛（如 safe(S_i)&amp;&amp;safe(S_i+1)）把關</strong>，守衛失敗則路由到 Failure。</li>
+<li><strong>四階段管線（Algorithm 1，用 GPT-4o-mini）</strong>：
+<ol>
+<li><strong>問題範圍分類</strong>：把學生問題與 TMK 的 Goal/Mechanism/Concept 頂層名稱做嵌入比對；超閾值則進 TMK 推理，否則交無約束的 <strong>RAG-GPT</strong>;</li>
+<li><strong>結構化知識檢索</strong>：取 top-k TMK 條目（父 Goal、Mechanism FSM、Concept 如 safe(config)），how 型問題優先 Mechanism;</li>
+<li><strong>受限合成</strong>：LLM 須 (i) 只敘述 Mechanism 守衛指定的轉移（因果）、(ii) 把每步連到父目標與成功狀態（目的）、(iii) 每狀態點名所呼叫的 operation/subgoal（分解）;</li>
+<li><strong>連貫性優化</strong>：壓成 5–7 句、保留關鍵守衛與目標達成標記。</li>
+</ol>
+</li>
+</ul>
+<h2 id="評估">評估</h2>
+<ul>
+<li><strong>設定</strong>：20 個程序技能問題（4 技能 × 5），4 系統（<strong>Standard GPT、RAG-GPT、Ivy+TMK-Basic、Ivy+TMK-Structured</strong>，全用 GPT-4o-mini）→ 80 輸出。三維度（causal/teleological/compositional）× 0–2 評分表；專家 + 獨立標註者，共 560 份評估。</li>
+<li><strong>正確性</strong>：TMK-Basic 與 TMK-Structured 皆 <strong>0.65 完全正確</strong> vs RAG-GPT 0.35、Standard GPT 0.15 → 結構約束降失敗率、提高事實正確上限。</li>
+<li><strong>推理結構（僅正確答案的均值，0–2）</strong>：<strong>TMK-Structured 每維最高</strong>（causal 1.6 / teleological 1.333 / compositional 1.5）&gt; TMK-Basic（1.5/1.167/1.3）&gt; RAG-GPT（1.4/1.083/0.7）&gt; Standard GPT（0.7/0.917/0.6）。
+<ul>
+<li><strong>最大差距在分解</strong>：TMK-Structured 1.5 vs Basic 1.3（+0.2）、RAG 0.7（+0.8）、GPT 0.6（+0.9）——正是 TMK 設計要鷹架的多步階層推理。</li>
+</ul>
+</li>
+<li><strong>新手/專家一致性</strong>：TMK-Structured 最高（teleology F1=0.843、decomposition F1=0.752、causality F1=0.765）→ 專家認為該有的結構，TMK 約束輸出能讓新手可靠辨認。</li>
+<li><strong>教師對齊</strong>（專家評分 vs 其 DimensionExpected 期望）：TMK-Structured 領先（causal F1=0.909、teleology F1=0.917、decomposition F1=0.900）。</li>
+</ul>
+<h2 id="結論與局限">結論與局限</h2>
+<ul>
+<li>TMK 當<strong>主動鷹架</strong>（非僅檢索脈絡）→ 同時更可靠（正確性高、失敗少）與更具教學結構（專家均值高、新手辨認強），<strong>分解增益最大</strong>。</li>
+<li>局限：資料集小（每系統 20 題）、每技能僅一位專家評正確性（無評分者間信度）、<strong>評的是解釋品質非學習成效</strong>（遷移/學生表現超出範圍）。</li>
+<li>未來：用 human-in-the-loop 自動從教綱/逐字稿/範例<strong>建構 TMK-Structured</strong>、自動推導 DimensionExpected、用單元測試 + 反例引導精煉；真課重新部署研究學習成效。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批中<strong>最偏「AI 教育應用」<strong>的 NeSy，與 <a class="paper-reference" href="2407.10162_ChatLogic.%E6%91%98%E8%A6%81.html">2407.10162</a><a class="paper-reference" href="2501.14540_VERUS_LM.%E6%91%98%E8%A6%81.html">2501.14540</a> 的「結構約束 LLM 生成」同脈，但這裡的符號結構是</strong>教學用的 TMK（FSM + 目標階層）</strong>、目的是<strong>教學對齊</strong>而非邏輯正確性。</li>
+<li>關鍵思想：<strong>把符號表示當「主動生成約束（active scaffold）」而非靜態脈絡</strong>（對比 RAG 的「相關文字」）——給 LLM「技能的操作語意」而非「相關文字」。與 grammar-constrained decoding（CRANE）等同精神，但用於程序技能教學。</li>
+<li>與 <a class="paper-reference" href="2502.01806_Neurosymbolic_Program_Comprehension.%E6%91%98%E8%A6%81.html">2502.01806</a>（NsPC 把規則嵌回模型）都關心「可解釋 + 符號結構提升可靠性」，但本篇在生成端用 FSM 約束。</li>
+<li>最值得記：<strong>三維度評估框架（因果/目的/分解 × 0–2）</strong> 是評「解釋結構品質」的可操作 rubric;<strong>四階段受限生成管線</strong>是把符號 KB 接到 LLM 的具體配方。定位是部署系統 + 系統級評估（非學習成效、規模小）。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2511.20942_Symbolic_LLM_Procedural_Explanations.zh-TW.html"><code>../translate/2511.20942_Symbolic_LLM_Procedural_Explanations.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

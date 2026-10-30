@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2506.09669_QueryLevelUncertainty.zh-TW.html">回 2506.09669_QueryLevelUncertainty.zh-TW 目錄</a>　<a href="02_%E5%95%8F%E9%A1%8C%E9%99%B3%E8%BF%B0%E8%88%87%E6%96%B9%E6%B3%95.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-設定">4.1 設定</h3>
+<ul>
+<li><strong>模型</strong>：三種尺寸——Phi-3-mini-4k-instruct（3.8B）、Llama-3.1-8B-Instruct、Qwen2.5-14B-Instruct，以檢驗跨尺寸的通用性（IC 亦可用於非指令調校模型）。</li>
+<li><strong>實作</strong>：Llama/Qwen 用 zero-shot；Phi 因小模型受惠於示範，用 two-shot。全用 greedy decoding。決策中心固定在最後層、最後 token，全模型全資料集 <strong>α=1.0</strong>。</li>
+<li><strong>資料集</strong>：TriviaQA、SciQ（兩個事實 QA）、GSM8K（數學推理），樣本數各 10,000 / 10,000 / 5,000，各留 1,000 作驗證。以 greedy 解碼取回應；短答案資料集以 <strong>ROUGE-L &gt; 0.3</strong> 判正確（沿用 Kuhn et al., 2023），GSM8K 用 LLM 評分器 Mistral-Large 評「推理步驟＋最終答案」（驗證推理鏈確保模型真懂而非碰巧答對）。每查詢配一個「模型能否解」的二元標籤。</li>
+<li><strong>基線</strong>：把 SOTA answer-level 方法改寫成生成前版本——Max(−log p)、Predictive Entropy、Min-K Entropy、Attentional Entropy、Perplexity、Internal Semantic Similarity、P(Yes)（top right，即式 1）、P(Yes)（naive avg，用樸素平均彙整的 IC 變體）。</li>
+<li><strong>指標</strong>：把「分辨可答/不可答」視為排序問題，用 <strong>AUROC</strong>、<strong>PRR（Prediction Rejection Ratio）</strong>，另用 **ECE（Expected Calibration Error）**評校準。</li>
+</ul>
+<h3 id="42-internal-confidence-能辨識可答與不可答查詢">4.2 Internal Confidence 能辨識可答與不可答查詢</h3>
+<p>表 1 顯示 IC 在三模型 × 三資料集的<strong>平均 AUROC 與 PRR 一致勝過所有基線</strong>，且<strong>模型愈大優勢愈明顯</strong>：Qwen-14B 上 IC 平均 <strong>AUROC 67.1、PRR 31.7</strong>，明顯超越所有方法（Llama-8B 平均 AUROC 64.2、Phi 59.8）。校準（ECE）方面 IC 也普遍最低。變體 P(Yes)(top right) 與 P(Yes)(naive avg) 一般遜於完整方法，凸顯<strong>衰減編碼及其遞減權重</strong>在彙整跨層/跨 token 信號上的重要性。</p>
+<p>（表 1 擇要，平均欄）</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>平均 AUROC↑</th>
+<th>平均 PRR↑</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Perplexity</td>
+<td>57.7</td>
+<td>15.3</td>
+</tr>
+<tr>
+<td>P(Yes)(top right)</td>
+<td>60.9</td>
+<td>23.1</td>
+</tr>
+<tr>
+<td>P(Yes)(naive avg)</td>
+<td>63.5</td>
+<td>28.0</td>
+</tr>
+<tr>
+<td><strong>Internal Confidence</strong></td>
+<td><strong>67.1</strong>（Qwen）</td>
+<td><strong>31.7</strong>（Qwen）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="43-internal-confidence-遠快於-answer-level-方法">4.3 Internal Confidence 遠快於 answer-level 方法</h3>
+<p>在 Qwen-14B/GSM8K 上比較（表 2）：answer-level 方法如 Semantic Entropy（151.8s）、Lexical Similarity（170.3s）、SAR（180.6s）、EV Laplacian（153.9s）耗時甚鉅，Perplexity 9.8s、P(True) 22.3s、MSP 25.1s、CCP 61.7s；而 <strong>IC 平均每題僅 0.3 秒、AUROC 66.8</strong>（僅次於 MSP 的 68.5），對各基線<strong>加速 30×–600×</strong>。更關鍵的是 <strong>IC 執行時間為常數、與答案長度無關</strong>：圖 4 顯示最佳 answer-level 方法 SAR 的耗時隨答案長度增長，答案逾 600 字元時逼近 500s，而 IC 的加速比隨答案變長而攀升（最高 <strong>1672×</strong>），展現其可擴展性與效率。</p>
+<p>（表 2 擇要，Qwen-14B/GSM8K）</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>AUROC↑</th>
+<th>時間（s）↓</th>
+<th>加速</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Semantic Entropy</td>
+<td>60.0</td>
+<td>151.8</td>
+<td>506×</td>
+</tr>
+<tr>
+<td>SAR</td>
+<td>65.7</td>
+<td>180.6</td>
+<td>602×</td>
+</tr>
+<tr>
+<td>P(True)</td>
+<td>65.2</td>
+<td>22.3</td>
+<td>74×</td>
+</tr>
+<tr>
+<td>MSP</td>
+<td>68.5</td>
+<td>25.1</td>
+<td>84×</td>
+</tr>
+<tr>
+<td><strong>Internal Confidence</strong></td>
+<td><strong>66.8</strong></td>
+<td><strong>0.3</strong></td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<h3 id="44-internal-confidence-讓-llm-推理更高效">4.4 Internal Confidence 讓 LLM 推理更高效</h3>
+<p>並非所有查詢都需額外資源，尤其簡單查詢。以 IC 做自適應推理，決定何時觸發 RAG／慢思考／模型級聯，實驗兩情境：</p>
+<ol>
+<li><strong>Efficient（自適應）RAG</strong>：IC 作為模型知識缺口的信號——分數高於門檻即用參數知識直答，否則觸發 RAG。相較既有以「學習分類器」或「answer-level 不確定性」決定是否檢索的方法（需訓練樣本或需先生成答案），IC <strong>免訓練且快得多</strong>，是引導自適應 RAG 的高效途徑。用 TriviaQA（其提供 web 搜尋結果作 RAG 檢索脈絡）評估。</li>
+<li><strong>Model Cascading（模型級聯）</strong>：用 Phi-3.8B（小）＋ Llama-8B（大）的兩級級聯（TriviaQA）。<strong>小模型 IC 高就不叫大模型；IC 低才把難題升級（defer）給大模型。</strong></li>
+</ol>
+<p>圖 6 顯示：兩情境中，調整信心門檻能在「效率 vs 表現」間權衡（控制外部服務/大模型呼叫頻率）；存在一個「<strong>取捨區間（trade-off region）</strong>」與一個「<strong>最佳點（optimal point）</strong>」——後者是可<strong>在不犧牲準確率下降低額外資源使用</strong>的門檻。這印證 IC 能有效辨識知識缺口，透過降低推理開銷帶來實務效益，尤其適用於 token 密集的 agentic 框架。</p>
+<h3 id="45-局部性locality影響不確定性表現">4.5 局部性（locality）影響不確定性表現</h3>
+<p>IC 用衰減編碼把機率繞著決策中心彙整，編碼的 locality 會影響估計準確度。變動式 4 的 α 得到不同 locality 的編碼，圖 5 報告三資料集/模型平均 AUROC。結果顯示 locality 的效果依任務類型與模型架構而異；雖最佳 locality 隨模型/資料而變，但預設 **α=1.0（Locality≈0.7）**能給出一致且有競爭力、通用性佳的表現。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>本文提出<strong>查詢層級不確定性</strong>這一新概念——不生成任何 token 就評估模型能否解某查詢；並提出新穎的 <strong>Internal Confidence</strong> 技術，利用潛在的自我評估辨識模型知識邊界。大量實驗證實其在事實 QA 與數學推理上的有效性，且辨識知識缺口的速度遠快於 answer-level 方法。進一步將其應用於高效 RAG 與模型級聯兩個自適應推理場景，揭示「取捨區間」與「最佳點」——前者可調門檻在 cost↔quality 間取平衡，後者可在不損表現下降低推理開銷。總之，Internal Confidence 是估計查詢層級不確定性的一個<strong>強而通用的基線</strong>，期望能激發此領域後續研究。</p>
+<h2 id="局限">局限</h2>
+<p>(1) 本方法需存取模型<strong>內部隱狀態</strong>，純黑箱 API 不適用。(2) 為求效率/通用而全程採<strong>固定超參</strong>（決策中心、α），並非各情境最優——附錄 D.5 顯示最佳決策中心位置隨模型/任務而變。(3) 儘管 IC 是偵測知識邊界的強基線，其表現<strong>仍落後 answer-level 方法</strong>（後者能看到真實答案）；期望本工作啟發更精細、更穩健的知識邊界偵測研究。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2506.09669_QueryLevelUncertainty.%E6%91%98%E8%A6%81.html"><code>../summarize/2506.09669_QueryLevelUncertainty.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

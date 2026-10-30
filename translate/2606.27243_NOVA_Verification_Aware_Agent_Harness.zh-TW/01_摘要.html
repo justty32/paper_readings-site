@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.27243_NOVA_Verification_Aware_Agent_Harness.zh-TW.html">回 2606.27243_NOVA_Verification_Aware_Agent_Harness.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>工業廣告推薦模型靠<strong>架構演進</strong>持續改進（RankMixer、TokenMixer-Large、MixFormer 等升級顯示更好的結構仍是品質與商業增益的關鍵來源），但在生產中開發這類升級極依賴專家、難規模化。既有自動化不足：AutoML 主要調超參，而有效增益常需嚴格約束下的跨模組變更；通用 LLM coding agent 優化「能跑的程式」，但能跑不代表是合法的推薦架構——候選可能通過本地測試卻造成<strong>靜默失敗</strong>而拉低效能。</p>
+<p>本文提出 <strong>NOVA</strong>——一個分級（level-aware）的驗證感知架構演進智能體 harness。NOVA 用<strong>架構梯度（architecture gradient）</strong>，一個受 SGD 啟發、非可微的更新訊號，聚合前次修改、驗證診斷、指標回饋與軌跡記憶來引導下一次修改。<strong>驗證級聯</strong>檢查結構語義、本地可執行性、離線有效性與線上影響；無效候選早期攔截，失敗模式記為<strong>禁區方向</strong>。<strong>L1–L4 任務分級</strong>把自動化程度對齊任務複雜度與風險，高風險任務路由給 Copilot 人類監督。部署於工業廣告系統，NOVA 在 L2 ScaleUp 與 L3 Literature-to-Production 上取得最高有效通過率（54.5% 與 60.0%），相對 coding-agent baseline 降低靜默失敗，一個「論文到生產」週期人工時間縮短逾 13 倍。線上 A/B 中，選中的 L3 候選在三個 pCVR 目標上 GMV 提升 +1.25%/+1.70%/+2.02%，pCVR 偏差降 58.8%/66.7%/37.3%。</p>
+<p><strong>關鍵詞</strong>：推薦系統、架構演進、多代理系統、模型驗證、工業廣告。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>大規模推薦模型的演化基本是一部架構創新史（LR/FM/FFM → Wide&amp;Deep/DeepFM/DCN → DIN/DIEN/SIM → RankMixer/TokenMixer-Large/MixFormer）。隨簡單特徵工程增益愈難取得，進一步的品質與商業影響愈依賴更具表達力的 backbone 與更豐富的互動機制 → <strong>架構演進</strong>自然成為工業推薦開發的自動化目標。</p>
+<p>但生產中的架構演進仍困難：容量預算下的組合式參數調整、研究論文復現…皆需專家直覺導航龐大甚至無界的搜尋空間、謹慎評估結構相容性、並經大量離線到線上管線驗證。</p>
+<p>既有 AutoML / 通用 coding agent 只自動化片段：AutoML 多優化局部變數（學習率、隱層、嵌入維度、層深），但有效改進常需跨模組拓撲變更（如把 target attention 升級成 Seq-Token 與 Non-Seq-Token 聯合建模、重設計 logit 融合路徑、用 AttentionRes 取代標準殘差），且須保形狀相容、dtype 一致、特徵依賴、訓練穩定、線上推論相容。coding agent 的成功常以軟體層訊號衡量（編譯成功、單元測試通過），但實作可能無誤執行卻違反架構語義（錯誤移除序列遮罩、self-attention 退化成 MLP、改壞 logit 融合）——這些「能跑但負面」的候選即<strong>靜默失敗</strong>。</p>
+<p>NOVA 在自我演進推薦系統方向上聚焦<strong>可審計的架構級修改</strong>，引入兩機制：① 把架構演進組織成回饋驅動搜尋——前次修改、指標變化、驗證診斷、軌跡記憶聚合成<strong>架構梯度</strong>引導下一步；② 應對靜默失敗——在昂貴訓練前檢查架構語義，並把診斷回饋成可重用的<strong>禁區方向</strong>，使驗證不只拒絕當前無效候選，還形塑後續搜尋。</p>
+<p><strong>三貢獻</strong>：(1) 架構梯度引導的演進（SGD 啟發、非可微，把多源回饋轉成下一修改方向 + L1–L4 + AutoRun/Copilot 控制，保持可審計、風險感知）;(2) 靜默失敗感知驗證（多階段級聯在訓練/線上前攔截能跑但結構無效的候選，診斷轉禁區方向）;(3) 生產部署（服務逾 10 億用戶，對比人類專家迴圈/AutoML/coding agent）。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>四線：自我演進/代理優化推薦系統（YouTube SERS、AgenticRecTune、Meta REA;NOVA 別在「訓練前架構語義檢查 + 禁區方向」）;<strong>LLM 回饋當梯度</strong>（ProTeGi、TextGrad 用 LLM 文字回饋當文字梯度；NOVA 的架構梯度是結構化訊號、聚合多源、選下一可行修改）;AutoML/NAS/HPO（搜超參或受限算子空間；NOVA 以模型結構/特徵配置/互動模組為搜尋單位）;coding agents（SWE-agent、OpenHands 優化軟體層正確性，不驗證推薦架構語義）。</p>
+<h2 id="3-問題形式化">3. 問題形式化</h2>
+<p>給定生產模型，目標是在生產約束下迭代提出、驗證、評估可行架構修改以提升推薦品質與商業指標。每個候選表為 <strong>A_t=(G_t, φ_t, F_t)</strong>（模型圖、結構超參、特徵配置）。初始 A_0 取自生產程式庫 C，論文來源 P 與靜態知識庫 KB 提供架構先驗與歷史證據。搜尋在資料 D 上評估，受 budget B（輪數、token、GPU 時、wall-clock）限。把 F_t 納入狀態因工業推薦改進常需特徵、結構、特徵-結構互動的協調變更。候選須滿足硬生產約束才可行。</p>
+<p><strong>離線/線上目標</strong>：離線內迴圈用 AUC 排序可行候選（J_offline(A)=AUC(A)）；離線搜尋停止後選最佳可行候選、以線上商業指標驗證。</p>
+<p><strong>架構梯度</strong>：因 A_t 離散且受約束、無標準梯度，NOVA 用架構梯度當修改空間的結構化更新訊號（類比 SGD，非數學梯度）：<strong>g_t = Grad(e_{t−1}, V_t, ΔJ_t, H_t)</strong>，e_{t−1} 為前次修改、V_t 為驗證診斷、ΔJ_t 為離線目標變化、H_t 為修改/失敗/診斷/指標的歷史軌跡。g_t 指定三類更新資訊。終止：離線改進門檻或 budget 耗盡。</p>
+<h2 id="4-nova-框架">4. NOVA 框架</h2>
+<h3 id="41-分級感知的架構梯度工作流">4.1 分級感知的架構梯度工作流</h3>
+<p>harness 三層：頂層固定任務級控制（複雜度 L1–L4 + 執行模式 AutoRun/Copilot）；中層執行七階段工作流（初始化→…→線上實驗與評估）；底層記驗證診斷與指標回饋、轉成下一輪架構梯度。<strong>level 控制修改範圍，mode 由 skill 規格覆蓋度決定</strong>（覆蓋→AutoRun；未覆蓋或高風險→Copilot 要人類確認）。L1/L2 多 AutoRun、L3 AutoRun 或 Copilot、L4 Copilot。</p>
+<h3 id="42-初始化與訊號來源">4.2 初始化與訊號來源</h3>
+<p>A_0 取自生產程式庫；論文來源與知識庫提供先驗與歷史有效/無效方向。</p>
+<h3 id="43-架構梯度搜尋演算法">4.3 架構梯度搜尋演算法</h3>
+<p>依任務複雜度定 level;mode=Copilot 需人類判斷、AutoRun 由語義閘自動檢查。產 K 個候選修改 → 過驗證級聯（去噪回饋、攔截靜默失敗）→ 套用更新（Copilot 需人類確認）。</p>
+<h3 id="44-靜默失敗感知多階段架構驗證">4.4 靜默失敗感知多階段架構驗證</h3>
+<p><strong>靜默失敗</strong>＝通過顯式工程檢查、能跑/能訓，但達不到預期離線/線上改進的修改。兩來源：訓練前可測的架構語義錯、以及結構合法但對商業目標無效。漸進級聯：早期輕量語義 + 可執行檢查過濾無效候選，後期對較小的已驗證集做離線/線上評估。</p>
+<ul>
+<li><strong>結構語義閘</strong>：候選可執行卻可能違反推薦架構語義（框架只要張量形狀相容就能執行遮罩/分支/特徵融合，但無法判斷遮罩方向、特徵路由、logit 融合邏輯是否符合意圖）。語義閘依 <strong>skill specification</strong> 檢查這些約束，而非只看可執行性。</li>
+<li><strong>驗證即梯度去噪</strong>：失敗候選記入軌跡記憶 H、回饋成禁區方向，讓後續迭代避開重複的結構失敗模式。</li>
+<li><strong>skill specification 來源與泛化</strong>：由歷史種子規則 + 累積禁區模式 + LLM 輔助檢查（對照意圖設計與模型脈絡）驅動；未覆蓋情形不過度自信拒絕、留給離線/線上評估；機制跨任務固定，一個任務改進的規格可被相似架構/失敗模式的後續任務重用。</li>
+<li><strong>能力邊界</strong>：規則未覆蓋或高風險失敗路由 Copilot，避免超出已覆蓋規格的自主外推。</li>
+</ul>
+<h3 id="45-系統實作">4.5 系統實作</h3>
+<p>NOVA＝主代理編排專門子代理；此執行層非獨立演算法貢獻，只是把架構梯度搜尋與驗證級聯落地到生產。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

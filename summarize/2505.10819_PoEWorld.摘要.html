@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>PoE-World: Compositional World Modeling with Products of Programmatic Experts 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Wasu Top Piriyakulkij、Yichao Liang、Hao Tang、Adrian Weller、Marta Kryven、Kevin Ellis</p><p>日期：2025-05-16（v1，cs.AI）</p><p>arXiv：2505.10819</p><p><a href="https://arxiv.org/abs/2505.10819" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="poe-world-compositional-world-modeling-with-products-of-programmatic-experts-重點摘要">PoE-World: Compositional World Modeling with Products of Programmatic Experts 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>把世界模型拆成幾百個由 LLM 合成的小型確定性 Python 程式（programmatic experts），用指數加權的 product of experts 把它們機率式地組合起來，再疊加一層硬性限制做修正，只靠不到千幀的示範就能在 Atari Pong 與 Montezuma&#x27;s Revenge 上支援規劃與跨關卡外推。</p>
+<h2 id="方法">方法</h2>
+<ul>
+<li><strong>表示</strong>：世界模型是 P(o|h) ∝ exp(Σ w_i log P_i(o|h)) 的指數加權乘積，o 是下一觀測、h 是完整歷史。假設物件每個屬性（x/y 速度、是否存在）在給定歷史下條件獨立，才能分別算正規化常數，讓推論可行。用完整歷史而非 POMDP 的壓縮潛狀態是刻意選擇：潛變數一旦引入就會把所有 expert 綁在一起，破壞模組化。</li>
+<li><strong>合成 expert</strong>：先把連續幾步觀測轉場轉成自然語言描述，再用 LLM 對單一物件類型提出因果解釋（如「碰到梯子就把 x 速度設為 0」），接著把每條解釋轉成用 <code>RandomValues</code>/<code>SeqValues</code> 標記隨機性的 Python 函式。10 個各司其職的合成模組（被動移動、互動效應、生成/刪除等）平行跑，輸出集中成 expert 池。作者發現讓 LLM 寫確定性程式碼、再由外部解譯器轉成分布，比直接要求 LLM 寫機率程式效果好，因為訓練語料裡一般 Python 遠比機率程式常見。</li>
+<li><strong>權重最佳化</strong>：L-BFGS 對負對數概似加 L1 正則做最大概似估計，權重低於閾值的 expert 直接剔除；每收到一批新轉場就重跑合成→擬合→剔除。</li>
+<li><strong>硬性限制</strong>：機率乘積傾向對未來過度近似（如落地物理只給「大致往下」）。作者另外合成一組硬性限制（用析取而非合取，因遊戲物理常有玩家身體與平台重疊等不寫實情況）做事後修正，實際只在 MR 上生效。</li>
+<li><strong>規劃器</strong>：分層規劃，先用低階規劃器（MCTS 變體或貪婪搜尋）在世界模型裡跑出「物件接觸」定義的抽象狀態圖，BFS 找抽象路徑，再由低階規劃 agent 邊執行邊重規劃；世界模型也可當模擬器預訓練 PPO，再到真環境微調。</li>
+</ul>
+<h2 id="作者報告的結果">作者報告的結果</h2>
+<p>實驗場景是 Atari Pong 與 Montezuma&#x27;s Revenge(MR)，用 OCAtari 解析成物件清單（需手動修補才可靠），示範少於千幀且非成功流程（MR 示範從未拿到正分）。另建構 Pong-Alt（3 顆球 3 個對手）與 MR-Alt（更多敵人與梯子、地圖改編自 Kangaroo）測試組合式外推，兩者都不提供示範。基線含 PPO（低資料量 100k 步與高資料量 20M 步兩組）、ReAct（LLM 直接當 policy）、WorldCoder+Planner（單一整體 Python 世界模型，改用與 PoE-World 相同的分層規劃器做公平比較）。作者自報：PoE-World+Planner 在四個環境的低資料量情境下全面勝出；PPO 要多花超過百萬步才追得上，PPO@20M 步在 MR 上從未拿過正分，PoE-World+Planner 是唯一在 MR 基礎版與 Alt 版都拿到正分的方法。把 PPO 先在 PoE-World 世界模型裡預訓練再到真環境微調能明顯加速學習（原版 PPO 要 100 萬步才贏過隨機基準，預訓練版只要 20 萬步）。下一觀測預測準確率上 PoE-World 多數設定優於 WorldCoder，唯獨 Pong 隨機幀測試集上兩者相近（隨機 agent 很少真正打到球）。拿掉硬性限制會讓 MR、MR-Alt 的規劃成功率下降，但對預測準確率沒有顯著影響——作者解讀為硬性限制做的是「損害控制」而非把爛預測變好，價值在於讓長程規劃可用。質性上，PoE-World 給 MR 合成的世界模型有 4000 行以上程式碼，WorldCoder 同任務不到 100 行；PoE-World 能正確表示玩家與平台/梯子的移動限制，WorldCoder 則讓玩家「亂飛」不受約束，還會幻想出不存在的開火動作，作者認為這與 WorldCoder 沒有細粒度機制降低有問題片段的權重有關，而 PoE-World 靠逐一剔除低權重 expert 做到了這件事。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>PoE-World 最值得借鏡的是它把「固化」拆成很多顆各自帶權重的小單位，不是一次把模糊意圖固化成一整塊決定性程式。WorldCoder 的失敗模式（整體程式一旦有段邏輯錯，無法局部降權，只能讓錯誤污染整個模型、甚至幻想出不存在的行為）正是 §5 固化引擎該提防的反例：把「模糊意圖→確定性程式碼」做成單一大 commit，除錯與信任管理都會變粗顆粒。PoE-World 的解法——擬合權重後低於閾值就剔除——把每個固化單位的信任分數做成持續可更新的量，而非一次性二元關卡，對應 §3.4 憑證准入該有的樣子：准入不是過了就永久生效，而是隨新觀測不斷重估、隨時可能被撤權。硬性限制那段也有啟發：拿掉限制不影響預測準確率，卻讓下游規劃成功率下降，說明驗證關卡的價值該用「下游任務可不可用」而非「準確率是否提高」衡量，這給 §3.2 成本梯度一個具體判準——多花一層限制的成本，買的是下游可用性而非模型分數。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2505.10819_PoEWorld.zh-TW.html"><code>../translate/2505.10819_PoEWorld.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

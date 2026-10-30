@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_Prompt_優化實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2309.03409_OPRO.zh-TW.html">回 2309.03409_OPRO.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-prompt-優化實驗">5. Prompt 優化實驗</h2>
+<p><strong>設定</strong>：優化器 LLM 為 PaLM 2-L、PaLM 2-L-IT、text-bison、gpt-3.5-turbo、gpt-4；scorer 為預訓練 PaLM 2-L 或 text-bison。基準為 GSM8K（小學數學，7,473 訓練/1,319 測試）與 <strong>BBH（Big-Bench Hard，23 個困難任務）</strong>；並在 MultiArith、AQuA 上測遷移性。評估指令時 scorer 溫度設 0（貪婪解碼），優化器預設溫度 1.0；每步提示 8 次生成 8 條指令，meta-prompt 保留至今最佳 20 條指令與 3 個隨機範例，預設跑 200 步。</p>
+<p><strong>GSM8K 主結果（表 1、表 4）</strong>：最出名結果——用 PaLM 2-L-IT 當優化器、預訓練 PaLM 2-L 當 scorer，找到 <strong>「Take a deep breath and work on this problem step-by-step.（深呼吸，一步一步解這題）」</strong>，準確率 <strong>80.2</strong>，遠勝「Let&#x27;s think step by step.」的 71.8、空字串的 34.0。不同優化器風格各異：PaLM 系簡潔（「Break this down.」79.9），GPT 系冗長細緻（gpt-3.5-turbo 的一句話 78.5、gpt-4 的 74.5）。優化曲線整體上升並帶有數次「躍升」，例如從「Let&#x27;s solve the problem」（60.5）依序出現「Let&#x27;s break it down!」（71.3）、「Let&#x27;s calculate our way to the solution!」（73.9）、「Let&#x27;s do the math!」（78.2，第 6 步）——後者幾乎已匹配第 107 步才找到的「深呼吸」名句。曲線也顯示每步指令準確率的<strong>方差逐漸下降</strong>。躍升往往發生在「發現更好指令數步之後」：meta-prompt 逐步淘汰較差指令、生成與最佳者相似的指令，直到只觸發高品質指令時便躍升。預訓練 PaLM 2-L 也能當自己的優化器（以 few-shot 格式）。</p>
+<p><strong>BBH 主結果（圖 5、表 5）</strong>：預設從<strong>空字串</strong>起優化。OPRO 找到的指令在幾乎所有任務都大幅勝過「Let&#x27;s think step by step.」——以 PaLM 2-L scorer 有 19/23 個任務勝出超過 5%，text-bison scorer 有 15/23；相對空字串起點亦在多數任務改善超過 5%（20/23、15/23）。案例：ruin_names 從空字串（64.0）逐步演化出含具體示例的長指令（82.0）；temporal_sequences 從 64.0 演化至 72.0。不同優化器風格依舊各異。</p>
+<p><strong>5.2.3 語意相近、準確率卻天差地別</strong>：以 PaLM 2-L scorer 在 GSM8K，「Let&#x27;s think step by step.」71.8、「Let&#x27;s solve the problem together.」60.5、而「Let&#x27;s work together to solve this problem step by step.」（前兩者的語意合成）只有 <strong>49.4</strong>。這正是「每步生成多條指令」以提升穩定性的動機。</p>
+<p><strong>5.2.4 遷移性（表 6）</strong>：為 GSM8K 找的頂尖指令遷移到 MultiArith、AQuA 仍勝過基準——「深呼吸」在 MultiArith 達 95.3、AQuA 54.3。</p>
+<h3 id="53-消融研究">5.3 消融研究</h3>
+<ul>
+<li><strong>指令順序</strong>：升序（低到高，預設）最佳、收斂最快，符合 LLM 的<strong>近因偏誤（recency bias）</strong>（更受 prompt 末端影響）。</li>
+<li><strong>分數呈現</strong>：顯示準確率（四捨五入為整數＝100 桶）優於粗桶（20 桶）或不顯示分數——分數幫助優化器理解品質差異。</li>
+<li><strong>範例（exemplar）</strong>：呈現範例至關重要（提供任務資訊）；但<strong>過多範例無益</strong>（3 個通常已足），太多會拉長 meta-prompt、稀釋軌跡資訊。</li>
+<li><strong>每步生成指令數</strong>：類比 mini-batch 梯度降方差——<strong>每步 8 條最佳</strong>（1/2/4/8/16 中）；太多則同預算下步數變少。</li>
+<li><strong>起點</strong>：text-bison scorer 對起點不敏感；PaLM 2-L scorer 差異較大（好起點如「Let&#x27;s think step by step.」全程領先），故加速弱起點收斂是未來方向。</li>
+<li><strong>溫度</strong>：<strong>1.0 最佳</strong>；過低（0/0.5）缺探索易卡住，過高（1.5/2.0）常忽略軌跡缺利用。</li>
+<li><strong>對比一步生成</strong>：一次生成 50 條指令（不進迭代）<strong>明顯較差</strong>——GSM8K 上最佳仍是初始的「Let&#x27;s solve the problem」（測試 60.8），而 OPRO 第 5 步就找到「Let&#x27;s do the math!」（測試 76.3），證明善用軌跡的價值。</li>
+</ul>
+<h3 id="54-過擬合分析">5.4 過擬合分析</h3>
+<p>未設驗證集。因為當<strong>各候選解過擬合程度相近</strong>時，過擬合危害小（高訓練準確率解仍有高測試準確率）。圖 11 顯示驗證曲線與訓練曲線同升同降。仍有過擬合（訓練常比測試高 5%–20%），但測試準確率多仍勝人工 prompt；設較大訓練集並早停可緩解。</p>
+<h3 id="55-與-evoprompt-比較">5.5 與 EvoPrompt 比較</h3>
+<p>EvoPrompt（Guo et al., 2023）用 meta-prompt 顯式要求 LLM 對<strong>兩條</strong> prompt 做交叉（crossover）與突變（mutation）；OPRO 則利用<strong>多條</strong>過往 prompt 的整條軌跡，並提供範例與各 prompt 準確率等更豐富資訊。結果（圖 12）：GSM8K 上 OPRO 隨步數穩定改善，而 EvoPrompt（GA/DE）因不用範例、缺任務理解反而退化；BBH 上給較具任務性的起點後 EvoPrompt(DE) 能改善但比 OPRO 不穩。</p>
+<h2 id="6-相關工作">6. 相關工作</h2>
+<ul>
+<li><strong>Prompt 優化</strong>：軟提示微調（連續向量）、梯度引導搜尋、RL——皆在僅 API 存取時失效；編輯式無梯度法（人工操作或 back-translation）。近期 LLM 法：<strong>APE</strong> 先用 LLM 生成初始指令、選高分者再生成語意相似變體；<strong>APO</strong> 每步讓 LLM 對舊指令產出文字回饋以更新。OPRO 不同：直接生成新指令、不要求模仿過往指令，並把「過往指令＋分數」納入 meta-prompt，使優化器能發現高品質指令的共同模式。</li>
+<li><strong>以自然語言回饋提示</strong>：Reflexion、Self-Refine 等以文字回饋修正輸出；OPRO 隱式要求 LLM 從相似分數的解中總結共同特徵。</li>
+<li><strong>微調語言模型做優化</strong>：把 LM 當演化演算法的突變/交叉算子（Meyerson、Lehman、EvoPrompting）；OptFormer 在大量超參優化資料上訓練 transformer。OPRO 則<strong>純靠提示、無需額外訓練</strong>。</li>
+</ul>
+<h2 id="7-結論">7. 結論</h2>
+<p>OPRO 讓 LLM 逐步生成新解以優化目標函數：先以線性回歸與 TSP 佐證，再以 prompt 優化為具體應用。LLM 有能力依過往軌跡逐步改進解；小規模 TSP 上與手工啟發式相當；prompt 優化在 GSM8K 與 BBH 上大幅勝過人工 prompt（有時超過 50%）。<strong>未解問題</strong>：如何降低對初始化的敏感度、更好權衡探索與利用；當前優化器<strong>未能有效利用錯誤案例</strong>（把 error case 放進 meta-prompt 效果與隨機取樣相近，顯示單靠錯誤案例資訊不足）；prompt 優化仍需訓練集算準確率。有希望的方向是納入關於錯誤案例的更豐富回饋、總結區分高低品質 prompt 的關鍵特徵。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2309.03409_OPRO.%E6%91%98%E8%A6%81.html"><code>../summarize/2309.03409_OPRO.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

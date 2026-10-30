@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《CRAFT：透過建立與檢索專用工具集來客製化大型語言模型（Customizing LLMs by Creating and Retrieving from Specialized Toolsets）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Lifan Yuan, Yangyi Chen, Xingyao Wang, Yi R. Fung, Hao Peng, Heng Ji（UIUC）</p><p>日期：2024-03（arXiv v2；ICLR 2024）</p><p>arXiv：2309.17428</p><p><a href="https://arxiv.org/abs/2309.17428" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="craft透過建立與檢索專用工具集來客製化大型語言模型重點摘要">《CRAFT：透過建立與檢索專用工具集來客製化大型語言模型》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>CRAFT：離線用貴模型（GPT-4）批量「造」出經抽象化、驗證、去重的可重用程式工具庫，線上用便宜模型（GPT-3.5）以多視角檢索「取」出相關工具來填碼求解</strong>——一套免微調、隨插即用的「工具創建＋工具檢索」框架，把領域資料結晶成專用工具集，讓現成 LLM 泛化到未見的領域與模態（視覺問答、表格處理、數學推理）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>既有的 LLM 工具增強多受限於<strong>通用 API</strong>，缺乏為特定任務量身打造的彈性；通用工具集裡往往沒有專門領域所需的 API。而前人的工具創建法要嘛只造<strong>單一工具</strong>（LATM，用 3 個訓練樣本造 1 個工具）、要嘛<strong>每題現造且不可重用</strong>（CREATOR，推論時逐題造工具），工具庫小、品質與可重用性都不足。同時，從大工具庫<strong>精準檢索</strong>相關工具本身也是難題——僅靠「問題 vs API 名稱」的簡單相似度不夠。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>工具創建（離線，四步）</strong>：
+<ol>
+<li><strong>Generation（生成）</strong>：以 min-max 相似度採樣（SimCSE）迭代挑出多樣問題，令 GPT-4 產生可執行 Python 解，只留<strong>通過執行且答對</strong>的。</li>
+<li><strong>Abstraction（抽象化）</strong>：令 GPT-4 把具體變數名換成通用名（cat→animal、<code>df[&quot;date&quot;]</code>→<code>df[column_name]</code>）、把文字輸入外提為函數參數，並取通用函數名＋撰寫 docstring → 提升可重用性。</li>
+<li><strong>Validation（驗證）</strong>：檢查抽象工具能否解回原題，不能者丟棄 → 保正確性。</li>
+<li><strong>Deduplication（去重）</strong>：依函數名＋參數數分組，令 GPT-4 選最泛用者 → 降冗餘。</li>
+</ol>
+</li>
+<li><strong>工具檢索（線上）</strong>：令 LLM 先「描述自己需要什麼」，由目標問題 q_t 生出所需函數名 f_t 與 docstring d_t；對工具三元組 (q_i, f_i, d_i) 做<strong>多視角匹配</strong>（分別以 q/f/d 檢索 top-k=10/5/10），彙整後<strong>按出現頻率多數決</strong>取 3 個、濾掉只出現一次者；若全為單次則退回直接生碼。檢索到的工具程式碼加進 prompt 供 LLM 呼叫。</li>
+<li>全程<strong>免微調、隨插即用</strong>；工具集建置總成本約 <strong>2,500 美元</strong>。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>Backbone 為 GPT-3.5-Turbo-0613。相對最佳基線，視覺語言任務<strong>平均 F1 相對提升 43.16%</strong>。</li>
+<li>對照 vanilla ViperGPT，GQA/OK-VQA/A-OKVQA 的 soft accuracy 絕對提升 <strong>+10.4 / +18.0 / +15.2</strong>（CRAFT 45.4 / 33.4 / 30.8）；TabMWP 88.4、MATH(algebra) 68.1，多數任務勝過 LATM、CREATOR、SimCSE、BM25 等基線。</li>
+<li><strong>消融</strong>：去抽象化明顯掉分（GQA 45.4→37.1）；檢索三元組缺一即傷，其中<strong>函數名最關鍵</strong>（去掉掉 &gt;6.6 SAcc）。</li>
+<li><strong>可擴展</strong>：工具數 0→261→337→525，soft accuracy 持續上升（0→261 增益最大）。</li>
+<li><strong>工具品質</strong>（表 4）：循環複雜度 VQA 2.64 / 表格 2.07 / 數學 1.34（均遠低於 10，結構良好可靠）；525/181/282 個工具分屬 195/23/234 類（MATH 最多樣、TabMWP 最同質）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>目前建立在<strong>程式碼生成</strong>上，只適用「能寫程式求解」的任務（作者計畫以偽代碼擴展範疇）。</li>
+<li>效果高度依賴 backbone 的<strong>工具操作能力</strong>；部分開源模型在此設定近乎隨機。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>正是 ai_core §2「資產工廠 vs 資產消費者」分工的教科書級實例</strong>：離線用<strong>貴稀有智能</strong>（GPT-4）批量鑄造工具＝資產工廠；線上用<strong>便宜高頻智能</strong>（GPT-3.5）檢索復用＝資產消費者。兩端明確解耦，且工具是<strong>確定性可執行程式碼</strong>節點，LLM 只負責編排與填碼——契合把系統當<strong>符號神經網路計算圖</strong>（§1，多數確定性節點＋少量 LLM）的取向。</li>
+<li><strong>對 §3.6 固化引擎/工具庫沉澱最具啟發</strong>：CRAFT 的「生成→抽象化→驗證→去重」流水線，正是把「LLM 反覆處理的案例結晶成確定性程式碼／抽象庫」的一條可操作路徑——抽象化＝把個案泛化成可重用資產、驗證＝憑「解回原題」准入（呼應 §3.4 拒絕為預設＋憑證准入）、去重＝控制工具庫熵。這給 ai_core 最硬未決的固化問題一個現成骨架。</li>
+<li><strong>與已入庫工具創建線（LATM/CREATOR/TroVE）對照</strong>：LATM＝每任務 1 工具、CREATOR＝每題現造不可重用、CRAFT＝&gt;100 且可檢索＋驗證＋去重（見翻譯檔表 1）；CRAFT 補上的正是資產工廠最缺的<strong>品質控管（驗證＋去重）與檢索復用機制</strong>。歸 I 類。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2309.17428_CRAFT.zh-TW.html"><code>../translate/2309.17428_CRAFT.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

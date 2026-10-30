@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《EAGLE：推測取樣需要重新思考特徵不確定性（EAGLE: Speculative Sampling Requires Rethinking Feature Uncertainty）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yuhui Li, Fangyun Wei, Chao Zhang, Hongyang Zhang（北京大學／微軟研究院／滑鐵盧大學／Vector Institute）</p><p>日期：2024-01（ICML 2024）</p><p>arXiv：2401.15077</p><p><a href="https://arxiv.org/abs/2401.15077" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="eagle推測取樣需要重新思考特徵不確定性重點摘要">《EAGLE：推測取樣需要重新思考特徵不確定性》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>EAGLE</strong>：把推測取樣（speculative sampling）的草稿生成<strong>從 token 層級搬到「特徵」（倒數第二層、LM head 之前的隱狀態）層級做自回歸外推</strong>，並藉由<strong>額外餵入「提前一個時間步、含取樣結果的 token 序列」消解特徵層級的取樣不確定性</strong>——只加一個 &lt;1B 參數的輕量自回歸頭、完全不動原 LLM，草稿接受率從 Medusa 的約 0.6 拉到約 0.8，MT-bench 上比原生解碼快 2.1x–3.8x，且<strong>理論保證輸出分佈與原 LLM 完全一致（無損）</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>推測取樣以「低成本 draft ＋ 一次前向平行驗證多 token」加速 LLM，其收益取決於<strong>降低草稿開銷</strong>與<strong>提高草稿接受率</strong>。但既有做法各有短板：傳統法需同系列小模型當草稿（最小的 7B 找不到、專訓新草稿要 3,000B tokens 太貴、拿 7B 當 13B 的草稿反而更慢）；Lookahead / Medusa 雖降開銷但<strong>草稿準確率低</strong>（約 0.6 或更低），且 non-greedy 下<strong>不保證無損</strong>。核心洞見：直接在 token 層級外推很難，而在<strong>更具規律性的特徵層級</strong>外推更容易——但特徵層級自回歸有個致命問題：取樣的隨機性（同一特徵後面接「am」或「always」會導向不同特徵序列）帶來歧義，制約預測精度。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>特徵層級自回歸</strong>：草稿模型不預測 token 而預測<strong>下一個特徵</strong>，再用原 LLM 的 LM head 導出 token（單吃特徵即把加速從 1.5x 提到 1.9x）。</li>
+<li><strong>消解不確定性（本文關鍵創新）</strong>：把<strong>提前一步、已含取樣結果的 token 序列</strong>與特徵序列一起輸入——用 (f_I, t_always) 預測 f_always、(f_I, t_am) 預測 f_am，讓草稿模型知道實際採了哪條分支（加速再從 1.9x 提到 2.8x）。</li>
+<li><strong>輕量草稿模型</strong>：三模組——Embedding 層與 LM Head 直接<strong>沿用原 LLM 參數不訓練</strong>，只訓練一個 <strong>Autoregression Head</strong>（FC 層＋單個 decoder 層）。特徵與 token embedding 串接後降維、預測下一特徵。</li>
+<li><strong>訓練</strong>：Smooth L1 回歸損失（對齊特徵）＋分類損失（w_cls=0.1，對齊最終 token 目標）；對特徵加 U(−0.1,0.1) 雜訊做資料增強抑制誤差累積；<strong>對訓練資料低敏感</strong>，用固定 ShareGPT 資料集即可（只需 2–4B tokens，vs TinyLLaMA 的 3,000B）。</li>
+<li><strong>樹狀草稿＋多輪推測取樣</strong>：tree attention 讓單次前向驗證樹狀草稿的所有 token；每節點遞迴套用推測取樣，<strong>證明輸出分佈不變</strong>（greedy 與 non-greedy 皆然）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>加速比</strong>：LLaMA2-Chat 70B 延遲加速 <strong>2.7x–3.5x、吞吐量約 2 倍</strong>；MT-bench 上整體 2.1x–3.8x，比 Lookahead 快 1.7x–2.1x、比 Medusa 快 1.5x–1.6x。程式碼生成（HumanEval，模板多）加速最佳（達 3.76x）。</li>
+<li><strong>接受率</strong>：草稿準確率約 0.8（Medusa 約 0.6、Lookahead 更低）；target LLM 每次前向生成 <strong>3.2–4.5 個 token</strong>（原生僅 1 個）；1-α 到 4-α 變化甚小 → 對特徵誤差穩健。</li>
+<li><strong>正交疊加</strong>：搭配 gpt-fast（量化＋編譯），單張 RTX 3090 把 LLaMA2-Chat 7B 推到 <strong>160.4 tokens/s</strong>。</li>
+<li><strong>成本極低</strong>：70B 只訓一個 0.99B 參數的頭，4x A100 1–2 天；訓練一次服務所有查詢，攤提成本趨近於零。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>MoE 模型加速有限（Mixtral 8x7B 僅 1.5x）：驗證階段多 token 可能要讀更多 expert 權重，抵消收益。</li>
+<li>加速比隨 batch size 增大而下降（memory-bound 特性，bs 大時 GPU 閒置算力變少）。</li>
+<li>樹結構靠直覺設計而非嚴格最佳化，最佳樹形依情境而異，仍有調校空間。</li>
+<li>定位純為<strong>推論加速</strong>：因理論保證無損，論文明言評估生成品質「既無必要也無意義」——不改變模型能力，只改變速度。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>接 ai_core §3.3「成本梯度／級聯路由」的 token 尺度極限</strong>：FrugalGPT 在「選哪個模型」的粗粒度上做成本梯度，EAGLE 則把成本梯度推到<strong>單 token 生成的最細粒度</strong>——用一個近乎免費的輕量頭（沿用原 LLM 權重、&lt;1B 新參數）在便宜端先猜、貴的 target LLM 只做平行驗證。這正是「便宜高頻智能」端把每次 LLM 呼叫成本壓到**「幾乎免費且可證明無損」極限**的範本：不像級聯路由那樣以品質換成本，EAGLE <strong>零品質損失</strong>地降本，因為 target 分佈有數學保證。</li>
+<li><strong>對「把 LLM 呼叫包成可靠函數」的啟示</strong>：EAGLE 示範了「昂貴確定性驗證 ＋ 便宜推測生成」的分工——draft 端可以不可靠（接受率 0.8 而非 1.0 也無妨），因為<strong>驗證端提供了無損的正確性閘門</strong>。這與 ai_core「多數確定性節點＋少數 LLM」的符號神經網路計算圖同構：把不確定的部分隔離、用可驗證的關卡兜底，是逐步剃除對昂貴智能依賴的通用招式。</li>
+<li><strong>同譜系定位</strong>：與 Medusa（多解碼頭）、Blockwise Parallel Decoding（Stern 2018）、原始推測解碼（Leviathan / Chen 2023）同屬「draft-then-verify」譜系；EAGLE 的差異化在「特徵層級外推＋錯位 token 消不確定性」，且是其中少數 non-greedy 也嚴格無損者。適合關注<strong>推論成本工程、無損加速、draft/verify 架構</strong>的讀者作為此譜系的高效收尾參考。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2401.15077_EAGLE.zh-TW.html"><code>../translate/2401.15077_EAGLE.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

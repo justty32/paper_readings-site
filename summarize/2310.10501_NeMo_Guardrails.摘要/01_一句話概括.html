@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2310.10501_NeMo_Guardrails.%E6%91%98%E8%A6%81.html">回 2310.10501_NeMo_Guardrails.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p>NeMo Guardrails 是一套<strong>執行期（runtime）代理層</strong>工具箱：在使用者與 LLM 之間插入一個由 <strong>Colang</strong>（自然語言＋Python 混合 DSL）描述、事件驅動的對話管理器，把「不談特定話題」「遵循預定對話路徑」「事實查核／防幻覺／內容審核」等規則寫成獨立於底層 LLM、可解讀、可程式化的<strong>護欄（rails）</strong>，用以補充（而非取代）訓練期的模型對齊（RLHF 等）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 驅動的對話系統容易離題、產生幻覺、被提示注入/越獄攻擊誘導生成有害內容。現有解法多是<strong>訓練期對齊</strong>（RLHF、指令微調）或<strong>提示工程/CoT</strong>：前者需要大量人工標註且部署後難以由開發者臨時調整，後者缺乏結構化、可稽核的執行機制。NeMo Guardrails 想在「訓練期嵌入的護欄」之外，提供一個<strong>與底層 LLM 無關、開發者可自行定義、可在執行期插拔</strong>的第三條路。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>整體架構</strong>：Guardrails runtime 扮演使用者與 LLM 之間的<strong>代理（proxy）</strong>，由 Colang 腳本定義規則，經 runtime 解讀後強制套用；核心三元素——使用者/機器人的<strong>標準形式（canonical forms）</strong>、<strong>對話流程（flows）</strong>、以及由開發者以 Python 撰寫的<strong>自訂動作（actions）</strong>——都會索引進向量資料庫（Annoy/FAISS）供近鄰檢索。</li>
+<li><strong>Colang DSL</strong>：以自然語言＋Python 語法混合表達 utterance／message（canonical form）／event／action／context／flow／rail 等概念；runtime 是事件驅動迴圈（event loop），連使用者說一句話也會化為 <code>UtteranceUserActionFinished</code> 這類事件送入迴圈處理。canonical form 类似「意圖」但<strong>不是封閉分類集合</strong>，而是由 LLM 生成、僅受開發者提供的範例引導，因此保留了生成式的彈性。</li>
+<li><strong>主題護欄（topical rails）三階段</strong>：(1) 用相似度式 few-shot 提示，把使用者最新一句話對映成使用者 canonical form；(2) 決策下一步——若 canonical form 命中開發者預先定義的 flow，直接取用該 flow 的下一步；若沒命中，則交給 LLM 依既有 flow 類推生成新步驟；(3) 依決定好的下一步，提示 LLM 生成機器人訊息。提示本身分四段：任務說明、Colang 語法的範例對話、依相似度檢索出的 k=5 個 few-shot canonical form 範例、目前對話歷史。</li>
+<li><strong>執行護欄（execution rails）</strong>：開發者以 Python 定義 action，於 Colang flow 中用 <code>execute</code> 呼叫，可監控 LLM 的輸入與輸出。論文提供三種內建安全 action：
+<ul>
+<li><strong>事實查核 rail</strong>：在 RAG 假設下把問題形式化為「蘊涵（entailment）」判斷——給定 evidence 與 bot_response，提示 LLM 回答 yes/no 判斷回應是否被證據蘊涵。</li>
+<li><strong>幻覺 rail</strong>：仿 SelfCheckGPT 的自我一致性檢查——同一提示以 temp=1 取樣 n 個回應，取其中 n−1 個當 context、第 n 個當 hypothesis，再以 temp=0 提示 LLM 判斷是否一致（agreement yes/no）。</li>
+<li><strong>審核（moderation）rail</strong>：輸入端（jailbreak rail）與輸出端各用一段提示，直接問一個「強大且已對齊」的 LLM「這段指令/輸出是否違反審核政策、不合法/不道德/有害？答 yes/no」，兩者串成 pipeline，使用者訊息先過輸入審核，回應生成後再過輸出審核，皆通過才回傳給使用者。</li>
+</ul>
+</li>
+<li>五個參考範例應用（主題護欄、審核護欄、事實查核＋防幻覺、安全執行第三方服務、越獄防護）以 Apache 2.0 開源於 GitHub，並附評測 CLI 工具。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>主題護欄</strong>：Banking77 資料集（231 筆測試樣本、77 個意圖）與 chit-chat（226 筆、76 個意圖）上，即使是 falcon-7b-instruct、llama2-13b-chat 等較小的開源模型也能有效遵循對話護欄；三階段式（canonical form／next step／bot message）每一步都帶來效能提升；向量資料庫中每個 canonical form 至少要有 <strong>k=3</strong> 個範例效果才夠好；gpt-3.5-turbo 產生的 canonical form 用語較多樣，需改用相似度匹配而非精確匹配。</li>
+<li><strong>審核護欄</strong>：以 Anthropic Red-Teaming／Helpful 資料集平衡取樣評測，gpt-3.5-turbo 同時啟用輸入＋輸出審核時可攔截約 <strong>99% 有害請求</strong>（未加護欄時僅 93%），且只誤擋約 <strong>2% 的有用請求</strong>——同時使用兩道護欄明顯比只用其中一道更穩健。</li>
+<li><strong>事實查核護欄</strong>：以 MSMARCO 建構的（含 LLM 改寫負例）蘊涵判斷資料集上，text-davinci-003 與 gpt-3.5-turbo 均達約 <strong>80% 準確率</strong>。</li>
+<li><strong>幻覺護欄</strong>：以 20 題「假前提」（無正確答案）問題評測，text-davinci-003 原本完全無法迴避此類問題，加上幻覺 rail 後可攔截 <strong>70%</strong>；gpt-3.5-turbo 本身已能迴避/標示不確定約 65%，加上 rail 後提升至約 <strong>95%</strong>。</li>
+<li>論文坦承這是**初步（preliminary）**結果，多數數字未附統計顯著性檢定，重點是展示機制可行、且與模型無關（多家 LLM 供應商皆可搭配）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>並非獨立解方</strong>：作者明確主張 programmable rails 應與訓練期 embedded rails（RLHF 等）<strong>互補</strong>而非取代，尤其安全相關護欄不建議單獨依賴。</li>
+<li><strong>額外延遲與成本</strong>：三階段 CoT 提示彼此依序相依（無法批次化），實測整體延遲/成本約為不加護欄時的 <strong>3 倍</strong>；使用複雜提示＋few-shot 本身也比一般對話生成略貴略慢。</li>
+<li><strong>提示敏感</strong>：canonical form 生成與各項審核判斷高度依賴提示品質，作者承認「更好的提示可以再改善這些結果」。</li>
+<li><strong>執行護欄本身仍以 LLM 當判官</strong>：事實查核／幻覺／審核三個安全 rail 的實作，骨子裡都是「再呼叫一次 LLM，要求它回答 yes/no」，並非獨立、可證明正確的規則或分類器。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

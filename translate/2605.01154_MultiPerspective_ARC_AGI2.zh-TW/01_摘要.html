@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.01154_MultiPerspective_ARC_AGI2.zh-TW.html">回 2605.01154_MultiPerspective_ARC_AGI2.zh-TW 目錄</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>ARC-AGI-2 是一組「人類直覺式」的視覺謎題基準，衡量機器從有限範例泛化、解讀符號意義、並在不同情境彈性套用規則的能力。本文提出以 <strong>TinyLM</strong> 解 ARC-AGI-2 的做法，並在測試時額外微調，包括**測試時訓練（TTT）**與 <strong>Product-of-Experts（PoE）</strong>。模型在訓練集達 <strong>96.1%</strong>、評測集達 <strong>21.7%</strong>。</p>
+<h2 id="1-引言">1. 引言</h2>
+<h3 id="11-動機">1.1 動機</h3>
+<p>ARC-AGI-2 的視覺謎題旨在量化模型「把有限資訊套用到全新未見實例」的能力。智能也取決於<strong>知識獲取效率</strong>——把經驗/訓練資料轉成新技能、應對不確定且高度適應環境的能力。</p>
+<h3 id="12-方法總覽">1.2 方法總覽</h3>
+<p>流水線從<strong>將每個網格 token 化</strong>開始，轉成帶寬/高/顏色小標記的左到右短文字，讓模型理解網格形狀與調色盤。接著對同一謎題做<strong>旋轉、翻轉、轉置、換色</strong>產生多個視角。用一個緊湊的局部生成器對測試網格提候選輸出；用 <strong>product-of-experts 分數</strong>評估每個候選（把模型在所有視角的 token 級信心相加），只保留那些<strong>能完全重現給定訓練範例</strong>者。最後施以輕量<strong>測試時訓練</strong>：幾步快速 LoRA 更新（極小學習率 + 強 dropout），增益停滯時提早停，讓模型適應該題風格而不過擬合。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>2.1 Perspective（ARChitects，2024 冠軍）</strong>：增強網格輸入生多種視角，微調 NeMo-Minitron-8B 為每視角生候選；以「跨增強視角能否穩定生出一致解」評分，DFS 剪弱機率分支。缺點：比程式合成法<strong>不可解釋</strong>。</li>
+<li><strong>2.2 Latent Program Networks（LPN）</strong>：把程式表示為潛在空間向量；transformer 編碼器把輸入-輸出網格對映到潛在程式空間，測試時在潛在空間做梯度優化精修，再用解碼器生輸出網格。計算昂貴、實驗中<strong>未完全收斂</strong>。</li>
+<li><strong>2.3 LLM Transformer + TTT</strong>：先用大量生成的 ARC-like 任務訓 8B 模型，測試時在該題範例上微調。2024 ARC Prize 公開賽第二名，半私有評測集 <strong>47.5%</strong>。</li>
+<li><strong>2.4 Direct Preference Optimization（DPO）</strong>：用「好/壞」解法對教模型，提高偏好解機率、降低拒絕解機率，比傳統 RL 省去獨立 reward model。但在小資料集上<strong>易過擬合</strong>，對 ARC 有限資料是隱憂，最好搭配其他技術而非單用。</li>
+</ul>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="31-資料">3.1 資料</h3>
+<p>直接用 Kaggle/GitHub 上的 ARC-AGI-2 競賽資料：<strong>1000 個公開訓練任務 + 120 個公開評測任務</strong>。半私有/私有評測集當時不可用。</p>
+<h3 id="32-前處理">3.2 前處理</h3>
+<p>含網格表示、視角變換、序列化。</p>
+<ul>
+<li><strong>3.2.1 Grid</strong>：用 2D NumPy 陣列（每元素是顏色 id）作為謎題表示的<strong>單一真相來源</strong>，轉成 Grid 時嚴格依 ARC 規格驗證，防止形狀錯誤/資料損壞/表示不一致。配 palette 抽取、差異遮罩生成、形狀驗證等 helper。</li>
+<li><strong>3.2.2 Views</strong>：對謎題施加<strong>可逆變換</strong>，把原表示中被遮蔽的潛在模式暴露出來。</li>
+<li><strong>3.2.3 序列化</strong>：把網格資料轉成 LLM 能懂的 token 序列（編碼/解碼皆實作、可逆）。先建字典把特殊 token（如 [BOS]）與顏色 id 映到唯一數字，再逐行編碼網格。</li>
+</ul>
+<h3 id="33-訓練">3.3 訓練</h3>
+<p><strong>3.3.1 資料增強</strong>——兩大類：</p>
+<ul>
+<li><strong>幾何增強</strong>：旋轉與反射。</li>
+<li><strong>換色置換</strong>：顏色 id 的雙射重標。</li>
+</ul>
+<p>此視角增強直擊 ARC 核心難題：謎題的解在某些幾何/色彩變換下平凡、在原呈現下卻複雜。每題生 <strong>40–80 個視角</strong>等價表示，提高找到「與模型能力對齊之可解釋模式」的機率。</p>
+<h3 id="34-tinylm-transformer-模型">3.4 TinyLM Transformer 模型</h3>
+<p>系統核心是 <strong>TinyLM</strong>——為 ARC 域優化的 decoder-only transformer，預設約 <strong>2000 萬參數</strong>。刻意小：對 ARC 有限資料，<strong>過大容量會在關鍵的測試時適應階段付出高算力代價</strong>。關鍵設定：</p>
+<ol>
+<li><strong>可學位置嵌入</strong>（非正弦），更能捕捉任務特定空間模式。</li>
+<li><strong>因果自注意</strong>，保留自回歸生成。</li>
+<li><strong>GELU 激活</strong>，改善梯度流。</li>
+<li><strong>8 頭注意力</strong>，各 56 維子空間（448 維嵌入空間），同時處理多種關係模式。</li>
+<li><strong>pre-norm 架構</strong>（LN 在注意力/FFN 子層之前），穩定訓練、可加深。</li>
+<li><strong>8 層堆疊</strong> + 殘差連接。</li>
+<li><strong>dropout 10%</strong> 正則，緩解對少量資料過擬合。</li>
+<li><strong>context 達 2048 token</strong>，足容最大 30×30 網格 + 多個輸入-輸出範例（供 TTT）。</li>
+</ol>
+<h3 id="35-後訓練">3.5 後訓練</h3>
+<ul>
+<li><strong>3.5.1 PoE 集成</strong>：穩健集成預測法，利用同一輸入網格多視角的變換不變性，增強可靠性、抑制幻覺。</li>
+<li><strong>3.5.2 TTT</strong>：一種 meta-learning，對應 ARC 語料的極端任務多樣性，在推理時把模型適應到每個特定任務。預訓練學通用先驗，再用該題 2–4 對範例快速專化。受 MAML 啟發：從測試任務範例構小增強集 → 幾步（10–50）保守學習率梯度下降專化權重 → 預測。其效果<strong>仰賴測試資料品質與超參配置</strong>；與 PoE 結合時，期望兼得任務專化與多視角穩健。</li>
+</ul>
+<h2 id="4-結果">4. 結果</h2>
+<p>兩條評估流水線評估自家模型與 Qwen3-8B。</p>
+<p><strong>表 1：訓練集表現</strong></p>
+<table>
+<thead>
+<tr>
+<th>指標</th>
+<th>Qwen3-8B（零樣本）</th>
+<th>預訓練</th>
+<th>TTT</th>
+<th>PoE</th>
+<th>TTT+PoE</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>準確率</td>
+<td>6.24%</td>
+<td><strong>96.1%</strong></td>
+<td>1.9%</td>
+<td>23.8%</td>
+<td>30.6%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>表 2：評測集表現</strong></p>
+<table>
+<thead>
+<tr>
+<th>指標</th>
+<th>Qwen3-8B（零樣本）</th>
+<th>預訓練</th>
+<th>TTT</th>
+<th>PoE</th>
+<th>TTT+PoE</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>準確率</td>
+<td>0%</td>
+<td><strong>21.7%</strong></td>
+<td>0%</td>
+<td>0%</td>
+<td>0%</td>
+</tr>
+</tbody>
+</table>
+<h3 id="41-pipeline-1">4.1 Pipeline 1</h3>
+<p>載入訓練好的 TinyLM，逐任務用其範例微調以最大化單題表現；整合多種朝向找模型最懂的「最佳視角」；再加 few-shot prompting（把三個訓練範例直接接進 context）以促進 in-context meta-learning。模型起初退回通用預設模式，之後逐漸理解各顏色/形狀如何重定位、輸出趨於連貫，顯示中間推理改善。但在<strong>評測任務上結果與 Pipeline 2 相同，無進一步增益</strong>。</p>
+<h3 id="42-pipeline-2">4.2 Pipeline 2</h3>
+<p>系統性消融，比較四配置：Baseline（TinyLM 貪婪生成）、PoE、TTT、TTT+PoE，各自在訓練集（1000 題）與評測集（120 題）獨立評估。</p>
+<ul>
+<li><strong>PoE</strong>：嘗試結合 row-major/column-major 多序列化視角，假設不同排序捕捉互補空間模式。但發現<strong>模型主要只在 row-major 上訓練</strong>，替代視角因而無效。</li>
+<li><strong>TTT</strong>（每題 10 步、lr=5e-5）：假設任務專化能提升表現，<strong>結果常常變差</strong>，尤其評測集近 <strong>0%</strong>——模型過擬合到「無法遷移到測試輸入」的範例特異性。</li>
+<li><strong>TTT+PoE</strong>：繼承雙重限制，整體最差。</li>
+</ul>
+<p>TinyLM 訓練集 96.1%、評測集 21.7%。<strong>74.4% 的訓練-評測落差</strong>顯示：模型精通學過的變換，但泛化到新模式需要<strong>架構與訓練方法</strong>的改進，而非只靠推理時技術。</p>
+<h2 id="5-未來工作討論">5. 未來工作討論</h2>
+<ul>
+<li><strong>5.1 訓練資料擴充</strong>：評測表現低顯示需更多樣模式；併入完整 ARC-AGI-1 + Re-ARC，學更一般的變換規則而非死背。</li>
+<li><strong>5.2 TTT 改進</strong>：TTT 因過擬合少量範例而退化；未來探索 TTT 期間的正則（dropout/weight decay）、更多步 + 更小學習率（低於現 5e-5）做更溫和適應。</li>
+<li><strong>5.3 PoE 精修</strong>：PoE 失敗因模型主訓 row-major；應從一開始就多序列化格式混訓（row-major、column-major 等），讓不同視角捕捉真正不同的模式。</li>
+<li><strong>5.4 模型擴大</strong> / <strong>5.5 解碼生成</strong> / <strong>5.6 可解釋性</strong>：受時間與資源限制留待後續。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2605.01154_MultiPerspective_ARC_AGI2.%E6%91%98%E8%A6%81.html"><code>../summarize/2605.01154_MultiPerspective_ARC_AGI2.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

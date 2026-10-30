@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>stack the blocks in the empty bowl. · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2209.07753_Code_as_Policies.zh-TW.html">回 2209.07753_Code_as_Policies.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_IV._%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="iii-方法">III. 方法</h2>
+<p>Code as Policies 這一類 LMP 把語言指令對應到程式碼片段：(i) 對感知輸入反應，(ii) 為控制原語 API 賦參數，(iii) 直接編譯並在機器人上執行，例如：</p>
+<pre><code># stack the blocks in the empty bowl.
+empty_bowl_name = parse_obj('empty bowl')
+block_names = parse_obj('blocks')
+stack_objs_in_order(obj_names=[empty_bowl_name] + block_names)
+</code></pre>
+<p>輸入指令以註解（綠色）呈現，可由人類或另一個 LMP 提供；LLM 輸出須是有效 Python 程式碼。LMP 可<strong>階層式</strong>生成——組合已知函式，或呼叫其他 LMP 定義未定義的函式：</p>
+<pre><code>def stack_objs_in_order(obj_names):
+     for i in range(len(obj_names) - 1):
+          put_first_on_second(obj_names[i + 1], obj_names[i])
+</code></pre>
+<p>其中 <code>put_first_on_second</code> 是既有開放詞彙抓放原語（如 CLIPort）；換到新具身時可替換為對應該代理動作空間的控制 API。用詳盡變數名做階層式程式碼生成，可視為透過函數式編程實現思維鏈提示的一種變體。</p>
+<p><strong>執行安全</strong>：先確認無 import、無 <code>__</code> 開頭特殊變數、無 <code>exec</code>/<code>eval</code> 呼叫，再用 Python <code>exec</code> 執行，並提供 <code>globals</code>（可呼叫的 API）與 <code>locals</code>（新變數/函式）兩個作用域字典。</p>
+<h3 id="iii-a-提示-lmp">III-A 提示 LMP</h3>
+<p>提示含兩要素：<strong>1. Hints</strong>（import 陳述句，告知可用 API 及型別提示）；<strong>2. Examples</strong>（指令→程式碼少樣本示範對，指令以緊接解答程式碼前的註解呈現）。可透過持續附加新指令與回應維持一個 LMP「會話」，讓後續指令能參照先前指令（如「撤銷上一步」）。</p>
+<h3 id="iii-b-lmp-範例低階">III-B LMP 範例（低階）</h3>
+<p>除非另外說明，本文所有範例與實驗使用 OpenAI Codex <code>code-davinci-002</code>，temperature=0（確定性貪婪解碼）。</p>
+<p><strong>第三方函式庫</strong>：LMP 可被提示用 NumPy 等函式庫靠座標引出空間推理：</p>
+<pre><code>import numpy as np
+# get the left most point in pts_np.
+ret_val = pts_np[np.argmin(pts_np[:, 0]), :]
+</code></pre>
+<p><strong>第一方函式庫</strong>：訓練資料中沒有的第一方 API（感知/控制原語），只要命名有意義並在 Hints/Examples 中提供，LMP 也能使用——如取得物件 2D 位置的 <code>get_pos</code>、抓放原語 <code>put_first_on_second</code>。LMP 能適應新指令，如用「一點」修改移動幅度、把「同色」關聯到物件。</p>
+<p><strong>語言推理</strong>：可少樣本提示 LLM 把物件名稱與自然語言描述、類別、先前脈絡相關聯。</p>
+<h3 id="iii-c-lmp-範例高階">III-C LMP 範例（高階）</h3>
+<p><strong>控制流</strong>：LMP 能用 while 迴圈構成反饋策略：</p>
+<pre><code># while the red block is to the left of the blue bowl, move it right 5cm at a time.
+while get_pos('red block')[0] &lt; get_pos('blue bowl')[0]:
+     target_pos = get_pos('red block') + [0.05, 0]
+     put_first_on_second('red block', target_pos)
+</code></pre>
+<p><strong>LMP 可組合</strong>：透過嵌套函式呼叫組合，能在個別提示納入更多少樣本範例並維持在最大 token 長度內（如呼叫 <code>parse_obj</code> 這個專職 LMP）。</p>
+<p><strong>階層式生成供未來重用</strong>：</p>
+<pre><code>def get_objs_bigger_than_area_th(obj_names, bbox_area_th):
+     return [name for name in obj_names if get_obj_bbox_area(name) &gt; bbox_area_th]
+</code></pre>
+<p>函式生成的實作：剖析生成程式碼的 AST，定位作用域中尚未定義的函式，呼叫專精函式生成的 LMP 建立它們並加入作用域，此程序在新生成函式的函式體上以深度優先重複進行。這讓提示工程師只需給「粗略草圖」而非窮舉所有實作細節，也讓生成程式碼更符合良好抽象。例如 <code>get_obj_bbox_area</code> 並非提供的 API，而是按需生成：</p>
+<pre><code>def get_obj_bbox_area(obj_name):
+     x1, y1, x2, y2 = get_obj_bbox_xyxy(obj_name)
+     return (x2 - x1) * (y2 - y1)
+</code></pre>
+<p>提示未明確指定 <code>get_obj_bbox_xyxy</code> 的回傳值，但函式名稱本身暗示了語意，LLM 能推斷並生成正確程式碼。</p>
+<p><strong>結合控制流、LMP 組合、階層式生成</strong>：高階 LMP 生成高階策略行為並依賴 <code>parse_obj</code> 取得物件名稱；<code>parse_obj</code> 內部又依賴尚未定義的 <code>get_objs_bigger_than_area_th</code>，該函式由階層式生成事後補上——展示三種能力如何疊加解出複雜指令。</p>
+<h3 id="iii-d-lmp-作為策略">III-D LMP 作為策略</h3>
+<p>LMP 能在給定指令下組合感知到控制的反饋邏輯：感知模型高階輸出（狀態）可被程式化操縱，決定低階控制 API（動作）的參數。感知/控制 API 透過 Examples/Hints 引導、把 LMP「接地」到真實機器人系統——感知與控制演算法一旦升級，LMP 策略能力隨之提升。真實實驗使用開放詞彙偵測模型 ViLD 與 MDETR。LMP 策略優點三：(i) 依未見指令調適策略程式碼與參數；(ii) 靠開放詞彙感知系統泛化到新物件/環境；(iii) 不需額外資料收集或模型訓練，且生成的計畫/策略以程式碼表示、可解讀、易修改重用。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《AutoSpec：以歸納邏輯編程演化 LLM 智能體的安全規則》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Pingchuan Ma 等（浙江工業大學、HKUST）</p><p>日期：2026-06，歸納邏輯編程／程式合成（CEGIS）</p><p>arXiv：2606.24245</p><p><a href="https://arxiv.org/abs/2606.24245" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="autospec重點摘要">《AutoSpec》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>AutoSpec</strong> 把「維護 LLM 智能體安全護欄」框定為<strong>程式合成問題</strong>：從已部署的專家手寫安全規則出發，靠使用者標註的 safe/unsafe 軌跡作反例，用**反例引導歸納合成（CEGIS）＋歸納邏輯編程（ILP，求解器用 ILASP）**迭代精煉規則。關鍵洞見：ILP 能高效找出「<strong>常出現在偽陰性、卻罕見於偽陽性</strong>」（或反之）的判別謂詞，把規則編輯的指數搜尋空間大幅剪枝。在 291 條軌跡（程式執行 + 具身智能體兩域）上，F1 提升至 <strong>0.98 / 0.93</strong>、偽陽性最多降 <strong>94%</strong>、<strong>4–5 次迭代收斂</strong>，且 ILP 引導比啟發式 CEGIS 的 F1 高達 <strong>4.8 倍</strong>；學出的規則可讀、可審計、能泛化到未見情境。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 智能體自主執行工具/程式碼/控制機器人，可能執行毀滅性指令（<code>rm -rf /</code>）、洩漏資料、違反領域約束。現有安全做法面臨根本取捨：<strong>手寫規則可解釋但脆弱</strong>（過嚴擋掉安全操作＝高偽陽性，過鬆漏掉危險＝高偽陰性），<strong>神經分類器又缺安全關鍵部署所需的可解釋性</strong>。且部署後模型更新、新工具接入、prompt 改版，使「安全/不安全」邊界持續漂移，靜態規則跟不上；風險常來自<strong>動作組合</strong>而非單一動作。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>謂詞庫 P</strong>：每域 16–24 個布林謂詞（如 <code>destructive_os_inst</code> 偵測 <code>rm -rf</code>/<code>os.remove</code>、<code>near_danger_zone</code> 偵測機器人靠近爐火刀具），各以一個程式函數實作。規則＝謂詞的合取/例外/析取分支組合（編碼於 AgentSpec 框架）。</li>
+<li><strong>兩層粒度</strong>：規則作用於單一事件，但監督在「軌跡」層級（人類常只觀察到一次 session 出事、未必指出確切違規動作）。ILP 編碼記錄每事件上各謂詞是否成立，再學軌跡層級分類規則。</li>
+<li><strong>ILP-Guided CEGIS 迴圈（Algorithm 1，四階段）</strong>：
+<ol>
+<li><strong>反例挖掘</strong>：在標註集評估當前規則，蒐集偽陰性（漏掉的 unsafe）與偽陽性（誤報的 safe）。</li>
+<li><strong>ILP 引導謂詞學習</strong>：把 FN 當正例、FP 當負例，交給 ILASP 求「成立於每個正例、不成立於任一負例」的<strong>最簡謂詞組合</strong>（mode declaration 約束 + 長度評分偏好少謂詞、抗過擬合）。ILP <strong>只提名謂詞、不寫規則</strong>。</li>
+<li><strong>候選生成與選擇</strong>：用編輯運算子（AddException、AddDisjunct 等）把建議轉成具體編輯，在全資料集評分（優先 F1，兼顧 precision、剩餘反例少、規則簡單），取最佳。</li>
+<li><strong>驗證</strong>：候選若提升分數則接受（greedy-ascent 保證單調進步），否則停；達目標分數或耗盡迭代預算亦停。</li>
+</ol>
+</li>
+<li><strong>定位</strong>：持續、週期性維護（部署中智能體不斷產生工具呼叫軌跡與核准訊號當標籤），非一次性離線調參；不宣稱全域最優，目標是實務、可審計地改善現有護欄。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>291 條軌跡（程式執行 + 具身智能體）</strong>：F1 達 <strong>0.98 / 0.93</strong>，偽陽性最多降 **94%**且維持高 recall，<strong>4–5 次迭代收斂</strong>。</li>
+<li><strong>ILP 引導 vs 啟發式 CEGIS</strong>：F1 最高提升 <strong>4.8×</strong>（移除 ILP 引導則品質大幅下降，因均勻探索編輯空間幾乎碰不到能乾淨分離反例的謂詞組合）。</li>
+<li>走查例：從一條「凡含網路呼叫即標記」的規則，迭代 1 發現 9 個套件管理腳本被誤報（FP），ILP 找出 <code>is_pkg_mgr</code> 區分之、加為例外使 precision 升至 0.75；迭代 2 發現一個經 subprocess 連網的漏報外洩腳本（FN），ILP 找出 <code>reads_cred ∧ ext_host</code>、加為分支後收斂。</li>
+<li>學出規則人類可讀、可審計、泛化到未見任務，被實務者評為遠比神經分類器可解釋、可信。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>仰賴<strong>人工標註的 safe/unsafe 軌跡</strong>作為反例來源；謂詞庫須事先設計（每域 16–24 個）。</li>
+<li>不保證<strong>全域最優</strong>；效果受謂詞庫覆蓋度限制（謂詞表達不到的危險模式學不出）。</li>
+<li>評估限於兩個域、291 條軌跡規模。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 G 類中**「ILP × 程式合成（CEGIS）」的應用代表**——與 <a class="paper-reference" href="2507.16405_Poker_SS_ILP.%E6%91%98%E8%A6%81.html">2507.16405</a>（自監督 ILP 玩撲克）同走 ILP 學符號規則路線，但 AutoSpec 把 ILP 當 <strong>CEGIS 迴圈中的「謂詞提名器」</strong>，是 ILP 與形式化程式合成（反例引導）的乾淨結合。</li>
+<li>最值得記：<strong>「ILP 不寫規則、只提名最具判別力的謂詞，藉此把規則編輯的指數空間剪到一張短清單」</strong> 這個分工；以及「反例＝標註、軌跡層級監督 vs 事件層級規則」的兩層編碼。</li>
+<li>與 LLM 智能體安全/自我改進議題（<a class="paper-reference" href="2505.22954_DarwinGodelMachine.%E6%91%98%E8%A6%81.html">2505.22954</a> DGM、<a class="paper-reference" href="2510.25445_Agentic_AI_Survey.%E6%91%98%E8%A6%81.html">2510.25445</a> Agentic AI 綜述）互補：AutoSpec 提供<strong>符號、確定性、可審計</strong>的護欄自我演化層。</li>
+<li>適合做 <strong>LLM 智能體安全護欄、ILP/ILASP 應用、CEGIS 程式合成、neuro-symbolic 規則學習</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2606.24245_AutoSpec_ILP.zh-TW.html"><code>../translate/2606.24245_AutoSpec_ILP.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

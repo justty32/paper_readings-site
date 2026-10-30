@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要_概要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2505.18591_Laplace_Variational_RNN_MetaRL.zh-TW.html">回 2505.18591_Laplace_Variational_RNN_MetaRL.zh-TW 目錄</a>　<a href="02_%E6%8B%89%E6%99%AE%E6%8B%89%E6%96%AF%E8%AE%8A%E5%88%86_RNNLaplace_VRNN.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要--概要">摘要 / 概要</h2>
+<p>元 RL 在<strong>任務分布</strong>上訓練單一 RL agent，使其測試時能快速泛化到訓練集外的新任務。從<strong>貝葉斯</strong>視角，這可詮釋為對訓練任務後驗做<strong>攤銷變分推理</strong>。眾多元 RL 法中常見做法是用 <strong>RNN 以點估計</strong>表示此分布。本文展示如何透過<strong>拉普拉斯近似</strong>——在學習<strong>開始、進行中或之後</strong>——把點估計擴增為<strong>完整分布</strong>，且<strong>不改基礎模型架構</strong>。藉此近似，我們能估計<strong>非貝葉斯 agent</strong> 的分布統計（如熵），並觀察到點估計法產生<strong>過度自信的估計子</strong>、不滿足<strong>一致性</strong>。再者，與<strong>完整分布式</strong>學任務後驗的方法相比，本法在<strong>參數遠少</strong>之下表現與變分基線<strong>相當</strong>。</p>
+<h3 id="四點貢獻">四點貢獻</h3>
+<ol>
+<li>構造一個機率圖模型以匹配記憶式元 RL agent 的實務設計，從而透過拉普拉斯近似做<strong>不確定性量化，無需重訓或改架構</strong>（擴展 Chung 2015 的 VRNN、Abdolmaleki 2018 的 MPO，採 Levine 2018 的 control-as-inference）。</li>
+<li>研究<strong>對 MDP 後驗模型的不同假設</strong>如何與 RNN 的表徵學習、不確定性量化交互（對非貝葉斯 agent 套貝葉斯近似，仍存在一定程度的<strong>模型誤設</strong>）。</li>
+<li>當作 baseline VRNN 的替代品時，本法<strong>持平或更佳</strong>——用更少可學參數、無需改架構即提供變分線上學習的替代近似。</li>
+<li>結果顯示非貝葉斯元 RL agent 學到的 RNN 表徵（跨多種圖模型假設判斷）產生<strong>過度自信的估計子</strong>——延伸 Xiong 2021「記憶式元 RL 學到不一致估計子」的洞見。</li>
+</ol>
+<h2 id="1-引言">1. 引言</h2>
+<p>元 RL 中 agent 在環境的先驗分布上訓練，使其能就一段新軌跡<strong>推斷潛在環境參數並線上適應行動策略</strong>（zero-shot／few-shot 適應）。準確的**任務後驗（給資料下潛變數分布）**對量化 agent 不確定性有用：可偵測分布偏移、以新奇訊號引導探索；部署時分布偏移偵測對及時人為介入或重訓至關重要。</p>
+<p>常見做法用 <strong>RNN 隱狀態做點估計</strong>任務後驗，但拿不到分布統計、且<strong>過度自信</strong>（除非真後驗尖峰於該點，這是不切實際的強假設）→ 已知會過擬合訓練分布、下游脆弱（Xiong 2021；Greenberg 2023）。顯式參數化完整分布（如高斯 VRNN）更準，但<strong>訓練更慢、回報常還輸給點估計法</strong>（後者採樣噪聲低、數值易表示、模型容量不被「學複雜後驗」佔用）。</p>
+<p>本文提出 <strong>Laplace VRNN</strong>：用拉普拉斯近似擴展 RNN-based 元 RL，<strong>不改架構、不改損失、不重訓</strong>即可對非貝葉斯 agent 做不確定性量化；可在訓練任一時點套用，訓練後套用即 <strong>post-hoc 後驗</strong>（Daxberger 2021），讓我們既享確定性預訓練之利、又得貝葉斯之益。拉普拉斯近似只需在局部極大處的對數似然<strong>曲率</strong>；對均場高斯假設，只需 <strong>RNN 輸出對隱狀態的 Jacobian</strong>，得中心在 RNN 隱狀態、逆協方差等於 <strong>Jacobian 外積和</strong>的高斯——比對高維網路參數做 Laplace 便宜得多。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>元 RL</strong>：從 context、潛變數模型、攤銷推理、「學會學習」等多視角描述。與本文相關的是 Garnelo 2018 的<strong>神經過程</strong>（用元學習推斷生成分布的全域潛變數）；本文在 RL 上測試，故模型可視為<strong>非平穩隨機過程／序列神經過程</strong>。與 PlaNet（Hafner 2019）類似，但<strong>不把循環模型條件於任務後驗的採樣</strong>，以求解析解（代價是降低模型非線性）。</li>
+<li><strong>貝葉斯 RL</strong>：學「條件於任務後驗」的最優控制策略 ≈ 逼近 <strong>Bayes-adaptive 最優策略</strong>（Duff 2002）——agent 條件於當前狀態與觀測歷史、產生潛變數信念分布、在信念上最大化期望回報。本文聚焦 Bayes-adaptive 框架。</li>
+<li><strong>拉普拉斯近似</strong>：曾用於 MAML（Finn 2017/2018）做更準推理、或持續學習（Kirkpatrick 2017）當權重更新正則。主障礙是<strong>逆 Hessian 計算</strong>（參數量的平方記憶體），故 BNN 常用 block-diagonal 分解（Martens &amp; Grosse 2015）。本法繞開此問題——只對<strong>全參數的小子集（隱狀態）<strong>建分布；相較對最後一層做貝葉斯線性迴歸，本法能表達</strong>多峰分布</strong>。</li>
+</ul>
+<h2 id="3-預備">3. 預備</h2>
+<p>把序列決策形式化為<strong>回合制 MDP</strong>：狀態、動作、獎勵為隨機變數；折扣因子吸收進轉移作為全域終止機率（Levine 2018）。目標是找最大化期望回報的策略 <span class="math inline">\(\pi\)</span>。</p>
+<h3 id="31-元-rl-中的推理">3.1 元 RL 中的推理</h3>
+<p>與單任務 RL 不同，元 RL 要對<strong>環境分布</strong>找最優策略；agent 通常不知身處哪個環境，需據線上回饋自適應切換策略，且可跨<strong>多回合</strong>適應（zero/few-shot）。以<strong>全域潛變數 <span class="math inline">\(z\)</span></strong> 形式化：固定 <span class="math inline">\(\phi\)</span> 下，每條採樣軌跡依賴採樣的 <span class="math inline">\(z\)</span>（可詮釋為當前環境的唯一識別碼），agent 不直接觀測 <span class="math inline">\(z\)</span> 但其影響環境的獎勵與轉移。式 (1) 定義生成過程，含環境採樣分布與<strong>給目前所有觀測資料下潛變數的後驗</strong>（後驗在每步 inter-episodically 更新）。此模型完全一般化，反映多數記憶式元 RL 的因式分解與推理能力；一般化既是優點（捕捉廣泛環境）也是缺點（搭函數逼近時模糊了 agent 學到什麼、後驗不確定性如何表示）。</p>
+<p><strong>攤銷推理</strong>：式 (1) 後驗通常不可解 → 用<strong>變分推理</strong>，以較簡模型類的分布 <span class="math inline">\(q\)</span> 表後驗、最大化資料邊際的下界（式 2）。為免每步重解泛函優化，用<strong>攤銷</strong>：訓練一神經網路把過去觀測直接映到分布參數（Gershman &amp; Goodman 2014）。式 (3) 給出攤銷學習目標的不等式——具足夠函數類與最優參數時取等，且可用標準 SGD 訓練（需能從 <span class="math inline">\(q\)</span> 採樣、且對參數端到端可微）。</p>
+<p><strong>從推理到控制</strong>：用 <strong>control-as-inference</strong>（Levine 2018）擴展式 (1)。引入二元最優性變數 <span class="math inline">\(\mathcal{O}\)</span>，其給定軌跡的似然 = 獎勵和的指數；由貝氏規則推出期望策略。對 <span class="math inline">\(\mathcal{O}\)</span> 的對數似然定變分下界（用變分策略），給定本文的 outcome likelihood 即得<strong>正則化 RL 目標</strong>（式 4）——是 <strong>MPO</strong>（Abdolmaleki 2018）目標的擴展，納入潛變數後驗及其 KL 項。實務常加三項設計選擇：(1) 用前一步變分後驗替代真後驗（只在 <span class="math inline">\(t=0\)</span>、episode 0 用真先驗）；(2) 策略迭代更新到變分最優；(3) KL 罰項以 <span class="math inline">\(\beta\)</span> 縮放。當用<strong>點估計（Dirac 後驗）+ 忽略 KL</strong> 時，攤銷後的式 (4) 退回典型記憶式元 RL 目標（Duan 2016）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

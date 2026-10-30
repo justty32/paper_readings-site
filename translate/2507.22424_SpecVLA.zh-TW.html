@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Spec-VLA: Speculative Decoding for Vision-Language-Action Models with Relaxed Acceptance 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Songsheng Wang、Rucheng Yu、Zhihang Yuan、Chao Yu、Feng Gao、Yu Wang、Derek F. Wong</p><p>日期：2025-07-30（v1，cs.LG）</p><p>arXiv：2507.22424</p><p><a href="https://arxiv.org/abs/2507.22424" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="spec-vla-speculative-decoding-for-vision-language-action-models-with-relaxed-acceptance">Spec-VLA: Speculative Decoding for Vision-Language-Action Models with Relaxed Acceptance</h1>
+<h2 id="摘要與第-1-節問題">摘要與第 1 節：問題</h2>
+<p>大型 VLA 從視覺與語言輸入自回歸地產生機器人動作。骨幹 VLM 龐大，每個控制動作又要逐 token 解碼，延遲因而成為部署瓶頸。LLM 的 speculative decoding 會讓小型 draft model 先提出多個 token，再由大型 verification model 一次平行驗證；然而直接搬到 VLA 效果有限。原因有二：草稿模型必須同時理解視覺、語言與動作，比續寫常見詞更難；VLA 多採 greedy decoding，只要草稿 token 與驗證 token 不完全相同，就會在第一個差異處截斷後續草稿。</p>
+<p>Spec-VLA 的核心問題是：動作 token 雖不完全相同，若代表的連續控制值足夠接近，是否仍可安全接受，換取更長的單次解碼？</p>
+<h2 id="第-34-節spec-vla-方法">第 3、4 節：Spec-VLA 方法</h2>
+<p>基礎 VLA 逐步產生位置、旋轉與夾爪控制的 action tokens。Spec-VLA 以一層 Llama decoder 作草稿產生器，接收驗證模型的隱狀態、文字 embedding、視覺 embedding 與先前草稿 token。它沿用 Eagle-2 的 dynamic draft tree：保留多個高機率候選，組成多路徑樹，再交給目標 VLA 平行驗證。目標模型本身不必微調或重訓。</p>
+<p>嚴格 speculative decoding 只接受完全相同的 token。Spec-VLA 改用 relaxed acceptance。OpenVLA 類模型會把每個連續動作維度量化成有序 bins，再映射成 token；因此 token 對應 bin 的索引差可直接當動作距離。令驗證 token 為 <code>a_i</code>、草稿 token 為 <code>a_hat_i</code>、容許距離為 <code>r</code>，當 <code>D(a_i,a_hat_i) &lt;= r</code> 時接受草稿，否則以驗證結果重採樣。這個準則利用既有量化次序，不需額外計算 embedding 相似度。</p>
+<p>這項放寬不再是語言模型式的無損解碼，而是速度與控制保真度的交換。作者因此用任務成功率共同檢查：若距離門檻太大，即使接受長度上升，也可能讓軌跡偏離目標。</p>
+<h2 id="第-56-節實驗與分析數字均為作者自報">第 5、6 節：實驗與分析（數字均為作者自報）</h2>
+<p>作者在 LIBERO 的 Object、Spatial、Goal、Long 四個 task suites 上，以微調後 OpenVLA 為 verification model，並用它重建資料來訓練 draft model。每個 suite 都涵蓋多項任務，主表同時報告成功率、每次 forward pass 接受的 token 長度，以及相對自回歸基線的速度。</p>
+<p>作者自報，直接套用嚴格驗證只能得到 1.08× 至 1.15× 的加速。加入距離式放寬後，接受長度增加 25％ 至 44％，整體加速提高到 1.22× 至 1.42×，主實驗的任務成功率沒有一致性下降。以 LIBERO-Goal 為例，平均接受長度由 2.04 增至 2.94，加速由 1.09× 增至 1.42×；成功率則與基線接近。</p>
+<p>門檻消融顯示，不同 task suite 的容忍度不同。作者自報，Goal、Object 與 Spatial 可在一段門檻範圍內維持成功率，Long 則較早下降，表示較長程任務更易累積細小動作誤差。接受長度分布也從短序列移向較長草稿；這說明嚴格完全匹配確實會過度拒絕功能上近似的控制 token。</p>
+<p>案例中，放寬驗證能在較少輪次湊出完整動作序列。可是這種「近義 token」只在量化動作空間中成立，不能直接等同自然語言的語意同義。安全性仍取決於 bin 距離是否對實際控制後果有良好刻畫。</p>
+<h2 id="第-7-節結論與局限">第 7 節：結論與局限</h2>
+<p>Spec-VLA 證明 speculative decoding 可延伸到 VLA，而且有序動作 token 提供了便宜的任務專屬接受準則。它保留目標 VLA，不需改其架構，工程整合成本相對有限。</p>
+<p>限制是實驗全在模擬環境，尚未驗證真實機器人的延遲、控制誤差與安全性。作者也未研究 action chunking。（以下本檔補註，非作者自陳）更根本地說，放寬接受失去嚴格 speculative decoding 的逐 token 等價保證；不同機器人、量化方式與長程任務都需重新校準門檻，不能由這組結果直接外推。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2507.22424_SpecVLA.%E6%91%98%E8%A6%81.html"><code>../summarize/2507.22424_SpecVLA.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

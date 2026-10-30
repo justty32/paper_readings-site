@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Compiled AI：LLM 工作流自動化的確定性程式碼生成（續 6） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.05150_CompiledAI.zh-TW.html">回 2604.05150_CompiledAI.zh-TW 目錄</a>　<a href="03_%E7%B3%BB%E7%B5%B1%E6%9E%B6%E6%A7%8B.html">← 上一節</a>　<a href="05_%E7%B5%90%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="6-結果">6. 結果</h2>
+<h3 id="61-任務-1函式呼叫bfcl">6.1 任務 1：函式呼叫（BFCL）</h3>
+<p><strong>Token 效率與成本</strong>。編譯式 AI 耗費一次性 9,600 token 生成成本，之後為零執行 token（表 1）。相對 Direct LLM 的攤平點發生在 n* ≈ 17 筆交易。在 1,000 筆交易時，編譯式 AI 使用的 token 比 Direct LLM 少 57×，比 AutoGen 少 84×。在每月 1M 筆交易時，總擁有成本為 $555 vs. Direct LLM 的 $22,000——40× 成本比（表 2）。</p>
+<p><strong>表 1：Token 消耗比較（BFCL, n=400）</strong></p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>GenTokens</th>
+<th>Runtime/tx</th>
+<th>Total@1K</th>
+<th>攤平點</th>
+<th>節省比</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Direct LLM</td>
+<td>0</td>
+<td>552</td>
+<td>552,000</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>LangChain</td>
+<td>0</td>
+<td>740</td>
+<td>740,000</td>
+<td>—</td>
+<td>0.75×</td>
+</tr>
+<tr>
+<td>AutoGen</td>
+<td>0</td>
+<td>805</td>
+<td>805,000</td>
+<td>—</td>
+<td>0.69×</td>
+</tr>
+<tr>
+<td>Compiled AI</td>
+<td>9,600</td>
+<td>0</td>
+<td>9,600</td>
+<td>∼17 tx</td>
+<td>∼57×</td>
+</tr>
+</tbody>
+</table>
+<p><strong>表 2：每月 1M 筆交易的總擁有成本（Claude Opus 4.5：$15/1M 輸入，$75/1M 輸出 token）</strong></p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>推論</th>
+<th>基礎設施</th>
+<th>總 TCO</th>
+<th>成本比</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Direct LLM</td>
+<td>$21,500</td>
+<td>$500</td>
+<td>$22,000</td>
+<td>40×</td>
+</tr>
+<tr>
+<td>LangChain</td>
+<td>$28,900</td>
+<td>$500</td>
+<td>$29,400</td>
+<td>53×</td>
+</tr>
+<tr>
+<td>AutoGen</td>
+<td>$31,400</td>
+<td>$500</td>
+<td>$31,900</td>
+<td>57×</td>
+</tr>
+<tr>
+<td>Compiled AI</td>
+<td>$55</td>
+<td>$500</td>
+<td>$555</td>
+<td>1×</td>
+</tr>
+</tbody>
+</table>
+<p><strong>延遲與一致性</strong>。編譯式 AI 以 4.5ms P50 執行（vs. Direct LLM 2,004ms，450× 改善），接近零抖動（10.5ms vs. 1,123ms）。它在實證上達成 100% 再現性與零輸出熵；執行時推理因 temperature=0 下的模型變異顯示 95% 再現性，與 Atil et al. [2024] 一致。</p>
+<p><strong>可靠性與驗證</strong>。任務完成率為 96%（384/400）。全部 16 個失敗為編譯時失敗——一旦成功編譯，工作流以 100% 可靠性執行。驗證管線首過率在語法與執行階段為 100%；準確度閘的 96% 反映生成碼正確執行但輸出未匹配預期的情況。這些失敗可在部署前偵測，不像執行時推理錯誤。此編譯時偵測是有意義的：若無準確度驗證閘，4% 的語意錯誤工作流將以 100% 執行成功但錯誤輸出部署——對操作者不可見的靜默失敗。多階段驗證將這些轉換為可偵測的編譯時失敗，以 4% 編譯失敗率為代價達成 100% 部署工作流可靠性（模擬消融）。</p>
+<p><strong>安全性</strong>。prompt injection 驗證器在 30 個對抗輸入上達成 95.8% 召回與 100% 精確（零誤報）。程式碼安全閘在 20 個漏洞程式碼 fixtures 上達成 75% 召回，在 20 個良性工作流上達成 100% 精確（零誤報）。輸出閘 canary 偵測在基於模擬的測試中召回僅 12.5%，反映的是方法論而非生產性能。跨 135 安全測試案例的整體精確為 96.1%。輸出閘 canary 召回（12.5%）反映模擬方法論：canary token 僅在 prompt 洩漏進 LLM 生成上下文時觸發，此條件需要我們合成測試集未能充分代表的特定攻擊者存取模式；針對真實攻擊語料庫的生產紅隊測試將提供更完整圖像。</p>
+<p><strong>程式碼品質</strong>。編譯產物達成 99% 型別覆蓋率與 96% 測試通過率。環狀複雜度平均 23.8 vs. 人類程式碼的 8，這是 LLM 生成 switch-case 結構的已知特徵 [GitClear, 2025]，也是模板細化的領域。</p>
+<h3 id="62-任務-2文件智慧docile">6.2 任務 2：文件智慧（DocILE）</h3>
+<p>表 3 呈現 DocILE 結果。純確定性抽取（regex）比 Direct LLM 快 4,915×，但僅達成 20.3% KILE——一個 80 百分點的差距，源於語意欄位的失敗：客戶名稱（10.1% KILE）與貨幣金額（9.2% KILE），這些需要脈絡理解。</p>
+<p>Code Factory 透過將任務特定的 LLM 呼叫編譯為程式碼產物來彌合此差距，而非逐請求構造提示。它達成競爭性的 KILE 準確度（80.0%，匹配 Direct LLM）與最高 LIR 準確度（80.4%），同時延遲比 Direct LLM 低 2.3×。結合 Pydantic 輸出驗證與 schema 違反時的自動重試，Code Factory 證明封裝聚焦 LLM 呼叫的編譯程式碼可達成與手工調整提示工程持平的效果，同時啟用系統性軟體工程好處：版本控制、測試與完整可審計性。</p>
+<p><strong>表 3：DocILE 結果</strong></p>
+<table>
+<thead>
+<tr>
+<th>範式</th>
+<th>方法</th>
+<th>KILE</th>
+<th>LIR</th>
+<th>延遲</th>
+<th>LLM 呼叫</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>編譯式 AI</td>
+<td>Deterministic（Regex）</td>
+<td>20.3%</td>
+<td>59.7%</td>
+<td>0.6 ms</td>
+<td>無</td>
+</tr>
+<tr>
+<td>編譯式 AI</td>
+<td>Code Factory</td>
+<td>80.0%</td>
+<td>80.4%</td>
+<td>2,695 ms†</td>
+<td>已編譯</td>
+</tr>
+<tr>
+<td>執行時 AI</td>
+<td>Direct LLM</td>
+<td>80.0%</td>
+<td>74.5%</td>
+<td>6,339 ms</td>
+<td>逐請求</td>
+</tr>
+<tr>
+<td>執行時 AI</td>
+<td>LangChain</td>
+<td>80.0%</td>
+<td>75.6%</td>
+<td>6,207 ms</td>
+<td>逐請求</td>
+</tr>
+<tr>
+<td>執行時 AI</td>
+<td>AutoGen</td>
+<td>77.8%</td>
+<td>78.9%</td>
+<td>13,742 ms</td>
+<td>逐請求</td>
+</tr>
+</tbody>
+</table>
+<p>† 中位數延遲；平均值 10,263 ms 因 10% 重試離群值（最大 183s）。首次編譯：57s。</p>
+<p>兩種任務類型共同跨越從完全結構化到高度雜訊語意輸入的光譜。BFCL 代表結構化端：輸入是型別良好的函式簽名，具備明確的正確輸出，使純確定性編譯可行。DocILE 代表語意端：發票文件在佈局、語言與欄位位置上各異，需要 regex 方法無法提供的脈絡理解。編譯式 AI 跨兩個極端泛化——在函式呼叫上達成競爭性準確度，並在文件智慧上匹配 Direct LLM——暗示架構未對單一輸入模態過擬合。Code Factory 變體為此光譜的語意端提供有原則的路徑：以編譯程式碼形式進行有界 LLM 呼叫，而非臨時執行時提示。</p>
+<h1 id="compiled-aillm-工作流自動化的確定性程式碼生成續-6">Compiled AI：LLM 工作流自動化的確定性程式碼生成（續 6）</h1>
+<h2 id="7-討論">7. 討論</h2>
+<p>編譯式 AI 並非執行時推理的通用替代方案。我們的結果暗示一個實用決策規則：對結構化、可預測輸入使用編譯抽取——此處確定性很重要；對雜訊、開放式內容使用執行時 LLM——此處語意理解很重要；而對於混合內容的生產系統，混合方法——帶信心式 LLM fallback 的編譯抽取——可在維持接近 LLM 準確度的同時降低延遲與成本。</p>
+<p>醫療行政工作流體現了編譯式 AI 擅長的場景。事先授權、帳務對帳與臨床文件處理是高流量、由法規明確定義、合規敏感、延遲敏感且要求完整可審計性的。Qiu et al. [2024] 識別行政工作流自動化為 LLM 系統的候選應用，且法規框架日益強調可審計性 [FDA, 2025]。我們的事先授權範例（附錄 A）展示編譯式 AI 如何將保險覆蓋規則編碼為確定性程式碼，將 LLM 呼叫限制在從非結構化筆記中抽取結構化臨床因素的窄步驟。</p>
+<p>約束生成透過界定錯誤空間改善可靠性：模型無法幻覺出錯誤的 API 呼叫或資料庫 schema，因為這些來自預先測試的模板。確定性執行也產出完全可觀測性——當準確度退化時，我們可精確定位哪個程式碼段表現不佳並觸發針對性重新生成。這將編譯式 AI 定位為非一次性流程，而是演化系統：帶自適應改善的確定性執行，其中生產指標持續為產物細化提供資訊。</p>
+<p>還有一個經濟時間點論點。LLM 推論成本每年約下降 10×，但企業部署量增長更快——即使每 token 成本下降，總推論支出仍在上升 [OpenAI, 2026]。跨交易攤銷推論而非逐請求呼叫模型的架構，在規模上變得具有經濟說服力。編譯式 AI 即此類架構：生成成本在編譯時固定，執行成本無論交易量為何均為零。隨著 LLM 成本開始主導企業營運預算，<strong>編譯一次執行多次</strong>的方法不僅方便——很可能成為明確定義、高流量工作流的預設部署模式。</p>
+<h2 id="8-局限">8. 局限</h2>
+<p>幾個局限需要承認。<strong>規範品質</strong>：編譯式 AI 假設使用者能準確以 YAML 指定工作流；規範問題仍是根本性的，迭代細化通常必要。<strong>有限適用性</strong>：並非所有工作流可簡化為確定性程式碼，需要真正創造力或適應新情境的任務可能需要執行時推理；我們的評估涵蓋兩種任務類型，更廣泛泛化需要進一步研究。<strong>生成失敗</strong>：4% 的編譯失敗（BFCL 16/400）未能產出準確輸出，雖然全部語法有效且可在部署前偵測。<strong>模型依賴</strong>：生成碼品質取決於底層 LLM，模型更新可能需要重新驗證。<strong>基準範圍</strong>：我們的評估框架尚未被其他系統採用，限制跨系統可比性。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Compiled AI：LLM 工作流自動化的確定性程式碼生成（續 7） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.05150_CompiledAI.zh-TW.html">回 2604.05150_CompiledAI.zh-TW 目錄</a>　<a href="04_%E7%B5%90%E6%9E%9C.html">← 上一節</a></p>
+</blockquote>
+<h2 id="9-結論">9. 結論</h2>
+<p>我們研究編譯式 AI 作為 LLM 工作流自動化的生產系統設計點，強調醫療領域——此處可靠性與可審計性為法規要求。建立在 DSPy、LLM+P 與相關工作中建立的編譯範式上，我們刻畫了編譯式 AI 跨兩種任務類型的操作性屬性，展示其透過 Code Factory 變體泛化至需要有界 LLM 呼叫的語意任務，並證明在 token 經濟學（1,000 筆交易 57× 減少）、延遲（函式呼叫 450× 改善）、確定性（100% 再現性 vs. 執行時推理的 95%）與規模成本（1M 筆/月 40–57× TCO 減少）的一致優勢。</p>
+<p>此方法以靈活性換取確定性、成本效率、可審計性與減少的攻擊面——這些屬效能在明確定義、高流量、合規敏感的工作流場景中最為重要。我們釋出評估框架與基準套件以實現跨社群系統性比較。</p>
+<p><strong>未來工作</strong>：關鍵開放方向包括自然語言規範（超越 YAML）、從高層意圖自動分解工作流、透過執行時準確度指標啟用針對性重新生成週期的持續最佳化、生成碼屬性的形式驗證，以及跨系統基準採用。</p>
+<h1 id="compiled-aillm-工作流自動化的確定性程式碼生成續-7">Compiled AI：LLM 工作流自動化的確定性程式碼生成（續 7）</h1>
+<h2 id="附錄-a事先授權工作流範例">附錄 A：事先授權工作流範例</h2>
+<p>此範例展示醫療事先授權的有界 agentic 呼叫，說明第 7 節討論的醫療場景中的編譯式 AI：LLM 被限制於結構化資料抽取，而覆蓋決定以確定性、完全可審計的程式碼執行。</p>
+<p><strong>工作流規範（GLP-1 事先授權）</strong>：</p>
+<pre><code class="language-yaml"># workflow_spec: prior_auth_glp1_v1.yaml
+metadata:
+  name: &quot;GLP-1 Agonist Medical Necessity Review&quot;
+  compliance: [&quot;HIPAA&quot;, &quot;CMS_Decision_Timeframes&quot;]
+inputs:
+  - name: &quot;patient_chart_summary&quot;
+    type: &quot;text&quot;
+logic_requirements:
+  - step: &quot;extract_clinical_factors&quot;
+    type: &quot;bounded_invocation&quot;
+    schema:
+      has_t2d_diagnosis: boolean
+      current_a1c: float
+      bmi: float
+      has_step_therapy_failure: boolean
+    validation:
+      - &quot;bmi &gt; 10 AND bmi &lt; 100&quot;
+  - step: &quot;evaluate_coverage&quot;
+    type: &quot;deterministic_rule&quot;
+    logic: |
+      IF has_t2d_diagnosis THEN APPROVE
+      ELSE IF (bmi &gt;= 30) AND has_step_therapy_failure THEN APPROVE
+      ELSE DENY
+</code></pre>
+<p><strong>編譯產物（分離機率性抽取與確定性決策）</strong>：</p>
+<pre><code class="language-python">@workflow.defn
+class PriorAuthWorkflow:
+    @workflow.run
+    async def run(self, input_data: WorkflowInput) -&gt; AuthResult:
+        # PHASE 1: BOUNDED AGENTIC INVOCATION
+        clinical_data = await workflow.execute_activity(
+            &quot;extract_clinical_data_activity&quot;,
+            args=[input_data.chart_text],
+            retry_policy=RetryPolicy(maximum_attempts=3)
+        )
+        # PHASE 2: HALLUCINATION VALIDATION
+        if clinical_data.a1c and not (3.0 &lt; clinical_data.a1c &lt; 20.0):
+            return await self.trigger_human_review(&quot;Suspicious A1C&quot;)
+        # PHASE 3: DETERMINISTIC DECISION
+        decision, reason = &quot;DENIED&quot;, &quot;Does not meet criteria&quot;
+        if clinical_data.has_t2d_diagnosis:
+            decision, reason = &quot;APPROVED&quot;, &quot;Type 2 Diabetes Diagnosis&quot;
+        elif (clinical_data.bmi &gt;= 30.0 and
+              clinical_data.has_step_therapy_failure):
+            decision, reason = &quot;APPROVED&quot;, &quot;BMI &gt;=30 + Step Therapy&quot;
+        # PHASE 4: AUDIT TRAIL
+        await workflow.execute_activity(&quot;log_decision_event&quot;,
+            {&quot;decision&quot;: decision, &quot;logic_version&quot;: &quot;v1.0&quot;})
+        return AuthResult(status=decision, reason_code=reason)
+</code></pre>
+<p>此範例展示三項屬性：(1) <strong>Safety Sandwich</strong>——機率性模型被約束在輸入驗證與確定性邏輯之間 [Dalrymple et al., 2024];(2) <strong>可審計性</strong>——決策可追溯至特定程式碼行，在此架構下實現完整可審計性；(3) <strong>Token 經濟學</strong>——覆蓋規則編譯一次而非逐請求發送。</p>
+<h2 id="附錄-b基準套件">附錄 B：基準套件</h2>
+<p>我們在 https://github.com/XY-Corp/CompiledAI 釋出基準套件，包含 540 個 YAML 工作流規範、用於準確度驗證的金輸出、全部七個指標類別的度量腳本，以及基線實作。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《基於後驗抽樣的貝氏符號迴歸（SMC-SR）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：（NASA Langley Research Center 團隊）</p><p>日期：2025-12，符號迴歸 × 貝氏統計</p><p>arXiv：2512.10849</p><p><a href="https://arxiv.org/abs/2512.10849" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="基於後驗抽樣的貝氏符號迴歸smc-sr重點摘要">《基於後驗抽樣的貝氏符號迴歸（SMC-SR）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>NASA Langley 提出 <strong>SMC-SR</strong>：用 <strong>序貫蒙地卡羅（Sequential Monte Carlo, SMC）</strong> 近似「給定資料下符號表達式的貝氏後驗分布」，使 SR <strong>抗噪 + 內建不確定性量化</strong>。相較傳統 GP-based SR（GPSR），在含噪 Feynman benchmark 上<strong>更不易過擬合、更快找到高擬合表達式、泛化更好</strong>；成功關鍵是 <strong>機率式選擇 + 似然回火（likelihood-tempering）</strong> 的組合（而非單純的正則化或選擇壓力）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>SR <strong>對噪聲敏感</strong>（連 1% 噪聲都使多數 SR 大幅退化），易過擬合噪聲資料。</li>
+<li>目標：近似<strong>符號表達式的貝氏後驗 p(M|D)</strong> → 得 (1) MAP 表達式（最可能）、(2) 表達式形式與參數的<strong>不確定性量化</strong>。</li>
+</ul>
+<h2 id="方法">方法</h2>
+<ul>
+<li><strong>貝氏 SR</strong>：估計 p(M,θ|D)；對參數 θ <strong>邊際化</strong> → 模型後驗 p(M|D)（免在 θ 維度做跨維度跳躍，但須對每個提議模型算 marginal likelihood ＝雙重迴圈）。</li>
+<li><strong>正規化邊際似然（NML）</strong>：SR 中模型形式未知、先驗常取非正規均勻分布 → 用 NML 解決不定常數；本文用 <strong>Laplace 近似</strong>算 NML（比內層 SMC 快數量級）。</li>
+<li><strong>為何 SMC 而非 MCMC</strong>：SMC 是<strong>族群式、全域</strong>——對提議分布更穩健、放寬遍歷性要求、可平行；MCMC 序列式、難探索多峰高維。</li>
+<li><strong>SMC-SR 流程</strong>：演化一群加權表達式，經一系列<strong>回火目標分布</strong>（似然回火，從先驗平滑過渡到後驗）;<strong>自適應回火</strong>（二分法維持有效樣本數 ESS）；為防權重退化用 <strong>分層重取樣 + MCMC 前向核（rejuvenation，用 GP 交叉/變異當提議）</strong> 保多樣性與全域探索。</li>
+</ul>
+<h2 id="與-gpsr-的四個差異--成功歸因">與 GPSR 的四個差異 &amp; 成功歸因</h2>
+<ol>
+<li><strong>NML</strong>（正則化）→ 貢獻<strong>中等</strong>;</li>
+<li><strong>重取樣</strong>（增選擇壓力）→ <strong>單獨不足</strong>（GP-agg 高壓力反而過擬合）;</li>
+<li><strong>機率式選擇</strong> + 4. <strong>似然回火</strong> → <strong>主要成功來源</strong>（促成「<strong>有針對性的新奇（targeted novelty）</strong>」——只在高後驗區探索新奇，非純新奇）。</li>
+</ol>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>12 個最難的 Feynman 資料集</strong>（10% 噪聲，3–8 維，各重複 20 次）。對手：GP-MSE、GP-NML、GP-agg。</li>
+<li><strong>SMC-SR 更快達低訓練誤差、泛化更好</strong>：<strong>僅 5/12 過擬合</strong>（GPSR 幾乎全部過擬合）;<strong>更頻繁遇到高擬合表達式</strong>。</li>
+<li><strong>複雜度動態</strong>：早期探索期快速膨脹（似 GP-MSE），但隨回火 NML 正則生效 → 複雜度收斂到 GP-NML 水準（先探索-bloat、再聚焦高後驗區降複雜度）。</li>
+<li><strong>模型選擇</strong>：用<strong>最終族群的眾數（mode，MAP 近似）</strong> 勝過「最佳訓練誤差」與「驗證集」選擇（即使無額外資料），<strong>近最優</strong>且通常勝 GPSR 最樂觀情況；真值回復率亦最高。</li>
+<li><strong>不確定性量化</strong>：模型形式 + 參數；多峰後驗（模型分歧區＝預測該謹慎處 + 加資料最有益處）。</li>
+<li><strong>探索-開發兩階段</strong>：自適應回火先探索（多唯一模型）後開發（快速趨後驗）。SMC-SR 總唯一模型數約 GP 的 50%，但<strong>接受進族群的唯一模型更多</strong>（更動態、主動發現高後驗密度模型）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 C 類的**「貝氏/不確定性量化 SR」代表**——與 <a class="paper-reference" href="2512.15920_SR_Physical_Sciences_Intro.%E6%91%98%E8%A6%81.html">2512.15920</a> 特刊總綱提到的 <strong>Bayesian Machine Scientist（Guimerá）</strong> 同脈；與 <a class="paper-reference" href="2512.01682_SR_Current_Challenges_Thesis.%E6%91%98%E8%A6%81.html">2512.01682</a>（Aldeia 論文的後驗取樣 GP）呼應，但本文用 <strong>SMC（非 MCMC）+ NML + 似然回火</strong>。</li>
+<li>最值得記：<strong>「targeted novelty」<strong>洞見（純新奇無益，只在高後驗區的新奇才有益）;<strong>似然回火 + 機率式選擇 &gt; 單純正則化或選擇壓力</strong>;<strong>用族群眾數當 MAP 模型選擇</strong>勝驗證集；以及 SR 的</strong>不確定性量化</strong>（形式 + 參數，多峰後驗指出該謹慎/該補資料處）。</li>
+<li>與 <a class="paper-reference" href="2509.21780_EIC_Structural_Stability.%E6%91%98%E8%A6%81.html">2509.21780</a>（有效資訊準則）、<a class="paper-reference" href="2511.08784_SR_Neutron_Star_Mergers.%E6%91%98%E8%A6%81.html">2511.08784</a>（天文 SR 抗噪外推）皆關心 SR 的穩健性/泛化。</li>
+<li>定位：<strong>方法論文 + Feynman benchmark 實驗</strong>（NASA Langley，抗噪 + UQ 為賣點）；適合做 <strong>貝氏 SR、不確定性量化、抗噪科學發現</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2512.10849_Bayesian_SR_SMC.zh-TW.html"><code>../translate/2512.10849_Bayesian_SR_SMC.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗與分析 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2312.06585_ReST_EM.zh-TW.html">回 2312.06585_ReST_EM.zh-TW 目錄</a>　<a href="02_%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">← 上一節</a>　<a href="04_%E5%8F%83%E8%80%83%E6%96%87%E7%8D%BB.html">下一節 →</a></p>
+</blockquote>
+<h2 id="5-實驗與分析">5 實驗與分析</h2>
+<p>實驗欲回答：(1) ReST^EM 相較在人類資料上微調的效果如何？(2) 達到最佳表現需要多少迭代？多快出現過擬合？(3) ReST^EM 對 pass@k 與多數投票表現的影響？(4) 在特定任務用模型生成資料微調後，是否正向遷移到相關任務？在廣泛任務套件上評估時，相對基座模型是否有表現退化？(5) 需要多少輸入資料就能取得多數效益？單輪 ReST^EM 是否足夠？</p>
+<p><strong>訓練資料集</strong>：主要在 Hendrycks&#x27; MATH（7500 題訓練）與 APPS（Introductory，2342 題訓練）上評估，因為兩者的模型輸出都能自動判定對錯，非常適合 ReST^EM：MATH 用真值答案核對正確性，APPS 用測試案例判定生成程式是否正確。</p>
+<p><strong>模型</strong>：使用 Google Cloud 公開 API 的 PaLM 2 模型，包含 PaLM 2-S（Bison）、PaLM 2-S*（Codey）、PaLM 2-L（Unicorn）。</p>
+<p><strong>評估</strong>：以 MATH、APPS（Introductory）測試集報告泛化表現；以 GSM8K、匈牙利高中畢業考、HumanEval 衡量遷移表現；並用 Big-Bench Hard 評估一般能力。除特別說明外，評估設定均沿用 Google et al. (2023)。</p>
+<p><strong>實作細節</strong>：每輪 ReST^EM 的 E-step，MATH 每題產生 32 個解、APPS 每題產生 64 個解，取樣用 top-K（K=40）、溫度 0.7。為避免簡單題產生過多正確解造成資料失衡，比照 Zelikman et al. (2022) 設定每題最多納入 10 個正確解入訓練集，以確保資料多樣性並防止在簡單題上過擬合。微調時以少樣本提示＋題目為輸入、模型生成的解答為目標，僅對目標部分套用下一詞元預測損失。</p>
+<h3 id="51-math-與-apps-上的-restem">5.1 MATH 與 APPS 上的 ReST^EM</h3>
+<p>MATH 受益於多輪 ReST^EM 迭代，不論是 MATH 測試集本身或遷移到 GSM8K 的表現皆持續提升；相對地，APPS 的多數增益來自第一輪迭代，之後再迭代反而導致 APPS 與遷移的 HumanEval 表現退化。</p>
+<p>在兩個基準上，用模型生成解答微調都大幅優於用人類撰寫解答，尤其在 PaLM 2-L 上差距更明顯，此結果呼應 Yuan et al. (2023) 及近期以模型生成資料蒸餾 LLM 的工作。但與 Yuan et al. (2023) 在 GSM8K 上觀察到「模型容量增加時、模型生成資料的效益遞減」不同，本文結果呈相反趨勢：<strong>模型容量越大，ReST^EM 帶來的效益越大</strong>。MATH 上的測試準確率提升為 PaLM 2-S 5.94%、PaLM 2-L 6.34%；APPS 上為 PaLM 2-S* 5.6%、PaLM 2-L 6.4%。這還是在「大模型起始表現更強、進一步提升本應更難」的前提下取得的。</p>
+<p><strong>訓練–測試表現落差</strong>：訓練集表現隨迭代數線性上升，測試集表現卻不然。MATH 上，第一輪之後測試表現提升幅度已很小；APPS 上，第二輪迭代甚至出現測試表現退化。研判此退化源於過擬合——APPS 資料集規模約為 MATH 的三分之一，更容易受此影響。</p>
+<h3 id="52-對-passk-與多數投票表現的影響">5.2 對 Pass@K 與多數投票表現的影響</h3>
+<p>為檢視 ReST^EM 微調對輸出多樣性的影響，評估 PaLM 2-L 微調前後的 pass@k（Chen et al., 2021）與多數投票（Wang et al., 2023）表現。Pass@K 衡量「前 K 個生成解中至少一個正確」的機率。結果顯示，在所有 K 值下微調後模型的 pass@K 皆優於基座模型，差距通常在 K=1 時最大（抽樣溫度 1.0、nucleus sampling p=0.95）。</p>
+<p>多數投票先抽樣多條多樣推理路徑，再邊際化取最一致的答案。在 Hendrycks MATH 上，每題取樣 64 次做多數投票時，PaLM 2-L + ReST^EM 達到測試準確率 48.82%，基座模型僅 44.02%。</p>
+<h3 id="53-消融研究">5.3 消融研究</h3>
+<p><strong>多次迭代的影響</strong>：由於多輪迭代有時導致訓練集過擬合，作者檢驗「收集一個更大資料集只做單輪迭代」是否更優：用基座 PaLM-2-L 在 Hendrycks MATH 上收集一個資料集，每題解答數為單輪 E-step 的 3 倍，微調後 pass@1 為 40.3%，低於原本第二輪的 41% 與第三輪的 41.9%。<strong>結論：多輪 ReST^EM 迭代優於單輪、3 倍資料量。</strong></p>
+<p><strong>資料集規模的影響</strong>：在 PaLM-2-L 上，僅用 1000 題 MATH 問題就能取得顯著增益，顯示方法對所需提示數量相當高效；但 4000 題的表現略遜於 2000 題，顯示微調過程存在一定變異性——理想上應多次重跑量化此變異，但計算成本過高難以實現。整體而言，資料集規模越大，ReST^EM 效益越好，且方法本身相當節省樣本。</p>
+<p><strong>模型生成資料 vs 人類資料的公平比較</strong>：ReST^EM 的一項關鍵優勢，是能為每題產生多個正確解，這比人類資料（通常每題僅一份解答）提供更多訓練資料，使前述比較未必公平。為做「蘋果比蘋果」的比較，作者篩出「至少有一個模型生成正確解」的約 5K 題 MATH 問題，做兩組微調實驗：SFT(5K)——用人工撰寫解答（每題一份）；ReST*(5K)——用模型生成解答（每題隨機取一份）。結果顯示，即使在此更嚴格的設定下，ReST^EM 仍優於在人類資料上微調；而 ReST(5K)（用完整多輪迭代與更大抽樣量）優於 ReST*(5K)，顯示投入更多算力做多次抽樣與多輪迭代能帶來額外增益。</p>
+<h3 id="54-對推理能力的影響">5.4 對推理能力的影響</h3>
+<p><strong>一般能力</strong>：BIG-Bench 提供超過 200 項任務，用以檢驗 LLM 在多個領域與能力面向的表現；BIG-Bench Hard（BBH）是其中 23 項任務的子集，前一代 LLM（如 Codex、PaLM 540B）在此表現低於人類評分者平均水準。沿用 Google et al. (2023) 的評測設定，以少樣本與 CoT 提示評估。結果顯示，ReST^EM 微調模型在 BBH 各項任務上均未見明顯退化；以 CoT 提示評估時，在 Hendrycks MATH 上微調的模型顯著優於基座模型，在 APPS 上微調的模型也有小幅提升；以直接提示評估時，三者表現相近。</p>
+<p><strong>問題解決能力</strong>：為在held-out「真實世界」評測集上壓力測試數學問題解決能力，仿照 Grok 的做法，在 2023 年匈牙利高中數學畢業會考上評估模型；沿用 Paster (2023) 的評測協定，以 1-shot 提示、溫度 0.1 抽樣解答，並以考官提供的評分標準人工評分。結果顯示，在 Hendrycks MATH 上以 ReST^EM 微調的 PaLM 2-L 模型在此考試上表現優異，超越除 GPT-4 外所有比較模型。值得注意的是，部分在廣為使用的 GSM8K 基準上表現優異的數學專精模型，在匈牙利考試上表現不佳；相對地，PaLM 2-L + ReST^EM 在兩個基準上都有良好表現。</p>
+<h2 id="6-討論">6 討論</h2>
+<p>本文提出以 ReST^EM 結合獎勵函式在模型生成資料上訓練，用以提升 LLM 在問題解決任務上的表現；並說明 ReST^EM 在理論上根植於「把期望最大化應用於 RL」。在數學問題解決與程式碼生成上的評估顯示，ReST^EM 以相對於預訓練成本而言頗低的計算成本，帶來顯著效能提升；實驗也顯示 ReST^EM 不會導致其他任務上的表現退化。多項消融研究顯示此法相當節省樣本，但也需要對過擬合保持警覺。</p>
+<p>ReST^EM 存在若干限制：其一，此法需要中等規模的問題／提示訓練集，對任何新的目標任務都需要（從人類）蒐集此類問題。其二，ReST^EM 需要一個人工設計或學習得來的獎勵函式，理想上該函式能被自動計算。其三，雖然 ReST^EM 能大幅提升 pass@1 表現，但未必能完全縮小與同一任務、足夠大 K 值下 pass@K 表現的差距。未來自我改進研究應著重把管線中人工的部分自動化（很可能也透過語言模型），並探索能進一步縮小與 pass@K 差距的演算法改進。</p>
+<h2 id="致謝與作者貢獻略譯">致謝與作者貢獻（略譯）</h2>
+<p>作者感謝 Tom Le Paine 對早期草稿的回饋，並感謝 Feryal Behbahani、Aleksandra Faust、Doina Precup、Olivier Bachem、Slav Petrov 的討論。Avi、JD、Rishabh 共同主導專案：Avi 負責訓練基礎設施、消融研究與 MATH 實驗；JD 主導 APPS 實驗；Rishabh 負責論文撰寫與評估。其餘作者參與前期發現觀察、基礎設施建置、專案討論、指導與回饋。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

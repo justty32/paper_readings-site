@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2502.05111_FlexibleGCD.zh-TW.html">回 2502.05111_FlexibleGCD.zh-TW 目錄</a>　<a href="02_%E9%9B%A2%E7%B7%9A_Token_%E9%A0%90%E8%99%95%E7%90%86.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-實驗">5. 實驗</h2>
+<p>工具 <strong>GreatGramma</strong> 以 <strong>僅約 900 行 Python</strong> 實作（結論處另述約 800 行），建於 <strong>Lark</strong> 函式庫的 LALR 剖析器之上——用 Lark 剖析正規式與 CFG，並用其 LALR 剖析器產生代表確定化 PDA 的剖析表。由於所有 GCD 方法理論上產生相同 token 遮罩、僅執行時間有別，故無需在特定下游任務上評估效果（GCD 效果已由先前工作驗證），只評估執行時間。兩個研究問題：<strong>RQ1</strong> 離線預處理開銷、<strong>RQ2</strong> 線上每 token 解碼開銷，相較既有 GCD 方法如何。</p>
+<ul>
+<li><strong>設定。</strong> 三種分詞器：Llama（32K）、Llama-3（128K）、Qwen-2（151K）。三種來自先前 GCD 工作的簡化文法：Go、Java、Python（87–99 終端符、109–145 非終端符、353–520 產生規則、7,441–9,319 bytes）——為大型、對應真實程式語言、且能凸顯離線／線上取捨。基線：<strong>Outlines、SynCode、XGrammar</strong> 三個號稱能處理實務規模文法的頂尖 GCD 工具。每組合手工建 5 支程式、依序讓解碼器產出各 token 並在每步算遮罩，以精確量測相同的線上每 token 開銷。</li>
+<li><strong>結果（表 1）。</strong> XGrammar 未列入，因其對所有文法在預處理或解碼時皆出錯（無法編譯 Java 文法；對 Python、Go 在解碼時陷入無窮迴圈或發生 segfault）。平均（幾何平均）而言：GreatGramma 離線預處理較 <strong>SynCode 快 17.71 倍</strong>，但較 <strong>Outlines 慢 30.01 倍</strong>。SynCode 在某些終端符序列上<strong>錯誤遮蔽了合法 token</strong>（推測因其只把未來終端符序列展開到固定上界 <code>k</code>）；扣除這些資料點後，GreatGramma 線上遮罩平均較 <strong>SynCode 快 2.73 倍、較 Outlines 快 550.57 倍</strong>。具體數字：GreatGramma 離線約 25–261 秒、線上每 token 約 5–32ms；SynCode 離線約 556–3,268 秒；Outlines 離線僅約 2.4–4.9 秒但線上每 token 達 3,200–15,200ms（秒級）。</li>
+<li><strong>討論。</strong> GreatGramma 為新的頂尖 GCD 方法：離線較 SynCode（唯一線上開銷可接受的競品）快 17.71 倍（RQ1），且線上遮罩開銷為所有工具最低（RQ2）。Outlines 離線最快，但其秒級的線上開銷（源於其 CFG 模組在執行時逐 token 驗證可接受性）不符多數 LLM 實務需求。對 SynCode 的離線提升源於本法針對其 token 對齊演算法的低效；線上小幅提升則因 GreatGramma 只對依上下文序列查 PDA，而 SynCode 對所有上界內終端符序列都查。實作僅 900 行使其易於測試，且離線夠快讓作者能大量測試而不必忍受數小時測試時間。</li>
+</ul>
+<h2 id="6-相關工作">6. 相關工作</h2>
+<ul>
+<li><strong>SynCode（Ugare et al. 2024）</strong>：唯一能對本評估中大型文法提供低線上開銷者。它推測式地把未來終端符序列展開到固定上界（即 <code>Γ^k</code> 中每個序列）、預算一張類似逆向 token spanner 的表，但涵蓋所有序列；本法的表只含<strong>可實現</strong>終端符序列，故可算得快得多。</li>
+<li><strong>Domino（Beurer-Kellner et al. 2024）</strong>：預算一棵類似本文 lexing transducer 的終端符序列樹，但解碼時須遍歷整棵樹（因可實現序列集隨 lexer 狀態而異）；本法算的是單一<strong>全域</strong>可實現序列集 <code>Re_{A∘V}</code>，再用它預處理剖析器。Domino 未開源，其論文報告對約 70 規則的極簡化 C 文法（小 Llama 分詞器）需 20s 離線、22% 線上開銷；同分詞器下 GreatGramma 能以相近時間（25–35s）處理大得多的文法（353–520 規則）。</li>
+<li><strong>XGrammar（Dong et al. 2024）</strong>：對字元式非確定 PDA 預處理上下文無關 token 以減少執行時檢查，但在其相關工作中提及不對齊問題。本法藉預處理可實現終端符序列與逆向 token spanner 表，把其上下文無關 token 快取整合進「用獨立 lexer 的剖析器」；且本法的 FSA 過近似能辨識更多必被拒絕序列（因可把規則歸約邊當 ε 轉移跟隨）。</li>
+<li><strong>GCD 效果的爭論</strong>：部分研究顯示 GCD 能提升下游任務表現，另有近期工作（Tam et al. 2024；Park et al. 2024）指出 GCD 也可能損害生成品質；本法與這些正交，可與 Park et al.(2024) 或 CRANE（Banerjee et al. 2025）等技術整合以緩解負面效應。</li>
+<li><strong>LLGuidance（Moskal et al. 2025）</strong>：本文完成後釋出的 Rust 快速 GCD 工具（記憶體優化的 tokenizer trie、導數式惰性 lexer、高度優化的 Earley 剖析器），其官網報告微秒到毫秒級表現；但作者無法比較，因該工具（v0.7.27）對本文實驗文法回報 &quot;ParserTooComplex&quot; 錯誤。作者相信其若干優化對 GreatGramma 亦有益。</li>
+</ul>
+<h2 id="7-結論與局限">7. 結論與局限</h2>
+<p><strong>結論。</strong> GreatGramma 同時靈活（低離線開銷）與高效（低線上開銷），預算一個「簡潔且易生成、只捕捉在給定 lexer 狀態下由 LLM token 可實現之終端符序列」的資料結構；此結構也藉「進一步縮減剖析器解碼時須檢查的輸入數」而加速線上遮罩。工具以簡單原語建成、僅約 800 行 Python，易測試、且為未來方向（如利用 PDA 堆疊做更積極的預計算、直接在 GPU 上解碼）開路。</p>
+<p><strong>局限。</strong> 目前實作在 §3.1 的詞法假設下運作：最長匹配原則與 1-lookahead。因此不支援「需要 &gt;1 lookahead 詞法」或「同一輸入序列須依剖析上下文做不同詞法化」的語言。例如 Java 中巢狀泛型 <code>List&lt;List&lt;T&gt;&gt;</code> 的結尾在最長匹配下會被誤詞法化為 <code>&gt;&gt;</code>（位元右移運算子），但此上下文中剖析器其實期望兩個連續 <code>&gt;</code>（泛型型別的收合）。可修改本法以處理不需任意 lookahead 的實務歧義：讓 lexing transducer 非確定地同時產生兩種詞法化（單一 <code>&gt;&gt;</code> 或兩個 <code>&gt;</code>），由剖析器依文法約束選出合法解釋；對需要 <code>k&gt;1</code> lookahead 者，可把狀態與其 k-lookahead 編碼為單一組合狀態（類似 LR(k) 剖析器），但會顯著增大轉換器。本法雖以確定化 PDA 為基礎，亦可藉「並行追蹤多個活躍狀態」修改以處理非確定性。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2502.05111_FlexibleGCD.%E6%91%98%E8%A6%81.html"><code>../summarize/2502.05111_FlexibleGCD.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

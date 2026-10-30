@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>04_評估 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.10712_AutoSOUP.zh-TW.html">回 2605.10712_AutoSOUP.zh-TW 目錄</a>　<a href="03_AutoSOUP_%E8%A8%AD%E8%A8%88%E8%88%87%E5%AF%A6%E4%BD%9C.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-評估">5. 評估</h2>
+<p>四個研究問題：RQ1（能否生成有用證明）、RQ2（能否暴露漏洞）、RQ3（各技術貢獻）、RQ4（與專家證明比較）。</p>
+<h3 id="51-實驗設定">5.1 實驗設定</h3>
+<ul>
+<li><strong>受試對象</strong>：Zephyr RTOS、RIOT OS、Contiki-NG、FreeRTOS（四個嵌入式 RTOS）。</li>
+<li><strong>漏洞選擇</strong>：從 NVD 提取 60 個已知 CVE，逆向修復補丁重現漏洞。</li>
+<li><strong>驗證目標</strong>：177 個入口點（57 個含已知 CVE + 100 個隨機選取 + 20 個 FreeRTOS 專家證明目標）。</li>
+<li><strong>基線</strong>：GPT Codex（通用編碼 agent）、Seeker（開源記憶體安全驗證器）。</li>
+<li><strong>模型</strong>：GPT-5.3-Codex（主要）、Minimax M2.5 與 GLM-5（開源泛化性測試）。</li>
+<li><strong>配置</strong>：Scope-1（僅入口點父檔案）與 Scope-2（父檔案 + 相鄰檔案），30 分鐘驗證預算。</li>
+</ul>
+<h3 id="52-rq1生成有用證明">5.2 RQ1：生成有用證明</h3>
+<p>AutoSOUP 生成遠多於 Codex 的有效證明：93%（S1）、89.5%（S2）、91.7%（隨機），vs Codex 31.6%。Seeker 中 21.1% 錯誤、40.4% 逾時。</p>
+<p>Codex 失敗主因為結構無效（建置配置缺失、環境模型不完整、迴圈界限過大）;Seeker 失敗主因是統一迴圈界限 20 且未創建有效環境模型來縮小狀態空間。</p>
+<p>有效證明中，AutoSOUP 覆蓋 108.8 行（S1），Codex 僅 57.8 行。生成成本：S1 $3（129.8 分鐘）、S2 $5.9（363.7 分鐘），遠低於專家一人月 1500 行的成本。證明大小：AutoSOUP 34.1 行（S1），比 Codex 50.7 行更小、更可維護。</p>
+<h3 id="53-rq2暴露漏洞">5.3 RQ2：暴露漏洞</h3>
+<p>AutoSOUP-S1 暴露 <strong>66.7%</strong> CVE、S2 暴露 65%，vs Codex 28.3%、Seeker 41.7%。未暴露主因：CBMC 限制（結構體欄位粒度僅回報物件級違反、不支援自訂 deallocator/timer 語意）、範圍不足（S1→S2 解決了跨檔案邊界問題）、上下文約束使漏洞不可觸發。</p>
+<p>另發現 <strong>20 個新漏洞</strong>：9 個越界寫入、7 個越界讀取、2 個未定義位移行為、1 個空指標解引用。1 個已獲 CVE、4 個已修復（無 CVE）、其餘仍在調查中。案例：在 RIOT-OS nanocoap.c 中發現 memcpy 越界寫入漏洞——AutoSOUP 推論的前提條件被呼叫上下文違反，追蹤回 nanocoap_sock_post 公開 API 無對應長度檢查。</p>
+<h3 id="54-rq3各技術貢獻消融">5.4 RQ3：各技術貢獻（消融）</h3>
+<p>三階段互補：</p>
+<ul>
+<li><strong>Stage 1</strong>（範圍擴張）：決定分析對象，最便宜（6 分鐘、$0.30），主要使用確定性分析。</li>
+<li><strong>Stage 2</strong>（迴圈精煉）：增加每迴圈界限，擴大行為探索，增加覆蓋率與可達屬性數（40 分鐘、$0.74），平均 71.04% 可達屬性在無約束環境下被違反。</li>
+<li><strong>Stage 3</strong>（環境精煉）：精煉變數與函式模型消除不可行執行（141.5 分鐘、$2.60），使 98.63% 可達屬性被驗證。</li>
+</ul>
+<p>開源模型泛化性：GLM-5 78.4% 成功率（$4.9）、Minimax M2.5 48.6%（$0.7），vs GPT-5.3-Codex 93%（$3）。AutoSOUP 可泛化但效能取決於模型能力。</p>
+<h3 id="55-rq4與專家證明比較">5.5 RQ4：與專家證明比較</h3>
+<p>AutoSOUP 生成的證明更小、範圍更小、使用更多變數模型（90% 更多前提條件）但更少函式模型，環境假設多為簡單的非空指標約束或固定上下界。可達可比驗證覆蓋率。AutoSOUP 的前提條件以變數常數約束為主（70 vs 專家 38），專家證明偏好呼叫專案函式初始化狀態、AutoSOUP 偏好直接約束。總體而言，AutoSOUP 證明是可審計且可維護的。</p>
+<hr />
+<h2 id="6-討論與相關工作">6. 討論與相關工作</h2>
+<h3 id="61-討論">6.1 討論</h3>
+<p><strong>保證、成本與實用性</strong>：AutoSOUP 佔據軟體驗證光譜的實用中間地帶——比演繹驗證便宜、比自動分析器（如 Infer）提供更強保證、比專家手寫證明更自動化。66.7% CVE 暴露率與顯式假設記錄使其在實務中有用。</p>
+<p><strong>整合至開發者工作流程</strong>：支援「shift-security-left」——開發者在開發期間即可獲得元件記憶體安全的正規證據，此時缺陷診斷與修復成本最低。航空業合作夥伴指出此能力在長開發週期（產品可能需七年完成）中尤為有價值。顯式環境假設也幫助開發者識別與驗證呼叫方義務——其違反常導致元件介面漏洞。</p>
+<p><strong>未來方向</strong>：(1) 以迴圈不變量生成取代或結合迴圈展開，以暴露需要超出資源預算界限的漏洞。(2) 全專案驗證需選擇有效元件入口點、以程式分析降低精煉成本、以及將元件級結果合成為專案級保證。(3) 推廣到記憶體安全之外需自動推論可驗證的系統與安全屬性。</p>
+<h3 id="62-相關工作">6.2 相關工作</h3>
+<ol>
+<li>
+<p><strong>自動化元件級 BMC</strong>：先前工作探索組合驗證（BLITZ、DC2），但能否擴展到真實世界系統尚不明確。Seeker 等開放程式驗證器的模板不精確且不完整。AutoSOUP 自動化產業採用的元件級驗證工作流程。</p>
+</li>
+<li>
+<p><strong>LLM 與驗證 oracle 問題</strong>：LLM 越來越多用於自動化軟體驗證任務（戰術生成、前提條件/不變量推論、驗證失敗修復）。在這些設定中，LLM 通常充當主要驅動者，任務有明確的成功 oracle（驗證成功即接受）。AutoSOUP 面臨更難的 oracle 問題——驗證成功不足夠，因為不合理的範圍/界限/環境假設選擇可使驗證成功但不提供適當保證。因此 AutoSOUP 將 LLM 用作程式分析驅動工作流程中的輔助者。</p>
+</li>
+<li>
+<p><strong>安全漏洞檢測</strong>：AutoSOUP 互補靜態分析與動態分析——產生可審計的單元證明，指定元件在何種範圍/界限/假設下是記憶體安全的。由於 AutoSOUP 在原始碼上靜態操作，特別適合動態分析受限的嵌入式軟體。</p>
+</li>
+</ol>
+<hr />
+<h2 id="7-結論">7. 結論</h2>
+<p>AutoSOUP 透過自動建構驗證元件記憶體安全、同時記錄保證之界限與環境假設的單元證明，使元件級有界模型檢測更加實用。它結合 LLM 與確定性增量工作流程，在效用與可靠性之間取得平衡。在四個大型嵌入式 RTOS 上的評估表明，自動化 harness 生成可作為通往真實世界嵌入式軟體安全保證的漸進路徑。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Tool-R0：零資料自演化 LLM 代理的工具學習（2/4） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2602.21320_ToolR0.zh-TW.html">回 2602.21320_ToolR0.zh-TW 目錄</a>　<a href="02_Generator_%E8%A8%93%E7%B7%B4.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）正成為能使用工具解決複雜任務的自主代理的基礎。強化學習（RL）已成為注入此類代理能力的常見方法，但通常依賴嚴格控制的訓練設定、精心構造的任務-解答對，以及大量人類監督，這對邁向超智能系統的開放式自我演化構成了根本障礙。本文提出 <strong>Tool-R0</strong> 框架，在零資料假設下，透過自我對弈 RL 從頭訓練通用工具呼叫代理。從同一基礎 LLM 初始化後，Tool-R0 以互補獎勵共同演化一個 Generator（任務產生器）與一個 Solver（解題器）：Generator 產生針對 Solver 能力邊界的目標化挑戰任務，Solver 則學習以真實世界工具呼叫解決它們。這形成一個無需既有任務或資料集的自我演化循環。在五個不同工具使用基準上的評估顯示，Tool-R0 較基礎模型達 <strong>92.5% 相對改善</strong>，並在相同設定下超越完全監督的工具呼叫基線。本研究進一步透過分析共演化、課程動態與規模化行為，提供了 LLM 代理自我對弈的實證洞察。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 在複雜推理任務上展現了卓越能力。此進展的關鍵驅動力是具可驗證獎勵的強化學習（RLVR），已成為改善推理效能的強大後期訓練範式。這些進展將 LLM 定位為有前景的語言代理——能在真實世界環境中推理並行動，透過與外部工具互動來完成目標。</p>
+<p>為教導 LLM 這些代理能力，大規模 RLVR 已成為焦點。先前工作提出了不同方法來改善其在大量任務資料集上的工具呼叫技能。然而，透過人工標註策劃此類資料集本質上勞力密集且根本無法規模化。隨著模型進步，構造大規模高品質資料集日益不可持續，形成類似 LLM 預訓練範式中的規模化瓶頸。因此，對人類監督的依賴構成了根本性的規模化瓶頸，限制了 LLM 代理達成超智能 AI 所需自我演化能力的可能性。這自然引出以下問題：<strong>我們能否在不需人類資料的情況下，讓弱 LLM 自我改進？</strong></p>
+<p>AI 超越人類的一些最引人注目案例來自遊戲環境中的自我對弈 RL（AlphaGo、CICERO）。近來，經 RL 訓練的 LLM 成功重新引發了對自我對弈的興趣，多項工作將其應用於數學等推理任務。儘管有此進展，這些方法並未將自我對弈從抽象推理延伸至真實世界環境中的工具使用代理。Tool-R0 是首個領域無關、零資料、通用工具呼叫自我對弈框架。</p>
+<p><strong>核心洞察</strong>：</p>
+<ul>
+<li>自我對弈可從零資料激勵複雜工具呼叫技能。從弱先驗出發，Tool-R0 在跨模型規模、架構和基準上產生一致增益。</li>
+<li>自適應自我生成課程可超越靜態人類監督。模型能利用自身來識別並解決自己的能力缺口，比固定專家設計課程更有效。</li>
+<li>角色分離對避免自我對弈中的學習衝突是必要的——尤其當兩個角色都在高熵動作空間上以不同獎勵目標運作時。</li>
+<li>具難度感知獎勵的共演化驅動學習。靜態生成或校準不當的難度無法維持工具使用的改進。</li>
+</ul>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p><strong>LLM 工具學習</strong>。工具學習已成為將 LLM 能力延伸至參數知識之外的典範，要求 LLM 在可用工具模式上結構化推理——選擇正確函數、從上下文接地參數、組合多步驟呼叫以達成目標。多個基準已被提出以系統性評估這些跨領域能力。在此基礎上，後續工作聚焦於構造高品質資料集並微調 LLM，包括應用 RLVR 進一步強化工具整合推理（TIR）。然而，對人類監督的依賴引入了限制：（1）靜態人類策劃資料導致分佈偏移，無法捕捉代理在線上策略學習中的演化需求；（2）限制模型能力至人類上限。Tool-R0 是首個利用自我對弈 RL 完全從頭訓練領域無關代理、無任何人類資料的工作，匹配監督方法的效能。</p>
+<p><strong>透過自我對弈的自我演化</strong>。自我對弈歷史上在封閉迴圈遊戲中驅動了超人類表現（TD-Gammon、AlphaGo、CICERO）。近來，經 RLVR 訓練的 LLM 成功重新引發了興趣，先前工作將其延伸至推理等開放領域。然而，這些工作專注於數學等抽象推理任務，未觸及真實世界應用的工具使用代理。近期 Agent0 與 Dr. Zero 探索了代理自我對弈，但仍限於單一工具類型與有限動作空間。Tool-R0 以通用共演化框架推進此方向：LLM 自主學習跨任意領域的開放式工具使用，由使用者需求驅動。</p>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="概述">概述</h3>
+<p>Tool-R0 是零資料自我對弈框架，透過 Generator（合成可驗證工具使用任務）與 Solver（學習解決它們）之間的雙 RL 來訓練通用工具呼叫代理，兩者從同一基礎 LLM（π）初始化，但參數分離（共享參數導致梯度干擾，效能下降 36.41%）。訓練進行 K 次迭代。每次迭代中：（1）給定領域配置，訓練 Generator（πθ）產生接地工具呼叫任務，自適應瞄準 Solver 能力邊界；（2）凍結 Generator，透過去重、交叉驗證與難度課程排序構造高品質資料集；（3）Solver（πϕ）在策劃資料集上訓練並帶入下一迭代。共演化過程驅動 Generator 提出逐步更難但可解的任務，Solver 則持續適應擴展中的工具使用課程——無任何人類撰寫資料。</p>
+<h3 id="31-接地任務規格">3.1 接地任務規格</h3>
+<h2 id="零資料自我對弈的關鍵挑戰是可控且多樣的任務生成當-generator-僅以通用指令提示時底層語言模型將機率質量集中於少量高似然模式導致模式崩潰tool-r0-使用輕量任務規格-sd-c-m-n-接地任務生成其中-d-為任務領域32-個功能與代理類別均勻採樣c-為互動情境類型單輪-p09多輪-p01m-為可用工具數n-為-gold-工具呼叫數每次訓練步驟從使用者定義分佈採樣規格並注入-generator-提示q--πθs此受限生成改善特異性多樣性與抗幻覺穩健性">零資料自我對弈的關鍵挑戰是可控且多樣的任務生成：當 Generator 僅以通用指令提示時，底層語言模型將機率質量集中於少量高似然模式，導致模式崩潰。Tool-R0 使用輕量任務規格 s=(d, c, m, n) 接地任務生成，其中 d 為任務領域（32 個功能與代理類別，均勻採樣）、c 為互動情境類型（單輪 p=0.9／多輪 p=0.1）、m 為可用工具數、n 為 gold 工具呼叫數。每次訓練步驟從使用者定義分佈採樣規格並注入 Generator 提示：q ∼ πθ(·|s)。此受限生成改善特異性、多樣性與抗幻覺穩健性。</h2>
+<h2 id="title-tool-r0零資料自演化-llm-代理的工具學習part-24generator-訓練資料集建構solver-訓練-source-httpsarxivorgabs260221320-arxiv_id-260221320-date-2026-02">title: Tool-R0：零資料自演化 LLM 代理的工具學習（part 2/4：Generator 訓練、資料集建構、Solver 訓練）
+source: https://arxiv.org/abs/2602.21320
+arxiv_id: 2602.21320
+date: 2026-02</h2>
+<h1 id="tool-r0零資料自演化-llm-代理的工具學習24">Tool-R0：零資料自演化 LLM 代理的工具學習（2/4）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

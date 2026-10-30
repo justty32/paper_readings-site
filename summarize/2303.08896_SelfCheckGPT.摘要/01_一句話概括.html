@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2303.08896_SelfCheckGPT.%E6%91%98%E8%A6%81.html">回 2303.08896_SelfCheckGPT.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>SelfCheckGPT</strong>：完全不需 token 機率、不需外部知識庫的<strong>零資源、黑箱</strong>幻覺偵測法——對同一 prompt 額外取樣 N 份隨機回應（temperature=1.0），若模型真的「知道」某件事，各樣本會彼此一致；若是幻覺，樣本會彼此發散甚至矛盾，據此對主回應逐句打出 [0,1] 的幻覺分數；提出 BERTScore、QA（MQAG）、n-gram、NLI、LLM-Prompt 五種一致性度量，並釋出人工逐句標註的 WikiBio GPT-3 幻覺偵測資料集（238 篇、1908 句）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM（如 GPT-3）會自信地捏造事實，但既有事實查核法要嘛需要<strong>輸出機率分佈</strong>（灰箱法，用 token 機率/熵當不確定性指標），對僅提供文字介面的黑箱系統（如 ChatGPT）不可行；要嘛需要<strong>外部知識庫</strong>接證據檢索模組，但知識庫覆蓋範圍有限、額外拉高推理成本與延遲。作者指出：迄今沒有方法能在<strong>完全不存取模型內部、也不依賴任何外部資料庫</strong>的前提下，對「一般開放式 LLM 回應」（而非侷限於摘要類任務）做逐句幻覺偵測。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>核心直覺</strong>：對同一查詢 x，除了主回應 R（temperature=0 貪婪解碼）外，再用 temperature=1.0 額外取樣 N=20 份隨機回應 {S¹,…,S^N}。若某個概念模型在預訓練中確實學過，多次隨機取樣仍會給出彼此一致的敘述；若是幻覺，各取樣版本會彼此發散/矛盾。因此可用「主回應句子與 N 份取樣的一致程度」來給每句 rᵢ 打幻覺分數 𝒮(i)∈[0,1]（0=事實、1=幻覺）。</li>
+<li><strong>五種一致性度量</strong>（皆黑箱、零資源，僅需模型的文字輸出）：
+<ul>
+<li><strong>BERTScore</strong>：句子 rᵢ 與每份取樣中最相似句子的 BERTScore 取平均後反轉，分數低代表資訊在多份取樣中都出現過（較可信）。</li>
+<li><strong>QA（MQAG）</strong>：用自動多選題生成/作答框架，對主回應生成問題，分別在「以 R 為脈絡」與「以每份 Sⁿ 為脈絡」下作答，統計不匹配比例當不一致分數。</li>
+<li><strong>n-gram</strong>：直接拿 N 份取樣（＋主回應本身做平滑）訓練一個簡易 n-gram 語言模型，逼近該 LLM 的 token 機率，再算句子的平均/最大負對數機率。</li>
+<li><strong>NLI</strong>：用微調 MNLI 的 DeBERTa-v3-large，把每份取樣當前提、待測句子當假設，取「矛盾（contradiction）」類別的正規化機率，N 份取平均。</li>
+<li><strong>Prompt</strong>：直接問 LLM「這句話有沒有被這段脈絡（某份取樣）支持？回答 Yes/No」，把 Yes/No/N-A 映射成 0.0/1.0/0.5，N 份取平均——效果最佳但額外呼叫 LLM 最貴。</li>
+</ul>
+</li>
+<li><strong>資料集</strong>：用 GPT-3 (text-davinci-003) 對 WikiBio 資料集中 238 個人物概念生成維基百科式段落，人工把每句標成「大幅不實（1）／小幅不實（0.5）／屬實（0）」，Cohen&#x27;s κ 於 3 類/2 類分別為 0.595/0.748（中等～高度一致）；1908 句中 39.9% 大幅不實、33.1% 小幅不實、27.0% 屬實。段落級分數＝句子分數的平均。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>五種變體全面超越灰箱基線</strong>（GPT-3 自身 token 機率/熵）：即使完全不看模型內部，SelfCheckGPT 各變體在非事實句偵測 AUC-PR 上都優於或接近灰箱法（灰箱最佳 Max(-log p)=87.51 vs SelfCheck-Prompt=93.42）。</li>
+<li><strong>Prompt 變體整體最佳</strong>：句子級 AUC-PR（非事實 93.42／事實 67.09），段落級與人工評分 Pearson 78.32、Spearman 78.30，皆為全表最高。</li>
+<li><strong>NLI 是效能/成本的最佳平衡</strong>：非事實 AUC-PR 92.50、Pearson 74.14，逼近 Prompt 但計算量遠低於逐句呼叫一次 LLM 的 Prompt 法。</li>
+<li><strong>Unigram(max) 最省但意外地強</strong>：非事實 AUC-PR 85.63——若某 token 在 N=20 份取樣中只出現極少次，就很可能是幻覺。</li>
+<li><strong>代理 LLM（proxy LLM）路線明顯較差</strong>：用另一個可存取內部機率的 LLM（如 LLaMA-30B）去逼近黑箱模型的不確定性，效果遠不如直接用取樣一致性；不同 LLM 生成風格差異大，用 GPT-NeoX/OPT-30B 等代理甚至逼近隨機基線。</li>
+<li><strong>消融</strong>：效能隨取樣數 N 增加平滑上升但邊際遞減，n-gram 法需要最多樣本才收斂；用外部 WikiBio 參考文字取代自我取樣時，NLI/Prompt 可再提升（外部接地訊號比自我一致性更強），但 n-gram 反而大幅退步（單一參考段落不足以訓練語言模型）；GPT-3 甚至能只用 N=4 份取樣就有效自我查核（ChatGPT 當評判者略優於 GPT-3 自評）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>標註資料集侷限於 WikiBio 的<strong>人物傳記</strong>類概念，未涵蓋地點、物件等其他領域。</li>
+<li>只做到<strong>句子粒度</strong>的事實/非事實二元判斷，單一句子常混雜事實與非事實資訊（作者引用後續 Min et al. FActScore 的原子事實分解作為更細粒度的延伸方向）。</li>
+<li>效果最佳的 <strong>Prompt 變體計算成本高</strong>（每句、每份取樣都要額外呼叫一次 LLM），論文明言此法「計算上偏重」，留待未來優化。</li>
+<li>SelfCheckGPT 省的是「外部資料庫」與「模型內部存取」，<strong>不是推理成本</strong>——仍需額外生成 N 份取樣（本文 N=20），本質上是用取樣次數換取偵測能力。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

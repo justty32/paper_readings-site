@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2501.17848_eggp_Equality_Graphs.zh-TW.html">回 2501.17848_eggp_Equality_Graphs.zh-TW 目錄</a>　<a href="02_eggp%EF%BC%9Ae-graph_GP.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>用遺傳編程（GP）搜尋符號迴歸（SR）模型時，傾向以原形或等價形<strong>反覆造訪同一表達式</strong>。重複評估等價式低效，因其不會立即帶來更好解。然而演化算法需要多樣性，且應允許累積「暫時不活躍、日後可能重要」的構件。<strong>等式圖（equality graph，e-graph）<strong>這種資料結構能緊湊存表達式及其等價形，並高效驗證「某式是否已以其任一等價形被造訪過」。本文利用 e-graph 改造子樹運算子以降低重訪機率，所提方法 <strong>eggp</strong> 把每個造訪過的表達式存進 e-graph，使我們能從可選子樹中</strong>濾掉所有會生成已訪表達式的組合</strong>。結果顯示：對小表達式而言，此法把一個簡單 GP 的表現提升到能與 <strong>PySR、Operon</strong> 競爭，且<strong>不增加計算成本</strong>。亮點是 eggp 能在 SRBench 選定基準與一組真實資料集上<strong>可靠地交出又短又準</strong>的模型。</p>
+<p><strong>關鍵詞</strong>：符號迴歸、遺傳編程、等式飽和、等式圖。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>SR 搜尋近似一組資料點的數學函數，常用於科學發現。當前 SotA 以 GP 為主搜尋引擎、並把可擬合的數值參數納入。SR 搜尋是 <strong>NP-hard</strong>；當搜參數模型時還涉及多模態優化（本身亦 NP-hard），阻礙找最優解。</p>
+<p>更糟的是：把數學式編碼成符號表達式樹，使 GP 會以不同語法造訪語意等價的式子。這些等價式可能不必要地龐大、帶冗餘參數，降低找到最優參數值的機率。例如即便像 <code>θ₁·x</code> 這樣簡單的式子，把 θ 當擬合參數就有無窮多等價參數化。GP 難以區分等價式，套簡化啟發式也常不足。有些作者主張冗餘是必要的（讓算法能在搜尋空間中遊走、等價式同精度、保留遺傳上不同的解變體以期找更好解），但<strong>過去沒有高效驗證等價的手段，此假設無法被驗證</strong>。</p>
+<p>**等式飽和（equality saturation）**能透過平行套用一組等價規則，產生某式的所有等價形：給定以 DAG 表示的式子與規則集，迭代套規則、把所有等價程式存進緊湊的 e-graph；飽和時圖含原程式所有等價形，可用啟發代價函數抽出最優形。此技術曾用於 SR 研究過參數化問題。e-graph 另一個可被 SR 利用的特性：<strong>高效 pattern matching</strong>，可回答「某式或其任一等價形是否已存在於結構中」。</p>
+<p>本文提出 <strong>eggp</strong>：利用 e-graph 的 pattern matching，在套交叉與變異運算子時<strong>設法強制生成未訪表達式</strong>（未訪＝該式或其等價形在整個搜尋史中未曾被評估）。簡言之：選定第一父代交叉點後，第二父代的可選點被限制在「會生成未訪式」者；變異則在隨機選點後生成新子樹、把其根節點限制在「會生成未訪式」的集合。此程序強制引入「不只相對於當前族群、而是相對於整個搜尋史」的新解。</p>
+<p><strong>研究問題</strong>：(1) 相較 minimalist GP for SR，提高「生成新穎」的機率有何影響？(2) 在不訴諸專用變異運算子、強制放置數值參數、island model 促多樣性等進階概念下，eggp 能多接近 SOTA？這些運算子放進 minimalist GP 中，與「同算法但用原始子樹運算子」、以及兩個高效算法 <strong>Operon、PySR</strong> 比較。結果顯示：只要有可用的 e-graph 實作，這個簡單修改就能把 minimalist GP 提升到與 SOTA 競爭（某些面向更佳）。e-graph 作為 GP 的支援結構，也為 SR 開啟探索「累積搜尋史」乃至「合併多次搜尋史」的可能。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>GP 搜尋空間冗餘性的利弊結論互相衝突：Ebner 等認為冗餘讓搜尋能經不同軌跡達最優；Gustafson 等卻觀察到「禁止兩個相似解重組」會增加改變父代行為的後代、提升表現。許多研究細究 GP 的冗餘與中性（neutrality，解的改變不影響輸出）；McPhee 等顯示<strong>超過 75% 的交叉沒帶來立即有用的語意變化</strong>。Kronberger 等（2024b）用等式飽和計數 GP 搜尋中唯一表達式的比例，發現<strong>造訪過的式子中只有約一小部分是唯一的</strong>——既浪費算力，也顯示 GP 某些時候沒能探索不同區域。許多作者觀察到搜尋中加入任何形式的簡化、或刺激族群多樣性都能改善解。</p>
+<p>等式飽和過去在 SR 中只當「研究搜尋行為的支援工具」（如偵測過參數化、計數等價式），<strong>尚未在 GP 搜尋過程中用來提升解品質</strong>。語意相似性在 GP 文獻常被研究（改善多樣性、運算子局部性或理解搜尋動態）；semantic-aware 運算子用語意相似樹替換子樹引入局部性；Ruberto 等用「等價函數」判兩式行為差為常數即等價，並據此濾掉與當前族群任一式等價的後代。要注意：semantic GP 文獻常用<strong>有限資料點</strong>估語意等價（無法保證等價，但足當近似相似度量）；本文關注的是<strong>語意相等</strong>本身，並用等式飽和<strong>無需評估</strong>即可產生與儲存等價式。</p>
+<h2 id="3-等式飽和與-e-graph">3. 等式飽和與 e-graph</h2>
+<p>等式飽和（Tate 2009）原為解編譯器優化的<strong>相位排序問題</strong>：依序套改寫規則並丟棄舊版資訊，若順序非最優就得次優程式。等式飽和改為<strong>平行套所有規則、用 e-graph 緊湊保留中間轉換</strong>。</p>
+<p>e-graph 中，每個實線框是含一個符號的 <strong>e-node</strong>；虛線框 <strong>e-class</strong> 把一組 e-node 群在一起、各有 id。e-class 的關鍵性質：不管遍歷時選哪個 e-node，都導出與同 e-class 其他 e-node 等價的式子。算法抽象描述很簡單：i) 在當前 e-graph 比對所有等價規則；ii) 套規則建新 e-class；iii) 合併等價 e-class；iv) 重複至飽和（不再變化）。e-class 存其 e-node、父 e-node 清單、附加的語意分析資訊，並維護 pattern 資料庫以高效比對。</p>
+<p>e-graph 雖常用來表示單一程式及其等價形，但也能存任意多個表達式（只要保留各根 e-class id 清單）。<strong>新表達式自底向上加入</strong>：從終端開始，若已存在回傳其 e-class id、否則建新 id；加內部節點時先把子節點換成其 e-class id 轉成 e-node，再查是否已存在、回傳對應 id 或建新的。此機制讓我們緊湊存一組式子，並能即時斷定某式是否已存在。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

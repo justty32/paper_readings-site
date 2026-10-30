@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_HuggingGPT · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2303.17580_HuggingGPT.zh-TW.html">回 2303.17580_HuggingGPT.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-hugginggpt">3. HuggingGPT</h2>
+<p>HuggingGPT 是一套用於解決 AI 任務的協作系統，由一個大型語言模型（LLM）與眾多來自機器學習社群的專家模型組成。其工作流程包含四個階段：任務規劃、模型選擇、任務執行、回應生成。給定用戶請求，以 LLM 作為控制器的 HuggingGPT 會自動部署整個流程，藉此協調並執行專家模型以達成目標。</p>
+<p><strong>Prompt 設計一覽</strong>（論文 Table 1）：</p>
+<ul>
+<li><strong>#1 任務規劃階段</strong> Prompt：要求 AI 助理對用戶輸入做任務解析，生成 <code>[{&quot;task&quot;: task, &quot;id&quot;: task_id, &quot;dep&quot;: dependency_task_ids, &quot;args&quot;: {&quot;text&quot;,&quot;image&quot;,&quot;audio&quot;,&quot;video&quot;}}]</code> 格式的任務列表；<code>&quot;dep&quot;</code> 標明依賴的前置任務 id，<code>&lt;resource&gt;-task_id</code> 標記代表某前置任務產生的文字/圖片/音訊/影片資源；任務須從可用任務清單中選取；若無法解析則回傳空 JSON；並附帶多則 demonstrations 與 chat logs 供追蹤用戶提及的資源。</li>
+<li><strong>#2 模型選擇階段</strong> Prompt：給定用戶請求與呼叫指令，AI 助理協助從候選模型清單中選出一個最合適模型，僅輸出 <code>{&quot;id&quot;: &quot;id&quot;, &quot;reason&quot;: &quot;...&quot;}</code> 格式的 JSON；候選模型清單以 <code>{&quot;model_id&quot;,&quot;metadata&quot;,&quot;description&quot;}</code> 形式列出。</li>
+<li><strong>#4 回應生成階段</strong> Prompt：給定用戶輸入、任務規劃、模型指派、任務執行的推論結果，要求 AI 助理先直接回答用戶請求，再以第一人稱描述流程與分析結果；若結果含檔案路徑須完整告知；若結果為空須明確告知無法完成。</li>
+</ul>
+<h3 id="31-任務規劃">3.1 任務規劃</h3>
+<p>真實場景中用戶請求常含複雜意圖，需協調多個子任務才能達成目標，因此任務規劃是 HuggingGPT 的第一階段，目的是用 LLM 分析用戶請求並拆解成一組結構化任務，同時要求 LLM 判定這些拆解任務間的依賴關係與執行順序。為提升 LLM 任務規劃的成效，HuggingGPT 採用**規格化指令（specification-based instruction）<strong>與</strong>示範式解析（demonstration-based parsing）**兩種 prompt 設計：</p>
+<ul>
+<li><strong>規格化指令</strong>：設計標準化任務模板，指示 LLM 透過「填槽」進行任務解析。模板包含四個槽位：<code>&quot;task&quot;</code>（任務名稱）、<code>&quot;id&quot;</code>（唯一識別碼）、<code>&quot;dep&quot;</code>（依賴關係）、<code>&quot;args&quot;</code>（引數）。</li>
+<li><strong>示範式解析</strong>：在 prompt 中納入多則示範，每則示範包含一則用戶請求及其對應輸出（預期的任務解析序列），透過任務間的依賴關係幫助 HuggingGPT 理解任務間的邏輯連結，利於正確判定執行順序與資源依賴。此外為支援多輪對話等更複雜場景，prompt 中加入聊天記錄 <code>{{ Chat Logs }}</code>，讓 HuggingGPT 能追蹤用戶先前提及的資源並用於任務規劃。</li>
+</ul>
+<h3 id="32-模型選擇">3.2 模型選擇</h3>
+<p>完成任務規劃後，HuggingGPT 進入任務與模型的匹配階段，即為解析出的任務列表中每項任務選出最合適的模型。為此，我們用模型描述作為連結每個模型的語言介面：先收集來自機器學習社群（如 Hugging Face）的專家模型描述，再用一套動態的 in-context 任務-模型指派機制來選模型，此策略讓模型可漸進式接入（只需提供描述），且能更開放靈活地使用機器學習社群。</p>
+<p><strong>In-context 任務-模型指派</strong>：把任務-模型指派 formulate 成一道單選題，候選模型在給定的 context 中以選項形式呈現。基於 prompt 中提供的用戶指令與任務資訊，HuggingGPT 能為每個解析出的任務選出最合適的模型。然而受限於最大 context 長度，無法把所有相關模型資訊都塞進一則 prompt。為緩解此問題，我們先依任務類型過濾出符合當前任務的模型，再依 Hugging Face 上的下載量排序，取 Top-K 個模型作為候選（下載量在某種程度上反映模型的受歡迎程度與品質），這能大幅減少 prompt 的 token 用量，並有效為每個任務挑出合適模型。</p>
+<h3 id="33-任務執行">3.3 任務執行</h3>
+<p>一旦特定模型被指派給某解析後的任務，下一步就是執行該任務（即進行模型推論）。在此階段，HuggingGPT 會自動把任務引數餵入模型、執行模型獲得推論結果，再回傳給 LLM。此階段須特別留意資源依賴問題：由於前置任務的輸出是動態產生的，HuggingGPT 也需在啟動任務前動態指定其依賴的資源，這使得在此階段建立含資源依賴的任務間連結頗具挑戰性。</p>
+<p><strong>資源依賴</strong>：為解決此問題，我們用一個特殊符號 <code>&lt;resource&gt;</code> 來維護資源依賴關係。具體而言，HuggingGPT 把前置任務產生的資源標記為 <code>&lt;resource&gt;-task_id</code>（<code>task_id</code> 為前置任務的 id）。在任務規劃階段，若某任務依賴先前任務（如 <code>task_id</code>）的輸出，HuggingGPT 會把此符號（即 <code>&lt;resource&gt;-task_id</code>）填入引數中對應的資源欄位；在任務執行階段，HuggingGPT 再動態把此符號替換為前置任務產生的實際資源。此策略讓 HuggingGPT 能有效處理任務執行時的資源依賴。</p>
+<p>此外，對於沒有資源依賴的剩餘任務，我們會直接平行執行以進一步提升推論效率——只要任務滿足前置條件，多個任務即可同時執行。我們還提供**混合式推論端點（hybrid inference endpoint）**部署這些模型，以兼顧速度與運算穩定性。</p>
+<h3 id="34-回應生成">3.4 回應生成</h3>
+<p>所有任務執行完成後，HuggingGPT 需生成最終回應。此階段把前三階段（任務規劃、模型選擇、任務執行）的所有資訊——規劃任務清單、任務所選模型、模型推論結果——整合成一則簡潔摘要。</p>
+<p>其中最重要的是推論結果，這是 HuggingGPT 做出最終決策的關鍵依據。這些推論結果以結構化格式呈現，如物件偵測模型的偵測框與偵測機率、問答模型的答案分布等。HuggingGPT 讓 LLM 接收這些結構化推論結果作為輸入，並以友善的人類語言生成回應。此外，LLM 生成的回應不只是簡單彙整結果，而是主動回應用戶請求，附上帶信心水準的可靠決策。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

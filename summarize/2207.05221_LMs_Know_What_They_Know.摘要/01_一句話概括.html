@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2207.05221_LMs_Know_What_They_Know.%E6%91%98%E8%A6%81.html">回 2207.05221_LMs_Know_What_They_Know.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p>以 800M–52B 的 Anthropic 純語言模型系統性檢驗<strong>信心校準</strong>：模型在<strong>多選題</strong>（給出可見選項字母）上隨規模變大而<strong>校準良好</strong>；把這個能力搬到開放式生成任務，讓模型先取樣答案、再自評 <strong>P(True)</strong>（此答案為真的機率），並發現<strong>多顯示幾個自己的取樣</strong>能進一步改善自評；接著<strong>訓練一個獨立分類頭 P(IK)</strong>（&quot;I know&quot; 的機率，不看任何具體答案）去預測「這題我答不答得出來」，發現 P(IK) 能部分跨任務泛化，且會隨脈絡中出現的<strong>相關資料／提示</strong>適當上升。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>要讓 AI 系統誠實（honest），前提是它能<strong>準確評估自己對知識與推理的信心程度</strong>——先要能分辨「自己知道什麼、不知道什麼」。本文把這個大方向拆成可測量的子問題：(1) 模型對客觀存在正確答案的多選題，機率預測是否<strong>校準</strong>（predicted probability ≈ 實際命中頻率）；(2) 能否把校準能力用到<strong>開放式生成</strong>——先採樣答案，再問模型「這個答案對不對」（P(True)）；(3) 能否直接訓練模型預測「我知不知道這題答案」（P(IK)），且這種自我認知能否<strong>跨任務、跨脈絡泛化</strong>，而不只是在記憶「題目難度」的捷徑。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>多選題校準（§2–3）</strong>：用「Question / Choices: (A)…(B)…(C)… / Answer:」格式，只讓模型輸出選項字母（每個答案對應單一 token），在 BIG-Bench 全部多選子任務、MMLU、TruthfulQA、LogiQA、QuALITY 上量測校準曲線與 <strong>ECE（expected calibration error，10 等量分箱後預測機率與實際命中頻率絕對差的平均）</strong>。也測試把某選項換成「none of the above」（大幅損害準確率與校準）、以及改成 <strong>True/False 二元格式</strong>（校準依然良好）。額外做了一個小實驗：RLHF policy 原生看起來校準很差，但用**溫度調整（T=2.5）**就能大幅修復。</li>
+<li><strong>自我評估 P(True)（§4）</strong>：對開放式生成任務（TriviaQA、Lambada、算術、GSM8K、Codex HumanEval），先讓模型取樣一個答案，再用「Question / Proposed Answer: … / Is the proposed answer: (A) True (B) False」格式讓模型自評，讀出 P(True)。核心增益手法：<strong>先給模型看自己 5 個 T=1 取樣</strong>（brainstormed ideas）再問某一個是否為真，顯著提升短答任務的自評表現（長答任務如程式碼與 GSM8K 增益較小）；此手法在精神上類似 self-consistency，但這裡是讓模型「看見自己的多個樣本後再判斷單一樣本」而非外部多數決。</li>
+<li><strong>訓練 P(IK)（§5）</strong>：在模型上加一個<strong>獨立的二元分類 value head</strong>（與語言建模 logits 分開），只在每題最後一個 token 位置回傳梯度；訓練標籤由每題 30 個 T=1 取樣中答對的比例近似出「軟標籤」的 IK/IDK。主要在 TriviaQA 上訓練，再測試對 Lambada、算術、Python 函式合成（作者自建、GitHub 爬取＋pytest 覆蓋率篩選的資料集）、GSM8K 的<strong>分布外（OOD）泛化</strong>；也測試<strong>跨模型</strong>（兩個預訓練資料分布不同但同架構規模的 12B 模型互相訓練/測試 P(IK)）以檢驗 P(IK) 是否真的捕捉「模型自身」的知識，而非僅是題目本身的難度。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>多選題校準</strong>隨模型規模與 few-shot 數量提升而改善，幾乎所有情形下 52B 模型在 BIG-Bench、MMLU、TruthfulQA、LogiQA、QuALITY 上都達到接近理想的校準；ECE 與準確率之間<strong>無明顯因果關聯</strong>（校準與答對與否是兩件事）。把選項換成「none of the above」明顯傷準確率也傷校準；改成 True/False 格式則仍維持良好校準。</li>
+<li><strong>P(True) 自評</strong>：隨模型規模增大而改善（且是「驗證能力優於生成能力提升速度」的證據）；zero-shot 校準差，few-shot（含 20-shot）明顯改善；被判 P(True) &gt; 0.5 的答案，實際準確率遠高於未篩選前的整體準確率，且這個差距隨模型規模擴大。<strong>顯示 5 個同題 T=1 取樣</strong>後再自評，顯著提升短答任務（TriviaQA、Lambada、算術）表現，長答任務（Codex、GSM8K）增益較小。</li>
+<li><strong>P(IK) 訓練與泛化</strong>：52B 分類器在 TriviaQA 上域內校準與 AUROC 都不錯；僅在 TriviaQA 上訓練即可泛化到算術（AUROC 0.928）、Python 函式合成（0.687）、Lambada（0.606，但<strong>校準很差</strong>——普遍低估）、GSM8K（0.624），且泛化能力隨模型規模提升；<strong>改成同時在 4 個任務上訓練</strong>則所有任務的 AUROC 與校準都大幅改善（如 Lambada AUROC 升到 0.853）。<strong>跨情境泛化</strong>：P(IK) 只在裸題目上訓練，卻能在<strong>提供相關 Wikipedia 背景資料</strong>時適當提高（例：某冷僻問題原本 P(IK)=18%，附上對應維基條目後升到 78%，短文章升幅更大）；在 GSM8K 提示中加入<strong>部分或完整解題提示</strong>時 P(IK) 適當上升，正確提示比錯誤/不相關提示帶來更高的 P(IK)。<strong>跨模型實驗</strong>：兩個 12B 模型互相測試時，各自對「自己答對、對方答錯」的題目給出略高的 P(IK)（差距約 6%），提供 P(IK) 確實部分捕捉「模型自身」而非純題目難度的證據，但差距不大。</li>
+<li><strong>附錄對照方法</strong>：作者也測了不需訓練的信號——取樣答案的 loss、答案分布的<strong>熵</strong>（H(A|Q)）、把多個取樣塞進同一 context 算平均 loss——這些方法都有一定判別力，但熵方法在 HumanEval 上隨模型變大出現<strong>反向趨勢</strong>（更大模型雖然更會答對，但答案本身更多樣，熵不降反升），作者因此認為熵不是穩健的「模型是否知道答案」訊號，尤其隨模型規模增加。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>只研究<strong>純預訓練語言模型</strong>（RLHF policy 只是附帶做了一個溫度調整的小實驗），微調後的模型未必保有這些校準特性。</li>
+<li>預訓練本質是人類模仿；本研究<strong>無法區分「真相」與「人類怎麼說」</strong>，未觸及模型知道但與人類認知衝突的情形。</li>
+<li><strong>未處理刻意欺騙</strong>的可能性（如被 RLHF 誘發討好而非誠實）。</li>
+<li>P(IK) 的訓練標籤本身就是用「T=1 取樣答對比例」去近似，作者自己也指出這在某些題目上會誤導（例：「說出一個 1–100 間的合成數」這類靠隨機取樣就能高機率答對的題目，P(IK) 會被撐高但不代表模型真的有針對性知識）。</li>
+<li>OOD 校準明顯比域內差（單一任務訓練時尤其如此），泛化只是「部分」的，且只在五個抽樣式資料集上驗證，作者自陳觀察的力度與範圍有限。</li>
+<li>是否真的捕捉「模型自身知識」而非「題目本身難度」的跨模型消融，效應量不大（約 6% 差距），佐證力有限。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

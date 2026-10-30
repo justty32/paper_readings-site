@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Ratchet：自演化 LLM 智能體的最小衛生食譜》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Xing Zhang, Yanwei Cui, Guanghui Wang, Ziyuan Li, Wei Qiu, Bing Zhu, Peiyang He（AWS Generative AI Innovation Center, HSBC）</p><p>日期：2026-05，智能體技能庫生命週期管理</p><p>arXiv：2605.22148</p><p><a href="https://arxiv.org/abs/2605.22148" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="ratchet自演化-llm-智能體的最小衛生食譜重點摘要">《Ratchet：自演化 LLM 智能體的最小衛生食譜》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Ratchet</strong> 是一個單智能體迴圈，讓<strong>凍結的 LLM</strong> 自行<strong>撰寫、檢索、策展、退役</strong>自然語言技能，用四項衛生機制（outcome-driven retirement、bounded active-cap、meta-skill authoring prior、pattern canonicalisation）<strong>把自演化技能庫的瓶頸從「作者品質」轉移到「圖書館員（生命週期管理）」</strong>。在 MBPP+ hard-100 上，pass@1 從 0.258 提升到晚窗口滾動平均 0.584（+0.328），而無技能控制組僅 +0.002；同一配方轉移到 SWE-bench Verified 的 agentic solver 亦獲 +0.22 峰值提升。八項消融實驗揭示：<strong>退休機制與 meta-skill 作者先驗是承重組件</strong>，顯式去重在此規模被 meta-skill 取代。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>SkillsBench（2026）的關鍵發現：LLM 自產技能對無技能基線的增益是 +0.0pp，而人類策展技能達 +16.2pp——瓶頸不是技能作者（LLM），而是<strong>圖書館員</strong>（生命週期管理：版本控制、衝突檢測、廢棄）。既有系統（Voyager、ExpeL、AutoManual 等）的技能庫無節制成長，導致<strong>庫漂移（library drift）</strong>——有效品質因未受控的膨脹、冗餘或不成熟修剪而退化。Ratchet 證明：只要修好圖書館員，同一個凍結作者就能產出有用的自演化技能庫。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>四項衛生機制</strong>：
+<ol>
+<li><strong>Outcome-driven retirement（結果驅動退役）</strong>：每個技能累積足夠證據（Nmin ≥ 100 次試驗）後，若貢獻分數 ĉ(s) = （成功 − 失敗）/試驗次數 ≤ −τ（τ = 0.10），則退役。不是啟發式規則，而是實證結果驅動。</li>
+<li><strong>Bounded active-cap（受限活躍容量）</strong>：ACTIVE 技能上限 C = 50，迫使技能競爭 Router 的短名單，避免檢索品質隨庫增大而退化。</li>
+<li><strong>Meta-skill authoring prior（後設技能作者先驗）</strong>：一個 Markdown 文件（含 schema lock + ## Do / ## Don&#x27;t 風格指引），約束 Synthesizer 產出風格一致的技能，隱含去重。</li>
+<li><strong>Pattern canonicalisation（模式正規化）</strong>：union-find 合併餘弦相似度 ≥ 0.85 的 Critic 模式標籤，使同一個 bug 的兩種失敗描述產出一個技能而非兩個。</li>
+</ol>
+</li>
+<li><strong>單一凍結 LLM 扮演五個角色</strong>：Router（選 0 或 1 個技能注入 Solver）、Solver（LLM + 技能 → 程式碼）、Grader（評分 pass/fail）、Critic（對失敗 capsule 產出 verdict: HELPED/HURT/NEUTRAL/INAPPLICABLE + 模式標籤）、Synthesizer（從失敗群集產出新技能）、Curator（依貢獻分數退役技能）。</li>
+<li><strong>資料模型</strong>：Skill（YAML，含 intent、guidance、狀態旗標、embedding）、Meta-Skill（Markdown，每評估套件一個）、Capsule（每 （任務， 技能， 嘗試） 三元組的 pass/fail 記錄）、Verdict（Critic 對失敗 capsule 的歸因標籤）。全部附加寫入不會刪除，退役只改狀態旗標。</li>
+<li><strong>非發散保證（Proposition 1）</strong>：證明有界 active-cap C 與退休門檻 τ 足以防止期望效能跌破無技能下限超過有限邊際 τ + ε + Cδ；無界 C 與無 τ 的系統（如 Voyager）沒有此有限類比。</li>
+</ul>
+<h2 id="關鍵發現數據">關鍵發現/數據</h2>
+<ul>
+<li><strong>MBPP+ hard-100（100 輪，3 種子，Claude Opus 4.7）</strong>：Default 配置的滾動增益 +0.328 ± 0.018（baseline 0.258 → 峰值 0.658 ± 0.042）；無技能控制組（A1）+0.002 ± 0.005。</li>
+<li><strong>SWE-bench Verified hard-150（20 輪，agentic Claude Code）</strong>：峰值 +0.22 lift（0.65 → 0.87），驗證配方可轉移到多步驟工具使用型智能體。</li>
+<li><strong>八項消融（A1–A8）</strong>：
+<ul>
+<li><strong>承重組件</strong>：移除 meta-skill（A3）剩 +0.187（−0.141）；嚴苛退休（A4, Nmin=20, τ=0.0）掉到 −0.019，比無技能更差——驗證證據地板不可或缺。</li>
+<li><strong>非必要組件</strong>：移除正規化（A5）+0.374、移除 cover-guard（A6）+0.363——在此規模 meta-skill 的作者先驗已足夠隱含去重，顯式過濾器的誤殺代價超過過濾收益。</li>
+<li><strong>邊際增益</strong>：加倍容量（A7, C=100）+0.317（變異更大）、meta-synth 刷新（A8）+0.372（但 wall-time +55%）。</li>
+</ul>
+</li>
+<li><strong>技能庫動態</strong>：Default 產 ∼152 技能，89 被退休，50 維持 ACTIVE；Router 在 ∼73% 的 eval 任務中注入技能。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>放大器非發現者</strong>：權重凍結，Ratchet 重定向既有能力但無法教導真正新知識；pass@k 預期不變。</li>
+<li>範圍：SWE-bench 僅 20 輪（初步）；單模型單供應商；Critic 雜訊可固化為持久技能（用閉合標籤集緩解但缺校準）；退休測量相關性非因果。</li>
+</ul>
+<h2 id="對讀者的價值ai_core-接點">對讀者的價值（ai_core 接點）</h2>
+<ul>
+<li><strong>直接對應 <code>（內部參照）</code> 的 §3.6 固化引擎</strong>：Ratchet 的 outcome-driven retirement + bounded active-cap 正是 §3.6 需要的「退役/收斂」機制——既有文獻（Voyager、ExpeL、AutoSkill）都只做技能新增，不做實證淘汰。Proposition 1 的非發散保證為固化引擎提供了形式化基礎：<strong>只要有限容量與有限證據門檻，期望效能就不會發散</strong>。八項消融清楚畫出「哪些是承重的、哪些在此規模可省略」，是 §3.6 實作優先級的直接依據。</li>
+<li><strong>與 2605.24050（Skill Shadowing，不退休的代價）成對閱讀</strong>：Ratchet 證明「退休必要」，Skill Shadowing 證明「不退休累積什麼代價」。</li>
+<li><strong>貢獻分數 ĉ(s) = （成功−失敗）/試驗</strong> 是 §3.4 憑證准入在「技能級別」的直接實例——每技能帶實證記錄，退役決策可審計。</li>
+<li><strong>定位</strong>：自演化智能體基礎設施論文 + 完整消融 + 形式化保證 + 可復現附錄，適合做智能體技能庫、終身學習、LLM 自我改進系統的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2605.22148_Ratchet.zh-TW.html"><code>../translate/2605.22148_Ratchet.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>社會智慧 LLM Agent 的機率式意圖建模（Probabilistic Modeling of Intentions in Socially Intelligent LLM Agents） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Feifan Xia, Yuyang Fang, Defang Li, Yantong Xie, Weikang Li, Yang Li, Deguo Xia, Jizhou Huang（Baidu / Imperial College London / Zhejiang University / Carnegie Mellon University / Peking University）</p><p>日期：2025-10</p><p>arXiv：2510.18476</p><p><a href="https://arxiv.org/abs/2510.18476" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="社會智慧-llm-agent-的機率式意圖建模">社會智慧 LLM Agent 的機率式意圖建模</h1>
+<h2 id="摘要">摘要</h2>
+<p>本文提出多輪社交對話中的機率式意圖建模框架。系統維護對話夥伴潛在意圖的信念分布，先由情境先驗初始化，再於每句話後以 likelihood 動態更新。持續變化的分布加入 policy 的脈絡，使 agent 能在不確定下調整對話策略。SOTOPIA 初步實驗中，作者報告相較 Qwen2.5-7B baseline，SOTOPIA-All Overall 提升 9.0%、SOTOPIA-Hard 提升 4.1%，並略高於直接看到夥伴意圖的 oracle。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>遊戲、團隊合作與談判都要求 agent 從有限訊息推測他人的策略與能力。既有 SOTOPIA-pi、SOTOPIA-RL 等方法主要靠行為模仿或獎勵最佳化；它們提高 policy 的社交表現，卻沒有明確保存「我現在認為對方可能想做什麼」。</p>
+<p>社交對話同時是資訊不足與多目標決策。agent 要一面完成私人目標，一面維護關係、遵守規範並收集知識。本文讓對話脈絡包含一個對夥伴意圖的機率分布，每輪依觀察更新，並把分布交給 policy。方法不更新 policy 參數，只以額外 prompt 與模型呼叫改變行動脈絡。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>社會智慧路線多以自我互動、reinforcement learning、偏好最佳化學習高分行為，重點在技能與 alignment，較少表示對方意圖。另一條 Theory of Mind／opponent modeling 路線會生成、驗證對手策略假設；Hypothetical Minds 在可直接驗證特徵的格狀遊戲有效，但開放對話只有柔性的語言證據，不能輕易判定假設真假。多 agent RL 的 opponent model 又常有樣本成本高、泛化有限的問題。</p>
+<p>本文的差異在於保留多個意圖及其權重，隨話語逐輪更新，而不是以一個文字猜測或任務專用規則代表對手。</p>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="31-問題形式化">3.1 問題形式化</h3>
+<p>兩 agent 社交互動被建模為 POMDP，包含社會狀態、行動、觀察、狀態轉移、觀察函式與獎勵。獎勵反映私人目標下的整體互動品質，例如成功說服或達成相互理解。</p>
+<p>令 <code>Θ</code> 為夥伴可能的意圖／目標空間。第 <code>t</code> 輪的 belief <code>B_t(θ)</code> 表示在觀察歷史下，夥伴意圖為 <code>θ</code> 的機率。增廣狀態同時包含可觀察社會脈絡與此 belief distribution。</p>
+<h3 id="32-stochastic-theory-of-mindstom">3.2 Stochastic Theory of Mind（SToM）</h3>
+<p>框架包含 Intention Model、Likelihood Model 與 confidence-aware policy。</p>
+<h4 id="intention-model">Intention Model</h4>
+<p>在第 0 輪，IM 讀情境、雙方背景及 focal agent 的私人目標，提出通常 3–5 個合理的夥伴意圖。初始權重依場景先驗，以及互補或對抗目標的推理決定。</p>
+<p>後續收到新話語時，belief 依 Bayes 形式更新：新權重與「此話語在該意圖下出現的 likelihood × 舊權重」成正比，再正規化。IM 因而不是每輪丟掉舊猜測重寫，而是累積觀測證據。</p>
+<h4 id="likelihood-model">Likelihood Model</h4>
+<p>LHM 對每個候選意圖估計觀察到夥伴行動的條件機率。判斷依據包括：話語語意是否吻合、行動是否符合目標導向策略、在整段對話中是否合理。實作上這些 likelihood 由 LLM prompt 產生，不是由已校準的統計模型學得。</p>
+<h4 id="信心感知-policy">信心感知 Policy</h4>
+<p>信心定義為 <code>1 - belief entropy / maximum entropy</code>。分布越集中，信心越接近 1；均勻分布則接近 0。</p>
+<p>高於高門檻時，agent 依最可能意圖直接採取目標導向策略。低於低門檻時，agent 優先提出自然的澄清問題，蒐集可分辨意圖的資訊。介於兩者時，同時兼顧任務推進與資訊取得。作者預期低信心提問能改善 Knowledge，避免不確定時衝動行動可改善 Social Norms，意圖較清楚後則提高 Goal。</p>
+<h4 id="實作">實作</h4>
+<p>SToM 接入 SOTOPIA。IM 與 LHM 都使用 GPT-4o，prompt 要求自然提問、把新觀察整合進舊 belief，並在高信心時採更積極策略。意圖假設與機率會序列化成一段 Theory of Mind 文字，附加到 acting agent 的 prompt。沒有參數訓練或梯度更新。</p>
+<h2 id="4-實驗設定">4. 實驗設定</h2>
+<p>SOTOPIA-All 有 90 個目標導向社交情境，SOTOPIA-Hard 是其中 14 個較難案例。每個 episode 有兩名 agent，各自擁有不公開意圖。SOTOPIA-EVAL 評 Goal、Believability、Relationship、Knowledge、Social Norms、Secret、Financial Benefit 七項，Overall 是正規化後的平均。</p>
+<p>三種主要設定共用 Qwen2.5-7B-Instruct policy 與 GPT-4o 對手。Base 沒有額外模組；SToM 每輪維護並注入意圖分布；Oracle 每輪直接把夥伴 ground-truth intention 交給 policy。評分由 GPT-4o 自動進行。論文稱結果跨多個 seeds 平均且 <code>p&lt;0.05</code>，主表 caption 又只稱 All 90 runs、Hard 14 runs，沒有交代重複次數與顯著性檢定細節。</p>
+<h2 id="5-結果">5. 結果</h2>
+<p>主表的 SOTOPIA-All 中，Base 的 Goal／Overall 為 6.71／3.13，SToM 為 7.32／3.45，Oracle 為 7.62／3.38。SOTOPIA-Hard 中，三者依序為 5.90／2.90、5.93／3.14、6.14／3.03。</p>
+<p>SToM 的 Overall 高於 Base 與 Oracle，但 Goal 低於 Oracle。作者解釋，oracle 雖知道真實意圖，互動策略仍固定，不會因不確定性調整探索；SToM 的 belief update 則鼓勵在說服、關係與資訊收集間動態折衷，因此整體社交分數較高。</p>
+<p>原文報告 SToM 相對 Base 提升 9.0% 與 4.1%，相對 Oracle 提升 0.6% 與 1.7%。但用表內 Overall 直接計算，兩組分別約為 10.2%／8.3% 與 2.1%／3.6%。論文沒有提供能解釋差異的未四捨五入值或另一套彙整方式，因此此處保留表值並標示矛盾。</p>
+<h2 id="6-結論與限制">6. 結論與限制</h2>
+<p>原文沒有獨立結論章。結果段主張：即使不訓練 policy，顯式維護對夥伴意圖的機率分布，也能改善多維社交表現。其最重要的設計洞見是讓 uncertainty 直接控制對話策略：不確定時先取得資訊，確定後再積極行動。</p>
+<p>但方法尚未證明 belief 真正準確。候選意圖只有 3–5 個，真相不在集合中時無法恢復；LLM 產出的 prior 與 likelihood 沒有校準；也沒有 belief accuracy、entropy 軌跡、候選數、門檻、分項分數或消融。IM、LHM、對手與評分都使用 GPT-4o，可能共享同一模型偏好。SToM 另需每輪模型推理，卻未報 token、延遲與等成本基線。Oracle 只提供真意圖、未必搭配最適合完整資訊的 policy，因此不能當嚴格上界。這些結果適合視為概念驗證，不宜視為對人類 Theory of Mind 的認知證據。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_TroVE_分析 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2410.20274_LibraryLearningDoesnt.zh-TW.html">回 2410.20274_LibraryLearningDoesnt.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-trove-分析">4. TroVE 分析</h2>
+<p>由於 TroVE 日誌未釋出，我們重新在 MATH 上執行 TroVE，達到報導準確率的 ±2%（絕對值）以內。注意 TroVE 庫也學習 import 語句；我們在分析中忽略這些，因為：首先，我們關注系統是否學習並重用非平凡工具，而非&quot;import math&quot;、&quot;from sympy import symbols&quot;這類語句；其次，TroVE 將整個庫作為 IMPORT 提示的一部分，且 import 語句天生簡單，無法確定輸出的 import 語句是來自重用還是 LLM 的天生知識。</p>
+<p>分析日誌後，我們發現 TroVE 的最終庫僅含 <strong>15 個學到的函數</strong>，且僅在 7 個 MATH 子主題中的 3 個學到函數：計數（counting）、數論（number）與預代數（pre-algebra）。代數、幾何、中級代數或預微積分中沒有學到任何函數。15 個學到的函數中，僅 <strong>2 個在正確解中被重用</strong>：is_perfect_square(n) 在一個正確解中被重用，is_prime(num) 在兩個正確解中被重用。</p>
+<p>在 3,201 題測試問題中僅有 3 次成功重用，我們認為 TroVE 相對於基線的改進並非來自函數重用。我們相信集成（ensembling）與自我一致性才是原因。為測試此假設，我們消融模型：禁用 IMPORT 模式，但維持 15 次解嘗試——產生 8 個 SKIP 模式解與 7 個 CREATE 模式解。與原始工作相同，我們使用 CodeLlama-7b-Instruct-hf。禁用 IMPORT 模式防止了重用，因為庫永不出現在模型輸入中，因此也防止了 import 語句的庫學習。</p>
+<p>我們在中級代數（據報導對非重用基線有最大效能增益）、幾何、數論與計數子分割上評估消融模型。在 <strong>多數子主題上，消融版超過基線效能</strong>，在兩個子主題上改進達統計顯著（Bonferroni 校正的單尾 Welch t 檢定）。</p>
+<p><strong>表 2：TroVE 在 MATH 上的基線 vs 無重用消融（5 次試驗平均 ± 標準差、† 表消融顯著高於基線）</strong></p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>count</th>
+<th>geo</th>
+<th>inte</th>
+<th>num</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TroVE 重現</td>
+<td>0.236 ± 0.008</td>
+<td>0.058 ± 0.004</td>
+<td>0.120 ± 0.006</td>
+<td>0.258 ± 0.007</td>
+</tr>
+<tr>
+<td>無重用消融</td>
+<td>0.250 ± 0.000†</td>
+<td>0.050 ± 0.000</td>
+<td>0.134 ± 0.014</td>
+<td>0.290 ± 0.014†</td>
+</tr>
+</tbody>
+</table>
+<p>僅在幾何子分割上基線略優——但學到的庫僅含 import 語句。由此我們得出結論：import 語句的庫學習對特定領域可略微有益，但通常 TroVE 的庫學習會<strong>降低</strong>其效能。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>本研究中，我們發現 TroVE 與 LEGO-Prover <strong>都不直接重用其學到的工具</strong>。此外，消融結果顯示其效能增益也不能完全歸因於間接重用。</p>
+<p>我們希望本文成為對當前庫學習系統限制的更好理解、以及對改進評估的呼籲。我們展示了：<strong>孤立地看待準確率是誤導的</strong>——系統的重用行為至關重要，而謹慎的消融設計是不可或缺的。兩篇被研究的論文都提出了合理的宣稱，因為所建系統確實是為庫學習而設計的，並對並非不合理的消融進行了測試——然而它們也高度依賴準確率作為指標，而非直接觀察系統對庫的使用，且兩者都選擇了事後看來過於激進的消融。顯然，尤其對庫學習系統的消融，<strong>最小改動是更可取的</strong>，且應對效能改進的其他可能原因投入相當的思考。明確需要一個廣泛適用的框架來專門評估庫學習；此框架必須超越任務準確率與消融，來評量庫學習與重用。</p>
+<p>最後，就數學庫學習的整體而言：LLM 是否能夠學習工具並執行直接、逐字的重用？鑑於觀察到的改進並非來自直接重用，直接重用是否真能改進數學推理系統，還是它過於脆弱而使軟重用更可取？這些重要問題源自我們的研究發現，應指導庫學習系統未來研究的設計。</p>
+<h2 id="6-限制與更廣泛影響">6. 限制與更廣泛影響</h2>
+<p>由於資源限制，我們的消融研究可以更徹底。最明顯的是我們僅研究了兩個模型、兩個資料集。LEGO-Prover 消融並不理想，因為在問題子集上操作對庫學習不利——這是資源限制下的必要之舉。另一限制是 LEGO-Prover 的資料庫預載了完整資料集的問題；因此 EVOLVER 暴露於其他問題陳述——但對測試重用的影響很小。</p>
+<p>雖然我們展示了 TroVE 與 LEGO-Prover 在數學推理中看到的效能增益不能歸因於工具的直接學習與重用，但還有一個非常重要但微妙不同的問題尚未回答：這些系統是否<strong>根本有能力</strong>進行庫學習。有可能這些系統具備學習可重用函數與引理的能力，但資料集並未提供機會。手動檢查 MATH 資料集後，我們的初步結論是該資料集本質上不利於用 Python 進行函數學習——我們懷疑問題過於多樣，且共享組件已被標準庫涵蓋。如何更正式地證明此點，仍是一個重要的開放問題，超出了本工作範圍。</p>
+<h2 id="附錄-a擴展相關工作要旨">附錄 A：擴展相關工作（要旨）</h2>
+<p>當前基於 LLM 的庫學習系統傾向於分為兩大陣營：為一般文字問題求解而設計的系統（通常包含數學推理、通常產生 Python 函數），以及為與特定複雜環境互動而設計的智能體系統。這些系統通常透過上下文學習（ICL）存取庫；有些將整個庫放入上下文，有些先使用語義相似度檢索步驟以允許更大的庫。這些系統通常是自底向上（隨時間迭代發展庫）的，少數自頂向下方法也存在。</p>
+<p>相較之下，較早的庫學習工作家族（如 DreamCoder、LILO）將庫學習框架為<strong>壓縮問題</strong>。原則上，能壓縮一組解的函數必須廣泛適用，且實際上高階函數縮減了程式歸納的符號搜尋空間。更一般地說，壓縮在人工智慧領域具有長期關注——Rendell（1983）將概念知識定義為將原始可能性空間壓縮為有用類別的能力，Solomonoff（1964）將歸納推理形式化為在偏向低 Kolmogorov 複雜度的先驗下的貝氏推理。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

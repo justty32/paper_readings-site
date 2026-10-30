@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《評估 Lean 4 證明自動形式化的穩健性：全域改寫與局部反事實擾動》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zhengtao Gui, Sheng Yang, Zhouxing Shi（UC Riverside）</p><p>日期：2026-06，自動形式化／穩健性評測</p><p>arXiv：2606.14867</p><p><a href="https://arxiv.org/abs/2606.14867" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="evaluating-the-robustness-of-proof-autoformalization-in-lean-4重點摘要">《Evaluating the Robustness of Proof Autoformalization in Lean 4》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>這是**首篇研究「證明自動形式化（proof autoformalization）穩健性」**的工作：證明自動形式化是把自然語言（NL）證明譯成 Lean 4 形式證明，但既有評測都只餵「整理乾淨的理想 NL 證明」。作者主張真正 robust 的形式化器面對「偏離理想」的證明也得忠實，於是設計兩類擾動——<strong>全域擾動（global，換風格改寫整個 NL 證明，形式化結果應保持一致正確）<strong>與</strong>局部擾動（local，改一個數值/符號/步驟，可能反事實，形式化應忠實反映改動、而非還原成原版或自己腦補）</strong>——在 miniF2F、MATH-500 上建 benchmark，評測 7 個近期模型。結論刺眼：<strong>全部模型對全域擾動敏感、且多數在局部擾動下無法保持忠實</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 證明自動形式化已有不少模型，但評測都聚焦「curated 資料集裡的良構 NL 證明」。現實的 NL 證明風格與品質參差——一個 robust 的形式化器：(a) 面對<strong>換句話說但數學含義不變</strong>的證明，輸出應保持正確；(b) 面對<strong>被改動的證明步驟（哪怕反事實）</strong>，輸出應忠實反映改動，而不是憑「良構證明裡常見的樣子」把它還原或自行推斷成別的東西。既有評測完全沒測這兩種能力。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>全域擾動（Global Perturbation）</strong>：用 LLM 把整個 NL 證明<strong>換風格改寫</strong>（生成四種風格的改寫），數學含義不變；robust 形式化器在改寫前後<strong>正確性應穩定</strong>。以 <strong>FullyCorrect(%)</strong> 衡量。</li>
+<li><strong>局部擾動（Local Perturbation）</strong>：對 NL 輸入改動單一<strong>數值／符號／證明步驟</strong>，刻意製造反事實。對照兩種形式化器：<strong>Faithful Autoformalizer（忠實反映輸入，即使非典型）</strong> vs. 會「回退成良構證明裡常見樣子」的不忠實者。三類編輯：
+<ul>
+<li><strong>number edit</strong>：數字改成同號、量級相近的另一值；</li>
+<li><strong>symbol edit</strong>：替換符號；</li>
+<li><strong>step deletion</strong>：刪一個推理步驟（忠實者應把缺步帶進形式化）。</li>
+</ul>
+</li>
+<li><strong>指標</strong>：全域用 FullyCorrect 穩定度；局部用 <strong>FR（Faithfulness Rate，忠實率）／RR（Reversion Rate，回退率）</strong>，在可辨識輸出上計算。</li>
+<li><strong>benchmark</strong>：miniF2F + MATH-500，兩類擾動皆備；評測 GPT-f、Kimina-Prover、Goedel-Prover-V2、ProofBridge、ProofFlow、DeepSeek-Prover-V2、Gemini-3.1-Pro 等 <strong>7 個近期模型</strong>。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>全域擾動下正確性不穩</strong>：miniF2F 上 ProofBridge 從原版 21.3% 掉到改寫的 17.6%；DeepSeek-Prover-V2-7B 反而從 1.2% 升到某風格 12.7%、Gemini-3.1-Pro 17.2%→22.5%；但在 MATH-500 上同樣改寫常<strong>降</strong>效（Kimina-Prover-Distill-8B 19.8%→16.4–19.0%，Gemini-3.1-Pro 26.4%→23.6–24.6%）。結論：改寫使結果<strong>漂移不定</strong>，只在乾淨輸入上評測會高估穩健性。</li>
+<li><strong>局部擾動下多數不忠實</strong>：多數模型對 number/symbol 編輯的平均 FR 僅 <strong>6.3%</strong>，RR 卻 &gt;90%（如 number-proof 編輯上 Kimina-Prover-Distill-8B RR 94.7%、Gemini-3.1-Pro 95.9%）——即幾乎都把改動「還原成原版」。ProofBridge（41.8% 平均 FR）、ProofFlow（26.1%）較佳但仍有限。</li>
+<li><strong>step deletion</strong> 上模型常自行補回被刪步驟，FR 介於 48.2%–75.2%；最高者 Kimina-Prover-RL-1.7B（miniF2F 51.8%、MATH-500 70.7%）。</li>
+<li>同類編輯放在**陳述（statement）<strong>裡比放在</strong>證明（proof）**裡更易被忠實反映（如 ProofBridge proof-level 39.4%/44.9% → statement-level 78.6%/80.0%）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>benchmark 限 miniF2F、MATH-500 兩資料集；擾動由 LLM 生成、忠實/回退的自動判定本身有近似。</li>
+<li>只診斷問題、<strong>未提出修補方法</strong>（指出「仍有大幅改善空間」）。</li>
+<li>FR/RR 在「可辨識輸出」上算，無法辨識者排除。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 B 類**「自動形式化評測/可信度」的關鍵診斷論文**：揭穿「在 curated 良構證明上跑高分」的假象——模型其實<strong>對改寫敏感、對反事實改動傾向腦補還原</strong>，這對任何把形式化器接進可信流程的人都是警訊。</li>
+<li>最值得記：<strong>「global（換風格→應穩定）vs. local（改動→應忠實）」</strong> 的擾動分類，與「平均 FR 僅 6.3%、RR &gt;90%」這個刺眼數字；以及「改動放陳述比放證明更易被忠實反映」的不對稱現象。</li>
+<li>與 <a class="paper-reference" href="2604.19000_DSR_Operator_Trees.%E6%91%98%E8%A6%81.html">2604.19000</a>（DSR 算子樹分解修復自動形式化）正好互補——一個診斷穩健性缺口、一個提結構化修復；與 <a class="paper-reference" href="2606.03303_LEAP_Agentic_Formal_Math.%E6%91%98%E8%A6%81.html">2606.03303</a>（LEAP）、<a class="paper-reference" href="2606.20068_Process_Verified_RL_Lean.%E6%91%98%E8%A6%81.html">2606.20068</a>（Lean RL）同屬 Lean 形式化生態；與 <a class="paper-reference" href="2606.08728_AI4Math_Survey.%E6%91%98%E8%A6%81.html">2606.08728</a>（AI4Math 綜述）對照可信驗證議題。</li>
+<li>適合做 <strong>自動形式化、形式化可信度/穩健性評測、反事實一致性、Lean 4 工具鏈</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2606.14867_Robustness_Proof_Autoformalization.zh-TW.html"><code>../translate/2606.14867_Robustness_Proof_Autoformalization.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>ARC-AGI Without Pretraining（無預訓練求解 ARC-AGI） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Isaac Liao, Albert Gu（Carnegie Mellon University）</p><p>日期：2025-12</p><p>arXiv：2512.06104</p><p><a href="https://arxiv.org/abs/2512.06104" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="arc-agi-without-pretraining">ARC-AGI Without Pretraining</h1>
+<p>Isaac Liao、Albert Gu（Carnegie Mellon University）</p>
+<h2 id="摘要">摘要</h2>
+<p>LLM 時代的共識認為，求解 ARC-AGI-1 這類 IQ 測驗式視覺謎題，需要靠<strong>海量預訓練</strong>得來的能力。為反駁此說，我們提出 <strong>CompressARC</strong>：一個 <strong>76K 參數、無任何預訓練</strong>的模型，<strong>純於推論時</strong>藉最小化目標謎題的<strong>描述長度（MDL）</strong>，解出 20% 評估謎題。MDL 賦予 CompressARC 一般深度學習罕見的<strong>極端泛化</strong>能力。據我們所知，CompressARC 是唯一一個「訓練只發生在單一樣本——即待解的目標推論謎題本身（且移除最終答案資訊）」的 ARC-AGI 深度學習方法。它<strong>不用官方「訓練集」</strong>。在如此極端資料受限下，照理不該解出任何謎題，CompressARC 卻仍解出多樣且有創意的 ARC-AGI 謎題分佈，顯示 <strong>MDL 是除傳統預訓練外、另一條可行的「產生智能」途徑</strong>。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>ARC-AGI-1 由抽象視覺推理謎題組成，旨在評估系統「<strong>從極少輸入資料快速習得新技能</strong>」的能力（Chollet 2019）。近期 LLM 推理進展展現驚人技能習得力，但仍依賴海量預訓練資料。本文探討「碰 ARC-AGI 究竟需要多少資料」，提出由 <strong>MDL 原則</strong>（Rissanen 1978）導出的 CompressARC：<strong>所有學習都在推論時進行，只用待解謎題當輸入資料，達 20% 準確率</strong>。</p>
+<p>CompressARC 資料效率的關鍵，是把它表述成<strong>code-golf 問題</strong>：找出能印出整個 ARC-AGI 資料集（未解格子任意填）的<strong>最短自含程式</strong>。依奧坎剃刀，最短程式應會以「最合理（即正確）」的方式填空。把謎題硬編成字串的程式太長 → 暗示其填出的解是錯的。但窮舉枚舉候選程式找絕對最短（Solomonoff/Hutter）計算上不可行。CompressARC 取得一種新平衡：<strong>把神經網路過擬合到謎題資料、將謎題壓進權重矩陣</strong>；這些權重可硬編進程式（取代謎題本身），再用於程式內還原帶解的謎題。藉<strong>仔細計數硬編權重的位元長度</strong>，此技巧把「找最短程式」的組合搜尋轉為<strong>可微優化</strong>，得以在合理時間內最小化程式長度並產生好的解預測。</p>
+<p>此框架保留 code-golf 的數個誘人性質（對 ARC-AGI 神經解法皆屬新穎）：<strong>無預訓練</strong>（一開始就握有目標謎題，無需訓練階段）、<strong>推論時學習</strong>（程式長度只在推論時、對目標謎題優化權重來最小化）、<strong>最小資料需求</strong>（依奧坎剃刀，假設最短程式強泛化，只用謎題本身、不載入額外資料）。儘管從不用訓練集、不預訓練、網路僅 76K 參數，CompressARC 泛化解出 <strong>20% 評估謎題、34.75% 訓練謎題</strong>——這在這些約束下對傳統深度學習法是不可能的。其表現暗示：把資訊壓縮帶到 ARC-AGI 以外的其他資料受限情境（如藥物發現、蛋白質設計），或許也能榨出更強能力。</p>
+<h2 id="2-背景arc-agi-基準">2. 背景：ARC-AGI 基準</h2>
+<p>ARC-AGI-1 旨在測試「從極少範例習得新技能」。每謎題含一條隱藏規則，系統須對輸入彩色格子套用以產生真值輸出格子。隱藏規則用到 <strong>物件性、目標導向、數字與計數、基本幾何、拓樸</strong> 等主題。給數對輸入-輸出範例供推斷規則，無其他資訊。LLM（網路規模資料）已達 87.5%（o3）；只用 ARC 資料訓練的網路達 40.3%（HRM）；CompressARC 把「資料最小化」推到極限——<strong>只在測試謎題上訓練</strong>。</p>
+<h2 id="3-方法">3. 方法</h2>
+<p>CompressARC 試圖把資料壓成盡可能短的程式以取得解，同時保持搜尋可行。程式須完全自含、不收輸入、印出整個 ARC-AGI 謎題集（填好任意解）。窮舉最短程式不可行 → CompressARC 把自己<strong>限制在一個良態的程式子空間</strong>：</p>
+<ul>
+<li><strong>模板程式（Algorithm 1）</strong>：定義一個含許多「種子」與硬編碼權重空位的模板；填入種子即可執行並印出帶解謎題。每謎題獨立生成：(1) 採樣 z∼N(0,1)（種子長度類比 VAE 的 <strong>KL 損失</strong>）；(2) 用<strong>等變網路</strong> equivariant_NN 處理出 logits 張量；(3) 由 logits 機率分佈採樣顏色得謎題（種子長度類比 VAE 的<strong>重建損失</strong>），冀其匹配給定謎題。</li>
+<li><strong>等變網路</strong>：對輸入/輸出對順序、顏色置換、翻轉、旋轉等 ARC 合法變換<strong>等變</strong>——輸入這樣變，輸出也同樣變。</li>
+<li><strong>限制程式空間（3.1）</strong>：因模板大部分長度由種子佔據，<strong>只需把所有種子弄到最短</strong>即可最小化程式長度。可調整處：line 3/5/7 的種子與權重、line 1 的架構。</li>
+<li><strong>種子優化（3.2）</strong>：Algorithm 2 對每謎題隨機初始化權重，操弄 line 3 種子模仿「從學到的常態分佈採樣」、再操弄 line 7 種子保證輸出匹配真謎題，最後對分佈參數與網路權重做<strong>梯度下降</strong>最小化總種子長度。求解時（Algorithm 3）只保留產生解所需部分，以梯度下降近似搜尋。各種子長度的可微近似，<strong>類比 VAE 損失函數的各組件</strong>。</li>
+</ul>
+<h2 id="4-架構">4. 架構</h2>
+<p>equivariant_NN 由客製層組成：multitensor（多階張量表示）、解碼層、multitensor 溝通層、softmax 層、方向性 cummax/shift 層、方向性溝通層、非線性層、正規化層、線性頭。透過<strong>權重綁定</strong>達成反射/旋轉對稱等變。前處理含輸出形狀判定、顏色數推斷；後處理產生最終預測。</p>
+<h2 id="5-結果">5. 結果</h2>
+<ul>
+<li><strong>表 1（依用到的訓練資料量排序）</strong>：每法每題猜 2 次，形狀與所有像素全對才算對。CompressARC 在「零預訓練、不用訓練集、只用測試謎題」的極端設定下，解出<strong>評估集 20%、訓練集 34.75%</strong>。</li>
+<li><strong>U-Net 基線</strong>（同樣只在推論時、只用測試謎題的示範對訓練）表現極差，凸顯 MDL 歸納偏置的關鍵作用。</li>
+<li><strong>案例研究（Color the Boxes / Bounding Box / Center Cross）</strong>：觀察 z 中儲存的表示，可看到網路如何在推論時逐步「學會」謎題規則。</li>
+</ul>
+<h2 id="6-討論">6. 討論</h2>
+<p>CompressARC 證明：<strong>不靠預訓練、只靠單謎題的描述長度最小化</strong>，也能在 ARC-AGI 上產生可觀且有創意的泛化，支持「壓縮即智能」。引入卷積運算雖能助形狀複製類任務，但卷積傾向放大格子噪聲、其歸納偏置對稀疏訊號不利（試過 softmax 降噪、連結到注意力，未成功）。作者列出多項改進方向：跨謎題權重共享的聯合壓縮、類卷積層處理形狀複製、KL 下限防 posterior collapse、正則化。整體而言，MDL 為資料受限情境提供了一條與大規模預訓練互補的智能生成路徑。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2512.06104_CompressARC.%E6%91%98%E8%A6%81.html"><code>../summarize/2512.06104_CompressARC.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

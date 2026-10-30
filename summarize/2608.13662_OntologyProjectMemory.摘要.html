@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Ontology-Grounded Project Memory for Coding Agents 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：James Adam</p><p>日期：2026-08-13（v1，cs.AI）</p><p>arXiv：2608.13662</p><p><a href="https://arxiv.org/abs/2608.13662" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="ontology-grounded-project-memory-for-coding-agents-重點摘要">Ontology-Grounded Project Memory for Coding Agents 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>MOOSEDev 把 coding agent 的專案記憶（架構決策、限制、教訓、理由）存成帶生命週期狀態、來源、supersession 連結的 OWL 本體知識圖，透過 MCP 暴露給 agent，並用 neurosymbolic 引擎（符號層做確定性遍歷/過濾/排序，LLM 只在窄範圍解讀問題與生成答案）取代單純向量檢索——在需要「這件事是否已被推翻」「完整列出所有 X」這類結構性問題時，向量記憶工具幾乎全軍覆沒，MOOSEDev 幾乎滿分。</p>
+<h2 id="系統設計">系統設計</h2>
+<ul>
+<li>兩個小型 OWL 本體（軟體工程結構詞彙、9 類；軟體架構知識、11 類，共 51 個屬性），配 SHACL shape 驗證，記錄可攜帶 rationale、supersede、affect component 等型別化邊，構成可遍歷網路。</li>
+<li>neurosymbolic 引擎把 LLM 當「不可靠但有用的感測器」：關鍵字/結構比對、本體遍歷、證據融合、驗證、執行痕跡全是符號層負責，模型只在窄且宣告過的節點被諮詢，因此可以用小模型（8–32B）。</li>
+<li>透過 MCP 暴露四類工具：型別化擷取、讀取（上下文檢索、自然語言查詢、SPARQL）、生命週期、完整性。</li>
+</ul>
+<h2 id="作者報告的結果">作者報告的結果</h2>
+<p>在 835 筆型別化記錄的中立公開語料上，對比生產級向量記憶工具（mem0）：MOOSEDev 在集合完整性、否定（不存在）、supersession 追溯三類問題上答對率 0.98–1.00,mem0 僅 6–27%（作者自報）。相關性檢索與 token 成本兩系統大致打平——簡單相關性任務 MOOSEDev coverage 0.82（約 35k token）,mem0 0.67–0.90（約 40k token）;50–634 筆規模的擴展研究顯示 MOOSEDev 全程領先但差距不隨規模顯著擴大（斜率信賴區間跨零）。時效性上，四組真實案例反轉、四模型、兩種投遞方式共 40 次試驗，MOOSEDev 全數給出當前答案（因為被取代的記錄依構造被排除於當前指引檢索之外）；自由文字 BM25 條件在被取代記錄反而排名更高的那一組裡，只有 8% 給出當前答案。作者也做了自家 repo 的 commit 歷史回填（還原出七條真實 supersession 鏈）與一場預註冊的正式試用（21 天內 71 次未經提示、引用記錄的協助，38 次遺漏）。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>這篇是<strong>技能固化引擎的治理</strong>與<strong>記憶檢索</strong>的一次難得的生產級實證。型別化記錄帶生命週期狀態、來源、supersession 連結，幾乎就是 ai_core §3.4「憑證准入」（必要性＋穩定性兩道閘）在記憶系統上的具體實作——一筆記錄能不能被當前指引採信，由結構化的 status/supersedes 欄位決定，而非模糊的相似度分數。核心發現——向量記憶在「完整列舉」「確認不存在」「追溯誰取代誰」這類結構性問題上是範疇性劣勢，不是規模或調參能補的——是給 ai_core 記憶固化引擎（§3.6）的直接警告：純向量 RAG 撐不起固化引擎需要的可審計性，結構化圖查詢是剛需而非加分項。文中「lessons for practitioners」一節記錄了三次差點出爐的錯誤結論（評分假象、記憶伺服器掛掉agent 靜默降級、被污染的 commit 訊息），全靠不可變逐字稿、可重判、驗證過的判官與「記憶工具確實被呼叫」的執行檢查抓到——這正是 ai_core 治理文化（先讀 source 再信任、轉述不採信）該長期維持的自我審查習慣範本。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2608.13662_OntologyProjectMemory.zh-TW.html"><code>../translate/2608.13662_OntologyProjectMemory.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

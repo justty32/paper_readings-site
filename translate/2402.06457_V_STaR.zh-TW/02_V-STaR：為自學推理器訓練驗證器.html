@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_V-STaR：為自學推理器訓練驗證器 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2402.06457_V_STaR.zh-TW.html">回 2402.06457_V_STaR.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-v-star為自學推理器訓練驗證器">3. V-STaR：為自學推理器訓練驗證器</h2>
+<p>STaR、RFT、ReST^EM 等既有自我改進方法丟棄模型生成的錯誤解。然而錯誤解也可能蘊含有價值資訊：語言模型可以從同一問題的正確解與錯誤解之間的差異中學習，辨識錯誤模式，進而提升生成正確解的能力。</p>
+<p>V-STaR 反覆利用正確與錯誤解訓練更好的生成器與驗證器（見 Algorithm 1）：先在原始訓練資料 D_SFT 上微調預訓練 LLM G_base 得到生成器 G_SFT；對訓練資料中每題從生成器取樣 k 個解；用 ground truth 或測試案例標記正確性 z，只用正確解（z=1）擴增生成器訓練資料 D_GEN；正確與錯誤解連同標籤都加入驗證器資料 D_VER，讓<strong>驗證器也能從生成器的錯誤中學習</strong>。下一輪 t，用擴增後的 D_GEN 重新微調 G_base 得到 G^t，並可再從 G^t 取樣，如此反覆最多 T 輪，累積擴增 D_GEN 與 D_VER。最終生成器 G^T 用完整 D_GEN 微調 G_base 得到；最終驗證器 V^T 用完整 D_VER 進一步訓練「已在原始 D_SFT 上微調過」的 G_SFT。原始訓練資料本身也被視為正確解，同時併入生成器與驗證器資料。</p>
+<p>V-STaR 與 Cobbe et al. (2021) 驗證器訓練法的主要差異：本文的驗證器訓練資料是<strong>迭代收集</strong>、每輪來自更好的生成器；而 ORM 只從一個固定（僅在原始 SFT 資料上微調過）的生成器一次性取樣。</p>
+<h3 id="31-用-dpo-訓練驗證器">3.1 用 DPO 訓練驗證器</h3>
+<p>沿用 Cobbe et al. (2021) 的做法，目前的 LLM 驗證器用語言建模與二元分類損失的組合訓練（§2.2）。這兩個目標可以透過 DPO 這類離線偏好學習方法統一——與參考策略的接近程度充當語言建模目標的代理，分類損失則由獎勵建模的代理取代。</p>
+<p>具體做法是用 D_VER 中收集到的解構造偏好對資料集：把正確解視為偏好項、錯誤解視為非偏好項。D_VER = {(x_i, y_{i,1}⁺, y_{i,1}⁻), …, (x_i, y_{i,m}⁺, y_{i,m}⁻)}，其中 m 為偏好對數，來自正確解與錯誤解的 Cartesian product：(y_i⁺, y_i⁻) ∈ {ŷ_{i,j} | z_{i,j}=1} × {ŷ_{i,j} | z_{i,j}=0}。用此資料集與 SFT 策略 G_SFT，以 DPO 目標訓練驗證器 V：</p>
+<p>L_DPO(V; G_SFT) = −E[(x,y⁺,y⁻)~D_VER]  [log σ(r̂(x,y⁺) − r̂(x,y⁻))]，其中 r̂(x,y) = β·log(V(y|x)/G_SFT(y|x))，σ 為 logistic 函數，β 為控制與參考策略接近程度的超參數。</p>
+<p>DPO 目標會使驗證器提高正確解 y⁺ 的似然、降低錯誤解 y⁻ 的似然。作者發現在使用 LoRA adapter 時，DPO 驗證器優於 ORM 式驗證器（細節見 §4.8）。</p>
+<p>（Fig. 3/4 摘要：GSM8K、MBPP 上 7B/13B 模型的 Pass@1 與 Verifier@64；柱狀圖數字為相對 RFT 的絕對提升；GSM8K→MATH 子集、MBPP→HumanEval 的跨領域遷移評估同樣顯示 V-STaR 優於基線；V-STaR 7B 在 MBPP、HumanEval 上分別接近零樣本 CodeLLaMA 34B 的 55%、48% Pass@1。）</p>
+<h2 id="4-實驗結果">4. 實驗結果</h2>
+<p>在 GSM8K（數學）與 MBPP（程式）上訓練，並用 Hendrycks MATH 子集（150 題 Level-1、算式類問題）與 HumanEval 做跨領域遷移評估。</p>
+<h3 id="41-模型">4.1 模型</h3>
+<p>用 LoRA adapter 訓練 LLaMA2 與 CodeLLaMA 的 7B、13B 模型。生成器用因果語言建模目標訓練；V-STaR 與其單輪基線的驗證器用 DPO 訓練。DPO 的參考策略 G_SFT 分別在 GSM8K、MBPP 原始訓練資料上訓 2、3 個 epoch。推論時用訓練好的驗證器對（生成）解在給定問題下的似然 V(ŷ|x) 當排序分數。</p>
+<h3 id="42-資料生成">4.2 資料生成</h3>
+<p>每輪從上一輪生成器對每題取樣 k=16 個解。GSM8K 第一輪樣本來自只在原始 GSM8K 訓練資料上訓 2 epoch 的生成器；MBPP 則來自預訓練 CodeLLaMA 加三個 in-context 範例。解答依最終答案（數學）或跑測試案例（程式）判斷正確性。</p>
+<h3 id="43-基線與指標">4.3 基線與指標</h3>
+<p>V-STaR 跑 3 輪、每輪取樣 K=16 解擴增 D_GEN、D_VER。對比基線：<strong>SFT</strong>（標準微調，無自我改進或驗證器）；<strong>STaR†</strong>（3 輪、每輪 K=16）；<strong>RFT</strong>（單輪、3×16 樣本）；<strong>Verification</strong>（SFT+Verifier：用 SFT 生成器產生的 3×16 解訓 DPO 驗證器）；<strong>V-STaR[Iter 1]</strong>（單輪 bootstrapping，取樣總量與 V-STaR 相同，即 k=3×16 全在 G_SFT 上取樣）。推論時每題生成 128 個候選解；生成器類方法報 Pass@1，驗證器類方法報 Verifier@64（由 Eq. 2 計算），並報告 majority voting 作為強基線。</p>
+<h3 id="44-verifierk-的可靠估計">4.4 Verifier@k 的可靠估計</h3>
+<p>直接反覆「取樣 k 解、驗證器排序、取最高分」再取平均來估計 Verifier@k 變異度高。本文仿 Pass@k 的計算方式提出公式：Verifier@k := [Σ_{i=0}^{N-k} C(N-i-1, k-1)·α_i] / C(N,k)，其中 [α_0,…,α_{N-1}] 是依驗證器分數由高到低排序的 N 個候選的二元正確性；分子透過列舉「最高分候選為第 i 個」的所有可能子集推導而得。（Verifier@1 等同不使用驗證器、即生成器的 Pass@1。）</p>
+<h3 id="45-v-star-在數學與程式推理上的表現">4.5 V-STaR 在數學與程式推理上的表現</h3>
+<p>V-STaR 在 GSM8K、MBPP、MATH 子集、HumanEval 上，7B 與 13B LLaMA2 模型皆對基線有一致增益：數學上相對 STaR† 與 Verification 提升 6%–17% 絕對準確率，程式生成提升 4%–12%。相對 V-STaR[1 Iter] 的增益顯示：用相同生成預算，迭代收集驗證器資料能得到更好的資料分布與品質。作者也試過把所有驗證器訓練資料改成只從第 3 輪生成器一次性收集——雖然取樣預算更大，但 GSM8K 上絕對準確率反而低了約 2%。跨領域遷移（MBPP→HumanEval、GSM8K→MATH 子集）上，由於任務本身更難，各方法絕對 Pass@1 與 Verifier@64 都較低，但迭代版 V-STaR 仍在兩任務、各模型規模上優於基線與 V-STaR[1 Iter]。因算力限制本文只用 LoRA，作者推測全參數微調增益可能更大（未實證）。Verifier@k 隨 k 增加，在 k≥16 時趨於飽和，V-STaR 與 V-STaR[1 Iter] 間的差距保持穩定。</p>
+<h3 id="46-驗證器該放進訓練迴圈嗎">4.6 驗證器該放進訓練迴圈嗎？</h3>
+<p>可選擇在每輪訓練時就用中間驗證器過濾正確解，再納入 D_GEN、D_VER——在取樣數 k 較大、探索較充分時這個做法更合理。作者嘗試把驗證器放進訓練迴圈：每題取樣 k=64 個解、標記正確性，只取驗證器分數最高的前 8 個正確解，並取相同數量的錯誤解使每題正確+錯誤解總數 ≤16。在 MBPP 上跑完 3 輪「驗證器在迴圈中」的版本，最終 Verifier@64、Pass@1、Pass@10 分別為 53.2、46.34、69.57。結果顯示此做法在該任務上未帶來明顯增益；V-STaR 不需驗證器在迴圈中，架構更簡單，但作者未在其他任務或取樣策略上驗證，留待未來研究。</p>
+<h3 id="47-v-star-能擴展到多少候選解">4.7 V-STaR 能擴展到多少候選解？</h3>
+<p>以 GSM8K 上 7B V-STaR 的 Verifier@k 隨 k 變化的表現來看，V-STaR 在搜尋大量候選解時優於 majority voting；k≤64 時優勢明顯，k 更大時差距略微縮小，與 Cobbe et al. (2021) 觀察到的衰減模式類似。此外 V-STaR 可用於任何能驗證正確性的問題解決任務，而 majority voting 不適用於程式生成這類任務。作者也試過結合驗證器分數與加權重排（weighted reranking）、加權多數決等策略，未觀察到額外增益。</p>
+<h3 id="48-dpo-對比-orm-驗證器">4.8 DPO 對比 ORM 驗證器</h3>
+<p>作者比照 §2.2 用 LoRA 訓練 ORM 式驗證器，發現其表現明顯不如 DPO 式驗證器。用相同訓練資料比較 V-STaR[1 Iter]（DPO）與 ORM：GSM8K 上候選數超過 4 時 ORM 就無法有效搜尋生成候選；MBPP 上候選數超過 16 時 ORM 表現也不如 DPO 驗證器。</p>
+<h3 id="49-把-dpo-驗證器當生成器評估">4.9 把 DPO 驗證器當生成器評估</h3>
+<p>由於 DPO 微調後的模型也能當生成器使用，作者評估 V-STaR 驗證器的生成能力：以三種不同 β（控制與 SFT 策略接近程度）觀察 Pass@1 與 Verifier@64 隨訓練步數的變化。驗證器的解題能力在少量訓練更新後就開始下降；相對地，DPO 目標用於驗證任務時樣本效率高，僅約 2k 訓練步驟 Verifier@64 就顯著提升——顯示驗證能力與生成能力在訓練過程中逐漸分化。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

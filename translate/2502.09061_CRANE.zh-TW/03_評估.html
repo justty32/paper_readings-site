@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_評估 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2502.09061_CRANE.zh-TW.html">回 2502.09061_CRANE.zh-TW 目錄</a>　<a href="02_%E5%8F%97%E7%B4%84%E6%9D%9F%E8%A7%A3%E7%A2%BC%E7%9A%84%E8%A1%A8%E9%81%94%E5%8A%9B.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-評估">5. 評估</h2>
+<p>在數學推理任務 <strong>GSM-Symbolic</strong> 與邏輯推理任務 <strong>FOLIO</strong> 上評估，相對無約束與 SOTA 受約束基線皆顯著提升。</p>
+<p><strong>實驗設定</strong>：48 核 Intel Xeon Silver 4214R CPU + 2 張 NVIDIA RTX A5000 GPU；以 PyTorch 與 HuggingFace transformers 實作。無約束基線主要用 <strong>Chain-of-Thought（CoT）提示</strong>。GSM-Symbolic 的受約束語義生成用 <strong>IterGen</strong> 函式庫、FOLIO 用 <strong>SynCode</strong> 框架。CRANE 一律用與受約束基線<strong>相同的</strong>受約束解碼器與約束來初始化。</p>
+<p><strong>GSM-Symbolic</strong>：數學應用題資料集，名字與數值被換成符號變數，LLM 須生成正確的符號運算式解；用 <strong>Z3 求解器</strong>驗證與標準答案是否<strong>功能等價</strong>。比較四種：(1) 無 CoT 無約束、(2) 有 CoT 無約束、(3) 受約束（IterGen）、(4) CRANE（用 IterGen 初始化）。受約束與 CRANE 都施加「上下文無關文法語法約束 + 只含問題定義變數的語義約束」。分隔符用 <code>&lt;&lt;</code>／<code>&gt;&gt;</code>。評估 9 個模型，greedy 解碼、最多 600 新 token、8-shot。</p>
+<p><strong>表 1（GSM-Symbolic 擇要）</strong>：欄位為 準確率%（功能正確）／Parse%（語法合法）／平均 token 數。</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>方法</th>
+<th>準確率%</th>
+<th>Parse%</th>
+<th>Tokens</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen2.5-1.5B-Instruct</td>
+<td>受約束</td>
+<td>22</td>
+<td>97</td>
+<td>25.29</td>
+</tr>
+<tr>
+<td>Qwen2.5-1.5B-Instruct</td>
+<td>無約束 CoT</td>
+<td>26</td>
+<td>90</td>
+<td>128.97</td>
+</tr>
+<tr>
+<td>Qwen2.5-1.5B-Instruct</td>
+<td><strong>CRANE</strong></td>
+<td><strong>31</strong></td>
+<td><strong>100</strong></td>
+<td>131.3</td>
+</tr>
+<tr>
+<td>Qwen2.5-Math-7B-Instruct</td>
+<td>受約束</td>
+<td>29</td>
+<td>99</td>
+<td>26.81</td>
+</tr>
+<tr>
+<td>Qwen2.5-Math-7B-Instruct</td>
+<td>無約束 CoT</td>
+<td>29</td>
+<td>82</td>
+<td>155.26</td>
+</tr>
+<tr>
+<td>Qwen2.5-Math-7B-Instruct</td>
+<td><strong>CRANE</strong></td>
+<td><strong>38</strong></td>
+<td>94</td>
+<td>158.86</td>
+</tr>
+<tr>
+<td>DeepSeek-R1-Distill-Llama-8B</td>
+<td>受約束</td>
+<td>13</td>
+<td>96</td>
+<td>16.89</td>
+</tr>
+<tr>
+<td>DeepSeek-R1-Distill-Llama-8B</td>
+<td>無約束 CoT</td>
+<td>21</td>
+<td>87</td>
+<td>250.83</td>
+</tr>
+<tr>
+<td>DeepSeek-R1-Distill-Llama-8B</td>
+<td><strong>CRANE</strong></td>
+<td><strong>31</strong></td>
+<td>92</td>
+<td>268.82</td>
+</tr>
+<tr>
+<td>QwQ-32B</td>
+<td>無約束 CoT</td>
+<td>43</td>
+<td>87</td>
+<td>222.62</td>
+</tr>
+<tr>
+<td>QwQ-32B</td>
+<td><strong>CRANE</strong></td>
+<td><strong>46</strong></td>
+<td>88</td>
+<td>237.98</td>
+</tr>
+</tbody>
+</table>
+<p>CRANE 在所有 9 個模型上皆提升功能正確率。例如 Qwen2.5-Math-7B：CRANE 38% 勝過受約束與 CoT 的 29%；Qwen2.5-1.5B：CRANE 31%（比 CoT 高 5pp、比受約束高 9pp）。CRANE 也大幅改善語法正確性：<strong>其生成無一含語法錯誤</strong>，而無約束 CoT 有約 10% 帶語法錯。雖然 CRANE 偶爾比純受約束多一點語法錯，但功能正確率的提升遠大於此代價。</p>
+<p><strong>Few-shot 消融（圖 3）</strong>：在不同 few-shot 數量下（以 Qwen2.5-Math-7B 為例），CRANE 一致高於所有基線。</p>
+<p><strong>FOLIO</strong>：驗證集 203 個專家撰寫的自然語言推理實例與對應一階邏輯（FOL）標註。評估 LLM 把自然語言推理正確翻成 FOL 公式的能力，用 <strong>Prover9</strong>（FOL 求解器）驗證。與 SynCode 的 Prover9 文法約束生成、以及無約束 CoT 比較。Prover9 文法把 FOL 分成 Predicates／Premises／Conclusions，並允許在<strong>註解</strong>中放中間推理。greedy 解碼、最多 800 新 token、2-shot。</p>
+<p><strong>表 2（FOLIO）</strong>：準確率%（功能正確的 FOL 翻譯）／Compiles%（能編成 Prover9 程式的比例）／token。</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>方法</th>
+<th>準確率%</th>
+<th>Compiles%</th>
+<th>Tokens</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen2.5-Math-7B-Instruct</td>
+<td>無約束 CoT</td>
+<td>18.72</td>
+<td>54.19</td>
+<td>629.59</td>
+</tr>
+<tr>
+<td>Qwen2.5-Math-7B-Instruct</td>
+<td>受約束</td>
+<td>28.08</td>
+<td>76.85</td>
+<td>679.44</td>
+</tr>
+<tr>
+<td>Qwen2.5-Math-7B-Instruct</td>
+<td><strong>CRANE</strong></td>
+<td><strong>31.03</strong></td>
+<td>75.86</td>
+<td>690.17</td>
+</tr>
+<tr>
+<td>Qwen2.5-7B-Instruct</td>
+<td>無約束 CoT</td>
+<td>36.95</td>
+<td>70.94</td>
+<td>350.64</td>
+</tr>
+<tr>
+<td>Qwen2.5-7B-Instruct</td>
+<td>受約束</td>
+<td>37.44</td>
+<td>87.68</td>
+<td>775.62</td>
+</tr>
+<tr>
+<td>Qwen2.5-7B-Instruct</td>
+<td><strong>CRANE</strong></td>
+<td><strong>42.36</strong></td>
+<td>87.68</td>
+<td>726.88</td>
+</tr>
+<tr>
+<td>Llama-3.1-8B-Instruct</td>
+<td>無約束 CoT</td>
+<td>32.02</td>
+<td>57.14</td>
+<td>371.52</td>
+</tr>
+<tr>
+<td>Llama-3.1-8B-Instruct</td>
+<td>受約束</td>
+<td>39.41</td>
+<td>86.21</td>
+<td>549.75</td>
+</tr>
+<tr>
+<td>Llama-3.1-8B-Instruct</td>
+<td><strong>CRANE</strong></td>
+<td><strong>46.31</strong></td>
+<td>85.71</td>
+<td>449.77</td>
+</tr>
+</tbody>
+</table>
+<p>CRANE 在所有模型上皆勝過無約束與受約束基線。</p>
+<p><strong>局限</strong>：其一，命題 3.1 只在 <code>L(G_c)</code> 為<strong>有限</strong>語言時成立，能否推廣到 <code>L(G)</code> <strong>無限</strong>的文法仍開放。其二，CRANE 依賴需存取輸出 logits 的既有受約束解碼工具，故<strong>對不開放 logits 的模型不適用</strong>。</p>
+<h2 id="6-相關工作">6. 相關工作</h2>
+<p><strong>受約束 LLM 解碼</strong>：近期工作以受約束解碼強制 LLM 生成遵守上下文無關文法；Poesia et al.（2022）、Ugare et al.（2024a, IterGen）進一步納入任務特定的語義約束。這些方法顯示受約束解碼能提升各種結構化生成任務的語法/語義品質。但 Tam et al.（2024）實測顯示受約束結構化生成會<strong>傷害輸出品質</strong>；Park et al.（2024）指出「貪婪遮罩掉不通往合法串的 token」會<strong>扭曲輸出分佈</strong>，使其偏離所有合法輸出的真實分佈。為緩解此扭曲，「grammar aligned」方法用 trie 追蹤過往生成、迭代減少發散，但<strong>計算昂貴、需大量重取樣</strong>才收斂。本文則聚焦「任何常數層受約束 LLM 在理想受約束解碼下的<strong>理論表達力</strong>」這一根本問題，並據以提出相容於各種受約束解碼法（含 grammar-aligned）、又靠推理鏈保住表達力的<strong>自適應</strong>方法。</p>
+<p><strong>LLM 表達力</strong>：既有工作證明常數深度 LLM 的單一自回歸步可表為常數深度布林電路；Merrill &amp; Sabharwal（2024）、Li et al.（2024）證明 CoT 等推理法讓 LLM 表達力<strong>顯著提升</strong>（產最終答案前先走中間步）。就作者所知，<strong>尚無關於「文法約束下 LLM 表達力」的先前工作</strong>。</p>
+<h2 id="7-結論">7. 結論</h2>
+<p>程式碼生成、符號數學推理等「同需語法與語義正確」的任務能從受約束解碼大幅受益，但嚴格施加約束會妨礙 LLM 推理。本文理論上說明<strong>為何限制型文法會削弱推理</strong>，並證明<strong>用精心設計的規則擴增文法可在保正確的同時保住推理</strong>。據此提出的推理增強受約束解碼演算法 CRANE 達 SOTA，在 GSM-Symbolic 與 FOLIO 上最多提升 10%，有效結合受約束與無約束生成之長。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2502.09061_CRANE.%E6%91%98%E8%A6%81.html"><code>../summarize/2502.09061_CRANE.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

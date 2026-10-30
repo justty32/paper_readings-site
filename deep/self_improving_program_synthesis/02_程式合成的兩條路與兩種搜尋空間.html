@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_程式合成的兩條路與兩種搜尋空間 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../self_improving_program_synthesis.html">回 self_improving_program_synthesis 目錄</a>　<a href="01_%E7%82%BA%E4%BB%80%E9%BA%BC%E6%8A%8A%E9%80%99%E4%B8%89%E4%BB%B6%E4%BA%8B%E6%94%BE%E5%9C%A8%E4%B8%80%E8%B5%B7%E8%AE%80.html">← 上一節</a>　<a href="03_%E8%87%AA%E6%88%91%E6%94%B9%E9%80%B2%E7%9A%84%E7%90%86%E8%AB%96%E5%A4%A9%E8%8A%B1%E6%9D%BF%E8%88%87%E6%8E%A5%E5%9C%B0%E8%A8%8A%E8%99%9F%E7%9A%84%E5%BF%85%E8%A6%81%E6%80%A7.html">下一節 →</a></p>
+</blockquote>
+<h2 id="2-程式合成的兩條路與兩種搜尋空間">2. 程式合成的兩條路與兩種搜尋空間</h2>
+<p>抽象推理的核心戰場上，有兩組正交的設計選擇。理清這兩組軸，幾乎能定位本批所有 ARC/程式合成論文。</p>
+<h3 id="21-軸一歸納inductionvs-轉導transduction">2.1 軸一：歸納（induction）vs 轉導（transduction）</h3>
+<pre><code class="language-mermaid">graph LR
+    INPUT[&quot;少量 I/O 範例&lt;br/&gt;+ 一個新測試輸入&quot;]
+    INPUT --&gt; IND
+    INPUT --&gt; TRD
+    subgraph IND[&quot;歸納 induction：先求函式 f，再套用&quot;]
+        I1[&quot;合成可執行程式 f&lt;br/&gt;使 f(x_train)=y_train&quot;]
+        I1 --&gt; I2[&quot;套用：y_test = f(x_test)&quot;]
+    end
+    subgraph TRD[&quot;轉導 transduction：直接預測輸出&quot;]
+        T1[&quot;神經網路直接&lt;br/&gt;map 到 y_test，無顯式 f&quot;]
+    end
+    IND --&gt; OUT[&quot;y_test&quot;]
+    TRD --&gt; OUT
+</code></pre>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><strong>歸納（induction）</strong></th>
+<th><strong>轉導（transduction）</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>產物</td>
+<td>一段可執行程式 / 邏輯子句</td>
+<td>直接的輸出網格</td>
+</tr>
+<tr>
+<td>代表</td>
+<td>BARC-歸納 <a class="paper-reference" href="../../summarize/2411.02272_Induction_Transduction.%E6%91%98%E8%A6%81.html">2411.02272</a>、SOAR <a class="paper-reference" href="../../summarize/2507.14172_SOAR.%E6%91%98%E8%A6%81.html">2507.14172</a>、GridCoder <a class="paper-reference" href="../../summarize/2411.17708_GridCoder_ARC_Program_Induction.%E6%91%98%E8%A6%81.html">2411.17708</a>、ILP <a class="paper-reference" href="../../summarize/2507.16405_Poker_SS_ILP.%E6%91%98%E8%A6%81.html">2507.16405</a></td>
+<td>BARC-轉導 <a class="paper-reference" href="../../summarize/2411.02272_Induction_Transduction.%E6%91%98%E8%A6%81.html">2411.02272</a>、TTT 後的神經模型 <a class="paper-reference" href="../../summarize/2411.07279_Test_Time_Training.%E6%91%98%E8%A6%81.html">2411.07279</a>、PoE <a class="paper-reference" href="../../summarize/2505.07859_Product_of_Experts_ARC.%E6%91%98%E8%A6%81.html">2505.07859</a></td>
+</tr>
+<tr>
+<td><strong>可驗證性</strong></td>
+<td><strong>高</strong>——能用範例過濾，知道何時成功（執行相符才採用）</td>
+<td>低——總會給答案，但無法自證對錯</td>
+</tr>
+<tr>
+<td>擅長</td>
+<td>精確計算、多概念<strong>組合</strong>、需要嚴格規則的題</td>
+<td>模糊的<strong>知覺型</strong>概念（對稱、重力、補洞等難以言詮者）</td>
+</tr>
+<tr>
+<td>弱點</td>
+<td>小搜尋預算下命中率低；DSL/語言涵蓋不到就解不出</td>
+<td>缺結構化測試時適應；OOD 時靠重採樣或昂貴微調</td>
+</tr>
+</tbody>
+</table>
+<p><strong>最關鍵的經驗證據——兩者強互補（<a class="paper-reference" href="../../summarize/2411.02272_Induction_Transduction.%E6%91%98%E8%A6%81.html">2411.02272</a> BARC）：</strong> 即使用<strong>同資料、同架構、同先驗</strong>分別訓練歸納與轉導模型，兩者能解的題目<strong>幾乎不重疊，且跨隨機種子穩定</strong>（p&lt;0.004）。直覺分工是「歸納擅精確組合、轉導擅知覺模糊」。集成策略也很實用：<strong>歸納為主（可驗證），無解時轉導兜底（總有答案）</strong>，把 ARC 公開驗證集推到 56.75%，逼近人類平均 60.2%。</p>
+<p><strong>互補性的第二層證據（<a class="paper-reference" href="../../summarize/2411.07279_Test_Time_Training.%E6%91%98%E8%A6%81.html">2411.07279</a> TTT × <a class="paper-reference" href="../../summarize/2411.02272_Induction_Transduction.%E6%91%98%E8%A6%81.html">2411.02272</a> BARC 互為依存）：</strong></p>
+<ul>
+<li>TTT 建在 BARC 神經模型上，把分數從 56.75% → <strong>61.9%</strong>，追平人類平均；</li>
+<li>但 BARC 回證：<strong>拿掉程式合成器只剩 47.1%</strong>——精巧的轉導式 TTT <strong>無法完全取代</strong>歸納式程式合成。</li>
+<li>這對讀者是一條硬結論：<strong>ARC 的 SOTA 是「神經 + 程式合成 + TTT」三元組合，缺一塊就掉一截</strong>。</li>
+</ul>
+<h3 id="22-軸二離散-dsl-枚舉-vs-連續潛在搜尋">2.2 軸二：離散 DSL 枚舉 vs 連續潛在搜尋</h3>
+<p>在「歸納」這條路內部，還有第二個分裂——<strong>程式空間長什麼樣、怎麼在裡面搜</strong>。</p>
+<pre><code class="language-mermaid">graph TD
+    SEARCH[&quot;如何表示並搜尋程式空間？&quot;]
+    SEARCH --&gt; DISC
+    SEARCH --&gt; CONT
+    subgraph DISC[&quot;離散：程式 = 符號 token 序列&quot;]
+        D1[&quot;GridCoder [[2411.17708]]&lt;br/&gt;VLM 出 DSL token 機率 → 機率枚舉&quot;]
+        D2[&quot;BARC/SOAR&lt;br/&gt;LLM 直接寫 Python（圖靈完備）&quot;]
+        D3[&quot;Poker ILP [[2507.16405]]&lt;br/&gt;Prolog 子句 + SONF metarules&quot;]
+        D4[&quot;eggp [[2501.17848]]&lt;br/&gt;表達式樹 + 等式圖去重&quot;]
+    end
+    subgraph CONT[&quot;連續：程式 = 潛在向量 z&quot;]
+        C1[&quot;LPN [[2411.08706]]&lt;br/&gt;編碼器→潛在 z→梯度上升搜尋→解碼器&quot;]
+    end
+</code></pre>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><strong>離散 DSL 枚舉</strong></th>
+<th><strong>連續潛在搜尋（LPN <a class="paper-reference" href="../../summarize/2411.08706_LPN_Latent_Program_Search.%E6%91%98%E8%A6%81.html">2411.08706</a>）</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>程式表示</td>
+<td>符號 token / 子句 / 樹</td>
+<td>連續潛在向量 z</td>
+</tr>
+<tr>
+<td>搜尋方法</td>
+<td>機率枚舉、MCTS、演化、Prolog 推理</td>
+<td>在 z 空間做<strong>梯度上升</strong>找最能解釋範例的 z*</td>
+</tr>
+<tr>
+<td>需要手工 DSL？</td>
+<td>多半需要（GridCoder、ILP 的 metarules）</td>
+<td><strong>完全不需要</strong>——解碼器逐像素生成，繞過 DSL</td>
+</tr>
+<tr>
+<td>可解釋性</td>
+<td><strong>高</strong>（程式可讀、可驗證、可組合）</td>
+<td>低（z 是稠密向量）</td>
+</tr>
+<tr>
+<td>組合泛化</td>
+<td>強（但受 DSL 涵蓋限制）</td>
+<td><strong>不穩健</strong>（潛在空間平滑度不足，有成功也有明確失敗）</td>
+</tr>
+<tr>
+<td>算力擴展</td>
+<td>枚舉隨深度爆炸；GridCoder 用條件獨立攤平壓成「位置×類別」逼近</td>
+<td>只反傳一小部分參數，比 TTT 省</td>
+</tr>
+</tbody>
+</table>
+<p><strong>離散路線的兩個典型優化技巧值得單獨記：</strong></p>
+<ul>
+<li><strong>GridCoder <a class="paper-reference" href="../../summarize/2411.17708_GridCoder_ARC_Program_Induction.%E6%91%98%E8%A6%81.html">2411.17708</a> 的「條件獨立攤平」</strong>：把自回歸 token 機率近似成只依「位置」不依「先前選擇」，於是只需呼叫神經網路幾次就能算整棵樹的機率，把枚舉成本壓下來。代價是犧牲了 token 間的依賴建模——但實測 79.3% &gt; 不做假設的 75.9%，划算。</li>
+<li><strong>eggp <a class="paper-reference" href="../../summarize/2501.17848_eggp_Equality_Graphs.%E6%91%98%E8%A6%81.html">2501.17848</a> 的「等式圖去重」</strong>：GP 搜尋反覆重訪語意等價的表達式（同一式的無窮參數化變體）。eggp 把編譯器的等式飽和（e-graph）接進 GP，<strong>強制交叉/變異只產生「未曾訪問過」的式子</strong>，極簡修改就追平 PySR/Operon、且模型更小更可靠。這是「離散搜尋如何不浪費在重複上」的範本。</li>
+</ul>
+<p><strong>連續路線的獨特賣點（LPN）：</strong> 把「測試時搜尋」直接<strong>內建進可微架構</strong>——編碼器（System 1 直覺、攤銷推論）給初始 z₀，潛在梯度上升（System 2 搜尋）縮小攤銷間隙，解碼器逐像素出格。關鍵歸納偏置是<strong>訓練時就模擬測試時的梯度搜尋</strong>（訓練帶 0–5 步潛在優化），於是測試時開搜尋讓 OOD 表現翻倍（7.75%→15.5%）。可視為<strong>半攤銷變分推論</strong>。</p>
+<h3 id="23-互補與融合的證據">2.3 互補與融合的證據</h3>
+<p>兩條軸不是要二選一，最好的系統都在<strong>融合</strong>：</p>
+<ol>
+<li><strong>歸納⊕轉導融合</strong> = BARC 集成 <a class="paper-reference" href="../../summarize/2411.02272_Induction_Transduction.%E6%91%98%E8%A6%81.html">2411.02272</a>（歸納為主+轉導兜底）。</li>
+<li><strong>離散枚舉⊕執行回饋</strong> = GridCoder 自承缺陷後提出（未實作）的 <strong>LTS（學變換空間）</strong>——把程式中間執行狀態回饋進每步解碼。它的核心洞見極其重要：<strong>搜尋能補的是「網格層 OOD（高熵、多種可能輸出）」，補不了「程式結構 OOD（低熵、機率硬卡在 0/1）」</strong>；要跨結構泛化，唯有<strong>執行引導</strong>。Proxy 實驗顯示 LTS 可從 10% 拉到 80%。</li>
+<li><strong>搜尋⊕學習融合</strong> = SOAR <a class="paper-reference" href="../../summarize/2507.14172_SOAR.%E6%91%98%E8%A6%81.html">2507.14172</a>——離散 Python 搜尋的軌跡（含失敗，用 hindsight relabeling 化為訓練對）回灌微調生成器，抬高整條 scaling 曲線，突破「固定模型」的搜尋預算與尺寸天花板。</li>
+</ol>
+<p>PLVR <a class="paper-reference" href="../../summarize/2608.28421_PLVR.%E6%91%98%E8%A6%81.html">2608.28421</a> 在離散路線旁補出另一種融合：它不更新 base model 權重，而把能力存成由 typed neural primitive 與 deterministic primitive 組成的顯式程式，從目標 ontology 反推各層所需型別，並以逐層 contract verdict 提前剪掉違約候選。它因此補上本節把執行回饋主要放在搜尋終點的空白，把可驗證性往中間狀態推進；不過這只適用於中間產物可檢查的任務，不能直接取代轉導路線處理開放式判斷（本檔補註，非作者自陳）。</p>
+<blockquote>
+<p>一句話收束 §2：<strong>ARC 沒有單一銀彈。歸納給可驗證性、轉導給知覺覆蓋、離散給可解釋與組合、連續給可微與省算、執行引導給結構泛化、搜尋↔學習閉環給可持續性——SOTA 是這些的拼裝。</strong></p>
+</blockquote>
+<hr />
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

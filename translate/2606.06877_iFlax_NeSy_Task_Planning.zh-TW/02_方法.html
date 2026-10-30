@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.06877_iFlax_NeSy_Task_Planning.zh-TW.html">回 2606.06877_iFlax_NeSy_Task_Planning.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="31-問題與雙層形式化">3.1 問題與雙層形式化</h3>
+<p>實務問題不是「如何更快規劃」，而是「<strong>如何在不破壞可解性下，判定哪些物件該留在規劃問題裡</strong>」——保留可行計畫所需的任務相關物件、過濾無關物件以維持符號搜尋可解。因兩目標耦合，故把規劃與剪枝<strong>一起</strong>形式化，而非把物件重要性學習當孤立預測問題。</p>
+<p>雙層迴圈（圖 1，基於 imperative learning）四步：(1) 上層分數器 f_θ 把任務表徵 𝒙（PDDL 問題轉譯）映射到物件重要性分數；(2) 下層符號規劃器用分數過濾物件、在對應剪枝物件空間搜尋可行計畫 π*；(3) 把返回計畫轉成自適應偽監督回饋更新分數器；(4) 更新分數器使未來預測更貼合「被證明對規劃重要的物件」。規劃器不再是離線標註工具，而成為<strong>訓練迭代的一部分、教分數器哪些物件重要</strong>。形式化為雙層最佳化（上層目標 U 鼓勵對「會出現在最終計畫 π* 的物件」給高分；下層返回最終計畫 π* 與記憶狀態 𝝂*，記憶模組 M 存演化搜尋脈絡、並有規劃時間預算約束 ξ）。</p>
+<h3 id="32-上層物件重要性評分">3.2 上層：物件重要性評分</h3>
+<p>每個任務編碼成圖、傳給神經分數器預測「最可能與可行計畫相關」的物件。目標非直接解任務，而是產生引導下層走向更小更相關搜尋空間的分數。上層代價衡量分數器當前預測與「下層規劃器生成的二元偽標籤遮罩」之差：規劃器返回 π* 後，對每物件 o_i，若 o_i 出現在 π* 則 m_i=1 否則 0；規劃器即<strong>線上老師（最佳化式約束）</strong>，計畫中出現的物件成為分數器的正偽標籤。上層目標 U 為預測分數與遮罩 𝒎 的<strong>二元交叉熵（BCE）</strong>。</p>
+<h3 id="3334-下層規劃目標與分數引導迭代擴展">3.3–3.4 下層：規劃目標與分數引導迭代擴展</h3>
+<p>下層維護記憶狀態 𝝂（含關係圖 𝒙、分數 f_θ(𝒙)、暫定計畫 π、耗時 t、決定哪些物件進入當前簡化任務的分數閾值 q、已評估狀態數 n_es、當前物件子集）；時間預算約束 ξ 切分為<strong>擴展期 T₁</strong> 與<strong>恢復期 T₂</strong>。在 T₁ 內，從只含目標 G 涉及物件的簡化任務 τ_{O₀} 起步，依分數器預測<strong>迭代擴大</strong>活躍物件集解剪枝符號任務（而非一開始就在完整任務上規劃）。</p>
+<h3 id="35-3r-策略">3.5 3R 策略</h3>
+<p>不完美分數使下層常因誤剪找不到可行計畫、破壞訓練。並行 3R 恢復：</p>
+<ul>
+<li><strong>Repair</strong>：修補局部遺漏（補回缺失的關鍵物件）。</li>
+<li><strong>Restart</strong>：從鬆弛提示重建活躍物件集。</li>
+<li><strong>Rollback</strong>：退回更小的活躍物件集做保守的重新擴展。</li>
+</ul>
+<p>讓規劃器從各種早期失敗恢復、為上層提供可靠回饋。</p>
+<h3 id="36-雙層最佳化迴圈">3.6 雙層最佳化迴圈</h3>
+<p>給上層分數，下層把其轉成剪枝規劃問題、返回計畫產生自適應偽監督；當分數仍不準時規劃常失敗，故先描述分數引導迭代擴展、再說明不完美分數如何造成早期不穩及 3R 如何處理，最後是完整雙層迴圈。</p>
+<h2 id="4-實驗">4. 實驗</h2>
+<ul>
+<li>三基準 <strong>MazeNamo、SokoMindPlus、LogisticsPlus</strong>，在大物件集、長程、複雜邏輯約束下達 SOTA。</li>
+<li><strong>MazeNamo 相較前 SOTA Flax：失敗率降 80.04%、規劃時間降 57.14%</strong>。</li>
+<li>消融：(1) 雙層最佳化克服 exposure bias；(2) 3R 恢復帶來訓練穩定性；(3) 分數引導迭代擴展與 3R 各自的效果。</li>
+<li><strong>真機</strong>：自建四足移動操作機，於模擬與真實世界完成長程 MazeNamo 執行。</li>
+</ul>
+<h2 id="5-結論與限制">5. 結論與限制</h2>
+<p>iFlax 把物件重要性學習形式化為雙層最佳化、用自適應偽監督在剪枝空間訓分數器以克服 exposure bias，並以 3R 穩定下層搜尋；三基準 SOTA、規劃效率大幅提升，且在真機驗證可部署性。限制：假設符號模型（PDDL 域）已知、學的是規劃引導；下層離散規劃使雙層回饋本質困難（靠偽監督 + 3R 而非精確梯度）；需切分時間預算等超參、方法較單純離線監督複雜。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2606.06877_iFlax_NeSy_Task_Planning.%E6%91%98%E8%A6%81.html"><code>../summarize/2606.06877_iFlax_NeSy_Task_Planning.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

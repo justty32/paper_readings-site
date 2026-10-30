@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2510.17376_AdapTrack.%E6%91%98%E8%A6%81.html">回 2510.17376_AdapTrack.摘要 目錄</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>AdapTrack</strong>：在約束解碼（constrained decoding）過程中導入「自適應回溯（adaptive backtracking）」——用拒絕取樣（rejection sampling）動態判斷「目前已生成的前綴」是否仍是模型真正想走的分支，一旦後續驗證讓此分支的合法機率大幅下修，就以精確的接受率退回、重新選擇下一個 token；論文證明此法產生的分布與「LLM 原始分布在約束下的條件分布」完全一致（可證明無偏），在 API 補全與通用程式碼生成上比貪婪約束解碼最多提升 360.87%。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>Constrained decoding 每步只遮罩「當下不合法」的 token，看似只是刪掉違規選項，但因為它只看「這一步」，等到後面才發現此前綴其實走進死路（例如絕大多數合法延續根本不存在），已生成的 token 已無法撤回，模型被迫在死路裡選出一個「合法但機率極低、明顯不是它本意」的 token。論文用 PyTorch API 範例具體展示：模型原本最想生成 torch.linalg.matrix_rank（無約束下第二高機率選項），但約束解碼一路走進 matrix_ 這條死路後，被迫吐出機率僅 0.20% 的 matrix_power，而非目標 API——輸出合法，卻完全背離模型的原始意圖。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li>形式化目標：希望約束後序列的機率仍與原模型機率成比例（P(s|c) ∝ P(s)·c(s)），而非像 naive constrained decoding 那樣，因「各步有效延續集合大小」不斷改變分母，造成分布系統性偏移（論文 3.2 節給出推導，證明兩序列的相對機率無法簡化回原比例）。</li>
+<li>對每個已生成前綴 x，維護一個估計值 Q[x]（此前綴之後能否走到合法完整序列的機率估計；新前綴樂觀估計為 1，已知無效則為 0，隨下游探索逐步向下修正為真值）與目前選定的下一 token N[x]。</li>
+<li>演算法反覆沿 N 收集一條完整序列；每遇到未探索過的前綴，呼叫約束器取得所有候選 token 的合法性，由後往前更新沿途所有前綴的 Q 值；每次更新後，對每個受影響的前綴 x 做拒絕取樣——以「更新後機率／更新前機率」為接受率，決定是否保留原本選擇的 token n；若拒絕（即偵測到「原選擇的合法機率質量被下修」），就重新從其餘候選 token 依剩餘機率取樣新的 N[x]，效果等同回溯到 x 重新決策，且不侷限於固定步數，而是「機率質量掉多少、就以對應機率退多少」。</li>
+<li>附完整數學證明（Theorem 5.1/5.2，歸納法）：此演算法保證只回傳合法完整序列，且其邊際分布精確等於 P(s|c)——不是啟發式近似，而是可證明無偏。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>合成資料集 TFv1（刻意用 TensorFlow v1→v2 API 改名模擬「模型不知道函式庫版本」的場景）：EM@1 較 constrained decoding 最多提升 360.87%（DeepSeek Coder Base 6.7B，TFv2 情境，10.98%→50.60%）。</li>
+<li>真實世界 GitHub 蒐集之 TFv1Real（1,000 個檔案）：最多提升 38.93%（StarCoder2 7B，29.80%→41.40%）。</li>
+<li>通用程式碼生成 HumanEval/MBPP（搭配型別約束器 Mündler et al. 2025，即本庫已收錄之 Type-Constrained Decoding）：pass@1 最多提升 7.84%／6.42%。</li>
+<li>與同樣鎖定分布扭曲問題的 ASAp（Park et al. 2024，即 Grammar-Aligned Decoding 論文提出的方法）在 SyGuS DSL 資料集上比較 KL 散度：AdapTrack 平均 KL 9.97，優於 ASAp 11.90 與 constrained decoding 11.46。</li>
+<li>對溫度（0.1–0.9）與模型規模（Qwen2.5 Coder 0.5B–32B）皆穩健地優於兩個基線；額外 LM 呼叫次數比 constrained decoding 多約 20%（TFv1 v1 情境）到 60%（TFv1 v2 情境），但把回溯距離限制在 2–8 步即可拿到大部分增益。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>額外開銷：AdapTrack 需要更多次 LM 呼叫（最多 +60%），完整版回溯理論上無界，須犧牲理論完備性、設定機率門檻或回溯距離上限才能界定最壞成本（論文有討論並提供實驗數據）。</li>
+<li>效果高度依賴約束器本身的品質：在 MBPP 上，StarCoder2 7B 與 CodeLlama 7B 的 pass@1 甚至不敵無約束解碼，作者歸因於型別約束器（僅支援 TypeScript，須把 HumanEval/MBPP 轉譯）本身的限制，而非 AdapTrack 演算法的問題。</li>
+<li>驗證場景以 API 補全（TFv1/TFv1Real）與有限的 DSL/程式碼基準為主；作者也坦言這是 constrained decoding 的「內生問題」——只要使用約束解碼，扭曲風險就會存在，AdapTrack 是緩解手段而非根除。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>這篇是 ai_core 主題 13「約束的副作用」的直接例證：ai_core §3.2 前濾網、§3.4 治理、§5 下層受約束填碼都想用「約束」把 LLM 節點變成可靠函數，但本篇提醒：貪婪式硬約束不是免費的午餐——它會系統性地把模型推向「合法但不是它真正想寫」的輸出，換來看似合規、實則語意錯誤的結果（正是 Figure 1 的 matrix_power 案例）。若 ai_core 在計算圖裡放置「受約束的 LLM 節點」以保正確性，必須意識到約束機制本身也需要被驗證，不能假設「通過約束＝內容可信」。</li>
+<li>與<strong>已入庫</strong>同樣處理分布扭曲的 <strong>2405.21047 Grammar-Aligned Decoding（GAD/ASAp）<strong>最直接可比：兩者鎖定的是完全相同的病灶（貪婪逐步遮罩丟失「未來合法機率質量」資訊），但修復手法不同——ASAp 是「跨樣本」修正：取樣完一整條序列後才回頭更新 Q，並把修正資訊用在</strong>下一次獨立的完整生成</strong>上，本次已生成的錯誤前綴不會被追溯調整；AdapTrack 則是「單樣本內」即時修正：一旦偵測到某個已選 token 的合法機率被下修，立刻用拒絕取樣機率回溯、重選，不必等整條序列跑完或反覆跑很多次。論文作者也直接指出「ASAp 可視為 AdapTrack 不做回溯的變體」，並在 RQ4 用相同 SyGuS 資料集實測顯示 AdapTrack 的 KL 散度全面優於 ASAp。</li>
+<li>與<strong>已入庫</strong>的 <strong>2307.09702 Outlines／2411.15100 XGrammar／2403.01632 SynCode</strong> 對照：那三篇解決的是「怎麼快速算出合法 token 遮罩」（效率問題），隱含假設「遮罩後的分布就是對的」；AdapTrack／GAD 則指出遮罩本身在分布上就有系統性偏差——兩者是正交但都必須面對的問題，快不代表對。</li>
+<li>與<strong>已入庫</strong>的 <strong>2502.09061 CRANE</strong>（約束犧牲推理能力：常數層 LLM 被限制型文法困進 TC⁰ 電路類、失去思維鏈表達力）對照：CRANE 談的是約束的「推理層」副作用，AdapTrack／GAD 談的是「分布層」副作用；兩者共同證明「加約束不是免費的」，是 ai_core 設計受約束生成節點時該並列參照的兩面。</li>
+<li>與<strong>已入庫</strong>的 <strong>2504.09246 Type-Constrained Decoding</strong>：不只是對照對象，更是 AdapTrack 在 RQ3 通用程式碼生成實驗中<strong>直接採用</strong>的型別約束器——顯示 AdapTrack 是可疊加在既有約束器之上的「回溯層」，而非取代既有約束機制。</li>
+<li>與<strong>已入庫</strong>的 <strong>2403.06988 DOMINO</strong>：DOMINO 修的是另一種扭曲成因——LLM 子詞 token 與文法終端符不對齊產生的「橋接 token」問題，靠 parser/scanner 分離對齊詞彙解決；AdapTrack／GAD 修的是「貪婪遮罩看不見未來合法機率」的扭曲，兩者是分布扭曲問題的不同根因與解法，可視為互補而非互斥。</li>
+<li>歸 <strong>I 類</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../../translate/2510.17376_AdapTrack.zh-TW.html"><code>../translate/2510.17376_AdapTrack.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

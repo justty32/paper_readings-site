@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《以對數深度遞迴單元達成長度泛化》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Charles Pert、Dalal Alrajeh、Alessandra Russo（Imperial College London）</p><p>日期：2026-05（arXiv v1）</p><p>arXiv：2605.26035</p><p><a href="https://arxiv.org/abs/2605.26035" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="以對數深度遞迴單元達成長度泛化重點摘要">《以對數深度遞迴單元達成長度泛化》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>MLP-LDRU</strong>：一種「對數深度遞迴單元（Log-Depth Recurrent Unit）」——用一個<strong>帶閘控、初始化偏向「近似結合律＋單位元」的二元算子</strong>，在平衡二元樹上做<strong>平行歸約（parallel reduction）<strong>來逼近遞迴，把整條序列以均勻 O(log n) 計算深度壓成單一嵌入；藉此同時避開 RNN 的位置偏差與 Transformer 的固定深度限制，在 21 個正規語言任務上</strong>18 個達 100% 分佈外（OOD）準確率、其餘 3 個 ≥99.9%</strong>，勝過可比的遞迴與注意力模型。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p><strong>長度泛化</strong>（推廣到比訓練更長的序列）是神經網路長期難題。正規語言（regular language）是常用試驗場——因可在任意長度精確驗證標籤、直連自動機理論。既有兩派各有短板：<strong>RNN</strong> 提供長度自適應計算但<strong>較早 token 經更多遞迴步 → 位置偏差／長程記憶問題</strong>；<strong>Transformer</strong> 套固定層數、不隨長度變，<strong>OOD 長度泛化不可靠</strong>。理論已知（Ladner-Fischer 1980、Blelloch 1990）：有了<strong>結合律算子</strong>，平行歸約可給遞迴一個對數深度實作，但這類「算子層級的約束」尚未被充分探索。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>LDRU 類</strong>：把 token 嵌入透過一個二元算子 ⊙_θ 在平衡樹上組合；歸約得<strong>對每個 token 均勻的 O(log n) 計算深度</strong>，緩解 RNN 的位置偏差，又能平行算卻表現得像沿序列的遞迴。動機＝正規語言的<strong>幺半群（monoid）視角</strong>：串接對應一個結合性乘積，若學到的算子近似結合律，當歸約算子用即近似序列遞迴。</li>
+<li><strong>MLP-LDRU 的算子 ⊙_θ</strong>：核心是<strong>逐元素加總</strong>（天然結合）＋學習的閘控控制資訊流。對輸入 h_i, h_j：用 MLP 從 [h_i;h_j] 產生閘 g_i,g_j；f = V(g∘h)+b；輸出 = W_out(f_i+f_j)+b_out。<strong>V_i、V_j、W_out 全用單位矩陣初始化、偏置歸零</strong> → 與逐元素加總一起把算子<strong>偏向近似結合</strong>。3 層 MLP、擴張因子 (1,2,1)。</li>
+<li><strong>單位元處理</strong>：序列長為奇數時補零嵌入 0；把 0 當<strong>中性佔位元</strong>（任一輸入為 0 則輸出另一輸入＝跳過組合），免得 ⊙_θ 還要去學恆等映射，也避免 padding 偽影。每步：算子→殘差 FFN→LayerNorm，步間<strong>權重共享</strong>，並加 dropout（經驗上助泛化）。</li>
+<li><strong>複雜度</strong>：O(n·d²) 工作量、O(log n) 深度——兼具 RNN 的線性擴張與對數時間平行；對比 RNN 的 O(n) 序列深度、Transformer 的 O(n²d+nd²)。</li>
+<li><strong>新貢獻 — prefix languages</strong>：一類新正規任務，專門隔離「長度外推下的長程依賴處理」。</li>
+</ul>
+<h2 id="結果ood-準確率訓練長度-140測試-41500">結果（OOD 準確率，訓練長度 1–40、測試 41–500）</h2>
+<ul>
+<li><strong>21 個正規任務</strong>：MLP-LDRU <strong>18 個達 100%</strong>、其餘 3 個 ≥99.9%；多種子均值±標準差。</li>
+<li>全面勝過或匹敵 baseline：勝過 3 種 Transformer 變體（除 D₈、D₁₂ 對 ∼RoPE）；∼RoPE 雖在 D₁₂ 最強卻不穩定（Modular Arithmetic 僅 <strong>31.4%</strong> vs NoPE 76.0%、ALiBi 54.4%）。Gated DeltaNet（及附錄 S5、SD-SSM 兩 SSM）<strong>從未在任何任務超越</strong> MLP-LDRU；亦勝 RegularGPT，匹敵或超越 RNN（除 D₈，差距不顯著）、LSTM、BBT-GRC。</li>
+<li>例：Even Pairs / Modular Arithmetic / Parity Check / Cycle Navigation 皆 100.0±0.0；多數 Transformer/SSM 在 Cycle Navigation、Parity 退化到 ~20–50%（接近隨機）。</li>
+<li><strong>超出正規語言</strong>：在 ListOps（測組合外推）與多個 NLP 分類 benchmark 上表現具競爭力。剩餘失敗經分析源於<strong>訓練資料對幺半群組合覆蓋不足</strong>，而非架構限制。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>主戰場是<strong>正規語言/合成任務</strong>；自然語言上只是「具競爭力」，非全面領先。</li>
+<li>偏向近似結合律是<strong>歸納偏置</strong>，對本質非結合的任務未必適配；少數任務（D₆/D₈/D₁₂）未達滿分。</li>
+<li>平行歸約假設可平衡樹化，對極長序列的記憶體/實作開銷需 D 節討論。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>[[長度泛化]] 的乾淨架構解：把「<strong>結合律歸納偏置 + 對數深度平行歸約</strong>」做成可學算子，是介於 RNN 與 Transformer 之間的第三條路，與本批 <a class="paper-reference" href="2604.25800_Barriers_Universal_Reasoning_CoT.%E6%91%98%E8%A6%81.html">2604.25800</a>（Transformer + CoT 在標準位置編碼下長度泛化受限於 TC⁰）、<a class="paper-reference" href="2603.01959_Diagonal_SSM_StateTracking_Limits.%E6%91%98%E8%A6%81.html">2603.01959</a>（對角 SSM 狀態追蹤極限）形成「誰能可靠長度泛化」的對照群。</li>
+<li>最值得記：<strong>幺半群/結合律視角</strong>把正規語言長度泛化講清楚；<strong>用單位矩陣初始化把算子偏向結合</strong>這個簡單可複製的技巧；以及「剩餘失敗來自資料覆蓋而非架構」的誠實診斷。</li>
+<li>與想做 [[狀態追蹤]]、[[平行掃描]]、正規語言 benchmark、序列模型架構設計的人高度相關（程式碼承諾發表時釋出）。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2605.26035_MLP_LDRU_Length_Gen.zh-TW.html"><code>../translate/2605.26035_MLP_LDRU_Length_Gen.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

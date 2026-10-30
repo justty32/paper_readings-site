@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《CRITIC：大型語言模型能藉工具互動式批判自我修正》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zhibin Gou, Zhihong Shao, Yeyun Gong 等（Tsinghua / Microsoft Research Asia / Microsoft Azure AI）</p><p>日期：2023-05（ICLR 2024）</p><p>arXiv：2305.11738</p><p><a href="https://arxiv.org/abs/2305.11738" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="critic大型語言模型能藉工具互動式批判自我修正重點摘要">《CRITIC：大型語言模型能藉工具互動式批判自我修正》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>CRITIC（Self-Correcting with Tool-Interactive Critiquing）</strong>：讓凍結的黑箱 LLM 仿照人類「用工具交叉查核再改稿」——先生成初始輸出，再與<strong>外部工具</strong>（搜尋引擎、程式直譯器、Perspective API 等 text-to-text API）互動產生批判（critiques），依批判修正輸出，並可迭代「<strong>驗證後修正（verify-then-correct）</strong>」循環；全程只用少樣本上下文學習、零額外訓練。同一篇論文同時給出反面鐵證：<strong>拿掉工具、只靠 LLM 自我批判時，改進甚微甚至劣化</strong>——外部回饋才是持續自我改進的關鍵。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 會幻覺事實、寫出錯誤程式、生成有毒內容；傳統緩解靠額外訓練（行為複製、RL、自我訓練），需要昂貴的大規模標註。而當時流行的內在自我修正法（Self-Refine、Reflexion、RCI 等）讓 LLM 自己給自己回饋，但 LLM「（大多）不知道自己知道什麼」（Kadavath et al.）——自我驗證的回饋本身不可靠，且這些方法多暗中依賴 oracle 驗證。缺口：如何給黑箱 LLM 一個<strong>不依賴訓練、回饋又可靠</strong>的修正機制。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>演算法（Algorithm 1）</strong>：初始輸出 ŷ₀ ← LLM(x)；迴圈：與工具集 T 互動驗證 ŷᵢ 得批判 cᵢ（若批判判定正確即提前停止）；否則以 x⊕ŷᵢ⊕cᵢ 為條件生成修正 ŷᵢ₊₁；至多 n 輪。</li>
+<li><strong>工具＝text-to-text 函數</strong>：搜尋引擎收 LLM 生成的查詢、回傳解析後結果；直譯器收程式、回傳錯誤訊息與執行結果；API 呼叫結果直接串接在模型生成的查詢後構成批判。批判可針對任務指定屬性：真實性、可行性、安全性。</li>
+<li><strong>三任務三工具</strong>：QA 用自建 Google 搜尋工具（驗證 plausibility＋truthfulness，n=3）；數學程式合成用 Python 直譯器（錯誤訊息＋執行結果，n=4）；毒性降低用 Perspective API（細粒度毒性分數當批判，n=4、毒性 &lt;10% 即停）。所有工具免費。</li>
+<li><strong>關鍵消融 CRITIC w/o Tool</strong>：同樣的 prompt、拿掉工具、讓 LLM 自己生成證據——直接量化「外部接地 vs 內在自省」的差距。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>QA（AmbigNQ/TriviaQA/HotpotQA，ChatGPT）</strong>：CoT→CRITIC 平均 F1 +7.7（AmbigNQ 64.3→74.9）；勝過 Self-Consistency 與 ReAct（平均 F1 +5.1/+8.2）；<strong>w/o Tool 兩模型僅 −0.03/+2.33 F1</strong>，甚至不如初始輸出。</li>
+<li><strong>數學（GSM8k/SVAMP/TabMWP）</strong>：ChatGPT GSM8k 72.5→78.2、TabMWP 75.0→89.0；增益隨模型變大放大（TabMWP：LLaMA-2 7B/13B/70B 各 +4.7/+9.4/+16.0）；<strong>無直譯器回饋時修正不穩定</strong>（davinci-003 −1.8；Codex 上 Self-Refine 從 71.3 崩到 26.7）。</li>
+<li><strong>減毒</strong>：ChatGPT 毒性機率 0.192→0.040（−79.2%），流暢度/多樣性不損，媲美需訓練的 PPO/Quark；w/o Tool 幾乎無效。</li>
+<li><strong>自我驗證不可靠的直接證據（D.1）</strong>：Self-Eval 在 HotpotQA 驗證準確率僅 54%、TriviaQA 上輸給「全判對」基線；CRITIC 工具互動把 AUROC 拉到 0.81–0.88。</li>
+<li>2–3 輪迭代即取得多數增益；批判式修正勝 rejection sampling（EM +4.5/+3.3）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>推論延遲與迭代數成線性；依賴人工設計的上下文示範（prompt 敏感）。</li>
+<li>只修得動<strong>工具給得出可靠回饋的錯誤</strong>：GSM8k 上不合理輸出/語法錯誤修正率 57.4%/35.3%，但佔 77.4% 的內在推理錯誤僅 26.7%。</li>
+<li>非 oracle 設定會<strong>改壞原本正確的答案</strong>（HotpotQA 10% 錯誤修正；GSM8k 對原正確樣本 −4.3%）——「何時該修」的判斷仍是弱點。</li>
+<li>實驗限於文本模態與預先指定的工具；自動工具選擇僅提出構想未實測。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>ai_core §3.4「驗證器把關、確定性節點當裁判」的直接學術支點</strong>：CRITIC 的核心洞見正是「裁判訊號必須來自 LLM 之外」——直譯器的執行結果、搜尋引擎的證據、Perspective API 的分數，都是<strong>不被模型自身幻覺污染的接地訊號</strong>。w/o Tool 消融等於一組對照實驗：同一個 LLM、同一套 prompt，裁判從確定性工具換成模型自省，增益立即蒸發甚至轉負。這替 ai_core「拒絕為預設＋憑證准入」提供量化理由：LLM 的自我背書不構成憑證，工具驗證通過才算。</li>
+<li><strong>與 <a class="paper-reference" href="2310.01798_CannotSelfCorrect.%E6%91%98%E8%A6%81.html">2310.01798</a>（LLMs Cannot Self-Correct Reasoning Yet）互為表裡</strong>：該文（本文附錄 C.1 明確引用的後續研究）證明內在自我修正無效；本文早半年就給出同一發現的跨任務證據，並示範<strong>外部接地是可行的出路</strong>。兩篇合讀＝「內省不可信，接地才可信」的完整論證，正是 ai_core 把 LLM 呼叫包成可靠函數時的失效模式分析＋補救方案。</li>
+<li><strong>對 §5 程式碼助手與 §3.6 固化引擎的操作啟示</strong>：數學程式合成實驗顯示「執行回饋修得動語法/執行期/不合理輸出錯誤，修不動內在推理錯誤」——即<strong>確定性驗證器的覆蓋範圍決定修正循環的天花板</strong>；固化引擎結晶出的每個確定性檢查，都在擴大這個可修正範圍。另 CRITIC 的錯誤分析方法（把失敗分成可接地/不可接地兩類）可直接借用為 ai_core 節點的失效分類法。</li>
+<li>最值得記：<strong>verify-then-correct 循環、批判＝「錯誤指認＋可行動建議＋可信依據」、w/o Tool 消融設計、LLM 自我驗證 AUROC 僅略勝亂猜、2–3 輪即飽和</strong>。定位：方法＋實證論文，ICLR 2024，開源（microsoft/ProphetNet/CRITIC）。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2305.11738_CRITIC.zh-TW.html"><code>../translate/2305.11738_CRITIC.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

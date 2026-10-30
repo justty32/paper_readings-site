@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_InferCept設計 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><p>← <a href="../2402.01869_InferCept.zh-TW.html">回母檔</a>｜<a href="03_%E5%AF%A6%E9%A9%97%E8%88%87%E7%B5%90%E8%AB%96.html">下一節</a></p>
+<h2 id="4-infercept">4. InferCept</h2>
+<h3 id="41-swap-pipeline-與-chunking">4.1 Swap pipeline 與 chunking</h3>
+<p>Paged KV 分散在多個 physical regions，逐塊 CUDA launch 與資料搬移可能主導 latency。InferCept 以 transformer layer 為 pipeline stage：當 layer <code>i+2</code> 啟動 swap kernel，layer <code>i+1</code> 做 data movement，layer <code>i</code> 已釋放的 memory 可供正常 forwarding。</p>
+<p>Swap 也跨 iterations 分塊。系統離線量得 batch <code>B_i</code> 的 forwarding time <code>T_fwd(B_i)</code>，並依 bandwidth 求可在該時間內隱藏的 token 數 <code>N_i</code>，稱為 swap limit。每輪 swap-in + swap-out 不超過 <code>N_i</code>，也同時滿足 CPU free memory 與 GPU free memory 約束；分配目標是讓本輪可處理的新 tokens 最大。</p>
+<h3 id="42-recomputation-chunking">4.2 Recomputation chunking</h3>
+<p>Discard 的整段重算需要 GPU compute，無法像 PCIe transfer 一樣完全藏在背景。但 decode 通常先撞 GPU memory、未占滿 cores；prefill／recomputation 則較 compute-intensive，兩者混批可補足利用率。</p>
+<p>InferCept 離線找 query-token saturation point <code>S</code>。每輪重算 chunk size 約為 <code>S - running group query tokens</code>，避免一次把長 context 塞入單輪，拉長所有 resident requests。作者的 waste 推導把成本分為重算 context 自身的 memory-time，以及重算增加 iteration time 時其他 requests 所占 memory 的浪費；分塊使第一部分約減半，第二部分不高於整段重算。</p>
+<h3 id="43-inter-request-action-decision">4.3 Inter-request action decision</h3>
+<p>對每個 intercepted request，Preserve waste 是 interception duration 乘以 context KV size；Chunked-discard waste 則由上述兩部分構成。先取兩者較小值作該 request 的 waste。</p>
+<p>有限的 swap-out budget 優先分給 waste 最大的 requests，因為 swap 可避開最多 preserve／discard waste；剩餘 context 才採各自的 preserve 或 discard 決定。</p>
+<p>恢復時維持三個 queues：running queue、已回傳但待 swap-in 的 swap queue，以及 waiting queue。Waiting 包含 resumed discarded requests、新 requests 與因記憶體不足被 preempt 的 requests。所有 queue 依 original arrival time 排序。每輪 waiting queue 依 FCFS 填至 saturation point，swap queue 依 FCFS 填至 swap-in budget，避免 resumed work starvation。</p>
+<h3 id="44-未知-interception-duration">4.4 未知 interception duration</h3>
+<p>Preserve waste 需要等待時間。若 API latency 高度變動或未 profile，系統用 <code>T_hat = now - call_time</code>；等待愈久，估計 duration 與 preserve cost 愈高，政策可在之後改變。混合 workload 中達到 perfect-duration oracle 的 93% performance。</p>
+<h3 id="45-實作">4.5 實作</h3>
+<p>InferCept 建於 vLLM／PagedAttention。四個元件是 scheduling policy、waste calculation、chunked recomputation/swapping、augmentation support。模型 forwarding time 的離線估計著重 linear 與 attention layers；兩者占 transformer block 約 95%，而 decode-heavy batch 的 attention kernel 可占 forwarding time 超過 50%。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

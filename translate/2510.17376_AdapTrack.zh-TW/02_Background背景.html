@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_Background背景 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2510.17376_AdapTrack.zh-TW.html">回 2510.17376_AdapTrack.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_Evaluation%E8%A9%95%E4%BC%B0.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-background背景">3. Background（背景）</h2>
+<h3 id="31-goal目標">3.1 Goal（目標）</h3>
+<p>給定脈絡 s_{&lt;i}，自迴歸語言模型可產生下一 token 的分布 P(s_i|s_{&lt;i})，進而定義整條序列的聯合機率 P(s_0,…,s_n) = ∏P(s_i|s_{&lt;i})。約束器是函式 c：序列 → {0,1}，0 表示以此序列為前綴的所有延續皆非法，1 反之；C(s) 表示前綴 s 之後所有合法的下一 token 集合。</p>
+<p>目標是定義一個僅涵蓋合法序列的分布 P_c，使任意序列的生成機率與其在語言模型下的機率成比例：P(s|c) ∝ P(s)·c(s)，等價地，對任兩條合法完整序列 s、s′，應滿足 P(s|c)/P(s′|c) = P(s)/P(s′)（式 1）。</p>
+<h3 id="32-constrained-decoding-and-its-problem約束解碼及其問題">3.2 Constrained decoding and its problem（約束解碼及其問題）</h3>
+<p>約束解碼可視為拒絕取樣的一種 ad-hoc 簡化：不重複取樣再丟棄非法序列，而是在每步直接剔除非法選項。每步取樣 s_i 時，機率為合法選項間的重新正規化：P_con(s_i|s_{&lt;i}) = P(s_i|s_{&lt;i})·[s_i∈C(s_{&lt;i})] / Σ_{t∈C(s_{&lt;i})}P(t|s_{&lt;i})。</p>
+<p>比較兩條合法序列 s、s′ 的約束解碼機率比，會發現除了 P(s)/P(s′) 這一項，還多出一項「各步合法選項機率總和的連乘比」，這一項無法消去，代表約束解碼下的生成機率相對於原模型機率是被扭曲的（式 1 不成立）。</p>
+<h2 id="4-adaptrack">4. AdapTrack</h2>
+<p>演算法整體上維護所有已知未完成序列的合法性資訊，並依此為每個前綴保有一個取樣結果。演算法反覆取樣一個未完成序列、收集其合法性資訊到樣本中，比較取樣前後的合法性資訊，並執行拒絕取樣修正各前綴的樣本；一旦拒絕發生，演算法下次會為該前綴選擇不同的 token——這等同回溯，因為不再沿用同一段部分生成序列。</p>
+<p>目標分布 P(s|c) 可分解為逐步取樣 P(s_i|c,s_{&lt;i}) 的連乘；用貝氏定理可將其進一步分解為 P(s_i|s_{&lt;i})·P(c|s_{&lt;i}::[s_i])（正比關係）。對每個前綴 x，定義目前對 P(c|x) 的估計為 Q[x]：若 x 為新前綴，樂觀估計為 1（假設其子節點皆合法）；若 x 已知非法，Q[x]=0；若 x 是「舊」前綴（已展開過），則 Q[x] 依已知子節點的機率加權彙總得到（式 2）。以 Q 估計出的分布記為 P_Q(s_i|s_{&lt;i}) ∝ P(s_i|s_{&lt;i})·Q[s_{&lt;i}::[s_i]]（式 3）。</p>
+<p>對每個已遇到的前綴 x，維護一個從 P_Q(·|x) 取樣得到的下一 token N[x]；把各前綴的 N 值串接起來即可收集出一條 P_Q 分布下的完整序列樣本（演算法 1：CollectSequence）。</p>
+<p>主流程（演算法 2：BacktrackSample）：</p>
+<ol>
+<li>依 N 收集出一條前綴序列 s；若其末端已完整，直接回傳。</li>
+<li>否則對 s 取樣新的下一 token N[s]（依語言模型機率，在合法 token 間取樣），並呼叫約束器對所有可能下一 token 記錄合法性資訊到 Q。</li>
+<li>由最長到最短更新 s 所有前綴的 Q 值，得到更新後的 Q′。</li>
+<li>對 s 的每個前綴 x（不含 s 自身）：令 n = 舊的 N[x]，p = 更新前 P_Q(n|x)，p′ = 更新後 P_{Q′}(n|x)；以 Bernoulli(p′/p) 做拒絕取樣，若拒絕（即 p′ 明顯小於 p，代表 n 的合法機率被下修），則依 P′_Q(n′|x,n) ∝ P_Q(n′|x)·[n′≠n]（式 4，排除舊選擇 n 後在剩餘合法 token 間重新取樣）為 x 選出新的 N[x]。</li>
+<li>重複直到收集出完整序列。</li>
+</ol>
+<p>直觀理解：估計出的下一 token 有效性 Q[x::[N[x]]] 在更新後通常會下降（因為初始估計永遠是樂觀的高估），這會降低「繼續採用 N[x]」在更新後分布下的機率；用「更新前後機率之比」當接受率做拒絕取樣，恰好能把 N[x] 的取樣機率精確調整到更新後分布應有的水準——這正是回溯發生的機制。</p>
+<h2 id="5-the-proof-of-adaptrack演算法證明">5. The proof of AdapTrack（演算法證明）</h2>
+<p><strong>定理 5.1</strong>：演算法只會回傳合法完整序列，且已探索序列間的生成機率滿足式 1。</p>
+<p>證明要點：唯一的回傳點保證序列必然完整；由於 N[x] 恆從 P_Q(·|x) ∝ P(·|x)·Q[x::[·]] 取樣，任何前綴的下一步永遠合法。透過定理 5.2，收集一條序列等同從 P_Q(·) 取樣；對任一新序列 s，逐步展開連乘後可得 P_Q(s) = Q[s]/Q[ε] · P(s) = P(s)/Q[ε]，即 P_Q 與原模型機率 P(s) 僅差一個與 s 無關的正規化常數 Q[ε]，因此比例關係（式 1）成立。</p>
+<p><strong>定理 5.2</strong>：演算法第 11–19 步對 N 的更新，使 N[x] 恆服從分布 P_Q(·|x)。</p>
+<p>以歸納法證明：基底情形（第 9 步）N[x] 本就從 P_Q(·|x) 取樣。歸納步驟：Q 更新為 Q′ 後，原 N[x]=n；以接受率 P_{Q′}(n|x)/P_Q(n|x)（恆 ≤1）做拒絕取樣後，n 被保留的總機率恰為 P_{Q′}(n|x)；透過代數展開可證明，其餘每個 n′≠n 被選中的機率恰為 P_{Q′}(n′|x)——換言之，拒絕取樣完美地把 N[x] 的邊際分布從更新前的 P_Q 校正為更新後的 P_{Q′}，證明成立。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

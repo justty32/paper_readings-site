@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2410.06438_Leroy.zh-TW.html">回 2410.06438_Leroy.zh-TW 目錄</a>　<a href="02_%E8%A8%AD%E8%A8%88.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>庫學習（library learning）是從一組給定程式中建立「常用功能庫」的過程。此過程通常用於輔助程式合成（program synthesis）：簡潔的函數能幫合成器產出更模組化、體積更小的程式碼。先前工作聚焦於函數式的 Lisp 類語言，因其規則性（regularity）使重複結構更容易被抽取。</p>
+<p>本工作提出 <strong>Leroy</strong>，把既有庫學習技術延伸到命令式（imperative）高階程式語言，目標是促進可重用性與易維護性。Leroy 包裝既有的 <strong>Stitch</strong> 庫學習框架，藉 AST 把命令式程式轉成 Lisp 類格式；用 Stitch 做自頂向下、語料引導的重複運算式抽取；接著剪掉那些無法在目標語言中實作的抽象，並把最佳抽象轉回原語言。我們在 Python 的一個子集上實作此技術，並在一大語料上評估。Leroy 對原始碼庫達到 <strong>1.04x 的壓縮比</strong>，若把庫本身算進去則略為膨脹。此外我們展示本技術能剪除非法抽象。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>軟體工程師花大量時間提升程式碼品質：重構、改善可讀性、修正格式、補文件。特別是常把程式庫中可重用/重複的功能抽象成<strong>庫函數（library functions，又稱工具函數）</strong>，捕捉被不同模組共用的程式邏輯。若靠人工，庫抽取既繁瑣又易錯。</p>
+<p>先前工作 Babble（Cao et al., 2023）與 Stitch（Bowers et al., 2023）借鑑 DreamCoder（Ellis et al., 2020）的想法，從程式碼抽取共用功能以合成庫。但這些工具是為<strong>輔助程式合成器的學習</strong>而設計：當合成器從壓縮後語料學習時，會學會寫出更小、善用抽象庫的程式碼，從而降低出錯機率。先前工作是在函數式 Lisp 類語法的語言上抽函數，且聚焦於<strong>盡可能提高壓縮率</strong>。</p>
+<p>然而這些技術在通用程式語言上尚未被探索——而開發者在通用語言上也想為<strong>可重用性與維護</strong>抽取共用功能。可重用性指抽出的函數能在語料中被重用的程度；有了好抽象，日後擴充程式即可直接重用。抽取也影響維護：良好抽象讓語料更模組化，修共用函數的錯即可把變更傳播到整個語料。</p>
+<p>本工作提出 <strong>Leroy</strong>，藉包裝最先進的 Stitch 庫抽取工具，把庫抽取延伸到通用程式語言。我們鎖定 Python 的一個形式化子集 <strong>P2</strong> 為目標語言。P2 是為教編譯課而設計的範例語言（Siek and Chang, 2017），涵蓋 Python 大部分功能，含控制流、函數與作用域變數。</p>
+<p>為利用 Stitch，Leroy 先把 P2 程式轉成 AST，再用 AST 生成 Stitch 可接受的 Lisp 類表示。Stitch 接著產生候選抽取函數；但許多候選一旦轉回 Python 便非法——它們可能是類巨集的、取了非法參數、未回傳必要變數、存取了作用域外變數，或單純太小。</p>
+<p>評估方面，我們在校內編譯課的 <strong>122 支測試程式</strong>語料上測其壓縮能力，並計數本技術剪除的非法抽象數、討論工具找到的抽象類型。</p>
+<h2 id="2-背景">2. 背景</h2>
+<h3 id="21-庫學習與抽象語法樹ast">2.1 庫學習與抽象語法樹（AST）</h3>
+<p>庫抽取藉分析程式的 AST，辨識並抽取語料中重複的功能。AST 提供程式語法的結構化表示，讓演算法能辨識可抽象成可重用函數的共同模式或部分子樹。例如一組程式中多個都有「印出兩者之和」的相似運算序列（圖 1 左），抽取過程可辨識此共同模式並抽象成可重用函數 <code>print_add(n)</code>。</p>
+<p>（圖 1：庫抽取範例，展示輸入碼、輸出碼及其 AST。語料左側兩段碼共享一個高亮的共同結構；CTS 能抽出此結構命名為 <code>print_add(arg1,arg2)</code>，並在右側以函數呼叫取代之。）</p>
+<h3 id="22-語料引導的自頂向下搜尋cts">2.2 語料引導的自頂向下搜尋（CTS）</h3>
+<p>語料引導自頂向下搜尋（Corpus Guided Top-Down Search, CTS）是一種遞迴搜尋法（Bowers et al., 2023），依某效用（utility）度量尋找「最該從語料抽出的最佳函數」。演算法從一個部分程式樹（初始樸素地為空樹）出發，在語料中搜尋匹配的部分子樹。目標的效用依「匹配數」與「目標大小」計算——愈大、匹配愈多者效用愈高。每一輪把子節點加到目標的葉節點以擴張目標，但匹配數隨之減少；加哪些子節點取決於語料與預期效用。某些分支擴張的效用可被當前最佳效用<strong>上界界定（branch-and-bound）</strong>，藉此引導搜尋往別處擴張。當目標達到最佳效用即結束：目標成為被抽函數的函數體，未被納入的葉節點子節點則成為函數參數。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.21619_Alignment_Constrained_CodeGen.zh-TW.html">回 2606.21619_Alignment_Constrained_CodeGen.zh-TW 目錄</a>　<a href="02_%E5%B0%8D%E9%BD%8A%E5%95%8F%E9%A1%8C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）在程式生成上展現強大能力，但輸出常含語法或型別錯誤導致編譯失敗。約束解碼（constrained decoding）被提出用以在構造上消除編譯錯誤、順帶提升功能正確性。然而既有工作忽略了約束解碼一個關鍵面向：<strong>約束器（如型別系統）、語言模型、與目標規格語言（如 TypeScript）三者之間的對齊</strong>。不對齊源自約束器<strong>不完整</strong>（拒絕了本屬於目標語言的程式）或<strong>不健全</strong>（放行了不屬於目標語言的程式）。不完整造成的偏誤會扭曲語言模型的分布，對程式生成有害。我們用七個語言模型、兩種目標語言、兩種約束器（分別施加型別與語法約束）評估此假說，並研究語言模型對不同程度不完整的反應。在三個基準上，當約束器不完整時，無約束解碼在功能正確性上顯著優於約束解碼。不完整把模型推入程式空間的低機率區，導致生成頻繁逾時，功能正確性最多下降 97%。這些貢獻讓社群意識到約束解碼中不對齊的負面效應，並提供如何設計對程式生成系統有益、且具形式保證的約束器的量化洞見。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 在程式合成、跨語言翻譯甚至修 bug 上展現顯著能力，但生成程式常因語法錯誤、型別違反或其他邏輯瑕疵而無法編譯；在 TypeScript 這類靜態型別語言中，型別檢查失敗尤其主導錯誤——生成的 TypeScript 程式碼中僅約 6% 的編譯錯誤是純語法性的，約 94% 源自違反型別系統。這暗示納入型別系統約束能大幅改善輸出正確性。約束解碼一詞泛指在生成過程中把 token 選擇限制在滿足預定義形式約束（語法文法、型別系統、符號規則、語意驗證器）的輸出，並逐步施加。</p>
+<p>作者先做一個前導研究（RQ0）比較約束解碼與無約束解碼：沿用並延伸 Mündler et al. 2025b 的 TypeScript 型別約束解碼，對六個 LLM、三種溫度、多次重複並做統計檢定。結果出乎意料：<strong>無約束解碼在功能正確性上顯著優於型別約束解碼</strong>。這質疑了約束解碼的有效性，要求對「約束解碼何時真正有效」做出穩健的刻畫。</p>
+<p><strong>方法論</strong>：作者引入「對齊」（alignment）概念，刻劃程式生成任務中三個核心實體的相互位置：(1) <strong>模型語言 L_M</strong>——語言模型 ℳ 會生成的程式集合；(2) <strong>目標語言 L_T</strong>——我們期望的合法程式集合；(3) <strong>約束語言 L_C</strong>——使用者定義的約束在解碼期間允許的程式集合。本文中心論點：<strong>約束解碼只有在這三種語言彼此對齊時才對程式生成有益</strong>；不對齊正是約束解碼失效之處。這個概念化具高度可操作性：研究者與實務者可據此估計約束解碼何時無效，並得到具體改進方向——擴大 L_C 使其貼近 L_T，或微調 ℳ 使其貼近 L_C。</p>
+<p>三個研究問題：<strong>RQ1（不對齊的代價）</strong>——約束器與目標語言的不對齊如何損害程式生成？<strong>RQ2（恢復對齊）</strong>——把 LLM 分布對齊到約束器，能在多大程度上恢復約束解碼的功能正確性？<strong>RQ3（完整對齊）</strong>——約束器完整時，約束解碼表現如何？</p>
+<p><strong>結果概述</strong>：RQ0 觀察到的負面效果源自「不完整偏誤」——不完整的約束器 L_C 把 LLM 逼入不太可能的程式空間，造成逾時與 out-of-tokens。透過微調把語言模型對齊到約束器，可將逾時／out-of-tokens 分別降低 53–73% 與 74–94%，使約束/無約束的功能正確性差距縮小、部分情形甚至持平。透過在語法約束上控制約束器完整度的受控實驗，發現語言模型對此因素高度敏感：約束器完整時，約束解碼顯著優於無約束（32B 模型 +2.5%，2B 模型最多 +54%）；不完整時，相對「完整約束＋模型」基線最多下降 97%。</p>
+<p><strong>貢獻</strong>：(1) 跨六個 LLM、兩個程式生成基準的大規模實證研究（RQ0），顯示現有約束解碼方法在功能正確性上一致輸給無約束解碼，即便在小模型上也是如此；(2) 提出模型語言／目標語言／約束語言三者間的「對齊」概念，解釋不完整如何把 LLM 逼入未知疆域、造成不完整偏誤（RQ1）；(3) 實證顯示以約束器產生的資料微調 LLM 能協調其分布、有效緩解不完整偏誤（RQ2），逾時／out-of-tokens 分別降低 53–73%、74–94%；同時顯示完整約束器最多可提升 54% 表現，不完整約束器最多可使功能正確性下降 97%（RQ3）。</p>
+<h2 id="2-背景">2. 背景</h2>
+<p>延續 Nagy et al. 2026 與 Mündler et al. 2025b 的工作，介紹逐 token 生成程式的解碼過程形式框架，及其對語法/型別約束的延伸。</p>
+<h3 id="21-token-詞彙表與語言模型">2.1 Token 詞彙表與語言模型</h3>
+<p>給定字元集 Σ 與其上所有字串 Σ*，語言 L⊆Σ* 是依某種語法／語意規則合法的字串子集。LLM 產生的是 token 而非原始字元，故引入詞彙表 𝒱；語言模型形式化為條件機率函數 ℳ: 𝒱*→Δ(𝒱)，依前綴預測下一 token 的分布。解碼即反覆採樣 token 直到取到 EOS。</p>
+<h3 id="22-無約束解碼">2.2 無約束解碼</h3>
+<p>標準自迴歸生成過程，是程式生成的基本基線。給定模型、初始 prompt、溫度 τ 與生成預算 B（時間與 token 上限），逐步採樣、附加，直到取到 EOS 或耗盡預算。溫度 0 為貪婪採樣；溫度越高，取到低機率 token 的機率越大。</p>
+<h3 id="23-約束解碼">2.3 約束解碼</h3>
+<p>設 φ 為程式上的約束（如語法合式性或型別正確性）。約束解碼透過過濾違反 φ 的無效延續來限制生成。Algorithm 1（沿用 Mündler et al. 2025b）整合增量剖析器 𝒫_I 與增量型別檢查器 𝒯_I：每步採樣候選 token，若其延伸出的前綴仍可能被補全為合式程式則保留，否則捨棄、重新採樣；當 𝒫_I、𝒯_I 恆真即退化為無約束解碼。</p>
+<h2 id="3-前導實證研究rq0">3. 前導實證研究（RQ0）</h2>
+<p>聚焦 TypeScript 上的型別約束解碼（Mündler et al. 2025b），作為文獻中最先進的約束器，比較其與無約束解碼在功能正確性、型別安全上的差異。</p>
+<p><strong>基準</strong>：採用 HumanEval（159 題）與 MBPP（390 題）的 TypeScript 版本（Ben Allal et al. 2022，MultiPL-E 資料集），因既有約束策略僅支援語言子集（不支援使用者自定類別等），無法用於倉庫級基準（如 SWE-bench）。</p>
+<p><strong>解碼方法</strong>：比較無約束解碼（nc）與約束解碼（c，沿用 Mündler et al. 2025b 的型別/語法約束實作，不支援前向引用、使用者自定型別、import、型別推斷）。生成預算為 300 秒或 1000 token；逾時取部分程式，計為功能失敗但保留其編譯狀態。</p>
+<p><strong>流程</strong>：評測 Gemma-2（2B/9B/27B）、DeepSeek-Coder-33B、CodeLlama-34B、Qwen2.5-32B 六個模型，三種溫度（0.1/0.5/1.0），每設定跑 10 次不同種子，並以 Wilcoxon 符號秩檢定（α=0.05）與 Vargha-Delaney Â₁₂ 效應量做統計檢驗，共生成約 57k 個 HumanEval 程式與 47k 個 MBPP 程式。</p>
+<p><strong>指標</strong>：功能正確性 FC（通過全部單元測試的比例）、型別語法正確性 TSC（通過 TypeScript 編譯器檢查的比例）、逾時率（超過 token 或時間預算的比例）。</p>
+<p><strong>結果</strong>：除 Gemma-2-2B 與 CodeLlama-34B 在 τ=1.0 的 HumanEval 上差異不顯著外，<strong>無約束解碼在功能正確性上一致優於約束解碼</strong>；HumanEval 最高 FC 為 Qwen2.5-32B 的 82.3%（nc），最低為 Gemma-2-2B 的 35.7%（nc），MBPP 上排序相同（79.5% vs 50.4%）。約束解碼的型別語法正確性在能力較弱模型（Gemma-2-2B、CodeLlama-34B）上明顯較高，但<strong>這未能轉化為更高功能正確性</strong>——原因是約束解碼有相當比例超出預算逾時，此現象在小模型與高溫下更明顯；除逾時外，約束解碼僅 0.69% 生成無效程式。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

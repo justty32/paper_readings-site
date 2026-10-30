@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實證評估 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2302.09664_Semantic_Uncertainty.zh-TW.html">回 2302.09664_Semantic_Uncertainty.zh-TW 目錄</a>　<a href="02_%E8%AA%9E%E6%84%8F%E4%B8%8D%E7%A2%BA%E5%AE%9A%E6%80%A7.html">← 上一節</a>　<a href="04_%E9%99%84%E9%8C%84%E8%A6%81%E9%BB%9E.html">下一節 →</a></p>
+</blockquote>
+<h2 id="6-實證評估">6 實證評估</h2>
+<p>我們證明語意熵是量化 NLG 在自由格式問答任務上不確定性的有效方法：好的不確定性度量應提供「模型答案有多可靠」的資訊，即高度不確定的生成應較不可能正確。<strong>效能評估</strong>沿用先前工作，把不確定性估計視為「是否該信任某個脈絡下模型生成」的預測問題，用 <strong>AUROC</strong>（隨機取一個正確答案，其不確定性分數高於隨機取一個錯誤答案的機率）衡量，滿分 1、隨機 0.5。AUROC 優於 Brier score 之類的校準指標，因為語言模型只對某個 token 序列給出似然，而非對整個意思給出似然——要估計 Brier score，需要估計所有可能表達正確答案方式所佔的整個機率質量，這對自由格式文字不可行；相對地，熵可用蒙地卡羅積分估計，是結構上更合適的指標。</p>
+<p><strong>模型</strong>：使用類 GPT 的 OPT 模型，規模涵蓋 2.7B／6.7B／13B／30B，主要結果用計算上可行的最大模型（30B）；全程單一未修改模型、無集成、無隨機或貝氏修改（因頂尖基礎模型多非以集成形式提供，且太大難以有效做近似貝氏推論），不在 TriviaQA/CoQA 上微調，直接用預訓練模型。</p>
+<p><strong>資料集</strong>：CoQA（開卷對話式問答，用約 8000 題的 development split）、TriviaQA（閉卷問答，取訓練集子集 8000 題以對齊 CoQA 規模）。正確性以模糊比對判準：Rouge-L(𝐬,𝐬′)&gt;0.3 視為正確；第 B.3 節研究其他判準（exact match、Rouge-1）發現結果對此選擇穩健。</p>
+<p><strong>基線</strong>：預測熵（無長度正規化，如 Kadavath et al., 2022 使用）；長度正規化預測熵（Malinin &amp; Gales, 2020，將聯合對數機率除以序列長度，惟本文只用單一模型、multinomial 取樣，非其原始的集成設定）；p(True)（Kadavath et al., 2022，取樣 M 個答案後構造新提示問模型某候選是否正確，本文用 OPT 最多 30B、10-shot，原論文用 52B 專有模型與 20-shot）；詞彙相似度（answer set 中所有答案兩兩 Rouge-L 的平均，仿 Fomicheva et al., 2020）；另在附錄 B.6 加測 margin-probability 基線（Lin et al., 2022b）。全部程式碼與資料開源於 github.com/lorenzkuhn/semantic_uncertainty。</p>
+<h3 id="61-語意熵的不確定性表現">6.1 語意熵的不確定性表現</h3>
+<p>兩資料集上語意熵在預測答案正確性上都優於基線。TriviaQA（30B 模型）：語意熵 AUROC 顯著高於（有無長度正規化的）序列機率熵及詞彙相似度基線，且大幅優於 p(True)；且優勢隨模型規模持續擴大。CoQA：較大模型規模下語意熵顯著優於基線。TriviaQA 的參考答案多為單詞或極短片語，CoQA 則長短皆有——這是長度正規化對 CoQA 影響很大、對 TriviaQA 幾乎無影響的原因；TriviaQA 也是更難的資料集（準確率 50.6% vs CoQA 的 82.3%）。</p>
+<p>透過檢視正確與錯誤答案的語意等價類數量差異可理解其作用機制：30B 模型下，答錯問題的語意相異答案類數（每題取樣 10 個答案）顯著高於答對問題，符合「模型對最可能生成不確定時更容易答錯」的預測；單用「語意相異答案數」本身即是一個尚可的不確定性指標，但語意熵 AUROC 更高，在 CoQA（因難度導致答案機率分佈更分散）上優勢更明顯。最後，性能增益很大一部分來自更善用更多樣本：CoQA 與 TriviaQA 上，語意熵與長度正規化熵之間的差距隨取樣數增加而擴大，因為語意熵能更好地處理重複性。</p>
+<h3 id="62-有效取樣的超參數">6.2 有效取樣的超參數</h3>
+<p>調整 multinomial 取樣的溫度有兩種相反效果：升高溫度增加樣本多樣性（預期能更完整覆蓋可能意思空間，以「取樣答案間最長子序列平均重疊度」的補數衡量多樣性）；同時降低溫度會提升答案平均正確率（通常更準確的模型也更擅長估計不確定性）。實驗發現兩效果互相競爭，語意熵與長度正規化熵的最高 AUROC 在<strong>中間溫度 0.5</strong> 取得——溫度更低提升準確率、更高提升多樣性；CoQA 有類似圖形（見附錄）。先前以預測熵為基線的工作多用溫度 1.0（Kadavath et al., 2022），本文評估顯示這會顯著削弱該基線相對本文實作的表現。</p>
+<h2 id="7-討論">7 討論</h2>
+<p>許多自然語言問題展現一個關鍵不變性：不同 token 序列可以表達同一意思。針對此點，本文提出語意熵——對「意思分佈」而非「序列分佈」計算熵——並證明它比強力基線更能預測模型在問答上的準確率。使用現成模型的無監督做法提升了可複現性、也更易部署；無監督不確定性或許也有助於緩解先前工作指出「監督式不確定性度量在分佈偏移下表現不佳」的問題。</p>
+<p>本文為語意熵提出一個使用較小自然語言推理模型的新穎雙向蘊涵聚類演算法，因此代表<strong>全機率式方法</strong>與<strong>利用語言模型本身、但模型內部激活未透明呈現的自然語言特性的方法</strong>之間的中間路線。我們相信，隨著語言模型持續進步，這種結合兩種視角的做法比單獨依賴任一視角更有前景。這在語言模型具備欺騙能力的情況下將愈趨重要——這正是本方法<strong>未能防範</strong>的情形（本方法防的是「在多個有意義選項間猶豫」，而非欺騙）。結合模型內部與模型預測，或許有望讓評估方法保持領先於模型能力。</p>
+<p>我們聚焦問答，因為它是有相對清楚正確性基準的重要自由格式 NLG 問題。未來，希望本文對語意等價的研究能為摘要等場景（正確性需要更多人工評估）鋪路，儘管這類場景可能還需要複述識別方面的進一步進展。語意似然的概念也可能延伸到互資訊等其他機率式不確定性工具，為 NLG 不確定性提供新策略。</p>
+<h2 id="倫理聲明與可重現性聲明節錄">倫理聲明與可重現性聲明（節錄）</h2>
+<p>本工作旨在讓使用者理解語言模型生成內容的信心與可靠度，以邁向更安全的 AI 系統，原則上有助於緩解 NLG 生成虛假有害資訊（如對重要醫療問題的錯誤回答）的潛在危害；但此益處伴隨風險——不確定性評估或其溝通方式若系統性出錯，可能造成不當的過度信心。作者建議部署前針對具體場景做充分評估，確保不確定性溝通方式賦能使用者而非誤導。可重現性方面：本工作使用近期公開釋出的 OPT 模型，建立完全依賴開源工具的 NLG 不確定性量化流程，不需微調或訓練基礎模型，程式碼與人工標註的語意等價資料集皆以 MIT 授權開源。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

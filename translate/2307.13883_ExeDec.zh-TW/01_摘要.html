@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2307.13883_ExeDec.zh-TW.html">回 2307.13883_ExeDec.zh-TW 目錄</a>　<a href="02_%E5%9F%BA%E6%BA%96%E5%BB%BA%E7%AB%8B.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>寫程式時，人能藉由把新的複雜任務<strong>分解（decompose）<strong>成更小、更熟悉的子任務來解決它。雖然難以直接量測神經程式合成方法是否具備類似能力，但我們可以量測它們是否</strong>組合泛化（compositional generalization）</strong>——亦即一個在較簡單子任務上訓練過的模型，之後能否解出更複雜的任務。本文刻畫程式合成中數種值得追求的組合泛化形式，構成一個<strong>元基準（meta-benchmark）</strong>，用它為兩個常用資料集 RobustFill 與 DeepCoder 建立泛化任務。接著提出 <strong>ExeDec</strong>，一種以分解為基礎的新合成策略：它預測<strong>執行子目標（execution subgoals）</strong>，並在每一步以程式執行資訊為引導，逐步解題。相較基線，ExeDec 有更佳的合成表現，且組合泛化能力大幅提升。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>程式合成旨在依使用者對「程式該做什麼」的規格自動產生程式碼；以範例編程（programming by example, PBE）系統為代表，已在字串處理、短 Java 函式、張量操作等任務上見效。基於大型語言模型的神經合成器尤其擅長跨多種通用語言生成程式碼。</p>
+<p>人類程式員的一項本質能力，是把既有知識的片段<strong>重組</strong>來解新題——快速適應新概念與 API、以未見過的方式組合各種程式慣用法。這些都是<strong>組合泛化</strong>的實例：能泛化到「由訓練時各自見過的元件以不同組合構成」的測試樣本。為建構更善於組合泛化的系統，作者主張設計出<strong>學會把複雜任務分解成一串較簡單子任務</strong>的系統；每個子任務由一個目標定義，故分解本質上就是<strong>規劃（planning）</strong>。（史丹佛的第一門程式課在教完基本語法後第一週就開始教分解，可見其根本。）由於解訓練集所用的子任務可在測試集上以不同方式重組，這能促成組合泛化。</p>
+<p>據此，作者提出 <strong>ExeDec</strong>——一種在<strong>執行空間（execution space）<strong>裡做分解的神經程式合成搜尋法。PBE 任務以「輸入／輸出配對」定義程式，因此很自然地可用</strong>期望的中間狀態</strong>（區域變數的值）來描述一個子目標。換個角度說：人類程式員不是一次決定一個 token 要寫什麼碼，而是先想「下一段程式碼的結果該是什麼」，再寫碼去達成。ExeDec 用兩個神經模型：**SubgoalModel（子目標模型）**預測下一部分程式所欲達到的程式狀態，**SynthesizerModel（合成模型）**嘗試從先前狀態生成一段能達到該子目標的程式；並在 beam search 中把神經預測與程式執行交錯，以探索不同的預測分解。</p>
+<p>作者另引入量測程式合成器組合泛化能力的<strong>元基準</strong>：給定一個含 DSL 與目標程式分佈的標準基準，該元基準描述 5 種組合泛化的訓練—測試切分（如長度泛化、以不同組合方式組裝 API 函式等）。有趣的是，ExeDec 在 i.i.d. 設定僅略優於 Transformer 基線，但在組合泛化設定達到 <strong>2× 至 4×</strong> 的準確率提升；且它勝過「不明確提出子目標」的消融，凸顯「對執行子目標推理」比「直接預測碼」重要。</p>
+<h2 id="2-程式設計中的組合泛化">2 程式設計中的組合泛化</h2>
+<p>程式合成的目標，是在給定語言中找出與規格一致的程式。形式上給定一個 <strong>DSL</strong>（領域特定語言）定義程式空間 𝒫；任務以規格 X 描述、由某未知程式 P* 求解。在 PBE 中，規格是一組輸入／輸出範例 X = {(I₁,O₁),…,(Iₙ,Oₙ)}；解 X 意即找到一個對所有範例都成立（P(Iᵢ)=Oᵢ）的程式 P（不必等於 P*）。</p>
+<p>作者把值得追求的泛化能力歸為三大類：<strong>(1) 長度泛化</strong>——產生比訓練時更長的碼，且成本不像組合式方法那樣爆炸；<strong>(2) 概念混搭（mix and match concepts）</strong>——以新方式組合程式慣用法解新題，而不需窮舉所有組合的訓練樣本；<strong>(3) 套用一般原則（apply general principles）</strong>——藉由對類似 API 的既有知識，快速適應新的、更新的或自訂的 API。</p>
+<p>由此衍生 <strong>5 個具體的組合泛化任務</strong>，各附一種「建立分佈不相交之訓練/測試集」的方法，構成元基準（圖 1 以圓圈表子程式、著色表某概念、粗框表不同運算的類比功能）：</p>
+<ol>
+<li><strong>Length-Generalization（長度泛化）</strong>：模型能否在需要時產生比訓練更長的碼？此處「長度」數的是子程式數而非 token 數。訓練長度 1..n、測試 n+1..m。</li>
+<li><strong>Compose-Different-Concepts（組合不同概念）</strong>（概念混搭之一）：把 DSL 運算分成若干**概念（concept）**群；訓練「同概念內」的組合（如 Aᵢ∘Aⱼ、Bᵢ∘Bⱼ），測試「跨概念」的組合（Aᵢ∘Bⱼ、Bᵢ∘Aⱼ）。現實類比：只在只含 TensorFlow 或只含 NumPy 的腳本上訓練，卻要合成同時用到兩者的碼。</li>
+<li><strong>Switch-Concept-Order（切換概念順序）</strong>（概念混搭之一）：訓練某一概念序列（如 Aᵢ∘Bⱼ），測試不同序列（Bᵢ∘Aⱼ）。類比：函式訓練時用於開頭驗證輸入，卻要改用於結尾驗證結果。</li>
+<li><strong>Compose-New-Operation（組合新運算）</strong>（套用一般原則之一）：訓練時只見「該運算單獨使用」與「不含該運算的組合」，測試「含該運算的組合」。類比：只見某函式單獨使用後，把它與其他函式組進更大的解。</li>
+<li><strong>Add-Operation-Functionality（新增運算功能）</strong>（套用一般原則之一）：訓練資料刻意略去某運算「可從其他脈絡推得」的部分功能，測試用到該功能的程式。類比：某函式庫函式新增一個參數，其行為可由其他函式的類似參數推得。</li>
+</ol>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

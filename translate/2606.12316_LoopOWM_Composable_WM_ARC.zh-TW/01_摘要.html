@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.12316_LoopOWM_Composable_WM_ARC.zh-TW.html">回 2606.12316_LoopOWM_Composable_WM_ARC.zh-TW 目錄</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>ARC 測「上下文中的規則歸納」：給幾對 input-output 示範，模型須推出隱藏規則並套到新 query。許多做法用語言、程式或符號程式表達 ARC 規則，但 ARC 本身是<strong>視覺—符號</strong>的：規則以「物件、顏色、形狀、空間關係」上的格子轉移呈現。我們提出 <strong>Loop-OWM</strong>，一個物件中心世界模型架構，把這些規則學成<strong>結構化狀態上的可組合轉移</strong>。它結合：顏色原型 slot、示範條件的任務摘要、以及一個帶稠密傳播與 slot-conditioned 修正的<strong>迴圈轉移模型</strong>。在 ARC-1 與 ARC-2 上，Loop-OWM 以相當或更少參數勝過非迴圈與迴圈 baseline。結果顯示 ARC 規則不只能學成語言描述或搜尋出的程式，也能學成<strong>視覺—符號世界狀態之間的轉移</strong>。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>ARC 每任務只給幾對示範，須推出隱藏轉移並套到新 query，這自然吸引了語言中心與程式中心的做法。然而 ARC 的任務介面<strong>並非語言</strong>：規則透過離散 2D 格子的轉移表達（物件被移動、複製、重上色、補全、計數、或以空間配置關聯）。近期視覺方法雖把 ARC 當圖像直接建模，但仍多視為<strong>直接 grid-to-grid 預測</strong>——只要求產出目標格子，而「有哪些物件、它們如何改變、觀察到的轉移該如何套到新狀態」的中間結構仍是隱式的。</p>
+<p>本文從<strong>物件中心世界建模</strong>角度研究 ARC：每個格子是一個視覺—符號世界狀態、每對示範提供一次狀態轉移的證據、任務指定一條應從示範泛化到新 query 的狀態轉移規則。提出 <strong>Loop-OWM</strong>，含三個概念元件：(1) 物件中心格子解讀器（把格子轉成結構化狀態、用 slot 暴露候選實體）;(2) 任務編碼器（讀示範推出任務專屬規則表徵）;(3) 迴圈轉移模型（對 query 狀態做迭代更新套用規則）。迴圈不只是增加深度，而是 rollout 機制：同一規則反覆套用到演化中的內部狀態。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>2.1 ARC 作為規則歸納</strong>：符號／程式中心與 LLM 法描述、搜尋或合成候選程式，依賴顯式程式空間與手工原語；分析指出 LLM 能辨識高階概念卻難做空間變換的組合執行。本文走互補方向：把規則學成視覺—符號格子狀態上的潛在轉移。</li>
+<li><strong>2.2 ARC 的神經視覺模型</strong>：把任務當空間 canvas 訓練 grid-to-grid；迴圈視覺 transformer（LoopViT 等）以遞迴計算增加有效推理深度而不增參數；但多把任務當輸出格子預測。Loop-OWM 改成示範條件的狀態轉移學習。</li>
+<li><strong>2.3 物件中心與世界模型</strong>：許多 ARC 規則天然以物件為索引（形狀、顏色、連通元件、空間關係）;slot 法（Slot Attention 等）暴露實體結構，物件中心影片／世界模型支援動力學與關係推理。差異：ARC 無自然時間軌跡，轉移規則須從幾對示範推得。</li>
+</ul>
+<h2 id="3-問題形式化">3. 問題形式化</h2>
+<p>ARC 任務 = 一組示範 𝒟={(x⁽ⁱ⁾,y⁽ⁱ⁾)} 與 query x。直接預測模型把它當 <code>ŷ=f_θ(x,𝒟)</code>。本文改成<strong>示範條件的狀態轉移學習</strong>：<code>z_𝒟=ψ_θ^task(𝒟)</code>、<code>ŷ=Rollout(x,z_𝒟)</code>，把規則歸納與規則執行分離。world model 取受限義：ARC 結構化狀態與其任務條件轉移的模型。</p>
+<ul>
+<li><strong>物件感知狀態抽象</strong>：格子色經共享 color embedding → patchify（卷積）+ 2D 位置編碼 → 稠密 grid-state token H；再用 Slot Attention 抽出 K 個 slot（不要求是顯式符號物件或完美分割，只當結構化介面）。</li>
+<li><strong>迴圈規則執行</strong>：query 初始化為 H⁰，shared transformer 轉移模組跑 T 步 <code>H^{t+1}=F_θ(H^t,z_𝒟)</code>，最後解碼成 ARC 顏色 logits，cross-entropy loss。迴圈提供 rollout：同一規則反覆套用到演化狀態。</li>
+</ul>
+<h2 id="4-方法">4. 方法</h2>
+<p>Loop-OWM 含四個可學模組：物件中心解讀器、任務編碼器、迴圈轉移模型、解碼模組。</p>
+<ul>
+<li><strong>4.1 顏色原型 slot 初始化</strong>：slot i 種子 <code>s_i⁰=E_i+b_i</code>，由顏色 embedding 表的行 E_i 加可學偏置；把 slot 身份綁到 ARC 調色盤，同一 slot index 跨示範與 query 有一致顏色錨。<strong>穩定顏色錨</strong>：E 初始化為正交行框架並<strong>凍結</strong>（<code>EE^⊤≈d·I</code>），避免訓練中移動錨點；實證凍結 E 穩定迴圈轉移訓練。</li>
+<li><strong>4.2 互補轉移模組</strong>：F_θ 是 ARC 世界模型的轉移算子。拆兩分支：稠密 patch-to-patch 算子 P^t（路由格位間資訊）與 slot-conditioned 寫回 R^t（物件感知內容修改，經 slot-to-grid mixer ℳ + MLP renderer）。三種狀態更新模式：(1) slot-only <code>H^{t+1}=R^t</code>;(2) transport-only <code>H^{t+1}=P^t H^t</code>（純路由，無法寫新內容如重上色）;(3) 互補 <code>H^{t+1}=P^t H^t + α^t R^t</code>（可學門控）。</li>
+<li><strong>4.3 任務編碼器 + summary tokens</strong>：可學 task-summary query bank 對示範 pair token cross-attention 產生 z_𝒟，每步迴圈條件化 F_θ。三變體：shared-only（攤銷歸納、最利未見任務泛化）、per-task（任務專屬查表記憶）、hybrid（兼具，可加 task-token dropout 防只靠任務 id）。</li>
+<li><strong>4.4 跨迴圈組合轉移</strong>：兩軸——(i) transport 目標用原始 patch 相似度 vs slot-mediated 相似度；原始版有<strong>位置 identity 偏差</strong>（同座標的 src/dst 因共享位置而相似），改用 slot-membership 邊際化的 slot-mediated 目標。(ii) 監督最後一步 P̂_final vs 監督整段組合 P̂_total=P̂^{T-1}…P̂^0；後者把 transport 目標對齊真實多步路由，避免任一步塌縮成 identity。總損失 <code>ℒ=ℒ_grid+λℒ_trans</code>。</li>
+</ul>
+<h2 id="5-實驗">5. 實驗</h2>
+<ul>
+<li><strong>資料</strong>：ARC-1 / ARC-2；原檔示範稀疏，故用程序化增強（ARC-1 用 RE-ARC、ARC-2 用 ARC-GEN，每任務約 1000 對），評估集嚴格留出、無洩漏。</li>
+<li><strong>5.1 兩階段訓練</strong>：離線預訓（學通用視覺—符號機制：格子解讀、物件抽象、轉移建模）→ 測試時 task-variant 增強（每測試任務造 50 變體：旋轉/翻轉/換色）做 test-time training；推論時多視角、反變換後 majority voting（30 視角、5 次平均）。ARC-2 額外做 ARC-1→ARC-2 遷移初始化（ARC-1 訓 200 offline epoch 接力，只轉任務無關參數）。</li>
+<li><strong>5.2 系統級比較（Table 1）</strong>：Loop-OWM 64/2（10.63M）= <strong>ARC-1 68.5 / ARC-2 22.5</strong>，緊湊神經系統最強；勝 LoopViT-L（18M，65.8/14.2）、VARC ensemble（73M，60.4/11.1）、HRM（27M，40.3/5.0）、TRM（7M，44.6/7.8）。相對 LLM CoT+合成法成本低（不靠外部語言推理、程式合成、LLM 規模候選搜尋）。ARC-2 對所有神經系統仍顯著更難，但 Loop-OWM 縮小差距。</li>
+<li><strong>5.3 消融</strong>：(a) 狀態更新——互補 &gt; 純 slot / 純 transport（佐證 ARC 轉移同時需空間搬運與物件感知內容更新）;(b) task-summary——hybrid 略勝 per-task、per-task 勝 shared-only（per-task entry 充當任務專屬規則的可調 placeholder，shared query 仍提供攤銷歸納偏置）。</li>
+</ul>
+<h2 id="6-限制與未來工作">6. 限制與未來工作</h2>
+<p>迴圈雖作 rollout，但<strong>各步無穩定、可人讀的語義</strong>（理想上不同迴圈該對應「定位／搬運／重上色／邊界精修」等可複用階段，實際上計算分散、無跨任務一致模式）。原因：標準 ARC 只有 input-output 監督、不監督中間狀態，內部 rollout 在最終格子正確下欠定。解法需 trajectory-level 監督；作者正建 ARC-2 衍生、約 500 任務的中間狀態標註資料集，用以監督子變換、讓迴圈更語義化、推向更可檢視的世界模型。</p>
+<h2 id="7-結論">7. 結論</h2>
+<p>把 ARC 框成「視覺—符號狀態轉移上的規則歸納」：示範定義結構化格子狀態該如何改變，解新 query 須<strong>執行推得的轉移</strong>而非只預測像素。Loop-OWM 以物件感知格子解讀、task-summary token、結合稠密 transport 與 slot-conditioned 寫回的遞迴轉移更新實作此想法。ARC-1/2 結果與消融顯示此形式化是緊湊神經 ARC 解法的有效歸納偏置；更廣義地，ARC 不只能當語言／程式推理基準，也能當「學習可組合世界狀態動力學」的受控場景。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

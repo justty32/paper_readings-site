@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>A Unified Definition of Hallucination, Or: It’s the World Model, Stupid 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Emmy Liu、Varun Gangal、Chelsea Zou、Xiaoqi Huang、Michael Yu、Alex Chang、Zhuofu Tao、Sachin Kumar、Steven Y. Feng</p><p>日期：2025-12-25（v1，cs.CL）</p><p>arXiv：2512.21577</p><p><a href="https://arxiv.org/abs/2512.21577" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="a-unified-definition-of-hallucination-or-its-the-world-model-stupid-重點摘要">A Unified Definition of Hallucination, Or: It’s the World Model, Stupid 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>論文把 hallucination 統一定義成「模型輸出中可被使用者觀察的 atomic claim，與一個明示的 reference world model 衝突」，並要求評估同時說清楚世界真相、模型看得到什麼，以及多個資訊來源衝突時誰優先。</p>
+<h2 id="問題同一個詞其實用了不同真相">問題：同一個詞其實用了不同真相</h2>
+<p>Hallucination 從機器翻譯裡與來源無關的輸出，逐步擴張到摘要不忠實、開放域問答的事實錯誤、RAG 中忽略檢索內容、VLM 的圖文衝突，以及 agent 點擊不存在按鈕等行為。這些定義表面不同，核心卻都是模型輸出暗示的世界，與評估者採用的真相不一致。真正麻煩的是「真相」經常沒有寫出來：摘要可能以輸入文件為準，開放域問答以外部世界為準，RAG 還得先決定檢索內容和參數記憶何者優先。</p>
+<p>作者回顧的 HALoGEN 橫跨 <code>9</code> 個知識領域，並把 hallucination 分成 <code>3</code> 類，正好顯示既有 benchmark 雖更細緻，仍把正誤綁在各自選定的外部來源與 verifier 上。這兩個數量是文獻整理，不是本文的新實驗結果。</p>
+<h2 id="統一定義">統一定義</h2>
+<p>Reference world model 寫成 <code>W=(S, H, R)</code>。S 是可能的世界狀態，H 是可能的互動歷史，R 是限制哪些狀態與歷史可接受的規則。對一個輸入 x，view function V 只取出與任務相關、且允許模型看到的那部分世界；conflict policy P 規定文件、知識庫、模型參數記憶、環境觀察與指令互相衝突時如何裁決；truth function 再把每個 atomic claim 判為 true、false 或 unknown。</p>
+<p>輸出 y 只有在至少一個可被使用者觀察的 atomic claim 被 truth function 判成 false 時，才算相對於 <code>(W, P)</code> 發生 hallucination。Unknown 不自動等於 false，因此沒有證據支持的敘述是否算 hallucination，取決於 benchmark 是否能建立反證，而不是由「無法驗證」四字直接決定。這也迫使每個評估回答三件事：真實世界是哪一個、模型看得到哪部分、資訊衝突如何解。</p>
+<p>論文用 <code>4</code> 個代表案例展示同一模板如何涵蓋文件摘要、開放域問答、RAG 與 agentic web navigation。摘要可把來源文件設成 W，因而外部世界正確但文件未記載的內容可能只是 unknown；開放域問答則可把可驗證世界知識設成 W；RAG 必須顯式寫出檢索文件與參數知識的優先政策；瀏覽器 agent 的 W 可以是 DOM、頁面狀態與執行歷史，宣稱已點到不存在的按鈕就是 world-model mismatch。這個數量描述作者的說明架構，不是效能數字。</p>
+<h2 id="benchmark-配方與論文結論">Benchmark 配方與論文結論</h2>
+<p>作者提出可擴充的環境式 benchmark 配方。先由已知 state 與 history 的 environment backend 產生文件、log 或頁面，再由 query generator 生成問題，最後改變 view function 控制可觀察性與 retrieval quality。對選擇題可直接比答案；對自由生成則抽出 atomic claims，交給能讀取明確世界狀態的 truth function 判斷。棋類只是示範：棋盤、走子歷史與規則提供可計算的 reference world，同一狀態能產生合法走法、位置追蹤、反事實與自由解說等查詢，而不必逐題人工標註。</p>
+<p>這篇沒有訓練新模型，也沒有執行新的模型效能實驗，因此沒有可報告的作者自報實驗數字。主要產出是定義、歷史統整與 benchmark 設計主張。結論是 hallucination 應保留給 world-modeling error；如果模型理解世界卻選了差的計畫，那是 planning error；如果模型知道自己不確定卻因獎勵或提示而裝得肯定，那是 incentive error。三者可能同時出現，但不能因最後答案錯了就全部叫 hallucination。</p>
+<h2 id="局限與後續問題">局限與後續問題</h2>
+<p>形式化把爭議顯性化，卻沒有自動解決真相來源本身的爭議。真實應用中的 W 往往不完整、持續變動，P 也可能需要從使用者互動中推斷；claim extraction 與 truth function 仍可能出錯，unknown 的處理更會直接改變評估結果。論文提出的棋類 benchmark 仍是構想，不是已實作並驗證過的資料集；框架是否能讓不同研究團隊產生一致標註，也尚無 empirical evidence。</p>
+<p>作者把後續工作放在四條線：系統性測試 conflict policy、處理非平穩的 reference world、把環境擴到更長歷史與部分可觀察的世界（作者明列 Web/DOM、Codebase/Repos、Databases/logs、Multimodal simulators 四類），以及在互動迴圈中分開 belief error 與 control error。真正困難之處會是維持 W、V、P 與 verifier 的版本一致，而不是再發明一個錯誤類別名稱。</p>
+<h2 id="對讀者的價值ai_core-接點">對讀者的價值／ai_core 接點</h2>
+<p>這篇替 ai_core 提供一個很實用的錯誤帳本。每次判定「模型幻覺」時，都應一併保存 reference world 的版本、當時交給模型的 view、衝突政策，以及被判 false 的最小 claim。少了其中任何一項，錯誤名稱都不足以支持重現或治理。這與 ai_core 的憑證准入相容：憑證不是抽象的「可信」，而是相對特定世界、可見資訊與裁決規則的證明。</p>
+<p>另一個接點是把 agent 的 belief 與 control 分開驗。工具呼叫失敗後仍宣稱成功，屬於對 execution history 的 world-modeling error；知道失敗卻選擇錯誤補救，才是 planning error。ai_core 若在 trace 中分別記錄觀察、內部狀態宣稱、決策與結果，就能把 remediation 對準真正壞掉的層，而不是所有失敗都回頭改 prompt 或知識庫。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2512.21577_HallucinationWorldModel.zh-TW.html"><code>../translate/2512.21577_HallucinationWorldModel.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

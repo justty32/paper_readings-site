@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《ReAct：在語言模型中協同推理與行動（Synergizing Reasoning and Acting in Language Models）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Shunyu Yao, Jeffrey Zhao, Dian Yu, Nan Du, Izhak Shafran, Karthik Narasimhan, Yuan Cao（Princeton University &amp; Google Brain）</p><p>日期：2022-10（ICLR 2023）</p><p>arXiv：2210.03629</p><p><a href="https://arxiv.org/abs/2210.03629" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="react在語言模型中協同推理與行動synergizing-reasoning-and-acting-in-language-models重點摘要">《ReAct：在語言模型中協同推理與行動（Synergizing Reasoning and Acting in Language Models）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>ReAct（Reason + Act）</strong>：把代理的行動空間擴充為「環境行動 ∪ 語言空間」，讓 LLM 以 few-shot prompting <strong>交錯生成推理軌跡（thought）與任務行動（action）</strong>——推理引導、追蹤、修正行動計畫並處理例外（reason to act），行動則從外部環境（如 Wikipedia API）取回觀察餵入推理（act to reason）；在 HotpotQA/Fever 上因外部知識接地而大幅壓低 CoT 的幻覺，在 ALFWorld/WebShop 上僅用 1–2 個範例就以絕對 34%/10% 成功率輾壓模仿學習與強化學習基線。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 的「推理」（CoT）與「行動」（行動計畫生成）此前被當成<strong>兩個獨立課題</strong>研究。CoT 是<strong>靜態黑箱</strong>——只靠內部表徵生成思路、不與外部世界接地，導致<strong>事實幻覺（hallucination）與推理過程的錯誤傳播</strong>；而行動生成類工作（SayCan、WebGPT 等）用 LM 產生領域行動，卻<strong>不做抽象的高階推理、不維護工作記憶</strong>。兩者如何協同、協同是否帶來系統性增益，此前無人研究。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>形式化</strong>：代理在時刻 t 依 π(a_t|c_t) 行動、c_t 為觀察-行動歷史；ReAct 把行動空間擴充為 <strong>Â = A ∪ L</strong>（L＝語言空間）。語言空間中的行動即 <strong>thought</strong>——不影響環境、無觀察回饋，僅對當前脈絡 c_t 推理、把有用資訊組合進 c_{t+1}，支撐後續推理或行動。</li>
+<li><strong>thought 型態多樣</strong>：分解目標訂計畫、注入任務相關常識、從觀察抽取重點、追蹤進度並轉換子目標、處理例外並調整計畫。</li>
+<li><strong>密／疏兩種節奏</strong>：推理為主的任務（QA/事實查核）採 thought-action-observation 步嚴格交替（dense）；行動多的決策任務（ALFWorld/WebShop）讓 LM 自行決定 thought 稀疏出現的位置（sparse）。</li>
+<li><strong>知識任務工具</strong>：極簡 Wikipedia API——<code>search[entity]</code>／<code>lookup[string]</code>／<code>finish[answer]</code>，刻意弱於神經檢索器，逼模型靠顯式語言推理來檢索。</li>
+<li><strong>內外知識互補</strong>：ReAct→CoT-SC（ReAct 限步數內未答則退回 CoT-SC）與 CoT-SC→ReAct（多數答案票數 &lt; n/2、內部知識不可信時改用 ReAct）。</li>
+<li><strong>微調（bootstrap）</strong>：仿 STaR 用 ReAct 自產的 3,000 條正確軌跡微調 PaLM-8B/62B。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>HotpotQA/Fever（PaLM-540B prompting）</strong>：ReAct 一致優於 Act（27.4 vs 25.7 EM；60.9 vs 58.9），證明推理引導行動的價值；Fever 上勝 CoT（60.9 vs 56.3）、HotpotQA 上略遜 CoT（27.4 vs 29.4）。<strong>組合法最佳</strong>：ReAct→CoT-SC 35.1 EM、CoT-SC→ReAct 64.6 Acc，且僅用 3–5 個樣本就追上 21 樣本的 CoT-SC。</li>
+<li><strong>幻覺人工分析（各 50 條軌跡）</strong>：CoT 成功案例中 14% 為「幻覺出的假陽性」（ReAct 6%）；CoT 失敗主因 <strong>56% 是幻覺</strong>，ReAct 為 <strong>0%</strong>——外部知識庫接地讓軌跡更事實導向、可信。代價：交錯結構約束降低推理彈性，ReAct 推理錯誤率較高（47% vs 16%），且 23% 失敗來自無資訊的搜尋結果拖垮推理。</li>
+<li><strong>ALFWorld</strong>：ReAct 最佳 prompt 成功率 <strong>71%</strong>，vs Act 45%、BUTLER（10^5 專家軌跡模仿學習）37%；最差的 ReAct trial（48%）仍勝兩者最佳。對 Inner Monologue 式稠密外部回饋消融（ReAct-IM 53%）也顯著佔優——證明<strong>自由形式的內部推理 ≠ 覆述環境回饋</strong>。</li>
+<li><strong>WebShop</strong>：一/二-shot ReAct 成功率 40.0%，勝 Act 30.1% 與用一萬多條指令訓練的 IL+RL 28.7%（絕對 +10%）。</li>
+<li><strong>微調</strong>：3,000 條自產軌跡微調後 ReAct 成四法最佳——微調 PaLM-8B ReAct 勝所有 62B prompting、62B 勝所有 540B prompting；微調 Standard/CoT 反而在教模型背（可能幻覺的）事實，微調 ReAct/Act 教的是「如何取用外部資訊」這一更可泛化的技能。</li>
+<li><strong>附帶收益</strong>：軌跡人類可讀、可診斷（能分辨知識來自內部或外部）；人類<strong>編輯一兩條 thought</strong> 即可即時矯正代理行為（Fig. 5）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>prompting 版與領域監督式 SoTA 差距仍大（HotpotQA 35.1 vs 67.5）；複雜任務需更多示範，易超出 in-context 長度上限。</li>
+<li>特有失敗模式：<strong>重複迴圈</strong>——反覆生成先前 thought/action 跳不出來（疑為貪婪解碼所致）。</li>
+<li>檢索品質是命門：無資訊搜尋佔錯誤 23%，推理被帶偏後難以恢復（事實性 vs 彈性的取捨）。</li>
+<li>主實驗基於未公開的 PaLM-540B（附錄以 GPT-3 複現且更佳：HotpotQA 30.8、ALFWorld 78.4）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>agent 基石論文，ai_core 執行迴圈的原型</strong>：thought→action→observation 迴圈正是 ai_core §1「符號神經網路計算圖」中 <strong>LLM 節點與確定性工具節點交替執行</strong>的最早清晰形態——thought 是 LLM 節點輸出，action 由確定性 API（search/lookup/finish）執行，observation 是確定性節點回填給 LLM 的邊。行動空間擴充 Â = A ∪ L 的形式化，等於在計算圖上宣告「語言節點只改脈絡、不碰環境」，是把 LLM 呼叫包成可靠函數時劃分<strong>純函數節點 vs 有副作用節點</strong>的先聲。</li>
+<li><strong>接地訊號效益的早期實證</strong>：幻覺 56%→0% 這組數字是「外部確定性資訊源可矯正 LLM 內部知識」的最早量化證據之一，直接支撐 ai_core 用檢索/工具節點替 LLM 節點供給事實的設計；而「微調 ReAct 教技能、微調 CoT 教背誦」的發現，對 §3.6 固化引擎是重要提醒——<strong>該結晶成確定性程式碼的是「取用資訊的程序」而非「資訊本身」</strong>。</li>
+<li>對 §3.3 成本梯度亦有暗示：ReAct↔CoT-SC 互為 fallback 的啟發式（步數上限、多數票信心閾值）就是最原始的<strong>級聯路由</strong>——便宜的內部推理不夠可信才升級到帶工具的貴路徑（或反之），與 FrugalGPT 的評分-路由結構同構。thought 可被人工編輯即改變後續行為，也預示了 ai_core 治理面「在圖的中間節點設檢查/否決點」的可行性。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2210.03629_ReAct.zh-TW.html"><code>../translate/2210.03629_ReAct.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

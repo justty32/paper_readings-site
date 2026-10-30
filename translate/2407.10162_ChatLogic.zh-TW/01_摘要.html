@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2407.10162_ChatLogic.zh-TW.html">回 2407.10162_ChatLogic.zh-TW 目錄</a>　<a href="02_VI._%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>ChatGPT、GPT-4 等 LLM 在各種生成任務上展現亮眼能力，但其表現常受<strong>長期記憶存取與利用</strong>的限制所妨礙，導致特定弱點與偏差（尤其長互動時）。本文提出 <strong>ChatLogic</strong>——專為 LLM 推理任務設計的創新框架，<strong>透過整合邏輯程式設計</strong>增強 LLM 在多步演繹推理上的表現。在 ChatLogic 中，<strong>語言模型扮演核心控制器</strong>、參與系統每個運作階段。我們提出把邏輯問題轉成與推理引擎的符號整合的新方法，利用 LLM 的情境理解與模仿能力、並用<strong>符號記憶</strong>增強多步演繹推理。結果顯示 ChatLogic 顯著提升 LLM 的多步推理能力。（程式與資料：github.com/Strong-AI-Lab/ChatLogic）</p>
+<p><strong>關鍵詞</strong>：演繹推理、多步推理、大型語言模型。</p>
+<hr />
+<h2 id="i-引言">I. 引言</h2>
+<p>LLM（ChatGPT-3.5、GPT-4、Llama2）大幅增強各產業能力，但在<strong>多步邏輯推理</strong>上面臨顯著挑戰：擅長內容生成，卻在需多步推理時難產出連貫回應——其 <strong>next-token 預測</strong>訓練法限制了套用邏輯規則與深度情境理解的能力（圖 1：在打亂的命題序列中找合理解釋路徑判斷對錯）。此外 <strong>token 上限</strong>在連續對話中尤其受限（多步邏輯推理常是多輪對話）。</p>
+<p>外部記憶增強（整合大型資料庫）是一途，但會把檢索模型的<strong>偏差嵌進 LLM</strong>、影響準確與穩定。</p>
+<p>本文提出 <strong>ChatLogic</strong>：用邏輯推理引擎增強 LLM 的推理能力，並創新實作 <strong>Mix-shot Chain of Thought</strong>（結合多種 prompt 工程法，以最少資源高效引導 LLM 走邏輯推理步驟）。ChatLogic 相容既有 LLM、在高精度場景顯著提升準確度。核心是用 <strong>pyDatalog</strong> 把自然語言轉成邏輯符號，強化推理過程的穩定性。特色：</p>
+<ul>
+<li>結合 LLM 與 pyDatalog，把 NL 查詢翻成邏輯程式提升推理準確（在 PARARULE-Plus、CONCEPTRULES V1/V2 上明顯）;</li>
+<li>緩解資訊遺失，解決多步推理採用 LLM 時的<strong>長序列限制</strong>;</li>
+<li>含<strong>語法修正模組</strong>等自動化增強（從先前執行中學習精煉邏輯程式）。</li>
+</ul>
+<h2 id="ii-相關工作">II. 相關工作</h2>
+<ul>
+<li><strong>II-A LLM 推理</strong>：自我一致性（self-consistency）、因果推理路徑、最具影響力的 <strong>CoT</strong>（揭示中間推理步、可持續自我修正）——但都或多或少暴露「從長且無序資訊中抽有效內容」的弱點。</li>
+<li><strong>II-B LLM 程式生成</strong>：LLM 能生多種語言程式，但<strong>直接部署到實際環境仍未解</strong>。SELF-DEBUGGING 賦予 LLM 除錯能力；<strong>Logic-LM</strong> 造確定性符號 solver。本文要改進的是：LLM 雖可能因預訓練缺 pyDatalog 知識而「幻想」偏離現實，但仍能靠「模仿」產高精度輸出。終極目標：生成<strong>可直接本機部署、在裝有基本 Python 環境的使用者電腦上得推理結果</strong>的程式。</li>
+<li><strong>II-C LLM prompt 工程</strong>：few-shot（少標註資料）、zero-shot prompt（全靠模型內在知識，無需下游微調）、<strong>zero-shot CoT</strong>（「Let&#x27;s think step by step」+ 兩階段答案抽取，目前最佳推理 prompt 之一）。ChatLogic 為框架不同環節造獨立 prompt 模板、獨立呼叫。</li>
+</ul>
+<h2 id="iii-任務定義">III. 任務定義</h2>
+<p>LLM 善於把文字轉成數學式、程式語言等形式結構，但<strong>多步推理</strong>時隨推理深度增加常漏關鍵步。主要目標：提升 LLM 用邏輯程式語言（特別是 <strong>pyDatalog</strong>，整合邏輯程式範式的 Python 庫）表示問題的能力。</p>
+<p>多步演繹推理問題＝<strong>Fact</strong>（主謂賓陳述句，謂詞有否定，如「Bob is poor」）+ <strong>Rule</strong>（含條件判斷的陳述句，如「若某人窮則他壞」）+ <strong>Query</strong>（同格式陳述句）。兩子任務：</p>
+<ul>
+<li><strong>III-A 增強 LLM 推理能力</strong>：利用 LLM 的 one-shot 泛化與 zero-shot 思考；用涵蓋所有潛在邊界情況的精製範例讓模型熟悉 pyDatalog；高精度生成的 code 由本機編譯器執行得準確多步推理結果。</li>
+<li><strong>III-B 放大自動程式生成的可執行性</strong>：LLM 文字轉 code 首次常不完美、含錯；設專屬模組確保 NL 與翻譯碼高精度對齊、本機易執行直接產出結果。</li>
+</ul>
+<h2 id="iv-chatlogic">IV. ChatLogic</h2>
+<h3 id="iv-a-框架概覽">IV-A 框架概覽</h3>
+<p>四階段（圖 2）：<strong>輸入處理、語意修正（SE）、語法修正（SYN）、本機執行回應</strong>。LLM 生的初版邏輯碼經兩模組兩次以上迭代修正後，可執行性顯著提升、結果更精確。除本機執行部分外，所有子任務皆由 LLM 當組件控制驅動。</p>
+<p><strong>演算法 1（ChatLogic）</strong>：</p>
+<ul>
+<li>輸入：U（依封閉世界假設補充的規則）、X（命題組＝Fact+Rule）、Y（問題）；輸出：TRUE/FALSE。</li>
+<li><strong>語意修正迴圈</strong>（line 3–8）：<code>Code←PropositionTransformation(X)</code>（依 CWA 生邏輯程式）→ <code>RevProposition←ReverseTransformation(Code,U)</code>（把 code 反翻回自然語言）→ <code>TextComparison(X, RevProposition)</code> → 用 <strong>zero-shot CoT 兩步</strong>判語意相似狀態、更新 <code>DifferentFlag</code>。LLM <strong>擅長語意修正</strong>，少量修改即可達正確翻譯。</li>
+<li><strong>語法修正迴圈</strong>（line 11–16）：<code>Code←CodeImprovement(Code, ExecutionError)</code>（依錯誤訊息改）；但語法修正<strong>不可靠、可能陷無限迴圈</strong>，故設<strong>執行時間上限</strong>終止（略降推理力但大增穩健）。</li>
+<li><code>return CodeExecution(Code)</code>（本機執行 pyDatalog 得結果）。</li>
+</ul>
+<h3 id="iv-b-mix-shot-cot">IV-B Mix-shot CoT</h3>
+<p>混合 <strong>zero-shot CoT</strong>（用 LLM 生成力與鏈式思考，無需訓練/微調）與 <strong>one-shot learning</strong>（手寫一個任務完成範例引導 LLM 模仿達高精度）。核心：利用 LLM <strong>自主識別子任務</strong>的能力——</p>
+<ul>
+<li>需高精度處（NL 問題→邏輯碼）用策略性選擇的高品質範例（one-shot 精度）;</li>
+<li>需大量分析處（如生成命題與原命題的相似度比對）給 LLM <strong>更大自主權</strong>發揮分析力。</li>
+<li>用 zero-shot CoT 的兩步呼叫：第二次呼叫時從第一步抽有效關鍵資訊當狀態標籤引導框架運作。</li>
+</ul>
+<p>對比（Table I）：one-shot（幻覺最少但表現差、不同任務需不同範例）、zero-shot CoT（幻覺高、準確相對高、無需範例只需簡單引導）、<strong>Mix-shot CoT（幻覺較少、任務準確最高、需較少範例且優於 few-shot）</strong>。在精度與適應性至上的真實應用中務實有效。</p>
+<h2 id="v-評估">V. 評估</h2>
+<h3 id="v-a-資料集與指標">V-A 資料集與指標</h3>
+<ul>
+<li><strong>PARARULE-Plus</strong>：~40 萬樣本、全 CWA、兩情境（People/Animal）；各深度（2–5）從兩類各隨機選 50、合 100 測例。</li>
+<li><strong>CONCEPTRULES V1/V2</strong>：需多步推理、深度至 3，有 simplified/full 版；把 train/test/dev 併池後隨機抽 100。</li>
+<li>模型：ChatGPT（gpt-3.5-turbo）、GPT-4、Llama 2-7B（RTX 3090 24GB）;temperature=0。</li>
+</ul>
+<h3 id="v-c-中間過程">V-C 中間過程</h3>
+<p>圖 3：ChatGPT 直接推理（即使加 CoT）常含多處邏輯不一致；ChatLogic（同由 ChatGPT 驅動）多數情況準確生 pyDatalog 碼、本機執行得精確結果。</p>
+<ul>
+<li><strong>meta 屬性補全</strong>：實驗發現 CWA 資料集下 LLM 無法依 CWA 補全缺失資訊 → 推理效率大降。多步演繹鏈起點須是物件<strong>本有的屬性（meta 屬性，非推理得來）</strong>，但 CWA 資料集缺此 → 用 <strong>NER 腳本</strong>抽主語與屬性歸屬、以人工合成自然語言格式補進命題（即演算法 1/圖 2 的 <strong>U</strong>）。例：Rules 中無句可推出某人有「big」屬性 → 此屬性須在角色屬性定義中出現，若 Facts 沒有則預設其無、需手動加進 Facts。CONCEPTRULES V1/V2 不需此補全。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《ALGO：以 LLM 生成的 Oracle 驗證器合成演算法程式（ALGO: Synthesizing Algorithmic Programs with LLM-Generated Oracle Verifiers）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Kexun Zhang, Danqing Wang, Jingtao Xia, William Yang Wang（UCSB）, Lei Li（CMU）</p><p>日期：2023-05（NeurIPS 2023）</p><p>arXiv：2305.14591</p><p><a href="https://arxiv.org/abs/2305.14591" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="algo以-llm-生成的-oracle-驗證器合成演算法程式重點摘要">《ALGO：以 LLM 生成的 Oracle 驗證器合成演算法程式》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>ALGO</strong>：利用「LLM 寫暴力解遠比寫高效解容易」這個難度落差（CodeContests 上暴力解成功率 72% vs 高效解 7.9%，相對差 822%），先讓 verifier LLM 生成<strong>窮舉式暴力解當參考 oracle</strong>（只求語意正確 J_S、不管效率 J_T），再用 oracle ＋自動生成的測資對拍（differential testing）來驗證與導引任意 coder 模型搜尋高效解——一個 <strong>model-agnostic 的驗證層</strong>，讓 Codex 的一次提交通過率提升 8 倍、CodeT 提升 2.6 倍、ChatGPT Code Interpreter 在無污染 LeetCode 題上提升 1.3 倍。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ol>
+<li>LLM 擅長「功能合成」（HumanEval 式：描述→實作）卻在「演算法合成」（CodeContests 式：還得先想出對的演算法）上表現極差（GPT-4 在 LeetCode Hard 僅 10.6% pass@1）。</li>
+<li>LLM 生成的程式<strong>缺乏可驗證性</strong>：神經驗證器只給不可解釋的純量分數；LLM 直接生成的測試案例常常本身就是錯的，會提供有害回饋。傳統程式合成的 oracle 靠形式規格，需重度人工。</li>
+</ol>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>兩層分工</strong>：verifier（一題只建一次）＋ coder（任意程式碼生成模型，可插拔）。</li>
+<li><strong>Oracle 生成</strong>：prompt 中固定放「窮舉所有相關變數組合、無視時間限制」的指令＋題目描述，讓 LLM 生成暴力解——因為無時限下多數演算法問題都可窮舉解決，且這對 LLM 是容易的功能合成任務。</li>
+<li><strong>驗證流程</strong>：另以 zero-shot prompt 生成測資產生器＋輸入驗證器（皆屬簡單功能合成）→ 隨機測資餵給候選程式與 oracle 對拍，不合即回傳 False 與失敗測資給 coder 修正。</li>
+<li><strong>形式框架</strong>：系統評判 J = J_S（語意正確）∧ J_T（效率達標）；oracle 只需 J_S=True，把「檢查 AI 生成的程式」轉化成「檢查 AI 生成的暴力解」——後者容易得多。</li>
+<li><strong>三種可插拔搜尋策略</strong>：implicit searcher（直接抽樣後過濾，如 Codex）、instruction enumerator（枚舉演算法類別如「二分搜尋」再生成，如 ChatGPT）、iterative searcher（用驗證回饋引導解碼樹搜尋，如 PG-TD）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>Oracle 品質</strong>：LeetCode 題 88.5% 語意正確（含所有 TLE 者）、CodeContests 72%；判定與線上評測系統一致率 75%。</li>
+<li><strong>CodeContests 1@k</strong>：Codex 0.70→ALGO 5.60（8×，也是 CodeT 2.10 的 2.6×）；PG-TD 0.62→1.57（2.5×）；ChatGPT 4.40→12.00（2.8×）。</li>
+<li><strong>測資品質</strong>：與系統評判的一致率 CodeContests 57.39%→94.78%（+37.39）、LeetCode 68.57%→74.29%；行覆蓋率亦升。同一 coder 同預算下，ALGO 測資 1@20=12.0% vs ChatGPT 自生測資 6.8% vs 範例測資 4.4%。</li>
+<li>測資量 30 個內遞增有顯著幫助，之後飽和；LeetCode 上 ALGO＋Code Interpreter 一次提交通過率超過 GPT-4。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>Oracle 並非保證正確（CodeContests 僅 72%），錯的 oracle 會給錯誤導引；正確性驗證仍靠線上評測＋人工專家檢查。</li>
+<li>隨機測資產生器上限每變數長度 10、跳過逾時/遞迴錯誤案例——小測資可能漏掉大規模才觸發的邊界與效率語意錯誤。</li>
+<li>假設「暴力解存在且 LLM 寫得出」，對無法窮舉表述的問題（互動題、非函數式規格）不適用；驗證需真實執行程式，有沙箱與算力成本。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>ai_core §3.4（驗證器）的直接彈藥</strong>：本文示範「便宜可靠 oracle 從哪來」——不是去訓練神經驗證器，而是把驗證問題<strong>降維</strong>成一個 LLM 更擅長的生成問題（暴力解＝功能合成），再靠<strong>確定性執行對拍</strong>取得可解釋的 True/False＋反例。這正是「拒絕為預設＋憑證准入」需要的憑證產生器：候選資產要入庫，先過 oracle 對拍這一關，而 oracle 本身的可信度（88.5%/72%）可量化、可用線上評測校準。</li>
+<li><strong>ai_core §3.6（固化引擎）的一個原型</strong>：「暴力解→高效解」就是一種固化——先用便宜方式取得<strong>語意正確的參考行為</strong>（慢但對），再搜尋等價且高效的實作，等價性由對拍保證。固化引擎把 LLM 反覆處理的案例結晶成確定性程式碼時，同樣需要「先求對、再求快」的兩層生成：第一層產出行為規格（oracle），第二層在規格約束下優化。</li>
+<li><strong>Model-agnostic 是關鍵設計</strong>：verifier 一題建一次、可導引任意 coder——對應 ai_core「貴稀有智能造資產（oracle）、便宜高頻智能消費資產（被對拍過濾的候選解）」的分工（§2）；驗證層不綁模型，正是符號神經計算圖中「確定性節點包住 LLM 節點」的具體做法（§1）。</li>
+<li>最值得記的數字：<strong>暴力 vs 高效的 822% 難度落差</strong>（方法成立的根基）、<strong>測資一致率 57→95%</strong>（LLM 直接生測資 vs oracle 對拍生測資的差距）、<strong>1@k 8×</strong>（好驗證器對「一次就對」的槓桿最大）。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2305.14591_ALGO.zh-TW.html"><code>../translate/2305.14591_ALGO.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

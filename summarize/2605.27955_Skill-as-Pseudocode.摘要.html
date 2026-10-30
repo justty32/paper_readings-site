@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Skill-as-Pseudocode：將技能庫重構為偽代碼以服務 LLM 智能體》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Xinze Li（南洋理工大學）、Yuhang Zang（上海 AI 實驗室）、Aixin Sun（南洋理工大學）、Yixin Cao（復旦大學，通訊作者）</p><p>日期：2026-05-27</p><p>arXiv：2605.27955</p><p><a href="https://arxiv.org/abs/2605.27955" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="skill-as-pseudocode將技能庫重構為偽代碼以服務-llm-智能體重點摘要">《Skill-as-Pseudocode：將技能庫重構為偽代碼以服務 LLM 智能體》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>散文是瓶頸</strong>——作者論證並實驗證明，markdown 技能庫的自由散文（free-form prose）表示比缺乏分解（factoring）更根本地限制了 LLM agent。SaP（Skill-as-Pseudocode）是一個<strong>自動化散文→帶類型偽代碼的轉換管線</strong>，以確定性品質控制（四個檢查 + 兩個 LLM 覺察後驗證通過）取代每次檢索時 agent 從散文中重新推導合約的成本。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>Markdown 技能文件（如 Anthropic SKILL.md、Graph-of-Skills 庫）不區分&quot;技能產生什麼（output schema）&quot;與&quot;技能如何調用（concrete primitive actions）&quot;——兩者與提示文字、警告、範例交錯排列。<strong>每次檢索時 agent 必須重新推導這兩者</strong>，造成一個反覆出現的迴圈：發送 SkillRequest → 讀回長 markdown → 發出語法稍偏差的動作 → 環境回傳&quot;Nothing happens.&quot; → 重新檢索尋找缺失的細節（confused → re-retrieve → still confused loop）。這既是任務失敗的原因，也是 per-game LLM 調用成本的主因。</p>
+<h2 id="核心貢獻">核心貢獻</h2>
+<ol>
+<li><strong>問題重構</strong>：將技能庫改善從&quot;library maintenance&quot;重構為&quot;散文→帶類型偽代碼轉換 + 確定性品質控制&quot;，與已有 typed-routing 工作（RestGPT、ToolLLM、Gorilla）互補——後者假設合約已存在，SaP 是上游合約生產者。</li>
+<li><strong>SaP 管線</strong>（五階段 + 兩個 LLM 後驗證通過）：
+<ul>
+<li>階段 1/2（確定性）：解析 markdown → 提取 (verb, objects, code_langs) frame tuple → 以 text-embedding-3-small 嵌入後單連鎖聚類形成候選群集（高召回，過度聚類可接受，下游驗證器過濾）。</li>
+<li>階段 3（LLM，每群集一次 gpt-4o-mini 調用）：為每個群集生成帶類型合約草稿 κ（trigger、input_schema、output_schema、pre/postconditions、side_effects）。</li>
+<li>階段 4（四個確定性檢查）：①Coverage（κ 的 trigger/I-O 字串對各 parent 的 token 召回率），②Binding（required input 是否在 unit text 中有對應 span），③Replacement（以 invoke(κ, ⃗a) 語法替換後 markdown 結構是否保持完整），④Risk（AST 掃描合約腳本中的不安全接收器，如 rm -rf、未申明網路出口，加權分 ≥0.80 則硬拒絕）。四個檢查捕捉四類近乎不重疊的失敗模式（每層最多 ~51% 的首失敗）。</li>
+<li>BE（Binding Extraction）+ RC（Rewrite Cleanup）兩個 LLM 覺察後驗證通過：BE 對每個確定性調用點判斷是否為 κ 的真實實例及每個 required input 綁定哪個 span（丟棄 30% 的確定性調用點為偽陽性）；RC 檢測非群集殘留散文中的衝突（如 Example 區塊使用環境不接受的動詞），以 invoke() 調用改寫。</li>
+</ul>
+</li>
+<li><strong>檢索時代換</strong>：僅檢索 parent skills；promoted child contracts 置於內部 store，只透過 parent 的 invoke(κ, ⃗a) placeholder 到達。每個檢索到的 parent 代換為三個區塊的 bundle：(i) 具體 action template + bindings（agent 先讀到，how），(ii) rewritten parent skeleton（where），(iii) inlined child contract spec（what）。</li>
+</ol>
+<h2 id="關鍵數據">關鍵數據</h2>
+<ul>
+<li><strong>ALFWorld 134-game unseen split</strong>，gpt-4o-mini，pooled 3 seeds（n=402）：SaP 82 wins vs GoS 47 wins（+74%，pooled McNemar p = 8.2×10⁻⁵）；同時 −22.8% input tokens、−17.3% output tokens、−14.5% LLM calls per game。</li>
+<li><strong>SkillsBench 10-task subset</strong>，gpt-5-codex：SaP 3/10 wins vs GoS 2/10 wins，input tokens −43%。</li>
+<li><strong>管線產出</strong>：skills_500（500 markdown docs, 5,709 procedural units）→ 149 候選群集 → 80 驗證通過的 child contracts（0% FP on 30 adversarial controls）。BE 確認 1,475/2,105 調用點（70%），RC 成功改寫 320/322 parents（99.4%）。</li>
+<li><strong>消融</strong>：僅確定性改寫=0.05 → +RC=0.10 → +BE+RC=0.15（每步 +5pp，ALFWorld 20-game subset）。</li>
+<li><strong>機制證據</strong>：SaP post-retrieval 動作正確率 29.3% vs GoS 20.5%（READ_SKILL 事件上差距擴大到 29.8% vs 19.0%，1.57x）；檢索次數減少 31%；&quot;Nothing happens.&quot; 事件從 61.4% 降至 54.2%。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>僅在一個 markdown 庫（skills_500）上端到端運行，typed-API 庫（Stripe/ GitHub OpenAPI）僅完成 parser+candidate 階段。</li>
+<li>Replacement 檢查是靜態的（語法替換），未實作運行時 invoke 展開機制。</li>
+<li>SkillsBench 僅 10/87 任務取樣（經費限制），對 Vanilla 的同時 reward-up/token-down 聲明在該樣本量上不成立。</li>
+<li>單一模型掃描（gpt-4o-mini），單一 LLM 家族管線，English-only。</li>
+</ul>
+<h2 id="對讀者的價值與-ai_core-的接點">對讀者的價值（與 ai_core 的接點）</h2>
+<ul>
+<li>本文直接對應 <strong>ai_core §3.6 固化引擎</strong> 的&quot;技能表示形式&quot;問題：SaP 論證技能庫不應是散文，而應是帶類型偽代碼（typed contract + action template）——其 <strong>四個確定性驗證器 + BE/RC LLM 覺察後驗證</strong> 正是 §3.6 固化引擎的「技能准入閘門」（admission gate）設計參考。Coverage/Binding/Replacement/Risk 四層檢查提供了一個可複製的確定性品質控制架構。</li>
+<li>與 SkillOps（2606.xxxxx，技能庫健康診斷）和 GraSP（2606.xxxxx，平面技能集→typed DAG）構成 skill library lifecycle 的上下游：SaP 是<strong>上游表示轉換</strong>（prose→contract），SkillOps/GraSP 是<strong>下游合約操作</strong>。ai_core 可將三者串接成完整的技能庫生命週期管線。</li>
+<li>最值得記的設計決策：(1) <strong>檢索池僅放 parents，child contracts 作為內部實作</strong>——錯放為 top-level 結果掉 27% 獎勵；(2) <strong>散文表示本身是瓶頸</strong>，不是缺乏分解；(3) 確定性驗證器 + LLM 覺察後驗證的分層架構（每層捕捉近乎不相交的失敗模式）。</li>
+<li>類別：I（方向一，技能庫）。與 SkillLifecycleSurvey（2607.10113）、SPyCE（2607.13854）並列技能庫主題文獻。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2605.27955_Skill-as-Pseudocode.zh-TW.html"><code>../translate/2605.27955_Skill-as-Pseudocode.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

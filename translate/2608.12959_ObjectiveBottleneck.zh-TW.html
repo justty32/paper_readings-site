@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>The Objective Is the Bottleneck: Latent World Models Encode What Their Planners Cannot Use 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Joyjeet Singh</p><p>日期：2026-08-13（v1，cs.LG）</p><p>arXiv：2608.12959</p><p><a href="https://arxiv.org/abs/2608.12959" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="the-objective-is-the-bottleneck">The Objective Is the Bottleneck</h1>
+<h2 id="摘要與第-1-節問題">摘要與第 1 節：問題</h2>
+<p>潛在世界模型若在長視野規劃失敗，直覺上常被歸咎於預測器隨 rollout 變長而失真。本文重查 LeWorldModel 在 TwoRoom 的重現結果，主張真正卡住規劃的不是預測器，而是規劃器使用的目標函式。該系統以 cross-entropy method 搜尋動作序列，將想像終態與目標影像的嵌入平方歐氏距離當作成本。這隱含一個關鍵假設：潛在距離必須在規劃所涵蓋的範圍內，隨真實距離單調增加。</p>
+<p>作者指出，表徵其實保留了位置資訊，預測 rollout 也沒有在規劃視野內崩潰；失效的是嵌入空間原生的距離幾何。這也解釋先前重現研究留下的反常現象：一步預測越準的 checkpoint，長視野規劃未必越好，因為預測準確度與規劃器真正依賴的度量品質可能朝相反方向變化。</p>
+<h2 id="第-2-至-4-節設定預測器診斷與目標函式病灶">第 2 至 4 節：設定、預測器診斷與目標函式病灶</h2>
+<p>實驗沿用重現研究公開的 checkpoint 與評估 harness。世界模型由 ViT-Tiny 編碼器與動作條件預測器組成，規劃器只比較想像終態嵌入和目標嵌入。作者先以真實驗證影片的動作自回歸 rollout，再將想像潛在狀態同該影格的真實編碼與「世界完全靜止」基準比較。作者自報，在提前七十五個環境步時，相對靜止基準的誤差仍只有 0.189；規劃器實際只想像二十五個環境步。誤差平滑增加，沒有足以解釋規劃失敗的突然崩潰。</p>
+<p>接著作者直接量測真實位置兩兩距離與潛在距離，不經規劃。作者自報，整體 Pearson 相關係數為 0.426；短距離時尚有辨識力，約八十個 arena 單位後平均潛在距離趨於飽和，約一百二十個單位後關係反轉。成本最小化因此可能把「離目標更遠」判成更好。失敗軌跡也符合這個機制：作者自報，三十七次失敗中有二十六次終點比起點更遠，而不是單純停滯。</p>
+<h2 id="第-5-至-6-節跨-checkpoint-證據與資訊可讀出性">第 5 至 6 節：跨 checkpoint 證據與資訊可讀出性</h2>
+<p>同樣的飽和與反轉也出現在原作者釋出的權重，因此不是單一重現實作造成。作者自報，可用 checkpoint 的比較顯示，長視野成功率排序與度量品質完全一致，卻與一步預測誤差反向。作者謹慎指出，這只是相關而非因果：歷史長度、動作表示與像素正規化同時改變，而且各 checkpoint 僅有單一 seed，無法隔離是哪個因素破壞幾何。</p>
+<p>若嵌入根本沒有位置資訊，更換成本也救不了規劃。作者用 frozen embedding 訓練 ridge probe 驗證這一點。作者自報，留出資料上的位置解碼決定係數為 0.9922，解碼後距離與真實距離的 Pearson 相關為 0.9897。原生潛在距離無法排序，線性讀出卻幾乎可完整恢復位置，說明資訊仍在表徵裡，只是平方歐氏距離丟掉了規劃所需的順序。</p>
+<h2 id="第-7-節只修目標不重訓世界模型">第 7 節：只修目標，不重訓世界模型</h2>
+<p>作者凍結編碼器與預測器，只替換規劃成本。第一種是 decoded-position cost：以 ridge probe 將嵌入解碼為位置，再比較位置距離。第二種是 learned temporal-distance cost：以同一 episode 內兩影格相隔的步數監督小型 MLP，輸入成對嵌入並預測抵達所需時間；訓練不使用位置標籤。</p>
+<p>後者的重要差別是學到可達性，而非僅學空間鄰近。TwoRoom 中間有牆與門，歐氏距離相同的兩點可能需要完全不同的路徑。作者自報，在控制真實空間距離後，temporal head 對跨牆配對收取的成本比同房配對高 24％，原生潛在距離反而低 4％。因此位置 probe 雖更準確地預測空間距離，規劃仍不如 temporal head。</p>
+<p>學習式成本另有分佈錯位：它在真實影格的編碼上訓練，規劃時卻評分預測器想像出的嵌入。作者自報，在原作者 checkpoint 上，temporal head 的平均絕對誤差由真實配對的 10.37 增至想像配對的 18.04。把想像配對加入訓練可縮小落差，但仍未完全解決規劃表現。實務上的條件是：非線性可達性成本只有在想像狀態接近編碼流形時才可靠；預測漂移較大時，簡單線性成本反而更穩健。</p>
+<h2 id="第-8-節主要結果作者自報">第 8 節：主要結果（作者自報）</h2>
+<p>作者自報，在重現 checkpoint 的長視野設定中，原始平方潛在距離成功率為 26.0％，decoded-position cost 為 88.0％，temporal head 為 98.0％。短視野下 temporal head 同樣達 98.0％，顯示原本的視野依賴來自成本，而不是模型能力。作者自報，即使把長視野任務的步數預算縮為原設定的三分之一，temporal head 仍達 92.0％。</p>
+<p>但修補不是到處由 temporal head 勝出。作者自報，原作者 checkpoint 上，原始成功率為 14.0％，線性位置成本達 70.0％，針對想像配對調整過的 temporal head 只有 34.0％。這個反例支持作者的條件式處方：目標必須表達可達性，也必須在規劃器實際評分的想像狀態分佈上成立。</p>
+<h2 id="第-9-與-11-節局限與結論">第 9 與 11 節：局限與結論</h2>
+<p>證據只來自 TwoRoom 這個二維診斷環境。作者自報，各 checkpoint 僅有單一 seed；多項訓練條件互相混淆，本文沒有找出潛在距離飽和的成因。位置解碼成本也仰賴環境具有可讀出的低維狀態。本文只改規劃器，沒有回答以可達性感知目標重訓表徵後，原生距離是否會更適用。</p>
+<p>結論很窄也很實用：預測準確不等於規劃目標可用。診斷長視野失敗時，應分開檢查 rollout、表徵包含的資訊，以及規劃器施加的幾何。此案例中，模型已經知道位置；把錯的鄰近度換成符合可達性的成本，才讓規劃器真正用到那些資訊。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2608.12959_ObjectiveBottleneck.%E6%91%98%E8%A6%81.html"><code>../summarize/2608.12959_ObjectiveBottleneck.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

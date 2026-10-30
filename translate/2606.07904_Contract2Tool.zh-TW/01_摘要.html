@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Contract2Tool：為可靠的工具增強 LLM Agent 學習前置條件與效果（2/3） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.07904_Contract2Tool.zh-TW.html">回 2606.07904_Contract2Tool.zh-TW 目錄</a>　<a href="02_Contract2Tool_%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>工具增強的大型語言模型 agent 越來越依賴外部 API，但標準工具 schema 描述的是<strong>如何調用</strong>工具，而非工具何時在因果上合適、或產生什麼任務狀態。因果工具過濾（causal tool filtering）透過使用輕量級合約來填補此缺口——合約指定每個工具的前置條件、效果、風險等級與成本。然而，手動撰寫與維護此類合約無法擴展到龐大或頻繁變化的工具生態系統。我們提出 <strong>Contract2Tool</strong>，一個從元資料、schema、文件與執行軌跡中推斷工具合約的框架。Contract2Tool 將可觀察的工具證據轉換為正規化符號合約，可供內在評估並部署到下游因果工具過濾中。我們以金前置條件、效果與風險標籤評估學習合約，並測量其在多步驟 agent 任務中的下游效用。結果顯示：混合文件與軌跡證據產生的合約足夠準確，能保留金合約的大部分可靠性與效率優勢。學習合約 CMTF 達到 0.980 下游成功率（金合約 CMTF 為 0.990），同時將可見工具從 100 降至 1，平均 token 使用量從 26,172 降至 2,528。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>工具增強的 LLM agent 依賴外部 API 來搜尋資訊、讀寫檔案、更新日曆、撰寫郵件、執行程式碼與操作結構化系統。標準 function-calling 介面以名稱、自然語言描述與輸入 schema 描述工具。這些欄位幫助模型建構有效的工具調用，但未明確指定：工具何時在因果上合適、需要什麼任務狀態、產生什麼狀態、以及行為有多風險。</p>
+<p>近期因果工具過濾研究提出以合約為基礎的工具暴露觀點：工具可由輕量級前置條件與效果表示，使 agent 介面在每一步僅暴露因果上必要的工具。然而，這將負擔轉移到合約建構上。手動為數百或數千工具定義合約既昂貴又容易出錯，且難以與變化的 API、文件與執行行為保持同步。</p>
+<p>本文研究<strong>自動學習輕量級工具合約</strong>的問題。核心問題不僅是模型能否生成看似合理的合約欄位，而是學習合約是否保留在多步驟執行中暴露正確下一步工具所需的因果結構。特別是，執行軌跡提供了前後狀態轉換，可揭示 schema 與文件中遺漏或含糊描述的效果。</p>
+<p>本文核心論點：<strong>工具合約構成 schema 與可靠 agent 執行之間的缺失層</strong>。Schema 描述如何調用工具；合約描述工具何時應暴露及實現什麼任務狀態轉換。</p>
+<p>貢獻：(1) 將工具合約學習形式化為推斷前置條件、效果、風險註解與成本標籤的問題；(2) 提出 Contract2Tool 框架；(3) 定義內在合約品質指標（precision/recall/F1/exact match/無效輸出率）；(4) 以 filter-oracle 因果前沿測試與下游多步驟 agent 評估學習合約；(5) 展示混合文件與軌跡合約使學習 CMTF 近乎匹配金合約 CMTF。</p>
+<h2 id="2-背景與相關工作">2. 背景與相關工作</h2>
+<h3 id="21-工具增強-llm-agent">2.1 工具增強 LLM Agent</h3>
+<p>ReAct 引入交錯推理與行動，Toolformer 展示語言模型可學習調用外部 API，ToolLLM/ToolBench 將工具使用評估擴展到大型 API 生態系統，API-Bank 評估工具增強對話與多步驟 API 使用。這些工作確立了工具使用作為核心 agent 能力，但也暴露了系統挑戰：隨著工具生態成長，agent 需要可靠的選擇、排序與約束機制。</p>
+<h3 id="22-工具-schemafunction-calling-與工具檢索">2.2 工具 Schema、Function Calling 與工具檢索</h3>
+<p>Function-calling 介面以名稱、自然語言描述與輸入 schema 表示工具。這些幫助模型建構語法有效的調用，但主要描述&quot;如何調用&quot;——未完全指定&quot;何時應暴露&quot;、需要什麼任務狀態變數、產生什麼變數、或行為風險。工具檢索與修剪方法透過從大型註冊表中選擇相關工具來解決可擴展性問題，但大多將過濾視為相關性或短名單選擇問題。Contract2Tool 則針對因果工具過濾所需的合約層語義：前置條件、效果與風險註解。</p>
+<h3 id="23-因果工具過濾與工具合約">2.3 因果工具過濾與工具合約</h3>
+<p>因果工具過濾提出以合約為基礎的工具暴露觀點——工具不僅由名稱與 schema 表示，還包括其所需的狀態變數、產生的狀態變數、及風險/成本概況。此類合約允許 agent 介面基於因果必要性而非僅語意相關性來暴露工具。限制是這些合約通常假設已存在。Contract2Tool 透過研究是否能從可觀察工具證據中自動學習有用合約來解決此假設。</p>
+<h3 id="24-規劃中的前置條件與效果">2.4 規劃中的前置條件與效果</h3>
+<p>前置條件-效果抽象源自經典規劃。STRIPS 以執行前所需條件與執行後產生的效果表示動作；PDDL 後來標準化相關概念。Contract2Tool 將此抽象應用於工具增強 LLM agent：工具視為狀態轉換，目標是推斷描述每個工具在工作流中角色的前置條件與效果。</p>
+<h3 id="25-運行時可靠性與-agent-編排">2.5 運行時可靠性與 Agent 編排</h3>
+<h2 id="運行時編排系統研究工具增強-agent-如何監控執行檢測失敗與恢復因果過濾透過控制可見行動空間在執行前減少某些失敗contract2tool-針對這些方法之間的缺失層自動建構主動過濾與可靠編排所需的合約">運行時編排系統研究工具增強 agent 如何監控執行、檢測失敗與恢復。因果過濾透過控制可見行動空間在執行前減少某些失敗。Contract2Tool 針對這些方法之間的缺失層：自動建構主動過濾與可靠編排所需的合約。</h2>
+<h2 id="title-contract2tool為可靠的工具增強-llm-agent-學習前置條件與效果part-23問題形式化至基準設計-source-httpsarxivorgabs260607904-arxiv_id-260607904-date-2026-06">title: Contract2Tool：為可靠的工具增強 LLM Agent 學習前置條件與效果（part 2/3：問題形式化至基準設計）
+source: https://arxiv.org/abs/2606.07904
+arxiv_id: 2606.07904
+date: 2026-06</h2>
+<h1 id="contract2tool為可靠的工具增強-llm-agent-學習前置條件與效果23">Contract2Tool：為可靠的工具增強 LLM Agent 學習前置條件與效果（2/3）</h1>
+<h2 id="3-問題形式化">3. 問題形式化</h2>
+<h3 id="31-工具證據與合約目標">3.1 工具證據與合約目標</h3>
+<p>設工具庫 T = {t1,...,tn}，X 為 agent 工作流使用的任務狀態變數詞彙。每個工具 ti 具有可觀察證據：zi = (name_i, d_i, S_i, D_i, H_i)——名稱、自然語言描述、輸入/輸出 schema、可選文件、可選執行軌跡集。</p>
+<p>輕量級工具合約：ci = (R_i, E_i, ρ_i, k_i)——所需狀態變數（前置條件）集合 R_i、產生狀態變數（效果）集合 E_i、風險標籤 ρ_i、可選成本/延遲估計 k_i。Schema 描述如何調用工具；合約描述工具何時合適及實現什麼任務狀態轉換。</p>
+<h3 id="32-合約學習目標">3.2 合約學習目標</h3>
+<p>從可觀察證據 zi 推斷預測合約 ĉ_i = (R̂_i, Ê_i, ρ̂_i, k̂_i)。合約生成器 f_θ 將工具證據映射到預測合約：f_θ(zi) = ĉ_i。目標不僅是匹配金合約，而是推斷對下游工具過濾有用的合約。學習合約可能不完美，但仍保留足夠因果結構來提升 agent 可靠性。</p>
+<h3 id="33-內在準確性與下游效用">3.3 內在準確性與下游效用</h3>
+<p>區分兩種評估設定：<strong>內在評估</strong>——測量預測合約是否匹配金合約（前置條件/效果的 precision/recall/F1，風險分類準確率）；<strong>下游評估</strong>——測量學習合約在因果工具過濾方法中使用時是否支持可靠執行。合約錯誤以兩種方式影響過濾：<strong>過度過濾</strong>（over-filtering）——合約過於嚴格，隱藏下一步所需工具；<strong>過濾不足</strong>（under-filtering）——合約過於寬鬆，暴露不相關、過早或非目標導向的工具。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

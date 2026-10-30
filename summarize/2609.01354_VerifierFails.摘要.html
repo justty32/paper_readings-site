@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Where the Verifier Fails: A Category-Level Audit of Reward Signals in RLVR 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Esther Xin</p><p>日期：2026-09-01（v1，cs.CL）</p><p>arXiv：2609.01354</p><p><a href="https://arxiv.org/abs/2609.01354" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="where-the-verifier-fails-a-category-level-audit-of-reward-signals-in-rlvr-重點摘要">Where the Verifier Fails: A Category-Level Audit of Reward Signals in RLVR 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>RLVR 的二元 reward 並不是數學真理直接落下來的訊號，而是字串抽取、正規化與等價判定共同產生的軟體行為；這篇用可證等價的變形測試把 verifier 的錯誤預算拆到類別層級，發現主要問題往往是空白與標點，不是深奧的 LaTeX 文法。</p>
+<h2 id="問題與方法">問題與方法</h2>
+<p>自我驗證率之類的總體數字只說「有多少正解被漏掉」，沒有回答哪些答案形式造成錯誤，也把回傳 <code>False</code> 與 parser crash 混成同一種失敗。作者把 metamorphic testing 的測試對象從模型改成 verifier：對 gold answer 套用依構造即可保證語義不變的 transformation，若 verifier 拒絕，便得到不需人工裁決的 certified false negative；反過來套用改變語義的 adversarial transformation，若被接受，便是 certified false positive。</p>
+<p>測試涵蓋 4 個 verifier implementation、43 種 transformation 與 14 個 stratum，共產生 307,420 個 verdict（作者自報）。作者另建 contract matrix，只在 verifier 宣稱支援的輸入類別中計錯，避免把規格差異誤判為 bug；同時把 coverage 定義為實際回傳 verdict 的比例，讓 rejection、exception、timeout 與 crash 分開呈現。gold answer 共 4,990 個，其中 2,000 個是為稀少答案形式補足統計力的合成資料，並另做 corpus-only robustness check（作者自報）。</p>
+<h2 id="作者報告的實驗與結果">作者報告的實驗與結果</h2>
+<p>相同輸入在 4 個 implementation 上的 self-validation 由 53.8% 到 95.2%，相差 41.3 個百分點；同一 library 的 2 種 configuration 更在 49.9% 的 pair 上給出不同 verdict（作者自報）。因此 benchmark accuracy 不是單由題目與模型決定，也依賴 verifier identity、version、extraction configuration 與 runtime。</p>
+<p>default LaTeX configuration 的 in-contract failure 中，空白與標點占 93.0%；plain-expression configuration 也占 74.1%（作者自報）。典型錯誤只是正確 expression 後多一個 period 或 newline。這把修復方向從複雜 grammar work 改成明確的 string hygiene。</p>
+<p>aggregate error 也會掩蓋相反的故障機制。<code>sympy-cascade</code> 只在 87.3% 的輸入上回傳 verdict，但對實際判定的輸入全數正確；<code>strip-string</code> 則全數給出 verdict，主要錯在拒絕正解（作者自報）。更危險的是 <code>sympy-cascade</code> 的相對 tolerance 為 <code>10^-4</code>，使 off-by-one answer 在 magnitude 低於 <code>10^4</code> 時全數被拒、高於或等於 <code>10^4</code> 時全數被接受；其 aggregate false-positive rate 只有 16.0%，卻隱藏了一個確定性的 threshold（作者自報）。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>作者主張 verifier reliability 應被當成可量測、可分解的系統屬性。報告 RLVR 或數學 benchmark 時，至少要列出 verifier identity、version、extraction configuration、runtime，以及 coverage 與 accuracy；只給 aggregate rate 無法判斷應修 parser、normalizer 還是 exception handling。</p>
+<p>作者自陳的局限是：研究停在 verifier 層，沒有估計錯誤對任何模型 benchmark score 的實際影響；沒有執行 RLVR training，因此不測 downstream policy effect；只涵蓋 open implementation，不對 closed frontier system 下結論；合成資料占 4,990 個 gold 中的 2,000 個，但作者另報 corpus-only 結果；contract assignment 本身仍是可爭議的研究判斷（作者自報）。</p>
+<h2 id="對讀者的價值ai_core-接點">對讀者的價值／ai_core 接點</h2>
+<p>對讀者最直接的價值，是把 verifier 從「可信的 reward 來源」降回「需要自己的測試與版本治理的程式」。對 ai_core 而言，凡是拿二元檢查結果當技能准入憑證，都應保存 verifier configuration，並把判定正確率與可用 coverage 分開。metamorphic suite 也很適合成為固化前的最低測試：用可證等價的變形檢查 false negative，再用語義改變的變形檢查 false positive。只有知道錯誤集中在哪個 stratum，reward correction、重試策略與憑證門檻才有可操作的依據。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2609.01354_VerifierFails.zh-TW.html"><code>../translate/2609.01354_VerifierFails.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

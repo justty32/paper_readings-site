@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_問題設定 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.13716_SkillOps.zh-TW.html">回 2605.13716_SkillOps.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="2-問題設定">2. 問題設定</h2>
+<p><strong>技能契約（Skill Contract）</strong>。SkillOps 將每個技能建模為可執行契約，而非僅有名稱或文字描述。每個技能 s ∈ S 寫為 s = (P, O, A, V, F)，其中 P 是呼叫該技能的前置條件、O 是可執行操作、A 是技能產出的型別化 artifact、V 是對 A 的驗證器、F 是已知失敗模式集合。當 V = ∅ 時，技能沒有本地正確性檢查，我們稱之為驗證缺口。此契約形式使 SkillOps 能在執行前或執行後檢查相關性、適用性、可組合性與本地可驗證性。</p>
+<p><strong>層次技能生態圖（HSEG）</strong>。技能庫為 tuple L = (S, R)，其中 S 是技能集合、R 是技能之間的型別化有向關係集合。我們使用四種關係型別：</p>
+<ul>
+<li><strong>依賴邊</strong>（dep）：si → sj 表示 si 產出的 artifact 可滿足 sj 前置條件的一部分，即 Asi ⊆ Psj。</li>
+<li><strong>相容性邊</strong>（comp）：si → sj 表示 si 的輸出型別與 sj 所需的輸入型別相容。</li>
+<li><strong>冗餘邊</strong>（red）：si → sj 表示兩個技能暴露等價介面，Psi ≡ Psj 且 Asi ≡ Asj。</li>
+<li><strong>替代邊</strong>（alt）：si → sj 表示兩個技能目標相同但透過不同操作實作，goal(si) = goal(sj) 且 Osi ≠ Osj。</li>
+</ul>
+<p><strong>維護動作 M</strong>。SkillOps 使用一組型別化動作來維護庫：</p>
+<ul>
+<li><strong>merge(si, sj)</strong>：折疊由 red 邊連接的冗餘對。</li>
+<li><strong>repair(s)</strong>：使用執行回饋重寫操作 Os。</li>
+<li><strong>retire(s)</strong>：移除過時或持續失敗的技能及其附帶邊。</li>
+<li><strong>add_validator(s)</strong>：當 Vs = ∅ 時插入驗證器。</li>
+<li><strong>add_adapter(si, sj)</strong>：當 si 被 sj 需要但其介面不直接相容時插入型別轉換墊片。</li>
+<li><strong>instantiate(s, arg)</strong>：在任務時間將任務特定參數值綁定到參數化技能。</li>
+</ul>
+<hr />
+<h2 id="3-skillops一個自我維護的技能生態系">3. SkillOps：一個自我維護的技能生態系</h2>
+<h3 id="31-任務時間迴圈圖中圖規劃器">3.1 任務時間迴圈：圖中圖規劃器</h3>
+<p>給定任務 τ 與庫 L = (S, R)，任務時間迴圈分為兩個主要階段：技能匹配與依賴拼接。</p>
+<p><strong>階段一——技能匹配</strong>。SkillOps 首先透過結合詞法與語意相關性對每個技能評分：
+r(s, τ) = λ·rBM25(s, τ) + (1−λ)·rsem(s, τ)
+然後僅保留高分且前置條件被當前狀態滿足的技能：C = {s ∈ S : r(s, τ) ≥ θ}。這防止規劃器選擇文字相關但不可執行的技能。</p>
+<p><strong>階段二——依賴拼接</strong>。SkillOps 在 C 中搜尋同時滿足依賴與相容性約束的候選來建構計劃。從 si 到 sj 的轉換僅在 si → sj（dep）且 si → sj（comp）時被允許。因此，單有依賴是不夠的：技能轉換僅在產出 artifact 也匹配下一個技能預期輸入型別時才被接受。這避免了單邊依賴圖可能在執行時期才偵測到的介面不匹配。</p>
+<p><strong>階段三——驗證器與轉接器插入</strong>。若候選計劃包含一個非終端技能且 Vs = ∅，SkillOps 將離開 s 的邊標記為不可驗證，並在可能時插入驗證器節點。若依賴邊存在但無相容性邊，SkillOps 插入轉接器節點：si → aij → sj。轉接器 aij 僅在其輸出型別滿足下游前置條件時被接受：type(Aaij) ⊆ type(Psj)。因此轉接器並非自由形式的修補；它們是為了恢復被破壞的型別約束而插入的圖節點。</p>
+<p><strong>階段四——局部修復</strong>。執行期間，若技能 sk 失敗且剩餘計劃可恢復，規劃器嘗試以 alt 鄰居替代 sk，或使用觀察到的錯誤追蹤作為回饋重新調用 repair(sk)。若無法恢復，規劃器將失敗記錄到庫時間診斷緩衝區中以供後續維護。</p>
+<blockquote>
+<p>本檔為 <a href="../2605.13716_SkillOps.zh-TW.html">2605.13716_SkillOps.zh-TW.md</a> 的第 2/4 部分。</p>
+</blockquote>
+<hr />
+<h2 id="title-skillops將-llm-agent-技能庫視為自我維護的軟體生態系來管理全文翻譯zh-twpart3-source-httpsarxivorgabs260513716">title: 《SkillOps：將 LLM Agent 技能庫視為自我維護的軟體生態系來管理》全文翻譯（zh-TW）part3
+source: https://arxiv.org/abs/2605.13716</h2>
+<h3 id="32-庫時間迴圈健康診斷與維護">3.2 庫時間迴圈：健康診斷與維護</h3>
+<p><strong>五維健康診斷</strong>。每個技能 s 沿五個維度評分，每個維度針對一種常見的技能技術債形式：</p>
+<ol>
+<li><strong>效用 U(s) ∈ [0, 1]</strong>：最近任務調用成功使用 s 的比例，偵測膨脹檢索池的低價值技能。</li>
+<li><strong>冗餘 R(s) ∈ [0, 1]</strong>：包含 s 的最大 red 叢集的歸一化大小，偵測降低檢索精確度的近重複技能。</li>
+<li><strong>相容性 C(s) ∈ [0, 1]</strong>：與 s 相連的依賴邊中同時為相容性邊的比例，偵測產出 artifact 與預期輸入之間的介面不匹配。</li>
+<li><strong>失敗風險 F(s) ∈ [0, 1]</strong>：s 的經驗失敗率，偵測需要修復的執行時期破損技能。</li>
+<li><strong>驗證缺口 G(s) ∈ [0, 1]</strong>：定義為 1[Vs = ∅]，偵測可能允許無效 artifact 向下游傳播的缺失驗證器。</li>
+</ol>
+<p>整體庫健康分數 H(L) 為這些維度的加權平均（使用均勻權重 wU = wR = wC = wF = wG）。這些維度共同涵蓋了跨使用頻率、複製增長、介面一致性、執行可靠性與驗證覆蓋率的技能劣化。</p>
+<p><strong>CGPD：契約圖傳播診斷</strong>。標準健康診斷獨立評估每個技能。CGPD 是一個額外的進階組件，沿 dep 邊傳播風險分數，使得對結構上健全但繼承高上游風險的技能能進行先發性驗證器插入。令 R(t)(s) ∈ [0, 1] 表示技能 s 在第 t 次迭代的傳播風險分數，Rloc(s) 為從五個健康維度計算的本地風險分數，Parents(s) 表示具有指向 s 的依賴邊的上游技能。CGPD 按以下方式更新風險：
+R(t+1)(s) = (1−α)·Rloc(s) + α·max_{s&#x27;∈Parents(s)} R(t)(s&#x27;)
+其中 α ∈ (0, 1) 控制傳播多少上游風險。根據 Banach 收縮映射定理，此更新收斂到唯一不動點。</p>
+<p><strong>維護程序</strong>。SkillOps 從執行追蹤計算技能層級健康信號，在啟用 CGPD 時沿依賴邊傳播風險，然後應用型別化維護動作：merge、repair、retire、add_validator、add_adapter。</p>
+<h3 id="33-演算法">3.3 演算法</h3>
+<p>任務時間迴圈（演算法 1）將 HSEG 視為可執行規劃結構：檢索候選技能、依前置條件過濾、僅透過依賴與相容性邊拼接、在需要時插入驗證器或轉接器、並在執行期間執行局部修復。庫時間迴圈（演算法 2）在執行後維護庫：計算健康信號、透過 CGPD 沿依賴邊傳播風險、並應用型別化動作。</p>
+<h3 id="34-插件介面">3.4 插件介面</h3>
+<p>SkillOps 設計為技能庫維護的插件層。它不假設特定的下游規劃器或檢索器；而是將原始技能庫轉換為已維護庫，可直接被既有 agent 演算法使用：L&#x27; = run_maintenance(L)。此處 f : L ↦ L&#x27; 是純庫變換：它診斷並修復技能庫，但不需要存取下游 agent 的內部檢索、規劃或執行邏輯。因此任何檢索型或任務導向 agent 都可以透過以已維護庫替換原始庫來使用 SkillOps。下游程式碼保持不變。</p>
+<hr />
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

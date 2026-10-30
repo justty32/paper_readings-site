@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_大型語言模型能自我修正推理嗎？ · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2310.01798_CannotSelfCorrect.zh-TW.html">回 2310.01798_CannotSelfCorrect.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E8%87%AA%E6%88%91%E4%BF%AE%E6%AD%A3%E4%BD%9C%E7%82%BA%E4%BA%8B%E5%BE%8C%E6%8F%90%E7%A4%BAPost-Hoc_Prompting.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-大型語言模型能自我修正推理嗎">3. 大型語言模型能自我修正推理嗎？</h2>
+<p>推理是人類認知的根基。LLM 要成為真正有效可靠的工具——尤其在決策、教育、醫療等關鍵應用——必須展現穩健的推理能力。我們因此聚焦一個核心問題：<strong>LLM 能否自我修正其推理？</strong></p>
+<h3 id="31-oracle-回饋下的自我修正">3.1 Oracle 回饋下的自我修正</h3>
+<p>先採用既有自我修正方法的原設定（<strong>用標籤引導自我修正過程</strong>），檢驗其在推理任務上的效力。</p>
+<p><strong>實驗設定</strong>。基準選擇文獻中據稱經自我修正大幅改善的資料集：<strong>GSM8K</strong>（1,319 題小學數學文字題；Kim et al. 報告修正後約 +7%）、<strong>CommonSenseQA</strong>（常識推理選擇題，dev set 1,221 題；Kim et al. 報告約 +15%）、<strong>HotpotQA</strong>（開放域多跳問答，closed-book，沿用 Reflexion 的 100 題集，exact match 評分）。Prompt 沿用來源論文的三步策略：1) 初始生成（即 Standard Prompting 的結果）；2) 令模型審查前次生成並產出回饋；3) 令模型帶著回饋重答原題。模型用 gpt-3.5-turbo-0613（0301 版幾乎總認為初答正確）與 GPT-4（2023/08/29 存取；抽樣 200 題/資料集以控成本）。最多兩輪自我修正，temperature 取預設值 1，<strong>沿用先前工作以正確標籤決定何時停止修正迴圈</strong>。</p>
+<p><strong>結果（表 1）</strong>。觀察到顯著改善，與 Kim et al.、Reflexion 的報告一致：</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>設定</th>
+<th>GSM8K</th>
+<th>CommonSenseQA</th>
+<th>HotpotQA</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPT-3.5</td>
+<td>Standard Prompting</td>
+<td>75.9</td>
+<td>75.8</td>
+<td>26.0</td>
+</tr>
+<tr>
+<td>GPT-3.5</td>
+<td>Self-Correct（Oracle）</td>
+<td>84.3</td>
+<td>89.7</td>
+<td>29.0</td>
+</tr>
+<tr>
+<td>GPT-4</td>
+<td>Standard Prompting</td>
+<td>95.5</td>
+<td>82.0</td>
+<td>49.0</td>
+</tr>
+<tr>
+<td>GPT-4</td>
+<td>Self-Correct（Oracle）</td>
+<td>97.5</td>
+<td>85.5</td>
+<td>59.0</td>
+</tr>
+</tbody>
+</table>
+<p><strong>反思（§3.1.3）</strong>。實驗雖未動用外部資源或工具，卻沿用了「以正確標籤決定何時停止」。現實情境（例如真要用 LLM 解數學題）中<strong>正確答案是未知的</strong>，因此上述改善需更審慎看待。為佐證此觀點，我們設計一個<strong>隨機亂猜基線</strong>：同樣用標籤決定停止，但「修正動作」不由 LLM 執行、而是從剩餘選項隨機猜。CommonSenseQA 每題五個選項，若第 k 輪生成準確率為 x，下一輪期望準確率為 x+(1−x)/(5−k)。結果（表 2）：<strong>2 輪後隨機基線（GPT-3.5：87.9；GPT-4：91.0）已與自我修正持平甚至更佳，4 輪後達 100%</strong>——但這種基線顯然稱不上有效的修正方法。更直接的詰問是：<strong>如果我們早已知道答案，又何必做這件事？</strong></p>
+<p>不過，帶標籤的結果仍可視為 oracle——假想存在一個能裁決答案正確與否的完美驗證器。<strong>在程式碼生成這是可行的：可用執行器（executor）與單元測試判定生成的程式是否正常運作</strong>。但對解數學題這類推理任務，此設定違反直覺：若已握有 ground truth，便沒什麼理由再部署 LLM 解題（除非目的是理解推理過程本身、或探索多樣解法）。</p>
+<h3 id="32-內在自我修正">3.2 內在自我修正</h3>
+<p>依 §3.1.3 的討論，既然證據不支持「LLM 能自我修正推理」，我們轉向內在設定：<strong>拿掉用標籤決定停止</strong>，跑兩輪自我修正。結果（表 3）：<strong>修正後模型表現在所有基準上全面下降</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>設定</th>
+<th>呼叫數</th>
+<th>GSM8K</th>
+<th>CommonSenseQA</th>
+<th>HotpotQA</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPT-3.5</td>
+<td>Standard Prompting</td>
+<td>1</td>
+<td>75.9</td>
+<td>75.8</td>
+<td>26.0</td>
+</tr>
+<tr>
+<td>GPT-3.5</td>
+<td>Self-Correct（第 1 輪）</td>
+<td>3</td>
+<td>75.1</td>
+<td>38.1</td>
+<td>25.0</td>
+</tr>
+<tr>
+<td>GPT-3.5</td>
+<td>Self-Correct（第 2 輪）</td>
+<td>5</td>
+<td>74.7</td>
+<td>41.8</td>
+<td>25.0</td>
+</tr>
+<tr>
+<td>GPT-4</td>
+<td>Standard Prompting</td>
+<td>1</td>
+<td>95.5</td>
+<td>82.0</td>
+<td>49.0</td>
+</tr>
+<tr>
+<td>GPT-4</td>
+<td>Self-Correct（第 1 輪）</td>
+<td>3</td>
+<td>91.5</td>
+<td>79.5</td>
+<td>49.0</td>
+</tr>
+<tr>
+<td>GPT-4</td>
+<td>Self-Correct（第 2 輪）</td>
+<td>5</td>
+<td>89.0</td>
+<td>80.0</td>
+<td>43.0</td>
+</tr>
+</tbody>
+</table>
+<p><strong>為何表現不增反降（§3.2.1）？</strong> 實證分析（圖 1，GPT-3.5 兩輪後答案變化）：GSM8K 上 74.7% 的情況模型保留初答；其餘情況中，<strong>「對改錯」的機率高於「錯改對」</strong>。CommonSenseQA 上模型更常改答案——主因是其錯誤選項常與題目有幾分相關，自我修正 prompt 會誘使模型偏向另選一項，導致高「對改錯」比率。回頭看表 1：那些結果是用 ground-truth 標籤<strong>阻止了模型把對的改成錯的</strong>；而如何防止這種誤改，恰恰才是自我修正能否成功的關鍵。直覺解釋：若模型對齊良好、初始 prompt 設計周到，<strong>初始回應在該 prompt 與解碼演算法的條件下應已是最優</strong>；引入回饋等於追加一段 prompt，把模型推向迎合這個組合輸入的回應——在內在設定的推理任務上，這段補充 prompt 非但可能不提供任何額外優勢，反而可能使模型偏離對初始 prompt 的最優回應，造成表現下降。</p>
+<p><strong>其他 prompt 與相關研究（§3.2.2）</strong>。或許有人問：測的自我修正 prompt 是否欠佳？換別的 prompt 能否改善？答案是：完全有可能找到在特定基準上提升表現的 prompt——但<strong>那已不屬於本文討論的內在自我修正設定</strong>（類似 true few-shot 設定的討論；Perez et al., 2021）：這種搜尋本質上利用了來自人類或訓練樣本的回饋；況且同樣的搜尋功夫也可用於優化初始 prompt，可能不需額外修正呼叫就達到更好表現。附錄 B 測了不同回饋 prompt，表現依然不升（GSM8K 三種回饋 prompt 兩輪後 74.4～75.4，皆低於 75.9）。此外我們並非第一個觀察到此現象者：Self-Refine 在數學推理上的改進即微乎其微；CRITIC（Gou et al., 2023）與 Zhou et al. (2023a) 等引入外部回饋/工具的研究，也發現<strong>無外部回饋的自我修正是相對弱的基線</strong>。總結：我們要回答的不是「有沒有某個 prompt 能在特定基準上提升表現」，而是更根本的問題——<strong>LLM 真的能僅憑固有能力自我修正推理嗎？</strong></p>
+<h3 id="33-多代理辯論與自我一致性">3.3 多代理辯論與自我一致性</h3>
+<p>另一條可能路徑：讓多個模型實例經多次呼叫互相批評辯論（Du et al., 2023 等）。我們採用 Du et al. 的方法（完全相同的 prompt、gpt-3.5-turbo-0301、3 個代理、2 輪辯論），差別僅在改測 GSM8K 完整測試集以降低變異，並以 self-consistency（多回應多數決）為參照。結果（表 4）：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>回應數</th>
+<th>GSM8K</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Standard Prompting</td>
+<td>1</td>
+<td>76.7</td>
+</tr>
+<tr>
+<td>Self-Consistency</td>
+<td>3</td>
+<td>82.5</td>
+</tr>
+<tr>
+<td>Multi-Agent Debate（第 1 輪）</td>
+<td>6</td>
+<td>83.2</td>
+</tr>
+<tr>
+<td>Self-Consistency</td>
+<td>6</td>
+<td>85.3</td>
+</tr>
+<tr>
+<td>Multi-Agent Debate（第 2 輪）</td>
+<td>9</td>
+<td>83.0</td>
+</tr>
+<tr>
+<td>Self-Consistency</td>
+<td>9</td>
+<td>88.2</td>
+</tr>
+</tbody>
+</table>
+<p>兩者相對標準提示皆有顯著改善；但辯論僅略優於<strong>同代理數</strong>（3 回應）的 self-consistency，而在<strong>同回應數</strong>下<strong>顯著落後</strong>於單純多數決的 self-consistency。與其稱之為「辯論」或「批評」，不如視為在多次生成間達成「一致性」的手段——其概念本質與 self-consistency 相同，區別只在投票機制（模型驅動 vs 純計數）。觀察到的改進顯然非源於「自我修正」，而是「自我一致性」。<strong>若要主張 LLM 能自我修正，應先排除「在多個生成間做選擇」的效果。</strong></p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

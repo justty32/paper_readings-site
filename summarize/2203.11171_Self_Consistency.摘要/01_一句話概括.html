@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2203.11171_Self_Consistency.%E6%91%98%E8%A6%81.html">回 2203.11171_Self_Consistency.摘要 目錄</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>自我一致性（self-consistency）</strong>：把思維鏈提示裡的<strong>貪婪解碼（greedy decode）換成「取樣—邊際化（sample-and-marginalize）」</strong>——先從解碼器取樣一組<strong>多樣的推理路徑</strong>（實驗用 40 條），再把中間推理當潛變數邊際化掉、對最終答案取<strong>多數決</strong>；完全<strong>無監督、免訓練、免額外標註、免驗證器</strong>，在 PaLM-540B 上把 GSM8K 由 56.5% 拉到 <strong>74.4%（+17.9）</strong>，同時投票一致度與正確率高度相關，可當作模型的<strong>不確定性估計</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>思維鏈提示（Wei et al., 2022）雖大幅改善多步推理，但解碼仍採貪婪法：只取一條路徑，容易受<strong>重複性與局部最優</strong>所困，單一取樣又有隨機性。既有的改善路線都要額外成本——Cobbe et al.（2021）需訓練一個 175B 的**驗證器（verifier）**重排序，LaMDA 需蒐集人類標註訓練 re-ranker，其他方法則需任務專屬訓練。作者的觀察是：<strong>複雜推理題通常有多條不同的思路都通往同一個正確答案</strong>，而錯誤的推理過程彼此之間比較不會「湊巧同意」。因此正確性可以直接從「答案的一致性」讀出來，不必外掛任何模型。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>三步驟</strong>：(1) 以人工撰寫的少樣本 CoT 範例提示模型；(2) 用取樣（temperature／top-k／nucleus 皆可）取代貪婪解碼，產生一組多樣的推理路徑 <span class="math inline">\((r_i, a_i)\)</span>；(3) 對 <span class="math inline">\(a_i\)</span> 取多數決 <span class="math inline">\(\arg\max_a \sum_i \mathbb{1}(a_i = a)\)</span>，即把推理路徑 <span class="math inline">\(r_i\)</span> 邊際化掉。</li>
+<li><strong>形式化</strong>：推理路徑 <span class="math inline">\(r_i\)</span> 被視為一個<strong>額外的潛變數</strong>，只是為了到達最終答案 <span class="math inline">\(a_i\)</span>；答案必須來自<strong>固定答案集合</strong>才適用（開放式生成需先定義一個好的一致性度量）。</li>
+<li><strong>聚合策略比較（表 1，PaLM-540B）</strong>：未加權多數決 74.4 ≈ 正規化加權和 74.1 &gt; 未正規化加權和 59.9 &gt; 貪婪 56.5 ≫ 加權平均 22.1。原因是模型對各條路徑給的正規化條件機率彼此非常接近——<strong>作者明講這代表語言模型校準不佳、無法分辨對錯解</strong>，這也正是先前工作要另訓 re-ranker 的理由。</li>
+<li><strong>它不是模型集成</strong>：只用單一模型做「<strong>自我集成（self-ensemble）</strong>」；附錄 A.1.3 顯示真正的多模型集成反而被弱模型拖累（LaMDA+PaLM 僅 36.9%，遠低於 PaLM 自我一致性的 74.4%）。</li>
+<li><strong>取樣參數</strong>：UL2-20B／LaMDA-137B 用 T=0.5, k=40；PaLM-540B 用 T=0.7, k=40；GPT-3 用 T=0.7 不截斷。主結果為 10 次獨立跑、每次取樣 40 條路徑的平均。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>算術推理（表 2）</strong>：PaLM-540B 上 <strong>GSM8K 56.5→74.4（+17.9）</strong>、AQuA 35.8→48.3（+12.5）、SVAMP 79.0→86.6（+7.6）、ASDiv 74.0→81.9（+7.9）、MultiArith 94.7→99.3（+4.6）。GPT-3 code-davinci-002 上 <strong>GSM8K 60.1→78.0（+17.9）、SVAMP 75.8→86.8（+11.0）、AQuA 39.8→52.0（+12.2）、MultiArith 96.2→100.0</strong>。</li>
+<li><strong>增益隨規模放大</strong>：UL2-20B 僅 +3～6，LaMDA-137B 與 GPT-3 則達 +9～23（如 MultiArith LaMDA +23.9）。</li>
+<li><strong>常識與符號推理（表 3）</strong>：GPT-3-002 上 <strong>StrategyQA 73.4→79.8（+6.4）、ARC-c 83.6→87.5（+3.9）</strong>、ARC-e +2.0、CSQA +2.5；PaLM-540B 上 StrategyQA +6.3、ARC-c +3.5。符號推理採 OOD 設定（提示給 2 字母／2 次擲幣，測試 4 字母／4 次），仍有增益。六項中五項創當時 SOTA。</li>
+<li><strong>CoT 反而有害時仍能救回（表 5，PaLM-540B）</strong>：ANLI-R1 標準提示 69.1 / CoT 68.8 → 自我一致性 <strong>78.5</strong>；e-SNLI 85.8 / 81.0 → 88.4；RTE 84.8 / 79.1 → 86.3；BoolQ 71.3 / 74.2 → 78.4；HotpotQA EM 27.1 / 28.9 → 33.8。</li>
+<li><strong>勝過其他解碼／集成路線</strong>：明顯優於 sample-and-rank（同取樣數）；UL2-20B 上 AQuA 束搜尋（top beam）隨束寬變大反而從 23.6 掉到 10.2，自我一致性則升到 26.9；LaMDA-137B 上 GSM8K，提示排列集成 19.2、多組提示集成 18.6，自我一致性 27.7。</li>
+<li><strong>穩健性</strong>：對取樣策略與參數不敏感；三組不同人工提示下 GSM8K 增益穩定為 +17.9／+17.5／+16.4；把提示中間數字改成亂數的「瑕疵提示」使貪婪由 17.1 掉到 14.9，自我一致性補回到 <strong>23.4</strong>；<strong>零樣本 CoT 43.0→69.2（+26.2）</strong>；以方程式取代自然語言推理也有效但增益較小（多樣性空間變小）。</li>
+<li><strong>一致度＝信心</strong>：投票一致度（同意最終答案的解碼比例）與準確率高度相關（圖 5），作者明言可用低一致度當作「模型知道自己不知道」的訊號。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>計算成本</strong>：唯一被作者明列的限制是「更多推理成本」——N 倍取樣。緩解建議是先用 5～10 條路徑，因為效能很快飽和。</li>
+<li><strong>適用範圍受限</strong>：只能用在<strong>答案來自固定集合</strong>的問題；開放式生成要能定義多份輸出之間的一致性度量才能推廣。</li>
+<li><strong>一致不等於正確</strong>：模型仍可能產生錯誤或無意義的推理路徑（作者舉 StrategyQA 例子中兩個人口數字其實都不精確，只是結論碰巧對），需要更好的**接地（grounding）**才能改善事實性；「多數決通過」不保證過程正確。</li>
+<li>小模型收益有限（算術能力本身要到一定規模才湧現）；正規化加權和與多數決差異極小，代表本方法對模型自身機率幾乎不倚賴。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>對 ai_core <strong>§3.4「治理＝拒絕為預設＋憑證准入」</strong>：self-consistency 是目前<strong>最便宜的弱接地訊號</strong>——不需要外部驗證器、不需要執行環境、不需要標註，只靠「N 條路徑的答案分佈」就產生一個可用的憑證。它的地位很清楚：<strong>弱於</strong>外部驗證器路線（2110.14168 GSM8K verifiers 要另訓 175B 驗證器、2308.08155/2302.08468 LEVER 之類要執行結果），但<strong>成本也低得多且完全通用</strong>。在 ai_core 的准入設計裡，它適合當「第一道便宜 gate」：一致度高就放行、一致度低就升級到貴的驗證路徑或直接拒絕。</li>
+<li>對 ai_core <strong>§3.3「成本梯度」與 §2「貴稀有智能 vs 便宜高頻智能」</strong>：本篇的代價是<strong>推理成本乘 N</strong>（論文用 40 條）。這正是成本梯度該做取捨的地方——把 N 條取樣視為「用便宜高頻智能的重複換取一點可靠度」，而不是把它當免費午餐。作者自己的緩解（5～10 條即可拿到大部分增益）就是一條實用的成本曲線。</li>
+<li>對 ai_core <strong>§3.6「固化引擎」</strong>：self-consistency 的真正戰略價值不在推理時，而在<strong>當過濾器</strong>——<strong>2203.14465 STaR</strong> 與 <strong>2210.11610 LLM Can Self-Improve</strong> 都是拿「多數決一致的路徑」當偽標籤來自我訓練／自我蒸餾。這對應「把重複處理的案例結晶下來」的思路：投票通過的樣本＝低成本、可批次產生的訓練資產。本文結論段也親自預告了這個方向（用自我一致性產生更好的監督資料去微調，使模型單次推理即可）。</li>
+<li>跨<strong>主題 12 信心校準</strong>：投票一致度可直接當<strong>信心分數</strong>餵給庫中既有的校準／棄答機制——與 <strong>2504.19254 UQ scorers</strong>、<strong>2405.01563 conformal abstention</strong> 的接法一致；且本文提供了一個重要的負面事實：<strong>模型自身的序列機率校準很差</strong>（正規化加權和幾乎等於未加權多數決，機率提供不了額外資訊），所以「答案間的一致性」比「模型自報機率」更值得當信心來源。</li>
+<li>與 <strong>2310.01798 LLMs Cannot Self-Correct</strong> 對照：後者證明「沒有外部訊號的自我修正」會退步，而 self-consistency 剛好說明——<strong>多路徑取眾數不是自我修正，是一種取樣層級的統計聚合</strong>，不需要模型判斷自己對錯，因此不受該負面結果影響。這是主題 7 反思迴圈裡「有效 vs 無效自我改進」的分界線。歸 <strong>I 類</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../../translate/2203.11171_Self_Consistency.zh-TW.html"><code>../translate/2203.11171_Self_Consistency.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

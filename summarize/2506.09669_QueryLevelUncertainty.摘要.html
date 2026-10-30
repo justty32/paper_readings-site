@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《大型語言模型中的查詢層級不確定性（Query-Level Uncertainty in Large Language Models）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Lihu Chen, Gerard de Melo, Fabian M. Suchanek, Gaël Varoquaux（Imperial College London / HPI-Potsdam / Telecom Paris / Inria；ICLR 2026）</p><p>日期：2025-06</p><p>arXiv：2506.09669</p><p><a href="https://arxiv.org/abs/2506.09669" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="大型語言模型中的查詢層級不確定性query-level-uncertainty重點摘要">《大型語言模型中的查詢層級不確定性（Query-Level Uncertainty）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Query-Level Uncertainty（查詢層級不確定性）＋ Internal Confidence（內部信心）</strong>：不看模型生成的答案，而是在<strong>生成任何 token 之前</strong>、僅憑對查詢做一次 forward pass，就估出「模型到底會不會答這題」——用一句 yes/no 自評 prompt 取 <strong>P(Yes)</strong>，再把<strong>每一層 × 每一個 token</strong> 的 P(Yes) 用「衰減編碼」加權彙整成單一信心分數；<strong>免訓練、免生成</strong>，卻能比多種答案層級（answer-level）方法更準地分辨「可答／不可答」查詢，且快 30–600 倍，可直接當 RAG／模型級聯的「要不要升級」開關。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 有<strong>知識邊界</strong>（knowledge boundary），該知道自己知道什麼、不知道什麼。過去絕大多數不確定性研究是 <strong>answer-level</strong>：先生成答案、再評估這個答案可不可靠（post-generation），既要付出生成長答案的成本，也無法在「動手前」就決策。作者要的是 <strong>pre-generation</strong> 的判斷：<strong>給一個查詢，能否在生成任何 token 之前就判定模型能不能答？</strong> 這種「生成前」信號正是自適應推理（adaptive inference）的關鍵——決定何時觸發 RAG、何時進入深度慢思考、何時把難題級聯給更大的模型、何時乾脆拒答。既有的 probe 法或「教模型說 I don&#x27;t know」的微調法都<strong>需要訓練/標註</strong>，通用性受限。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>問題定義</strong>：查詢 x 的不確定性 U(x)（非 U(x,y)）。以 <strong>greedy decoding 能否產出正確答案</strong>作為「是否落在知識邊界內」的操作型標籤（快、可重現的啟發式代理，非絕對量測）；聚焦有明確答案的事實 QA 與數學推理。</li>
+<li><strong>P(Yes)（起點）</strong>：用固定 prompt「只回 Yes 或 No 表示你能否準確回答此 Query」，取<strong>最後一個 token、最後一層</strong>隱狀態經 unembedding 後 Yes token 的機率當信心分數。等於一種<strong>免訓練的線性探測</strong>，只需對查詢做一次 forward pass。</li>
+<li><strong>Internal Confidence（IC，核心貢獻）</strong>：P(Yes) 只用了最後一層最後一 token，浪費了中間層／各 token 的潛在知識。故對 <strong>N 個 token × L 層</strong>每個隱狀態都算 P(Yes)，再做<strong>兩階段加權彙整</strong>（先跨層、再跨 token）成單一分數。</li>
+<li><strong>decision center + 衰減編碼（Attenuated Encoding）</strong>：觀察到某個內部位置（實驗中約 h5 的第 27 層）AUROC 最高、稱為「決策中心」，且愈遠離它效果愈差。為維持免訓練，<strong>固定用右上角（最後層、最後 token）當中心</strong>，用 Chen et al. (2023) 的衰減編碼依「與中心的距離」給鄰近層／token 遞減權重；locality（局部性）由 α 控制，全實驗固定 <strong>α=1.0（Locality≈0.7）</strong>。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>辨識可答／不可答（表 1，AUROC/PRR/ECE）</strong>：IC 在三模型（Phi-3.8B、Llama-8B、Qwen-14B）× 三資料集（TriviaQA、SciQ、GSM8K）平均一致勝過所有基線；模型愈大優勢愈明顯——<strong>Qwen-14B 平均 AUROC 67.1、PRR 31.7</strong>（Llama-8B 64.2、Phi 59.8），且 ECE（校準誤差）也普遍最低。消融顯示 P(Yes)(top-right) 與 naive avg 皆遜於完整 IC，證明衰減編碼加權有效。</li>
+<li><strong>極快（表 2，Qwen-14B/GSM8K）</strong>：IC 平均每題 <strong>0.3 秒</strong>、AUROC 66.8，對比 answer-level 的 SAR（180.6s）、Semantic Entropy（151.8s）、Perplexity（9.8s）、P(True)（22.3s），<strong>加速 30×–600×</strong>；且 IC 執行時間<strong>與答案長度無關</strong>，答案愈長加速比愈大（圖 4 最高 1672×）。</li>
+<li><strong>自適應推理落地（圖 6）</strong>：把 IC 當門檻用於 (1) <strong>Efficient RAG</strong>（信心夠高就用參數知識直答、否則才叫 RAG）與 (2) <strong>Model Cascading</strong>（Phi-3.8B→Llama-8B，小模型信心低才升級）。兩情境都出現「<strong>取捨區間</strong>（調門檻換 cost↔quality）」與「<strong>最佳點</strong>（可降推理開銷而不損準確率）」。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>需存取模型內部隱狀態</strong>，純黑箱 API 不適用。</li>
+<li>為求效率／通用用了<strong>固定超參</strong>（決策中心、α），並非各情境最優——附錄顯示最佳決策中心位置其實隨模型/任務而變。</li>
+<li>IC 是<strong>強基線</strong>，但整體效果<strong>仍落後 answer-level 方法</strong>（後者可看到真答案）；作者定位它為「便宜、免訓練、生成前」的實用折衷，而非最準。</li>
+<li>僅處理<strong>有明確答案</strong>的查詢；開放/主觀（政治、哲學）問題不在範圍。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>歸 I 類（不確定性/信心信號類）</strong>。對 ai_core 最直接的接點是 <strong>§3.3 成本梯度／級聯路由</strong>：本篇提供的正是級聯「<strong>升不升級</strong>」所需的<strong>生成前信號</strong>——在小模型還沒吐 token 前，就用一次 forward pass 判斷它能不能答，答不出才把查詢升級給大模型。這比 AutoMix 那類「<strong>生成後</strong>再驗證答案品質」的路由<strong>更早、更省</strong>（省掉生成長答案的成本，實測快 30–600×），恰好補上「資產工廠 vs 資產消費者」成本梯度裡「<strong>在呼叫前就決定用哪一級智能</strong>」的那個判斷點。</li>
+<li>同時直接支撐 <strong>§3.4 治理＝拒絕為預設</strong>：IC 天然是「<strong>答得出就答、答不出就退（abstain）</strong>」的閾值機制——設一個信心門檻，低於門檻即退回/拒答/轉外部知識，正是「拒絕為預設＋達標才准入」的一種可量化實作，且<strong>免訓練</strong>、可跨模型套用。</li>
+<li>一句話記憶點：<strong>把「這題我會不會」變成生成前的一個純函數（single forward pass → 一個信心分數）</strong>——對想「把 LLM 呼叫包成可靠函數、逐步剃除依賴」的人，這是把<strong>路由/拒答決策從昂貴的生成後判斷前移到便宜的生成前判斷</strong>的具體手法。注意其前提是<strong>能拿到隱狀態</strong>（自架/開源模型可，純黑箱 API 不可）。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2506.09669_QueryLevelUncertainty.zh-TW.html"><code>../translate/2506.09669_QueryLevelUncertainty.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

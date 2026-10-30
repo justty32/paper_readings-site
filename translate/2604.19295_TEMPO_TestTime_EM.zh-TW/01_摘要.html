@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.19295_TEMPO_TestTime_EM.zh-TW.html">回 2604.19295_TEMPO_TestTime_EM.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>測試時訓練（TTT）在推理時於無標註測試實例上更新模型參數，持續擴展離線訓練無法觸及的能力。但現有針對 LRM 的 TTT 方法<strong>很快停滯</strong>、無法從額外測試時計算受益。缺乏外部校準時，自生獎勵訊號會隨策略演化而<strong>漂移</strong>，導致性能停滯與多樣性崩塌。我們提出 <strong>TEMPO</strong>：一個 TTT 框架，<strong>交替</strong>進行「在無標註題上的策略精修」與「在有標註資料上的週期性 critic 重校準」。透過<strong>期望最大化（EM）<strong>形式化此交替程序，揭示先前方法是</strong>省略了關鍵重校準步驟的不完整變體</strong>。重新引入該步驟收緊了證據下界（ELBO），實現持續改進。跨模型家族（Qwen3 與 OLMO3）與推理任務，TEMPO 把 OLMO3-7B 在 AIME 2024 從 <strong>33.0% 提到 51.1%</strong>、Qwen3-14B 從 <strong>42.3% 提到 65.8%</strong>，同時維持高多樣性。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LRM 靠測試時延長推理鏈分配大量計算，達成複雜推理能力；但<strong>訓練後參數靜止</strong>，無法吸收測試時經驗。TTT 讓模型在無標註測試資料上更新參數、延伸推理能力到原訓練分布之外。近期方法（EMPO、TTRL、Theta-Evolve）用熵、多數投票、自一致等<strong>自生獎勵訊號</strong>經 RL 精修策略而不需真值標籤；Cursor 的 Composer 即時 RL 也證明 TTT 在互動式編碼環境的實效。</p>
+<p>但現有 LRM TTT 有<strong>兩個根本限制</strong>：①依賴啟發式獎勵，被模型初始能力封頂，自我提升飽和後<strong>性能停滯</strong>；②為追平均分而<strong>崩塌輸出多樣性</strong>，降低推理品質。共同根因：測試時無真值標籤，獎勵須從模型自身輸出推斷；模型越自信於少數推理模式，這些啟發訊號就越<strong>系統性高估</strong>自生回答品質，形成驅動飽和與多樣性崩塌的自我強化迴圈。</p>
+<p>為此我們提出 <strong>TEMPO（Test-time Expectation-Maximization Policy Optimization）</strong>，透過 actor-critic 交替設計把獎勵生成與策略優化解耦，分兩階段：(i) <strong>策略精修</strong>——actor 在無標註測試 prompt 上生推理軌跡、對 critic 給的獎勵優化；(ii) <strong>Critic 重校準</strong>——critic 週期性用有標註資料的可驗證獎勵更新。維持一個<strong>有依據（grounded）的 critic</strong> 提供穩定訊號、避免導致先前失敗的獎勵漂移。</p>
+<p><strong>EM 形式化</strong>：測試時回答正確性是<strong>未觀測潛在變數</strong>，故無標籤優化策略 ⇔ 最大化期望獎勵的下界。Critic 重校準對應 <strong>E 步</strong>（估計「正確回答」的後驗分布），策略優化對應 <strong>M 步</strong>（給定估計後更新參數）。此視角揭示既有自獎勵法是<strong>只執行 M 步</strong>的退化變體，使估計後驗漂離真正的正確性；藉週期性校準恢復 E 步收緊下界、跨更長訓練視野維持改進。</p>
+<p><strong>實驗驗證</strong>：AIME 2024/2025 上，TEMPO 把 OLMO3-7B 從 33.0%/26.3% 提到 51.1%/37.0%；Qwen3-14B 從 42.3%/37.1% 提到 65.8%/44.6%（絕對 +23.5 / +7.5 pp）。更重要的是 TEMPO 維持高 pass@K（基線崩塌）。超出數學，TEMPO 也泛化到邏輯謎題與 STEM。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>自獎勵 RL</strong>：RLVR（Tulu-V3 首次形式化）是激勵推理能力的主導範式，但依賴標註資料，催生自獎勵替代法——用熵、self-certainty、推理拓樸等內在獎勵自訓。如 SARL 從中間步驟的圖結構構獎勵、LaSeR 用末 token logit 當自獎勵訊號。但這些法隨獎勵自我強化而崩塌分布、停滯。TEMPO 把**獎勵生成（critic 週期性在標註資料重校準）<strong>與</strong>策略優化（在無標註測試資料）**解耦以避免此迴圈。</li>
+<li><strong>推理模型的 TTT</strong>：TTT 源於電腦視覺（推理時在每個測試實例更新參數以彌合分布偏移）。LLM 推理域近期用自生訊號做測試時 RL：TTRL 用多數投票偽標、Intuitor/EMPO 用熵獎勵。它們共有<strong>結構缺陷</strong>：只做策略精修、忽略獎勵校準，致獎勵隨策略演化漂離真正正確性。TEMPO 交替 critic 重校準（E 步）與策略優化（M 步），維持緊 ELBO、超越先前天花板。</li>
+</ul>
+<h2 id="3-方法">3. 方法</h2>
+<p>TEMPO 先用 RLVR 在有標註資料 <span class="math inline">\(D_L\)</span> 上初始化 actor 與 critic，再在無標註測試題上持續改進——依 EM 交替 critic 校準與策略精修。</p>
+<h3 id="31-問題設定">3.1 問題設定</h3>
+<p>模型可存取含真值答案的有標註集 <span class="math inline">\(D_L\)</span> 與正確答案未知的無標註測試題集 <span class="math inline">\(D_u\)</span>。目標：讓 LRM 在測試階段持續自我提升，即最大化「給定問題 <span class="math inline">\(x\)</span> 生出正確回答」的期望對數機率：<span class="math inline">\(J(\theta)=\mathbb{E}_x[\log P(\text{Correct}\mid x;\theta)]\)</span>。</p>
+<h3 id="32-變分下界目標">3.2 變分下界目標</h3>
+<p>測試時 <span class="math inline">\(x\in D_u\)</span> 的回答正確性未觀測，最優回答分布 <span class="math inline">\(P(y\mid x,\text{Correct})\)</span> 是潛在變數。引入輔助分布 <span class="math inline">\(q(y\mid x)\)</span> 導出 ELBO；略去非負 KL 項得目標 <span class="math inline">\(\mathcal{L}(q,\theta)\)</span>，且 <span class="math inline">\(J(\theta)\ge\mathcal{L}(q,\theta)\)</span>，當 <span class="math inline">\(q\)</span> 完美匹配後驗時等號成立。可藉交替「估計正確回答分布」與「最大化模型似然」迭代精修。</p>
+<h3 id="33-e-步經由-critic-的後驗估計">3.3 E 步：經由 critic 的後驗估計</h3>
+<p>固定當前策略 <span class="math inline">\(\pi_{\theta_0}\)</span>，求最大化下界的最優 <span class="math inline">\(q^*(y\mid x)\)</span>，對應「以正確性為條件的回答後驗」。為逼近未知的 <span class="math inline">\(P(\text{Correct}\mid y,x)\)</span>，在 <span class="math inline">\(D_L\)</span> 上訓 critic <span class="math inline">\(V_\phi(x,y_t)\in\mathbb{R}\)</span>（<span class="math inline">\(t\)</span> 為 token 索引），以 MSE 對二元正確指標 <span class="math inline">\(\mathcal{I}\in\{0,1\}\)</span> 做 token 級價值估計：<span class="math inline">\(\mathcal{L}_{\text{critic}}(\phi)=\mathbb{E}_{(x,y,\mathcal{I})\sim D_L}\|V_\phi(x,y_t)-\mathcal{I}\|_2^2\)</span>。確保 critic 是「生成回答期望正確性」的可靠代理。</p>
+<h3 id="34-m-步策略優化">3.4 M 步：策略優化</h3>
+<p>固定 <span class="math inline">\(q\)</span> 更新 <span class="math inline">\(\theta\)</span> 最大化下界，經策略梯度 RL 實作 + token 級優勢估計。把 critic 末 token 價值當整段外部獎勵 <span class="math inline">\(R=V_\phi(x,y)\)</span>，中間價值 <span class="math inline">\(V_\phi(x,y_{1:t})\)</span> 當 token 變動 baseline <span class="math inline">\(b_t\)</span>；優勢 <span class="math inline">\(A_t\)</span> 為「最終實現獎勵與第 <span class="math inline">\(t\)</span> 步期望價值之差」。策略目標：<span class="math inline">\(\mathcal{L}_{\text{policy}}(\theta)=-\mathbb{E}_{x\in D_u,y\sim\pi_\theta}[\sum_t A_t\log\pi_\theta(y_t\mid x,y_{&lt;t})]\)</span>。對末 token 價值貢獻高的 token 給正強化、偏離者懲罰。交替 E/M 步即達連續、可擴展的自我提升。</p>
+<pre><code class="language-mermaid">flowchart LR
+  Init[&quot;RLVR 初始化&lt;br/&gt;actor + critic（D_L）&quot;] --&gt; E
+  subgraph 交替測試時訓練
+    E[&quot;E 步：Critic 重校準&lt;br/&gt;在 D_L 用可驗證獎勵更新 V_φ&lt;br/&gt;（錨定外部監督）&quot;] --&gt; M[&quot;M 步：策略精修&lt;br/&gt;在無標註 D_u 生軌跡&lt;br/&gt;對 critic 獎勵做策略梯度&quot;]
+    M --&gt; E
+  end
+  M --&gt; Out[&quot;持續超越 RLVR 天花板&quot;]
+</code></pre>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

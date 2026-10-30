@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>MindJourney Test-Time Scaling with World Models for Spatial Reasoning 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yuncong Yang、Jiageng Liu、Zheyuan Zhang、Siyuan Zhou、Reuben Tan、Jianwei Yang、Yilun Du、Chuang Gan</p><p>日期：2025-07-16（v1，cs.CV）</p><p>arXiv：2507.12508</p><p><a href="https://arxiv.org/abs/2507.12508" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="mindjourney-test-time-scaling-with-world-models-for-spatial-reasoning">MindJourney Test-Time Scaling with World Models for Spatial Reasoning</h1>
+<h2 id="摘要與問題第-1-節">摘要與問題（第 1 節）</h2>
+<p>VLM 能辨識單張影像，卻常答錯「相機往前走或轉身後會看見什麼」。缺口不是再多寫一段文字推理，而是模型沒有可互動的三維動態：它看見二維投影，無法像人一樣在腦中走幾步、換視角，再依新的證據作答。</p>
+<p>MindJourney 在測試時把 VLM 接上一個可控制的影片擴散世界模型。VLM 不立即回答，而是提出短相機軌跡；世界模型合成沿途的第一人稱視野；VLM 從想像出的多視角證據選擇下一步探索方向，最後再回答空間問題。整個流程不微調原本的 VLM，計算量用在擴張可觀察的世界，而不只是抽樣更多文字 chain of thought。</p>
+<h2 id="方法第-3-節">方法（第 3 節）</h2>
+<p>系統由 world model、search VLM 與 question-answering VLM 組成，後兩者可以共用同一網路。動作空間包含前進、左轉與右轉，每個動作映射成相對相機姿態；世界模型接收參考影像與姿態序列，生成對應的 egocentric rollout。作者另訓練 Search World Model，以 Habitat 的幾何精確導航影片為主，再混入真實場景影片，兼顧動作控制與外觀多樣性；實驗也使用另一個公開世界模型比較。</p>
+<p>Spatial Beam Search 交替做不依問題的軌跡擴張，以及由問題引導的剪枝。每個 beam node 產生一批候選動作序列與新視野，search VLM 分別評估「是否值得繼續探索」及「這個視野現在是否有助作答」。前者留下下一層 beam，後者寫入 Helpful Observation Buffer。低分軌跡被丟棄，也會排除立即反向或超出移動預算的候選。搜尋停止後，answering VLM 取得原圖、軌跡描述與緩衝區影像，組成最後答案。</p>
+<h2 id="主要實驗第-4-節作者自報">主要實驗（第 4 節，作者自報）</h2>
+<p>主評估使用 SAT，涵蓋第一人稱移動、物體移動、動作後果、目標朝向與視角轉換。SAT-Real 含一百五十個室內外真實影像問題。MindJourney 對各 VLM 的 top-1 accuracy 平均增加八點一個百分點，GPT-4.1 的單一增幅接近十五個百分點；加在已做 RL 測試時計算擴張的 o1 上仍能再提升，表示視覺世界 rollout 與文字推理縮放提供的訊息並不重複。</p>
+<p>SAT-Synthesized 原有四千題；為控制 o1 成本，作者隨機取五百題評估。各模型平均改善百分之八點五，而且每種問題的最佳分數都來自加入 MindJourney 的模型。結果跨四種 VLM 與兩種 world model 都成立，顯示框架不是只適合單一後端。</p>
+<p>消融顯示，更多搜尋不保證更好。真實影像上，軌跡走得太遠後，主要以合成室內資料訓練的 SWM 開始產生不可信視野，雜訊會壓過增加的證據；合成場景因較接近訓練分布，較深探索仍有益。剪枝門檻也有兩面性：太寬鬆會把低品質影像送入答案脈絡，太嚴格則過早刪除有用路徑。</p>
+<h2 id="結論與局限第-5-節">結論與局限（第 5 節）</h2>
+<p>MindJourney 把世界模型變成測試時的想像工作區。VLM 負責依問題選路與判斷證據，影片模型負責把動作轉成新視角；兩者結合，讓凍結的 VLM 能以實際多視角線索回答三維問題。</p>
+<p>作者明列兩項局限。第一，流程只把單一參考影像當作探索入口；遇到多張輸入影像，還不能從各視角分別展開並融合證據。第二，現有可控制影片模型不理解下游問題，可能生成無關甚至與題意矛盾的視野。附錄再展示動作距離不準、非預期 roll、旋轉不穩、遮蔽區域 artifact、分布外場景誤解，以及 VLM 未保留最有用視角等實際失敗型態。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2507.12508_MindJourney.%E6%91%98%E8%A6%81.html"><code>../summarize/2507.12508_MindJourney.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>技能即偽代碼：將技能庫重構為偽代碼以服務 LLM 智能體（4/5） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.27955_Skill-as-Pseudocode.zh-TW.html">回 2605.27955_Skill-as-Pseudocode.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95Method.html">← 上一節</a>　<a href="04_%E5%88%86%E6%9E%90Analysis.html">下一節 →</a></p>
+</blockquote>
+<h2 id="35-檢索時代換retrieval-time-substitution">3.5 檢索時代換（Retrieval-time substitution）</h2>
+<p><strong>階層式檢索池。</strong> 任務時 agent 僅在 parent skills 上檢索；promoted child contracts 保留在獨立內部 store。Children 為可重用子程序，設計為透過 parent 的 invoke(κ, ⃗a) 佔位符到達——非獨立 top-level 能力。將其暴露為獨立檢索結果會讓 agent 讀取缺少包裹 parent 上下文的 child（導致 −27% 獎勵，§5.5）。</p>
+<p><strong>代換後 skill bundle。</strong> 對每個已在重構庫中的檢索 parent，模組將其內容替換為：短 header（澄清 invoke(...) 為文件標記，非可執行環境動詞），後接三個內容區塊：</p>
+<ol>
+<li><strong>動作模板優先（concrete how）</strong>：對每個 invoke(κⱼ, ⃗a)，render 原 unit text（具體 env-action 序列，如 go to {recep}、heat {obj} with {appliance}）附帶提取的綁定。此區塊置於 agent 最先讀取的前綴區域。</li>
+<li><strong>改寫後 parent 骨架（where the call fits）</strong>：顯示調用點在改寫後骨架中的位置（locate object → invoke(κ_heat, bindings) → place object）。</li>
+<li><strong>內聯 child contract（abstract guarantee）</strong>：trigger、I/O schema、pre/post 條件——供動作模板需要綁定到新參數時參考的高層合約抽象。</li>
+</ol>
+<p>代換不添加管線已產出之外的任何新內容，僅以 agent 消費的順序重新呈現。跨模態派發（以切換階段 1–2 在 typed OpenAPI 庫上運行同一管線）在架構上支持，但本文未進行經驗評估（Limitations）。</p>
+<h1 id="技能即偽代碼將技能庫重構為偽代碼以服務-llm-智能體45">技能即偽代碼：將技能庫重構為偽代碼以服務 LLM 智能體（4/5）</h1>
+<h2 id="4-實驗設定experimental-setup">4. 實驗設定（Experimental Setup）</h2>
+<h3 id="41-庫與基準">4.1 庫與基準</h3>
+<p><strong>技能庫：</strong> 使用公開 GoS skills_500（500 markdown 文件，5,709 程序單元，54 個附可執行腳本的技能，~10 領域：37 個 alfworld-* 具身 agent 技能、8 個 <em>-automation API wrapper、ffmpeg-</em> 等）。skills_500 為最小包含 ALFWorld 域技能的 GoS 技能集（skills_200 含零個 alfworld-* 技能，在 ALFWorld 所有模式下 near-zero reward）。</p>
+<p><strong>ALFWorld：</strong> unseen split，134 文字遊戲家務任務（heat/cool/clean/pick-and-place、look-at-object 等），每個任務為部分可觀察環境，成功為 episode 結尾二值獎勵，最多 30 環境動作步（技能檢索回合不消耗動作預算）。</p>
+<p><strong>SkillsBench（子集）：</strong> 87 個 Docker 環境編碼任務中的 10 個均勻隨機取樣（6 easy + 4 medium），完整 87 任務評估因經費推遲。</p>
+<h3 id="42-模型與推理">4.2 模型與推理</h3>
+<p>ALFWorld agent：gpt-4o-mini，temperature=0，max_steps=30，4 平行 workers，三種檢索模式間共享單一 OpenAI seed。SkillsBench agent：gpt-5-codex 透過官方 codex CLI，OpenAI 相容代理路由，per-task Docker 容器內（Harbor harness），best-of-1 單次嘗試。管線 LLM：合約提取、BE bindings、RC cleanup 均 gpt-4o-mini（temperature=0）；GoS workspace 用 text-embedding-3-large (d=3072)；proposer 用 text-embedding-3-small。</p>
+<h3 id="43-檢索模式">4.3 檢索模式</h3>
+<p>三模式共享相同 agent 端檢索介面，僅庫內容與可見性預算不同：<strong>ALL_FULL（Vanilla）</strong>：完整庫載入上下文，agent 直接文件檢查，tokens 無界。<strong>GOS</strong>：GoS 檢索（embedding seed + graph rerank），返回 top-K=8 inline。<strong>SAP（SaP, ours）</strong>：相同檢索演算法與 K=8，但檢索池為重構後庫（parent skeletons + child contracts 作 sidecar skills）。</p>
+<h2 id="5-結果results">5. 結果（Results）</h2>
+<h3 id="51-skills_500-管線產出">5.1 skills_500 管線產出</h3>
+<p>管線將 5,709 程序單元減少至 149 候選群集；校準點 (τ_auto, τ_rev) = (0.30, 0.10) 自動推廣 <strong>80 驗證後 child contracts</strong>，adversarial controls 上 0% FP。BE 確認 1,475/2,105 確定性調用點（70%）並丟棄其餘；RC 改寫 320/322 觸及 parents（99.4%）。更嚴格點僅推廣 49 children 之變體在附錄 H。</p>
+<h3 id="52-主要結果alfworld-134-game">5.2 主要結果：ALFWorld 134-game</h3>
+<p>ALFWorld unseen split（134 games, gpt-4o-mini, temperature=0, max_steps=30），pooled 3 seeds（n=402 paired games）：</p>
+<ul>
+<li><strong>獎勵提升</strong>：SaP 82 wins vs GoS 47 wins（+74%；pooled McNemar exact p = 8.2×10⁻⁵，56 SaP-only vs 21 GOS-only discordant pairs）。單 seed seed=42：30 vs 16 wins（McNemar p=0.0043）。SaP 在每個任務類型擊敗 GOS，最大收益在 multi-step heat/cool/place 類別。</li>
+<li><strong>並行 token 節省</strong>：−22.8% input、−17.3% output、−14.5% LLM calls per game。獎勵與 tokens 共變（§6.1）。</li>
+<li>SaP 跨 seed 變異（±4.62 wins, ±15.9k input tokens）大於 GOS（±0.58, ±0.9k）——贏的遊戲在 max_steps=30 前提前結束，因此 SaP 贏更多的 seeds 也節省更多 tokens。</li>
+<li>ALL_FULL 在 20-game pilot（seed=42）上 0 wins，~3.4x GOS 的 input tokens——全庫 prompts 淹沒 gpt-4o-mini。</li>
+</ul>
+<h3 id="53-skillsbench10-task-通用性檢查">5.3 SkillsBench：10-task 通用性檢查</h3>
+<p>gpt-5-codex 下 SaP 獲 3/10 wins vs GOS 2/10 wins，input tokens −43%。ALL_FULL 贏 4/10，但需 1.6x input tokens。同時 reward-up/token-down 效應 vs GOS 複製 ALFWorld 模式，但尚未在該樣本量擊敗 Vanilla。</p>
+<p>Per-task token：8/10 任務 SaP input tokens 減少（−14% 至 −82%）；兩項多用 tokens 的任務皆為 joint wins（SaP 寫更多 code 達相同答案）。兩項 SaP 執行錯誤（court-form-filling、data-to-d3）mid-execution 失敗（NonZeroAgentExitCode），其 input tokens 已 −59%/−15% vs GOS。</p>
+<p><strong>案例 citation-check（SaP-only win）：</strong> gpt-5-codex 有 8K shell-output cap。GOS 原始 citation-management/SKILL.md 為 8,354 tokens——agent 讀取截斷正文，調用輸出 schema 與所需 answer.json 不匹配的腳本，從零重新實作，超出預算。SaP 重構後同一技能為 3,566-token 改寫骨架加 child contract，完全在 cap 內——agent 讀取全文，腳本僅作參考，自行撰寫 bibtexparser 提取，產出正確輸出。機制為內容密度的 SkillsBench 類比 ALFWorld 的 per-retrieval-density：散文強迫 agent 恢復丟失內容，恢復不總在預算內。</p>
+<h1 id="技能即偽代碼將技能庫重構為偽代碼以服務-llm-智能體55">技能即偽代碼：將技能庫重構為偽代碼以服務 LLM 智能體（5/5）</h1>
+<h2 id="54-管線元件消融pipeline-component-ablation">5.4 管線元件消融（Pipeline component ablation）</h2>
+<p>固定 20-game ALFWorld subset（idx 0–19）逐步添加：確定性僅 → +RC → +BE+RC = 0.05 → 0.10 → 0.15 avg reward（每步 +5pp），子集上與 GOS 持平（0.15），完整 134-game 超越（82 vs 47）。BE-alone（無 RC）未測試。</p>
+<p>每步修復特定失敗：(1) RC 修復 <strong>parent 殘留動詞衝突</strong>——確定性改寫將 alfworld-object-transporter 六個單元中三個替換為 invoke 佔位符，但保留 Example block 逐字（仍發出 Action: put laptop 1 in/on desk 1——ALFWorld 引擎實際不接受的語法，僅接受 move X to Y）；RC 檢測動詞與 child contract output_schema 的矛盾並改寫。(2) BE 丟棄 30% 確定性調用點為<strong>偽陽性</strong>——共享關鍵字但描述不同程序的單元（Bundled Resources 列表提及 file-helper child、Risk bullet &quot;do not delete output.json&quot;）。兩通過瞄準同一散文誘發迴圈的不同上游成因：未改寫內容中的陳舊語法（RC）與偽陽性群集成員（BE）。</p>
+<h2 id="55-檢索池消融階層式分離">5.5 檢索池消融：階層式分離</h2>
+<p>SaP 將 parent retrieval 與內部 child-contract store 分離，children 僅透過 parent invoke 佔位符到達。消融該階層——允許 child contracts 作為 top-level 結果——獎勵從 22.4% 降至 16.4%（seed=42, −27%, 30→22 wins）：children 在 ~8% 遊戲中出現於 top-K，agent 讀取無 parent 動作模板的合約規範，破壞 contract+template 配對。</p>
+<h2 id="56-驗證器門檻校準">5.6 驗證器門檻校準</h2>
+<p>對 30 合成負控制進行 (τ_auto, τ_rev) 網格搜尋。skills_500 上網格寬廣區域在此類負控制達 0% FP。校準點 (0.30, 0.10) 推廣 80 驗證後 child contracts；更嚴格點 (0.65, 0.35) 僅推廣 49——31 個額外 children 含真正重複子程序（navigate-and-take、locate-receptacle、appliance-state-modifier）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

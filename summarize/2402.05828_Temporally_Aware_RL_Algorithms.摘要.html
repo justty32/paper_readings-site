@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《發現具時間感知能力的強化學習演算法：以壽命條件化＋演化策略 meta-learn 動態目標函數》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Matthew T. Jackson, Chris Lu, Robert T. Lange, Louis Kirsch, Shimon Whiteson, Jakob N. Foerster（Oxford / TU Berlin / IDSIA, ICLR 2024）</p><p>日期：2024-02（ICLR 2024）</p><p>arXiv：2402.05828</p><p><a href="https://arxiv.org/abs/2402.05828" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="發現具時間感知能力的強化學習演算法重點摘要">《發現具時間感知能力的強化學習演算法》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>給 meta-learned 的 RL 目標函數<strong>加上「訓練壽命」條件</strong>（已用步數 n／總訓練步數 N），讓發現出的演算法能在 agent 訓練過程中<strong>動態改變自己的損失函數</strong>；並發現<strong>只有用演化策略（ES）才學得到這種動態更新，meta-gradient 因目標短視（myopic）會失敗</strong>。據此提出 <strong>TA-LPG / TA-LPO</strong>，在未見的訓練時程與環境上全面勝過非時間感知的 LPG/LPO 與 PPO。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>近期 meta-learning 已能自動發現以代理目標函數（surrogate objective）參數化的新 RL 演算法。但要勝過人工設計，參數化既要夠<strong>表達力</strong>（能表示新的學習原則、而非只復現舊的）又要能<strong>泛化</strong>到 meta-train 分佈之外。問題是：現有方法發現的目標函數（如多數常用 RL 目標）<strong>不考慮「訓練時程（training horizon）」</strong>——還剩多少訓練步數。但人類會依時程改變學習策略（學生臨近考試會改讀書法）。忽略最佳化時程，顯著限制了被發現演算法的表達潛力。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>壽命條件化（lifetime conditioning）</strong>：把 agent 當前壽命 <code>n/N</code>（n＝已互動步數、N＝總訓練時程）餵進學到的目標函數。
+<ul>
+<li><strong>TA-LPG</strong>：在 LPG（Learned Policy Gradient，LSTM 逆序處理轉移、輸出 bootstrap 向量與策略目標）的輸入加上 <code>n/N</code> 與 <code>log(N)</code>。</li>
+<li><strong>TA-LPO</strong>：在 LPO（Learned Policy Optimization，以神經網路參數化 Mirror Learning 的 drift 函數、PPO 是其特例）的 drift 函數輸入加上 <code>(n/N)·x_{p,A}</code>，刻意保持結構以滿足 drift 函數的理論條件（單調改善保證）。</li>
+</ul>
+</li>
+<li><strong>meta-最佳化的關鍵抉擇</strong>：meta-gradient 須對截斷視窗做 BPTT、記憶體受限、目標短視；<strong>ES（演化策略）可對整個 agent 壽命做最佳化、適應度＝訓練結束的最終回報</strong>，無額外記憶體成本。</li>
+<li><strong>多任務 ES 的適配——antithetic task sampling</strong>：對偶取樣的每一對候選 <code>x±σϵ</code> 在<strong>同一個隨機抽到的任務</strong>上評估，再對該對適應度做 rank transformation（等於選表現較佳者），跨任務正規化、穩定訓練。</li>
+</ul>
+<h2 id="關鍵結果">關鍵結果</h2>
+<ul>
+<li><strong>適應可變時程</strong>：在 held-out Grid-World 上，TA-LPG 在所有時程上最終回報都高於 LPG——短時程上於「sparse」任務只用 LPG 1/8 的步數就達最高表現；長時程上於「dense」任務在 LPG 已停滯後仍持續進步。展現「犧牲訓練中期表現以換取更佳最終回報」的探索/利用權衡。</li>
+<li><strong>OOD 泛化</strong>：TA-LPO 雖只在 MinAtar 的 Space Invaders 單一環境 meta-train，卻在 MinAtar 與 Brax（連續控制）兩個測試套件上顯著勝過 LPO 與 PPO，且對差異極大的超參（10M 步/rollout 128 vs 50M 步/rollout 5）穩健。常在訓練末期才超越 PPO，暗示 lifetime awareness 可緩解 RL 常見的「過早收斂」失敗模式。</li>
+<li><strong>meta-gradient 失敗</strong>：以 meta-gradient 訓練的 TA-LPG 在所有時程上回報更低、且更新範數對時程<strong>無一致適應</strong>；ES 版才學到動態適應。佐證「截斷式 meta-最佳化不足以發現長視（long-sighted）演算法」。</li>
+<li><strong>學到的動態母題（analysis）</strong>：TA-LPO 從訓練初期的<strong>樂觀（optimism）＋最大化熵</strong>，轉為訓練末期的<strong>悲觀（pessimism）＋最小化熵</strong>；並實作了「非對稱 rollback 排程」（比 clipping 更激進、對極端比率反轉梯度）與隨時程調整的更新/熵退火排程，有效平衡探索與利用。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>LPG 路線難取得強（理論）穩健性保證，不利可靠部署；LPO 路線 meta-learn 的空間受限較多、表達力可能較弱。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 <strong>D 類（meta-learning / 演化 RL）</strong> 重要的「表達力 × meta-最佳化方法」對照研究：核心洞見是**「想發現非短視的動態演算法，meta-最佳化方法（ES vs meta-gradient）比參數化本身更關鍵」**。</li>
+<li>最值得記：<strong>壽命條件化 <code>n/N</code></strong>、<strong>ES 才能學到動態目標</strong>、<strong>antithetic task sampling</strong>、<strong>樂觀→悲觀的時間排程</strong>。</li>
+<li>與 <a class="paper-reference" href="2101.03958_Evolving_RL_Algorithms.%E6%91%98%E8%A6%81.html">2101.03958</a>（演化符號損失計算圖）對照：本文不演化符號圖，而是<strong>為既有 neural meta-RL 損失（LPG/LPO）加時間輸入並改用 ES</strong>；未來方向是再加 optimizer 統計、架構、任務資訊，最終走向純 in-context 的黑箱 meta-learning。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2402.05828_Temporally_Aware_RL_Algorithms.zh-TW.html"><code>../translate/2402.05828_Temporally_Aware_RL_Algorithms.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

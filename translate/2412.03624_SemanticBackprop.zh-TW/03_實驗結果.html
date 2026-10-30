@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗結果 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2412.03624_SemanticBackprop.zh-TW.html">回 2412.03624_SemanticBackprop.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-實驗結果">5. 實驗結果</h2>
+<p>在 BBH、GSM8K（對比 TextGrad、OptoPrime、COPRO）、BigCodeBench（BCB）、LIAR（消融與對比 ProTeGi）上評估。所有實驗中<strong>前向計算次數遠多於反向與優化器呼叫</strong>，故基於成本考量：<strong>前向用便宜的 gpt-4o-mini、反向計算與參數更新用較貴的 gpt-4-turbo</strong>（gpt-4o-mini 便宜 50 倍以上）。</p>
+<h3 id="51-通用問答">5.1 通用問答</h3>
+<p>不對系統提供任何任務先驗（例如不告訴系統「True」該表示成「1」還是「True」）。計算圖含七個變數、三個可優化參數，初始化跨任務相同且刻意通用（前兩個 θ 初始化為「Work out an intermediate step that helps solve the problem」，最後一個為「Solve the problem」）。<strong>基線</strong>：TextGrad（三資料集）、OptoPrime（GSM8K、BBH），皆用官方實作並做微調以去除任務特定假設；另引用 Cheng et al. 報告的 OptoPrime†、COPRO† 結果（該處基線改用更貴的 gpt-4-turbo 家族模型）。設定：各 （子）任務套用四次優化迭代（BCB 為 12 次）。</p>
+<p><strong>Table 1（測試集平均準確率，%）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>GSM8K</th>
+<th>BBH NLP</th>
+<th>BBH Algorithmic</th>
+<th>BCB</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Semantic Gradient Descent（本法）</strong></td>
+<td><strong>93.2</strong></td>
+<td><strong>82.5</strong></td>
+<td><strong>85.6</strong></td>
+<td><strong>27.8</strong></td>
+</tr>
+<tr>
+<td>TextGrad</td>
+<td>78.2</td>
+<td>48.7</td>
+<td>66.9</td>
+<td>27.6</td>
+</tr>
+<tr>
+<td>OptoPrime</td>
+<td>83.9</td>
+<td>42.3</td>
+<td>50.4</td>
+<td>–</td>
+</tr>
+<tr>
+<td>OptoPrime†（引用值，用更貴模型）</td>
+<td>–</td>
+<td>75.8</td>
+<td>80.6</td>
+<td>–</td>
+</tr>
+<tr>
+<td>COPRO†（引用值，用更貴模型）</td>
+<td>–</td>
+<td>73.9</td>
+<td>70.0</td>
+<td>–</td>
+</tr>
+</tbody>
+</table>
+<p>本法在 BCB 上與 TextGrad 約略持平、其餘皆最佳；即使 OptoPrime† 與 COPRO† 獨佔使用更昂貴模型，本法在 BBH 上仍明顯勝出。</p>
+<h3 id="52-特化初始化實驗與消融研究">5.2 特化初始化實驗與消融研究</h3>
+<p>在更貼近真實用法的情境下消融：初始圖的變數高度特化（各組件負責細粒度功能）。<strong>LIAR 任務</strong>：判斷政治陳述是否為謊言。每筆樣本有五個屬性（陳述、政黨、職稱、州、來源），自然分解為「各組件分析一個屬性、再合併」的代理系統（13 個變數、6 個可優化參數：5 個分別分析屬性、1 個綜合下最終答案）。在 50 筆隨機樣本上優化（同時作為查詢分佈 D 與驗證集），各變體跑 8 次迭代、5 個隨機種子。</p>
+<p>比較四個變體：(1) 去梯度（不把回饋餵入更新函數）；(2) 只優化單一參數（六個各跑一次取平均）；(3) 去鄰居條件（即 Eq. 3，在本框架內模擬 TextGrad）；(4) 去 update gate。</p>
+<p><strong>Table 2（LIAR 分類準確率，%）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>準確率</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Semantic Gradient Descent（本法）</strong></td>
+<td><strong>71.2 ± 3.2</strong></td>
+</tr>
+<tr>
+<td>No Gradient（去梯度）</td>
+<td>66.0 ± 2.8</td>
+</tr>
+<tr>
+<td>One Instruction（單一參數）</td>
+<td>67.7</td>
+</tr>
+<tr>
+<td>Gradient without Neighborhood（去鄰居，≈TextGrad）</td>
+<td>63.2 ± 4.1</td>
+</tr>
+<tr>
+<td>No Validation（去 update gate）</td>
+<td>49.2 ± 5.0</td>
+</tr>
+</tbody>
+</table>
+<p>移除任一組件都使表現顯著下降，支持本法的<strong>簡約性（minimalism）</strong>——每個組件都必要；其中<strong>去掉 update gate（No Validation）掉幅最大</strong>（暴跌至 49.2%）。本法在 best-of-N 指標上也勝過其 One Instruction 變體。</p>
+<p><strong>附錄補充</strong>：(A.1) 改用更大圖（含 5 個可優化參數的 2x2x1 網與鏈狀），GSM8K 分別達 88.3%、88.4%，雖低於原架構的 93.2% 但仍勝 TextGrad 與 OptoPrime。(A.2) 以 Llama3.1-8B-Instruct 為前向引擎：GSM8K 78.77%（模型單獨 77.41%）、BBH 55.3%（單獨 51%），顯示方法效力受底層模型制約、但仍帶來提升。(B.3) 納入鄰居資訊對 token 用量影響甚微。(C.3) 手檢 LIAR 梯度可見：「一次生成所有梯度」使某鄰居指出的事實錯誤能被用於生成其他鄰居的回饋，而 no-sibling 設定下則無此資訊流通。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>本文以<strong>語意梯度與語意反向傳播</strong>處理語言型代理系統的優化：透過納入<strong>鄰居條件（neighborhood conditioning）<strong>來計算方向資訊，廣義化了 RMAD 與 TextGrad 等既有 credit assignment 方法，並據此提出</strong>語意梯度下降</strong>有效求解 GASO。結果顯示語意梯度能顯著減少優化代理系統所需的人工，為 AI 方案的可擴展性鋪路。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2412.03624_SemanticBackprop.%E6%91%98%E8%A6%81.html"><code>../summarize/2412.03624_SemanticBackprop.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《為多階段語言模型程式優化指令與示範（Optimizing Instructions and Demonstrations for Multi-Stage Language Model Programs）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Krista Opsahl-Ong, Michael J Ryan, Josh Purtell, David Broman, Christopher Potts, Matei Zaharia, Omar Khattab（Stanford / Basis / KTH / UC Berkeley；EMNLP 2024）</p><p>日期：2024-06</p><p>arXiv：2406.11695</p><p><a href="https://arxiv.org/abs/2406.11695" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="為多階段語言模型程式優化指令與示範mipro重點摘要">《為多階段語言模型程式優化指令與示範（MIPRO）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>MIPRO（Multi-prompt Instruction PRoposal Optimizer）</strong>：在只有「程式＋整體評分指標＋一小組訓練輸入」的弱假設下（無模組級標籤、無梯度、無 log-prob），把「多階段 LM program 的 prompt 優化」拆解成兩個子問題——<strong>提案（proposal）</strong>：用「有程式與資料意識」的 proposer LM 生成候選指令、用 bootstrap 生成候選示範；與<strong>信用分配（credit assignment）</strong>：用<strong>貝氏代理模型（Tree-structured Parzen Estimator，TPE）＋隨機 mini-batch 評估</strong>去學各模組「指令＋示範」聯合選擇對任務分數的敏感度——從而<strong>同時聯合優化計算圖上所有模組的指令與 few-shot 示範</strong>；用開源 Llama3-8B 在七個任務中的五個勝過各 baseline，最多提升 13% 準確率。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LM program（把多次模組化 LM 呼叫串成的 pipeline）愈來愈強，但要靠人工 prompt engineering 逐一調校各模組的 prompt。既有 prompt optimizer（APE、OPRO、EvoPrompt）多針對<strong>單一 prompt</strong>、且需要中間步驟的標籤或指標，<strong>無法直接套用到多階段 pipeline</strong>——因為每個模組的呼叫沒有金標籤、沒有中間指標。DSPy（Khattab 2024）能 bootstrap 多階段示範來優化 prompt/權重，但<strong>不能為多 prompt pipeline 調指令</strong>。核心難點有二：(1) <strong>提案難題</strong>——prompt 空間隨模組數爆炸，須高效抽出少量高品質指令；(2) <strong>信用分配難題</strong>——須聯合優化參數化各模組 prompt 的眾多變數，卻只有任務層級（latent）的監督訊號。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>問題形式化</strong>：程式 Φ 有 m 個模組，每模組 prompt 含變數（指令 + K 個示範槽）。目標＝在 trainset 上找一組變數→字串的總指派，最大化整體指標 μ。這是難解問題：字串任意、μ 只在任務層級監督、無梯度/embedding、資料與 LM 呼叫預算都小。通用框架 Algorithm 1：optimizer 具 Initialize/Propose/Update/ExtractOptimizedSets 四方法，迭代式提案—mini-batch 評估—更新內部狀態。</li>
+<li><strong>三種提案策略</strong>：(i) <strong>Bootstrapping Demonstrations</strong>——跑程式收集軌跡，凡整體評分過門檻 λ 的軌跡，其各模組輸入/輸出即當作該模組的候選 few-shot 示範（拒絕取樣）；(ii) <strong>Grounding（接地）</strong>——用零樣本 LM program 產生「資料集摘要 + 程式控制流摘要 + bootstrap 示範 + 歷史 prompt 及分數」餵給 proposer LM，讓它寫出更貼任務的指令；(iii) <strong>Learning to Propose（學習如何提案）</strong>——把提案超參數（溫度、是否用資料集摘要等）參數化，用貝氏模型跨試驗學出最佳提案策略。</li>
+<li><strong>三種信用分配策略</strong>：<strong>greedy（逐模組貪婪）</strong>、<strong>surrogate（貝氏代理，MIPRO 採用）</strong>、<strong>history-based（把歷史指令+分數餵 LM 讓它自行分配，即 OPRO 路線）</strong>。</li>
+<li><strong>MIPRO 本體</strong>：Step1 bootstrap 示範；Step2 用 Grounding 提案指令；Step3 以 TPE 貝氏最佳化，在「離散的候選指令 × 候選示範」組合上搜尋。用 <strong>mini-batch 評估</strong>（非全量）以更快探索/利用；把<strong>信用分配與提案解耦</strong>（proposer 只管提案，代理模型事後做選擇）。TPE 的多變量版本能建模參數選擇間的<strong>聯合貢獻</strong>，故可聯合優化。</li>
+<li><strong>變體</strong>：0-Shot MIPRO（只調指令）、Bayesian Bootstrap（只調示範）、MIPRO++／0-Shot MIPRO++（用貝氏模型 meta-優化「提案超參數」本身，即 Learning to Propose 的落實）。對照基線：Bootstrap Random Search、Module-Level OPRO（把 OPRO 擴到多階段、假設程式分數即各指令的代理）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>主結果（表 2，Llama3-8B 任務模型 / GPT-3.5 proposer，5 次平均）</strong>：MIPRO（指令+示範聯合）在七任務中五項最佳，最多提升 13%。MIPRO 測試分數 vs 未優化 0-shot 基線：ScoNe 79.4 vs 69.1、HotPotQA 46.4 vs 36.1、HoVer 39.0 vs 25.3、HotPotQA Conditional 23.3 vs 6、Iris 88.6 vs 34.7、Iris-Typo 74.2 vs 26.8、Heart Disease 74.2 vs 26.8。</li>
+<li><strong>五個教訓</strong>：(1) <strong>優化 bootstrap 示範</strong>幾乎總是比只優化指令更有效（Bootstrap RS 在除一例外都勝過最佳純指令優化器）；(2) <strong>MIPRO 聯合優化指令+示範整體最佳</strong>（七取五）；(3) <strong>指令優化在「有條件規則、且無法用少量示範表達」的任務最關鍵</strong>（HotPotQA Conditional、Iris-Typo，需給 seed prompt）；(4) <strong>Grounding 整體有益但因任務而異</strong>（對 HotPotQA/HoVer 必要、對 ScoNe 反而有害 → MIPRO++ 能自動學回這損失）；(5) 三種指令優化器互有勝負，不同預算下可能有不同結論。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>只在<strong>固定預算</strong>下比較，未探極低/極高預算的動態差異。</li>
+<li>proposer LM 與 task LM 皆固定，未測跨模型泛化。</li>
+<li>優化器<strong>難以在無手寫 seed prompt 下自行推斷複雜任務的完整規則</strong>（Grounding 提供的資料/範例仍不足以外推整套規則）。</li>
+<li>benchmark 雖多樣，對更複雜任務/程式仍待擴充。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>接 ai_core §1「系統＝符號神經網路計算圖（多確定性節點＋少數 LLM）」的具體演算法</strong>：MIPRO 正是「當計算圖有多個 LLM 節點、卻只有末端一個整體指標」時，如何做<strong>多節點聯合優化 / 信用分配</strong>的可操作方案。它把難題乾淨地拆成「提案（生候選）＋信用分配（貝氏代理選組合）」，並用 <strong>mini-batch + TPE</strong> 在只有 text-in-text-out、無梯度、小資料/小預算的現實約束下運作——這正是 ai_core「把 LLM 呼叫包成可靠函數」時，優化整條計算圖 prompt 的參考骨架。</li>
+<li><strong>與已入庫者對照</strong>（歸 I 類，DSPy 後續 optimizer）：相對 <strong>DSPy</strong>（只 bootstrap 示範、不調多 prompt 指令）本文補上<strong>指令的聯合優化</strong>；相對 <strong>OPRO</strong>（靠 LLM 讀歷史自行分配信用）本文改用<strong>顯式貝氏代理</strong>放寬其強假設、把信用分配與提案解耦；相對 <strong>TextGrad</strong>（自然語言「梯度」反傳）本文走<strong>無梯度、代理模型 + 貝氏搜尋</strong>路線——三者可並列為「計算圖節點優化」的不同信用分配範式。</li>
+<li><strong>對 ai_core 的具體啟發</strong>：（教訓 1、3） <strong>示範 &gt; 指令</strong> 且「有條件規則的節點才最需要指令優化」——提示在剃除 LLM 依賴時，優先為節點固化「好示範/軌跡」；（教訓 5 + mini-batch） 低預算宜用 minibatch 廣探、高預算宜學提案動態——契合成本梯度思維。最值得記：<strong>「提案 + 信用分配」二分法</strong>、<strong>貝氏代理（TPE）做多變數聯合信用分配</strong>、<strong>Grounding（資料/程式摘要）提升提案品質</strong>。適合做 <strong>多階段 LM pipeline 自動 prompt 優化、DSPy 實務、LLM 計算圖節點聯合調參</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2406.11695_MIPRO.zh-TW.html"><code>../translate/2406.11695_MIPRO.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

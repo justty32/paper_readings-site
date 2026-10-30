@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_結果 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2509.19349_ShinkaEvolve.zh-TW.html">回 2509.19349_ShinkaEvolve.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-結果">4. 結果</h2>
+<h3 id="41-circle-packing圓堆積">4.1 Circle Packing（圓堆積）</h3>
+<p>需在單位正方形內放置 26 個圓，最大化半徑總和，圓不可重疊且須完全在邊界內。ShinkaEvolve 僅用 150 代即超越 AlphaEvolve 的最佳解（AlphaEvolve 需數千次評估），成本約 $160。演化過程顯示三個階段：初始快速改進（發現基本半徑最佳化策略）、持續探索（基於約束的最佳化技術出現）、最終收斂（透過重啟精煉最佳解）。</p>
+<p>演化出的演算法結合三項創新：(1) 以 golden-angle spiral 進行結構化初始化，在角落與邊緣策略性放置圓；(2) 整合 SLSQP 梯度精煉與模擬退火進行全域探索；(3) 智能擾動機制交替局部移動與全域環旋轉以逃脫局部最優。採用自適應溫度排程與重加熱策略防止過早收斂。</p>
+<h3 id="42-aime為數學推理演化-agent-scaffold">4.2 AIME：為數學推理演化 Agent Scaffold</h3>
+<p>在 AIME 2024 的 30 題上使用 gpt-4.1-nano，每題限制最多 10 次 LLM 查詢，演化 75 代。演化出的 scaffold 顯著超越手設計基線（單次查詢 agent 與多數投票）。</p>
+<p>演化出的 agent 實作三階段架構：(1) 三位領域專家（細緻逐步推理者、直覺模式識別者、演算法/電腦科學取向數學家）以溫度 0.7 獨立解題；(2) 批判同儕審查——懷疑論審查者以低溫 0.1 檢驗每個解；(3) 主編以零溫合成最終解。使用 7 次 LLM 呼叫（3 生成 + 3 審查 + 1 合成）。跨年份泛化顯示在 2025 題目上有較大增益（代表對新近挑戰的成功泛化），跨模型轉移實驗驗證了魯棒性。</p>
+<h3 id="43-ale-bench為組合最佳化演化程式">4.3 ALE-Bench：為組合最佳化演化程式</h3>
+<p>在 ALE-Bench LITE 的 10 個競賽程式題上，以 ALE-Agent 最佳解為初始程式，演化 50 代。ShinkaEvolve 平均提升約 2.3%。其中 ahc039（軸對齊多邊形最大化鯖魚數減沙丁魚數）從競賽第 5 名提升至第 2 名，透過快取驗證過程與新增「目標邊緣移動」鄰域運算子達成。但演化出的修改傾向保持與 ALE-Agent 解的演算法接近，暗示對初始解的過度擬合。</p>
+<h3 id="44-llm-訓練為-moe-演化負載平衡損失函數">4.4 LLM 訓練：為 MoE 演化負載平衡損失函數</h3>
+<p>在 556M 參數 MoE（64 專家中 K=8 活躍）上以 2B+ tokens 訓練，僅 30 次迭代。適應度函數最小化最終交叉熵 + 專家負載不平衡（L1 偏差）。最佳解在 2.7B MoE 模型上驗證。</p>
+<p>ShinkaEvolve 發現的新 LBL 在全球批次 LBL 基礎上新增正則化項：
+L_LBL = (1/(N_E*L)) sum sum f_l,i * P_l,i + (0.1/L) sum s(P_l) * sum max(0, tau - f_l,i)</p>
+<p>其中 s(P_l) = 0.5 + (1 - H(P_l)/log N_E) 為歸一化熵補數，tau = 0.064/N_E 為最小使用閾值。此項軟性地影響任何層中分配到的 token 比例低於 tau 的專家，乘法器 s(P_l) 使推力在層路由熵低（路由集中於少數主導專家）時更強。這彌補了全球批次 LBL 的盲點：點積 f*P 看似「平衡」但其實少數專家幾乎未被觸及。七個下游基準一致優於 baseline。</p>
+<h2 id="5-消融與分析">5. 消融與分析</h2>
+<p><strong>父代選擇策略的影響</strong>。加權取樣在所有任務上一致優於隨機搜尋與爬山法。爬山法初期表現強但快速停滯，加權取樣在整個演化過程中維持穩定改進。隨機搜尋收斂最差，凸顯利用適應度父代選擇的重要性。</p>
+<p><strong>LLM 集成與優先排序的影響</strong>。基於 bandit 的 LLM 集成顯著優於單一 LLM 與固定集成。固定集成相較單一 LLM 有中等改善，但自適應 bandit 策略透過動態優先排序對適應度提升貢獻更大的模型來達成最高效能。</p>
+<p><strong>程式碼嵌入拒絕取樣的影響</strong>。基於嵌入的拒絕取樣較無過濾提供實質效能增益，有效防止冗餘突變。額外的 LLM-as-novelty-judge 提供邊際改善，表明嵌入相似度已是新穎性評估的有效代理。</p>
+<h2 id="6-討論">6. 討論</h2>
+<p><strong>摘要</strong>：ShinkaEvolve 透過提升樣本效率與開源可及性，解決了 LLM 驅動科學發現的關鍵限制。在四個領域達成最先進結果。</p>
+<p><strong>限制</strong>：(1) 使用固定配置，探索-利用平衡需手動調整；(2) 任務規範依賴人工定義目標函數與評估；(3) 限於有明確定義數值目標的問題；(4) API 成本可能構成經濟壁壘。</p>
+<p><strong>未來方向</strong>：(1) 透過 LLM 任務生成實現自動化任務規範以達成更大自主性；(2) 邁向真正的開放式——系統自訂目標；(3) 自我參照精煉與線上 meta-learning 以實現持續改進的發現。</p>
+<p><strong>更廣泛影響與倫理考量</strong>：ShinkaEvolve 的開源釋出進一步民主化先進演化式最佳化，讓先前無法使用專有系統的研究者與實務者得以接觸。卓越的樣本效率降低了資源受限環境的計算壁壘。但大規模 LLM 使用的 API 成本可能創造經濟壁壘，削弱民主化目標。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>AutoSOUP：面向安全性的單元證明生成，用於元件級記憶體安全驗證（3/3） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.10712_AutoSOUP.zh-TW.html">回 2605.10712_AutoSOUP.zh-TW 目錄</a>　<a href="02_%E5%95%8F%E9%A1%8C%E9%99%B3%E8%BF%B0.html">← 上一節</a>　<a href="04_%E8%A9%95%E4%BC%B0.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-autosoup-設計與實作">4. AutoSOUP 設計與實作</h2>
+<h3 id="41-核心概念">4.1 核心概念</h3>
+<h4 id="411-記憶體安全導向的單元證明">4.1.1 記憶體安全導向的單元證明</h4>
+<p>有別於忠實度導向的單元證明（選擇 V 以逼近程式行為），安全導向的單元證明選擇 V 以保留證明或駁斥 Q 所需的行為（在資源預算 R 內）。這給出每個選擇的安全導向解釋：</p>
+<ul>
+<li><strong>Sc</strong> 應包含貢獻可檢查記憶體安全行為的程式碼。</li>
+<li><strong>B</strong> 應足夠大以覆蓋或暴露屬性相關的迴圈行為。</li>
+<li><strong>E</strong> 應暴露可能違反、同時排除不可行違反。</li>
+</ul>
+<p>三個技術實現此解釋：</p>
+<ol>
+<li>
+<p><strong>資源感知範圍擴張</strong>：將範圍選擇視為資源感知覆蓋率問題，而非完整語意建模問題。以檔案為單位逐步擴張 Sc，用簡單模型代理範圍外的函式。從小型可控範圍開始，只在需要時擴張。</p>
+</li>
+<li>
+<p><strong>屬性引導迴圈界限精煉</strong>：將迴圈界限選擇視為屬性引導的精煉問題。直覺是多數記憶體安全屬性取決於局部程式狀態，且最直接受鄰近迴圈影響。因此只對影響檢測屬性可達性或違反的迴圈精煉 B。</p>
+</li>
+<li>
+<p><strong>上下文感知環境精煉</strong>：從寬鬆模型（暴露可能違反）開始→推論抑制不可行違反的前提條件→在原始程式的呼叫上下文中驗證這些前提條件。被呼叫上下文滿足的前提條件成為 E 中的顯式假設；被違反的前提條件標識可行記憶體安全錯誤。</p>
+</li>
+</ol>
+<h4 id="412-以-llm-as-function-call-自動化安全導向單元證明">4.1.2 以 LLM-as-function-call 自動化安全導向單元證明</h4>
+<p>自動化需要兩個能力：專案特定的推理（建置配置、本機程式碼慣例）與可審計的驗證選擇。程式分析可強制語法與語意約束，但難以處理建置配置與可擴展語意推論。LLM 可處理專案特定推理，但無約束生成不適合——無效的範圍/界限/環境假設會使生成保證失效。</p>
+<p>AutoSOUP 以 LLM-as-function-call 架構平衡可靠性與泛化性：確定性演算法控制證明建構工作流程並定義每步驟目標；當步驟需要語意理解或專案特定調適時，AutoSOUP 將綁定任務委派給具備工具的 LLM agent；程式分析模組隨後在納入單元證明前驗證返回的產物。</p>
+<h3 id="42-資源感知範圍擴張">4.2 資源感知範圍擴張</h3>
+<p>以檔案為擴張單位（相關函式常共置一檔）。三步驟：</p>
+<ol>
+<li><strong>初始化</strong>：Sc 初始化為包含 Ce 的檔案，所有迴圈界限設為 1，建構型別導向的輸入模型。LLM agent 合成輸入模型並回復建置配置。</li>
+<li><strong>建模外部呼叫</strong>：識別跨越當前範圍邊界的呼叫邊，用簡單型別模型取代其目標。LLM agent 合成並整合這些模型。</li>
+<li><strong>擴張範圍</strong>：若驗證仍在資源預算內，透過加入定義先前建模被呼叫者的檔案來擴張 Sc。</li>
+</ol>
+<h3 id="43-屬性引導迴圈與模型精煉演算法-1">4.3 屬性引導迴圈與模型精煉（演算法 1）</h3>
+<p>使用檢測屬性 Q 作為決定哪些精煉重要的預言機（oracle）。兩步驟：</p>
+<p><strong>步驟 1：覆蓋屬性相關程式碼</strong>。覆蓋可被三個因素阻擋：不足的迴圈界限、缺失的編譯配置、或回傳值模型未捕捉的外部呼叫副作用。AutoSOUP 以覆蓋率模式執行 BMC，識別未覆蓋屬性區塊，使用 LLM agent 分類阻擋因素，然後應用對應的局部修復（增加相關迴圈界限、調整配置、或精煉外部模型）。</p>
+<p><strong>步驟 2：暴露迴圈相關屬性違反</strong>。AutoSOUP 檢查覆蓋報告中當前界限不足以完全展開的迴圈。對每個此類迴圈，LLM agent 判斷該迴圈是否可影響鄰近記憶體安全屬性的違反，若是，估算可能暴露違反的最小界限。</p>
+<h3 id="44-上下文感知環境模型精煉演算法-2">4.4 上下文感知環境模型精煉（演算法 2）</h3>
+<p>寬鬆模型下發現的違反可能在更廣泛系統 S 中不可行。此技術將不可行違反（由過度寬鬆環境假設造成）與真實記憶體安全錯誤分開。兩步驟：</p>
+<p><strong>步驟 1：推論近似 weakest precondition</strong>。AutoSOUP 解析驗證報告，提取每個被違反屬性 q、位置 loc(q) 及其反例見證 w(q)。LLM agent 推論一個保持 loc(q) 被覆蓋但抑制 q 違反的前提條件。</p>
+<p><strong>步驟 2：針對呼叫上下文驗證與精煉</strong>。AutoSOUP 識別 Ce 的呼叫點與被建模函式的實作。對每個上下文，LLM agent 識別到達呼叫點的路徑約束，檢查這些約束是否蘊含推論的前提條件。若呼叫路徑違反前提條件但仍滿足屬性→弱化前提條件；若前提條件在所有上下文成立→成為 E 中的顯式假設；若呼叫路徑違反前提條件且觸發 q→報告為可行記憶體安全錯誤。</p>
+<h3 id="45-保證與局限">4.5 保證與局限</h3>
+<p><strong>保證</strong>：AutoSOUP 生成的單元證明提供由 BMC 支持的<strong>有界形式記憶體安全保證</strong>——在編碼的範圍、迴圈界限與假設範圍內，無任何從元件入口點的執行違反已驗證記憶體安全屬性。此與專家撰寫單元證明提供的保證形式相同。</p>
+<h2 id="局限1-使用-llm-進行專案特定推理透過確定性工作流程發出綁定任務並驗證輸出來減少不可靠輸出隨著程式分析改進這些模組可被確定性技術取代2-依賴靜態分析回復呼叫圖間接呼叫周圍的不精確可能導致遺漏相關呼叫邊3-以檔案粒度擴張範圍大型檔案可能超出-r-而阻止探索更廣範圍"><strong>局限</strong>：(1) 使用 LLM 進行專案特定推理——透過確定性工作流程發出綁定任務並驗證輸出來減少不可靠輸出；隨著程式分析改進，這些模組可被確定性技術取代。(2) 依賴靜態分析回復呼叫圖——間接呼叫周圍的不精確可能導致遺漏相關呼叫邊。(3) 以檔案粒度擴張範圍——大型檔案可能超出 R 而阻止探索更廣範圍。</h2>
+<h2 id="title-autosoup面向安全性的單元證明生成用於元件級記憶體安全驗證part-33評估至結論-source-httpsarxivorgabs260510712-arxiv_id-260510712-date-2026-05">title: AutoSOUP：面向安全性的單元證明生成，用於元件級記憶體安全驗證（part 3/3：評估至結論）
+source: https://arxiv.org/abs/2605.10712
+arxiv_id: 2605.10712
+date: 2026-05</h2>
+<h1 id="autosoup面向安全性的單元證明生成用於元件級記憶體安全驗證33">AutoSOUP：面向安全性的單元證明生成，用於元件級記憶體安全驗證（3/3）</h1>
+<h3 id="46-實作">4.6 實作</h3>
+<ul>
+<li>15,463 行 Python + 1,230 行 prompt。</li>
+<li><strong>BMC 後端</strong>：CBMC（ANSI-C Bounded Model Checker）。</li>
+<li><strong>確定性程式分析模組</strong>：CBMC goto-instrument（呼叫圖/符號提取）、libclang（函式指標呼叫定位）、cscope（專案級程式碼索引與呼叫關係）。</li>
+<li><strong>LLM 驅動模組</strong>：OpenAI Python SDK + LiteLLM（支援 GPT 家族與開源/自託管模型）。Agent 配備三個工具：(i) 容器化終端（檢查原始碼/建置日誌/驗證報告）、(ii) cscope 導航（程式碼搜尋/定義查詢/呼叫圖）、(iii) 單元證明驗證工具（確認證明編譯、呼叫目標入口點、滿足精煉任務、不降低覆蓋率）。</li>
+</ul>
+<hr />
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

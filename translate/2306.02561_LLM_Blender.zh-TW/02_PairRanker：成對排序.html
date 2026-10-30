@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_PairRanker：成對排序 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2306.02561_LLM_Blender.zh-TW.html">回 2306.02561_LLM_Blender.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E8%A9%95%E6%B8%AC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-pairranker成對排序">3 PairRanker：成對排序</h2>
+<h3 id="31-基線方法">3.1 基線方法</h3>
+<p>既有的重排序方法主要聚焦於為每個候選 yᵢ∈𝕐 獨立計算分數 sᵢ=fφ(x,yᵢ)，其中 sᵢ 僅由 yᵢ 決定（GPT-3.5 指令微調中的獎勵模型也屬此類）：</p>
+<ul>
+<li><strong>MLM-Scoring</strong>：透過逐一遮蔽詞元、用 masked LM（如 BERT）計算被遮蔽詞元的對數似然，以偽對數似然評估候選品質，適用於機器翻譯、語音辨識等 NLG 任務的重排序。</li>
+<li><strong>SimCLS</strong>：以同一編碼器 H 分別編碼輸入 x 與各候選 yᵢ，取 H(x)、H(yᵢ) 的餘弦相似度作為預測分數；訓練時用邊際排序損失（marginal ranking loss）優化 H。</li>
+<li><strong>SummaReranker</strong>：將輸入 x 與候選 yᵢ 串接，用 cross-attention 編碼器學習排序，訓練時用二元交叉熵（BCE）損失區分最佳候選與其餘候選。</li>
+</ul>
+<p><strong>局限</strong>：儘管訓練時使用對比損失，這些方法在推論時仍依賴逐一打分，編碼器從未接觸過候選配對做直接比較學習。作者主張，對於集成 LLM 與指令跟隨任務而言，這種逐點（pointwise）排序方法可能不夠——一是熱門且具競爭力的 LLM 輸出品質普遍很高，二是指令任務的回應可能相當開放式（不像摘要任務）。因此單獨檢視個別候選可能無法產生可靠分數，這個問題在較短的回應上更明顯（序列可能僅差幾個詞，但在有幫助性、有害性、公平性上差異巨大）。</p>
+<h3 id="32-成對比較">3.2 成對比較</h3>
+<p>為解決逐點排序的局限，作者訓練一個排序器 f（參數 φ），透過將輸入文字與一對候選一起編碼來做比較。給定候選對 yᵢ,yⱼ，取得配對特定分數 s^i_(i,j) 與 s^j_(i,j)，模型認為 yᵢ 優於 yⱼ 的信心定義為 sᵢⱼ=s^i_(i,j)-s^j_(i,j)，可用所有由 𝕐 誘導出的配對分數推得最終排序。訓練時將輸入 x 與兩個候選串接成序列 [x;yᵢ;yⱼ]，餵入 cross-attention Transformer 取得特徵 fφ([x;yᵢ;yⱼ]) 來建模 sᵢⱼ。</p>
+<p>作者假設多個代理品質函數 Q（如 BERTScore、BARTScore 等）需要同時優化，將學習問題視為多任務分類問題，損失為 ℒ_Q=-zᵢlogσ(s^i_(i,j))-zⱼlogσ(s^j_(i,j))，其中 (zᵢ,zⱼ) 依 Q(yᵢ,y) 與 Q(yⱼ,y) 的大小關係取 (1,0) 或 (0,1)；對多個 Q 取平均作為最終多目標損失。</p>
+<h3 id="33-pairranker-架構">3.3 PairRanker 架構</h3>
+<p><strong>編碼</strong>：用 Transformer 層編碼輸入與一對候選，讓注意力機制在輸入脈絡下捕捉候選間的差異；用特殊分隔符 <code>&lt;source&gt;</code>、<code>&lt;candidate1&gt;</code>、<code>&lt;candidate2&gt;</code> 依序串接三段，形成 &quot;<code>&lt;s&gt;&lt;source&gt; x &lt;/s&gt; &lt;candidate1&gt; yᵢ &lt;/s&gt; &lt;candidate2&gt; yⱼ &lt;/s&gt;</code>&quot; 形式的輸入序列，這些特殊詞元的嵌入分別作為 x、yᵢ、yⱼ 的表徵。</p>
+<p><strong>訓練</strong>：將 x、yᵢ、yⱼ 的表徵分別串接後，通過一個單頭多層感知器（MLP），最後一層維度等於欲優化的 Q 函數數量，每個維度代表一個 Q 函數的分數，取平均得最終分數 s^i_(i,j) 或 s^j_(i,j)。由於配對組合數為 O(N²)，訓練階段採用有效的次抽樣策略：隨機從候選池 𝕐² 選取部分組合（而非全部 N(N-1)/2 對），並將真值 y 混入候選池以與其他候選比較；實務上發現每個輸入使用 5 對即可獲得不錯結果。由於位置編碼的緣故，配對中候選的順序會影響結果（(x,yᵢ,yⱼ) 與 (x,yⱼ,yᵢ) 的比較結果可能不一致），因此訓練時打亂配對內候選順序，讓模型學會自我一致。</p>
+<p><strong>推論</strong>：對每對候選 (yᵢ,yⱼ)∈𝕐² 取得分數 sᵢⱼ，經 N(N-1) 次迭代後得到矩陣 M（Mᵢʲ=sᵢⱼ 代表 yᵢ 優於 yⱼ 的信心）。為根據 M 判定最佳候選，作者提出三種聚合函數：</p>
+<ul>
+<li><strong>MaxLogits</strong>：candidate yᵢ 的分數為 sᵢ=Σ(Mᵢ*-M*ᵢ)，計算 yᵢ 優於所有其他候選的整體信心；</li>
+<li><strong>MaxWins</strong>：計算 yᵢ 在與其他候選比較中的勝場數；</li>
+<li>上述兩者皆需 N 個候選的 O(N²) 次迭代，計算負擔較大；作者因此提出更高效的聚合法——用單輪 bubble sort 搭配成對比較選出最佳候選：先打亂 𝕐 中候選順序得到預設排列，初始化最佳候選索引 k=1，逐一比較更新 k（若 Mₖⁱ-Mᵢᵏ&gt;0 則保留 k，否則換成 i），經 N-1 次比較後選出 yₖ 為最佳候選，將推論時間複雜度從 O(N²) 降到 O(N)，與既有逐點方法相當。</li>
+</ul>
+<p>實驗（詳見附錄）顯示 MaxLogits 效果最佳，因此作為 PairRanker 的預設聚合器。</p>
+<h2 id="4-genfuser生成式融合">4 GenFuser：生成式融合</h2>
+<p>PairRanker 的效果受候選池 𝕐 本身選項品質所限。作者假設透過融合多個排名靠前的候選可突破此限制——這些頂尖候選往往展現互補的優劣勢，結合它們的優點、緩解各自缺點，理應能生成優於既有候選的回應。目標是設計一個生成模型，輸入 x 與排名前 K 的候選 {y₁,...,y_K}⊂𝕐（如 K=3），產生改進後的輸出 ŷ 作為最終回應。</p>
+<p>為此，作者提出 <strong>GenFuser</strong>，一個 seq2seq 方法，依輸入指令融合一組候選、生成強化後的輸出：具體而言，用分隔詞元（如 <code>&lt;extra_id_i&gt;</code>）依序串接輸入與 K 個候選，微調一個類 T5 模型學習生成 y。實務上採用 <strong>Flan-T5-XL</strong>（30 億參數），因其效能優越且相對輕巧。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

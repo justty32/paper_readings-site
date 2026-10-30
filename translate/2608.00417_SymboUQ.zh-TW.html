@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>SymboUQ: Symbolic Uncertainty Quantification for Spatial Reasoning in LLMs 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Dahai Yu、Lin Jiang、Rongchao Xu、Guang Wang</p><p>日期：2026-08-01（v1，cs.AI）</p><p>arXiv：2608.00417</p><p><a href="https://arxiv.org/abs/2608.00417" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="symbouq-symbolic-uncertainty-quantification-for-spatial-reasoning-in-llms">SymboUQ: Symbolic Uncertainty Quantification for Spatial Reasoning in LLMs</h1>
+<h2 id="摘要與問題">摘要與問題</h2>
+<p>大型語言模型可以寫出流暢的空間推理過程，但中間關係未必足以推出結論。token 機率只能表示模型對字串的偏好，不能直接回答空間敘述在語意上是否一致。形式驗證器能提供更強的證據，適用範圍卻不完整：一個句子可以成功解析成符號，執行後仍可能因前提不足、實體沒有接地或先前脈絡已矛盾，而無法判定蘊含或衝突。</p>
+<p>SymboUQ 因此分開兩件事。可符號化性指一項主張能否翻成驗證器的形式語言；語意確定性則指執行後能否得到明確的蘊含或矛盾，而不是未知或不可評估。前者只說驗證器讀得懂，後者才說驗證器能提供多少有效證據。框架利用單一推理軌跡，結合符號約束、模型表示與解碼訊號，估計最終答案可靠度。</p>
+<h2 id="layout-auditor從主張到約束">Layout Auditor：從主張到約束</h2>
+<p>Layout Auditor 把場景描述與依序生成的推理主張編譯成空間約束程式。可辨識的關係表示為 <code>z=(u,rho,v)</code>，涵蓋方向、包含、排斥、距離、拓撲、位置與路徑端點；不同表面說法會正規化到標準關係，解析器也記錄信心與實體是否已在場景中接地。</p>
+<p>方向關係轉成座標差分約束，再檢查能否形成一致布局；關係求解器則套用反向、對稱、傳遞、不相容、包含與函數式位置規則。每項主張依當下脈絡得到蘊含、矛盾或未知三種語意判定。若先前脈絡已不可行，則另標為不可評估；這不是第四種語意判定，也不應被誤算成正面證據。</p>
+<p>Auditor 同時維護可信脈絡與假設脈絡。可信脈絡只含原始場景與已由可信重播判為蘊含的主張；假設脈絡還納入先前所有可符號化主張，以檢查推理對自身承諾是否一致。主要實作在假設脈絡下執行，能暴露自我矛盾，但所得判定可能依賴尚未證實的前提。因此「局部蘊含」不等於整條推理或最終答案正確。</p>
+<h2 id="確定性剖面與可靠度組合">確定性剖面與可靠度組合</h2>
+<p>確定性剖面是無標籤的執行覆蓋描述。它分別統計可符號化主張比例、已解析主張中的未知比例、仍可評估且得到明確判定的比例，以及兩者合成的驗證器適用度。沒有解析到的主張不會被當成一致；因前綴矛盾而不可評估的主張留在分母內，會降低確定性。這讓「解析成功但語意未解」與「根本不在符號介面內」成為不同狀態。</p>
+<p>DARC 先建立候選證據庫，包括約束式分數、凍結模型表示上的探針與解碼式分數。它在目標領域的小型標註驗證集上篩除接近隨機的候選、統一分數方向，再學習分數與可符號化性、有效適用度之間的交互作用。原始分數仍被保留，所以確定性不是硬閘門，而是調整各證據來源的邊際貢獻。生成模型與基礎估計器在目標適應時都不更新。</p>
+<h2 id="實驗作者自報">實驗（作者自報）</h2>
+<p>作者以多個空間推理資料集與四種凍結骨幹評估軌跡排序與機率誤差。相較各設定中最強的外部基線，SymboUQ 平均 AUROC 約提高 8％，類別平衡 Brier loss 約降低 7％。相較只堆疊分數的版本，完整方法的 AUROC 優勢落在 0.032 至 0.052；把確定性資訊在軌跡間打亂後，增益很小，支持效果來自與當下軌跡對應的適用度，而不是多放一組一般特徵。</p>
+<p>Auditor 的局部判定不是完美真值。作者自報蘊含判定 precision 為 0.81 至 0.87，矛盾判定 precision 為 0.64 至 0.74。分析顯示約束分數的辨別力隨語意確定性增加較為一致，與單純解析覆蓋率的關係則較弱，呼應方法最核心的區分。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>SymboUQ 不把「能解析」誤當成「已驗證」。Layout Auditor 提供逐步的局部語意證據，確定性剖面描述這些證據實際涵蓋多少推理，DARC 再依適用度組合符號、表示與解碼訊號。結果支持語意確定性比解析率更能描述驗證器何時有用。</p>
+<p>附錄明列數項限制。方法受 Auditor 的關係本體與解析器約束；不支援的表達沒有符號證據，錯誤接地也會產生錯誤局部判定。假設脈絡能找自我矛盾，卻讓部分判定依賴未驗證前提，而確定性量的是可執行覆蓋，不是接地證明。DARC 需要目標領域的標註驗證資料，因此不是零樣本方法。效率結果也排除生成與共用表示抽取，不能直接當作完整端到端成本。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2608.00417_SymboUQ.%E6%91%98%E8%A6%81.html"><code>../summarize/2608.00417_SymboUQ.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

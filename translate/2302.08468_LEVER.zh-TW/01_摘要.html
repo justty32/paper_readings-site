@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2302.08468_LEVER.zh-TW.html">回 2302.08468_LEVER.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97%E8%A8%AD%E5%AE%9A.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>以程式碼訓練的大型語言模型（code LLM）大幅推進了「語言到程式碼（language-to-code）」生成。此領域的頂尖做法會把 LLM 解碼與「用測試案例或啟發式（heuristic）依執行結果做的樣本剪枝與重排」結合。然而，許多真實語言到程式碼應用<strong>難以取得測試案例</strong>，而啟發式又無法充分捕捉執行結果的語義特徵——如資料型別、值域，這些常正是程式是否正確的指標。本文提出 <strong>LEVER</strong>，一種簡單方法：透過<strong>學習用執行結果驗證所生成的程式</strong>來提升語言到程式碼生成。具體而言，我們訓練驗證器（verifier），依「自然語言輸入、程式本身及其執行結果」判斷取樣自 LLM 的程式是否正確；再把<strong>驗證分數與 LLM 生成機率結合、並對執行結果相同的程式做邊際化</strong>來重排候選。在表格 QA、數學 QA、基礎 Python 三領域共四個資料集上，LEVER 一致優於基底 code LLM（用 code-davinci-002 提升 4.6%～10.9%），並在四者上全部達成新的 SOTA。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>把自然語言映射到可執行程式碼，是資料庫介面、機器人控制、虛擬助手等眾多 AI 應用的基石。近期 LLM（尤其是以程式碼預訓練的 code LLM）配合上下文少樣本學習（in-context few-shot learning）在此類任務展現潛力，但表現仍遠非完美。考量微調（finetune）這類模型的計算成本，<strong>在不改動參數的前提下改進它們</strong>格外有吸引力。</p>
+<p>關鍵觀察：LLM 在少樣本設定下雖精度不足，但<strong>抽取足夠多樣本時往往能產生正確輸出</strong>。先前工作顯示，大規模取樣下的多數投票（majority voting）與測試案例過濾能顯著提升表現；Shen et al.(2021) 與 Cobbe et al.(2021) 進一步證明——<strong>訓練一個驗證器、用驗證分數重排候選解</strong>對數學應用題有效。相較於只依賴執行一致性與錯誤剪枝的做法，訓練式驗證器能利用模型解裡豐富的語義特徵（資料型別、值域、變數屬性），這些是程式正確性的強指標。既有驗證器工作多聚焦於驗證「自然語言解」，自然的問題是：同一手法能否用於「程式解」。</p>
+<p>本文提出 <strong>LEVER</strong>（learning to verify）：訓練一個驗證器，依「自然語言描述、程式表面形式、其執行結果」的聯合表徵去分辨並拒絕錯誤程式；再把驗證機率與 LLM 生成機率結合、對執行結果相同的程式邊際化，用這個彙整機率當重排分數，輸出「執行到最可能結果」的程式。在四個橫跨 text-to-SQL 語義剖析、table QA、數學推理、基礎 Python 的基準、搭配三種 code LLM 的實驗顯示：LEVER 一致提升執行準確率；搭 code-davinci-002 較「用執行錯誤剪枝」的強基線提升 4.6%～10.9%，且<strong>不使用任務專屬的模型架構或提示法</strong>即在四基準全部刷新 SOTA。消融顯示執行結果對驗證至關重要，且 LEVER 在低資源與弱監督（weakly-supervised）設定下也有可觀增益。（註：此處「驗證」指評估程式功能是否符合程式設計者意圖，非程式語言中的形式驗證。程式碼開源：github.com/niansong1996/lever）</p>
+<h2 id="2-方法">2. 方法</h2>
+<h3 id="21-用-code-llm-做語言到程式碼生成">2.1 用 code LLM 做語言到程式碼生成</h3>
+<p>任務輸入通常含自然語言（NL）描述、可選的程式脈絡（如資料存放、斷言），記為 x。生成模型 <code>P(y|x)</code> 產生程式 y，經執行器 <code>E(·)</code> 得結果 <code>E(y)</code>。少樣本學習時，生成常額外條件於固定的 m 個示例 <code>{(xᵢ,yᵢ)}</code>，故少樣本語言到程式碼生成可寫成 <code>P_LM(y|x)=P(y|prompt(x,{(xᵢ,yᵢ)}))</code>（式 1）。一般用貪婪搜尋（greedy search）找生成機率（近似）最高的程式。</p>
+<h3 id="22-程式候選的重排">2.2 程式候選的重排</h3>
+<p>核心動機：從 <code>P_LM(y|x)</code> 取夠大的樣本集常已包含正確程式，故重排候選有望大幅改善結果。判別式重排（discriminative reranking）的想法是學一個評分函式 <code>R(x,ŷ)</code> 衡量 ŷ 有多可能是 x 的最佳輸出，重排器輸出候選集 S 中分數最高者（式 2）。</p>
+<p><strong>由 code LLM 取樣程式</strong>：給定 x，不做貪婪搜尋，而用**溫度取樣（temperature sampling）**取 k 個程式，去重成 n 個唯一候選 S（n≤k）。選取樣而非集束搜尋（beam search）有二因：1) 近期工作指出集束搜尋在程式生成常因退化程式而更差；2) 集束搜尋對所測 LLM（如 Codex）並非皆可用或有效率地實作。</p>
+<p><strong>用執行做驗證</strong>：把問題描述 x、候選程式 ŷ、其執行結果 E(ŷ) 的簡單串接當重排器輸入。仿 Cobbe et al.(2021)/Li et al.(2022b)，把判別式重排器參數化為<strong>驗證（二元分類）模型</strong> <code>P_θ(v|x,ŷ,E(ŷ))</code>，v∈{0,1}；可用任何二元分類架構實作（文中用 T5 與 RoBERTa）。給定 x 與候選 ŷ，重排機率取「生成」與「通過驗證」的聯合機率：</p>
+<p><code>P_R(ŷ,v=1|x) = P_LM(ŷ|x) · P_θ(v=1|x,ŷ,E(ŷ))</code>（式 3）</p>
+<p><strong>執行結果聚合（aggregation）</strong>：語義相同的程式可有不同表面形式，故進一步把 S 中「執行到相同結果」的程式其重排機率相加，鬆綁對表面形式的依賴、聚焦於執行結果。最終評分 <code>R(x,ŷ)=Σ_{y∈S, E(y)=E(ŷ)} P_R(y,v=1|x)</code>。若多個程式共享同一最高機率的執行結果，隨機打破平手。</p>
+<h3 id="23-學習驗證器">2.3 學習驗證器</h3>
+<p><strong>訓練資料建立</strong>：語言到程式碼資料集每例通常是三元組 (x, y*, z*)，z*=E(y*) 為標準執行結果、y* 為標準程式。有些資料集只能直接取得最終結果、只提供 z* 而無 y*（即<strong>弱監督</strong>設定）。為蒐集訓練資料，對訓練集每個 x 先取樣 k 個程式再去重成 n 個候選；對每個候選 ŷ，用「執行結果 ẑ=E(ŷ) 是否等於標準結果 z*」自動打二元標籤 <code>v=1(ẑ=z*)</code>（多測試案例時，須全部通過才標為正）。若資料集含標準程式 y*，額外附上 (x,y*,z*,v=1) 為正例；弱監督時略過此步。</p>
+<p><strong>學習目標</strong>：以負對數概似（NLL）為損失、<strong>並按候選數 |S| 正規化</strong>：<code>L_θ(x,S) = -(1/|S|)·Σ log P_θ(vᵢ|x,ŷᵢ,ẑᵢ)</code>（式 4）。正規化很重要，可避免「候選數極多的例子」主導學習。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>ShinkaEvolve：邁向開放式且樣本高效的程式演化（2/2） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2509.19349_ShinkaEvolve.zh-TW.html">回 2509.19349_ShinkaEvolve.zh-TW 目錄</a>　<a href="02_%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>我們提出 <strong>ShinkaEvolve</strong>：一個新的開源框架，利用大型語言模型（LLM）以最先進效能與前所未有的效率推進科學發現。近期推論時計算擴展的進展，讓以演化式 agent 框架利用 LLM 作為突變運算子產生候選解的方法取得顯著進展。然而，現有的程式演化方法存在關鍵限制：樣本低效，需數千次取樣才能找到有效解，且仍為閉源，阻礙廣泛採用與擴展。ShinkaEvolve 提出三項關鍵創新來解決這些限制：(1) 平衡探索與利用的父代取樣技術；(2) 程式碼新穎性拒絕取樣以實現高效搜尋空間探索；(3) 基於 bandit 的 LLM 集成選擇策略。我們在四個不同任務上評估 ShinkaEvolve：僅用 150 次取樣發現新的最先進圓堆積解、為 AIME 數學推理任務設計高效能 agent scaffold、改進 ALE-Bench 競賽程式解、以及發現新穎的混合專家（MoE）負載平衡損失函數。結果證明 ShinkaEvolve 以卓越的樣本效率實現廣泛適用性。透過程式碼開源與成本效益，本工作使開放式發現民主化。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 的快速進展已徹底改變科學發現——透過能自主進行實驗與測試假說的 agentic 系統。這些框架利用 LLM 作為精密的突變運算子，迭代精煉候選解，成功的變體透過連續世代傳播。此方法在競賽程式、數學最佳化、自動化 agent 設計等領域已證實有效。</p>
+<p>然而，現有實作面臨重大實務限制。<strong>主要挑戰是嚴重的樣本低效</strong>：現有方法通常需要數千次評估，計算成本高昂且耗時。此低效根源於純真的探索策略，未能有效利用先前世代累積的知識。此外，多數領先系統仍為閉源，阻礙複現與社群驅動的改進。</p>
+<p>ShinkaEvolve 透過三項協同作用的演算法創新解決這些挑戰：</p>
+<ol>
+<li><strong>自適應父代與 LLM 取樣</strong>：智能平衡對新區域的探索與對已知高品質區域的利用。</li>
+<li><strong>程式碼提案新穎性拒絕取樣</strong>：確保高效的程式突變。</li>
+<li><strong>基於 bandit 的 LLM 集成選擇策略</strong>：動態適應取樣歸檔父代與靈感程式的不斷演化狀態。</li>
+</ol>
+<p>透過四個領域的實驗驗證，ShinkaEvolve 以數量級更少的評估達成最先進結果。完整實作以 Apache 2.0 授權開源。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p><strong>LLM 演化式程式碼最佳化</strong>。推論時計算的一種特定形式是演化式程式碼最佳化：使用、突變、重組先前生成的程式碼來產生新樣本。此方法已被用於最佳化獎勵與偏好目標、數學科學程式碼及其他應用。透過提示，LLM 被用作重組引擎，能模擬多樣程式碼片段與其產生理由之間的交叉。這些程式歸檔建構系統類似於基於族群的 LLM 引導樹搜尋。與本工作最相關者為 AlphaEvolve、OpenEvolve 與 LLM4AD。ShinkaEvolve 推進此研究方向，展示前所未有的樣本效率。</p>
+<p><strong>開放式 Agentic 發現</strong>。LLM 與開放式演化原則的整合，使 agentic 系統能持續創新。與依賴顯式多樣性指標的傳統新穎性搜尋不同，LLM agent 利用學到的表徵產生創意方案同時保持語義連貫。這些 agent 建構程式的演化樹，LLM 引導的突變連結跨世代的相關解。ShinkaEvolve 系統性地結合墊腳石（次優中間解作為突破性創新的構件），利用 LLM agent 同時產生突變與評估程式關係，讓成功模式透過重組快速傳播。</p>
+<h2 id="3-方法">3. 方法</h2>
+<p>ShinkaEvolve 的控制流包含三個主要階段：</p>
+<h3 id="31-父代與靈感取樣">3.1 父代與靈感取樣</h3>
+<p><strong>歸檔維護、島群與突變上下文建構</strong>。ShinkaEvolve 維護固定大小的已評估程式歸檔（含適應度分數與元資訊），實作菁英規模限制。突變上下文包含一個主父代程式，加上從頂尖解與隨機歸檔樣本中抽取的靈感程式，為 LLM 提供多樣化範例進行創意重組。</p>
+<p>採用島模型方法：獨立子族群從相同初始程式播種，各島並行演化以增強多樣性並防止過早收斂。島成員偶爾可在島間遷移以擴散知識，但為保護各島獨特性，島內最佳程式不得遷移。取樣以階層方式進行：先均勻取樣島 ID，再從該島取樣父代與靈感。</p>
+<p><strong>平衡探索與利用：父代程式選擇</strong>。對於指定島子族群，ShinkaEvolve 實作兩種父代取樣策略：</p>
+<ul>
+<li><strong>Power-law 取樣</strong>：程式依適應度排名 r_i，選擇機率 p_i 正比於 r_i^(-alpha)。alpha=0 為均勻取樣；alpha 趨近無限大為爬山法。</li>
+<li><strong>加權取樣</strong>（靈感來自 Zhang et al. 2025）：結合效能與新穎性。效能分量使用 sigmoid 縮放 s_i = sigma(lambda * (F(P_i) - alpha_0))，其中 alpha_0 為中位數適應度。新穎性分量 h_i = 1/(1+N(P_i)) 偏好子代數較少的程式。最終機率 p_i 正比於 s_i * h_i。</li>
+</ul>
+<h3 id="32-程式突變與新穎性評估">3.2 程式突變與新穎性評估</h3>
+<p><strong>LLM 引導的程式突變</strong>。ShinkaEvolve 從預先指定的池中取樣特定 LLM 與取樣參數（溫度、推理預算）。支援 GPT、Gemini、Claude、DeepSeek 等主流 API 提供者。三種突變方法：</p>
+<ol>
+<li><strong>Diff 編輯</strong>：使用 SEARCH/REPLACE 區塊進行目標修改。</li>
+<li><strong>完整重寫</strong>：允許更大彈性，程式化確保不可變區塊保持不變。</li>
+<li><strong>Crossover 突變</strong>：取樣另一個歸檔程式，由 LLM 進行跨程式重組。</li>
+</ol>
+<p>使用 EVOLVE-BLOCK-START / EVOLVE-BLOCK-END 標記確保不可變程式碼不被改動。若 patch 無效，使用 Reflexion 提供解析回饋後重新取樣。</p>
+<p><strong>透過程式碼新穎性拒絕取樣達成多樣性</strong>。引入程式碼新穎性拒絕取樣：用 embedding model 嵌入程式的可變部分，計算與島內子族群程式的餘弦相似度。若最大相似度超過閾值（如 eta=0.95），再以 LLM 進一步評估該程式是否有實質差異。此機制結合基礎模型集成與溫度取樣來增強創意性。</p>
+<h3 id="33-執行與世界回饋">3.3 執行與世界回饋</h3>
+<p><strong>多目標最佳化與文字回饋</strong>。程式執行後進行多目標評估，產出純量適應度 r_i、公開指標與文字回饋，全部存入族群歸檔，為後代 LLM 突變提供資訊豐富的上下文。</p>
+<p><strong>自適應 LLM 取樣演化</strong>。不同 LLM 的突變效能會因問題領域與歸檔當前狀態而異。ShinkaEvolve 基於 UCB1 演算法動態演化 LLM 取樣機率。與標準 UCB1 不同，獎勵信號使用相對改進量：r_i^u = exp(max(r_i - r_i^b, 0)) - 1，其中 r_i^b 為基準獎勵（父代程式與初始程式的最大值）。exp 與 max(0) 操作精確獎勵能提出大膽、高風險高回報突變的 LLM，而非保守微調者。使用正規化確保不受各領域適應度尺度影響。</p>
+<h2 id="meta-scratchpad-與線上精煉每-t-代系統總結近期程式評估辨識共通的最佳化策略與設計原則由-meta-agent-合成為可操作建議附加到突變-prompt-中提供來自累積演化經驗的高層次指導"><strong>Meta-Scratchpad 與線上精煉</strong>。每 T 代，系統總結近期程式評估、辨識共通的最佳化策略與設計原則，由 meta-agent 合成為可操作建議，附加到突變 prompt 中，提供來自累積演化經驗的高層次指導。</h2>
+<h2 id="title-shinkaevolve邁向開放式且樣本高效的程式演化part-22實驗與結果-source-httpsarxivorgabs250919349-arxiv_id-250919349-date-2025-09">title: ShinkaEvolve：邁向開放式且樣本高效的程式演化（part 2/2：實驗與結果）
+source: https://arxiv.org/abs/2509.19349
+arxiv_id: 2509.19349
+date: 2025-09</h2>
+<h1 id="shinkaevolve邁向開放式且樣本高效的程式演化22">ShinkaEvolve：邁向開放式且樣本高效的程式演化（2/2）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Forget to Improve：用「淨值/位元組」單一分數治理端側 LLM-agent 的經驗記憶》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Beining Wu、Zihao Ding、Jun Huang、Yanxiao Zhao</p><p>日期：2026-06（v1）</p><p>arXiv：2606.25115</p><p><a href="https://arxiv.org/abs/2606.25115" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="forget-to-improve以預算為策展者的端側經驗記憶治理curator重點摘要">《Forget to Improve：以預算為策展者的端側經驗記憶治理（CURATOR）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>端側 LLM agent 靠「累積經驗到外部記憶」而非更新權重來持續變強，但記憶受 RAM/能耗/上行頻寬硬上限約束、又是可被注入的攻擊面；本文提出 <strong>CURATOR</strong>——用一個「<strong>每位元組淨值</strong> ρ = （價值 − λ·危害）/位元組」分數，同時治理「<strong>留（KEEP）／傳（SHARE）／信（TRUST）</strong>」三項決策——在 LLM-agent 任務漂移基準與真實異質 Jetson 機械臂測試台上，<strong>記憶縮 2.7×、上行縮 2.4×、注入攻擊成功率從 0.75 降到 0</strong>，且<strong>準確率不降反升</strong>（在被污染/過時記憶毀掉的案例上回補），證明「按淨值遺忘」會讓 agent 變強而非變弱。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>雲端記憶長大只是管理成本；端側記憶卻是<strong>硬資源與安全約束</strong>：常駐條目搶固定 RAM、每次檢索/重嵌耗電、與同儕只有一條間歇細上行、而記憶可被 agent 讀到的任何東西（觀測、工具輸出、同儕傳來的洞見）寫入，成為攻擊面（5 條投毒條目即可把注入成功率拉到 90–99%）。既有方法各只解一塊：agentic 記憶無預算地長、端側方法只看「成功」留條目、投毒多被當攻擊而非記憶治理問題。能否用<strong>單一機制</strong>回答「在三個物理預算下，留什麼、傳什麼、信誰」？</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>單一分數 ρ(m) = (V̂(m) − λ·Ĥ(m)) / b(m)</strong>：分母 b 是位元組數，使 ρ 成為「密度」，條目以「每位元組價值」而非「絕對價值」競爭。</li>
+<li><strong>價值 V̂ = p·q·a</strong>：p 檢索傾向（對近期查詢草圖的 softmax 機率）、q 條件有用性（<strong>無標籤</strong>、用 agent 取樣答案的自洽度當效用，線上校準）、a 抽象增益（原始軌跡位元組 / 蒸餾後位元組——壓縮可把逐字負貢獻轉正）。</li>
+<li><strong>危害 Ĥ = η + π</strong>：η 負遷移風險（條目特異性 × 嵌入到當前任務中心的 Mahalanobis 距離）；π <strong>來源風險</strong>（logistic 閘控，編碼條目來源〔外部/同儕/自產〕、跨會話自我強化次數、與注入指令的相似度）——權重為固定先驗、不線上擬合，<strong>不給攻擊者可訓練的攻擊面</strong>。</li>
+<li><strong>一把尺三種決策</strong>（Algorithm 1 一趟完成）：KEEP＝按 ρ 降序貪婪填滿 RAM 預算（密度排序近最佳，將被淘汰者先蒸餾可能救回）；SHARE＝對同儕草圖重算傾向 V̂_p，只在淨值超過上行成本（且非冗餘）才傳，傳的只是一個向量、原始查詢/軌跡不離開裝置；TRUST＝同儕條目本地重算 ρ，π 把投毒條目壓到門檻下擋在門外。能耗不入分母，改用 drift-plus-penalty 虛擬佇列把時均能耗壓在預算內。</li>
+<li><strong>凍結 planner</strong>：LLM planner 與底層原語全程凍結、不收梯度，唯一線上學的是 V̂ 內的無標籤有用性頭；終身適應只來自記憶內容。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>四軸齊降一軸不降</strong>：對「全留」基線，常駐足跡 287→107 KB（<strong>2.7×</strong>）、能耗代理 −38%（真機 36–40%）、每輪上行 1068→454 B（<strong>2.4×</strong>）、注入成功率 0.75→<strong>0</strong>；同時任務準確率 0.528→0.605、受害子集 0.294→0.420。</li>
+<li><strong>逼近 oracle</strong>：以 <strong>37% 足跡達到全記憶 oracle 97% 的準確率</strong>，且零攻擊面（oracle 為留全部需付注入 ASR=1.00）。</li>
+<li><strong>回補集中在被毀案例</strong>：乾淨任務準確率在雜訊內不變，回升全在受害/投毒子集；同 107 KB 的 recency/LRU 把受害準確率留在 ~0.33、注入留在 0.75，證明<strong>增益來自「淨值尺」而非單純縮小</strong>。A-MEM／Agentic Memory 等「長記憶」基線因連結投毒條目反讓 ASR 升到 0.85。</li>
+<li><strong>跨骨幹</strong>：Phi-3.5-mini 0.487→0.589、Qwen2.5-7B 0.597→0.663，注入皆降到 0，皆同 2.7× 縮減。</li>
+<li><strong>真機</strong>：Jetson Orin/Thor 上能耗、RAM、上行各降到全留的 0.38–0.64；門控分享只送約 1/3 位元組（209 vs 642），來源閘把跨 agent 注入壓到 0.02（無門控則回到 0.64）。即使攻擊者偽造「自產」來源，15 條投毒下 ASR 也僅 0.30（無防護 4 條即 0.75）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>來源先驗<strong>不是來源證明</strong>：偽造自產來源的攻擊者能回收部分成功（雖遠低於無防護）。</li>
+<li>凍結 planner 是前提——「遺忘代價低」依賴「技能在權重裡、不在被丟的位元組裡」；對需靠記憶持有技能的設定未必成立。</li>
+<li>無標籤有用性以「自洽度」近似真實效用，q 是估計；λ、各預算門檻仍需設定（作者主張操作點由預算的 knee 決定）。</li>
+<li>只治理「經驗/規劃記憶」，明確不治理動作/運動策略。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>把「agent 記憶」從「越多越好」翻轉成<strong>治理問題</strong>：在硬約束下，<strong>遺忘低淨值位元組是修復而非削弱</strong>——與 <a class="paper-reference" href="2509.04439_ArcMemo_Concept_Memory.%E6%91%98%E8%A6%81.html">2509.04439</a> ArcMemo「概念級記憶 + 選擇性檢索」互補（ArcMemo 強調可重用抽象，本篇強調在預算/安全下淘汰），兩者都指向「選擇比堆積更有價值」。</li>
+<li>**「一把尺治理留/傳/信」**是值得記住的設計原語：把去過時與防投毒放在同一條代碼路徑（同一危害項既貶過時本地條目、也貶可疑來源條目）。</li>
+<li>與 <a class="paper-reference" href="2606.24428_EDV_ExecuteDistillVerify.%E6%91%98%E8%A6%81.html">2606.24428</a> EDV（寫入前驗證經驗品質）形成「記憶生命週期」兩端：EDV 管「<strong>寫什麼進記憶</strong>」、CURATOR 管「<strong>留/傳/信哪些已在記憶裡的條目</strong>」；對讀有助於建立完整的 agent 經驗治理觀。</li>
+<li>對端側/機器人部署者最實用：<strong>記憶投毒應被當成記憶治理問題</strong>，且「淨值/位元組」是 recency/success 策略缺的狀態變數。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2606.25115_CURATOR_BudgetCurated_Memory.zh-TW.html"><code>../translate/2606.25115_CURATOR_BudgetCurated_Memory.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

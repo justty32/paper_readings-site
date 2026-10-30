@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.00669_NeuroLog_Datalog_SMT.zh-TW.html">回 2606.00669_NeuroLog_Datalog_SMT.zh-TW 目錄</a>　<a href="02_%E8%A9%95%E4%BC%B0%E4%BA%94%E8%BB%B8.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>C/C++ 原始碼上的漏洞挖掘，逼分析者在兩者間取捨：<strong>重量級靜態分析器</strong>（跑任一查詢前先要能成功編譯）與<strong>自由形式 LLM</strong>（讀原始碼容易，卻會捏造細節、在真實碼庫上丟失跨函式資料流）。本文提出 <strong>NeuroLog</strong>——一條端到端、<strong>免編譯</strong>的流水線，把每層分派給它獨擅的角色：LLM 逐函式抽取具型別的資料流事實；Soufflé 規則網把事實合成跨函式發現；Z3 後處理過濾不可行發現、為存活者輸出 SAT 模型。為了超越純靜態推理，再折入<strong>執行期證據</strong>：少量語料種子得到的 likely range invariants 以近零成本收緊 SMT 問題。第二個 LLM agent 讀每個 SAT 模型、寫出產生候選崩潰輸入的 Python 程式，由 AddressSanitizer harness 驗證。「靜態收窄＋SMT」（Saturn、Pinpoint）與「Datalog＋SMT」（Formulog）是既有技術；新的是<strong>LLM 導出的事實庫、免建置流水線，以及把 SAT 模型當成工件（崩潰合成的輸入）而非是/否判決</strong>。在 stb、cJSON、libxml2、FFmpeg demuxer 切片與 curl 8.3.0 上，NeuroLog 端到端重現 8 個 CVE 級問題（含 CVSS-9.8 的 SOCKS5 堆溢位 CVE-2023-38545），全數 ASan 確認；在 libarchive HEAD 上挖出 5 個記憶體安全 bug（4 個前所未報）。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>NeuroLog 解決 C/C++ 漏洞挖掘的根本張力：CodeQL 類靜態分析器要先成功編譯才能跑查詢，而自由形式 LLM 讀碼方便卻<strong>捏造細節、丟失跨函式資料流</strong>。核心貢獻：「用逐函式的 LLM 取代 IR-lifting 編譯器，讓它吐出具型別的 Datalog 事實」，同時靠 schema 約束維持可審計性——每個結論都有以具體程式事實為葉節點的推導樹。系統重現 8 個已發表 CVE，並在 libarchive HEAD 上挖到 5 個新 bug。</p>
+<h2 id="2-背景四個技術支柱">2. 背景：四個技術支柱</h2>
+<ul>
+<li><strong>Datalog 靜態分析</strong>：以 Horn 子句做宣告式漏洞偵測；Soufflé 把 Datalog 合成 C++，達「完整關聯吞吐量」同時保留可審計性。</li>
+<li><strong>CPG 與 CodeQL</strong>：圖式可達性查詢可審計，但需編譯。NeuroLog 刻意分道揚鑣：用逐函式 LLM 抽取取代 IR-lifting。</li>
+<li><strong>符號執行與 SMT</strong>：KLEE、SAGE 類 fuzzer 顯示 Z3 後端能沿特定路徑編碼求滿足輸入或證明不可行；NeuroLog 的優化是「被 Datalog 發現而非程式分支因子所界定」。</li>
+<li><strong>LLM 做靜態分析</strong>：近期工作（IRIS）顯示 LLM 擅長推斷（sanitizer 辨識、API clone、文件解析）。NeuroLog 把 LLM 放在規則網<strong>之下</strong>：只做逐函式事實抽取、schema 受限輸出，寧可漏報也不捏造。</li>
+<li><strong>Likely Invariants 與失敗素描</strong>：借 Sahoo 等人的觀察（8–16 次正常輸入跑出熱點區域變數的緊範圍界）與 Kasikci 的 Gist（σ-doubling 自適應後向切片）。</li>
+</ul>
+<h2 id="3-啟發範例stb_vorbis-的-cve-2023-45676">3. 啟發範例：stb_vorbis 的 CVE-2023-45676</h2>
+<p>stb_vorbis.c 第 3652–3676 行配置 Vorbis comment 字串，兩種失敗模式利用攻擊者提供的 32-bit 長度：(1) 第 3664 行乘 <code>sizeof(char*)</code> 在 length=2^29 時 32-bit <code>size_t</code> 環繞為 0；(2) 第 3670 行加 1，使 <code>len=UINT32_MAX</code> 產生 0-byte 配置，後續迴圈寫越界 UINT32_MAX bytes。</p>
+<ul>
+<li><strong>古典靜態分析卡在</strong>：CodeQL/CPG 要先把 stb 建成可索引形式；單一 header 函式庫整合成本高。</li>
+<li><strong>自由形式 LLM 卡在</strong>：讀 5,000 行檔有時抓對、有時抓語法相似但無趣的位置、偶爾在不存在的行捏造 bug，且無推導鏈、上下文一長工作記憶退化。</li>
+<li><strong>NeuroLog 做法</strong>：把 LLM 當逐函式事實抽取器，吐出 <code>Def</code>、<code>Call</code>、<code>ArithOp</code>、<code>ActualArg</code> 等結構化元組；Datalog 規則把事實組成推導樹：<code>TaintSourceFunc(get32_packet) → TaintedVar(...,len) → TaintedNarrowArith</code>（報告），每步機械可審計。SMT 階段把 <code>len</code> 編成自由 32-bit BitVec、回走 def-use 鏈，證明 size 引數沿可行路徑可被攻擊者控制；合成 agent 寫 Python 產 102-byte Ogg/Vorbis 檔，ASan harness 驗證。</li>
+</ul>
+<h2 id="4-架構六階段流水線">4. 架構：六階段流水線</h2>
+<p>每階段產出單一輸出供下一階段消費，允許「在任一階段停下取部分工件」。</p>
+<ul>
+<li><strong>Stage 0 可選偵察</strong>：廉價 LLM 讀目標檔＋呼叫者，提出種子函式與「bug 類別假設＋形式檢查」；用 <code>FieldSemantic(func,field,role)</code> 提議，只有真正觸發的形式規則才裁決。</li>
+<li><strong>Stage 1 切片</strong>：Tree-sitter 增量解析，從敏感 sink 後向切片；σ-doubling（增長率 ≤5% 取最小 σ）。FFmpeg demuxer 推薦 σ=3（109→124→124 函式，σ=4 時增長 1.6%）。</li>
+<li><strong>Stage 2 氣味掃描</strong>：機械底座（確定性結構事實）＋ LLM 用固定 12 關係 schema 逐函式輸出 JSON；每個事實須落在具體原始碼行，<strong>禁止發明關係</strong>，不確定就省略。</li>
+<li><strong>Stage 3 Datalog</strong>：約 30 條規則五趟（別名→跨程序汙染→型別安全→記憶體安全→sink）。只做 may-flow 過近似，不裁決可行性。Pass 6「source_arith_sink_bridge」補 LLM 暫存變數缺口（recovered 6/6 CVE-2025-6021 site，從 181 候選中）。</li>
+<li><strong>Stage 4 符號執行</strong>：逐發現給 {feasible/infeasible/unknown}；Phase A 程序內、Phase B 函式摘要＋有界內聯（d=3）、Phase D 跨發現並行。可行者帶 SAT 模型；不可行者降階到次級層並附「排除它的 guard」反向指標。</li>
+<li><strong>Stage 5 合成</strong>：多輪 LLM agent 讀 SAT 模型＋def-use 鏈＋檔案格式骨架，產 Python；每輪 N=3 候選，無崩潰則把 ASan 尾巴＋解析進度分數餵下一輪，預設 5 輪。</li>
+<li><strong>Stage 6 harness</strong>：唯一被建置的工件——ASan 驗證；ASan 可辨識簽章＋非零退出才算崩潰。</li>
+<li><strong>Tier-don&#x27;t-drop 原則</strong>：任何精度步驟都不靜默丟棄發現，只降階並附理由；次級層暴露降階依據。</li>
+<li><strong>為何六階段不是三</strong>：開發期消融顯示「塌成 LLM-讀整個碼庫」會丟結構事實底座並捏造；「塌成 LLM-產輸入」會失去 SAT 模型錨點、產出流暢但到不了 bug 的 blob。</li>
+</ul>
+<h2 id="5-方法細節精選">5. 方法細節（精選）</h2>
+<ul>
+<li><strong>Stage 0</strong>：後向切片到不了「不呼叫記憶體 sink」的函式，漏掉大類 bug（憑證範圍洩漏、不完整驗證、陳舊狀態重置）。偵察用 <code>FieldSemantic</code> 補：小族省略規則機械證明「對某 role 操作 ≥2 欄位卻漏掉安全相關欄位」的處理器。</li>
+<li><strong>Stage 2 成本 vs 召回</strong>：stb 切片（128 函式、18.6 KLoC）氣味掃描 36.6 秒、$0.005（Lite 級模型、15 路並行）；frontier 模型純抽取 55 分鐘、$0.30–0.50（90× 慢、70× 貴）但 bug 相關召回相同。</li>
+<li><strong>on-demand Datalog 查詢</strong>：host agent 推理時可透過 <code>neurolog__query_datalog</code> 工具下任意 Datalog；Soufflé 在 temp 跑、facts 以 symlink 連入（不複製 20 萬列）。libxml2 案例：一個段落 prompt 下 agent 發 19 條臨時查詢，2 條 schema 出錯被 Soufflé 拒、讀行號回顯後修正重交。</li>
+<li><strong>Stage 4b likely range invariants</strong>：在 GDB 下對語料正常輸入於 Datalog 標記點蒐集整數型局部變數範圍，聚合成 <code>LikelyRangeInvariant(func,var,addr,lo,hi,n_obs)</code>，編碼時 assert <code>lo≤v≤hi</code>。兩層比對（精確三元組 / 同函式同變數寬鬆聯集），<strong>刻意不做第三層跨函式比對</strong>（會引入未走到的攻擊者輸入界、靜默降階想要的發現）。</li>
+</ul>
+<h2 id="6-實作">6. 實作</h2>
+<p>Tree-sitter（官方 tree-sitter-c grammar）+ Soufflé 2.4 + Z3 4.12（Python 綁定）+ AddressSanitizer，約 8 KLoC Python。兩個 LLM 階段走 LiteLLM 抽象：氣味掃描用 Lite 級（DeepSeek V4-Flash），合成 agent 用 frontier（DeepSeek V4-Pro）。<strong>無自製框架——以 Model-Context-Protocol（MCP）工具暴露各階段，由 host agent（Claude Code、OpenCode）驅動</strong>，交錯確定性工具與推理。每次掃描可開 TSV 審計日誌（哪些關係觸發、行數、agent 查詢、symbex 批次結果），供事後審計。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

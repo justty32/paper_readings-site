@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.24428_EDV_ExecuteDistillVerify.zh-TW.html">回 2606.24428_EDV_ExecuteDistillVerify.zh-TW 目錄</a>　<a href="02_%E7%B5%90%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>經驗驅動的自我演化對 LLM agent 透過與開放世界互動而改善至關重要。然而現有經驗學習方法大多依賴<strong>單 agent 閉環</strong>：同一 agent 執行任務、總結結果、決定什麼該寫入記憶。在此設定下，agent 易掉進<strong>自我確認陷阱（Self-Confirmation Trap）</strong>——錯但自洽的軌跡被誤當成功經驗，經後續檢索與重用導致錯誤累積。為此我們提出 <strong>EDV</strong>，一個用於可靠經驗學習的「執行-蒸餾-驗證」框架。在<strong>執行</strong>階段，多個異質 agent 並行探索同一任務空間，產生多樣候選軌跡；在<strong>蒸餾</strong>階段，一個指定的第三方蒸餾 agent 對這些軌跡做對比分析、產出候選經驗，降低執行者中心自我總結的偏差；在<strong>驗證</strong>階段，執行組透過共識機制聯合驗證候選經驗，只有通過嚴格驗證者才寫入共享或私有記憶。透過解耦執行、蒸餾、驗證，EDV 把經驗學習從孤立的自反思閉環，轉成在記憶插入前抑制錯誤與噪聲的協作式經驗構建過程。我們在 τ²-bench、Mind2Web、MMTB 等具挑戰性的長視野基準上評測，結果顯示 EDV 一致勝過強基線——說明穩健的 agent 改進不僅依賴更豐富的記憶，更依賴<strong>經驗在進入記憶前如何被構建</strong>。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM agent 日益部署於持久、開放世界環境，改進不僅取決於解當前任務，更取決於能否從過去互動持續累積並重用有用經驗——這驅動了<strong>經驗學習</strong>範式：從歷史執行蒸餾可重用教訓、存為外部記憶、檢索以支援未來決策。近期工作（如 ReasoningBank 顯示「從成功與失敗蒸餾的推理記憶比原始軌跡更可重用」）證明記憶式自我演化能改善長視野推理；多 agent 研究亦顯示協作與異質性是克服單模型限制的重要途徑。這自然引出問題：<strong>多 agent 協作能否不只用來改善任務求解，更用來改善「經驗構建本身」的可靠性？</strong></p>
+<p>然而多數現有方法仍依賴單 agent 閉環：同一 agent 執行、解讀結果、蒸餾教訓、決定寫入。我們論證此設計在無明確 ground truth 的開放世界中<strong>本質脆弱</strong>，因為<strong>執行與評估耦合在同一推理過程內</strong>：內部連貫但實際錯誤的軌跡可能被寫入記憶並經檢索重用而強化。我們把此失效模式命名為<strong>自我確認陷阱</strong>——agent 把錯但自洽的軌跡誤當成功經驗、經記憶累積漸進放大這些錯誤；此問題在長視野任務中尤其嚴重。因此經驗學習的核心挑戰不只是「如何收集更多經驗」，而是<strong>如何更可靠地構建經驗、在記憶插入前抑制錯誤與噪聲內容</strong>。</p>
+<p>EDV 含<strong>經驗構建階段</strong>（透過異質執行、第三方蒸餾、共識驗證構建候選經驗）與<strong>推理時使用階段</strong>（把新任務路由給合適 solver 並檢索相關經驗）。三個關鍵收益：(1) 異質並行執行緩解單 agent 探索偏差、增候選軌跡多樣性；(2) 第三方蒸餾把經驗構建從執行者中心自我總結轉成跨軌跡對比分析，減單一視角偏差；(3) 共識驗證抬高記憶插入門檻，使長期記憶不易被錯誤與噪聲污染。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>近期研究探索 agent 如何透過與環境的持續互動改進，把過去執行當成持續適應的經驗來源（AgentEvolver、FLEX 確立「從執行軌跡學習」範式；Learning on the Job 研究長視野持續改進；MetaAgent 透過元學習工具使用模式達成單 agent 自我演化）。<strong>agentic 記憶</strong>一線把過去互動外化為可重用知識（ReasoningBank 強調蒸餾推理記憶與記憶感知測試時擴展；General Agentic Memory 研究分層記憶組織；CoPS 研究跨任務經驗分享）——但多仍依賴單 agent 閉環構建經驗，缺乏在插入前驗證記憶內容正確性與可靠性的專門機制。另一線研究<strong>多 agent 協作</strong>如何透過多樣視角與互補能力克服單模型限制（X-MAS 強調模型異質性的根本價值；CoMAS、Multi-Agent Evolve 探索互動驅動改進與共演化）；Xolver 進一步結合多 agent 協作與經驗累積。然而現有多 agent 研究多聚焦改善單任務求解、或只處理跨 agent 經驗的分享與遷移，<strong>鮮少利用多 agent 分工去改善經驗構建過程本身的可靠性</strong>。</p>
+<h2 id="3-自我確認陷阱的形式化">3. 自我確認陷阱的形式化</h2>
+<p>在呈現框架前，先指認既有經驗學習範式的根本失效模式。設任務集 𝒯，對任務 q，policy π_θ 的 agent 與環境互動產生軌跡 τ。令 c(τ)∈{0,1} 表軌跡的客觀正確性。在標準單 agent 閉環中，<strong>同一 policy π_θ 既執行又評估</strong>，使執行錯誤與評估失敗在統計上相依：有缺陷軌跡被誤背書為成功的機率被顯著抬高。這種對缺陷軌跡的錯誤背書構成自我確認陷阱的核心——一旦寫入記憶，這些錯誤被反覆檢索重用，導致持續的錯誤累積。</p>
+<pre><code class="language-mermaid">flowchart TB
+  subgraph 單agent閉環[單 agent 閉環 · 易陷自我確認]
+    A1[同一 agent 執行] --&gt; A2[自我蒸餾] --&gt; A3[寫入記憶] -.錯但自洽被強化.-&gt; A1
+  end
+  subgraph EDV[EDV · 解耦角色]
+    B1[多異質 agent 並行執行] --&gt; B2[第三方 agent 對比蒸餾] --&gt; B3[執行組共識驗證]
+    B3 --&gt;|通過嚴格驗證| B4[寫入共享/私有記憶]
+    B3 -.未通過則丟棄.-&gt; B1
+  end
+</code></pre>
+<h2 id="4-方法執行-蒸餾-驗證">4. 方法：執行-蒸餾-驗證</h2>
+<ul>
+<li><strong>Execute</strong>：多個異質 agent 並行對同一任務探索，產生多樣候選軌跡，擴大解空間覆蓋。</li>
+<li><strong>Distill</strong>：指定的第三方蒸餾 agent 對候選軌跡做對比分析，蒸餾候選經驗——以旁觀者跨軌跡比較取代執行者自我總結。</li>
+<li><strong>Verify</strong>：驗證組對候選經驗聯合交叉驗證，只有通過者寫入記憶（共享記憶相似度門檻 τ_sim=0.80、私有 0.85）。</li>
+<li>透過解耦執行、蒸餾、驗證，EDV 把經驗學習從孤立自反思閉環，轉成協作式經驗過濾過程。</li>
+</ul>
+<h2 id="5-實驗">5. 實驗</h2>
+<p><strong>主結果</strong>：EDV 在三基準上達成穩定一致的改進。τ²-bench 平均 Pass@1 <strong>86.6</strong>，顯著勝 Router（83.5）與 Judge（81.5），無記憶單模型基線（NM）僅 76.4–79.6；Mind2Web 跨任務/跨網站/跨域皆保持強泛化；MMTB 總分 <strong>58.10</strong>，勝 Router（55.96）。</p>
+<p><strong>記憶品質審計（5 分制）</strong>：相對 ReasoningBank（RB），Groundedness/Correctness 3.72→4.41、Actionability 3.58→4.32、Specificity 3.64→4.27；噪聲/幻覺 1.21→0.63、重用潛在危害 1.08→0.51。EDV 在源頭過濾低質資訊。</p>
+<p><strong>模擬自我確認陷阱</strong>：以 RB 為基線，向 RETAIL 任務注入佔記憶總量 10% 的「錯但內部連貫」經驗（如錯誤付款規則），使 RB 在 τ²-bench RETAIL 域的 Pass@1 從 82.5 <strong>暴跌到 77.2</strong>，提供陷阱真實危害的強證據。</p>
+<p><strong>消融與分析</strong>：僅解耦執行與驗證角色（單 agent + 獨立驗證者）只 +1.2 分，因單一軌跡對驗證者識別深層錯誤的參考不足——<strong>軌跡多樣性是高品質記憶的必要前提</strong>。記憶類型：共享記憶檢索率 72.3%、每命中 +3.2% 成功率、貢獻整體 2.3%；私有記憶 31.8% 任務被檢索、每命中 +1.8%、全域貢獻 0.6%；私有記憶以覆蓋近 1/3 任務的個人化邊角案例補充共享記憶。效率：經驗構建離線可並行、不增線上協調開銷；更高品質記憶使 RETAIL 推理 token 比 RB 省 24.5%。學習效率：EDV 全程比 RB 高約 7–9% Pass@1，第 4 epoch 達峰值 0.909，而 RB 第 2 epoch 後停滯甚至下滑（0.830→0.815）。檢索條數：兩者無經驗時同起點 0.781，EDV 隨條數單調升到 3 條 0.886，RB 在 1 條（0.825）後退化（0.793）。門檻 τ 敏感度：EDV 在大範圍門檻穩定 &gt;0.860，τ=0.8 最佳（0.886），τ=0.9 過嚴略降。三任務 SR 上界分別 24.21%、20.34%、18.31%。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

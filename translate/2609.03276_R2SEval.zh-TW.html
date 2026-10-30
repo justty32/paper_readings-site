@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>R2S-Eval: Robot Evaluation with Real-to-Sim Calibration via Vision-Language Models 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yidi Wang、Feixiang Ruan、Ruoqu Chen、Jie Yin、Yang Yu、Mengdi Xu、Kaifeng Zhang</p><p>日期：2026-09-03（v1，cs.RO）</p><p>arXiv：2609.03276</p><p><a href="https://arxiv.org/abs/2609.03276" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="r2s-eval-robot-evaluation-with-real-to-sim-calibration-via-vision-language-models">R2S-Eval: Robot Evaluation with Real-to-Sim Calibration via Vision-Language Models</h1>
+<h2 id="摘要與問題">摘要與問題</h2>
+<p>真機評估需要反覆布置物件、執行、復位與監看，細小的接觸、感知或初始狀態差異還會改變策略排序。常用的成功率又把完整行為壓成二元結果，看不出兩個都成功的軌跡何者更平順，也分不出兩個都失敗的軌跡何者已接近目標。</p>
+<p>R2S-Eval 把政策評估改成「觀察完整 rollout 後做成對偏好」。校準後的模擬器大量產生閉迴路影片，VLM 比較兩段匿名影片的執行品質，統計模型再把偏好聚合成策略排名。作者同時提出驗證協議，檢查排名可靠性、樣本增加時的穩定性、與人類判斷的一致性、硬體人力及二元成功以外的資訊量。</p>
+<h2 id="方法">方法</h2>
+<h3 id="real-to-sim-校準">Real-to-sim 校準</h3>
+<p>校準目標不是製作完美逼真的數位分身，而是匹配會左右策略行為的機器人幾何、運動學、關節限制、控制介面、任務、物件初始姿態與相機視點。接觸摩擦、順應性與感測雜訊仍有殘差，因此候選策略會用動作重播、運動規劃或遙操作得到的模擬軌跡另行適應，再於校準模擬器中閉迴路執行。</p>
+<p>這裡評估的是同一候選模型各自在真實域與模擬域訓練出的對應策略，不宣稱兩者行為完全相同。校準是否合用，要看模擬域的比較排序能否保存真機結論。</p>
+<h3 id="影片偏好與聚合">影片偏好與聚合</h3>
+<p>每次比較從兩個策略各抽一段相同任務與初始配置的影片。VLM 先依運動平順度、時間連續性、任務進度，以及可從影片觀察的接觸與用力控制，為各影片寫結構化描述；再比較兩份描述並強制選出一方。影片隨機放在 A 或 B，降低位置偏誤。</p>
+<p>各策略對的勝負次數形成偏好矩陣，再以 Bradley–Terry 模型估計每個策略的潛在品質分數與排名。這套流程保留整段行為證據，不用手寫每項任務的連續評分器。</p>
+<h2 id="實驗與結果">實驗與結果</h2>
+<p>作者自報：真機部分使用 SharpaNorth 雙臂平台、7 個桌面任務與 6 個 VLA，共蒐集 3525 條真實軌跡；動作在 Isaac Sim 重播後保留 3445 條模擬軌跡，平均重播成功率為 97.8％。每個策略－任務組合在真機做 20 次、模擬做 200 次閉迴路試驗。</p>
+<p>作者自報：所有策略－任務組合的真實與模擬成功率平均絕對差為 2.13 個百分點，最大差距為 7.0 個百分點，整體策略排序相同。作者據此只主張校準足以保存比較結論，沒有主張兩域行為等價。</p>
+<p>作者自報：LIBERO 評估中，每個策略蒐集 2000 段影片；8 個 VLM 的平均 Spearman <code>ρ</code> 為 0.823、Pearson <code>r</code> 為 0.924、MMRV 為 0.018，與人類偏好一致率為 82.9％。校準 real-to-sim 評估中，每個策略有 1400 段影片；平均 <code>ρ</code> 為 0.957、<code>r</code> 為 0.978、MMRV 為 0.005，人類一致率為 91.9％。</p>
+<p>作者自報：將每對 real-to-sim 影片的 A／B 順序顛倒後重評，91.5％ 的偏好不變。接近平手時仍有些微偏向 A 的位置效應，因此正式流程採隨機擺放，讓殘餘偏誤在大量比較中平均。</p>
+<p>硬體成本分析顯示，傳統評估的人工作業時間會隨任務數與每任務試驗數近似線性上升；R2S-Eval 在一次性資料準備完成後，不再需要新增真機操作。行為案例也顯示，VLM 能在兩個同為成功的軌跡中偏好一次完成者，而非抓取失敗後重試者；在兩個都失敗的軌跡中，也會偏好有實質接近目標者，而非原地振盪者。</p>
+<h2 id="結論與作者明示範圍">結論與作者明示範圍</h2>
+<p>R2S-Eval 將真機成功計數改成校準模擬影片上的統計偏好估計。實驗支持它能保存策略比較、降低重複硬體操作，並補充任務進度、動作連續性與控制品質等資訊。</p>
+<p>原文沒有獨立的局限小節。作者在方法與結論中明示，模擬校準仍保留摩擦、順應性與感測雜訊差異，現有結果不代表模擬與真機策略行為相同；未來需擴展到更多任務與機器人、系統性分析 real-to-sim 差異，並建立更高擬真的模擬環境。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2609.03276_R2SEval.%E6%91%98%E8%A6%81.html"><code>../summarize/2609.03276_R2SEval.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

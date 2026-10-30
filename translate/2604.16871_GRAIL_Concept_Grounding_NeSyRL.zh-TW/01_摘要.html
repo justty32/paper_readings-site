@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.16871_GRAIL_Concept_Grounding_NeSyRL.zh-TW.html">回 2604.16871_GRAIL_Concept_Grounding_NeSyRL.zh-TW 目錄</a>　<a href="02_%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>神經符號強化學習（NeSy-RL）結合符號推理與梯度最佳化以獲得可解釋、可泛化的策略。<strong>關係概念</strong>（如「在…左邊」「靠近」）是建構智能體感知與行動的基礎元件，但傳統方法需人類專家手動定義，限制了適應性（概念語意隨環境而變）。我們提出 <strong>GRAIL（Grounding Relational Agents through Interactive Learning）</strong>，透過環境互動<strong>自主接地關係概念</strong>：利用大型語言模型（LLM）提供通用概念表徵作為<strong>弱監督</strong>，再精煉以捕捉環境特定語意。此法同時處理稀疏獎勵與欠定環境中常見的概念失配。在 Atari 遊戲 Kangaroo、Seaquest、Skiing 上，GRAIL 在簡化設定中<strong>追平或超越</strong>用手寫概念的智能體，並在完整環境揭示「獎勵最大化 vs 高階目標完成」之間的權衡。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>深度 RL 進展驚人，但黑箱模型易<strong>走捷徑學習</strong>（如 Atari Pong 中盯對手位置而非追球），環境略變即崩。為克服此限制，RL 日益引入邏輯策略與程式化框架（透明、可修訂、易課程學習），但它們<strong>重度依賴人工歸納偏置</strong>——須專家硬編概念或邏輯規則，且難捕捉細粒度低階行為。</p>
+<p>哲學與認知科學主張人類泛化源於<strong>以概念感知世界</strong>。概念學習已在視覺問答、機器人操作中被探討，但<strong>在 RL 中接地概念仍是未開墾地</strong>。現有 RL 多靠手動指定接地函數，簡單域可行、複雜或多物件關係結構下不切實際。</p>
+<p><strong>關鍵觀察（圖 1）</strong>：空間概念「在…左邊」隨環境需不同詮釋——Kangaroo「在梯子左邊」須水平偏左<strong>且同平台</strong>；Seaquest「在潛水員左邊」只看水平、不管垂直；Skiing「在旗子左邊」是相對<strong>兩旗中點</strong>。人類能直覺適應，現有 NeSy-RL 卻靠逐環境硬編估值函數。核心問題：<strong>智能體能否透過互動自主接地關係概念？</strong></p>
+<p><strong>貢獻</strong>：(1) GRAIL 框架，擴展 BlendRL，用 LLM 提供高階概念表徵作弱監督，自主學習空間關係概念，產出以一階邏輯規則表達的高可解釋策略；(2) 把<strong>概念對齊</strong>設計成 PPO 的新正則項，編碼學到的概念與 LLM 代理函數的對齊程度，並導航「獎勵最大化 vs 語意忠實接地」的權衡；(3) 在三個此前 NeSy 智能體未在「無硬編概念」下挑戰過的 Atari 環境上評估，追平/超越 SOTA 神經符號基線與純神經 PPO。</p>
+<h2 id="2-背景">2. 背景</h2>
+<ul>
+<li><strong>2.1 深度 RL</strong>：環境建模為 MDP ⟨𝒮,𝒜,P,R,γ⟩，目標最大化折扣回報。GRAIL 用 <strong>PPO</strong>（actor-critic + GAE + 裁剪代理目標）最佳化。</li>
+<li><strong>2.2 NeSy-RL</strong>：
+<ul>
+<li><strong>一階邏輯（FOL）</strong>：語言 ℒ=(𝒫,ℱ,𝒟,𝒱)；原子 p(t₁,…,tₙ)，Horn 子句 A :- B₁,…,Bₙ（body 全真則 head 成立）。</li>
+<li><strong>動作邏輯</strong>：謂詞集分為動作謂詞 𝒫_A（go_left/go_right/jump/idle）與狀態謂詞 𝒫_S（left_of/closeby…）。動作規則如「若在梯子左邊則右移」：<code>go_right(O1):- type(O1,agent), type(O2,ladder), left_of(O1,O2).</code></li>
+<li><strong>可微推理</strong>：原始狀態→物件中心表徵→<strong>估值函數</strong>（可微參數化函數，估每個狀態原子的信心，如 v_ψ^left_of）→加權 ground atoms 餵進符號策略。估值函數傳統靠手寫，GRAIL 改為從互動學習。</li>
+</ul>
+</li>
+</ul>
+<h2 id="3-相關工作">3. 相關工作</h2>
+<ul>
+<li><strong>NeSy-RL</strong>：關係 RL；NLRL 首將可微歸納邏輯程式（∂ILP）引入 RL；NUDGE 加神經引導符號抽象；BlendRL 統一符號與神經策略。<strong>共同限制</strong>：依賴人工指定關係謂詞及其語意（算信心分數的函數）。GRAIL 自動學習謂詞接地（即定義語意的估值函數）。</li>
+<li><strong>概念學習</strong>：多聚焦感知/問答，RL 中的概念接地仍少探討。GRAIL 可視為 Allen 區間代數等定性關係的「連續、可學習」對應。</li>
+<li><strong>物件中心 RL</strong>：把視覺輸入分解成物件中心狀態以利組合泛化；Atari 從像素/RAM 抽 entity 仍是難題。</li>
+</ul>
+<h2 id="4-grail學習接地關係概念">4. GRAIL：學習接地關係概念</h2>
+<p>GRAIL 用<strong>可學習的可微接地函數</strong>取代 BlendRL 的手寫估值函數，由 LLM 生成的代理概念作弱監督引導。</p>
+<p><strong>核心挑戰——符號接地問題</strong>：把每個謂詞對齊其意圖概念並不容易；天真地把謂詞實作成神經網路、只為獎勵最佳化，常導致差勁或不可解釋的對齊。</p>
+<p><strong>概念接地機制（圖 4 頂部）</strong>：LLM 依「簡述任務與領域的環境指令」抽取相關概念的通用表徵（例如「left 一般該長怎樣」）；GRAIL 再把這些通用表徵接地到特定環境（如 Kangaroo），透過互動與獎勵最大化精煉。通用「left」起初未必高效，GRAIL 隨環境回饋學習適應與精煉概念估值，兼得跨任務泛化與環境特定強表現。<strong>權衡</strong>：對齊訊號太強被 LLM 通用先驗綁住、妨礙獎勵；太弱則退化成無意義接地——以退火排程 + 可調對齊係數處理。</p>
+<h3 id="41-混合策略推理與學習">4.1 混合策略推理與學習</h3>
+<p>繼承 BlendRL：輸入狀態同時有像素與符號表徵。概念接地模組吃物件中心特徵 𝐙（從影像 𝐗 抽），用可微估值函數 v_ψ^p 算物件關係，再經前向推理套用邏輯規則得<strong>邏輯策略</strong>；blending 模組（參數 λ，可為邏輯式、神經式或混合）軟性結合邏輯策略與操作於子符號狀態的<strong>神經策略</strong>。整條管線可微，可用 policy gradient 端到端最佳化。</p>
+<h3 id="42-在環境中接地空間概念">4.2 在環境中接地空間概念</h3>
+<p>概念接地＝把抽象符號謂詞（left_of、close_by）映射到環境中可觀測、物件中心、依脈絡而定的特徵；透過學習可微估值函數（輸出每謂詞軟真值）實現。最佳化 PPO 式 BlendRL 損失（對參數 ψ），智能體得以靈活調整概念表徵、把抽象謂詞接地到各環境的空間與脈絡細節。</p>
+<h3 id="43-用語意先驗對齊概念">4.3 用語意先驗對齊概念</h3>
+<p>只靠獎勵最佳化易得無意義接地，故引入<strong>概念對齊器</strong>：用 LLM 抽取空間關係的通用知識（「left 抽象上該如何詮釋」），引導學到的估值函數對齊外部語意先驗。LLM 產生可執行 Python 程式，把每個空間謂詞 p 實作為代理函數 g^p:[−1,1]²→[0,1]（2D 相對位移→軟真值）；策略結構的邏輯程式（圖 6）也由 LLM 生成。訓練全程，這些 proxy 當<strong>輔助監督</strong>：智能體為獎勵最佳化動作的同時，鼓勵學到的估值函數對齊 proxy。具體加一個<strong>二元交叉熵損失 L^CA</strong>。</p>
+<ul>
+<li><strong>接地與對齊的關係</strong>：接地讓智能體學「概念在此環境是什麼意思」，對齊確保此意義仍忠於其通用語言層詮釋。平衡兩者，GRAIL 產出<strong>既最大化獎勵又可解釋</strong>的策略。</li>
+<li>對齊強度由<strong>概念對齊係數 c_CA ≥ 0</strong> 控制，並隨優化步 t 退火。</li>
+</ul>
+<h2 id="5-實驗設定">5. 實驗設定</h2>
+<ul>
+<li><strong>基線</strong>：神經基線＝CNN-based PPO（3 卷積層 + 512 維全連接，18 動作）；神經符號基線＝<strong>BlendRL</strong>（已勝過 NUDGE、NLRL）。GRAIL 在 BlendRL 上把手寫估值函數換成學習式，直接隔離概念接地機制的效果。</li>
+<li><strong>環境</strong>：ALE 的 Kangaroo（平台相對導航）、Seaquest（水下追擊救援）、Skiing（預判轉向）——各需不同空間概念。較 NLRL/NUDGE 用的簡化/合成環境<strong>更難</strong>（高維視覺、動態多物件、稀疏獎勵）。</li>
+<li><strong>指標</strong>：平均回合回報（量化比較）+ 平均每回合達成目標數（高階完成度）。</li>
+<li><strong>訓練協定</strong>：階段 1（隔離概念學習）關閉敵人、獎勵只給高階成就（如 Kangaroo 救到小孩、Seaquest 救六名潛水員），回合上限 3000 步、每 4 步更新、共 1000 萬步；先讓估值函數收斂到可解釋接地。階段 2 凍結估值函數、從頭隨機初始化訓練神經策略與 blending（重啟敵人、無回合長度限制、步長 1、過關 20 分其餘 1 分），跑 6000 萬步。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

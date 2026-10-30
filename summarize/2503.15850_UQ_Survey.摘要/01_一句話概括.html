@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2503.15850_UQ_Survey.%E6%91%98%E8%A6%81.html">回 2503.15850_UQ_Survey.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p>本篇是<strong>首篇</strong>以「LLM 獨特的不確定性來源」為核心重新設計分類法的 UQ 綜述：提出<strong>四維度分類法</strong>（輸入不確定性／推理不確定性／參數不確定性／預測不確定性），並沿**計算效率（單輪 vs. 多輪取樣）**第二軸系統盤點方法，填補傳統 aleatoric/epistemic 二分法無法捕捉 LLM 特有現象（輸入歧義、推理路徑分歧、解碼隨機性）的空白。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>傳統 UQ 二分法（aleatoric＝資料雜訊／epistemic＝模型知識不足）不足以解釋 LLM 的複雜不確定性來源：同樣是「模型不知道」，可能是提示本身模糊（輸入）、多步推理中某步不穩（推理）、訓練資料根本沒覆蓋（參數）、或多次取樣輸出文本語意分散（預測）——四者對應的解法截然不同（該改提示／該回溯推理／該補訓練／該多取樣取共識），混為一談會導致用錯方法。既有綜述[37, 40, 102]多以幻覺偵測為主軸、或將傳統分類法硬套到 LLM，缺少針對 LLM 特有挑戰（提示驅動不確定性、開放式生成）的統一框架。本文正面定義四維度後，將 30+ 方法歸入對應維度，並盤點評估基準與真實應用，提供從診斷到選型的一站式地圖。</p>
+<h2 id="核心方法四維度分類架構">核心方法：四維度分類架構</h2>
+<p><strong>前置定義（§2）</strong>：區分「信心」（對特定輸出的信念，C(x,s)）與「不確定性」（整個輸出空間的不可預測度，U(x)），兩者高度相關但不等價——模型可能整體不確定但對某次取樣很高信心（NLG 中尤其常見，因輸出是隨機取樣）。</p>
+<p><strong>四維度（§2.1.2，各可含 aleatoric/epistemic 混合）</strong>：</p>
+<ol>
+<li>
+<p><strong>輸入不確定性（Input Uncertainty，本質 aleatoric）</strong>：提示模糊或欠指定（如「這個國家的首都是哪裡」缺少上下文），完美模型也無法產出唯一正確答案。方法集中於擾動提示後觀察輸出一致性——Input Clarification Ensembles [36] 生成多種澄清並用互資訊量分歧、ICL-Sample [68] 用不同 in-context examples、SPUQ [29] 用改寫／啞令牌擾動搭配 BERTScore 相似度。</p>
+</li>
+<li>
+<p><strong>推理不確定性（Reasoning Uncertainty，aleatoric+epistemic 混合）</strong>：多步推理或檢索增強生成中，每一步的不確定性累積導致整體結果含糊或錯誤。方法分兩支：(a) 從推理結構本身萃不確定性——TopologyUQ [18] 將解釋結構化為圖後用圖編輯距離量化、Stable-Explanation Confidence [5] 建構事後答案分佈、CoT-UQ [132] 將 CoT 整入 response-level UQ；(b) 用不確定性引導推理搜尋——TouT [80] 在 ToT 各節點賦予 MC Dropout 不確定性分數、UAG [128] 監控每步預測機率並在高不確定處回退到更可靠狀態。</p>
+</li>
+<li>
+<p><strong>參數不確定性（Parameter Uncertainty，本質 epistemic，可被更多訓練降低）</strong>：訓練資料缺口導致模型學到錯誤表徵。方法以微調為主——BLoB/BLoRA [115,121] 將貝氏模型化注入 LoRA adapter 以參數分佈取代點估計、Supervised Uncertainty Estimation [69] 訓練輔助模型預測信心、UaIT [70] 在指令微調中顯式訓練模型表達不確定性、LoRA ensembles [4] 訓練多個輕量變體取代全模型集成。</p>
+</li>
+<li>
+<p><strong>預測不確定性（Prediction Uncertainty，aleatoric+epistemic 混合）</strong>：多次取樣間輸出變異性。此維度方法數最多，按效率分三子類：</p>
+<ul>
+<li><strong>單輪生成</strong>（高效白箱）：Perplexity、最大 token log-prob、Predictive Entropy、SAR [24]（注意力加權熵，用 NLI 模型評語意相關性）、Response Improbability [26]、P(True) [49]（讓 LLM 自評是否正確）</li>
+<li><strong>多輪取樣</strong>（黑箱可用）：token-level/predictive entropy、Conformal Prediction [53,92,116,104]（分佈無關的統計保證）、consistency-based（Jaccard 相似度 [66]、圖拉普拉斯特徵值 Ecc/Deg/Eig [66]）</li>
+<li><strong>多輪＋外部模型</strong>（最高品質）：Semantic Entropy [51]（NLI 分群後以群為單位算熵）、Kernel Language Entropy [87]（用 PSD 核建語意空間 von Neumann 熵）、成對 NLI 相似度矩陣的圖譜度量 [66] 及其延伸（有向圖 [15]、多維度 [8]）</li>
+</ul>
+</li>
+</ol>
+<p>**方法總表（Table 2，涵蓋 &gt;30 種方法）**列出每種方法對應的維度、效率特徵（單輪／多輪／微調）、模型存取需求（白箱／黑箱）、是否產信心分數，是選型時的快速查詢表。</p>
+<h2 id="評估4">評估（§4）</h2>
+<ul>
+<li><strong>基準資料集</strong>（Table 3）：閱讀理解（CoQA/RACE/TriviaQA/SQuAD/HotpotQA）、推理與數學（StrategyQA/GSM8K/CalibratedMath）、事實性（TruthfulQA/FEVER/HaluEval/FActScore）、通用知識（MMLU/GPQA/HellaSwag）、一致性與歧義（ParaRel/AmbigQA/AmbigInst）；另有專用 UQ 基準（MAQA 測 epistemic/LM-Polygraph 綜合/Conformal Prediction 基準）。</li>
+<li><strong>量測指標</strong>：分二進制分類框架（AUROC/AUPRC/AUARC——高不確定性對應低預期正確率）與生成類（BLEU/ROUGE、LLM-as-a-judge、人工註解）；ECE 系列用於校準品質評估。</li>
+</ul>
+<h2 id="應用場景5">應用場景（§5）</h2>
+<p>機器人規劃（閉迴路不確定性故障檢測器[141]、LLM 自評不確定性以提升人機協作安全[62]）、交通（VLM＋深度機率程式做多模態事故預測 UQ[21]）、醫療（白箱 UQ 可降低 EHR 預測不確定性[9]，但醫學 QA 上 UQ 挑戰仍嚴峻[117]）。</p>
+<h2 id="開放挑戰6">開放挑戰（§6）</h2>
+<ul>
+<li><strong>效率-效能取捨</strong>：多取樣方法對萬億參數模型成本過高（$12k/百萬查詢）但增益有限（≤0.02 AUROC），需混合低成本代理指標（注意力變異、隱狀態分群）只在高風險輸出觸發多取樣。</li>
+<li><strong>可解釋性不足</strong>：使用者無法分辨不確定性究竟來自模糊輸入、知識缺口、還是解碼隨機性——需模組化架構解耦各層或用因果追蹤定位來源。</li>
+<li><strong>跨模態不確定性</strong>：視覺-語言模型視覺部分不確定性為文本的 2.4 倍，導致 63% 多模態 QA 錯誤，需統一的不確定性嵌入與模態信心尺度和諧化。</li>
+<li><strong>系統層不確定性</strong>：多步 agent/推理中不確定性累積與傳播，早期錯誤導致級聯失敗——現有方法僅看單輪輸出，亟需時序感知的不確定性追蹤。</li>
+<li><strong>UQ 評估本身</strong>：二進制分類指標不適用 NLG 開放生成，LLM-as-a-judge 自帶系統性偏差，AUROC/AUARC 無法區分「自信地錯」與「適度不確定」。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

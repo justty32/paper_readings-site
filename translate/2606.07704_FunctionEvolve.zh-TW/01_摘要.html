@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.07704_FunctionEvolve.zh-TW.html">回 2606.07704_FunctionEvolve.zh-TW 目錄</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>SR 旨在從資料揭示明確的科學定律。近期方法用 LLM 從背景文字引導突變，比隨機 GP 更有方向。然而<strong>精確符號回復同時需要語意引導與顯式結構</strong>，使領域知情的搜尋能透過有效的符號表示進行。當前 LLM 驅動系統仍<strong>對結構盲</strong>：在不透明候選間選擇、缺顯式局部突變機制、倚賴脆弱的係數擬合（會低估正確骨架）。我們提出 <strong>FunctionEvolve</strong>——以表達式樹組織整個搜尋的演化框架：<strong>結構摘要</strong>促進多樣親代選擇、<strong>局部樹編輯</strong>保留有用子式、<strong>結構感知擬合</strong>拆分/約束/簡化係數以更可靠評分。只用基本函數族、無額外領域專屬規則。在 <strong>LLM-SRBench 的 129 題合成子集</strong>配 <strong>Claude Opus 4.6</strong>，回復 <strong>107</strong> 條精確式，<strong>SA@50 達 82.9%</strong>（同骨幹基線的 4.5 倍）、<strong>SA@1 達 55.8%</strong>（勝最強已發表 top-1 結果 3.6 倍）。消融顯示結構可見搜尋是可靠回復的核心，LLM 引導精修與結構感知係數最佳化為必要的提議與評分機制。我們亦稽核基準，顯示其材料科學子集的共線性造成可辨識性問題。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>科學發現日益需要能從實驗資料推斷可解釋定律的方法。黑箱模型雖能擬合，卻常遮蔽支配機制。SR 藉回復明確數學式補此缺口，使解釋、外推、知識遷移成為可能。</p>
+<p>SR 搜尋組合式的公式空間，GP 仍是把式子表為抽象語法樹（AST）並以局部運算子演化的標準做法。但 SR 是 NP-hard，純靠隨機變異與資料擬合選擇的 GP 常缺導航大型假設空間所需的科學先驗。近期 LLM 驅動方法用背景資訊（變數意義、建模的科學過程）與模型知識引導方程發現；然而新合成基準顯示<strong>僅靠語意引導仍在精確符號回復上留下大缺口</strong>。</p>
+<p>我們辨識傳統 GP 及其 LLM 變體的三共有瓶頸：(1) 搜尋常從通用種子而非有用結構先驗起步；(2) 親代選擇通常靠對不透明候選的固定啟發式，難以在真正不同的骨架間分配搜尋預算；(3) 不可靠的係數最佳化會讓結構正確的骨架顯得沒希望，致其被過早丟棄。</p>
+<p><strong>顯式表達式結構</strong>正是直接解這些瓶頸之道，尤其對突變——進步常來自局部編輯而非整式重寫。例如：當前候選為 a₁sin(x)+a₂x、目標為 b₁sin(b₂x+b₃)+b₄xᵇ⁵，剩餘進步主要是編輯 sine 的引數與冪項、保留其餘。GP 能改子式但編輯多為隨機、不利用任務脈絡；先前 LLM 系統較有方向，但其文字/程式碼級編輯未必是 AST-局部的，語意上合理的改寫仍可能覆蓋有用的親代結構。</p>
+<p><strong>核心洞察</strong>：顯式 AST 結構讓突變遵循 SR 的局部編輯本性，也利於親代多樣性選擇與係數擬合。</p>
+<p><strong>貢獻</strong>：(1) FunctionEvolve——以顯式表達式樹協調選擇/突變/係數最佳化的結構引導 LLM 框架；(2) 在 129 題合成子集達 SA@50 82.9% / SA@1 55.8%（同骨幹 4.5×、勝 PiT-PO 3.6×）;(3) 消融證明三組件皆關鍵；(4) 指出 LLM-SRBench 的輸入變數線性相依與弱非線性因子變化，破壞結構可辨識性。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>SR 長被視為通往科學發現之路，從早期經驗定律發現系統到回復可解釋定律。現代 SR 橫跨符號神經網路、RL、物理啟發法、演化系統。其中 GP 式方法仍是強基線（樹表示 + 結構化變異運算子）。LLM 應用 SR 的代表系統：LLM-SR、LLM4Ed、DRSR、SR-Scientist、PiT-PO、LaSR；演化式編碼代理如 OpenEvolve、AlphaEvolve、ShinkaEvolve。但這些多把式子當字串/程式/不透明候選，而非選親/突變/擬合三環共用的顯式表達式樹。LLM-SRBench 以合成科學任務降低預訓練洩漏風險，顯示既有 LLM-SR 仍難精確回復；FunctionEvolve 以 AST 可見搜尋 + 結構感知擬合針對此缺口。</p>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="31-問題形式化">3.1 問題形式化</h3>
+<p>給資料 D={(xᵢ,yᵢ)} 與任務級脈絡 T（共享於所有樣本的自然語言描述：背景/科學場景/資料來源/變數名與物理意義與單位）。目標是用 T 引導，回復簡潔可泛化的 f̃ 使 f̃(xᵢ)≈yᵢ。</p>
+<h3 id="32-概覽">3.2 概覽</h3>
+<p>把 SR 構為「一次性初始化 + 迭代演化」。先用 <strong>Generator</strong> 合成任務條件化的領域知識與種子式；再用 <strong>Selector</strong> 選有望親代、<strong>Mutator</strong> 以 AST 規則與 LLM 引導突變展開、<strong>結構感知 Optimizer</strong> 擬合/簡化/評分有效後代後重插入。與先前不同：seed 生成、親代選擇、突變皆用 LLM，且每部分都錨定於顯式表達式結構。</p>
+<h3 id="33-generator">3.3 Generator</h3>
+<p>透過兩角色提供任務條件化的結構起點：(1) 用任務脈絡與 LLM 知識合成領域公式與結構啟發式；(2) 由這些樣式初始化種子式，使搜尋不從無結構池起步。輸出是初始起點與可重用的脈絡引導，而非寫死的領域定律或固定突變規則。</p>
+<h3 id="34-selector">3.4 Selector</h3>
+<p>決定接下來展開哪些式子。每輪抽取「演化樹摘要」給 Selector，連同任務脈絡與先前選擇。每候選節點的摘要結合<strong>結構資訊</strong>（AST 結構、參數量、樹深、運算子數）與<strong>數值資訊</strong>（訓練 NMSE、已擬合參數值）。Selector 回傳一小組親代節點，把有限預算分配到更有望方向。它非純貪婪：偏好低誤差+簡單的候選，並用選擇歷史避免重複展開相似分支。<strong>為防資料洩漏，樹摘要只暴露訓練誤差，絕不暴露測試/域外誤差。</strong></p>
+<h3 id="35-mutator">3.5 Mutator</h3>
+<p>對 Selector 選的親代節點做局部調整，三種互補操作：</p>
+<ol>
+<li><strong>規則加法（Rule addition）</strong>：保留親代、透過一小組附著運算子掛上固定基本函數（線性 c₁xⱼ+c₂、三角 c₁sin(c₂xⱼ+c₃)、冪 c₁xⱼ^c₂、指數 c₁exp(c₂xⱼ)、對數 c₁log(1+c₂xⱼ)、有理分式…）。加法結合親代採加/乘/除；一元包裹另用 exp(cf)、log(1+cf)、sin(cf)、|cf|、f^c。其廣度來自運算子族而非領域先驗，保持低歸納偏置同時讓緊湊的乘積/比值/組合可達。</li>
+<li><strong>規則刪除（Rule deletion）</strong>：剪枝或解包 AST 子結構，測試當前部分是否冗餘。</li>
+<li><strong>LLM 引導提議（LLM-guided proposal）</strong>：用親代結構、擬合資訊、規則生成的候選、搜尋歷史、領域知識，建議非模板、脈絡相依的精修。</li>
+</ol>
+<p>突變後候選以結構指紋正規化去重再入庫。此設計結合可靠的規則式局部搜尋與彈性的 LLM 引導精修，讓搜尋超越固定模板又不被重複/無效候選淹沒。</p>
+<h3 id="36-optimizer結構感知">3.6 Optimizer（結構感知）</h3>
+<p>流水線：<strong>變數投影（分離線性與非線性參數）→ DE/CMA-ES 全域探索 → L-BFGS 局部精修 → 參數吸附（snap 結構約束的指數）→ 符號簡化</strong>。藉骨架資訊降低係數搜尋難度、簡化代數等價形式，使結構正確的骨架不再因擬合不佳而被低估。</p>
+<h2 id="4-實驗精要">4. 實驗（精要）</h2>
+<p>在 LLM-SRBench 129 題合成子集 + Claude Opus 4.6：回復 <strong>107 條精確式</strong>;<strong>SA@50 = 82.9%</strong>（同骨幹基線 4.5×）;<strong>SA@1 = 55.8%</strong>（勝最強已發表 top-1 PiT-PO 3.6×）。消融：結構可見搜尋、LLM 引導局部精修、結構感知係數最佳化三者皆對可靠符號回復關鍵。並稽核出基準材料科學子集的輸入變數線性相依與弱非線性因子變化，破壞結構可辨識性。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>FunctionEvolve 把「顯式 AST 結構」當一等公民，貫穿選親（結構多樣性）、突變（規則局部編輯 + LLM 脈絡精修）、係數擬合（變數投影 + 參數吸附），無領域專屬規則即達 SOTA 級符號回復；同時提醒社群注意基準本身的可辨識性陷阱。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2606.07704_FunctionEvolve.%E6%91%98%E8%A6%81.html"><code>../summarize/2606.07704_FunctionEvolve.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>稽核 LLM Agent 動作選擇的來源敏感性（Auditing Provenance Sensitivity in LLM Agent Action Selection） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Junchi Liao</p><p>日期：2026-07</p><p>arXiv：2607.20827</p><p><a href="https://arxiv.org/abs/2607.20827" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="稽核-llm-agent-動作選擇的來源敏感性">稽核 LLM Agent 動作選擇的來源敏感性</h1>
+<h2 id="摘要">摘要</h2>
+<p>LLM agent 從混合使用者要求、工具輸出、檢索記錄、記憶與不可信文字的 context 選工具及 arguments。證據可以相關，卻無權決定某項動作；因此正確動作也未必只接地於允許的證據。本文提出 target-specific authorization audit，對每個工具與 argument target 分別標記 context factors。主要測試固定任務、proposition、位置與 policy，只改來源權威；再削弱 valid evidence，並以 context subset interaction 輔助定位。</p>
+<p>450 個受控 next-action tasks 上，可信／不可信版本在 competing cases 產生 5.4% 動作差異，在 supporting cases 為 1.7%。Controlled degradation 中，2.4% [2.1, 3.0] 比較呈現 full correct、mixed error、clean correct。這些是 stress-set rate，不是部署盛行率。模型能回應文字來源提示，卻未完全隔離未授權證據。</p>
+<h2 id="引言">引言</h2>
+<p>假設郵件 agent 要把合約寄給 Alice。Context 同時有可信目錄、舊記憶與不可信 note。最後 recipient 可能正確，但仍對後兩者敏感；可信 lookup 只是在當下遮住影響。一般 outcome benchmark 看不出這種「碰巧正確」。</p>
+<p>本文區分影響與授權。Attribution 能說某 factor 有影響，不能說它有權影響。授權也依 target 改變：stale address 可能不影響工具類型，卻直接競爭 recipient。</p>
+<h2 id="方法">方法</h2>
+<h3 id="稽核-target-與標記">稽核 target 與標記</h3>
+<p>Action interface、system instructions、tool schemas 與輸出格式固定。每個 task 拆成 goal、trusted observation、memory、record、previous action、metadata、untrusted note 等語意 factors；每個工具／argument target 獨立標記。</p>
+<p>Valid 表示獲授權且支持 target。Invalid 表示未授權，且提供具體競爭值、實體、動作、指令或 previous-action residue。Neutral 包含其餘 factors；它可能仍有影響，甚至可能是支持正解但沒有授權的命題。標記描述 permission，不是一般真偽。</p>
+<h3 id="分數與生成動作">分數與生成動作</h3>
+<p>模型對固定 target 的支持度以 target-token log-odds 加總。另以 free generation 解析實際工具／slot，避免把 latent score shift 當成行為改變。</p>
+<h3 id="valid-evidence-degradation">Valid evidence degradation</h3>
+<p>對每個 valid factor 產生三個 context：full 保留全部；mixed 只移除該 valid factor；clean 再移除所有 Invalid factors。Mixed–clean discordance 表示在 valid evidence 缺失時，保留未授權競爭是否改變動作。更嚴格 pattern 要求 full 與 clean 正確、mixed 錯誤。這是 joint-deletion intervention，不證明某單一 factor 是原因。</p>
+<h3 id="matched-source-intervention">Matched source intervention</h3>
+<p>同一 proposition 在相同位置分別標成 <code>TRUSTED_CURRENT</code> 或 <code>UNTRUSTED_EXTERNAL</code>。Supporting 與 competing relation 都測，藉此把內容效果與來源效果分開。作者強調這只是文字 source frame，不是 operational provenance channel。</p>
+<h3 id="partial-evidence-interaction">Partial-evidence interaction</h3>
+<p>精確評分 factor subsets，以 Harsanyi／Shapley interaction 衡量含 Invalid factor 的顯著交互。它描述 factor 在不同 evidence availability 下的非加性依賴；空 coalition、Shapley average 與 full-context transform 是不同 estimands。</p>
+<h2 id="資料與標記">資料與標記</h2>
+<p>AgentAudit 有 250 個自編 mixed-context tasks，Tau2Audit 100 個 retail／airline states，BFCLAudit 100 個 function-call examples。每 instance 有一個 tool target 與兩個 argument targets，共 1,350 targets。</p>
+<p>三位外部博士標記者獨立重標 300 target packets、每人 2,400 個 target-factor labels。四分類 exact agreement 0.671；invalid vs non-invalid agreement 0.854、Fleiss’ κ 0.626；共識與作者標記相符 0.789。主分析仍使用作者標記。</p>
+<h2 id="實驗">實驗</h2>
+<h3 id="設定">設定</h3>
+<p>主分數、degradation 與 coalition 實驗使用 Qwen3-4B、Qwen3-30B、Mistral-Small-3.2-24B、Llama-3.3-70B；生成與 guardrail 另加 DeepSeek-V2-Lite。完整 subset scoring 遍歷 450 tasks 的所有 factors。信賴區間按 source task cluster bootstrap。</p>
+<h3 id="full-prompt-source-response">Full-prompt source response</h3>
+<p>Trusted support 增加 target score；trusted competitor 的壓低效果也比 untrusted competitor 大。同一 competing proposition 只改 source，pooled trusted-minus-untrusted removal gap 為 +1.15 log-odds [0.97, 1.33]，四模型皆為正。模型確實讀取 source cue，但不代表完全不受 untrusted content 影響。</p>
+<h3 id="generated-action-sensitivity">Generated-action sensitivity</h3>
+<p>五模型共 6,750 rows，support condition 的 source-flip discordance 1.7%，competition 5.4%，差 +3.8pp [3.2, 4.4]。競爭條件從 trusted 改 untrusted 時，1.2% 由對變錯、4.0% 由錯變對。因此來源降權平均上有修正效果，但殘餘 1.2% harmful transitions 與 5.4% discordance 顯示隔離不完整。</p>
+<h3 id="valid-evidence-degradation-1">Valid-evidence degradation</h3>
+<p>12,120 rows 中，mixed 與 clean 動作不同 24.6%。Dropout-aligned Shapley share 預測 discordance 的 AUROC 0.813；簡單 absolute score effect 更高為 0.849，兩者合併為 0.868。作者因此只把 Shapley 當 interaction localization 與增量訊號。</p>
+<p>嚴格 retained-invalid pattern 為 2.4% [2.1, 3.0]，各模型 0.5%–4.1%。案例中，使用者目前允許兩件行李，stale preference 寫四件；Qwen 完整 context 回兩件，只移除目前授權後回四件，再移除 stale factor 後又回兩件。</p>
+<h3 id="coalition-diagnostic">Coalition diagnostic</h3>
+<p>Shapley average 與 empty-coalition 的 fractional excess 均為 +0.027，full-context transform 為 -0.004。未授權 factor 在 partial-evidence 背景中過度出現，但完整 prompt 附近接近隨機基準。Strict same-role competing controls 又反轉部分比較，所以 coalition involvement 不能單獨證明 authorization-specific failure。</p>
+<h3 id="長-context-與-policy">長 context 與 policy</h3>
+<p>在 12／16 factors 上，pairwise screening 分別保留 92.0%／87.8% invalid factors，優於 first-order，但只是近似。明示 authority policy 將 untrusted-competition error 從 14.9% 降至 9.5%，改善 5.4pp；模型改善幅度從 Mistral +18.1pp 到 DeepSeek -0.9pp。Policy 改善 pooled correctness，沒有形成不變的 provenance filter。</p>
+<h2 id="結論">結論</h2>
+<p>Agent 評估必須同時測結果正確與來源依賴。Matched source intervention 最適合識別 full-prompt authority response；degradation 揭露 valid evidence 變弱時的殘餘行為敏感；coalition interaction 只能作 partial-evidence 的輔助定位。</p>
+<h2 id="限制">限制</h2>
+<p>Factor decomposition 與 target-specific labels 由人編寫，不能保證對任意重分解不變。資料刻意混合授權與未授權 context，不能估部署錯誤率。Exact enumeration 難擴到長 trajectory；closed model 無 target-token probability。不同 estimand 也不可混用：leave-one-out、matched intervention、Shapley 與 full-context transform 各回答不同問題，沒有一個能唯一還原模型的內部推理路徑。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>利用可微符號表達式進行高效率的符號策略學習（Efficient Symbolic Policy Learning with Differentiable Symbolic Expression, ESPL） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jiaming Guo, Rui Zhang 等（中科院計算所 / Cambricon）</p><p>日期：2023-11，NeurIPS 2023</p><p>arXiv：2311.02104</p><p><a href="https://arxiv.org/abs/2311.02104" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="利用可微符號表達式進行高效率的符號策略學習espl">利用可微符號表達式進行高效率的符號策略學習（ESPL）</h1>
+<p>Jiaming Guo、Rui Zhang 等（中科院計算所處理器重點實驗室 / 中科院軟體所 / USTC / Cambricon / 上海處理器創新中心 / UCAS），NeurIPS 2023</p>
+<h2 id="摘要">摘要</h2>
+<p>深度強化學習（DRL）在序列決策任務帶來廣泛進展。但神經網路策略的複雜性使其<strong>難理解、難在有限計算資源下部署</strong>。目前用緊湊<strong>符號表達式作為符號策略</strong>是獲得簡單可解釋策略的有望策略。先前符號策略法常涉複雜訓練過程與預訓練神經網路策略，<strong>低效且限制符號策略應用</strong>。本文提出高效梯度學習法 <strong>ESPL（Efficient Symbolic Policy Learning）</strong>，以端到端方式<strong>從零學符號策略</strong>。引入<strong>符號網路</strong>作為搜尋空間、用<strong>路徑選擇器</strong>找緊湊符號策略；如此把策略表為<strong>可微符號表達式</strong>、以 <strong>off-policy</strong> 方式訓練進一步提效。此外，不像先前符號策略因複雜只能用於單任務 RL，我們把 ESPL 擴展到 <strong>meta-RL</strong>、為未見任務生成符號策略。實驗顯示本法生成更高表現的符號策略、大幅提升單任務 RL 資料效率；在 meta-RL，相較神經網路策略，所提符號策略表現更高、更高效、且有可解釋潛力。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>DRL 中策略常實作為深度神經網路（龐大參數 + 數千巢狀非線性運算）→ 表示力強但<strong>非常複雜，難理解、難預測行為、難在有限計算資源部署</strong>。</p>
+<p>學界與業界對可解釋簡單 RL 策略興趣高 → 有工作學<strong>符號策略</strong>（變數/常數/各種數學運算子組成的符號式，簡潔低複雜、更可解釋易部署）。GP 式限簡單任務（需給定/學到的 world model）、比 NN 表現降；<strong>DSP</strong>（SOTA，用 RNN agent 生符號策略並以 RL 訓 RNN）移除部分限制，但<strong>資料效率低（比傳統 RL 多數百倍環境互動）</strong>、多維動作空間需預訓練 NN 當錨模型（增複雜、限最終表現）、複雜到難用於 meta-RL。</p>
+<p>本文提出 <strong>ESPL</strong> 以端到端可微方式<strong>從零學符號策略</strong>。組成：<strong>符號網路</strong> + <strong>路徑選擇器</strong>。符號網路可視為全套候選符號策略——其<strong>激活函數由各種符號運算子構成、參數視為符號式的常數</strong>。路徑選擇器<strong>自適應遮罩不相關連接</strong>，從符號網路選出適當的緊湊符號形式。所有模組設計為可微 → 策略表為可微符號表達式 → <strong>以 off-policy 方式高效訓練、經梯度下降直接更新符號策略（無需額外 agent）</strong>。實驗上在數個 benchmark 控制任務，本演算法產出表現良好的符號策略、<strong>比 DSP 少數千倍環境互動</strong>。</p>
+<p><strong>meta-RL</strong> 是 RL 應用最重要技術之一（學跨任務共享內部結構以提升對未見任務的泛化）。問：能否利用符號策略 + meta-RL 為未見任務生成符號策略?先前符號策略法太複雜難與 meta-RL 結合，本文把 ESPL 與 <strong>context-based meta-RL</strong> 結合、開發 <strong>CSP（Contextual Symbolic Policy）</strong>。context-based meta-RL 強迫策略以「聚合經驗形成的 context 變數」為條件。CSP 中<strong>路徑選擇器依 context 變數決定符號形式</strong>；並引入<strong>參數生成器依 context 變數生成符號策略的常數</strong>。訓練建於 context-based meta-RL 法 <strong>PEARL</strong> 之上。所提 CSP 給少量軌跡即能為未見任務生成符號策略。相較神經網路策略，CSP 產的 contextual 策略<strong>泛化更高、更高效、有可解釋潛力</strong>。</p>
+<p><strong>貢獻</strong>：(1) 新梯度式符號策略學習演算法 ESPL（高效從零學）;(2) 用 ESPL 開發 meta-RL 的 contextual 符號策略（為未見任務生符號策略）;(3) 實證 ESPL 在單任務 RL 與 meta-RL 的增益。</p>
+<h2 id="方法">方法</h2>
+<p>（符號網路：運算子當激活、參數當常數；路徑選擇器：自適應遮罩選緊湊式；全可微 → off-policy 梯度訓練。CSP：path selector 依 context 決定符號形式、parameter generator 依 context 生常數、建於 PEARL。）</p>
+<h2 id="實驗">實驗</h2>
+<ul>
+<li><strong>8 個連續控制任務</strong>：表現與 NN 策略及既有符號策略相當或更高；<strong>比 DSP 少數千倍環境 episode</strong>（Table 3，回歸法與 DSP 還需預訓練 NN 策略）→ 大幅提升符號策略學習的資料效率。</li>
+<li><strong>meta-RL（CSP）</strong>：比神經網路策略泛化更高、效率更高、有可解釋潛力。</li>
+</ul>
+<h2 id="結論">結論</h2>
+<p>ESPL 是高效梯度式符號策略學習法，端到端從零學符號策略。8 個連續控制任務顯示與 NN 及既有符號策略相當或更高表現，同時大幅提升資料效率。結合 meta-RL 為未見任務生成符號策略——相較 NN 策略，所提符號策略表現更高、更高效、有可解釋潛力。希望 ESPL 啟發 RL/meta-RL 的符號策略未來工作；且因符號策略是白箱，利於理解與部署。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2311.02104_ESPL_Symbolic_Policy.%E6%91%98%E8%A6%81.html"><code>../summarize/2311.02104_ESPL_Symbolic_Policy.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

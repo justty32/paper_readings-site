@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_透過多代理模擬生成多樣化工具使用語料 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2306.05301_ToolAlpaca.zh-TW.html">回 2306.05301_ToolAlpaca.zh-TW 目錄</a>　<a href="02_%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">← 上一節</a>　<a href="04_ToolAlpaca_%E8%AA%9E%E6%96%99.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-透過多代理模擬生成多樣化工具使用語料">3. 透過多代理模擬生成多樣化工具使用語料</h2>
+<p>本節介紹 ToolAlpaca，一個以最小人工介入生成多樣化工具使用語料的多代理模擬框架。如圖 1 所示，本框架含兩個階段：</p>
+<ol>
+<li><strong>工具集建構</strong>：目標是建構一套工具集合，並以標準化格式 {name, introduction, description, function documentation, OpenAPI specification} 表示。具體而言，我們先從網路蒐集工具的名稱與簡介，接著利用 LLM 為其補上完整、結構化的文件，說明每個工具的功能與用法。透過這種方式，可以建構出貼近真實世界情境的多樣化、結構化工具集。</li>
+<li><strong>工具使用實例生成</strong>：給定工具集，此階段的目標是在模擬環境中自動生成工具使用實例。此環境由三個獨立虛擬代理協同運作而成，各由一個大型語言模型扮演：<strong>使用者</strong>、<strong>工具執行者</strong>與<strong>助理</strong>。透過這些代理間的多輪互動，我們能生成反映真實世界工具使用情境的實例。每筆工具使用實例含三個關鍵要素：{使用者的指令，動作及其對應的工具輸出，最終回應}。</li>
+</ol>
+<h3 id="31-多樣化工具集建構">3.1 多樣化工具集建構</h3>
+<p>本節說明如何建構多樣化工具集並以統一格式表示。此流程始於從網路蒐集大量 API 集合，反映真實世界的工具使用情境。由於這些 API 的描述粗略且缺乏統一表示，我們進一步運用 LLM 的生成能力為每個工具建立完整文件，幫助語言模型理解每個工具的功能與用法。隨後我們遵循 OpenAPI 標準為每個 API 生成統一規格，以利自動化程式呼叫，並方便後續的工具執行模擬。如此一來，每個工具都可表示為五元組 {name, introduction, description, function documentation, OpenAPI specification}。（圖 2 給出範例：以 Public Holidays 工具為例，name、description、introduction 提供基本資訊與用途，function documentation 提供工具內各函式（getHolidays、searchHoliday、getHolidayDetails）的功能與輸入輸出，OpenAPI Specification 提供更完整、結構化的文件。）詳細建構步驟如下：</p>
+<p><strong>工具蒐集</strong>：各種工具通常以網頁 API 的形式為人類所用。為方便使用與發掘這些 API，網路上存在大量彙整實用、常見 API 的資料庫（repository）。因此，本步驟採用具代表性的 API 資料庫 <strong>public-apis</strong> 作為目標工具集——該資料庫涵蓋超過 1,400 個 API、橫跨 50 多個不同類別。我們從中蒐集每個工具的名稱與簡介。</p>
+<p><strong>文件生成</strong>：為增進語言模型對工具功能與用法的理解，本步驟運用 LLM 自動為每個工具生成文件，包括描述與函式文件。具體而言，給定工具的名稱與簡介，我們運用 ChatGPT 等 LLM 的強大生成能力，設計對應提示以生成每個工具的描述與函式文件。如圖 2 所示，對於工具描述，我們把簡介擴寫成對工具目的與功能的概觀，讓語言模型理解該工具適用的任務情境。對於函式文件，我們提示 LLM 在描述範圍內生成更具體的函式，包含各自的輸入輸出參數，確保 LLM 理解該工具不同功能的用法。透過此方法，我們為後續使用者指令生成與模擬工具使用環境的建立打下堅實基礎。</p>
+<p><strong>OpenAPI 規格生成</strong>：最後，我們提示 LLM 以 OpenAPI Specification（OAS）形式，為每個工具生成更正式、結構化的表示。OAS 定義了描述 API 的標準、語言無關介面，包括端點、預期輸入輸出型別、可能的錯誤回應等資訊。OAS 對人類與機器都提供一致性與可讀性，是我們工具使用語料的理想選擇。這份完整文件，是後續框架各階段模擬工具執行的基礎。</p>
+<p>透過此方式，我們建構出一個多樣、統一表示的工具集，為多代理模擬環境的建立與後續工具使用語料生成打下扎實基礎。</p>
+<h3 id="32-自動工具使用實例生成">3.2 自動工具使用實例生成</h3>
+<p>給定工具集，本節說明如何自動建構工具使用語料，使語言模型能訓練出通用化工具使用能力。具體而言，如圖 3 所示，每筆工具使用實例可表示為三元組 {Instruction, Actions, Response}：</p>
+<ul>
+<li><strong>Instruction（指令）</strong>：需要工具協助解決的使用者查詢。例如「……所以能不能告訴我明年日本的假日清單？」即是本文範例中的一則指令。</li>
+<li><strong>Actions（動作）</strong>：解決一則指令可能涉及依序執行多個動作。仿照 ReAct（Yao et al. 2022），每個動作以一個元組表示，包含思考（thought）、函式名稱、輸入參數，以及對應的工具回應。例如圖 3 中，元組 (&quot;I need to get the list of holidays in Japan for 2024.&quot;, &quot;getHolidays&quot;, {&quot;country&quot;: &quot;Japan&quot;, &quot;year&quot;: 2024}, &quot;Status Code: 200 Response:...&quot;) 即代表一個動作。</li>
+<li><strong>Response（回應）</strong>：多輪互動後模型的最終結論回應，整合各工具回應以對原始指令提供完整解答。以本文範例而言，回應即為：「2024 年日本的假日清單為……」。</li>
+</ul>
+<p>然而，建構一份多樣且真實的工具使用資料集是件具挑戰性的工作。首先，我們工具集的種類繁多，使得為每個工具手寫指令變得不切實際——工具橫跨休閒到專業各領域，且指令的建構仰賴對工具功能與潛在用途的理解，人工標註的負擔因而變得沉重。其次，真實世界的工具使用情境常涉及多輪的試誤迭代過程，使得自動建構能反映真實情況的工具使用實例格外具挑戰性。</p>
+<p>為此，我們設計了一個模擬環境來生成工具使用語料，涵蓋三個虛擬代理：<strong>使用者</strong>、<strong>助理</strong>、<strong>工具執行者</strong>。工具使用實例即透過這些代理間的互動生成。具體而言，每個代理都由一個帶特定提示的大型語言模型模擬。各代理的角色詳述如下：</p>
+<ul>
+<li><strong>使用者代理</strong>：設計來模擬工具使用者，其功能包括：(1) 根據當前工具的函式文件，為該工具草擬任務指令；(2) 根據目前的互動脈絡回應助理的提問，補上初始指令中可能缺漏的關鍵資訊。針對每項功能，我們建構對應的提示模板引導 LLM 生成合適的輸出。此外，為確保任務指令的多樣性，我們採用多種提示以生成不同格式（包括命令句、問句等）的指令。發揮大型模型幾乎橫跨所有領域的能力，此做法能基於工具文件生成高品質且多樣化的指令，有效解決前述人工標註的問題。</li>
+<li><strong>助理代理</strong>：設計來模擬具工具使用能力的助理。它接收來自使用者代理的指令，並決定後續動作，這包括：選擇合適的工具與函式、為工具執行者產生指令，以及彙整互動內容以生成最終回應。如圖 3 所示，仿照 ReAct（Yao et al. 2022），我們採用 (thought, action, observation) 的格式模板引導 LLM 完成這些任務。</li>
+<li><strong>工具執行者代理</strong>：設計來模擬工具的執行，接收來自助理代理的請求，並根據該工具預先定義的功能生成回應。具體而言，在對助理的請求進行格式與參數檢查後，這些請求會被轉換為網路請求格式，接著工具執行者以該工具的 OpenAPI 規格與助理的請求提示 LLM，生成<strong>模擬的</strong>執行結果。藉由 LLM 強大的模擬與生成能力，我們得以規避建構真實 API 呼叫的複雜性。此方法已透過實證驗證，證實三個代理的能力皆準確有效，詳見後續章節。</li>
+</ul>
+<p>給定上述代理，工具使用案例是透過它們之間的多輪互動生成的。首先，使用者代理根據工具資訊生成指令。接著，助理代理選擇合適的動作及其對應輸入，等待工具執行者代理模擬執行並回應。這種動作選擇與工具回應蒐集的迭代過程持續進行，直到助理代理判定已蒐集足夠資訊來回應使用者的指令。透過這種多代理互動，我們得以模擬真實的工具使用情境，並生成完整、多樣的工具使用實例。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

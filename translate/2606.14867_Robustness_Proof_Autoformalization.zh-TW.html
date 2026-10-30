@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>評估 Lean 4 中證明自動形式化的穩健性 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zhengtao Gui, Sheng Yang, Zhouxing Shi（UC Riverside）</p><p>日期：2026-06</p><p>arXiv：2606.14867</p><p><a href="https://arxiv.org/abs/2606.14867" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="評估-lean-4-中證明自動形式化的穩健性">評估 Lean 4 中證明自動形式化的穩健性</h1>
+<h2 id="摘要">摘要</h2>
+<p>證明自動形式化（proof autoformalization）旨在把以自然語言（NL）寫的非形式證明，翻譯成 Lean 4 等形式語言中的形式證明。多項工作已開發 LLM 為基的證明自動形式化模型，但既有評測通常只聚焦「把整理過的資料集中的良構 NL 證明翻譯出來」。我們主張：一個 robust 的證明自動形式化器，即使面對<strong>偏離理想形態</strong>的 NL 證明也應保持忠實；我們呈現首個關於證明自動形式化穩健性的研究。我們提出兩類擾動並各自評測穩健性：<strong>全域擾動</strong>以不同風格改寫 NL 證明，形式化結果應保持一致；<strong>局部擾動</strong>改動一個值、符號或證明步驟（可能是反事實的），robust 的形式化應忠實反映該改動，而非還原成原版或自行推斷成另一回事。我們在 miniF2F 與 MATH-500 上建立含兩類擾動的 benchmark，並自動衡量形式化正確性在全域擾動下的穩定度、以及輸出在局部擾動下的忠實度。我們評測 7 個近期模型，<strong>全部對全域擾動敏感、且多數在局部擾動下無法保持忠實</strong>。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>NL 推理與 FL（形式語言）驗證可互補：一旦 NL 推理被忠實譯成 FL，FL 驗證即可驗證該 NL 推理。但真實 NL 證明風格與品質參差，既有評測只測 curated 良構證明。我們因此設計兩類擾動：</p>
+<ul>
+<li><strong>全域擾動</strong>：改寫整個 NL 證明（保持數學含義），形式化應一致。</li>
+<li><strong>局部擾動</strong>：從 FL 側改動單一值/符號/步驟，形式化應忠實反映該改動。</li>
+</ul>
+<p>我們在 miniF2F 與 MATH-500 上建 benchmark。實驗顯示既有方法穩健性有限：全域擾動下正確性不穩、局部擾動下忠實度有限，顯示有大幅改善空間。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>代表系統含 GPT-f、Kimina-Prover（強化學習）、Goedel-Prover-V2（scaffold + 驗證）等。證明自動形式化（相對於陳述自動形式化）關注較少、較新（如 FormL4 在 GPT-4 非形式化的 Mathlib 證明上以逐步 Lean 監督訓練）。我們同時測正確性、語意忠實度與結構面向。</p>
+<h2 id="3-方法">3. 方法</h2>
+<p>給定 NL 輸入：全域擾動改寫整個 NL 證明（§3.1）；局部擾動改 NL 輸入中一處，以「形式化是否忠實反映改動」評估忠實度。</p>
+<h3 id="31-全域擾動">3.1 全域擾動</h3>
+<p>用 LLM 改寫整個 NL 證明，生成四種風格的全域擾動版本。<strong>正確性指標</strong>：由於全域擾動應保持數學含義，robust 形式化器應在改寫前後維持正確；以 <strong>FullyCorrect</strong> 衡量。</p>
+<h3 id="32-局部擾動">3.2 局部擾動</h3>
+<p>改動 NL 輸入中單一值/符號/證明步驟，刻意對比兩種形式化器：<strong>Faithful Autoformalizer</strong> 即使面對非典型輸入也忠實反映；不忠實者則回退成良構證明裡常見的樣子。三類編輯：</p>
+<ul>
+<li><strong>number edit</strong>：把數字字面量改成同號、量級相近的另一值；</li>
+<li><strong>symbol edit</strong>：替換符號；</li>
+<li><strong>step deletion</strong>：刪去推理步驟（忠實的翻譯者應把此改動帶進形式化）。</li>
+</ul>
+<p>評估時以 <strong>FR（忠實率）／RR（回退率）</strong> 在可辨識輸出上計算。</p>
+<h2 id="4-實驗">4. 實驗</h2>
+<p>評測 7 個近期模型（含 ProofBridge、ProofFlow、Kimina-Prover、Goedel-Prover-V2、DeepSeek-Prover-V2、Gemini-3.1-Pro 等）。</p>
+<h3 id="全域擾動結果table-2fullycorrect-">全域擾動結果（Table 2，FullyCorrect %）</h3>
+<p>正確性不穩。miniF2F 上 ProofBridge 從 Orig 21.3% 掉到某改寫 17.6%；DeepSeek-Prover-V2-7B 反從 1.2% 升到 Q-FF 12.7%、Goedel-Prover-V2-8B 1.2%→4.1%、Gemini-3.1-Pro 17.2%→22.5%。但在 MATH-500 上同類改寫常<strong>降</strong>效（Kimina-Prover-Distill-8B 19.8%→16.4–19.0%，Gemini-3.1-Pro 26.4%→23.6–24.6%）。可見改寫使結果漂移，僅靠乾淨輸入評測會高估穩健性。</p>
+<h3 id="局部擾動結果tables-34frrr-">局部擾動結果（Tables 3、4，FR/RR %）</h3>
+<p>多數模型對 number/symbol 編輯<strong>幾乎都回退成原版</strong>：五個模型在這些編輯上平均 FR 僅 <strong>6.3%</strong>，RR 多 &gt;90%（如 miniF2F number-proof 編輯：Kimina-Prover-Distill-8B RR 94.7%、Gemini-3.1-Pro 95.9%）。ProofBridge（symbol 編輯平均 FR 41.8%）、ProofFlow（26.1%）相對較忠實但優勢有限。</p>
+<p><strong>step deletion</strong>：模型常自行補回被刪步驟，FR 介於 48.2%–75.2%；最忠實者 Kimina-Prover-RL-1.7B（miniF2F 51.8%、MATH-500 70.7%）。</p>
+<p><strong>陳述 vs. 證明的不對稱</strong>：同類編輯放在陳述裡比放在證明裡更易被忠實反映——例如 ProofBridge 在 proof-level number/symbol 編輯 FR 39.4%/44.9%，到 statement-level 升至 78.6%/80.0%。</p>
+<h2 id="結論">結論</h2>
+<p>我們提出首個證明自動形式化穩健性研究，以全域與局部擾動診斷既有模型：全部對全域改寫敏感、且多數在局部反事實改動下傾向「腦補還原」而非忠實反映。這顯示當前形式化器距離真正可信仍有大幅改善空間。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2606.14867_Robustness_Proof_Autoformalization.%E6%91%98%E8%A6%81.html"><code>../summarize/2606.14867_Robustness_Proof_Autoformalization.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

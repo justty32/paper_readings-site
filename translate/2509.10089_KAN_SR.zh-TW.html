@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>KAN-SR：Kolmogorov-Arnold 網路引導的符號迴歸框架（KAN-SR: A Kolmogorov-Arnold Network Guided Symbolic Regression Framework） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>日期：2025-09</p><p>arXiv：2509.10089</p><p><a href="https://arxiv.org/abs/2509.10089" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="kan-srkolmogorov-arnold-網路引導的符號迴歸框架">KAN-SR：Kolmogorov-Arnold 網路引導的符號迴歸框架</h1>
+<h2 id="摘要">摘要</h2>
+<p>我們提出新的符號迴歸框架 <strong>KAN-SR</strong>，建於 <strong>Kolmogorov-Arnold 網路（KAN）</strong> 上、走<strong>分而治之</strong>。SR 搜尋最佳擬合資料的數學方程，常用遺傳程式設計（GP）解。我們證明用深度學習技術（更具體說 KAN）並結合<strong>平移對稱、可分離性</strong>等簡化策略，能回復 <strong>Feynman SRSD</strong> 資料集的 ground-truth 方程。此外，結合本框架與<strong>神經受控微分方程（neural CDE）</strong>，能精確建模 in-silico 生物製程系統的動力學，為其他工程系統的動態建模開門。</p>
+<p><strong>關鍵詞</strong>：符號迴歸、Kolmogorov-Arnold 網路、Feynman-SRSD 資料集。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>SR 同時推函數形式（方程）與參數（常數）→ 既預測又（某程度）可解釋，在「理解機制比原始預測更重要」的科學領域尤吸引。強調簡單與可解釋（找簡潔、提供系統洞見的數學關係），對比黑箱 ML（表現好但缺透明、外推差）。</p>
+<p>經典 SR（GP）用演化演算法探索表達式樹空間——彈性但<strong>樣本低效、計算貴、難擴展</strong>。近期用預訓練語言模型、RL、深度學習+GP 混合、物理啟發啟發式。但挑戰仍在：神經符號系統多靠<strong>離散符號表示難端到端訓練</strong>；無普遍 benchmark。<strong>SRSD</strong>（Matsubara 等）引入 240 個 Feynman 啟發資料集（採樣對應真實量測現象、含無關變數測穩健）邁出一步。</p>
+<p>工程科學（化工、生工）中 SR 洞見能加速製程開發或深化現象理解（動力學模型、催化劑設計、傳輸現象）。<strong>動態系統</strong>是核心，動態環境下辨識支配方程是開放問題；<strong>SINDy</strong> 用稀疏迴歸找手工方程塊的最佳組合。</p>
+<p>本文提出 <strong>KAN-SR</strong>——基於 <strong>KAN</strong>（Kolmogorov-Arnold 表示定理啟發的新架構，用<strong>可學單變數函數</strong>取代「固定激活 + 線性權重」→ 更具表達力且常更可解釋）。為適配 SR：開發<strong>混合抽取管線</strong>結合可微 KAN 訓練 + <strong>AI Feynman 式符號簡化（對稱、可分離）</strong> → 把複雜問題分解成更簡單子問題（常可用單層 KAN 直接擬合）。擬合後<strong>把網路分解成模組化代數組件、經非線性最小平方匹配符號庫</strong> → 抽出緊湊可解釋表達式<strong>而不靠暴力搜尋或離散枚舉</strong>。</p>
+<p><strong>貢獻</strong>：(1) 基於 KAN + 符號建模的 SR 框架（統一組合式深度學習與符號抽取）;(2) AI Feynman 啟發的符號抽取/簡化管線（綜合可擴展的單變數函數庫 + KAN）;(3) SRSD benchmark 上改善符號回復；(4) 經 neural CDE 延伸到動態系統（生物製程案例）。</p>
+<h2 id="2-方法">2. 方法</h2>
+<p>SR 在表達式與常數空間搜尋最小化目標（擬合誤差 + 複雜度量度如 BIC）。Jax 實作（Equinox 做 KAN、Optimistix 做非線性最小平方、Optax 一階優化、Diffrax 做神經微分方程）。</p>
+<h3 id="21-工作流無普遍-kan-架構能容所有目標函數--一序列可選可配置步驟">2.1 工作流（無普遍 KAN 架構能容所有目標函數 → 一序列可選可配置步驟）</h3>
+<ol>
+<li><strong>前處理</strong>（正規化/縮放改善數值穩定與收斂）;</li>
+<li><strong>暴力搜尋</strong>（可選，對簡單表達式窮舉）;</li>
+<li><strong>單層 KAN 單 unit</strong>（summation 或 multiplication unit 的最小架構符號近似）;</li>
+<li><strong>單層 KAN 多 unit</strong>（擴搜尋空間）;</li>
+<li><strong>簡化 + 子問題分解</strong>（可選，辨識結構簡化/可分離組件 → 對子問題遞迴重啟）;</li>
+<li><strong>輸出變換</strong>（可選，log/exp 等簡化函數形式後重搜變換後目標）;</li>
+<li><strong>深層 KAN 擬合</strong>（最後步，更簡單模型失敗才用更深架構捕捉階層關係；巢狀迴圈——各深度探索增加寬度至上限，無匹配則加深直到上限）。</li>
+</ol>
+<ul>
+<li>找到符號匹配即提早返回；否則逐步進入更具表達力階段；全跑完未達閾值則返回搜尋中找到的最佳方程。</li>
+</ul>
+<h3 id="22-暴力符號匹配">2.2 暴力符號匹配</h3>
+<p>首步快速辨識低複雜度關係——窮舉擬合一組簡單多變數乘法式（含高階式），各式參數化用 <strong>BFGS</strong> 擬合；最佳式誤差低於閾值則接受。目標函數簡單代數形式時尤有效。</p>
+<h3 id="23-kan">2.3 KAN</h3>
+<p>原始 KAN 用 B-spline 表單變數激活——具表達力但實務有限（spline 結點網格手動擴展會中斷訓練、spline 評估慢成瓶頸）。採改良 <strong>Fast-KAN</strong>（用徑向基函數取代 B-spline 提效）；可學單變數激活用 <strong>RSWAF（Reflectional Switch Activation Function）</strong>。加法 + 乘法 KAN 層組合可表廣泛表達式。</p>
+<h3 id="符號抽取">符號抽取</h3>
+<p>擬合 KAN 後拆成模組代數組件，用領域知情的單變數函數庫 + 非線性最小平方匹配閉式。</p>
+<h2 id="3-實驗">3. 實驗</h2>
+<ul>
+<li><strong>SRSD-Feynman benchmark</strong>：對比 Matsubara 等評估的 SOTA SR。KAN-SR 在符號回復達競爭或更優，尤在涉組合結構、外推、含無關變數的噪聲輸入場景。</li>
+<li><strong>生物製程動態系統</strong>（in-silico）：結合 neural CDE → 回復可解釋動力學速率方程。</li>
+</ul>
+<h2 id="4-結論">4. 結論</h2>
+<p>KAN-SR 能從噪聲高維資料回復數學表達式。SRSD-Feynman 上<strong>解出率勝基線，含無關變數時提升尤顯著</strong>（歸功分而治之 + 簡化管線發現更簡單子問題）。加法/乘法 KAN 層 + 領域知情庫 + 非線性優化的符號抽取支援回復對齊 ground-truth 的閉式。生物製程案例顯示能在 neural CDE 脈絡辨識支配方程，但需更廣真實時序驗證；neural CDE 是兩步法（更乾淨是把 SR 直接整合進 neural CDE，但因 KAN-SR 迭代性超出範圍）。</p>
+<p><strong>局限</strong>：優越表現只在「單層表示 + 簡化 + 單變數庫足以擬合」時得到。把 SR（大型非凸混合整數非線性規劃）拆兩層、固定 unit 數 + 有限單變數庫<strong>限縮空間</strong> → 可能找局部解；<strong>最優解在約束空間外則常失敗</strong>（不像 GP 演化探索 + 非線性常數擬合）。更大更深 KAN 可緩解但會擴散、難抽符號、超參暴增。物理案例資料皆來自閉式（ground truth 可從訓練變數回復），不像黑箱/真實問題關鍵變數可能缺；雖善處理高斯噪聲，但資訊不全會妨礙發現好方程。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2509.10089_KAN_SR.%E6%91%98%E8%A6%81.html"><code>../summarize/2509.10089_KAN_SR.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

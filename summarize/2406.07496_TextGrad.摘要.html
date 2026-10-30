@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《TextGrad：透過文本進行自動「微分」（TextGrad: Automatic &quot;Differentiation&quot; via Text）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Mert Yuksekgonul, Federico Bianchi, Joseph Boen, Sheng Liu, Zhi Huang, Carlos Guestrin, James Zou（Stanford University；Chan Zuckerberg Biohub）</p><p>日期：2024-06</p><p>arXiv：2406.07496</p><p><a href="https://arxiv.org/abs/2406.07496" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="textgrad透過文本進行自動微分重點摘要">《TextGrad：透過文本進行自動「微分」》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>TextGrad</strong>：把複合 AI 系統看成一張<strong>計算圖</strong>，用 LLM 產生的<strong>自然語言反饋當「文本梯度」（textual gradient）沿圖反向傳播</strong>，並以「文本梯度下降（TGD）」逐一更新圖中各節點變數——變數可以是 prompt、程式碼、分子（SMILES）、放療劑量權重等任意非結構化資料；整套 API <strong>比照 PyTorch 語法與抽象</strong>（<code>Variable</code>/<code>requires_grad</code>/<code>backward()</code>/<code>optimizer.step()</code>），開箱即用、使用者只需給目標函數，不必調框架內部。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>AI 正從「訓練單一模型」轉向「編排多個 LLM 與工具的<strong>複合系統（compound AI system）</strong>」，但這些突破多半靠專家手工打造、靠啟發式微調，缺少像神經網路那樣<strong>有原則、自動化的優化方法</strong>。神經網路早期也面臨此困境，直到反向傳播與自動微分讓優化變得 turn-key。作者要把這個「自動微分」範式<strong>類比</strong>到黑箱 LLM 系統上：既然沒有數值梯度，就用 LLM 產生的自然語言批評當梯度，沿計算圖回傳，指出「每個變數該怎麼改才能改善下游目標」。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>計算圖抽象</strong>：<code>v = f_v(PredecessorsOf(v))</code>；變數 v 是節點（值為文字/影像等非結構化資料），轉換函數 f 可以是 <strong>LLM 呼叫、數值模擬器、外部求解器、程式碼直譯器</strong>（不必可微）。</li>
+<li><strong>文本梯度算子 ∇_LLM(x, y, ∂L/∂y)</strong>：對邊 <code>x →LLM y</code>，把「x 與 y 的對話脈絡＋對 y 的批評」餵給 LLM，回傳形如「這個變數可以這樣改進…」的自然語言反饋。梯度按 Eq.11 從所有後繼節點蒐集並聯集；n 條邊的圖每輪最多 n 次額外 LLM 呼叫。</li>
+<li><strong>文本梯度下降 TGD.step(v, ∂L/∂v)</strong>：把「對 v 的批評」餵給 LLM 產生新變數值，類比 <code>θ - ∂L/∂θ</code>。算子與領域無關，全框架共用一套。</li>
+<li><strong>目標函數可非可微</strong>：可由 LLM prompt（§3.3）、單元測試輸出（§3.1）、分子模擬引擎（§3.4）給出。</li>
+<li><strong>兩類問題</strong>：<strong>instance optimization</strong>（直接把一個解——程式碼/答案/分子——當變數，測試時就地優化）與 <strong>prompt optimization</strong>（找一個能跨多筆查詢泛化的 prompt）。</li>
+<li><strong>從數值優化搬來的技巧</strong>：minibatch（<code>tg.sum</code> 加總 loss）、自然語言<strong>約束</strong>、<strong>momentum</strong>（optimizer 看得到變數的前幾輪版本）；backward 用拓撲排序，完全鏡像 autograd。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>程式碼（LeetCode Hard, gpt-4o, 表 1）</strong>：zero-shot 0.26、Reflexion（1-shot,5 迭代）0.31、<strong>TextGrad（0-shot,5 迭代）0.36</strong>（intro 稱相對最佳法 +20%）。</li>
+<li><strong>解答優化／測試時訓練（表 2）</strong>：GPQA（Google-proof QA）51.0（CoT）→ <strong>55.0</strong>（迄今最佳）；MMLU-機器學習 85.7→88.4；MMLU-大學物理 91.2→<strong>95.1</strong>。做法是自監督 loss（不依賴 ground truth）迭代 3 次＋多數投票。</li>
+<li><strong>prompt 優化（表 3；以 gpt-4o 反饋優化 gpt-3.5-turbo 的 system prompt）</strong>：Object Counting 77.8→<strong>91.9</strong>（勝 DSPy 84.9 達 7%）；Word Sorting 與 GSM8k 與 DSPy 打平（79.8 / 81.1）。DSPy（加 few-shot 示範）與 TextGrad（只改指令）<strong>互補</strong>，把兩者合併 GSM8k 再升到 82.1。</li>
+<li><strong>分子（DOCKSTRING 58 靶點，其中 29 有臨床藥；3 起始片段×10 迭代）</strong>：以 SMILES 為變數、Vina＋QED 雙目標，生成之分子在結合親和力與 druglikeness 上與臨床核准藥<strong>高度競爭</strong>，且結構新穎、in silico 安全性相近。</li>
+<li><strong>放療（5 名前列腺癌病人）</strong>：以 matRad 為內圈數值求解器，TextGrad 做外圈超參數（各器官權重）優化，多項劑量指標優於臨床人工計畫。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>屬<strong>概念驗證</strong>：分子與治療計畫僅 in silico 驗證，未經實驗/臨床評估。</li>
+<li>框架有效的前提假設是「當前 SOTA LLM 有能力對子任務推理」；運算元目前仍以 LLM 呼叫為主，工具使用、RAG 等尚待擴充。</li>
+<li>優化穩定性、adaptive gradient、自我驗證、以 TextGrad 優化 TextGrad（meta-learning）皆為未來工作。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>直接對應 ai_core §1「系統像符號神經網路計算圖（多數確定性節點＋少數 LLM）」</strong>：TextGrad 就是這張圖的一個可運行實例——節點混雜 LLM 呼叫、數值模擬器、程式碼直譯器與外部求解器，而反向傳播的不是數值梯度而是<strong>自然語言反饋</strong>。它示範了「如何在一張混合確定性/LLM 節點的圖上做端到端優化」，正是 ai_core 計算圖觀點的操作化樣板。</li>
+<li><strong>雙接主題 10「prompt 優化」</strong>：§3.3 用強模型（gpt-4o）產生梯度去優化弱模型（gpt-3.5）的 system prompt，付一次性優化成本換到便宜模型的長期低推論成本——這與 ai_core「貴稀有智能＝資產工廠 vs 便宜高頻智能＝資產消費者」（§2）、成本梯度／級聯路由（§3.3）的資產工廠邏輯完全同構：<strong>用貴智能一次性「生產」出便宜智能可長期消費的 prompt 資產</strong>。</li>
+<li><strong>對照座標</strong>：與 <strong>DSPy</strong>（已入庫，走「程式編譯＋挑 few-shot 示範」）互補而非取代——TextGrad 主打 prompt 之外的 <strong>instance optimization</strong>（分子/程式碼/治療計畫）；與 <strong>Agent Symbolic Learning</strong>（<a class="paper-reference" href="2406.18532_AgentSymbolicLearning.%E6%91%98%E8%A6%81.html">2406.18532</a>，已入庫）幾乎同構——兩者都是「語言版反向傳播」，差別在後者聯合優化 prompt+工具+pipeline 結構、主打自我進化，前者把類比推到「任意計算圖上任意變數」並提供 PyTorch 式通用引擎；亦是 Trace（OPTO 形式化）所抽象的一個具體 realization。對 ai_core 的<strong>固化引擎（§3.6）</strong> 也有啟發：文本梯度是可讀的（explainable），可作為「把 LLM 反覆處理案例結晶成確定性程式碼」時的診斷與重構訊號。</li>
+<li>定位：<strong>框架/方法論文＋跨領域概念驗證</strong>，開源（github.com/zou-group/textgrad）。適合做 <strong>compound AI 系統優化、prompt/instance 優化、LLM-as-optimizer、科學計算與 LLM 混合管線</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2406.07496_TextGrad.zh-TW.html"><code>../translate/2406.07496_TextGrad.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

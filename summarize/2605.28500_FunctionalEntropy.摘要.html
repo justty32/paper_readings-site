@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Functional Entropy：以不確定性量化預測 LLM 生成程式碼的功能正確性》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Dylan Bouchard, Mohit Singh Chauhan, Zeya Ahmad, Ho-Kyeong Ra（CVS Health）</p><p>日期：2026-05，UQ for Code × 功能等價替代 NLI 語意等價的瓶頸診斷與解法</p><p>arXiv：2605.28500</p><p><a href="https://arxiv.org/abs/2605.28500" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="functional-entropy以不確定性量化預測-llm-生成程式碼的功能正確性重點摘要">《Functional Entropy：以不確定性量化預測 LLM 生成程式碼的功能正確性》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>功能性熵（functional entropy）= 語意熵（semantic entropy）的程式碼特化版</strong>，其關鍵在於把 NLI（自然語言推論）語意等價替換為 <strong>LLM 判斷的功能等價（functional equivalence）</strong>——因為 NLI 模型無法區分功能不同的程式碼（幾乎所有回應塌縮成單一群集），而 LLM 功能等價判斷的群集純度 &gt;93%。功能性等價方法在 15 組模型-基準中於 11 組拿下最高 AUROC，校準也最佳。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>LLM 生成的程式碼外觀合理但功能錯誤，在少人審查的自主編碼代理、text-to-SQL 等場景風險極高。需<strong>不執行、不使用測試案例</strong>就能預測生成程式碼是否正確。</li>
+<li>NLG 的不確定性量化（UQ）方法能否直接移植到程式碼生成？既有研究<strong>範圍有限</strong>，缺乏跨語言／跨模型的系統性評估。</li>
+<li>其中採樣方法仰賴 <strong>NLI 語意等價</strong>來群集回應——這是關鍵瓶頸：NLI 無法分辨功能不同的程式碼，使群集類 UQ 方法失效。</li>
+</ul>
+<h2 id="核心方法">核心方法</h2>
+<p>評測三大類 UQ 方法（token-probability、採樣一致性、自省），跨度：Python（LiveCodeBench 1,055 題）／Java（MultiPL-E 386 題）／SQL（LiveSQLBench 270 題），5 個模型（GPT-4o/mini、Gemini 2.5 Pro/Flash/Flash-Lite），共 1,711 題。</p>
+<h3 id="功能性等價方法本文核心貢獻">功能性等價方法（本文核心貢獻）</h3>
+<p><strong>共有基礎</strong>：用 LLM（Gemini-2.5-Flash）逐對判斷兩段程式碼是否功能等價（相同輸入→相同輸出），取代 NLI 語意等價。促發模板見附錄 G。</p>
+<ul>
+<li><strong>功能等價率（FER）</strong>：<code>m 個採樣回應中與原始回應功能等價之比例</code>。</li>
+<li><strong>功能性熵（FE）</strong>：以功能等價貪婪群集後，對群集分布計算熵：<code>FE = −Σ P(C) log P(C)</code>，標準化至 [0,1] 即功能負熵（NFN）。<strong>此為語意熵的程式碼特化類比</strong>。</li>
+<li><strong>功能集合信心（FSC）</strong>：歸一化唯一群集數量 <code>(m+1−|C|)/m</code>，全部在一起→1，全部不同→0。</li>
+</ul>
+<h3 id="對照基線">對照基線</h3>
+<p>Token-probability（LNSP、MTP、PM、ATN@K、MTN@K）、相似度（cosine sim、CodeBLEU）、自省（P(True)、verbalized confidence）、混合（CoCoA、MCSP、WB-NFN）。</p>
+<h2 id="關鍵結果">關鍵結果</h2>
+<table>
+<thead>
+<tr>
+<th>基準</th>
+<th>功能等價最高 AUROC</th>
+<th>主要發現</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Python</td>
+<td><strong>0.867</strong>（FER, Gem-Fl）</td>
+<td>Token-prob 亦佳（0.77-0.80），但功能等價全面壓勝；CodeBLEU 次之（0.81）</td>
+</tr>
+<tr>
+<td>Java</td>
+<td><strong>0.701</strong>（FE, Gem-Fl-Lt）</td>
+<td>整體 AUROC 最低（0.55-0.70），功能等價領先幅度縮小，CodeBLEU 競爭力強</td>
+</tr>
+<tr>
+<td>SQL</td>
+<td><strong>0.842</strong>（FSC, GPT-4o-m）</td>
+<td>Token-prob 接近隨機（0.52-0.55 on Gem models）;GPT-4o-mini 準確率 0.21 但 AUROC 0.84**——一致性排名能力強於生成能力，但此情境應優先換模型而非依賴 UQ 過濾**</td>
+</tr>
+</tbody>
+</table>
+<h3 id="nli-vs-功能等價figure-1">NLI vs. 功能等價（Figure 1）</h3>
+<ul>
+<li><strong>群集類</strong>（語意熵／語意集合信心）幾乎完全失效：NLI 把 &gt;80% prompt 的 11 個回應全塌成單一群集 → AUROC 接近 0.5。</li>
+<li>功能等價替代後<strong>差距 &gt;0.30 AUROC</strong>（Python/SQL）；在 SQL 上 NLI 的非矛盾機率具競爭力（因 SQL 語法接近自然語言）。</li>
+<li><strong>非矛盾機率 vs. FER</strong>：FER 在 12/15 組中勝。</li>
+</ul>
+<h3 id="校準">校準</h3>
+<p>功能性方法在 Python 與 SQL 校準最佳（ECE 低），Java 競爭力佳。token-prob 在 SQL 上 ECE 常 &gt;0.7（信心高但全錯）。cosine sim 雖 AUROC 尚可但校準極差。</p>
+<h3 id="消融與成本">消融與成本</h3>
+<ul>
+<li>m=5 即可捕捉大部分增益（距 m=10 的 AUROC 差距 ≤0.02）;FER 只需 5 次等價判斷，群集類最多 15 次。</li>
+<li>等價判斷成本遠低於生成成本（僅輸出單一類別標籤）。</li>
+<li>等價法官敏感度：Gem-Fl-Lite 差異 ≤0.02 AUROC;GPT-4o-mini 退化 ≤0.07。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>僅評測 Python/Java/SQL，不涵蓋靜態型別語言（Rust/Haskell）、多檔案專案或 API 互動任務。</li>
+<li>SQL 僅 270 題，統計力有限。</li>
+<li>全為閉源 API 模型（OpenAI/Google），不含開源模型（Llama/Mistral/Qwen）。</li>
+<li>正確性定義取決於既有測試案例，可能漏掉邊界錯誤。</li>
+<li>等價法官與生成器可能同為 Gemini 系列（但執行驗證 + 法官消融緩解此疑慮）。</li>
+</ul>
+<h2 id="ai_core-34-憑證功能性熵--預測程式碼正確性">ai_core §3.4 憑證：功能性熵 = 預測程式碼正確性</h2>
+<p>本論文（2605.28500）的「功能性熵」直接實現 <strong>ai_core §3.4 憑證</strong> 的核心需求：<strong>在不執行、無測試案例的前提下，產出一個能有效排列程式碼正確性的信心分數</strong>。功能等價方法在 11/15 組中 AUROC 最高且校準最佳，意味其輸出的信心分數不僅可用於排名（區分對錯），也可作為可靠的機率估計——這正是 §3.4「憑證」作為准入閘門的關鍵運算元件：當功能熵高（信心高）時可自動通過，低時觸發拒絕、升級或人工審查。與同方向的 <a class="paper-reference" href="2607.16868_LogicalGraphsUQ.%E6%91%98%E8%A6%81.html">2607.16868</a>（邏輯圖 UQ＝憑證新方法）、<a class="paper-reference" href="2605.04295_AdaptiveConformalSE.%E6%91%98%E8%A6%81.html">2605.04295</a>（自適應共形語意熵＝形式保證）可形成 UQ 憑證的工具箱比較。</p>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本文提供了一套<strong>可直接使用的程式碼 UQ 工具</strong>（已開源 uqlm），涵蓋三大類共十餘種方法的三語言基準評測，實務者可據此選型。</li>
+<li>核心洞見「NLI 不適合程式碼」與「LLM 功能等價判斷高精度（&gt;93%）」對任何想將 NLG UQ 移植到程式碼的工作都有指導意義。</li>
+<li>對本庫「方向四 UQ／品質分數」而言，這是第一份<strong>跨語言、跨模型、跨方法族</strong>的系統性評測，並定錨了「功能性熵」作為程式碼特化 UQ 的基準。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2605.28500_FunctionalEntropy.zh-TW.html"><code>../translate/2605.28500_FunctionalEntropy.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

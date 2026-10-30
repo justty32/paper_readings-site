@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_PARSE：Parameter_Automated_Refinement_and · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2510.08623_PARSE.zh-TW.html">回 2510.08623_PARSE.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-parseparameter-automated-refinement-and-schema-extraction">3. PARSE：Parameter Automated Refinement and Schema Extraction</h2>
+<p>PARSE 以兩階段處理可靠結構化抽取。核心洞見：<strong>JSON schema 本身即可為 LLM 消費而優化的自然語言合約</strong>，形成「更好的 schema→更佳抽取」的良性循環。兩個主要組件在不同階段運作：</p>
+<ol>
+<li><strong>Build Phase</strong>：ARCHITECT 一次性地把 JSON schema 專為 LLM agent 消費而優化，並透過 RELAY 維持向後相容；</li>
+<li><strong>Extract Phase</strong>：SCOPE 在優化後 schema 上以反思式護欄做可靠抽取，再透過 Build 階段生成的 RELAY 轉換碼映射回原始 schema。</li>
+</ol>
+<p>（圖 1、圖 2 分別給出整體管線與兩組件的詳細流程：Build Phase 展示 ARCHITECT 以合成測試資料生成與驗證做迭代精煉；Extract Phase 展示 SCOPE 內建護欄與反思機制的抽取流程。）</p>
+<h3 id="31-architect自動-schema-優化">3.1 ARCHITECT：自動 schema 優化</h3>
+<p><strong>問題形式化</strong>：令 <code>S_user</code> 為使用者提供的 JSON schema、<code>T</code> 為自然語言任務描述。現有 schema 為人類開發者與靜態系統設計，被 LLM agent 消費時效能不佳。將 schema 優化形式化為：</p>
+<p><code>S* = argmax_{S'} P(S', D_synthetic, M_llm)</code></p>
+<p>其中 <code>P(·)</code> 表示 LLM 模型 <code>M_llm</code> 用 schema <code>S'</code> 在合成驗證資料 <code>D_synthetic</code> 上的抽取效能。</p>
+<p><strong>Schema 生成與精煉</strong>：ARCHITECT 先分析原 schema 結構，生成一個透過改良描述、結構清晰化、附加驗證規則來增進 LLM 理解的優化版本。優化採迭代精煉程序：</p>
+<p><code>S_{i+1} = Refine(S_i, E(S_i, D_synthetic), T)</code></p>
+<p>其中 <code>S_i</code> 為第 i 次迭代的 schema，<code>E(·)</code> 計算在測試資料上的抽取錯誤（可由 SCOPE 或任何其他抽取 agent 完成），<code>Refine(·)</code> 為基於 LLM 的 schema 改進函式。當抽取準確率達門檻 τ 或到達最大迭代次數 K 時終止。</p>
+<p><strong>合成測試資料生成</strong>：為驗證 schema 改進，ARCHITECT 用當前 schema 加上真實範例種子資料集生成合成測試案例，確保合成資料反映真實抽取情境：</p>
+<p><code>D_synthetic = Generate(S_i, T, D_seed, n_samples)</code></p>
+<p>其中 <code>n_samples</code> 控制生成驗證範例的多樣性；種子資料集 <code>D_seed = {(x_1,y_1),…,(x_k,y_k)}</code> 提供生成真實對抗性範例的關鍵上下文，每個 <code>x_j</code> 為非結構化文字、<code>y_j</code> 為對應的 ground truth 抽取結果。</p>
+<p><strong>RELAY（Reverse Engineering Layer for Automated Yoking）</strong>：為維持與既有系統相容，ARCHITECT 的子模組 RELAY 生成可執行 Python 程式碼，把優化 schema <code>S*</code> 的輸出轉換回原始 schema 格式 <code>S_user</code>，即 <code>RELAY: O(S*) → O(S_user)</code>（<code>O(S)</code> 為 schema S 的輸出空間）。RELAY 在 Build 階段自動生成並驗證轉換碼，透過 (1) 自動生成 schema 映射的 Python 程式碼、(2) 生成樣本資料對以測試轉換、(3) 迭代精煉直到語意保存被驗證，來確保語意保存。如此下游系統可繼續用原始 schema 格式，同時享有 ARCHITECT 的優化。</p>
+<h3 id="32-scopeschema-compliant-organized-pattern-extractor">3.2 SCOPE：Schema Compliant Organized Pattern Extractor</h3>
+<p>SCOPE 以約束解碼與靜態規則檢查實作系統性驗證框架，讓 agent 能透過結構化反思自我修正。帶護欄的抽取過程為：</p>
+<p><code>ŷ = Extract(x, S*, G_static)</code></p>
+<p>其中 <code>x</code> 為輸入文字，<code>S*</code> 為優化 schema，<code>G_static</code> 為 <code>S*</code> 中的靜態護欄與驗證規則。</p>
+<p><strong>多階段驗證流程</strong>（三階段，依序運作）：</p>
+<ol>
+<li><strong>缺漏屬性檢查（Missing Attribute Check）</strong>：驗證 schema 指定的所有必填欄位都出現在抽取輸出中；</li>
+<li><strong>grounding 驗證（Grounding Verification）</strong>：確認抽出的值能在原始輸入文字中找到；</li>
+<li><strong>規則遵循檢查（Rule Compliance Check）</strong>：驗證抽出值符合 schema 約束，如 pattern、長度上限、列舉值、日期格式驗證等。</li>
+</ol>
+<p>每個驗證階段回傳狀態指示（pass 或 fail）與具體錯誤細節。驗證失敗時，SCOPE 生成<strong>結構化反思</strong>引導抽取 agent 走向正確輸出。</p>
+<h2 id="4-討論">4. 討論</h2>
+<p>PARSE 雖聚焦 LLM agent 系統的非結構化文字抽取，其原理可延伸至相關領域。<strong>具名實體辨識（NER）</strong> 可形式化為 schema-based 抽取（實體型別、span、屬性定義在結構化 schema 中）。任務自動化的<strong>多 agent 協調框架</strong>面臨相似挑戰，尤其工具呼叫需從自然語言抽出精確參數以正確呼叫 API——此時 ARCHITECT 可優化工具參數 schema 以利 LLM 理解，SCOPE 的反思式護欄可驗證參數抽取並從參數幻覺、格式錯誤等常見錯誤中恢復。這使 PARSE 成為 agent 協調框架的<strong>互補層</strong>，提供可靠工具呼叫所需的 schema 優化與驗證。</p>
+<p>PARSE 的核心洞見——<strong>schema 本身可為 LLM 消費而優化，而非當成靜態合約</strong>——廣泛適用於各種結構化抽取任務：無論抽取具名實體、agent 系統的工具參數、對話系統的 slot 值、或網頁資料的複雜巢狀結構，挑戰始終是：如何設計並精煉引導 LLM 抽取的結構性合約？ARCHITECT 的自動 schema 優化與 SCOPE 的系統性驗證提供了適用於這些多樣情境的通用框架。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

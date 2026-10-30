@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>FARM: Reading Failure Signals from the Internal Predictive States of a Frozen Robotic World Model 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Haoran Pei、Mingrui Luo、Senbao Wang、Haoran Lv、Jie Guo、Sheng Zhong、Ruixi Ci</p><p>日期：2026-09-10（v1，cs.RO）</p><p>arXiv：2609.11445</p><p><a href="https://arxiv.org/abs/2609.11445" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="farm-reading-failure-signals-from-the-internal-predictive-states-of-a-frozen-robotic-world-model-重點摘要">FARM: Reading Failure Signals from the Internal Predictive States of a Frozen Robotic World Model 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>FARM 不再為失敗偵測重訓一個動力學模型，而是直接讀取凍結 VLA-JEPA 的內部預測狀態，用只有 <code>33,985</code> 個可訓練參數的輕量 readout 輸出逐步失敗分數，再以「到目前為止的最高分」累積成因果軌跡風險。</p>
+<h2 id="問題與核心假設">問題與核心假設</h2>
+<p>機器人失敗監控常用不確定性、新奇度、分布外程度、動作不一致或進度預測當 proxy，但這些訊號不等於任務失敗。策略可能很有信心、動作也很平滑，卻沒有任務進展；畫面很新奇，也不一定已經失敗。FARM 改問另一個問題：一個已經學會用觀測、動作與任務條件預測狀態演化的世界模型，它的中間表徵是否早已包含可解碼的成功／失敗資訊？</p>
+<h2 id="方法架構">方法架構</h2>
+<ul>
+<li><strong>凍結預測狀態</strong>：FARM 取出 VLA-JEPA 最後一個 predictor block 在正規化與輸出投影前的 WM state，排除動作條件 token。V-JEPA2 encoder、VLA-JEPA predictor 與狀態擷取路徑全部凍結，失敗標籤只能改變 readout。</li>
+<li><strong>小容量讀取器</strong>：共用的 token 投影先將每個預測 token 壓縮，再用 attention pooling 選擇當下執行狀態最有資訊的部分，經輕量 MLP 產生 <code>32</code> 維失敗表徵與一個逐步失敗機率。容量刻意受限，用來測「現成表徵是否已有資訊」，而不是讓偵測器藉失敗監督重建新世界模型。</li>
+<li><strong>任務平衡監督</strong>：訓練時將軌跡結果標籤分派給該軌跡的各有效 WM state，並先均勻取樣任務、再取樣軌跡與時點，避免長軌跡或樣本多的任務主導目標函式。</li>
+<li><strong>因果風險聚合</strong>：每個時點的軌跡風險是到當下為止的最高失敗分數，不看未來幀。這能保留短暫但強烈的失敗證據，並只需維護一個純量狀態。後續要繼續、求援、恢復或重置，留給獨立的介入策略。</li>
+<li><strong>兩種轉移模式</strong>：零樣本模式固定來源 readout，直接套到新策略、平台與視覺領域；有目標標籤時，只微調 readout，世界模型骨幹與 WM-state 介面保持不變。</li>
+</ul>
+<h2 id="主要實驗與結果">主要實驗與結果</h2>
+<ul>
+<li>在來源任務的軌跡分組五折 OOF 評測上，完整 WM-state readout 的 pooled AUROC／AUPRC 為 <code>85.68</code> ／ <code>88.59</code>，優於七項低階狀態統計的線性組合 <code>77.19</code> ／ <code>78.81</code>（作者自報）。由於只有 readout 看到失敗標籤，作者將此視為失敗資訊已存於凍結預測狀態，且不只是整體均值、變異或幅度等粗粒度統計。</li>
+<li>固定切分的 Seen 任務上，FARM 在配對的 <code>15</code> 個 baseline 中四項匯總指標全部最佳；Macro AUROC／AUPRC 為 <code>83.62</code> ／ <code>85.55</code>，相對 SAFE-MLP 提高 <code>5.42</code> ／ <code>4.88</code> 個點（作者自報）。</li>
+<li>完全未見任務的零樣本結果不是 FARM 最強：其 pooled AUROC／AUPRC 為 <code>65.67</code> ／ <code>69.38</code>，STAC-Single 為 <code>68.28</code> ／ <code>74.62</code>；每項目標任務加入標籤後，FARM 的 Adapt-35 升至 <code>75.78</code> ／ <code>76.06</code>（作者自報）。這說明預測表徵可復用，但解碼規則仍受任務語意偏移影響。</li>
+<li>實體機器人轉移上，Franka 公開資料的 readout-only OOF 適應達 <code>75.78</code> AUROC 與 <code>74.31</code> AUPRC；PIPER X／VLA-JEPA 的適應結果為 <code>95.73</code> ／ <code>97.80</code>（作者自報）。只更新輕量 readout，即可在不動預測骨幹的情況下吸收部分目標偏移。</li>
+<li>只觀察任務時程的 <code>25%</code> 時，pooled AUROC／AUPRC 已為 <code>75.07±0.73</code> ／ <code>80.75±0.16</code>；到 <code>75%</code> 時為 <code>81.63±0.40</code> ／ <code>85.53±0.65</code>，只比完整歷史低 <code>1.78</code> ／ <code>1.27</code> 個點（作者自報）。在 WM state 已存於 GPU 的前提下，readout 的平均 CUDA 延遲為 <code>0.2256 ms</code>，P99 為 <code>0.2393 ms</code>（作者自報）；該數字不包含世界模型推論、前處理、傳輸與 controller 成本。</li>
+</ul>
+<h2 id="結論">結論</h2>
+<p>FARM 支持一個實用設計方向：世界模型不只能用來預測畫面或搜尋動作，其內部預測狀態也可以成為通用監控介面。將表徵學習與失敗監督分開後，系統可以保持底層預測模型穩定，只訓練一個小型讀取器來適應監控任務。但這是失敗訊號，不是恢復策略；從告警到介入仍有另一個未解的決策問題。</p>
+<h2 id="局限">局限</h2>
+<p>作者明示承認，零樣本轉移不穩定，效果取決於來源 readout 的訓練群體，而 strict-Unseen 任務偏移仍比 Seen 評測困難。FARM 必須能存取世界模型內部狀態，也需要有成功／失敗標籤才能訓練或適應 readout。論文還沒有回答失敗資訊在各 predictor layer 中如何分布，也沒有把 FARM 分數與實際介入或恢復策略閉環整合。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>FARM 提供一種比「再開一個大模型看全部歷史」更緊湊的監控器形態。如果 ai_core 的世界模型或執行策略已產生整合觀測、動作與進度的內部狀態，可以先測這些凍結特徵是否已可線性或小型非線性解碼失敗，再決定是否需要新訓練專用監控模型。這也符合成本梯度：常駐的是一個小 readout，大型診斷或人類介入只在風險越過門檻後啟動。</p>
+<p>這篇也提醒 ai_core 把「偵測」與「處置」分成兩份憑證。FARM 的因果風險分數可以是介入關卡的輸入，但它沒有證明任何特定門檻或恢復動作會帶來更好的端到端結果。所以要先驗證分數的校準、任務轉移與提前量，再獨立驗收關卡觸發的停機、求援或恢復是否真的降低失敗成本。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2609.11445_FARM.zh-TW.html"><code>../translate/2609.11445_FARM.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

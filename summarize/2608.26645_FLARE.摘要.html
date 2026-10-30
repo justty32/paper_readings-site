@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>FLARE: A Failure-Aware Framework for Autonomous Correction and Recovery in Visual-Language Robotic Manipulation 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Ganlong Zhao、Zijia Tang、Xingping Chen、Zhanghui Kuang、Ye Tian、Guanbin Li</p><p>日期：2026-08-27（v1，cs.RO）</p><p>arXiv：2608.26645</p><p><a href="https://arxiv.org/abs/2608.26645" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="flare-a-failure-aware-framework-for-autonomous-correction-and-recovery-in-visual-language-robotic-manipulation-重點摘要">FLARE: A Failure-Aware Framework for Autonomous Correction and Recovery in Visual-Language Robotic Manipulation 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>FLARE 把 VLA 的失敗分成「世界還在有效任務軌跡上、但機器人姿態偏離」的 ID 錯誤，與「環境已進入原任務策略無法挽回狀態」的 OOD 錯誤：前者靠擾動與銜接資料學會自行重試，後者靠 MLLM 開採失敗、建立物件中心的重置技能庫，部署時再由線上 MLLM 在任務與重置專家之間切換。</p>
+<h2 id="問題與核心判斷">問題與核心判斷</h2>
+<p>現有 VLA 多從成功、單調前進的示範軌跡學習。這會讓模型把機器人姿態與任務進度錯綁在一起：物件狀態其實仍然有效，夾爪只是從少見角度靠近，策略也可能不知道如何繼續。另一類失敗會真正破壞環境狀態，例如容器傾倒，這時重複原動作並不能解決問題。FLARE 的貢獻不是要求單一策略處理所有异常，而是先依環境是否仍屬任務有效狀態，把恢復分流成 Retry 與 Reset。</p>
+<h2 id="方法架構">方法架構</h2>
+<ul>
+<li><strong>Retry 資料擴增</strong>：先將人類示範的子任務片段重組成新軌跡，再於任務片段間插入隨機姿態擾動與銜接段。擾動動作不當訓練目標；模型實際學的是「從多種偏離姿態銜接回下一個正確動作」，藉此拆開機器人姿態與環境進度的偽相關。</li>
+<li><strong>Reset 技能開採</strong>：先讓已具 Retry 能力的策略執行任務，由離線 MLLM 從失敗影片產生結構化診斷，包含錯誤類型、待重置物件、互動物件群與失敗時點。系統用該時點的環境狀態收集小量人類恢復示範，再套用同一套擾動與銜接擴增，學成物件中心的 Reset 專家。</li>
+<li><strong>閉環調度</strong>：主任務與各 Reset 技能各自訓練 LoRA adapter，避免不同技能在單一權重中互相干擾。部署時，ID 錯誤由主策略自行重試；線上 MLLM 偵測到 OOD 錯誤時，切換到對應 Reset adapter，確認環境復原後再載回主任務 adapter。</li>
+</ul>
+<h2 id="主要實驗與結果">主要實驗與結果</h2>
+<ul>
+<li>模擬實驗涵蓋 RoboMimic 的 <code>9</code> 項接觸密集操作任務。FLARE 在其中 <code>8</code> 項達到最佳，平均成功率為 <code>84.0%</code>，高於 Phoenix 的 <code>57.8%</code> 與 VLA backbone π0.5 的 <code>72.2%</code>（作者自報）。</li>
+<li>實體驗證在 Piper 機械臂上比較兩項任務：Stack Three Blocks 的成功率由 baseline 的 <code>62.5%</code> 升至 <code>75.0%</code>，Insert U-shaped Block 由 <code>45.0%</code> 升至 <code>55.0%</code>（作者自報）。</li>
+<li>Reset 消融顯示，移除 Reset 技能後平均成功率下降 <code>3.5%</code>；改用人類指示選擇 Reset 技能則額外提升 <code>7%</code>，顯示線上監控與路由仍是系統瓶頸（作者自報）。</li>
+<li>在 Coffee 與 ThreePieceAssembly 的失敗影片上，Gemini-2.5-Pro 的 Retry／Reset 分類準確率分別為 <code>88%</code> 與 <code>96%</code>；對應的重置物件辨識準確率為 <code>88%</code> 與 <code>78%</code>（作者自報）。</li>
+</ul>
+<h2 id="結論">結論</h2>
+<p>FLARE 的主要證據是：機器人恢復不必全部壓進一個通用、線上重規劃的大模型。對姿態偏離，資料擴增可以把重試變成策略內生能力；對破壞環境的失敗，以影片診斷定位失敗狀態，再訓練可替換的物件恢復專家，是一條資料效率較高的工程路線。</p>
+<h2 id="局限">局限</h2>
+<p>作者明示指出，現行 Reset 仍依賴預先建好的技能庫，難以處理未知、非標準或需多步協作的 OOD 失敗；擴展技能庫也會帶來資料收集與標註成本。作者並承認現有硬體限制了複雜物件姿態的修正，尚需更靈巧的手內調姿能力；對動態環境、柔性物體、更長任務與人機協作的轉移驗證也仍待進行。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>這篇對 ai_core 最有價值的不是某個動作策略，而是「先判定失敗是否還在既有能力邊界內」的路由逻輯。Retry 對應低成本、可原地重試的局部偏差；Reset 對應必須先改寫環境狀態、再回主流程的高成本恢復。這可以直接轉成 ai_core 的失敗分級介面：不讓所有錯誤都觸發重規劃，也不讓已破壞前提的狀態在原策略中無限重試。</p>
+<p>第二個接點是技能固化與調度權分離。Reset 專家由失敗資料固化為可獨立訓練與替換的 adapter，MLLM 只負責觀察、分類與路由。這比讓大模型臨場產生低層恢復動作容易管理，也更容易對每個恢復技能分別驗證。但人類指示消融明顯較強，也提醒 ai_core：「會不會做」與「何時該切換去做」是兩份不同的可驗證能力。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2608.26645_FLARE.zh-TW.html"><code>../translate/2608.26645_FLARE.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

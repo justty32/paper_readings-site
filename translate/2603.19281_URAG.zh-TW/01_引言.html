@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>URAG：檢索增強語言模型的不確定性量化基準（第 5–7 節） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.19281_URAG.zh-TW.html">回 2603.19281_URAG.zh-TW 目錄</a>　<a href="02_%E5%9F%BA%E6%BA%96%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="1-引言">1. 引言</h2>
+<p>大型語言模型（LLM）如 GPT-5、Claude Opus 4.1 在問答與程式任務上表現強勁，但在知識密集型領域（分子預測、自動駕駛、個人化推薦）仍因幻覺與事實錯誤而受限。檢索增強生成（RAG）透過將生成條件化於外部檢索證據來改善事實準確性，近年 REALM、RETRO、Atlas、GraphRAG 在開放域 QA、事實驗證、多跳推理等任務上取得顯著進展。</p>
+<p>然而，RAG 系統的不確定性幾乎未被系統性地研究。如圖 1 所示，當問及「孕婦能否喝咖啡」，檢索器可能同時取回一份宣稱「咖啡對孕期安全」與另一份警告「過量咖啡因有風險」的文件——若 LLM 過度依賴單一文件，將產出過度自信但片面的回答。這類過度自信在金融、法律、軟體工程領域可導致代價高昂乃至危險的決策。</p>
+<p>現有 RAG 基準（CRAG、RAGBench、MultiHop-RAG、SafeRAG、GraphRAG-Bench）各聚焦於效能、穩健性、多跳推理、結構感知檢索或安全性，但無一觸及「檢索如何重塑不確定性與校準」，也無一分析檢索與參數知識如何交互影響信心。URAG 的目標是填補此空白。</p>
+<p>本文的核心貢獻：(1) 首個跨域、跨 RAG 架構、同時報告準確度與不確定性的基準；(2) 新的 MCQA 建構管線——生成高混淆度干擾選項；(3) 系統性分析檢索效應，包括噪音、知識依賴與檢索深度，揭示沒有任何單一 RAG 方法跨域一致可靠且檢索可放大自信錯誤。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>既有 RAG 基準的研究景觀完整但缺少不確定性視角：CRAG 提供跨任務與檢索情境的統一套件、RAGBench 引入 TRACe 等可解釋性指標、SafeRAG 測試衝突/對抗性證據的安全性、GraphRAG-Bench 評估圖結構檢索、MultiHop-RAG 隔離多步證據鏈、LaRA 比較 RAG 與長文本路由、T2-RAGBench 針對半結構化輸入。URAG 的獨特之處在於共同報告準確度與預測不確定性，從而實現校準、檢索證據的過度/不足依賴、以及 RAG 賦能系統可靠性的原則性分析。</p>
+<h2 id="3-背景rag-與-conformal-prediction">3. 背景：RAG 與 Conformal Prediction</h2>
+<h3 id="31-rag-迭代公式">3.1 RAG 迭代公式</h3>
+<p>RAG 系統可分解為四個模組化組件：(1) 查詢建構模組 G：基於使用者查詢與當前輸出產生檢索查詢；(2) 檢索策略 π：決定是否執行檢索；(3) 檢索器 R：基於行動與查詢從語料庫取回文件集；(4) 更新函數 F：將檢索證據整合進輸出，產生更新後的生成狀態。不同於單次 RAG，迭代 RAG 在 T 次迭代中逐步精煉輸出。</p>
+<h3 id="32-conformal-predictioncp">3.2 Conformal Prediction（CP）</h3>
+<p>CP 是一個具有限樣本、無分佈假設保證的不確定性量化框架。與熵或困惑度不同（受 softmax 溫度敏感且無法提供覆蓋率保證），CP 產出一個包含真實答案的預測集 Sα(x)，滿足 P(c* ∈ Sα(X)) ≥ 1−α（式 3），其中 α 為使用者指定的風險水準。</p>
+<p>本文採用兩種非一致性分數：<strong>LAC</strong>（Least Ambiguous Set）以 1−p_c 為分數，集合最小但可能漏覆蓋困難案例；<strong>APS</strong>（Adaptive Prediction Sets）以累積質量排序，通常改善逐例覆蓋但集合較大。閾值 q̂_α 由校準集非一致性分數的 (1−α)-分位數計算（式 6）。</p>
+<h2 id="4-urag-基準">4. URAG 基準</h2>
+<h3 id="41-基準管線為何轉換為-mcqa">4.1 基準管線：為何轉換為 MCQA</h3>
+<p>開放式生成的不確定性測量極具挑戰：輸出空間無窮大、語意等效表述多樣、現有 token 似然度或回應多樣性度量在外部上下文介入時與事實正確性的相關性差。將任務轉換為 MCQA 是 LLM 不確定性測量的常見做法——它將輸出空間約束為有限明確定義的選項集，從而實現更可靠的信心校準。</p>
+<p><strong>MCQA 建構管線</strong>（圖 2）：以 sentence-transformers/all-MiniLM-L6-v2 檢索相關文件，搭配提示引導 Gemini 產出「看似合理但錯誤」的答案，並生成虛構支持文件以強化合理性。有效干擾選項必須滿足：(1) 事實錯誤、(2) 在問題上下文中合理、(3) 與正確答案共享相同語意類型。最後以 NLI 模型評估混淆度：若存在至少一個干擾選項被 NLI 模型判定為「被正確答案蘊涵（entailed）」，則視為「困難題目」。未達標者經迭代重新生成（Prompt 2 → Prompt 3），直到如表 1 所示的高混淆率（LCA 100%、CRAG 100%、NewsSum 100%）。</p>
+<h3 id="42-資料集">4.2 資料集</h3>
+<p>8 個資料集跨越 5 領域：(1) 醫療——HealthVer（平均 3.18 篇醫學研究論文）；(2) 程式——ODEX（~34K 短程式文件）與 LCA（單一大型 GitHub repository）；(3) 科學——SciFact（~1.06 篇科學論文）；(4) 數學——OlympiadBench（270K 奧林匹克級數學題）；(5) 通用文本——CRAG（平均 5 篇長文件）、NewsSum（每例一篇完整研究論文）、DialFact（3.51K 短 QA 文件）。資料集特徵見表 A1、A2、A9。</p>
+<h3 id="43-rag-方法">4.3 RAG 方法</h3>
+<p>8 種方法涵蓋三類：(1) 訓練自由——Fusion（多查詢生成後融合）、HyDE（假設性文件嵌入）、RAT（檢索增強思維鏈）、Naive RAG；(2) 端到端——FiD（Fusion-in-Decoder，T5 編碼-解碼主幹）、Self-RAG（自反思檢索-生成-批判）；(3) 獨立訓練——RAPTOR（遞迴摘要樹狀檢索）、REPLUG（檢索增強黑箱 LLM，每文件獨立處理後機率加法聚合）。</p>
+<h3 id="44-指標">4.4 指標</h3>
+<p>三項核心指標：(1) 準確度 Acc——模型最高排名選項匹配真實標籤的比例；(2) 預測集大小 SS——CP 產生的不確定性集合寬度，基於 LAC 與 APS 的平均集大小；(3) 覆蓋率 CR——驗證式 3 的 ≥1−α 覆蓋保證。另報告 RAG 與 LLM-only 基線的比值，以分離檢索的真實貢獻。</p>
+<blockquote>
+<p>續見 <a href="../2603.19281_URAG.zh-TW.html">第 5–7 節（實驗結果與結論）</a>。</p>
+</blockquote>
+<hr />
+<h2 id="title-urag檢索增強語言模型的不確定性量化基準part2實驗結果與結論-source-httpsarxivorgabs260319281-arxiv_id-260319281-authors-vinh-nguyen-uppsala-universitycuong-dang-virginia-techjiahao-zhang-penn-statehoa-tran-fpt-software-ai-centerminh-tran-vnu-hcmtrinh-chau-vnu-uetthai-le-indiana-universitylu-cheng-uicsuhang-wang-penn-state-date-2026-03-parent-260319281_uragzh-twmd">title: URAG：檢索增強語言模型的不確定性量化基準（part2：實驗結果與結論）
+source: https://arxiv.org/abs/2603.19281
+arxiv_id: 2603.19281
+authors: Vinh Nguyen (Uppsala University)、Cuong Dang (Virginia Tech)、Jiahao Zhang (Penn State)、Hoa Tran (FPT Software AI Center)、Minh Tran (VNU-HCM)、Trinh Chau (VNU-UET)、Thai Le (Indiana University)、Lu Cheng (UIC)、Suhang Wang (Penn State)
+date: 2026-03
+parent: ./2603.19281_URAG.zh-TW.md</h2>
+<h1 id="urag檢索增強語言模型的不確定性量化基準第-57-節">URAG：檢索增強語言模型的不確定性量化基準（第 5–7 節）</h1>
+<blockquote>
+<p>前接 <a href="../2603.19281_URAG.zh-TW.html">第 1–4 節（引言至基準設計）</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

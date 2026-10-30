@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2101.03958_Evolving_RL_Algorithms.zh-TW.html">回 2101.03958_Evolving_RL_Algorithms.zh-TW 目錄</a>　<a href="02_%E5%AD%B8%E7%BF%92%E5%BC%B7%E5%8C%96%E5%AD%B8%E7%BF%92%E6%BC%94%E7%AE%97%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>提出一種以 <strong>meta-learning 學習 RL 演算法</strong>的方法：在「計算 value-based、model-free RL agent 待最佳化之損失函數」的<strong>計算圖空間</strong>中搜尋。學到的演算法<strong>領域無關（domain-agnostic）</strong>，能泛化到訓練時未見的新環境。本法既能<strong>從零學（from scratch）</strong>，也能<strong>從既有演算法（如 DQN）自舉（bootstrap）</strong>——後者帶來可解釋的修改並提升表現。在簡單古典控制與 gridworld 任務上從零學時，本法<strong>重新發現了時序差分（TD）演算法</strong>。從 DQN 自舉時，凸顯出兩個學到的演算法，在其他古典控制、gridworld 類任務與 Atari 遊戲上取得良好泛化。對學到演算法行為的分析，顯示其與近期針對 value-based 方法「高估」問題提出的 RL 演算法有結構相似性。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>設計能跨多種問題高效求解的深度 RL 演算法，通常需要大量人工。學習去設計 RL 演算法（或其小型子組件）可減輕負擔，甚至得到比人工更好的演算法；研究者的工作可從「手動設計演算法」轉向「設計用以自動開發演算法的語言與最佳化方法」。</p>
+<p>RL 演算法可視為「把 agent 經驗映射到能在訓練過程取得高累積獎勵之策略」的程序。本文將訓練 agent 形式化為 <strong>meta-learning</strong>：<strong>外迴圈</strong>在「計算 agent 待最小化目標函數的計算圖/程式」空間中搜尋，<strong>內迴圈</strong>用學到的損失函數做更新；外迴圈目標＝最大化內迴圈演算法的訓練回報。</p>
+<p>學到的損失函數應跨多種環境泛化，而非綁定特定領域。因此設計一套基於<strong>遺傳程式設計（genetic programming）<strong>的搜尋語言，可表達能套用到任何環境的通用符號損失函數；<strong>資料型別</strong>與對 MDP 變數的通用介面讓程式領域無關。語言也支援把神經網路模組當子組件。外迴圈最佳化採用</strong>正規化演化（regularized evolution）</strong>（採錦標賽選擇的經典演化演算法變體），可隨計算節點數擴展、已被證明可用於設計監督式學習演算法。</p>
+<p>從零學一般偏差較少，但把既有人類知識編碼進學習過程可加速最佳化、並讓演算法更可解釋。由於語言把演算法表達為廣義計算圖，可把已知 RL 演算法嵌入起始族群。結果：從零學能學會既有演算法；從既有知識出發則能演化出<strong>勝過初始程式的新 RL 演算法</strong>。本文學到兩個在樣本效率與最終表現上都勝過既有演算法的新 RL 演算法；其領域無關、能泛化——訓練環境為一組離散動作古典控制與 gridworld 環境，測試環境則包含 Atari，與訓練所見截然不同。</p>
+<p><strong>貢獻</strong>：一套搜尋 RL 演算法空間的方法，具體化為一個描述廣泛 value-based、model-free RL 方法的形式語言；該語言可把既有演算法嵌入起始圖，帶來更快學習與可解釋演算法；凸顯兩個能泛化到全新環境的學到演算法；分析顯示本法自動發現了與近期 RL 創新共享結構的演算法，且實證上勝過深度 Q-learning。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>「學習去學習」在監督式學習已是成熟概念（含以遺傳程式設計做 meta-learning、學習 NN 更新規則、自我修改 RNN）。AutoML 旨在自動化 ML 訓練流程；神經架構搜尋在影像分類有大進展。AutoML-Zero 用基本數學運算從零學演算法——本文思想類似但用於 RL、並假設有 NN 模組等額外原語；且學到的計算圖目標是自動化 RL 演算法設計，能泛化到訓練未見問題。</p>
+<p><strong>自動化 RL（AutoRL）</strong>：把監督式 AutoML 框架套到 MDP，例如用演化演算法突變網路權重、學習任務獎勵、調超參、搜尋架構。本文聚焦 value-based 設定下<strong>任務無關、既可解釋又可泛化的更新規則</strong>。</p>
+<p><strong>RL 中的 meta-learning</strong>：近期多聚焦少樣本任務適應（如 MAML 學初始參數、RL² 用 RNN 把 RL 本身當學習問題），但其 meta-learned 組件以 NN 權重形式綁定特定領域，無法用於可能輸入尺寸不同的全新領域。學習 RL 演算法或其組件（獎勵 bonus、價值更新函數）的既有工作用了 meta-gradient、演化策略、RNN 等；本文則把更新規則表示為<strong>含 NN 模組與符號運算子的計算圖</strong>，好處是結果圖可被分析性地解讀、並可選擇從既有演算法初始化，且 meta-train 跨多樣環境。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

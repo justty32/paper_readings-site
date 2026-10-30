@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2510.14538_Reasoning_Shortcuts.zh-TW.html">回 2510.14538_Reasoning_Shortcuts.zh-TW 目錄</a>　<a href="02_%E6%8E%A8%E7%90%86%E6%8D%B7%E5%BE%91%E7%9A%84%E6%BA%AB%E5%92%8C%E4%BB%8B%E7%B4%B9.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>神經符號（NeSy）AI 旨在開發「預測符合先驗知識編碼（如安全或結構約束）」的深度神經網路，是邁向可靠、可信 AI 最有前景的途徑之一。其核心思想是<strong>結合神經與符號步驟</strong>：神經網路把低階輸入映成高階符號<strong>概念</strong>，符號推理則推出與所抽取概念及先驗知識相容的預測。然而近期研究顯示——<strong>只要概念未被直接監督</strong>——NeSy 模型會受 <strong>推理捷徑（Reasoning Shortcuts, RS）</strong> 影響：即透過<strong>錯誤地接地概念</strong>仍達到高標籤準確率。RS 會損害模型解釋的可解釋性、OOD 場景下的表現、進而損害可靠性；且在缺概念監督（實務常缺）時難以偵測與預防。RS 文獻散落，難以理解與處理。本文提供 RS 的溫和介紹，以直觀方式討論其成因與後果，回顧並闡明既有的理論刻畫，最後詳述處理 RS 的方法（緩解 mitigation 與覺察 awareness 策略）及其利弊。藉由把進階素材重述為易消化的形式，本文希望提供統一視角、降低處理 RS 的門檻，最終助力可靠 NeSy 與可信 AI 的發展。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>在認知科學與心理學中，<strong>符號（或更廣義的概念）是人類思維的組合式積木</strong>，支撐語言、推理、規劃等高階認知。近年對「在神經網路中使用概念」興趣漸增（既改善泛化、又提升可解釋性），但抽象概念<strong>如何、甚至是否</strong>在神經網路中出現仍根本不清楚。</p>
+<p>NeSy 模型透過整合神經學習與符號推理來橋接此鴻溝，使概念能在推理過程中被<strong>顯式操作</strong>。一個關鍵承諾是<strong>可靠與可信</strong>：讓所有決策可追溯到可解釋、良定義的概念，決策因而更透明；且符號元件的模組性使學到的概念可在新場景重用而不顯著退化。但此整合的成效取決於解決 NeSy 的核心挑戰——<strong>符號接地（symbol grounding）</strong>：如何把低階感知資料連到高階抽象概念。</p>
+<blockquote>
+<p><strong>例 1.1（自駕）</strong>：模型依視覺輸入決定 stop 或 go；先驗知識規定「偵測到 pedestrian 或 red_light 就必須 stop」。要準確預測動作，須從視覺輸入給概念賦值；因此概念是<strong>透過「學會給出正確駕駛預測」而被接地</strong>。但因知識對 pedestrian 與 red_light <strong>對稱處理（析取）</strong>，自駕車可能把兩者搞混卻仍預測正確（red_light 在偵測到「行人」或「紅燈」時都觸發）。</p>
+</blockquote>
+<p>這凸顯 NeSy 訓練方式與我們期望之間的根本矛盾：知識顯式給符號取名（如 pedestrian、red_light）並期望名稱反映其意義，但模型可能賦予完全不同的語意。在許多學習情境中，NeSy 模型<strong>即使任務近乎最優，也可能給學到的概念錯誤的意義</strong>——這源於 <strong>推理捷徑（RS）</strong>：讓模型達到正確標籤預測的<strong>非預期概念賦值</strong>。表面決策正確，底層概念卻有缺陷，破壞 NeSy 的可靠與可信。</p>
+<p>RS 本質上意味著 <strong>NeSy 中的概念學習是不適定（ill-posed）的</strong>：許多任務根本沒有足夠資訊讓模型學到正確概念。且 RS 非同小可：(a) 無法僅靠訓練（甚至測試）準確率偵測；(b) 人們往往假設「知識中符號的名稱與語意天生對齊」（因邏輯程式正是如此）——但訓練出的 NeSy 模型不保證如此（如為兩位數加法寫程式時，模型可能把「左數字的十個謂詞」拿去表示右數字）。</p>
+<p>雖然此錯位<strong>不降分布內準確率</strong>，但在「區別重要」時變得關鍵：壞接地的概念<strong>不能遷移到 OOD 場景</strong>（持續學習中行為失常）、損害<strong>可解釋性</strong>（解釋會說「因為有紅燈才停」而其實沒有）、且損害下游的 <strong>NeSy 形式驗證</strong>（若 pedestrian 接地錯，「車是否總在有行人時停」這類驗證便失去意義）。</p>
+<p>RS 在早期 NeSy 工作中已被觀察到，影響多種任務（含自駕等高風險），但近期才獲形式處理，揭示其<strong>難以對付、卻自然源於符號元件的某些對稱性</strong>。理論研究開始辨明 RS 何時可證可避、何時不可——直觀上取決於四因素：<strong>先驗知識的結構、訓練集的覆蓋、可學神經網路的假設類、損失函數的選擇</strong>。對 RS 的穩健性常需把標準 NeSy 訓練配上針對這四因素的緩解策略。</p>
+<p><strong>貢獻</strong>：提供 RS 溫和介紹、統一文獻、連到經典符號接地問題；指出 RS <strong>不能靠設計不同 NeSy 架構避免</strong>；從<strong>可識別性</strong>與<strong>統計學習</strong>兩視角彙整理論；把已知緩解策略組織成分類法；辨明開放問題（RS 與正確符號接地延伸到目前所研究的 NeSy 模型之外）。</p>
+<h2 id="2-預備知識">2. 預備知識</h2>
+<p><strong>2.1 從 NeSy AI 到 NeSy 預測器</strong>：一個 NeSy 預測器＝<strong>概念抽取器</strong>（neural，input x → 概念 c）+ <strong>推理層</strong>（symbolic，概念 + 知識 K → 標籤 y）。</p>
+<p><strong>2.2 NeSy 預測器架構的多樣性</strong>：</p>
+<ul>
+<li><strong>機率式 NeSy 預測器（PNSPs）</strong>：如 DeepProbLog，把概念分布經邊際化（marginalization）推標籤。</li>
+<li><strong>語意損失（Semantic Loss, SL）</strong>：以可微方式懲罰「不滿足知識」的輸出。</li>
+<li><strong>邏輯張量網路（LTN）</strong>：用模糊邏輯把一階陳述化為損失約束（若所有模糊運算子由 t-norm 構成，則滿足 Eq.11）。</li>
+<li><strong>演繹學習（Abductive Learning, ABL）</strong>：用邏輯 abduction 推出最能解釋標籤的概念向量當學習目標。</li>
+</ul>
+<p><strong>2.3 差異與相似</strong>：這些架構在「如何處理非確定性概念分布」上不同（機率邏輯靠邊際化、模糊邏輯依所選模糊語意），但都滿足「在 one-hot 概念上行為等同真值推理層」（Eq.11）。</p>
+<p><strong>2.4 NeSy 預測器的好處（B1–B4）</strong>：<strong>B1 準確</strong>、<strong>B2 有效（valid，輸出總與知識相容，PNSP/ABL/LTN 內建保證、不依賴概念正確性）</strong>、<strong>B3 可重用</strong>、<strong>B4 可解釋</strong>。RS 不傷 B1/B2，但傷 B3/B4。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

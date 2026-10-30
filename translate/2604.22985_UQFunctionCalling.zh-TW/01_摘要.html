@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>LLM 函數呼叫的不確定性量化（Part 2：背景與基準評測） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.22985_UQFunctionCalling.zh-TW.html">回 2604.22985_UQFunctionCalling.zh-TW 目錄</a>　<a href="02_%E5%87%BD%E6%95%B8%E5%91%BC%E5%8F%AB%E4%B8%AD_UQ_%E6%95%88%E8%83%BD%E7%9A%84%E5%9F%BA%E6%BA%96%E8%A9%95%E6%B8%AC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）正日益被部署以自主解決真實世界任務。其中一個關鍵要素是 LLM 函數呼叫（Function-Calling, FC）範式，這是一種廣泛使用的方法，用於賦予 LLM 工具使用能力。然而，LLM 若錯誤呼叫函數，可能產生嚴重後果——尤其是當其效果不可逆時，例如轉帳或刪除資料。因此，在執行函數呼叫之前，考量 LLM 對該呼叫正確完成任務的信心程度至關重要。不確定性量化（Uncertainty Quantification, UQ）方法可用於量化此信心並防止潛在的錯誤函數呼叫。</p>
+<p>在本研究中，我們提出了據我們所知首個針對 LLM 函數呼叫的 UQ 方法評估。雖然多樣本 UQ 方法（如 Semantic Entropy）在自然語言問答任務中表現強勁，我們發現：在 FC 場景中，它相較於簡單的單樣本 UQ 方法並無明顯優勢。此外，我們發現 FC 輸出的特殊性可被用來改善既有 UQ 方法在此場景中的表現。具體而言，多樣本 UQ 方法受益於基於抽象語法樹（AST）解析來對 FC 輸出進行聚類；而單樣本 UQ 方法可透過僅選取語意上有意義的 token 來計算基於 logit 的不確定性分數，從而獲得改進。</p>
+<h2 id="1-導論">1. 導論</h2>
+<p>大型語言模型近年來取得了顯著進展，從文字生成器演化為能夠透過 API 呼叫與函數執行來與環境互動的系統。這種能力通常被稱為「工具使用」，使 LLM 能夠執行從簡單資訊檢索到修改系統狀態的複雜操作（如執行貨幣交易或修改資料庫）。主流語言模型現在允許使用者透過其函數呼叫介面將其與外部工具、資料庫和服務整合。此類介面已成為存取 LLM 工具使用能力的最普遍方法。</p>
+<p>工具使用能力的整合代表了邁向能代表使用者採取行動的自主 AI 系統的飛躍。然而，這種增強的自主性也帶來了更高的風險與責任。與可能後果較輕的文字生成錯誤不同，工具使用中的錯誤可能導致不可逆的變更，引發資料損毀、財務損失或安全事件。在此背景下，不確定性量化（UQ）成為負責任地部署具備工具使用能力的 LLM 系統的關鍵組件。UQ 方法旨在估計模型對其決策的信心，使系統能在不確定性高時放棄行動或尋求人類監督。有效的 UQ 方法可作為護欄，防止模型在缺乏足夠信心時執行潛在有害的操作。</p>
+<p>儘管 UQ 在 FC 場景中的重要性顯而易見，但目前缺乏針對此特定情境的系統性 UQ 方法評估，也缺乏專門為此開發的 UQ 方法。雖然已有大量研究探討分類與問答任務的不確定性估計，但工具使用場景引入了獨特挑戰。FC 要求結構化輸出，須遵循預定義語法，且常涉及對參數選擇與特定 API 呼叫適當性的複雜推理。因此，現有 UQ 方法在此場景中的表現如何尚不清楚。</p>
+<p>本文旨在填補此空白。我們進行了據我們所知首個針對 LLM 工具使用場景中不確定性量化方法的全面評估。為此，我們基於 Berkeley Function Calling Leaderboard（BFCL）資料集建立了基準，該資料集提供了一系列主要為 Python 的 FC 範例。我們的基準根據 UQ 方法的信心估計對 LLM 輸出的函數呼叫正確性的預測能力來評估各種 UQ 方法。我們重新實作了多種 UQ 方法，從基於模型 logit 的簡單單樣本方法，到納入樣本間語意等價性的更複雜多樣本方法，並測試它們在各種設定中區分正確與錯誤函數呼叫的有效性。</p>
+<p>我們的研究結果表明：在 FC 場景中，與自然語言問答場景不同，更複雜的多樣本方法（如 Semantic Entropy, SE）並未優於簡單的單樣本 UQ 方法（如 Greedy Negative Log-Likelihood, G-NLL）。我們隨後探討了是否能透過針對 FC 輸出特性調整現有 UQ 方法來提升其效能。藉由調整 Semantic Entropy 中的聚類策略以及 G-NLL 中的 token 選擇，我們為多樣本和單樣本 UQ 方法都實現了效能改進。</p>
+<p>總結而言，我們的貢獻如下：</p>
+<ol>
+<li>建立首個針對函數呼叫場景的 UQ 方法基準。</li>
+<li>發現 SE（最佳多樣本 UQ 方法）相較於 G-NLL（最佳單樣本方法）並無明顯優勢。</li>
+<li>分析 FC 輸出的特性，並利用這些特性設計出針對 FC 場景特化的現有 UQ 方法變體，從而提升其在此場景中的效能。具體而言，我們透過使用抽象語法樹（AST）來聚類 FC 輸出，將 SE 的語意蘊涵方法適配至 FC 場景；並透過定義語意上有意義的 token 並僅將這些 token 納入 UQ 分數計算，將 G-NLL 及其他單樣本 UQ 方法調整至 FC 場景。</li>
+</ol>
+<hr />
+<h2 id="arxiv-260422985-parent-260422985_uqfunctioncallingzh-twmd">arxiv: &quot;2604.22985&quot;
+parent: &quot;2604.22985_UQFunctionCalling.zh-TW.md&quot;</h2>
+<h1 id="llm-函數呼叫的不確定性量化part-2背景與基準評測">LLM 函數呼叫的不確定性量化（Part 2：背景與基準評測）</h1>
+<h2 id="2-背景與相關工作">2. 背景與相關工作</h2>
+<h3 id="21-llm-工具使用與函數呼叫">2.1 LLM 工具使用與函數呼叫</h3>
+<p>LLM 工具使用的早期範例出現在檢索增強生成（Retrieval-Augmented Generation）中，模型被允許在生成回應前從外部來源（如資料庫）擷取資訊。此後，文獻中探討了多種 LLM 工具使用方法。最普遍的方法——已被大多數開放與封閉源碼 LLM 以非常相似的方式實作——是函數呼叫（FC）介面。在此框架中，LLM 被明確提供一個函數列表作為上下文。然後，LLM 可以呼叫這些函數中的一個或多個來處理使用者請求。</p>
+<p>為評估 LLM 的工具使用能力，已提出許多基準。然而，它們主要關注 LLM 在這些工具使用相關任務上的準確度導向效能。雖然準確度很重要，但它與 UQ 是正交問題——UQ 告訴我們 LLM 對哪些函數呼叫不確定，從而可以用來拒絕執行某些（可能有誤的）函數呼叫。這個從可靠性角度至關重要的面向，據我們所知，迄今為止在工具使用評估中一直被忽視。</p>
+<h3 id="22-自然語言生成的不確定性量化方法">2.2 自然語言生成的不確定性量化方法</h3>
+<p>防止錯誤模型輸出造成損害的既定方法之一是透過不確定性估計來檢測它們。在分類等輸出空間受限且結構良好的問題中，這可以簡單到返回預測類別的負對數機率（NLL）。處理語言模型時，至少有兩個額外挑戰。首先，不再是單一類別標籤與單一 NLL 值，而是 token 序列，每個都有其自身的 NLL 值。其次，多個不同的序列可以具有相同的語意意義：生成正確回應的機率是生成任何一個語意等價正確回應的機率。在 FC 中，此類語意等價可能源於例如額外空白或多餘的參數順序。</p>
+<p>UQ 方法主要分為兩類：</p>
+<p><strong>單樣本方法</strong>：僅使用單一個貪婪解碼序列（最接近最高機率序列），以不同方式聚合其個別 token 的不確定性：MAX 報告所有 token 中最高的 NLL（最高 token 級不確定性），AVG 報告平均值，G-NLL 報告總和。此外還有基準 LEN，僅報告 token 數量作為健全性檢查。</p>
+<p><strong>多樣本方法</strong>：從 LLM 取樣多個序列來估計 LLM 在整個序列分佈上的熵。Predictive Entropy（PE）直接根據個別序列的聚合機率估計。Semantic Entropy（SE）將形式不同但意義相同的樣本聚類，然後估計語意上不同的簇分佈的熵。原始 SE 實作使用基於 LLM 的蘊涵方法做語意聚類，但我們初步實驗發現這對高度結構化的 FC 輸出效果不佳且計算昂貴，因此我們使用精確字串比對（EXM）。一旦確定聚類後，我們計算簇分佈的熵（SE_EXM 與 DSE_EXM）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

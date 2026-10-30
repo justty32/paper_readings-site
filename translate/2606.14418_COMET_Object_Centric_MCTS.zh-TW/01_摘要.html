@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.14418_COMET_Object_Centric_MCTS.zh-TW.html">回 2606.14418_COMET_Object_Centric_MCTS.zh-TW 目錄</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>提出 <strong>COMET</strong>（Causal Object-centric Model for Efficient Tree search），一個在 <strong>slot 結構化潛在空間</strong>做 Monte Carlo Tree Search 的 model-based RL 演算法。COMET 把凍結的非監督物件中心編碼器與 transformer 世界模型配對，其中動作經一個新的 <strong>action–slot 融合</strong>機制綁到物件、用於 slot 轉移預測；policy/value 頭用 <strong>object-causal attention</strong>，以學到的 per-slot 相關分數調制 token 互動，使決策聚焦於任務相關實體。COMET 為 MuZero 式潛在規劃加入顯式物件層級歸納偏置。在 Object-Centric Visual RL、ManiSkill、Robosuite、VizDoom 共 8 個視覺與動力學各異的任務上，訓練早期的平均歸一化分數高於物件中心與單體 baseline。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>人能在行動前先心智模擬後果；受此啟發，世界模型被引入 RL 以模仿環境、提升效率。MBRL（Dreamer 家族、MPPI 規劃、MCTS+學習模型如 MuZero）成績斐然，但在高維、非平穩、多物件互動的視覺環境學準世界模型仍難。多數法用 CNN 編碼器產生<strong>單一全域表徵</strong>，無法捕捉物件層級結構與互動；小卻關鍵的物件、動態背景、大量無關實體會嚴重拖垮 agent。人類則把世界知覺為離散實體，利於高效推理規劃。</p>
+<p>關鍵觀察：許多環境天生物件導向，但任一時刻通常只有<strong>少數物件</strong>參與當前決策相關互動（機器人多半一次操作一個物件）。故假設「顯式建模個別物件對決策的重要性」能改善 policy。為此提出 COMET：世界模型維護物件中心的解耦 latent;policy/value 用 transformer over latent + object-causal attention，每個網路處理物件 token 加一個 target token，attention 由因果分數調制以強調任務相關物件。貢獻：(1) MCTS 物件中心 MBRL（凍結物件表徵 + transformer 世界模型在物件結構潛在空間規劃);(2) 新 action-object 綁定機制；(3) 跨多樣物件導向視覺控制任務評估，平均樣本效率勝單體 MCTS MBRL 與物件中心 RL baseline。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>2.1 物件中心表徵學習</strong>：Slot Attention 用競爭 cross-attention 把 slot 指派到輸入不同部分；SAVi/SAVi++ 加時間一致性；SLATE/STEVE 用離散 token + transformer decoder;DINOSAUR 改用預訓 DINO 特徵當重建目標；Slot Contrast 對齊跨時 slot。亦有非 Slot Attention 法（Deep Latent Particles、AKOrN 振盪神經元）。</li>
+<li><strong>2.2 物件中心 RL</strong>：COBRA（MONet slot + 內在動機）、FOCUS / OC-STORM（需標註遮罩）、STICA（slot + transformer 世界模型 + object causal attention，最接近本文）、SOLD（純像素無監督 slot 動力學 + Slot Aggregation Transformer）、OCDreamer（把 RSSM 換成物件中心 RSSM + GNN）;model-free 有 OCRL、OC-CA/OC-SA。</li>
+</ul>
+<h2 id="3-comet">3. COMET</h2>
+<p>COMET 是在 slot 結構化潛在空間規劃的 MCTS 物件中心 MBRL，三元件：凍結物件中心編碼器、transformer 世界模型（預測未來 slot 與獎勵）、帶 object-causal attention 的 policy/value 頭。建在 LightZero、依 UniZero 流程，但 UniZero 用單體 state embedding，COMET 改用 slot 集合做動力學與決策，注入顯式物件層級歸納偏置；backbone 用 nanoGPT 式統一 transformer。</p>
+<ul>
+<li><strong>3.1 Slot 抽取器</strong>：把觀察 o_t 映成無序 slot 集合 s̄_t={s_t¹,…,s_t^n}（n = 最大物件數 + 1 個背景 slot）。為解 slot 順序跨時不一致，用 t 時 slot 初始化 t+1 的 slot。slot 抽取器在隨機策略蒐集的觀察上預訓、RL 期間凍結；依任務用 SLATE / DINOSAUR / Slot Contrast。</li>
+<li><strong>3.2 物件中心 token 處理</strong>：UniZero 把 state/action embedding 交替排成序列過 transformer。COMET 把 state 表成 n 個 slot 過 backbone 得 {h_t¹,…,h_t^n} 給 policy/value。<strong>難點</strong>：從單一 action embedding 生 n 個 slot 是瓶頸、效果差；解法是把 action embedding 與每個 slot 各自串接 <code>a_t⊕s_t^i</code> 過共享 MLP projector，得 slot-conditioned action embedding ā_t，再過 backbone 得 z̄_t 預測下一步 slot；獎勵預測則把 z̄_t 求和成單一向量過 MLP。視為「軟 action-object 綁定」。</li>
+<li><strong>3.3 object-causal attention</strong>：policy/value 為帶 STICA 修改注意力的 transformer，輸入 latent 加一個 head 專屬可學 target token。對三組（target / 因果物件 / 非因果物件）定因果圖 G（因果物件影響 target 與彼此，非因果物件只影響自己）。因果未知，故為每個 latent 估因果分數 α_t^k∈[0,1]；用 <code>W_t G W_t^⊤</code> 把 G 提升到 token 級互動、調制 attention：<code>CA_t=Norm(softmax(Q K^⊤/√d)⊙W_t G W_t^⊤)V_t</code>，聚焦影響 target 者、抑制無關者。強調是<strong>學到的物件相關權重</strong>而非獨立辨識的因果效應。</li>
+<li><strong>3.4 policy 與世界模型學習</strong>：MuZero 式表徵／動力學／預測三函數，MCTS 全在潛在空間；固定模擬數後由 root 訪問次數歸一化成改良 policy 目標。COMET 把規劃狀態表成 slot 集合而非單體向量；端到端 unroll，聯合優化 slot 下一步預測（MSE，目標來自凍結編碼器）、獎勵與 value（log 空間離散回歸 CE）、policy（CE）。</li>
+</ul>
+<h2 id="4-實驗設定">4. 實驗設定</h2>
+<ul>
+<li><strong>4.1 環境</strong>：Object-Centric Visual RL benchmark（Object Goal / Interaction / Comparison / Property Comparison / Reaching，含 target + distractor、稀疏獎勵、離散或連續動作）；加 ManiSkill（Cube Pushing，dense shaped reward、50 步）、Robosuite（Block Lifting，dense reward、125 步）、VizDoom（Defend the Line，殺怪 +1 死亡 −1）。</li>
+<li><strong>4.2 平均歸一化分數</strong>：因各任務指標尺度不同，先對每環境用「最佳方法」歸一化（≤1），再跨環境平均，得單一可解釋指標，量化固定互動預算下的表現。</li>
+</ul>
+<h2 id="5-實驗結果">5. 實驗結果</h2>
+<p>對比 model-free 物件中心 PPO（OCRL）、物件中心 MBRL（OCDreamer、SOLD，SOLD 僅連續動作）、單體 MBRL（UniZero）。各 baseline 用原超參。</p>
+<ul>
+<li>頂尖演算法<strong>隨任務變動</strong>。COMET 在 Object Comparison / Object Property 收斂更快、最終更高，但 Block Lifting 未勝。</li>
+<li>歸一化後（Fig 3）COMET 跨視覺多樣任務<strong>平均歸一化分數最高</strong>。</li>
+<li><strong>視覺簡單任務</strong>（Object Goal / Comparison / Property Comparison）：強表徵 + object-causal attention 準確以高因果分數辨識相關物件 → 勝 baseline。</li>
+<li><strong>動力學複雜任務</strong>（Defend the Line / Object Interaction）：與 baseline 相當（前者多數物件都相關；後者需更深因果鏈，超出因果物件 attention 範圍）。</li>
+<li><strong>視覺＋控制皆難</strong>（Block Lifting / Cube Pushing）：中等，主因表徵有時把方塊併入背景 slot;OCDreamer 在此更穩、對不完美表徵更 robust。</li>
+</ul>
+<h2 id="6-限制與未來工作">6. 限制與未來工作</h2>
+<p>非監督物件中心表徵仍難可靠分割複雜雜亂真實場景（遮擋、邊界模糊）;transformer 隨 slot 數平方成本增長、擴展性差。未來：擴到真實開放環境（家務任務）；改進因果 attention 使其動態優先相關物件；並把因果 attention 從 policy/value <strong>擴到轉移動力學</strong>，以改善效率、關係推理與多物件擴展性。</p>
+<h2 id="7-結論">7. 結論</h2>
+<p>COMET 結合結構化物件中心表徵與 transformer 世界模型；以 action-slot 綁定在統一 backbone 內為 slot 建轉移；以因果 attention 讓 policy/value 聚焦任務相關物件，提升決策有效性與可解釋性。跨視覺多樣的離散與連續控制任務顯示，COMET 訓練早期的平均歸一化分數高於物件中心與單體 baseline。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

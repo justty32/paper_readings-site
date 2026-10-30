@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>DIGEST: Discovery-Guided LLM Tuning for Symbolic Regression 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Kaifeng Jin、Ruizhong Qiu、Zihao Li、Xiao Lin、Dongqi Fu、Yinglong Xia、Hong Li、Hanghang Tong</p><p>日期：2026-10-24（v1，cs.LG）</p><p>arXiv：2610.33880</p><p><a href="https://arxiv.org/html/2610.33880v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="digest-discovery-guided-llm-tuning-for-symbolic-regression-重點摘要">DIGEST: Discovery-Guided LLM Tuning for Symbolic Regression 重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>DIGEST 以預訓練 LLM 的解碼區塊產生符號式種群，再把遺傳程式設計搜尋得到的優良式子轉成線上訓練資料，讓搜尋成果改變下一輪生成策略的參數，而不只留在提示或概念庫中。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>傳統符號迴歸的生成方式受固定搜尋規則或專用生成器限制；多數 LLM 方法雖保留好式子與分數，模型本身卻不隨搜尋更新。本文聚焦只有數值輸入輸出、預定符號詞彙，沒有科學描述、變數語意或物理單位的設定，問能否讓模型從搜尋發現中持續學習。（<a href="https://arxiv.org/html/2610.33880v1#S1">§1～2</a>）</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>從文字模型接到符號樹</strong>：把式子以先序遍歷表示，根據已生成前綴取得下一節點的父節點與已完成兄弟子樹的根。兩種結構嵌入交錯輸入解碼器，再由兄弟位置的隱狀態預測下一符號。符號嵌入與輸出投影以符號文字標籤的預訓練 token 嵌入平均值初始化，之後分別參數化、共同更新；生成遮罩施加長度與算子嵌套限制。（<a href="https://arxiv.org/html/2610.33880v1#S3.SS1">§3.1、附錄 A.1</a>）</li>
+<li><strong>GP 提煉候選式</strong>：生成種群交給遺傳程式設計（GP），進行錦標賽選擇、子樹交叉與突變。以訓練資料的 <code>R(phi)=1/(1+NRMSE(phi))</code> 評分，再把生成式與 GP 精英合成回饋批次。數值資料透過適合度影響搜尋與更新；策略的直接輸入是樹結構脈絡。（<a href="https://arxiv.org/html/2610.33880v1#S3.SS2">§3.2、附錄 A.3</a>）</li>
+<li><strong>搜尋發現變成參數更新</strong>：按回饋分數分位數保留高分尾部，只將當輪最佳式提交至跨重啟保存的優先佇列。從佇列均勻抽式子做 priority queue training，最大化式子序列似然，另對當前高分批次加熵正則化。GP 種群每輪重設，策略、最佳式、佇列與快取持續保留。（<a href="https://arxiv.org/html/2610.33880v1#S3.SS3">§3.3、附錄 A.2～A.3</a>）</li>
+<li><strong>輕量策略</strong>：主版本只執行並訓練 Qwen2.5-0.5B 的單一解碼區塊與符號介面，約有 14.94M 可訓練參數（作者自報，附錄 A.4）。每次重啟採樣與 GP 精煉後，做一次 AdamW 更新（作者自報，§3.3）；並非把完整聊天模型放入每次候選式生成流程。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<p>以下均為作者自報。Nguyen 與 Livermore 分別含 12、22 個目標式，每式用 25 個獨立種子；本文的 recovery 定義為無雜訊測試集 <code>NMSE_test&lt;10^-12</code> 的執行比例，再跨式子平均。主版本與傳統基線使用名目 <code>2×10^6</code> 次式子評估額度，LLM 基線則採各方法另定的有限搜尋預算。（<a href="https://arxiv.org/html/2610.33880v1#S4.SS1">§4.1、附錄 B.1、C.2</a>）</p>
+<table>
+<thead>
+<tr>
+<th>指標（作者自報）</th>
+<th>Nguyen</th>
+<th>Livermore</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DIGEST recovery</td>
+<td>93.33%</td>
+<td>74.00%</td>
+</tr>
+<tr>
+<td>iMCTS recovery</td>
+<td>93.25%</td>
+<td>71.41%</td>
+</tr>
+<tr>
+<td>LaSR recovery</td>
+<td>29.67%</td>
+<td>19.09%</td>
+</tr>
+<tr>
+<td>DIGEST 平均搜尋時間</td>
+<td>49.2 秒</td>
+<td>118.8 秒</td>
+</tr>
+<tr>
+<td>相對於 LaSR 平均搜尋時間</td>
+<td>7.2%</td>
+<td>17.4%</td>
+</tr>
+</tbody>
+</table>
+<p>來源：<a href="https://arxiv.org/html/2610.33880v1#S4.SS2">§4.2、表 3、圖 4</a>。作者正文列出的 recovery 優勢，對 iMCTS 分別是 <strong>0.08、2.59 個百分點</strong>，對 LaSR 是 <strong>63.66、54.91 個百分點</strong>。摘要以百分比符號簡寫這些差值；本檔依正文與表格保留「百分點」，不當作相對提升百分比。時間的 7.2% 與 17.4% 則是相對比值。</p>
+<p>在 122 個 SRBench BlackBox 資料集，DIGEST 的跨資料集測試 <code>R^2</code> 中位數為受比較方法最高，式子大小屬中等（作者自報，§4.3、圖 5～6）。另以 TPSR 的 57 資料集設定比較，DIGEST／TPSR 的測試 <code>R^2</code> 中位數為 0.956／0.945，平均式子大小為 53.44／95.71（作者自報，附錄 B.3、表 12）；這裡的平均大小不能與完整 BlackBox 結果的中位數混用。</p>
+<p>消融顯示，Livermore 的隨機種群 GP、凍結單區塊策略、完整 DIGEST 的 recovery 依序為 66.91%、72.91%、74.00%。全深度 LoRA 可達 79.27%，但平均搜尋時間為 1213.8 秒，主版本則為 118.8 秒（作者自報，§5、表 4）。因此單區塊是準確率與成本的取捨，並非所有模型深度中 recovery 最高的設定。</p>
+<h2 id="局限">局限</h2>
+<p><strong>作者明載的設定與成本說明</strong>：原文未設獨立 Limitations 節。作者在 §5 承認全深度適應提高 recovery 的同時大幅增加搜尋成本；在附錄 A.3 說明評估計數包含快取命中，不是唯一式子或常數擬合內全部數值呼叫，且最後一輪可能超出名目額度。搜尋時間不含模型載入與控制器初始化；不同基線計時邊界另見附錄 C.3。作者於可重現性聲明表示，計畫待論文接受後公開實作。（<a href="https://arxiv.org/html/2610.33880v1#S5">§5</a>、<a href="https://arxiv.org/html/2610.33880v1#A1.SS3">附錄 A.3</a>、<a href="https://arxiv.org/html/2610.33880v1#A3.SS3">附錄 C.3</a>）</p>
+<p><strong>本檔補註，非作者自陳</strong>：數值 recovery 不保證找到符號等價或真實機制；基線比較是在移除科學描述、各自限制搜尋額度後進行，不能推成所有科學情境下的全面優勢。若要判斷預訓練究竟提供了多少結構知識，還需比對相同架構與更新流程、但隨機初始化解碼器的對照；本文表 4 的隨機種群 GP 並非這個對照。（依據附錄 B.1、C.2、§5）</p>
+<h2 id="對讀者的價值接點">對讀者的價值・接點</h2>
+<p><strong>本檔補註，非作者自陳</strong>：對符號迴歸與演化計算，值得借用的是「生成器播種→數值搜尋提煉→精英回訓生成器」的循環。它把搜尋記憶放進參數與持續佇列，但仍保留 GP 的結構探索；若移用到程式搜尋，應分開驗證生成先驗、線上更新與搜尋器本身的收益，並明確定義成功判準與計算額度。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.33880_DIGEST.zh-TW.html">DIGEST 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

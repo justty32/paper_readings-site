@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.22148_Ratchet.zh-TW.html">回 2605.22148_Ratchet.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">← 上一節</a>　<a href="04_%E8%A8%8E%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-協議">4.1 協議</h3>
+<p>我們在 MBPP+ hard-100 上評估，這是 MBPP+ 的一個 100 任務子集（60 訓練/40 留出 eval），根據 Claude Opus 4.7 下的真實難度挑選（建構過程見附錄 B）。分割在所有條件下固定，使第 0 輪分數可直接比較。所有 LLM 呼叫使用 Claude Opus 4.7；所有嵌入使用 Cohere embed-v4（均透過 Amazon Bedrock）。Solver 是單次直接 LLM 呼叫，無執行回饋、無自我精煉、無工具使用，隔離技能庫貢獻與推論期鷹架。每 run 100 輪；我們報告 3 種子（s = 42, 7, 13）的平均 ± 標準差。完整超參數見附錄 A。</p>
+<p><strong>指標</strong>：報告滾動增益：留出 pass@1 的 mean(last 10 rounds) − mean(first 10 rounds)，加上 100 輪的峰值。</p>
+<h3 id="42-主要結果">4.2 主要結果</h3>
+<p>表 2 與圖 2 總結結果。Default 配置代表我們的原則性設計選擇：結果驅動退休配保守證據地板、嵌入去重、後設技能作者先驗、有界 active-cap，由非發散分析（命題 1）與標準 LLM 生成衛生所驅動。它收斂到高於 0.58（平均峰值 0.658 ± 0.042）；無技能控制（A1）在所有種子上於 0.25–0.30 間漂移。純檢索（A2）捕捉約四分之一的提升，確認 Router 的 LLM 閘門在 tf-idf ∪ embed 檢索之外有實質貢獻。</p>
+<h3 id="43-消融驗證預設配置">4.3 消融：驗證預設配置</h3>
+<p>Default 配置從第一原則設計：僅在足夠證據後退役技能（命題 1）、透過正規化去重、以後設技能約束作者、有界 active bank。八項調整（A1–A8）各修改一個旋鈕以測試對應設計選擇是否承重（每條件 3 種子；完整設定見表 3）。我們將其分為兩個問題：哪些組件必要？（A1–A3）以及治理旋鈕有多敏感？（A4–A8）。</p>
+<p><strong>A1–A3：哪些組件必要？</strong></p>
+<ul>
+<li>A1（無技能注入）強制 Router 選 NONE，建立地板。</li>
+<li>A2（純檢索路由）繞過 LLM 閘門，注入排名最高的檢索命中。</li>
+<li>A3（無後設技能）從 Synthesizer prompt 中移除後設技能。</li>
+</ul>
+<p>各消融獨立測量從 Default 移除一個組件的成本。移除所有技能注入（A1）幾乎消除全部增益（+0.002 vs. +0.328）。移除 LLM 閘門（A2，純檢索）僅保留 +0.077（Default 增益的 24%）。移除後設技能（A3）保留 +0.187（57%），使其成為最有價值的單一組件，其缺失成本為 −0.141（第 5 節）。</p>
+<p><strong>A4–A8：治理旋鈕有多敏感？</strong></p>
+<ul>
+<li>A4（嚴苛退休）將 Nmin 降至 20、τ 收緊至 0.0。</li>
+<li>A5（無正規化）將 τcanon 提高至 1.0。</li>
+<li>A6（無 cover-guard）關閉重複群集跳過。</li>
+<li>A7（bank cap=100）加倍 active-cap。</li>
+<li>A8（後設技能刷新）每 10 輪重生成後設技能。</li>
+</ul>
+<p><strong>A4：嚴苛退休有害</strong>。A4 錄得 −0.019 ± 0.010，比無技能地板更差。在 Nmin = 20 與 δ = 10⁻³ 下，Hoeffding 偏差為 ε ≈ 0.44；τ = 0.0 時，任何真實貢獻 c ∈ [−0.44, 0] 的技能都可能在不幸的早期抽取中被退役。相比之下，Default（Nmin = 100, τ = 0.10）有 ε ≈ 0.20，故 c ≥ −0.10 的技能在期望中存活。這驗證了命題 1 的證據地板論證：退休門檻若無足夠大的證據地板則不足。</p>
+<p><strong>A5–A7：去重在此規模不必要</strong>。A5（+0.374 ± 0.023）與 A6（+0.363 ± 0.033）均超過 Default（+0.328 ± 0.018）約 0.04，在 n = 3 種子的 ±2σ 重疊範圍內。我們保守解讀：正規化與 cover-guard 在 100 任務套件上給定後設技能的作者指引下並非必要，而非主張移除此二嚴格改善效能。後設技能強制足夠風格一致性，使顯式過濾器的誤殺超過收益。A7（+0.317 ± 0.110）顯示可比的平均增益但顯著更高的變異；以 3 種子我們無法區分容量在平均上是否承重或主要控制變異，但證據與在此庫大小上容量為非約束性一致。</p>
+<p><strong>A8：後設技能刷新以成本換邊際增益</strong>。A8 每 10 輪刷新後設技能（對比 Default 的固定後設技能）。其滾動增益 +0.372 ± 0.017 與最高峰值（0.725），在噪聲範圍內略超 Default。然而，它合成多 24% 技能（188 vs. 152），wall time 多 55%（10.1 h vs. 6.5 h），LLM 呼叫數可比（+125，&lt;1%）。額外合成回合由策展階段主導（27% vs. 23% wall time）。結論：更頻繁刷新無實質改善學習曲線但產生可觀計算開銷。</p>
+<h3 id="44-技能庫動態">4.4 技能庫動態</h3>
+<p>100 輪中 Default 合成 ∼152 候選技能；89 被 curator 廢棄，50 維持 ACTIVE 在容量上限。Router 在 ∼73% 的 eval 任務上注入技能，確認庫被使用而非僅累積。完整每條件營運指標（wall time、LLM 呼叫、router 參與率、庫週轉）見附錄 F。</p>
+<h3 id="45-泛化性swe-bench-上的-agentic-solver">4.5 泛化性：SWE-bench 上的 agentic solver</h3>
+<p>為測試 Ratchet 是否超越單次呼叫程式碼生成，我們在 SWE-bench Verified 的 150 任務困難子集上執行 Default 配置的完整每輪迴圈（router、solver、critic、synthesizer、curator），以類似 MBPP+ 子集方式挑選（非所有基線種子上都解決的任務，按難度分層並跨 10 儲存庫平衡），將單次呼叫 solver 替換為一個 agentic Claude Code session，可瀏覽檔案、執行測試、迭代。技能作為 維護說明 序言注入，由智能體在啟動時讀取。跨三種子，無技能基線（第 0 輪）達到平均留出 pass@1 0.65。困難-150 過濾器保留無技能智能體在五個探測種子中至少一個上失敗的任務（獨立於三個實驗種子），而非保留它持續失敗的任務。以 Claude Code 作為強基線智能體，許多保留任務具有非零解決率；0.65 反映過濾器針對的種子間變異（智能體時而解決時而不的任務），而非缺乏難度。這正是技能應處理的失敗模式：注入一致指引，將解決率從「時而」提升到「可靠」。技能注入後平均值在首 20 輪內峰值達 0.87（最佳種子 0.92），確認留出 eval 分割上 +0.22 峰值提升。供對比，MBPP+ Default 達到 +0.40 峰值增益（0.258 → 0.658）；SWE-bench 僅報告峰值，因 20 輪太短無法計算穩定的晚窗口平均值。兩個結果均驗證 Ratchet 的衛生配方無架構變更即可泛化到多步驟、使用工具的智能體。我們執行 20 輪（相較 MBPP+ 的 100 輪），因每輪成本高：每個 agentic session 平均 ∼5 分鐘每任務，故在並行度 16 下一輪 150 任務約需 50 分鐘 wall-clock。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

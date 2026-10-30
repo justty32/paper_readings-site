@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2302.09664_Semantic_Uncertainty.%E6%91%98%E8%A6%81.html">回 2302.09664_Semantic_Uncertainty.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>語意熵（semantic entropy）</strong>：對同一問題<strong>取樣 M 個答案</strong>，用<strong>雙向蘊涵（bidirectional entailment，NLI 分類器）<strong>把「意思相同但措辭不同」的答案聚成</strong>語意等價類</strong>，把熵算在「意思的分佈」上而非「token 序列的分佈」上——完全<strong>無監督、只用單一現成模型、不需微調</strong>，在 OPT（2.7B–30B）於 TriviaQA／CoQA 上的 AUROC 全面優於一般預測熵、長度正規化熵與 p(True)，且優勢隨模型變大而擴大。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>基礎模型輸出的是 <strong>token 似然</strong>，代表的是「措辭」的信心，但我們幾乎總是在乎<strong>意思</strong>：模型在「France&#x27;s capital is Paris」與「Paris is France&#x27;s capital」之間猶豫，並不是任何有意義的不確定——但在 token 層級上模型看起來很不確定。既有的無監督不確定性方法（如 Malinin &amp; Gales 2020 的預測熵／長度正規化熵）完全忽略「不同句子可以表達同一意思」這件<strong>語意等價（semantic equivalence）<strong>的事實，因此會把「同一答案的不同說法」誤算成高不確定性。作者要解決的是：如何在</strong>不訓練、不標註、只用單一現成 LLM</strong>的前提下，得到一個真正反映「模型對意思有沒有把握」的不確定性分數。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>三步驟</strong>：(1) <strong>生成</strong>——用 multinomial 取樣，從模型對脈絡 x 的預測分佈中取樣 M 個序列 {s⁽¹⁾,…,s⁽ᴹ⁾}；(2) <strong>聚類</strong>——用雙向蘊涵演算法把「意思相同」的序列聚成語意等價類；(3) <strong>估計熵</strong>——把同一類內序列的機率相加（式 2：p(c|x)=Σ_{s∈c} p(s|x)），對「意思的分佈」算熵（semantic entropy, 式 3），並用蒙地卡羅估計 SE(x)≈-|C|⁻¹Σlog p(Cᵢ|x)（式 4）。</li>
+<li><strong>雙向蘊涵聚類（Algorithm 1）</strong>：兩句話 s、s′ 若<strong>在脈絡 x 下互相蘊涵</strong>（用一個獨立的 DeBERTa-large／MNLI 微調的 NLI 分類器，兩個方向都判為 entailment 才算等價）就歸入同一類；例如「Paris.」單獨不蘊涵「巴黎是法國首都」，但在問題脈絡下才成立——因此蘊涵判斷<strong>必須連同問題脈絡一起比對</strong>。利用等價關係的遞移性，每個新序列只需與<strong>每一類的代表序列</strong>比對，不必兩兩窮舉，控制計算量。</li>
+<li><strong>與一般預測熵的關鍵差異</strong>：一般熵把「Paris」與「It&#x27;s Paris」當成兩個不同事件，語意等價後兩者的機率被加總成同一個「意思」的機率，熵因此正確地反映「模型其實很確定答案是巴黎」（論文 Table 1 的示範）。</li>
+<li><strong>取樣長度／溫度的工程細節</strong>：序列越長聯合似然越低，長度正規化與否的取捨依任務而定（CoQA 答案長短不一、正規化有明顯幫助；TriviaQA 答案多為短語，正規化幾乎無影響）；取樣溫度存在「多樣性 vs 準確率」的取捨，實驗中 T=0.5 為 TriviaQA 與 CoQA 共通的最佳溫度。</li>
+<li><strong>成本</strong>：NLI 兩兩比對理論上是 O(M²)，但因遞移性只需比對代表序列，且 NLI 模型遠小於主生成模型，實測 M&lt;20（多數實驗用 10）已足夠，比生成 M 個序列本身的成本小得多。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>AUROC（30B OPT，主結果）</strong>：TriviaQA 上語意熵 0.828，優於長度正規化熵 0.802、一般熵、詞彙相似度（lexical similarity）與 p(True)（Kadavath et al., 2022 的自評方法，表現明顯較差）；CoQA 上語意熵 0.7672，優於長度正規化熵 0.7533。優勢隨模型規模（2.7B→30B）擴大而擴大，小模型時優勢已存在但幅度較小。</li>
+<li><strong>答錯的題目「語意上更分歧」</strong>：正確回答的問題平均語意等價類數（10 個取樣中）CoQA 為 1.27、TriviaQA 為 1.89；錯誤回答的問題則分別升到 1.77 與 3.89——僅用「語意相異答案的數量」當信心分數也有一定效果（AUROC 0.66／0.79），但仍不如語意熵（0.77／0.83）。</li>
+<li><strong>樣本利用效率</strong>：隨取樣數增加，語意熵與長度正規化熵的效能差距持續擴大，顯示語意熵能更好地利用重複／相似取樣，而非被措辭多樣性稀釋。</li>
+<li><strong>雙向蘊涵分類器的驗證</strong>：人工標註 300 個由 13B 模型生成的樣本，判斷分類器準確率為 92.7%（TriviaQA）、95.3%（CoQA，附錄 B.2；正文另處寫 95.5%，兩者為原文版本間的微小差異，本摘要以附錄實驗描述為準）。</li>
+<li><strong>對照 margin-probability 基線（附錄 B.6）</strong>：只看最高與次高似然的差值，CoQA 上 AUROC 僅 0.54，且無法區分「對同一意思的不同措辭猶豫」與「對不同意思本身猶豫」（如 Table 8：&quot;Thomas Edison.&quot; vs &quot;Edison.&quot; margin 高達 0.90 但語意熵僅 0.10；&quot;Thomas.&quot; vs &quot;George.&quot; margin 0.36 但語意熵 0.87，後者才是真正的高不確定性）。</li>
+<li><strong>對評估指標選擇穩健</strong>：換用不同正確性判準（Rouge-L 不同門檻、Rouge-1、exact match）AUROC 幾乎不變（附錄表 6、7），僅 exact match 在 CoQA 上因答案變異度大而偏嚴苛。</li>
+<li><strong>高溫時失效</strong>：溫度拉到 1.5 時模型常生成語意上難以判讀的句子，人工標註顯示蘊涵分類器準確率驟降到約 61%（低溫時 &gt;92%），此時語意熵反而輸給長度正規化熵，凸顯取樣品質是前提。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>不防範蓄意欺騙</strong>：本方法量的是「模型在多個似真意思之間猶豫多少」，若模型自信滿滿卻整體錯誤（如系統性欺騙），語意熵無法偵測。</li>
+<li>正確性判準（RougeL&gt;0.3）雖經人工評估驗證吻合度高（CoQA 89%、TriviaQA 96%），仍是自動指標的替代品，非完美的正確性度量。</li>
+<li>目前只驗證在<strong>問答</strong>任務；作者明言若要推廣到摘要等任務，仍需先在該任務上有更好的複述（paraphrase）判定方法。</li>
+<li>對「關鍵詞 vs 無關緊要 token」的不對等重要性只<strong>部分</strong>緩解，未被完全解決。</li>
+<li>蘊涵分類器並非完美，語意等價關係在實務上<strong>並非嚴格遞移</strong>（聚類結果理論上可能依比對順序而異），作者觀察此問題在實務上不明顯，但列為未來改進方向。</li>
+<li>全程只用單一未修改的現成模型，不做集成（ensemble）；作者曾嘗試重現 Kadavath et al. (2022) 其中一項需訓練模型直接預測信心的提案，但因硬體限制未能實作。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

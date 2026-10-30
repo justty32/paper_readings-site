@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2508.15866_Correctness_Guaranteed_CodeGen.%E6%91%98%E8%A6%81.html">回 2508.15866_Correctness_Guaranteed_CodeGen.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p>提出**「解析器樹（Tree of Parsers, ToP）」<strong>：把單一 CFG 拆成多個「模組化 CFG＋語意上下文（變數 scope、型別）」的解析器節點，動態長成一棵樹來處理未來程式片段的歧義，在解碼每一步都輸出一個滿足「<strong>不可延伸匹配（non-extensible match）</strong>」性質的 regex 來引導 LLM——讓受約束解碼從只保證</strong>語法<strong>合法，進一步保證</strong>語義<strong>正確（變數存在於 scope 內、型別相容），並在受限的自製語言 sLua 與一款 roguelike 遊戲的即時生成關卡機制上，把語義正確性進一步擴展到</strong>執行期不出錯（runtime-error-free）**。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>既有受約束解碼（regex/CFG 層級，如 Outlines、SynCode、GCD）只能保證生成內容<strong>語法</strong>合乎文法，離「語義正確、可執行」還很遠。要把約束推進到語義層有兩個根本困難：(1) LLM 是逐 token 序列生成的，需要<strong>在程式未完成時就給出即時語義回饋</strong>，這和傳統編譯器「先建完整 AST 再做語義檢查」的做法相反；(2) 傳統解析演算法的最小單位是文法終端符（terminal），與 LM 的<strong>子詞 token</strong> 不對齊，造成 token 邊界與解析器狀態記錄的錯位問題。本文的目標是在遊戲控制邏輯、機器人控制邏輯這類「無人在迴圈中把關、必須一次生成就正確」的執行期關鍵場景，讓 LLM 生成的程式碼有形式化正確性保證。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>Algorithm 1（context-sensitive constrained decoding with token healing）</strong>：維護一個「上下文相關解析器」P，每一步向 P 要 <code>next_regex()</code>，用該 regex 建 DFA、以 adaptive rejection sampling（Gumbel-top-k）從 LM 的 next-token 分布挑出合法 token，直到進入 DFA 終態，再把生成片段 <code>feed_text()</code> 回 P 推進解析狀態；並用「prefix + regex + <code>.*</code>」的技巧處理 LM token 跨越 regex 邊界的<strong>token healing</strong>（允許最後一個 token 部分匹配，下一輪再補完）。</li>
+<li><strong>不可延伸匹配性質（A1）</strong>：<code>next_regex()</code> 傳回的 regex 必須滿足——若字串 s 匹配該 regex，則 s 的任何延伸都不再匹配。等價於對應 DFA 一旦進入終態就不能再回到另一個終態，這樣演算法才能明確判斷「這段該停了，換下一段」，把「LM 該何時停止生成當前語意片段」的責任明確交還給 LM（例如整數字面量後面接的終止符集合，依上下文可能是 <code>)</code>、算術運算子等）。</li>
+<li><strong>Tree of Parsers（ToP，第 4 節）</strong>：核心洞見是「把完整語言文法硬塞進上下文很難，但針對單一語言構件（如一個型別標註、一個字串運算式）局部建一個帶語意上下文的模組化 CFG 就容易」。做法分兩階段：(1) 把完整 CFG 拆成多個模組化 CFG 模板，用特殊終端符 placeholder 標記「需要動態長出子解析器」的遞迴點；(2) 為每個模板定義一種樹節點型別，節點維護自己的解析狀態、可依需要 spawn 子節點，樹上每條「根到葉」路徑代表一個仍可能通往合法完整程式的巢狀解析狀態堆疊，解析衝突的分支會被剪掉（紅色箭頭於 Fig.1）。</li>
+<li><strong>語意上下文（environment）</strong>：像靜態分析一樣維護一個追蹤變數 scope 與型別的環境（如 scope 堆疊），在 spawn 新解析器節點前依模板的「槽位」查詢環境並代入（例如 spawn 一個「回傳字串型別的字首運算式」子解析器時，會查環境找出所有目前可解出字串型別的符號）；環境隨解析進度更新（進出 scope、完成區域變數宣告等）。因為環境只依已解析的程式建構，樹上多分支可共用同一份環境。</li>
+<li><strong>保證 A1 成立的 look-ahead 策略（A2/A3）</strong>：要求違反 A1 的終端符後面必接一組滿足 A1 的終端符（多數語言的分隔符如 <code>;</code>、<code>end</code>、<code>)</code> 天然滿足）；並限制樹只在少數位置分岔成「掃帚形（broom-shaped）」以控制樹的大小，複雜度與樹的規模成正比。</li>
+<li><strong>落地實作 sLua（第 5 節）</strong>：一個強型別、限制特徵的 Lua 變體（局部變數宣告需型別標註、敘述須以 <code>;</code> 結尾以滿足 A1/A2、不支援動態資料結構/空指標/遞迴呼叫），並證明（定理 5.1）在變數數、巢狀呼叫數、scope 數有界的假設下，ToP 根節點的 <code>next_regex</code>/<code>has_finished</code> 是常數時間、<code>feed_text</code> 對輸入長度線性。</li>
+</ul>
+<p><strong>保證的邊界</strong>：Algorithm 1 保證只要解析器樹不出現空解，生成出的程式必然是（樹所定義語言範圍內）<strong>語法＋語義正確</strong>——變數必在 scope 內、型別必相容；針對 sLua＋自訂 DCI 遊戲 API（定理 6.1），透過「安全回呼模式消除空指標」「有限迴圈次數＋詞法作用域禁遞迴確保終止」「禁動態資料結構避免越界」「effect hook 遞迴深度上限」等語言特徵限制，把語義正確性進一步擴展到<strong>執行期保證不出錯</strong>。但<strong>不保證</strong>：(1) Algorithm 1 本身一定會終止——受約束解碼存在已知的「分布扭曲（distribution distortion）」問題，LM 可能被約束逼到角落、陷入無限重複／垃圾輸出（本文以 1500 token 上限判定失敗，是實驗中唯一的失敗模式）；(2) 生成品質或「是否符合使用者意圖」；(3) 通用、不受限的程式語言的執行期正確性——執行期保證只在 sLua 這種刻意限制表達力（禁遞迴、禁動態結構）換取安全的受限語言＋精心設計的 API 下才成立，犧牲了部分表達力。</p>
+<h2 id="結果">結果</h2>
+<ul>
+<li>在自建 roguelike 遊戲 Dungeon Crawl Infinite（DCI）的「天賦類別生成」任務（8 個主題提示、每方法跑 10 次共 80 個資料點，用 Claude-3.5-Sonnet 評分 1–100）：本方法（搭配 Qwen2.5-32B-Coder）加反思（reflection）後成功率與品質分數最高；無約束基線（Claude-3.5-Sonnet、Qwen2.5-32B-Coder）常因「幻覺 scope 外變數」與語法錯誤失敗，本方法唯一的失敗模式是生成不終止（見上）。</li>
+<li>速度：與把 regex 編譯成 token-level DFA 的既有方法（Willard &amp; Louf 2023；Koo et al. 2024）相比，本文的 adaptive rejection sampling <strong>快 3 倍以上</strong>（因為 regex 隨解析進度持續變動，逐段前置編譯到 token-DFA 成本過高，懶惰式拒絕採樣更划算）；表 1 顯示 tokens/sec 為 7.64 對比 2.04／1.47，但編譯（重取樣）比例也更低（4.98% vs 73–79%）。</li>
+<li>定理 5.1 給出 sLua ToP 在合理假設下的線性時間解析保證；定理 6.1 給出 DCI 生成腳本的執行期不出錯保證。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>建構 ToP 需要<strong>逐語言手工設計</strong>模組化 CFG 與環境追蹤邏輯（雖然作者稱方法論本身語言無關）；本文只在自訂的簡化語言 sLua 上完整落地，未在主流通用語言（Python/TypeScript 等）上驗證。</li>
+<li>執行期正確性保證（定理 6.1）依賴大幅限制語言表達力（禁遞迴、禁動態資料結構、迴圈次數上限、hook 遞迴深度上限）與精心設計的 API，是「犧牲表達力換安全」的權衡，不是通用語言的免費午餐。</li>
+<li>受約束解碼本身可能扭曲 next-token 機率分布，導致生成不終止或落入品質較差的模式；論文只給出定性分析與 ad-hoc 緩解（如限制輸出 token 數），未解決根本問題。</li>
+<li>樹的大小（進而解析複雜度）在一般情況下可能變大，需依賴語言特徵（如型別標註前置）維持「掃帚形」樹才能保持效率。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

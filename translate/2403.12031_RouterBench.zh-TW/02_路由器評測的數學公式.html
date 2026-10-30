@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_路由器評測的數學公式 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2403.12031_RouterBench.zh-TW.html">回 2403.12031_RouterBench.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-路由器評測的數學公式">3. 路由器評測的數學公式</h2>
+<p>評估路由系統的核心挑戰，在於平衡「最大化效能」與「最小化成本」這兩個相互衝突的目標。我們建立了一套框架，能用<strong>單一指標</strong>捕捉這種多面向特性。</p>
+<h3 id="31-設定與基本操作">3.1 設定與基本操作</h3>
+<p>考慮模型集合 L = {LLM₁, …, LLMₘ} 與資料集 D = {x₁, …, x_|D|}。對每個模型 LLMⱼ，在每個樣本 xᵢ 上產生輸出 oᵢⱼ = LLMⱼ(xᵢ)，每個輸出都有對應的成本 c(oᵢⱼ) 與品質/效能 q(oᵢⱼ)。由此可得模型 LLMₘ 在資料集 D 上的期望成本 cₘ = E[c(LLMₘ(x))|x∈D] 與期望品質 qₘ = E[q(LLMₘ(x))|x∈D]。</p>
+<p><strong>路由器（router）</strong> R 定義為一個函式：接收 prompt x 與一組參數 θ，從模型集合 L 中選出最合適的模型 LLMᵢ 完成該 prompt，即 R(x) → LLMᵢ ∈ L。參數 θ 通常包含使用者願付的最高價格、期望延遲、路由器模型的網路層數等。透過在不同參數 θ₁, …, θ_k 上實驗，可得到一系列資料點 (c_R1, q_R1), …, (c_Rk, q_Rk)，能在成本-品質（c-q）平面上與各 LLM 的結果一併圖示比較。</p>
+<p><strong>線性內插（Linear Interpolation）</strong>：給定兩個路由器 R₁、R₂，可構造第三個路由器 R_int(R₁, R₂, t)：對每個 prompt x，以機率 t 選 R₁(x)、以機率 1−t 選 R₂(x)。由期望值的線性性可推得 E[c_Rint|x∈D] = t·c_R1 + (1−t)·c_R2，品質同理——即 R_int(t) 能精確內插 (c₁,q₁) 與 (c₂,q₂) 連線上的任意一點。</p>
+<p><strong>外插（Extrapolation）</strong>：讓所有路由器都能延伸到成本域 [0, ∞)。對任一路由器 R，可透過「白白增加成本卻不增加效能」的手段（如重複生成 k 次只取最後一次輸出）把成本延伸到 ∞；要延伸到更小的成本域，則內插「null router」（零成本零效能）與 R₁，即可在比較不同定義域的路由器時，統一到共同的 [0, ∞) 成本區間。</p>
+<h3 id="32-非遞減凸包non-decreasing-convex-hull">3.2 非遞減凸包（Non-Decreasing Convex Hull）</h3>
+<p>對一組成本-品質平面上的點 S，可透過線性內插構造出任意落在 S 所形成凸包內的仿射組合點。我們取 S_ch ⊆ S 為構成該凸包頂點的子集。</p>
+<p>進一步，可從 S_ch 建構<strong>非遞減凸包</strong>：確保對任意兩點 (c₁,q₁)、(c₂,q₂)，若 c₂≥c₁，則 q₂≥q₁——直覺是：若多花 c₂−c₁ 的成本卻沒帶來效能提升，不如直接把 (c₁,q₁) 外插到成本域 c₂，讓 (c₂,q₂) 等於 (c₂,q₁)。</p>
+<p>對於某個由多個路由器/LLM 構成的路由系統 R₁，可構造一系列路由器 R_θ1, …, R_θk，得到點集 (c₁,q₁), …, (c_k,q_k)；再建立非遞減凸包 S_ndch，即可對任意落在 [c_min, c_max] 範圍內的成本 c，透過在最近兩個成本點間內插得到「可達到的最優效能」——這有效建立出一個橫跨完整成本域 [c_min, c_max] 的新路由系統。</p>
+<p>在此框架下，我們定義 <strong>Zero router（R_zero）</strong>：一個只依「靜態 LLM 集合 {LLM₁,…,LLMₘ} 的非遞減凸包」選模型的路由器——對指定成本 c，R_zero 給出一組「最大化期望輸出品質」的機率混合，是一個純數學驅動、不看 query 內容的簡單路由策略。R_zero 是評估其他路由系統的<strong>基本基準</strong>：一個路由器唯有效能優於 R_zero，才算是有意義的路由器。</p>
+<h3 id="33-比較不同路由系統">3.3 比較不同路由系統</h3>
+<p>由於本框架對路由器的內部結構不設限，不同路由系統會在 c-q 平面上產生一組非確定、非參數化的散點，難以直接比較。利用前述方法，可把這些散點壓縮成一個非遞減凸包，再蒸餾成單一數值指標。</p>
+<p>考慮兩個路由系統（例如 KNN 型與 MLP 型路由器）R_θ（θ∈Θ）與 R_φ（φ∈Φ）：透過對 Θ、Φ 取樣得到一組點 R_θ1,…,R_θk 與 R_φ1,…,R_φk，各自構建非遞減凸包，並定義在共同的成本域 [c_min, c_max] 上。</p>
+<p>我們定義其中一個路由系統的 <strong>AIQ（Average Improvement in Quality）</strong> 為：</p>
+<p>AIQ(R) = 1/(c_max − c_min) · ∫_{c_min}^{c_max} R_dc(c) dc</p>
+<p>即該路由系統非遞減凸包曲線，在共同成本域上的<strong>歸一化曲線下面積</strong>。有了 AIQ，便能對任意一組路由系統計算出清楚的相對表現指標，不必進行複雜的圖形分析，就能直接以單一數字衡量路由器表現。</p>
+<h2 id="4-基準建構routerbench">4. 基準建構——ROUTERBENCH</h2>
+<p>為系統化評測路由器表現，我們建構了 ROUTERBENCH 資料集，涵蓋常識推理、知識型語言理解、對話、數學、程式，以及檢索增強生成（RAG）等廣泛任務，並運用被廣泛用於評測 GPT-4、Gemini、Claude 等頂尖 LLM 的既有資料集，確保 ROUTERBENCH 能代表主流 LLM 效能評測的多元挑戰與需求。</p>
+<h3 id="41-基準建構原則">4.1 基準建構原則</h3>
+<ul>
+<li><strong>廣泛涵蓋</strong>：辨識 LLM 廣泛應用的多元領域，追求應用範圍的多樣性。</li>
+<li><strong>實務相關</strong>：所選基準對業界目前的 LLM 系統應用具重要意義，難度介於「不過於困難」與「不過於簡單」之間，對頂尖 LLM 構成平衡的挑戰。</li>
+<li><strong>可擴展性</strong>：ROUTERBENCH 設計上可無縫整合更多指標（如延遲、吞吐量），以適應 LLM 領域的演變。</li>
+</ul>
+<h3 id="42-基準資料集">4.2 基準資料集</h3>
+<p>初版釋出精選 8 個代表性資料集：常識推理（Hellaswag、Winogrande、ARC-Challenge）、知識型語言理解（MMLU）、對話（MT-Bench）、數學（GSM8K）、程式（MBPP）。</p>
+<p><strong>RAG 資料集</strong>：為更貼近實務評測路由器，作者從 Martian 某個「LLM 輔助搜尋」客戶端蒐集了 <strong>800 筆使用者查詢</strong>，構建 RAG 資料集，涵蓋運動、歷史、媒體藝術、政治等主題，並人工整理出真值答案，用以評測「LLM ＋ LLM 輔助搜尋引擎」組合的答案品質。此設計旨在評估路由器在「複合系統（compound system）」情境下的表現——能否在檢索能力也牽涉其中時做出恰當判斷。例如面對 GPT-4 知識截止日期之後發布的新聞，路由器應更常選擇具連網檢索能力的模型（如 sonar-medium-online）。</p>
+<h3 id="43-資料集建構流程">4.3 資料集建構流程</h3>
+<p>共對 <strong>14 個不同 LLM</strong>（其中 3 個為 RAG 資料集專用）做推論，涵蓋開源與專有模型，套用到第 4.2 節所列的 8 個資料集與 RAG 資料集。</p>
+<ul>
+<li><strong>開源模型</strong>：Llama-70B-chat、Mixtral-8x7B-chat、Yi-34B-chat、Code Llama-34B、Mistral-7B-chat、WizardLM-13B。</li>
+<li><strong>專有模型</strong>：GPT-4、GPT-3.5-turbo、Claude-instant-v1、Claude-v1、Claude-v2、You.com API、sonar-small-online、sonar-medium-online（後三者為 RAG 專用）。</li>
+</ul>
+<p>最終，ROUTERBENCH 共有 <strong>405,467 筆樣本，涵蓋 11 個模型、8 個資料集、64 個任務</strong>。</p>
+<h3 id="44-先導研究oracle-路由器">4.4 先導研究：Oracle 路由器</h3>
+<p>先在 8 個資料集上評測各模型的表現，彙整結果如圖 3。<strong>Oracle</strong> 代表理論最佳路由器：永遠路由到表現最好的模型（若有多個並列最優，則選最便宜的那個）。</p>
+<p><strong>結果</strong>：Oracle 以低成本達到近乎完美的效能，凸顯 LLM 間高效路由的潛力。儘管 GPT-4 等專有模型效能優異，但相對開源替代方案成本明顯較高，是顯著劣勢；過度對齊（over-alignment）等因素也可能損及 Claude-2 等專有模型的生成品質（詳附錄 C）。圖 3 的熱圖顯示：儘管 WizardLM-13B、Mistral-7B 在各任務上僅約 50% 準確率，其低廉成本使 Oracle 在它們答對時經常優先選用。更令人意外的是，GPT-4 鮮少被選中，暗示存在成本更低、卻能為多數查詢提供高品質答案的 LLM——凸顯透過具成本效益的路由，大幅提升 LLM 系統效能的空間。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.15334_Gorilla.zh-TW.html">回 2305.15334_Gorilla.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）近期進展驚人，在數學推理與程式合成等任務上表現卓越，但<strong>透過 API 呼叫有效使用工具</strong>的潛力仍未實現。即使對 GPT-4 這樣的最先進 LLM，這也是艱難的任務——主因是它們無法生成準確的輸入引數（input arguments），且傾向<strong>幻覺（hallucinate）出錯誤的 API 用法</strong>。我們釋出 <strong>Gorilla</strong>，一個微調的 LLaMA 基底模型，在撰寫 API 呼叫上超越 GPT-4。搭配文件檢索器（document retriever）時，Gorilla 展現對<strong>測試期文件變更</strong>的強適應力，支援使用者彈性更新或版本切換，並大幅緩解直接 prompt LLM 時常見的幻覺問題。為評估模型能力，我們推出 <strong>APIBench</strong>——涵蓋 HuggingFace、TorchHub、TensorHub API 的綜合資料集。檢索系統與 Gorilla 的成功整合，展示 LLM 更準確使用工具、跟上高頻更新文件、進而提升輸出可靠性與適用性的潛力。程式碼、模型、資料與 demo 見 gorilla.cs.berkeley.edu。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 仍受根本限制：知識固定在一組權重內、只能用靜態計算圖與有限 context 計算，世界改變時需重訓才能更新。賦予 LLM 使用工具的能力，可讓其存取更大且變動的知識庫、完成複雜計算任務；主流 LLM 供應商也已開始整合 plugins 讓 LLM 經 API 呼叫外部工具。</p>
+<p>從「一小組手工編碼的工具」轉向「可呼叫廣闊、變動的雲端 API 空間」，可能讓 LLM 成為運算基礎設施與網路的主要介面——訂整趟假期、辦一場會議，都可簡化為與一個能存取機票、租車、旅館、餐飲、娛樂 API 的 LLM 對話。但既有工具整合工作多考慮<strong>一小組文件齊全、可輕鬆注入 prompt 的 API</strong>。支援網路規模、可能達數百萬且不斷變動的 API，需要重新思考整合方式：<strong>不再可能在單一 context 內描述全部 API</strong>；許多 API 功能重疊、又有細微的限制與約束；評測本身也需要新基準。</p>
+<p>（圖 1 要旨：同一個 prompt 下，GPT-4 給出不存在的模型、Claude 選錯函式庫，而 Gorilla 能正確識別任務並給出完整合格（fully-qualified）的 API 呼叫。）</p>
+<p>本文探索以 <strong>self-instruct 微調＋檢索</strong>，讓 LLM 從龐大、重疊、變動的工具集中準確選用 API。我們建構 <strong>APIBench</strong>：爬取三大模型庫——TorchHub（全收錄）、TensorHub（全收錄）、HuggingFace（每任務類別取下載數前 20 的模型）——並以 Self-Instruct 為每個 API 生成 10 條合成使用者問句，每筆資料成為「指令-參考 API」對。評測採 <strong>AST 子樹匹配</strong>：把生成碼解析為 AST 樹，找出根節點為目標 API 呼叫（如 <code>torch.hub.load</code>）的子樹，以此對照資料庫檢查功能正確性，並回報幻覺率。</p>
+<p>我們接著微調出 Gorilla——基於 LLaMA-7B、帶文件檢索的模型。Gorilla 在 API 功能準確率與降低幻覺錯誤上顯著超越 GPT-4；<strong>retriever-aware 訓練</strong>使模型能適應 API 文件變更；我們也展示 Gorilla 理解與推理**約束（constraints）**的能力。</p>
+<p>（圖 2 要旨：在零樣本與 BM25/GPT/oracle 檢索四種設定下，以「準確率 vs 幻覺率」作圖，Gorilla 整體同時提升準確率並降低幻覺。）</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p><strong>LLM</strong>：近期開源模型（LLaMA、Alpaca、Vicuna）促進了 LLM 研究。Gorilla 沿用類似技術，但重點是強化 LLM 使用「百萬級工具」的能力而非對話能力；且據我們所知，<strong>以資訊檢索輔助微調基底模型</strong>是首創。</p>
+<p><strong>工具使用</strong>：Toolformer 等工作多聚焦特定工具（瀏覽器、計算機、翻譯、Python 直譯器），且主要展示「prompting 的潛力」而非建立系統性的評測與訓練（含微調）管線；本文則以開放式方式涵蓋廣闊 API 空間，並專注系統性評測與可複用的管線。</p>
+<p><strong>LLM 程式合成</strong>：既有策略（in-context learning、任務分解、self-debugging、程式碼預訓練）針對通用程式合成——複雜且難以驗證評估。本文限縮在<strong>以 API 呼叫組成的線性程式</strong>：API 呼叫更像工具使用，讓 LLM 大幅擴充能力而不必糾纏底層實作細節。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

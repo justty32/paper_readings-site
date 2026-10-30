@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Top-Down Synthesis for Library Learning（Stitch）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Matthew Bowers, Theo X. Olausson, Lionel Wong, Gabriel Grand, Joshua B. Tenenbaum, Armando Solar-Lezama（MIT）、Kevin Ellis（Cornell）</p><p>日期：2022-11（POPL 2023）</p><p>arXiv：2211.16605</p><p><a href="https://arxiv.org/abs/2211.16605" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="top-down-synthesis-for-library-learningstitch重點摘要">《Top-Down Synthesis for Library Learning（Stitch）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Corpus-guided top-down synthesis（CTS，語料庫引導的自頂向下合成）</strong>：不像 DreamCoder 用演繹式改寫（deductive rewrites）去「翻攪」語料庫暴露共同結構，而是<strong>直接自頂向下合成抽象函數本身</strong>——用 branch-and-bound 搜尋帶洞（hole）的部分抽象，靠「部分抽象的匹配位置是其所有後代的匹配位置超集」這一關鍵觀察算出<strong>可靠的壓縮效用上界</strong>來激進剪枝，<strong>保證找到 MDL/壓縮最優的單一 λ 抽象</strong>；Rust 實作 Stitch 比 DreamCoder 壓縮階段<strong>快 3-4 個數量級、省 2 個數量級記憶體</strong>，且是<strong>隨時可停（anytime）演算法</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>程式庫學習（library learning）＝從一批 DSL 程式語料中自動抽出共用的函數抽象，逐輪重寫語料、堆疊出抽象庫。此前最強的 DreamCoder（Ellis et al. 2021）走<strong>演繹式</strong>路線：用保語義改寫規則（β-inversion）列舉指數級的重構空間、以 version space 存所有候選重構再抽取共同結構——記憶體與搜尋時間隨語料規模與程式深度暴增，對「數百支、平均 76–189 個符號」的語料連一個抽象都學不出（256GB RAM＋數小時仍失敗）。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>搜尋空間反轉</strong>：直接以 top-down 方式合成抽象體（abstraction body）——從單一洞 <code>??</code> 出發，逐步用文法規則展開洞，直到得到完整抽象（如 <code>(+ 3 (* α β))</code>）。</li>
+<li><strong>效用函數＝壓縮</strong>：U(A) = −cost(A) + cost（語料） − cost（重寫後語料），可分解為每個重寫位置的局部效用（抽象體大小 − 應用開銷 ＋ 多次使用同一參數的 multiuse 紅利），<strong>不需實際執行重寫即可計算</strong>。</li>
+<li><strong>關鍵剪枝（皆不犧牲最優性）</strong>：
+<ol>
+<li><strong>上界剪枝</strong>：展開洞只會讓匹配位置變成「子集」→ 部分抽象的匹配位置集是後代的超集；每個匹配位置最多壓到 0 → 上界＝Σ 匹配位置子樹 cost。低於目前最佳完整抽象即棄。</li>
+<li><strong>嚴格支配剪枝（strict dominance）</strong>：redundant argument elimination（兩參數處處相同→被單參版支配）與 argument capture（某參數處處綁同一表達式→被內聯版支配）。</li>
+<li>零匹配分支直接剪；上界兼作優先佇列排序（best-bound / A* 式），加上<strong>增量匹配</strong>（只檢查父抽象的匹配位置）。</li>
+</ol>
+</li>
+<li><strong>λ 感知配對</strong>：LambdaUnify 以 de Bruijn 索引處理變數綁定，&amp;i 特殊索引處理洞越過綁定規則的情形（附 Coq 正確性證明）；重寫用線性時間、最優的 bottom-up 動態規劃解決匹配位置重疊問題。</li>
+<li><strong>可組合演繹改寫</strong>：先跑一步 DreamCoder 的 β-inversion 產生 version space，再在其上跑 CTS（RewriteUnify）→ 補回高階函數表達力。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>對比 DreamCoder（其 5 個領域的公開 trace）</strong>：庫品質（壓縮率）相當或更好（僅 list 領域偶爾輸，因原生 Stitch 學不了高階抽象）；<strong>速度快 3-4 個數量級（毫秒級 vs 分鐘級）、記憶體省逾 2 個數量級</strong>——且 Stitch 限單執行緒、DreamCoder 給 8 CPU。</li>
+<li><strong>大規模語料（Wong et al. 2022 八個圖形/積木領域，各 250 支程式）</strong>：測試集壓縮率 <strong>2.55x–11.57x</strong>，耗時 0.19–77 秒、峰值記憶體 11MB–714MB；<strong>DreamCoder 在最簡單的 nuts &amp; bolts 領域即全滅</strong>。筆電即可重現。</li>
+<li><strong>Anytime 特性</strong>：8 領域中 3 個在總搜尋量 1% 內、7 個在 10% 內就命中最終最優抽象 → 提早停止實用。</li>
+<li><strong>消融</strong>：關掉 argument capture 剪枝→多數領域爆 50GB RAM；全關→所有領域 90 分鐘 + 50GB 內無法完成——<strong>語料引導剪枝正是可行性的來源</strong>。</li>
+<li><strong>pyStitch+Bayes+VS</strong>：學回 DreamCoder 全部 5 個高階函數（map/fold/unfold/filter/zip_with），<strong>只用 &lt;2% 計算量</strong>（3042s vs 228048s≈2.5 天）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>原生 Stitch 純語法匹配：學不了高階抽象、無法利用等式理論（如乘法交換律）暴露語義共同結構；version space/e-graph 上的效用上界難以緊化（pyStitch 用近似效用、無最優保證）。</li>
+<li>一次只學一個抽象、逐輪迭代（babble 可聯合學多個；但 Stitch 對每個抽象有最優保證）。</li>
+<li>argument capture 剪枝理論上有邊角案例會偏離無此約束的最優（偏差有界，實驗中從未改變選出的抽象）。</li>
+<li>實驗語料仍是 λ 演算程式，與真實碼庫規模尚有差距（作者列為未來方向）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>直接命中 ai_core §3.6 固化引擎的最硬工程瓶頸</strong>：固化引擎要「把 LLM 反覆處理的案例結晶成確定性程式碼／抽象庫」，其核心子問題正是本文的 library learning——從案例語料中抽出 MDL 最優的可重用抽象。已入庫的 <a class="paper-reference" href="2006.08381_DreamCoder.%E6%91%98%E8%A6%81.html">2006.08381</a> DreamCoder 給了「wake–abstraction–dreaming」的完整架構藍圖，但其壓縮階段是眾所周知的成本黑洞；<strong>Stitch 把這一步從「分鐘級＋數百 GB」壓到「毫秒級＋數十 MB」且保證最優</strong>，等於把固化引擎最貴的元件換成可高頻呼叫的廉價子程序——這正符合 ai_core「貴稀有智能產資產、便宜高頻智能消費資產」（§2）中讓結晶流程本身也便宜化的方向。</li>
+<li><strong>可直接搬用的元件</strong>：Stitch 開源（Rust crate + Python 套件），輸入任意 λ 演算/DSL 程式語料即輸出抽象庫並重寫語料；anytime 特性意味著可嵌進固化引擎的例行迴圈按時間預算跑（§3.6 的結晶步驟可設 SLA）。效用函數是使用者可定義的——ai_core 可把「壓縮」換成含執行成本/LLM 呼叫次數的自訂效用，讓抽象直接對齊成本梯度（§3.3）。</li>
+<li><strong>方法論啟發</strong>：「部分解的匹配集是後代匹配集的超集→可靠上界→branch-and-bound」這一模式，可推廣到 ai_core 中任何「從重複案例中找最優共用模板」的問題（如 prompt 模板抽取、工作流去重），論文 §8 亦點名 dataflow DAG 與真實碼庫是待開拓方向——與 ai_core 符號神經網路計算圖（§1）的形態直接對口。</li>
+<li>搭配閱讀：與 <a class="paper-reference" href="2006.08381_DreamCoder.%E6%91%98%E8%A6%81.html">2006.08381</a> DreamCoder 是「架構 vs 引擎」關係；與同期 babble（e-graph + 反統一，語義等價但較慢）是「效率 vs 表達力」兩極，論文 §7.5 的三點對比表是選型時的現成依據。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2211.16605_Stitch.zh-TW.html"><code>../translate/2211.16605_Stitch.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

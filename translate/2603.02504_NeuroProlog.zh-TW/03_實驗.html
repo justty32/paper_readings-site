@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.02504_NeuroProlog.zh-TW.html">回 2603.02504_NeuroProlog.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95%E8%AB%96.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-實驗設定">4.1 實驗設定</h3>
+<p><strong>模型</strong>：四種模型橫跨 10× 參數範圍——Qwen2.5-Coder-32B-Instruct（代碼專業）、GPT-OSS-20B（通用）、Qwen3-8B（中尺度通用）、Llama-3.2-3B-Instruct（緊湊指令微調）。</p>
+<p><strong>訓練配置</strong>：每模型三種設定——Base（零樣本 Prolog 生成，無微調）、Prolog FT（僅 GSM8K-Prolog 單任務監督）、Cocktail FT（KB + GSM8K-Prolog 聯合雞尾酒目標）。兩組微調使用相同 LoRA 超參數與 epoch 數。雞尾酒資料集是 Prolog FT 資料的嚴格超集（僅增加 200 KB 條目），任何提升皆歸因於 KB 組件。</p>
+<p><strong>解碼與評估</strong>：貪婪解碼（T=0），k=3 最大修正迭代，完整 GSM8K 測試集（n=1319），五項指標。McNemar 檢定用於成對準確度差異。</p>
+<h3 id="42-整體表現">4.2 整體表現</h3>
+<p>雞尾酒訓練在 3/4 模型上顯著提升：Qwen-32B +5.23%（p&lt;0.01）、GPT-OSS-20B +3.43%（p&lt;0.01）、Llama-3B +5.54%（p&lt;0.05）。最佳結果：GPT-OSS-20B Cocktail FT 88.34%，超越同級或更大規模的程式合成基線——ToRA-Code-34B（80.7%）、OpenMath-CodeLlama-70B（84.6%），以 3.5× 更少參數逼近更大模型，證明 Prolog 符號邏輯程式可作為命令式代碼的有效替代。</p>
+<p>Qwen3-8B 為唯一微調後準確度下降的模型（66.79%→64.51%，−2.28%，p=0.08）。Base 模型以極低首次成功率（7.7%）搭配強修正能力（70.7%）補償；微調將首次成功提升至 69.8% 但修正率暴跌至 24.1%，揭示了 <strong>生成–修正權衡</strong>——8B 尺度下微調教會了表面 Prolog 語法，卻以迭代推理深度為代價。</p>
+<p>與已發表基線比較：GPT-OSS-20B Cocktail FT（88.34%）超越所有同級程式合成系統。</p>
+<h3 id="43-模型尺度效應">4.3 模型尺度效應</h3>
+<p>四種不同行為模式：</p>
+<ul>
+<li><strong>32B 代碼模型</strong>：近乎完美的首次成功（96.4%）但微弱修正（17.0%）。雞尾酒訓練誘導質變：首次成功降至 90.7% 但修正躍升至 92.7%（p&lt;0.01），最終失敗由 39→9（77% 減少）。</li>
+<li><strong>20B 通用模型</strong>：以中等首次成功（45.0%）搭配強修正（81.8%）補償。雞尾酒訓練單調改善所有管線指標。</li>
+<li><strong>8B 中尺度</strong>：生成–修正權衡（如上）。在此尺度基礎模型以更多修正迭代可能優於微調版本。</li>
+<li><strong>3B 小模型</strong>：所有配置皆處於低表現區。Prolog FT 惡化可執行率（66.49%→42.08%），雞尾酒 FT 的 27.07% 準確度天花板確認 3B 不足以支援可靠的組合式 Prolog 生成。</li>
+</ul>
+<h3 id="44-執行引導錯誤恢復">4.4 執行引導錯誤恢復</h3>
+<p>雞尾酒 FT 在 Qwen-32B 上以首次成功完美換取強健修正：首次成功由 96.4%→90.7% 但修正率達 92.7%，最終僅 9 次失敗（vs. Base 39 次）。提示模型探索更廣的程式空間，同時獲得語意除錯能力（符合「多樣性-再驗證」範式）。</p>
+<p>GPT-OSS-20B：微調單調改善所有管線指標——首次成功 45%→60%、平均迭代 1.75→1.52、準確度 84.91%→88.34%。雞尾酒配置較 Base 減少 13.1% 總迭代次數且準確度 +3.43%。</p>
+<p>修正能力在 &lt;10B 尺度急遽退化：Qwen3-8B 與 Llama-3B 微調後修正率分別為 24.1% 與 8.9%，指示 10B 以下模型缺乏同時學習代碼生成與執行錯誤診斷的容量——對資源受限部署中的重要限制。</p>
+<h3 id="45-錯誤分析關鍵機制發現">4.5 錯誤分析（關鍵機制發現）</h3>
+<p>利用 SWI-Prolog 的豐富錯誤分類法分析模型學到了什麼。</p>
+<p><strong>32B 尺度——正向轉化</strong>：Base 錯誤 87.2% 為 TYPE_ERROR（對不相容型別應用算術，如對原子做算術），僅 12% 可修。雞尾酒訓練後錯誤轉為 55.6% DOMAIN_ERROR（算術邊界違規，如除以零），96% 可修。總錯誤由 39→9。<strong>KB 組件教會了正確的 Prolog 型別使用</strong>。</p>
+<p><strong>8B 尺度——反向轉化</strong>：Base 錯誤 89.4% 為 SYNTAX_OPERATOR_EXPECTED（無法產出合式 Prolog）。雞尾酒訓練後主導錯誤變為 69.5% TYPE_ERROR，僅 5% 可修。微調成功教會了 Prolog 語法，卻引入了 32B 已解決的型別失敗——證明<strong>語意型別理解需要 &gt;8B 參數容量</strong>。</p>
+<p>GPT-OSS-20B：錯誤分佈跨配置保持一致（~76% SYNTAX_OPERATOR_EXPECTED），準確度增益來自修正更多同類錯誤而非防止新型錯誤。</p>
+<p>Llama-3B：各配置呈現不同的主導錯誤型別，分佈不穩定。</p>
+<h3 id="46-管線效率">4.6 管線效率</h3>
+<p>定義效率 = （準確度 × 執行率） / 平均迭代次數。Qwen3-8B 在準確度下降的情況下獲得最大效率增益（+61.5%），因減少迭代（2.43→1.54）與提升可執行率在延遲敏感應用中勝過準確度損失。兩個帕累托最優點：GPT-OSS-20B Cocktail（88.34% 準確度）與 Qwen-32B Prolog FT（82.8 效率）。</p>
+<h3 id="47-消融研究">4.7 消融研究</h3>
+<p><strong>KB 整合</strong>：相較 Prolog FT（僅 310 SOLVE），Cocktail FT（200 KB + 310 SOLVE）持續改善準確度（+0.38~+5.24%，平均 +2.30%）與可執行率（+0.08~+15.84%，平均 +4.77%），小型模型獲益最大（Llama-3B +5.24% 準確度、+15.84% 可執行率）。</p>
+<p><strong>執行引導解碼</strong>：分類法反饋較純貪婪解碼增加 +4.82% 準確度。</p>
+<p><strong>組件協同</strong>：KB 將修正率懲罰由 −13.6% 降至 −5.2%，將修復率由 41.2% 提升至 92.7%。KB 將錯誤轉向更可修正的型別，確認宣告式知識與執行引導反饋的協同。</p>
+<h2 id="5-結論與未來工作">5. 結論與未來工作</h2>
+<p>NeuroProlog 透過多任務雞尾酒訓練與執行引導解碼改善 LLM 數學推理。聯合 KB+SOLVE 監督產出統計顯著增益（最高 +5.54%），最佳模型 GPT-OSS-20B Cocktail（88.34%）超越更大程式合成基線，確立 Prolog 神經符號推理作為可擴展的符號 AI 基礎。</p>
+<p><strong>關鍵發現</strong>：模型容量從根本上改變訓練影響——32B 參數下 KB 訓練將不可修型別錯誤轉化為可修域錯誤（92.7% 修正率），8B 參數下則消除語法錯誤卻引入語意錯誤。此尺度相依行為證明模型內化符號結構而非記憶模式，型別安全推理需 &gt;8B 參數。迭代精煉管線以分類法錯誤反饋展示模型可在無除錯專屬訓練下自我除錯 Prolog 程式。</p>
+<p><strong>局限</strong>：200 條 KB 未涵蓋高等數學（建議擴至 1000+）；僅評估 Prolog（未比較 SMT/Lean/DSL）；4 個模型缺乏架構多樣性（建議 1B–70B 受控實驗）；GSM8K 僅涵蓋小學算術（建議 MATH、TheoremQA 測試泛化）；Prolog 的可驗證性對模糊推理引入脆弱性，混合神經符號方法對真實部署至關重要。</p>
+<h2 id="附錄亮點">附錄亮點</h2>
+<p><strong>B.1 超參數</strong>：每模型獨立調整 LoRA rank（32–48）、alpha（64–128）、學習率（5e-8–8e-5）、批次大小（32–64）。大型模型使用保守設定防過擬合，小型模型使用更高學習率確保 3 epoch 內充分更新。</p>
+<p><strong>B.2 訓練動態</strong>：所有配置呈單調驗證損失下降（無過擬合）。雞尾酒訓練在所有模型上達成低於 Prolog FT 的最終驗證損失（Qwen-32B: 0.155 vs 0.184），直接證明 KB 監督改善模型生成語法與語意有效 Prolog 的能力（正跨任務遷移）。但驗證損失不完全預測 GSM8K 準確度（Qwen3-8B 最低損失 0.336 卻僅 64.5% 準確度），暗示執行正確性取決於語意理解，超越表面代碼似然建模。</p>
+<p><strong>C. 迭代分佈</strong>：Qwen-32B 幾乎全以 1-iteration 解決（96%+），雞尾酒 FT 微增至 2-iteration（8.0%）但修正能力大幅提升。GPT-OSS-20B 呈單調改善從多迭代轉向單迭代。Qwen3-8B Base 呈極端分佈（7.7% 首次成功，50.9% 需全部三次），微調完全逆轉但修正崩潰。</p>
+<p><strong>D. 錯誤分類法</strong>（完整五類）：Table 9 列出所有診斷模式、範例違規與修復策略模板。分類演算法以層級字串匹配實現，語法錯誤優先級最高。</p>
+<p><strong>E. 尺度相依錯誤轉化詳解</strong>：32B 的 TYPE_ERROR→DOMAIN_ERROR 反映 Prolog 型別系統理解的真正改善——模型內化正確型別使用模式，剩餘錯誤轉為可修復的算術邊界違規。8B 的 SYNTAX→TYPE_ERROR 揭示表面語法學習的局限——模型學會了結構（語法）但未學會正確使用的約束（語意），且無法迭代修復（缺乏語意型別理解）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

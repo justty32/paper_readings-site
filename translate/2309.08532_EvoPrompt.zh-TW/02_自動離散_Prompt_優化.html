@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_自動離散_Prompt_優化 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2309.08532_EvoPrompt.zh-TW.html">回 2309.08532_EvoPrompt.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%88%86%E6%9E%90.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-自動離散-prompt-優化">3 自動離散 Prompt 優化</h2>
+<p><strong>Algorithm 1（EvoPrompt 總框架）</strong>：給定初始 prompt 族群 P₀={p₁,...,p_N}、族群大小 N、development set 𝒟、評分函數 f_𝒟(·)、迭代次數 T、演化算子 Evo(·)：先算出初始分數 S₀；每輪 t=1..T：<strong>選擇</strong>若干父代 prompt、<strong>演化</strong>（用 LLM 依 Evo(·) 由父代生成新 prompt p&#x27;）、<strong>評估</strong>（在 𝒟 上算分 s&#x27;）、<strong>更新</strong>（把 p&#x27;、s&#x27; 併入族群與分數集）；迭代結束後回傳最終族群中分數最高的 prompt p*。</p>
+<h3 id="31-evoprompt-框架">3.1 EvoPrompt 框架</h3>
+<p>EA 通常從 N 個初始解（此處為 prompt）出發，反覆用演化算子（突變、交配）在當前族群上生成新解，並依適應度函數更新族群。EvoPrompt 主要含三步：</p>
+<ul>
+<li><strong>初始族群</strong>：與多數忽略人類先驗知識的既有自動 prompt 方法不同，EvoPrompt 用可取得的人工 prompt 作初始族群、善用人類智慧；同時因 EA 通常從隨機解出發以維持多樣性、避免陷入局部最優，也引入了 LLM 生成的 prompt（沿用 Zhou et al. 2022 的生成方式）。</li>
+<li><strong>演化</strong>：每輪 EvoPrompt 用 LLM 當演化算子，基於從當前族群選出的若干父代 prompt 生成新 prompt。針對每種 EA，我們設計對應的突變、交配步驟，並轉譯成引導 LLM 生成新 prompt 的指令。</li>
+<li><strong>更新</strong>：在 development set 上評估候選 prompt，保留表現較優者，如同自然界的優勝劣汰；具體更新策略依所用 EA 種類而異。</li>
+</ul>
+<p>演算法在達到預設迭代次數時停止。要把 EvoPrompt 實例化為特定 EA，關鍵挑戰在於為離散 prompt 設計演化算子。本文選用兩種廣受認可的 EA：遺傳算法（GA，Holland 1975）與差分演化（DE，Storn &amp; Price 1997）。</p>
+<p><strong>圖 1（GA 流程示意）</strong>：Step 1 由 LLM 對兩個給定 prompt 做交配（橘色詞來自 Prompt 1、藍色詞來自 Prompt 2，代表子代繼承自兩個父代的成分）；Step 2 由 LLM 對子代做突變。</p>
+<h3 id="32-以遺傳算法ga實例化">3.2 以遺傳算法（GA）實例化</h3>
+<p><strong>選擇</strong>：GA 傳統上用**輪盤法（roulette wheel selection）**依適應度選父代。EvoPrompt 依 development set 表現分數 s_i，以機率 p_i = s_i / Σs_j 選出兩個父代 prompt。</p>
+<p><strong>演化</strong>：分兩階段生成候選——(1) <strong>交配</strong>：對父代 prompt 做交配，產生繼承雙方特徵的子代；(2) <strong>突變</strong>：對子代施加隨機改動。這兩階段被形式化為引導 LLM 執行 Evo(·) 的演算法式指令（見圖 1）。</p>
+<p><strong>更新</strong>：每輪產生 N 個新 prompt，與現有 N 個族群合併後，依分數保留前 N 名，形成更新後族群——族群整體品質持續提升，最終族群中最佳者即為輸出的最優 prompt。</p>
+<h3 id="33-以差分演化de實例化">3.3 以差分演化（DE）實例化</h3>
+<p>DE 的解以數值向量表示。族群中每個向量依序被選為基礎向量 <strong>x</strong>，經突變與交配產生候選。<strong>突變</strong>：從族群隨機選一個解 <strong>a</strong>，把兩個相異隨機解 <strong>b</strong>、<strong>c</strong> 的差乘上縮放參數 F 加到 <strong>a</strong> 上，得突變解 <strong>y = a + F(b − c)</strong>。<strong>交配</strong>：從基礎解 <strong>x</strong> 與突變解 <strong>y</strong> 中逐維挑選，組成試驗解 <strong>x&#x27;</strong>；若 <strong>x&#x27;</strong> 優於 <strong>x</strong> 則取代之。DE 逐步演化出高品質族群；其一變體用當前最優解取代隨機解 <strong>a</strong>，以利用最優解的資訊。</p>
+<p><strong>圖 2（DE 流程示意，Evo(·)）</strong>：Step 1 LLM 找出 Prompt 1、Prompt 2 的<strong>差異部分</strong>（對應 b−c）；Step 2 LLM 對這些差異部分做突變（對應 F(b−c)）；Step 3 LLM 把當前族群最佳 prompt（作為 Prompt 3，對應 a）與 Step 2 突變結果結合（對應 a+F(b−c)）；Step 4 LLM 讓當前基礎 prompt p_i 與 Step 3 產出的 prompt 做交配，得最終候選。完整回應範例見附錄 B.2 圖 5。</p>
+<p>DE 演化過程分解為三步驟，並設計對應 LLM 指令（如圖 2）：</p>
+<ul>
+<li>受 DE 差分向量啟發，只對兩個隨機父代<strong>差異部分</strong>做突變（圖 2 Step 1-2）；族群中的 prompt 皆視為當前最優解之一，共同部分通常對表現有正向貢獻，故予以保留。</li>
+<li>DE 的一個變體以當前最優向量取代隨機向量做突變（突變向量＝當前最優向量 ＋ 差分向量的縮放）。EvoPrompt 據此以<strong>當前族群最佳 prompt</strong> 選擇性替換突變差異部分的內容並組合（圖 2 Step 3）。</li>
+<li><strong>交配</strong>用突變後的 prompt 片段替換基礎 prompt（即當前族群中某候選）的部分內容，組合兩者特徵，可能產生更優解（圖 2 Step 4）。</li>
+</ul>
+<p><strong>更新</strong>：族群中每個 prompt p_i 依序作為基礎 prompt，用圖 2 指令生成對應候選 p_i&#x27;；分數較高者（p_i 或 p_i&#x27;）保留。族群大小不變、整體品質提升。</p>
+<h2 id="4-實驗">4 實驗</h2>
+<h3 id="41-實作細節與基線">4.1 實作細節與基線</h3>
+<p>以 GPT-3.5 執行演化算子，為開源 Alpaca-7b 與閉源 GPT-3.5（text-davinci-003）優化 prompt；取在 development set 上分數最高的 prompt，報告其在 test set 上的表現。Alpaca 結果取 3 個隨機種子平均並附標準差，GPT-3.5 因預算限制僅報告單一種子。比較對象：<strong>Manual Instructions（MI）</strong>（沿用既有工作的人工設計指令）；<strong>PromptSource</strong>、<strong>Natural Instructions（NI）</strong>（彙整人工撰寫 prompt 的資料庫）；<strong>APE</strong>（Zhou et al. 2022，強調探索的迭代蒙地卡羅搜尋，以相同族群大小重現）與 <strong>APO</strong>（Pryzant et al. 2023，把預測錯誤案例當「偽梯度」迭代精修原始 prompt，強調利用，僅在二元分類任務上以最優人工 prompt 為初始重現）。</p>
+<h3 id="42-語言理解">4.2 語言理解</h3>
+<p>在 7 個資料集上驗證：情感分類（SST-2、MR、CR、SST-5）、主題分類（AG&#x27;s News、TREC）、主觀性分類（Subj）。為限制輸出標籤空間，測試案例前會附上每類別各一個範例。</p>
+<p><strong>主要結果（Table 1，Alpaca-7b 準確率）</strong>：EvoPrompt(GA) 平均 76.25、EvoPrompt(DE) 平均 77.05，均顯著優於 MI（71.07）、NI（68.21）、APE（73.80）、APO（部分資料集 70.55）。GA 在情感分類上略優於 DE；主題分類上 DE 較優；在 Subj 上 DE 較 GA 高約 5 個百分點的準確率——推測得益於初始 prompt 品質不佳時 DE 更擅長跳脫局部最優。</p>
+<h3 id="43-語言生成">4.3 語言生成</h3>
+<p><strong>資料集</strong>：摘要任務用 SAMSum（高難度對話摘要，報告 ROUGE-1/2/L）；簡化任務用 ASSET（多參考翻譯的知名基準，用 SARI 分數評估）。</p>
+<p><strong>主要結果（Table 2、Table 3）</strong>：EvoPrompt 相對人工 prompt 大幅提升——ASSET 上 Alpaca 與 GPT-3.5 均有超過 3 分的 SARI 提升；並持續優於 APE，顯示生成的 prompt 確實有效發揮 LLM 能力。DE 在摘要任務上明顯優於 GA，簡化任務上兩者表現相近，顯示 DE 對更複雜的生成任務（如摘要）特別有效。</p>
+<h3 id="44-big-bench-hardbbh">4.4 Big-Bench Hard（BBH）</h3>
+<p><strong>設定</strong>：用 23 個需多步推理的高難度 BIG-Bench 任務驗證（因任務困難，只對 GPT-3.5 優化 prompt）。從 test set 抽樣一部分當 development set，以「Let&#x27;s think step by step.」（3-shot CoT）為基準，回報正規化分數（與基準的準確率差）。因「web of lies」任務基準已達 100% 準確率而剔除，故實際評估 22 個任務。</p>
+<p><strong>主要結果</strong>：EvoPrompt 在全部 22 個任務上找到更優 prompt（圖 3）。<strong>DE 最高提升 25%、平均 3.5%</strong>；<strong>GA 最高提升 15%、平均 2.5%</strong>。GA 在部分任務略優於 DE 時差距通常只約 1%，而 DE 在 6 個任務上贏 GA 超過 2%——DE 版本整體是這類高難度任務的較佳選擇。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

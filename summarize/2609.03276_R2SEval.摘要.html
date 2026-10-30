@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>R2S-Eval: Robot Evaluation with Real-to-Sim Calibration via Vision-Language Models 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yidi Wang、Feixiang Ruan、Ruoqu Chen、Jie Yin、Yang Yu、Mengdi Xu、Kaifeng Zhang</p><p>日期：2026-09-03（v1，cs.RO）</p><p>arXiv：2609.03276</p><p><a href="https://arxiv.org/abs/2609.03276" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="r2s-eval-robot-evaluation-with-real-to-sim-calibration-via-vision-language-models-重點摘要">R2S-Eval: Robot Evaluation with Real-to-Sim Calibration via Vision-Language Models 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>R2S-Eval 用校準過的 real-to-sim 環境大量產生 closed-loop rollout 影片，再讓 VLM 比較匿名影片的執行品質，最後以 Bradley–Terry 模型聚合成策略排序，企圖同時降低真機重複測試的人力、穩定排名，並補足二元成功率看不到的過程差異。</p>
+<h2 id="問題與設定">問題與設定</h2>
+<p>真機評估每次都要布置場景、執行、重設、監看與記錄；接觸、初始位置與機器狀態的小變動，又會讓成功率和排名不穩。更根本的問題是，成功率只保留終點：兩條同樣成功的軌跡可能一條流暢、一條重試才完成；兩條同樣失敗的軌跡也可能一條接近目標、一條原地振盪。</p>
+<p>R2S-Eval 不宣稱模擬策略與真機策略行為完全相同。它把各候選策略分別適應到校準模擬器，再檢查模擬側的比較排名能否作為真機排名代理。評估對象因此是策略間的相對結論，以及 rollout distribution 的執行品質。</p>
+<h2 id="方法架構">方法架構</h2>
+<ul>
+<li><strong>real-to-sim 校準與資料重播</strong>：模擬器對齊真機幾何、運動學、關節限制、控制介面、任務、物件、相機與初始化。真實動作序列會在模擬器重播；若因物件初始姿態誤差失敗，系統在局部範圍重取樣並重試。</li>
+<li><strong>模擬側 closed-loop rollout</strong>：每個候選的模擬適應版本獨立執行，收集自己的觀測—行動軌跡與影片，避免只看 open-loop action replay。</li>
+<li><strong>結構化 VLM 比較</strong>：每次從同任務、同初始化條件抽兩條匿名影片。VLM 先各自描述平滑度、時間連續性、任務進展、接觸與力道，再根據描述做強制二選一；A／B 位置隨機化以平均殘餘位置偏差。</li>
+<li><strong>統計聚合與驗證</strong>：各 pair 的勝負形成 preference matrix，再以 Bradley–Terry latent strength 排名。作者從可靠性、穩定性、人類一致性、重複人力與行為資訊五軸驗證，而非只報一個相關係數。</li>
+</ul>
+<h2 id="主要實驗與數字">主要實驗與數字</h2>
+<p>校準資料由 <code>3,525</code> 條真實軌跡得到 <code>3445</code> 條成功模擬重播，平均 replay success 為 <code>97.8</code> 個百分點（作者自報）。六個 VLA 在七項任務上，各做每任務 <code>20</code> 次真機與 <code>200</code> 次模擬 closed-loop trial；所有 policy–task pair 的 real–sim 成功率平均絕對差為 <code>2.13</code> 個百分點，最大差距 <code>7.0</code> 個百分點，整體策略排序相同（作者自報）。</p>
+<p>在 real-to-sim 的 VLM preference 評估中，八個 VLM 的平均 Spearman <code>ρ</code> 為 <code>0.957</code>、Pearson <code>r</code> 為 <code>0.978</code>、MMRV 為 <code>0.005</code>，與人類偏好一致率為 <code>91.9</code> 個百分點（作者自報）。LIBERO 對照的平均 Spearman <code>ρ</code> 為 <code>0.823</code>、Pearson <code>r</code> 為 <code>0.924</code>、MMRV 為 <code>0.018</code>、人類一致率為 <code>82.9%</code>（作者自報）。</p>
+<p>把同一對影片的 A／B 順序顛倒後，偏好有 <code>91.5%</code> 保持不變；作者仍觀察到接近平手時略偏向 A 的位置偏差，因此正式流程採隨機位置（作者自報）。案例分析則顯示，VLM 能在相同成功標籤下偏好一次流暢完成的軌跡，也能在相同失敗標籤下區分有實質進展與只做小幅振盪的行為。</p>
+<h2 id="結論">結論</h2>
+<p>R2S-Eval 把機器人評估從「真機成功計數」拆成三個可檢查環節：校準模擬器是否保留比較結論、影片 judge 是否接近人類偏好、pairwise 證據累積後的排名是否穩定。它不取代真機基準，而是先用真機資料驗證代理評估，再把後續重複試驗移到模擬與自動 judge。</p>
+<h2 id="局限">局限</h2>
+<p>作者明說校準沒有消除所有 real–sim discrepancy，觀察到的最大成功率差距仍存在，且結果只支持相對策略結論，不代表真實與模擬 rollout 行為等價。VLM 在近似平手的 pair 上仍有輕微位置偏差。結論也把更廣任務與機器人、系統化分析 real-to-sim 誤差及建立更高擬真模擬器列為後續工作；因此目前證據不能直接外推到其他 embodiment 或更複雜接觸場景。</p>
+<h2 id="對讀者的價值ai_core-接點">對讀者的價值／ai_core 接點</h2>
+<p>R2S-Eval 對 ai_core 的價值是把評估設計成「代理結論也要被驗證」。模型 judge 不是因為能說明理由就自動可信；它要對照人類偏好、做順序反轉測試、觀察置信區間收斂，還要確認上游模擬資料保留真實排序。若 ai_core 用模型審查 agent 軌跡或工具執行，這套分層校準很合適：先驗證資料代理，再驗證 judge，最後才讓聚合分數進治理決策。pairwise 比絕對打分更容易錨定完整行為，也能保留終局成敗之外的修正品質與進展。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2609.03276_R2SEval.zh-TW.html"><code>../translate/2609.03276_R2SEval.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

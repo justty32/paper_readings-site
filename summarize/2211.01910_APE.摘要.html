@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《大型語言模型是人類水準的提示工程師（Large Language Models Are Human-Level Prompt Engineers）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yongchao Zhou, Andrei Ioan Muresanu, Ziwen Han, Keiran Paster, Silviu Pitis, Harris Chan, Jimmy Ba（University of Toronto / Vector Institute / University of Waterloo）</p><p>日期：2022-11（ICLR 2023）</p><p>arXiv：2211.01910</p><p><a href="https://arxiv.org/abs/2211.01910" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="大型語言模型是人類水準的提示工程師llms-are-human-level-prompt-engineers重點摘要">《大型語言模型是人類水準的提示工程師（LLMs Are Human-Level Prompt Engineers）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Automatic Prompt Engineer（APE）：把「寫指令」當成黑箱最佳化——由 LLM 從輸入/輸出示範樣本反推候選指令、用驗證集分數挑最好的、必要時迭代重採樣</strong>，讓機器自動生成的 zero-shot 指令在 24/24 Instruction Induction 與 17/21 BIG-Bench 任務上追平或勝過人類手寫指令，並自動找出勝過「Let&#x27;s think step by step」的 zero-shot CoT 提示。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 的表現高度依賴 prompt 品質，而最有效的 prompt 幾乎都靠人類手工試錯打造——人類對「某指令與某模型有多相容」幾乎沒有先驗知識，只能大量實驗。作者把 LLM 視為「執行自然語言程式的黑箱電腦」，指令品質只能靠在下游任務上執行才能衡量。目標：用演算法自動生成並挑選有效指令，取代人類的手工試錯。既有離散 prompt 搜尋多靠各組件的專用模型與人類模板，或走梯度式軟提示（但隨模型變大、且 API 化後拿不到梯度而不再實用）。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>問題框架</strong>：定義為「自然語言程式合成」——把指令當成要優化的「程式」，在候選指令池中搜尋以最大化選定的分數函式（式 1，對驗證集取期望）。用單一 LLM 完成整條搜尋，不需訓練、不需人類模板。</li>
+<li><strong>兩大組件（Algorithm 1）</strong>：
+<ol>
+<li><strong>Proposal（提案）</strong>：用 LLM 當推論模型，依一小組（如 5 對）輸入/輸出示範反推最可能的指令。<strong>Forward mode</strong>（把示範接在前、讓 LLM 在結尾補出指令）通用；<strong>Reverse mode</strong>（用具 infilling 能力的模型如 T5/GLM/InsertGPT 直接填空）更彈性、指令可置於任意位置；也支援依分數函式客製提案（如 TruthfulQA 從原始人寫指令出發要 reverse 模型補脈絡）。</li>
+<li><strong>Scoring/Selection（評分與選擇）</strong>：用<strong>目標模型</strong>執行每個候選指令、算分，選最高分者。兩種分數函式——**execution accuracy（執行準確率，預設，多為 0-1 loss）**與 <strong>log probability（目標答案的對數機率，訊號更細）</strong>。</li>
+</ol>
+</li>
+<li><strong>效率</strong>：多階段過濾（先用小訓練子集評估全部候選，高於門檻者才配更多樣本更新移動平均，逐步淘汰到少數候選才上全訓練集），把算力集中在高品質候選。</li>
+<li><strong>Iterative Monte Carlo Search（iterative APE）</strong>：在當前最佳候選附近局部探索——要 LLM 生成與高分指令語意相似的新指令、再評分過濾。能提升提案集整體品質，但最高分指令通常不變，故<strong>預設不開迭代</strong>。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>Zero-shot（Instruction Induction，24 任務，模型 text-davinci-002 / InstructGPT 175B）</strong>：勝過「Greedy」（Honovich 等的無搜尋版）於每個任務，並在 <strong>24/24</strong> 任務追平或勝過人類；IQM <strong>0.810 vs 人類 0.749</strong>。</li>
+<li><strong>BIG-Bench（自建 BBII，21 任務）</strong>：<strong>17/21</strong> 任務追平或勝過預設人寫指令。</li>
+<li><strong>Zero-shot CoT</strong>：APE 自動搜出答案前綴 <strong>「Let&#x27;s work this out in a step by step way to be sure we have the right answer.」</strong>，把 MultiArith 從 78.7 提到 <strong>82.0</strong>、GSM8K 從 40.7 提到 <strong>43.0</strong>（超越 Kojima 等人手挑九個提示中最佳的「Let&#x27;s think step by step」）。</li>
+<li><strong>Few-shot</strong>：把 APE 指令接在 in-context 示範前，21/24 任務追平或更好。</li>
+<li><strong>TruthfulQA</strong>：僅 200 個候選即勝過人寫「help」提示；在「同時真實且有資訊」上達 &gt;40%（人 30%），並揭示真實性/資訊性的 Pareto 取捨。</li>
+<li><strong>成本分析（附錄 D）</strong>：儘管每 token 較貴，<strong>更大更強的模型反而更省成本</strong>地找到好 prompt；取樣數 4→128 單調上升但邊際遞減，64 個樣本即達人類水準，故預設 50。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>需要一小組帶標籤示範與可算的分數函式（如 execution accuracy）；proposal 品質受模型大小影響（小模型在難任務上約半數指令離題）。</li>
+<li>Iterative search 只帶來邊際提升，成本卻上升；本質仍是取樣＋選擇，未跳出初始提案分佈太遠。</li>
+<li>「prompt engineering」在本文限定為優化單一指令的語言，<strong>不含</strong>串接多次 LLM 呼叫或給 LLM 外部工具。</li>
+<li>TruthfulQA 因用了部分問答對做訓練示範，非「真 few-shot」，結果不與原 benchmark 相容。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>自動 prompt 工程的源頭之一（早於 OPRO/APO）</strong>，直接呼應 ai_core <strong>§1「系統＝符號神經網路計算圖」</strong>：本文把「節點的 prompt」明確當成<strong>可優化的參數/程式</strong>，而非人手固定的常數——這正是把計算圖裡少數 LLM 節點「可訓練化」的最早範式。對讀者經營的系統，意味著每個 LLM 節點的 prompt 都能被視為可自動搜尋、可用驗證集分數評選、可版本化的資產，而非一次寫死。</li>
+<li><strong>prompt 資產化生產線</strong>：APE 的「示範樣本 → LLM 反推候選指令 → 驗證集評分 → 選最佳（可迭代重採樣）」是一條可複用的離線流程，天然對接 ai_core 把 LLM 呼叫「包成可靠函數」的目標——先用貴稀有智能（大模型）離線煉出好 prompt 這項資產，之後部署時用它驅動較廉價的推論，符合「資產工廠 vs 資產消費者」（§2）的分工。</li>
+<li><strong>可量化選擇＝可治理</strong>：把 prompt 改成「以驗證分數挑選」而非「憑感覺手寫」，讓 prompt 有客觀准入標準，呼應 §3.4「拒絕為預設＋憑證准入」——只有通過分數門檻的指令才進生產。</li>
+<li>最值得記：<strong>「指令＝可被黑箱優化的程式」的框架</strong>、<strong>forward/reverse 兩種反推提案</strong>、<strong>execution accuracy 作分數＋多階段過濾省算力</strong>、以及那句自動搜出、可跨任務遷移的 CoT 提示。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2211.01910_APE.zh-TW.html"><code>../translate/2211.01910_APE.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2306.02561_LLM_Blender.zh-TW.html">回 2306.02561_LLM_Blender.zh-TW 目錄</a>　<a href="02_PairRanker%EF%BC%9A%E6%88%90%E5%B0%8D%E6%8E%92%E5%BA%8F.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>我們提出 LLM-Blender，一個集成框架，透過利用多個開源大型語言模型（LLM）的多樣化優勢，力求持續獲得優於單一模型的效能。此框架由兩個模組組成：PairRanker 與 GenFuser，回應「對不同例子而言最佳 LLM 可能大不相同」這一觀察。PairRanker 採用一種專門的成對比較方法，用以辨別候選輸出之間的細微差異——它把輸入文字與一對候選聯合編碼，使用 cross-attention 編碼器判斷哪一個較優。實驗結果顯示 PairRanker 與基於 ChatGPT 的排序相關性最高。接著，GenFuser 旨在融合排名最高的候選，藉由發揮它們的優勢並緩解其弱點，生成一個更好的輸出。為了促進大規模評測，我們引入了一個基準資料集 MixInstruct，它混合了多個指令資料集並附帶 oracle 成對比較結果。我們的 LLM-Blender 在多項指標上顯著優於單一 LLM 與基線方法，建立了可觀的效能差距。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>大型語言模型（LLM）在多樣任務上展現出令人印象深刻的表現，主要得益於它們遵循指令的能力以及取用大量高品質資料，為通用人工智慧展現出充滿希望的前景（Bubeck et al., 2023）。</p>
+<p>然而，GPT-4、PaLM 等主流 LLM 是閉源的，限制了對其架構與訓練資料的洞察。開源 LLM 如 Pythia、LLaMA、Flan-T5 則提供了在自訂指令資料集上微調的機會，使得開發更小卻高效的 LLM 成為可能，例如 Alpaca、Vicuna、OpenAssistant、MPT。</p>
+<p>開源 LLM 因資料、架構、超參數的差異而展現出多樣化的優劣勢，使它們彼此互補。作者收集了 5,000 條指令，統計每個 LLM 排名第一的比例（圖 1），結果顯示：雖然 Vicuna 佔比最高，它也只在 21.22% 的例子中排名第一——這說明不同例子的最佳 LLM 可能有很大差異，且<strong>沒有任何單一開源 LLM 能主導競爭</strong>。因此，動態集成這些 LLM、為每個輸入生成持續更好的回應，變得十分重要。</p>
+<p>考量到 LLM 的多樣優劣勢，開發一個能發揮它們互補潛力的集成方法至關重要，可帶來更好的穩健性、泛化性與準確性——透過結合各模型的獨特貢獻，可緩解個別 LLM 的偏誤、錯誤與不確定性，產出更符合人類偏好的輸出。</p>
+<p>作者提出 <strong>LLM-Blender</strong>，一個透過混合多個 LLM 輸出以達成持續優越表現的集成框架，包含兩個模組：<strong>PairRanker</strong> 與 <strong>GenFuser</strong>。首先，PairRanker 比較來自 N 個 LLM 的輸出；接著，GenFuser 從排名前 K 的輸出融合出最終結果。</p>
+<p>既有的候選排序方法（包含 InstructGPT 中的獎勵模型）大多聚焦於<strong>逐一獨立打分</strong>每個候選 yᵢ，即 sᵢ=fφ(x,yᵢ)。這種 list-wise 排序目標在候選差異明顯時可以既強大又高效，但在集成 LLM 時可能效果不佳——由於這些候選都是由非常成熟的模型產生，彼此之間的差異可能相當細微，其中一個可能只是略優於另一個；即使對人類而言，不做直接比較也很難判斷候選品質。</p>
+<p>因此，作者提出一種專門的成對比較方法 <strong>PairRanker</strong>（第 3 節），有效辨別候選輸出之間的細微差異、提升排序表現。具體而言，先蒐集 N 個模型（如圖 1 中 N=11 個模型）對每個輸入的輸出，接著建構 N(N-1)/2 對輸出配對；將輸入 x 與兩個候選輸出 yᵢ、yⱼ 聯合編碼，餵入 cross-attention 編碼器（如 RoBERTa），以 fφ(x,yᵢ,yⱼ) 形式學習判斷哪個候選較優。</p>
+<p>推論階段計算一個包含成對比較 logits 的矩陣，據此可推得 N 個輸出對輸入 x 的排名，並可直接採用 PairRanker 對每個輸入排名最高的候選作為最終結果。因此，該方法不依賴單一模型應對所有例子，而是透過全面比較所有候選配對，為每個例子挑選最佳模型；但這種做法可能限制生成比現有候選更好輸出的潛力。</p>
+<p>為探究此可能性，作者引入 <strong>GenFuser</strong> 模組（第 4 節），融合 N 個排名候選中的 top-K，為終端使用者生成一個改進後的輸出，目標是發揮 top-K 選定候選的優勢，同時緩解其弱點。</p>
+<p>為評估 LLM 集成方法的有效性，作者引入基準資料集 <strong>MixInstruct</strong>（第 2.2 節）：使用 N=11 個熱門開源 LLM，對多個既有指令跟隨任務（以 self-instruct 格式）各自生成 N 個候選，資料集含 100K 訓練例、5K 驗證例（用於訓練候選排序模組如 PairRanker），以及 5K 附 oracle 比較結果的測試例（供自動評測）。</p>
+<p>第 5 節的實證結果顯示，LLM-Blender 框架透過集成 LLM 顯著提升整體效能：PairRanker 的選擇在 reference-based 指標與 GPT-Rank 上皆優於任何固定的單一 LLM 模型；透過利用 PairRanker 的 top 選擇，GenFuser 進一步藉由有效融合提升回應品質。LLM-Blender 在傳統指標（BERTScore、BARTScore、BLEURT）與 ChatGPT 排序上都取得最高分：其平均排名在 12 種方法中為 3.2，明顯優於最佳 LLM 的 3.90；LLM-Blender 的輸出在 68.59% 的例子中排進前三，而 Vicuna 只達到 52.88%。</p>
+<h2 id="2-準備工作">2 準備工作</h2>
+<h3 id="21-問題設定">2.1 問題設定</h3>
+<p>給定輸入 x 與 N 個模型 {M₁,...,Mₙ}，可對 x 分別處理生成 N 個候選輸出，記為集合 𝕐={y₁,...,yₙ}。訓練資料中假設存在真值輸出 y，評測時則對其隱藏。實務上，若某固定模型（如 M₉）在觀察到的例子上明顯有較好整體表現，直接使用它對所有未見例子做推論或許合理；但依賴預先選定的模型可能導致次優表現，因為 N 個模型在不同情境下的優劣不同，對不同 x 的最佳選擇未必來自同一模型。</p>
+<p>目標是開發一個集成學習方法，對輸入 x 產生輸出 ŷ，最大化相似度 Q(ŷ,y;x)（Q 函數可用多種方式實作）。這種方法預期會比使用固定模型或隨機挑一個模型有更好的整體表現。</p>
+<p>集成 LLM 的方法分兩大類：**選擇式（selection-based）**方法從候選集合 𝕐 中比較挑選排名最高者作為 ŷ（即 ŷ∈𝕐），因選擇本質與有限解空間，其效能受限於所考慮的 N 個候選；**生成式（generation-based）**方法則融合 𝕐 中的 K 個候選（1&lt;K≤N），產生一個訓練中未見過的新回應作為最終輸出 ŷ。</p>
+<h3 id="22-mixinstruct一個新基準">2.2 MixInstruct：一個新基準</h3>
+<p>作者引入新資料集 <strong>MixInstruct</strong>，用以在指令跟隨任務上為 LLM 集成模型建立基準。他們從四個主要來源蒐集大規模指令範例（見下表），經整理處理後，抽樣 100k 例作訓練、5k 作驗證、5k 作測試，並在這 110k 例上跑 N=11 個熱門開源 LLM（包含 Vicuna、OpenAssistant、Alpaca、MPT 等）。</p>
+<table>
+<thead>
+<tr>
+<th>來源</th>
+<th>例數</th>
+<th>產生方式</th>
+<th>I/O 平均 token 數</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Alpaca-GPT4</td>
+<td>22,862</td>
+<td>GPT-4</td>
+<td>22 / 48</td>
+</tr>
+<tr>
+<td>Dolly-15K</td>
+<td>7,584</td>
+<td>人工</td>
+<td>24 / 53</td>
+</tr>
+<tr>
+<td>GPT4All-LAION</td>
+<td>76,552</td>
+<td>ChatGPT</td>
+<td>18 / 72</td>
+</tr>
+<tr>
+<td>ShareGPT</td>
+<td>3,002</td>
+<td>ChatGPT</td>
+<td>36 / 63</td>
+</tr>
+<tr>
+<td><strong>總計</strong></td>
+<td><strong>110K</strong></td>
+<td>混合</td>
+<td>20 / 66</td>
+</tr>
+</tbody>
+</table>
+<p>為取得候選的 oracle 排序，作者設計比較式提示讓 ChatGPT 評估所有候選配對：每個例子準備 55 對候選（11×10/2），對每對詢問 ChatGPT 哪個較優（或宣告平手）。訓練與驗證集則額外提供 BERTScore、BLEURT、BARTScore 等傳統指標的結果，用 Q(yᵢ,y) 估計候選 yᵢ 相對真值 y 的品質。</p>
+<h3 id="23-llm-blender一個新框架">2.3 LLM-Blender：一個新框架</h3>
+<p>作者提出 rank-and-fuse 流程 <strong>LLM-Blender</strong>（見圖 2），由兩個主要元件組成：成對排序模組 <strong>PairRanker</strong>（第 3 節）與融合模組 <strong>GenFuser</strong>（第 4 節）。PairRanker 學習比較每個輸入的所有候選配對，進而排出候選清單順序；接著選出排名前 K=3 的候選，與輸入 x 串接，構成 GenFuser 模組的輸入序列。GenFuser 是一個 seq2seq 語言模型，最終生成回應給使用者。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

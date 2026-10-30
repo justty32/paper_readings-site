@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.09781_SpecInfer.zh-TW.html">回 2305.09781_SpecInfer.zh-TW 目錄</a>　<a href="02_%E4%BB%A5%E5%AD%B8%E7%BF%92%E7%82%BA%E5%9F%BA%E7%A4%8E%E7%9A%84%E6%8E%A8%E6%B8%AC%E5%99%A8.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>本文提出 <strong>SpecInfer</strong>，一套以<strong>樹狀推測推論與驗證（tree-based speculative inference and verification）<strong>加速生成式大型語言模型（LLM）服務的系統。核心想法是：用小型的</strong>推測模型（small speculative model, SSM）<strong>去預測 LLM 的輸出，並把這些預測組織成一棵 <strong>token tree（詞元樹）</strong>，樹中每個節點代表一條候選 token 序列。整棵 token tree 所代表的所有候選序列，透過一種新穎的</strong>樹狀平行解碼（tree-based parallel decoding）<strong>機制，一次性地對 LLM 平行驗證其正確性。SpecInfer 把 LLM 當作</strong>詞元樹的驗證器（verifier）<strong>而非逐步解碼器（incremental decoder），在</strong>可證明地保持模型品質</strong>的前提下，顯著降低端到端延遲與運算需求。評測顯示 SpecInfer 對分散式 LLM 推論加速 <strong>1.5–2.8×</strong>、對卸載式（offloading）LLM 推論加速 <strong>2.6–3.5×</strong>，且產生與逐步解碼完全相同的生成結果。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>GPT-4 等生成式 LLM 在問答、程式合成、任務自動化等領域展現強大能力，但因參數量龐大、架構複雜、運算需求高而難以快速且低成本地服務（例如最大的 GPT-3 有 1750 億參數，需 8 張以上 A100 才能以半精度存放，單次推論需數秒）。</p>
+<p>LLM 採<strong>自迴歸解碼（autoregressive decoding）</strong>：一次生成一個 token，每個 token 的生成都依賴輸入 prompt 與先前生成的所有 token。既有系統採<strong>逐步解碼（incremental decoding）</strong>——先一步算完所有 prompt token 的 activation，之後每次迭代只解出一個新 token。這種做法尊重 token 間的資料依賴，但每個請求內的平行度極低、GPU 利用率不佳；且 Transformer 的注意力機制需存取先前所有 token 的 key/value，為避免重算而採 KV 快取（key-value cache），對長序列任務（GPT-4 支援達 32K token）帶來可觀記憶體開銷，限制了並行服務的請求數。</p>
+<p>受處理器最佳化中「推測執行（speculative execution）」啟發，近期出現<strong>序列式推測推論（sequence-based speculative inference）</strong>：用一個 SSM 生成一段 token 序列，再用 LLM 平行檢查其正確性。但這類方法只考慮單一 SSM 產生的<strong>單一序列</strong>，因 SSM 與 LLM 之間存在模型容量鴻溝（SSM 通常小上數個數量級）而難以良好對齊。</p>
+<p>本文提出的 SpecInfer 用<strong>樹狀</strong>推測推論改善此問題。關鍵洞見是<strong>同時考慮多樣的推測候選</strong>（而非既有方法的單一候選），把候選組織成 token tree（每個節點代表一段推測 token），再對 LLM 平行驗證整棵樹的所有候選序列，大幅增加單一 LLM 解碼步驟能生成的 token 數。相比序列式推測，樹狀結構能顯著提升驗證單一 token 的成功率（隨機解碼下由 52–57% 提升到 96–97%，見表 1）。</p>
+<p>要實現此效益須克服兩大挑戰：</p>
+<ul>
+<li><strong>挑戰一：候選序列的搜尋空間極大。</strong> 現代 LLM 詞彙表龐大（OPT 家族有 50,272 個 token），且要最大化推測效能需一次預測多個未來 token；SpecInfer 平均可正確預測未來 4 個 token，對應的搜尋空間高達 50272⁴ ≈ 6×10¹⁸ 種組合。SpecInfer 利用既有的<strong>蒸餾／量化／剪枝</strong>版本 LLM 作為 SSM 來引導推測，並提出 **expansion（擴張）**與 **merge（合併）**兩種建樹機制，分別挖掘單一 SSM 內部與多個 SSM 之間的多樣性。</li>
+<li><strong>挑戰二：驗證推測的 token。</strong> 許多應用採<strong>隨機解碼（stochastic decoding）</strong>（依機率分佈取樣），為保持 LLM 的生成品質，SpecInfer 必須保證其樹狀推測驗證產生的下一個 token 服從與逐步解碼<strong>完全相同</strong>的機率分佈。為此提出 <strong>multi-step speculative sampling（多步推測取樣， MSS）</strong>，在保證等價的同時最大化可驗證的 token 數；並以<strong>樹狀平行解碼</strong>在單一 LLM 解碼步驟內同時驗證整棵 token tree。</li>
+</ul>
+<p><strong>貢獻</strong>：(1) 提出樹狀推測推論與驗證系統 SpecInfer；(2) 提出 merge 與 expansion 兩種建樹法挖掘 SSM 內與跨 SSM 的多樣性；(3) 提出樹狀平行解碼一次驗證整棵樹；(4) 實測分散式加速達 2.8×、卸載式達 3.5×。</p>
+<h2 id="2-specinfer-概觀">2. SpecInfer 概觀</h2>
+<p>SpecInfer 包含一個<strong>以學習為基礎的推測器（learning-based speculator）</strong>，吃進一段 token 序列、產出一棵<strong>推測 token tree</strong>，目標是最大化推測樹與 LLM 逐步解碼所生 token 的重疊。</p>
+<p>準備 SSM 的方式：其一，現代 LLM 家族常已附帶用相同資料集預訓練的較小架構（如 OPT 家族除 OPT-175B 外還有 OPT-125M、OPT-350M），可直接當 SSM；其二，SpecInfer 以 expansion 與 merge 兩種推測法提高覆蓋率，推測 token 皆組織為樹。</p>
+<p><strong>演算法對比</strong>：既有系統的逐步解碼（Alg. 1）在迴圈中每次 <code>Decode(LLM, S)</code> 得一個 token 並附加。SpecInfer（Alg. 2）則每次迴圈先 <code>Speculate(S)</code> 得 token tree <code>N</code>，再 <code>TreeParallelDecode(LLM, N)</code> 為每個節點產出一個 token <code>O(u)</code>，最後依貪婪或隨機分別用 <code>VerifyGreedy</code> / <code>VerifyStochastic</code> 對照 <code>O</code> 與 <code>N</code> 產出一串已驗證 token <code>V</code>。</p>
+<p>SpecInfer 對 LLM 的用法異於既有系統：不是當「預測下一個 token」的逐步解碼器，而是當<strong>驗證整棵推測樹</strong>的驗證器。計算每個 token 的 activation 時，把它在樹中的<strong>所有祖先</strong>當作前置 token（例如節點 t₃,₀ 的注意力依序列 (t₀, t₁,₀, t₂,₁, t₃,₀) 計算）。此設計帶來兩大優勢：</p>
+<ul>
+<li><strong>減少對 LLM 參數的記憶體存取</strong>：逐步解碼每生成一個 token 就要存取 LLM 全部參數（卸載式推論下更嚴重）；只要推測樹與 LLM 實際輸出有非空重疊，SpecInfer 就能顯著減少參數存取。存取 GPU HBM 的能耗比浮點運算高 2–3 個數量級，故也直接省能。</li>
+<li><strong>降低端到端延遲</strong>：逐步解碼因 token 間的順序依賴而必須序列化；SpecInfer 把 LLM 當驗證器，一次驗證 pass 就能同時檢查樹中所有 token，實現單一請求內跨 token 的平行化。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

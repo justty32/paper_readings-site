@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《利用等式圖改進符號迴歸的遺傳編程（eggp）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Fabrício Olivetti de França（Federal University of ABC，巴西）、Gabriel Kronberger（University of Applied Sciences Upper Austria，奧地利）</p><p>日期：2025（GECCO &#x27;25）；符號迴歸／遺傳編程／等式飽和／等式圖</p><p>arXiv：2501.17848</p><p><a href="https://arxiv.org/abs/2501.17848" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="利用等式圖改進符號迴歸的遺傳編程eggp重點摘要">《利用等式圖改進符號迴歸的遺傳編程（eggp）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>eggp（e-graph genetic programming）</strong>：把編譯器優化用的<strong>等式飽和／等式圖（e-graph）<strong>接進 GP，記錄整個搜尋史的所有已訪表達式（含其等價形式），並改造子樹</strong>交叉與變異</strong>，讓運算子<strong>只生成「未曾訪問過」的表達式</strong>——這個極簡修改就把一個 minimalist GP 提升到能與 SOTA（PySR、Operon）競爭、且模型更小更可靠、不顯著增加計算成本。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>GP 做 SR 時<strong>反覆重訪語意等價的表達式</strong>（同一式子的無窮多種參數化／語法變體）。重評等價式浪費算力、又不立即帶來更好解。Kronberger 2024b 量測發現 GP 搜尋中<strong>只有約一小部分表達式是唯一的</strong>（大量重複）。傳統認為冗餘有助於探索（等價式同精度、保留遺傳多樣性），但過去<strong>沒有高效驗證等價的手段</strong>，這假設無法被驗證。簡化啟發式也常不足。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>等式飽和（equality saturation）+ e-graph</strong>：源自編譯器優化的「相位排序問題」。給定表達式（DAG）與一組等價改寫規則，<strong>平行</strong>反覆套規則，把所有等價程式緊湊存進 <strong>e-graph</strong>。e-graph 由 <strong>e-node</strong>（含一個符號）與 <strong>e-class</strong>（一組等價 e-node 群）組成；同一 e-class 不管走哪個 e-node 都導出等價式。可同時存多個表達式（保留各根 e-class id 清單），自底向上插入時若子結構已存在就回傳既有 id → 緊湊存集合，並能<strong>高效用 pattern matching 查「某式或其等價形是否已存在」</strong>。</li>
+<li><strong>eggp 的關鍵改動</strong>：
+<ol>
+<li><strong>插入新表達式後執行單步等式飽和</strong>，合併等價式（注意：單步不保證插入所有等價形，但多迭代會讓 e-graph 指數膨脹；實驗顯示單步已足夠改善）。</li>
+<li><strong>e-graph 交叉</strong>：選定第一父代的交叉點後，把第二父代可選的子樹<strong>限制在「替換後會生成未訪問表達式」的子集</strong>；若該集為空或不交叉則回傳原父代。</li>
+<li><strong>e-graph 變異</strong>：生成新子樹後檢查是否已在 e-graph；若是，把子樹根節點換成另一個「能生成未訪問式」的同 arity 符號；該集為空則回傳原式。</li>
+</ol>
+</li>
+<li><strong>單／多目標版</strong>：eggp_so（用後代取代族群）與 <strong>eggp_mo</strong>（保留 Pareto front + 次層 front + 隨機補滿，兼顧探索與利用；等價於對全搜尋史抽 NSGA-II Pareto front）。維護按 fitness 與 size 排序的表達式資料庫；插入時等式飽和自動消除冗餘參數。九個超參。Haskell + srtree 函式庫實作（開源）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>在 <strong>reduced SRBench</strong>（12 題，10×10-fold CV）與 <strong>9 個真實資料集</strong>（化學/摩擦/NASA 電池/Nikuradse 等）對比 tinyGP、Operon、PySR（皆限單核）。</li>
+<li><strong>eggp_mo 平均排名最佳</strong>（SRBench：以 R² 中位數與 AUC 計，eggp_mo 第一、Operon 次之）；統計檢定（Wilcoxon）可拒絕「PySR/tinyGP 不劣於 eggp」的虛無假設，與 Operon 多半無顯著差異。</li>
+<li><strong>eggp 一致回傳更小的模型</strong>（等式飽和簡化 + 消除冗餘參數）。</li>
+<li><strong>可靠性高</strong>：在多個資料集上幾乎每次執行都達到相同 R²，而對手有時得分較低或失敗。</li>
+<li><strong>執行時間</strong>：eggp 與 tinyGP 相近（用 e-graph <strong>不顯著增加 runtime</strong>）；比 PySR 快，但比最快的 Operon 慢約數倍。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>超參用預設值，未細調；PySR/Operon 經仔細調參或可達相近結果。</li>
+<li><strong>單步等式飽和</strong>只是折衷（多步會讓 e-graph 指數爆炸）；步數影響留待未來。</li>
+<li>對<strong>較大表達式</strong>改善有限（亮點集中在「小而準」的模型）。</li>
+<li>僅改了子樹交叉/變異兩個運算子（為與 tinyGP 公平對比），未上 island model、專用變異等 SOTA 技巧。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 <strong>G 類（遺傳編程／程式合成）<strong>的</strong>「e-graph 賦能 GP」代表</strong>——把<strong>程式語言／編譯器</strong>的等式飽和技術跨界帶進演化式 SR，核心洞見：<strong>用 e-graph 記錄搜尋史、用 pattern matching 強制產生 novelty</strong>。</li>
+<li>最值得記：**「插入即飽和合併等價式 → 運算子只取會產生未訪問式的子樹/符號」**的配方；<strong>多目標版抽全史 Pareto front</strong>；以及 e-graph 帶來的衍生能力（存檔/續跑、跨搜尋合併歷史、查「具備某組性質」的表達式、整合先驗）。</li>
+<li>與同批 G 類 <a class="paper-reference" href="2411.05820_EvoNUDGE_GNN_Guided_GP.%E6%91%98%E8%A6%81.html">2411.05820</a> EvoNUDGE 對照：兩者都把<strong>圖 + 語意等價</strong>帶進 GP，但本篇用 e-graph 做**「避免重訪／鼓勵新穎」<strong>、EvoNUDGE 用 GNN 做</strong>「正向導引播種」**；與 <a class="paper-reference" href="2502.03367_SyMANTIC.%E6%91%98%E8%A6%81.html">2502.03367</a> SyMANTIC、<a class="paper-reference" href="2509.15929_Improved_MCTS_SR.%E6%91%98%E8%A6%81.html">2509.15929</a> MCTS-SR 等非 GP 路線形成對比。</li>
+<li>定位：<strong>GECCO 完整方法論文 + SRBench/真實資料實證</strong>（Haskell 開源、配套 rEGGression 探索工具）；適合做 <strong>GP 運算子設計、SR 效率/多樣性、等式飽和應用</strong>的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2501.17848_eggp_Equality_Graphs.zh-TW.html"><code>../translate/2501.17848_eggp_Equality_Graphs.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

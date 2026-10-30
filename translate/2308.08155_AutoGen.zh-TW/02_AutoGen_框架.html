@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_AutoGen_框架 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2308.08155_AutoGen.zh-TW.html">回 2308.08155_AutoGen.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_AutoGen_%E7%9A%84%E6%87%89%E7%94%A8.html">下一節 →</a></p>
+</blockquote>
+<h2 id="2-autogen-框架">2. AutoGen 框架</h2>
+<p>核心設計原則是用多代理對話來簡化、統整跨領域的多代理工作流，並最大化已實作代理的可重用性。以下介紹兩個關鍵概念。</p>
+<h3 id="21-可對話代理conversable-agents">2.1 可對話代理（Conversable Agents）</h3>
+<p>在 AutoGen 中，<strong>可對話代理</strong>是一個具特定角色、能傳遞訊息以收發資訊（開始或延續對話）的實體；它依收發的訊息維護內部脈絡，並可被配置具備一組能力（由 LLM、工具、人類輸入等賦予）。</p>
+<p><strong>由 LLM、人類、工具賦予的代理能力</strong>：由於能力直接影響代理如何處理與回應訊息，AutoGen 允許彈性賦能：</p>
+<ul>
+<li><strong>1) LLM</strong>：LLM 後端代理善用進階 LLM 的能力——角色扮演、隱式狀態推斷、依對話歷史推進、給回饋、從回饋調適、寫碼；可透過新穎的 prompting 技巧組合（附錄 C 示範了讓預設助手代理進行多步解題的 prompt）。AutoGen 另提供增強的 LLM 推理層（結果快取、錯誤處理、訊息模板等）。</li>
+<li><strong>2) 人類</strong>：許多應用需要甚至必須有人類參與。AutoGen 透過人類後端代理讓人在特定回合介入；預設的 user proxy agent 可配置人類介入的程度與模式（頻率、條件，含讓人選擇跳過輸入）。</li>
+<li><strong>3) 工具</strong>：工具後端代理能透過<strong>程式碼執行或函式執行</strong>來使用工具。例如預設的 user proxy agent 能執行 LLM 建議的程式碼、或發出 LLM 建議的函式呼叫。</li>
+</ul>
+<p><strong>代理的客製與協作</strong>：每個代理可配置成混合多種後端以展現複雜行為。內建代理（圖 2 黃色區）中，<code>ConversableAgent</code> 是最高層抽象、預設可用 LLM／人類／工具；<code>AssistantAgent</code>（LLM 後端的 AI 助手）與 <code>UserProxyAgent</code>（代理人類徵求輸入或執行碼／函式呼叫）是兩個預設子類，各代表一種常見用法。圖 1 右側例子中，一個 LLM 助手代理與一個工具＋人類後端的 user proxy 代理協作解題：助手生成解答傳給 user proxy，後者徵求人類輸入或執行程式碼，再把結果作為回饋傳回助手。</p>
+<h3 id="22-對話式程式設計conversation-programming">2.2 對話式程式設計（Conversation Programming）</h3>
+<p>AutoGen 用對話式程式設計解決「如何形塑多代理對話」的問題，涉及兩個概念：<strong>計算</strong>（代理為算出回應而採取的動作）與<strong>控制流</strong>（這些計算發生的順序或條件）。在 AutoGen 中，計算是<strong>以對話為中心</strong>的——代理針對其參與的對話採取動作，動作又造成訊息傳遞以延續對話（除非滿足終止條件）；控制流則是<strong>對話驅動</strong>的——「該把訊息送給誰、計算流程如何走」都是代理間對話的函式。此範式讓人能把複雜工作流直觀地理解為「代理採取動作＋代理間訊息傳遞」。</p>
+<p>AutoGen 提供以下設計模式來促進對話式程式設計：</p>
+<p><strong>1. 統一介面與自動回覆機制</strong>：代理有統一的對話介面——<code>send</code>/<code>receive</code>（收發訊息）與 <code>generate_reply</code>（依收到的訊息採取動作並生成回應）。AutoGen 預設採用<strong>自動回覆（auto-reply）機制</strong>：代理一收到訊息就自動呼叫 <code>generate_reply</code> 並回送給發送者，除非滿足終止條件。內建回覆函式基於 LLM 推理、程式碼／函式執行或人類輸入；也可註冊自訂回覆函式（如先與另一代理對話再回覆）。此機制下，只要註冊好回覆函式並初始化對話，<strong>對話流便自然湧現、無需額外的控制平面</strong>（專門控制對話流的模組），提供去中心化、模組化、統一的工作流定義方式。</p>
+<p><strong>2. 以程式與自然語言融合來控制</strong>：</p>
+<ul>
+<li><strong>自然語言控制（透過 LLM）</strong>：用自然語言 prompt 引導 LLM 代理。例如內建 <code>AssistantAgent</code> 的預設系統訊息用自然語言指示它「若前次結果有錯就修正並重新產生程式碼」、把輸出約束成便於其他工具代理消費的結構、任務全部完成時回覆「TERMINATE」以終止程式。</li>
+<li><strong>程式語言控制</strong>：用 Python 指定終止條件、人類介入模式、工具執行邏輯（如最大自動回覆數），也可註冊程式化的自動回覆函式來控制對話流。</li>
+<li><strong>兩者間的轉換</strong>：在自訂回覆函式中呼叫含控制邏輯的 LLM 推理，即可由「程式碼控制」轉「自然語言控制」；透過 LLM 提出的 function call，即可由「自然語言」轉「程式碼控制」。</li>
+</ul>
+<p>除了預定義流程的<strong>靜態對話</strong>，AutoGen 也支援<strong>動態對話流</strong>，有三種途徑：(1) 自訂 <code>generate_reply</code>：代理可在持有當前對話的同時，依訊息內容與脈絡去發起與其他代理的對話；(2) function call：LLM 依對話狀態決定是否呼叫某函式，在被呼叫的函式裡對其他代理發訊即可驅動動態多代理對話；(3) 內建 <code>GroupChatManager</code> 支援更複雜的<strong>動態群聊</strong>——動態選出下一位發言者並把其回應廣播給其他代理。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

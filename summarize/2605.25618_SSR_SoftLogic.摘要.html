@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《SSR：符號-神經軟邏輯推理——以協同演化邁向穩健可驗證思維鏈》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Rui Wang, Zeming Wei, Yihao Zhang, Xiaokun Luan（北京大學數學科學學院）</p><p>日期：2026-05，神經符號／可驗證 LLM 推理</p><p>arXiv：2605.25618</p><p><a href="https://arxiv.org/abs/2605.25618" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="ssr符號-神經軟邏輯推理以協同演化邁向穩健可驗證思維鏈重點摘要">《SSR：符號-神經軟邏輯推理——以協同演化邁向穩健可驗證思維鏈》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>SSR（Symbolic-Neural Soft-Logic Reasoning）</strong>：一個把 LLM 與 SMT 求解器整合的神經符號框架——LLM 先把自然語言題目抽象成<strong>受限 SMT 相容的符號程式</strong>（facts＋queries），求解器做可驗證推理；關鍵創新是<strong>鬆弛「嚴格邏輯決定論」為信賴度加權的軟邏輯</strong>（容忍翻譯錯誤／缺前提／不確定知識），並以<strong>雙系統定向檢索</strong>處理「軟邏輯歧義」（解器找出能讓答案唯一的賦值 → LLM 驗證該賦值是否有題目/常識支撐），最後<strong>從已驗證的邏輯程式自動生成「人類般、可驗證」的前向/後向演繹思維鏈</strong>（可當訓練資料）；在 BigBench、ProofWriter、FOLIO 上一致勝過既有推理框架。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>CoT 推理<strong>根本受限於神經生成的機率本質</strong>：思維鏈可能不忠實（事後合理化）、確認偏誤、幻覺（捏造/錯誤推論/誤用規則）。把 LLM 接 SMT 求解器（神經符號）雖能提準確率，但仍有三大頑疾：</p>
+<ol>
+<li><strong>自動形式化本身會幻覺</strong>（遺漏、結構錯誤）;</li>
+<li><strong>自然語言的歧義/脈絡依賴 ↔ 形式邏輯的嚴格語義</strong> 衝突 → 脆弱或不可滿足的式子；</li>
+<li>把核心推理<strong>完全外包給求解器</strong>，質疑這是否真增強了 LLM 的內在推理（還是只是繞過它）。</li>
+</ol>
+<p>作者主張：這些限制源於「<strong>把符號推理當成嚴格決定論，對不確定與不完美形式化零容忍</strong>」。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>2.1 硬邏輯推理（理想設定）</strong>：LLM 產出 facts（已知約束 Φ＝⋀φᵢ）＋ queries Q。謂詞分 Numeric Sort（有限可枚舉值，如 <code>Age(Bob)=16</code>）與 Boolean Sort（真值，如 <code>Happy(Anne)</code>），用受限 SMT 相容語法。Boolean query 檢查 Φ∧qᵢ 與 Φ∧¬qᵢ（只一個 sat → 回該真值；都 sat → Unknown）;Numeric query 枚舉候選賦值。求解器強制全域一致、避免幻覺；但 LLM 邏輯一旦有雜訊/過約束就脆弱。</li>
+<li><strong>2.2 軟邏輯鬆弛</strong>：先做<strong>語法層過濾</strong>——明顯壞掉的式子（自然語言碎片、無效謂詞、亂碼）替換成 <code>BoolVal(True)</code> 佔位防 parser 崩潰；若佔位太多或 query 被替換則退回傳統 CoT。其餘每條 φ 給<strong>信賴度權重 w(φ)＝exp(−H(φ))</strong>，H 為 LLM 輸出的長度正規化熵（由 token logit 機率算，與內在不確定負相關、不受句長影響）。若 Φ 不可滿足，搜尋「總信賴權重最大的可滿足子集」；若無候選 sat，對每個候選找最大權重可滿足子集、選之。把「全有全無失敗」換成「信賴度加權的約束選擇」，仍以 SMT 可滿足性為有效性判準。</li>
+<li><strong>2.3 雙系統定向檢索（解軟邏輯歧義）</strong>：多候選仍 sat 時，解器先找出「哪個謂詞賦值 a=value 能讓答案唯一」（Φ∧(a=value)∧(qᵢ=qᵢⱼ)），再由 LLM 驗證該賦值是否被題目陳述或常識支撐——解器與 LLM 互動式協同。</li>
+<li><strong>2.4 人類般 CoT 自動生成</strong>：SMT 解出可驗證答案但無人類可讀軌跡；SSR 把已驗證的邏輯程式正規化成 properties（<code>Predicate(Object)</code>／<code>¬Predicate(Object)</code>）與 rules（蘊含），再以<strong>前向／後向演繹</strong>構造解釋——<strong>根植於符號推理，而非 LLM 隨機生成</strong>，可當訓練/評估資料（支援 AI for Math）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>在 <strong>BigBench、ProofWriter、FOLIO</strong> 多模型多基準上，SSR 在<strong>最終答案準確率</strong>與<strong>推理鏈品質</strong>上一致勝過既有推理框架；跨資料集泛化良好（FOLIO 上提升尤明顯）。</li>
+<li>同時報告<strong>總推論時間</strong>對比。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>失敗主要來自<strong>基於檢索的前向/後向推理程序</strong>的限制（複雜題上檢索不到決定性條件）。</li>
+<li>仍依賴 LLM 的自動形式化品質；軟邏輯雖容忍噪聲但無法無中生有缺失的前提。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 B 類「<strong>可驗證 LLM 推理 ＋ 軟邏輯</strong>」代表——與 <a class="paper-reference" href="2606.24124_VeryTrace.%E6%91%98%E8%A6%81.html">2606.24124</a> VeryTrace（編譯成 DSL 後混合驗證）路線互補：VeryTrace 偏「驗證既有 CoT」，SSR 偏「以求解器驅動 ＋ 軟鬆弛產生 CoT」。</li>
+<li>最值得記：**「鬆弛硬邏輯決定論為信賴度加權軟邏輯」**這一核心洞見（用 token 熵當權重 exp(−H)）;<strong>最大權重可滿足子集</strong> 取代全有全無；<strong>雙系統定向檢索</strong>讓解器與 LLM 分工解歧義；以及「<strong>從已驗證符號程式反向生成人類般思維鏈</strong>」當訓練資料的閉環。</li>
+<li>與本工作區 <a class="paper-reference" href="2507.09751_Sound_Complete_NeSy_LLM.%E6%91%98%E8%A6%81.html">2507.09751</a>（Sound &amp; Complete NeSy LLM）、<a class="paper-reference" href="2604.27960_LLM_ASP_Self_Correction.%E6%91%98%E8%A6%81.html">2604.27960</a>（LLM+ASP 自我修正）、<a class="paper-reference" href="2412.07331_NeSyA.%E6%91%98%E8%A6%81.html">2412.07331</a> NeSyA、<a class="paper-reference" href="2502.03274_Probabilistic_NeSy_Robustness_Verification.%E6%91%98%E8%A6%81.html">2502.03274</a>（機率 NeSy 穩健性）同群；與 <a class="paper-reference" href="2502.09100_LLM_Logical_Reasoning_Survey.%E6%91%98%E8%A6%81.html">2502.09100</a>、<a class="paper-reference" href="2508.13678_NeSy_LLM_Reasoning_Survey.%E6%91%98%E8%A6%81.html">2508.13678</a> 推理綜述互補。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2605.25618_SSR_SoftLogic.zh-TW.html"><code>../translate/2605.25618_SSR_SoftLogic.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

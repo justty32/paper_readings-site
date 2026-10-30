@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>以邏輯張量網路與規則修剪進行預測性流程監測的神經符號學習（第 2 部分：實驗與結論） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.26944_LTN_RulePruning.zh-TW.html">回 2603.26944_LTN_RulePruning.zh-TW 目錄</a>　<a href="01_%E5%B0%8E%E8%AB%96.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-用於-ppm-的神經符號-ai">4. 用於 PPM 的神經符號 AI</h2>
+<h3 id="41-特徵萃取">4.1 特徵萃取</h3>
+<p>從事件日誌萃取三類特徵，構成規則形式化的詞彙：</p>
+<ul>
+<li><strong>控制流特徵</strong>：序列結構（先後、重複、分支），如 IsNext(l, Rev, Exam)。</li>
+<li><strong>時序特徵</strong>：時間關係（持續時間、等待時間、週期時間），如 WaitTime(l, Surg, ATB)。</li>
+<li><strong>Payload 特徵</strong>：案例層級（靜態屬性）與事件層級（活動特定屬性）的上下文資料。</li>
+</ul>
+<h3 id="42-規則萃取">4.2 規則萃取</h3>
+<p>規則可透過流程探勘技術自動萃取或由領域專家手動定義：</p>
+<ul>
+<li><strong>控制流規則</strong>：以 LTL 表示序列執行限制，使用 Declare mining 辨識。如 □(Rev ⇒ ♢Exam)（若 Rev 發生，Exam 必隨後發生）、□(Surg ⇒ ◯PostCU)（PostCU 緊接 Surg）。</li>
+<li><strong>時序規則</strong>：從 SLA 合規分析萃取的時間限制，以 IF-THEN 表示。如「若 Surg 後兩小時內投 ATB，併發症減少」。</li>
+<li><strong>Payload 規則</strong>：屬性與結果間的統計關聯。如「若術後血氧飽和度 &lt; 90%，併發症風險升高」。</li>
+</ul>
+<h3 id="43-知識庫建構">4.3 知識庫建構</h3>
+<ul>
+<li><strong>FOL 翻譯</strong>：控制流規則經 LTL→FOL 轉換保留時態語意（如 □(Rev ⇒ ♢Exam) → ∀l(HasAct(l,Rev) ∧ Next(l,Rev,Exam))）。時序/payload 規則分解為前件→後件公式（如 ∀l⁺(WaitTime(l⁺,Surg,ATB) ≤ 2 → ¬P(l⁺))）。</li>
+<li><strong>公理類型</strong>：知識庫分為<strong>資料公理 K_D</strong>（分類相關約束：{∀x⁺P(x⁺), ∀x⁻¬P(x⁻)}）與<strong>知識公理 K_P</strong>（領域衍生的邏輯規則）。</li>
+</ul>
+<h3 id="44-兩階段優化與規則修剪">4.4 兩階段優化與規則修剪</h3>
+<p>為解決 LTN 為滿足邏輯約束而犧牲預測準確度的傾向，提出兩階段策略：</p>
+<p><strong>Phase 1：加權預訓練與規則選擇。<strong>使用加權損失：
+L = 1 − (α·SatAgg(K_D) + β·SatAgg(K_P))
+設定 α &gt; β 優先學習資料，防止在分類謂詞妥善學習前空洞滿足知識公理。預訓練 E_p 個 epoch 後，在驗證集上計算每條規則 r_i 的</strong>門控分數</strong>：
+g_i = s̄_i · e^(−λ·Var(s_i))
+其中 s̄_i 為規則滿足度的跨樣本平均、Var(s_i) 為變異數。高平均滿足度 + 低跨樣本變異 = 一致貢獻規則。g_i ≥ τ 者保留至精煉知識庫 K&#x27;_P。門控分數以分析計算（無需可學習參數），保持可解釋性。</p>
+<h2 id="phase-2微調在精煉後的知識庫-k_d--k_p-上進行標準-ltn-微調-e_f-個-epoch">**Phase 2：微調。**在精煉後的知識庫 K_D ∪ K&#x27;_P 上進行標準 LTN 微調 E_f 個 epoch。</h2>
+<h2 id="title-以邏輯張量網路與規則修剪進行預測性流程監測的神經符號學習neuro-symbolic-learning-for-predictive-process-monitoring-via-two-stage-logic-tensor-networks-with-rule-pruning-source-httpsarxivorgabs260326944-arxiv_id-260326944-authors-fabrizio-de-santis-university-of-parmagyunam-park-eindhoven-university-of-technologyfrancesco-zanichelli-university-of-parma-date-2026-03-note-依論文章節結構精要逐節呈現實驗表格從略詳見摘要-summary-summarize260326944_ltn_rulepruning摘要md">title: 以邏輯張量網路與規則修剪進行預測性流程監測的神經符號學習（Neuro-Symbolic Learning for Predictive Process Monitoring via Two-Stage Logic Tensor Networks with Rule Pruning）
+source: https://arxiv.org/abs/2603.26944
+arxiv_id: 2603.26944
+authors: Fabrizio De Santis (University of Parma)、Gyunam Park (Eindhoven University of Technology)、Francesco Zanichelli (University of Parma)
+date: 2026-03
+note: 依論文章節結構精要逐節呈現。實驗表格從略（詳見摘要）。
+summary: ../summarize/2603.26944_LTN_RulePruning.摘要.md</h2>
+<h1 id="以邏輯張量網路與規則修剪進行預測性流程監測的神經符號學習第-2-部分實驗與結論">以邏輯張量網路與規則修剪進行預測性流程監測的神經符號學習（第 2 部分：實驗與結論）</h1>
+<p>超參數：α=0.8, β=0.2, E_p=5, E_f=50, λ∈{1,2}（依資料集特性），τ 透過驗證集選擇。</p>
+<h2 id="5-實驗評估">5. 實驗評估</h2>
+<h3 id="51-實驗設定">5.1 實驗設定</h3>
+<p><strong>模型變體</strong>：LSTM（純資料）、Transformer/TRF（純資料，二元交叉熵）、LTN-Data-L/T（LTN + 僅 K_D，無領域知識）、LTN-NoP-L/T（LTN + K_D ∪ K_P，無加權損失或修剪）、Two-Stage-L/T（完整方法）。</p>
+<p><strong>架構與訓練</strong>：LSTM 2 層 hidden 128、Transformer 2 頭 hidden 128。Adam（lr=0.001, batch 32）。分類特徵用 embedding dim 32，數值特徵標準化後經線性層。使用簡化架構以隔離知識整合效應。所有結果報告 5 個隨機種子的平均與標準差。</p>
+<p><strong>評估協議</strong>：時序分割（temporal split，標準 80-20 按完成時間劃分）→ 回答 RQ1/RQ2；合規感知分割（compliance-aware split，測試集富含規則合規軌跡 + 隨機樣本）→ 回答 RQ3。</p>
+<p><strong>資料集</strong>：Sepsis（敗血症）、BPIC2012（貸款申請）、BPIC2017（貸款申請）、Traffic fines（交通罰款）。</p>
+<h3 id="52-rq1領域知識注入的影響">5.2 RQ1：領域知識注入的影響</h3>
+<p>Two-Stage-L 與 Two-Stage-T 在所有資料集上一致優於純神經對照組。改善在小資料集上最顯著：Sepsis 上 LSTM→Two-Stage-L 的 F1 提升 5.23%、TFR→Two-Stage-T 的 F1 提升 1.83%；BPIC2012 分別提升 4.81% 與 10.26%。在資料豐富的 Traffic fines 上改善較小（1.1% 與 0.38%），因充裕訓練資料降低邏輯規則的相對貢獻。</p>
+<p>架構比較無明確贏家：短序列（Sepsis ≤13、Traffic fines ≤10）LSTM 較佳；長序列（BPIC2012 ≤40、BPIC2017 ≤20）Transformer 較佳。</p>
+<h3 id="53-rq2兩階段優化的消融研究">5.3 RQ2：兩階段優化的消融研究</h3>
+<p>關鍵發現：<strong>無控制地加入知識公理（LTN-NoP）會嚴重摧毀效能</strong>，尤其在小資料集上。Sepsis 上 LTN-NoP-L 與 LTN-NoP-T 的 F1 僅 18.79% 與 19.18%，遠低於純資料基線——因為 LTN 最佳化整體知識庫滿足度，模型學會空洞滿足邏輯公式（vacuous satisfaction）而非學習有意義的預測模式。</p>
+<p>兩階段方法解決了此根本限制：Sepsis 上 Two-Stage-L 恢復至 70.59% F1（較 LTN-NoP-L +51.8pp）；BPIC2012 +28.12%、BPIC2017 +5.78%、Traffic fines +25.94%。</p>
+<p>比較 LTN-Data 與 Two-Stage 可隔離當知識被妥善整合時的淨收益：Two-Stage 一致優於 LTN-Data（BPIC2012 +10.26%、Sepsis +8.84%），證明兩階段機制成功利用知識優勢同時避開陷阱。</p>
+<h3 id="54-rq3合規限制的泛化能力">5.4 RQ3：合規限制的泛化能力</h3>
+<p>在合規訓練樣本極稀少（Sepsis 4%、BPIC2012 18.25%）的情境下，Two-Stage 大幅超越基線：Sepsis 上 Two-Stage-L F1 達 89.96%（vs LSTM 73.26%，+16.7pp）；LTN-NoP-L 僅 37.52%（差距 52.44pp），證明單純知識注入在合規受限場景災難性失效。合規樣本越稀少，改善幅度越大（Sepsis 4% → +16.7%、BPIC2012 18.25% → +10.52%、BPIC2017 62.7% → +10.06%、Traffic fines 39.67% → +1.52%）。邏輯規則在合規樣本稀少時提供關鍵歸納偏誤，而純資料驅動方法無法從有限樣本中外推合規模式。</p>
+<h3 id="55-討論">5.5 討論</h3>
+<p>RQ1：領域知識注入一致提升預測效能，改善幅度隨訓練資料量變化——資料稀少時知識可有效約束模型學習，資料充裕時邊際效益遞減。RQ2：知識整合並非本質上有利，簡單納入可能損害最佳化過程並顯著降低效能，兩階段優化因此不可或缺。RQ3：方法在合規受限場景特別有效——純資料驅動模型傾向忽略罕見但語意關鍵的行為，顯式編碼保留了相關模式。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>本文提出一個以 LTN 將領域知識系統性整合為可微邏輯約束的 PPM 神經符號方法。核心貢獻是解決 LTN 根本限制的兩階段優化策略：加權公理損失在預訓練中優先學習資料，隨後以規則修剪保留一致貢獻公理。在四個真實事件日誌上的評估證明：(1) 領域知識注入提升預測效能（尤其在資料稀少時）；(2) 兩階段優化不可或缺——無它時知識注入可能透過空洞滿足摧毀效能；(3) 方法在合規受限場景有效泛化。</p>
+<p>未來工作：(1) 形式化顯式表徵，定義自動連接特徵與規則的模板；(2) 在醫療等領域知識關鍵的案例研究上評估；(3) 擴展至更多流程感知任務，如下一事件預測與時間相關預測。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_為什麼把這三件事放在一起讀 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../self_improving_program_synthesis.html">回 self_improving_program_synthesis 目錄</a>　<a href="02_%E7%A8%8B%E5%BC%8F%E5%90%88%E6%88%90%E7%9A%84%E5%85%A9%E6%A2%9D%E8%B7%AF%E8%88%87%E5%85%A9%E7%A8%AE%E6%90%9C%E5%B0%8B%E7%A9%BA%E9%96%93.html">下一節 →</a></p>
+</blockquote>
+<h2 id="0-為什麼把這三件事放在一起讀">0. 為什麼把這三件事放在一起讀</h2>
+<p>「自我改進的 agent」「程式合成」「抽象推理」表面是三個社群，但它們其實在回答<strong>同一個問題的三個切面</strong>：</p>
+<ul>
+<li><strong>抽象推理</strong>（以 ARC-AGI 為試驗台）問：系統能不能在**極少範例、且結構刻意 OOD（分布外）**的情況下，抓到隱藏規則？這是「會不會學新規則」的試金石。</li>
+<li><strong>程式合成</strong>是抽象推理目前<strong>最有效的載體</strong>——把「規則」寫成一段可執行、可驗證的程式（<a class="paper-reference" href="../../summarize/2411.02272_Induction_Transduction.%E6%91%98%E8%A6%81.html">2411.02272</a> 的歸納路線、<a class="paper-reference" href="../../summarize/2411.17708_GridCoder_ARC_Program_Induction.%E6%91%98%E8%A6%81.html">2411.17708</a> 的 DSL 枚舉、<a class="paper-reference" href="../../summarize/2507.16405_Poker_SS_ILP.%E6%91%98%E8%A6%81.html">2507.16405</a> 的邏輯程式）。程式之所以特別，是因為它<strong>可被執行回饋驗證</strong>，於是「對不對」有了接地訊號。</li>
+<li><strong>自我改進</strong>問：當系統解不出題時，它能不能<strong>改自己</strong>——改權重（<a class="paper-reference" href="../../summarize/2411.07279_Test_Time_Training.%E6%91%98%E8%A6%81.html">2411.07279</a>）、改它合成的程式庫（<a class="paper-reference" href="../../summarize/2507.14172_SOAR.%E6%91%98%E8%A6%81.html">2507.14172</a>）、改自己的原始碼（<a class="paper-reference" href="../../summarize/2505.22954_DarwinGodelMachine.%E6%91%98%E8%A6%81.html">2505.22954</a>）、甚至改它所用的學習演算法（<a class="paper-reference" href="../../summarize/2101.03958_Evolving_RL_Algorithms.%E6%91%98%E8%A6%81.html">2101.03958</a>）——讓下一次更強？</li>
+</ul>
+<p>把三者擺在一起，會浮現一條主軸：<strong>自我改進的可持續性，取決於改進迴圈裡有沒有一個「不會被自己污染的接地訊號」</strong>。程式合成提供的「執行/驗證」恰好就是這種訊號，而 <a class="paper-reference" href="../../summarize/2601.05280_LimitsSelfImproving.%E6%91%98%E8%A6%81.html">2601.05280</a> 從理論證明：抽掉這個外部接地，自我改進<strong>必然崩潰</strong>。本文即圍繞這條主軸展開。</p>
+<hr />
+<h2 id="1-自我改進的光譜改什麼層級">1. 「自我改進」的光譜：改什麼層級？</h2>
+<p>把本批論文按「自我改進<strong>動到哪一層</strong>」排列，會得到一條由淺入深的光譜。越往下，改動的對象越接近「系統的設計本身」，潛在威力越大，但搜尋空間也越離散、越難驗證、成本越高。</p>
+<pre><code class="language-mermaid">graph TD
+    subgraph L1[&quot;① 權重級｜改參數，架構/程式不變&quot;]
+        TTT[&quot;TTT 測試時訓練 [[2411.07279]]&lt;br/&gt;每題臨時訓一組 LoRA&quot;]
+        FT[&quot;SOAR 的自我微調 [[2507.14172]]&lt;br/&gt;從搜尋軌跡 hindsight relabel 回灌&quot;]
+    end
+    subgraph L2[&quot;② 程式級｜改「被合成出來的程式/邏輯」&quot;]
+        IND[&quot;歸納程式合成 BARC/SOAR/GridCoder&lt;br/&gt;[[2411.02272]] [[2507.14172]] [[2411.17708]]&quot;]
+        LPN[&quot;LPN 連續潛在程式搜尋 [[2411.08706]]&quot;]
+        ILP[&quot;Poker 自監督 ILP [[2507.16405]]&lt;br/&gt;學遞迴邏輯程式 + 發明謂詞&quot;]
+        GP[&quot;eggp 等式圖 GP [[2501.17848]]&lt;br/&gt;演化符號表達式&quot;]
+    end
+    subgraph L3[&quot;③ 架構級｜改「agent 自己的原始碼」&quot;]
+        DGM[&quot;Darwin-Gödel Machine [[2505.22954]]&lt;br/&gt;改自己的工具/prompt/workflow&quot;]
+        ASL[&quot;Agent Symbolic Learning [[2406.18532]]&lt;br/&gt;語言梯度聯合改 prompt+工具+pipeline&quot;]
+    end
+    subgraph L4[&quot;④ 演算法級｜改「學習演算法本身」&quot;]
+        ERL[&quot;演化 RL 損失函數 [[2101.03958]]&lt;br/&gt;在計算圖空間發明 RL 演算法&quot;]
+        META[&quot;如何元學習 RL 演算法 [[2507.17668]]&lt;br/&gt;元學習法的方法選型&quot;]
+        MECH[&quot;元學習灌入的是神經機制 [[2503.16048]]&lt;br/&gt;（改進迴圈到底改了什麼？）&quot;]
+    end
+
+    L1 --&gt; L2 --&gt; L3 --&gt; L4
+    NOTE[&quot;越往下：搜尋空間越離散、威力越大、&lt;br/&gt;驗證越難、算力越貴&quot;]
+    L4 -.-&gt; NOTE
+</code></pre>
+<h3 id="各層級的本質與代表">各層級的本質與代表</h3>
+<table>
+<thead>
+<tr>
+<th>層級</th>
+<th>改動對象</th>
+<th>代表作</th>
+<th>改進訊號（怎麼知道變好了）</th>
+<th>搜尋空間性質</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>① 權重級</strong></td>
+<td>模型參數（LoRA / 微調）</td>
+<td>TTT <a class="paper-reference" href="../../summarize/2411.07279_Test_Time_Training.%E6%91%98%E8%A6%81.html">2411.07279</a>、SOAR 微調 <a class="paper-reference" href="../../summarize/2507.14172_SOAR.%E6%91%98%E8%A6%81.html">2507.14172</a></td>
+<td>範例上的留一法損失 / 範例準確度</td>
+<td>連續、梯度可達</td>
+</tr>
+<tr>
+<td><strong>② 程式級</strong></td>
+<td>合成出的程式、邏輯子句、符號式</td>
+<td>BARC <a class="paper-reference" href="../../summarize/2411.02272_Induction_Transduction.%E6%91%98%E8%A6%81.html">2411.02272</a>、GridCoder <a class="paper-reference" href="../../summarize/2411.17708_GridCoder_ARC_Program_Induction.%E6%91%98%E8%A6%81.html">2411.17708</a>、LPN <a class="paper-reference" href="../../summarize/2411.08706_LPN_Latent_Program_Search.%E6%91%98%E8%A6%81.html">2411.08706</a>、Poker <a class="paper-reference" href="../../summarize/2507.16405_Poker_SS_ILP.%E6%91%98%E8%A6%81.html">2507.16405</a>、eggp <a class="paper-reference" href="../../summarize/2501.17848_eggp_Equality_Graphs.%E6%91%98%E8%A6%81.html">2501.17848</a></td>
+<td>程式執行結果是否 = 範例輸出（離散、可證）</td>
+<td>離散 DSL 枚舉 ↔ 連續潛在（LPN 例外）</td>
+</tr>
+<tr>
+<td><strong>③ 架構級</strong></td>
+<td>agent 自己的程式碼 / pipeline 結構</td>
+<td>DGM <a class="paper-reference" href="../../summarize/2505.22954_DarwinGodelMachine.%E6%91%98%E8%A6%81.html">2505.22954</a>、ASL <a class="paper-reference" href="../../summarize/2406.18532_AgentSymbolicLearning.%E6%91%98%E8%A6%81.html">2406.18532</a></td>
+<td>benchmark 整體表現（經驗驗證取代形式證明）</td>
+<td>離散程式編輯，開放式</td>
+</tr>
+<tr>
+<td><strong>④ 演算法級</strong></td>
+<td>學習演算法（損失函數 / 更新規則 / 優化器）</td>
+<td>演化 RL <a class="paper-reference" href="../../summarize/2101.03958_Evolving_RL_Algorithms.%E6%91%98%E8%A6%81.html">2101.03958</a>、meta-RL 選型 <a class="paper-reference" href="../../summarize/2507.17668_meta_learn_rl_algorithms.%E6%91%98%E8%A6%81.html">2507.17668</a></td>
+<td>內迴圈 agent 在多環境上的回報</td>
+<td>計算圖 DAG / 黑箱參數 / 符號</td>
+</tr>
+</tbody>
+</table>
+<h3 id="三個值得記的縱貫觀察">三個值得記的縱貫觀察</h3>
+<ol>
+<li><strong>「改進訊號」隨層級上升而變脆弱。</strong> 權重級與程式級都有<strong>乾淨的局部訊號</strong>（範例損失、執行是否相符）；到了架構級，DGM <a class="paper-reference" href="../../summarize/2505.22954_DarwinGodelMachine.%E6%91%98%E8%A6%81.html">2505.22954</a> 必須退而求其次，用「整個 benchmark 跑分」當訊號——這正是它把哥德爾機的「形式證明」鬆綁成「經驗驗證」的原因（無法形式化證明某次改碼淨有益，只能實測）。訊號越粗、越全域，越容易被 Goodhart 化（見 §3）。</li>
+</ol>
+<p><a class="paper-reference" href="../../summarize/2609.14857_ModularRSI.%E6%91%98%E8%A6%81.html">2609.14857</a> 為架構級訊號提供了較細的正面對照：ModularRSI 先比較同一任務的成功與失敗軌跡，再以跨任務支持票數篩選修改，並把 harness 拆成五個模組分別演化、驗證與整合；演化資料則來自與下游 benchmark 分離的可執行任務，凍結後還換用其他 backbone 評估。這補上此處只以 DGM 的整體跑分描述架構級訊號的空白：粗粒度 benchmark 並非架構改進唯一可用的證據，軌跡對照與模組邊界能把信用分配拉回具體行為；但整套方法的增益尚不能單獨歸因於對照式分析，而且跨模型與跨域結果仍是有限任務族上的實證，不能當成已排除 benchmark 適配（本檔補註，非作者自陳）。</p>
+<ol start="2">
+<li>
+<p><strong>同一個系統常橫跨多層。</strong> SOAR <a class="paper-reference" href="../../summarize/2507.14172_SOAR.%E6%91%98%E8%A6%81.html">2507.14172</a> 同時做②（合成 Python 程式）與①（拿搜尋軌跡微調自己）；它的精髓正是把②的搜尋產物餵回①的權重，形成「搜尋↔學習」閉環。BARC+TTT 的組合（<a class="paper-reference" href="../../summarize/2411.02272_Induction_Transduction.%E6%91%98%E8%A6%81.html">2411.02272</a>+<a class="paper-reference" href="../../summarize/2411.07279_Test_Time_Training.%E6%91%98%E8%A6%81.html">2411.07279</a>）也是②（程式合成器）疊①（測試時微調）。<strong>真正強的系統不在單層，而在「跨層閉環」</strong>。</p>
+</li>
+<li>
+<p><strong>第④層有一篇「元層級的反思」</strong>：<a class="paper-reference" href="../../summarize/2503.16048_MetaLearn_Neural_Mechanisms.%E6%91%98%E8%A6%81.html">2503.16048</a> 不問「能改進出什麼」，而問「改進迴圈到底把什麼灌進了模型」。它的答案——<strong>灌入的是可重用的神經機制（如 LSTM 的計數器），而非貝氏簡約先驗</strong>——對所有層級都有警示意義：自我改進能不能成功，受限於<strong>底層架構有沒有能承載目標機制的「電路容量」</strong>（GRU 學不會計數器，再多 meta-training 也沒用）。這呼應 DGM「受限於底層 FM 能力」的局限，以及 <a class="paper-reference" href="../../summarize/2507.17668_meta_learn_rl_algorithms.%E6%91%98%E8%A6%81.html">2507.17668</a> 的「老師爛、蒸餾也無能為力」。</p>
+</li>
+</ol>
+<hr />
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

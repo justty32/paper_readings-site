@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>MeCo：藉由相似任務記憶化增強 LLM 驅動的多機器人協作（MeCo: Enhancing LLM-Empowered Multi-Robot Collaboration via Similar Task Memoization） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Baiqing Wang, Helei Cui, Bo Zhang（西北工業大學）, Xiaolong Zheng（北京郵電大學）, Bin Guo, Zhiwen Yu（西北工業大學）</p><p>日期：2026-02</p><p>arXiv：2601.20577</p><p><a href="https://arxiv.org/abs/2601.20577" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="meco藉由相似任務記憶化增強-llm-驅動的多機器人協作">MeCo：藉由相似任務記憶化增強 LLM 驅動的多機器人協作</h1>
+<h2 id="1-引言">1. 引言</h2>
+<p>多機器人系統已廣泛部署於自動製造、智慧家務與醫療保健等場景。現有方法（教導程式設計、強化學習、模仿學習）依賴固定程式或長時間訓練，限制了跨任務的適應性。近期研究利用大型語言模型（LLM）的文字理解與推理能力實現無需特定訓練的靈活協作。</p>
+<p>然而，現有 LLM 驅動方法仍將任務視為孤立單元，忽略任務間的相似性關係。現實中相似任務頻繁出現——包裹分類、產品歸類、清掃地板等任務的核心目標與固有約束保持不變，僅目標物體位置與種類有所差異。現有方法對相似任務仍重複調用 LLM，導致不必要的 token 消耗與規劃時間。</p>
+<p>為此，作者提出 <strong>MeCo</strong>——一個相似性感知的多機器人協作框架，將「快取並復用」（即記憶化，memoization）原則應用於任務規劃。當收到新任務時，MeCo 先在任務快取中搜尋相似任務；若命中則由 S-Planner 基於參考軌跡生成規劃而不調用 LLM；若失敗則由 LLM 從失敗步驟繼續規劃而非從頭開始。作者還引入 MeCoBench——首個針對相似任務協作場景的基準測試。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>LLM 用於機器人</strong>：從 SayCan、Inner Monologue 的單機器人技能選擇，到 ProgGPT、Code-As-Policy 的程式碼格式策略生成。多機器人方面，RoCo 為每個機器人指配 LLM 代理以對話式協作，ReCA 透過表徵與協同設計提升效率，HMAS-2 比較四種規劃框架以降低 token 成本。然而，這些方法在包含相似任務的場景中仍需重複 LLM 規劃。</li>
+<li><strong>基於學習的方法</strong>：強化學習與模仿學習需要針對特定任務的訓練，任務變更時需修改或重新訓練，不適合相似任務場景。</li>
+<li><strong>基於程式設計的方法</strong>：離線程式設計與教導器程式設計依賴靜態任務假設，限制在不斷變化的操作需求中的適用性。</li>
+</ul>
+<h2 id="3-問題定義">3. 問題定義</h2>
+<h3 id="31-llm-驅動規劃">3.1 LLM 驅動規劃</h3>
+<p>LLM 以文字形式接收任務描述，將任務分解為多個子任務並輸出 3D 航點路徑引導低階運動規劃器。生成的航點經逆向運動學（IK）和碰撞檢查驗證；若失敗，失敗原因回饋給 LLM 進行重新規劃。</p>
+<h3 id="32-任務定義">3.2 任務定義</h3>
+<p>任務定義為元組 T = (C, E)。任務內容 C 為文字規範；環境元素 E = (R, O, D, S) 定義任務空間 Ω——R 為機器人（類型、數量、工作空間），O 為目標物體（位置、類別），D 為障礙物分佈，S 為任務特定約束。作者聚焦 RoCoBench 的六項桌面操作任務，根據機器人工作空間重疊程度分為兩類：<strong>低重疊任務</strong>（Sweep Floor、Make Sandwich、Sort Cubes、Arrange Cabinet）與<strong>高重疊任務</strong>（Pack Grocery、Move Rope）。</p>
+<h2 id="4-核心設計">4. 核心設計</h2>
+<h3 id="41-總覽">4.1 總覽</h3>
+<p>每次成功規劃後，MeCo 選擇性地將任務計畫存入任務快取。新任務到來時，先在快取中搜尋相似任務。若未找到，調用 LLM 規劃；若匹配到相似任務，調用 S-Planner 參考歷史任務高效生成規劃。若驗證失敗，LLM 從失敗步驟繼續而非重新開始。全部驗證通過後，最終軌跡由低階運動規劃器執行。</p>
+<h3 id="42-相似任務的定義">4.2 相似任務的定義</h3>
+<p><strong>低重疊任務</strong>：任務空間 Ω 劃分為有限的不相交工作區域集合 A = {A1, ..., AM}。若存在點映射 Π 確保每個目標物體僅在相同區域內進行受限幾何變換，則兩任務視為相似。</p>
+<p><strong>高重疊任務</strong>：定義重用率 αi = Δxi_ref / Δxi_goal（歷史可復用軌跡長度/目前所需總長度），整體任務相似度為所有子任務 αi 的平均值 α。理論證明子任務成功率隨 αi 單調遞增，實驗驗證 α 閾值設為 Pack Grocery 的 0.85 與 Move Rope 的 0.7 能維持高效能。</p>
+<h3 id="43-相似運動規劃s-planner">4.3 相似運動規劃（S-Planner）</h3>
+<p><strong>低重疊模式</strong>：繼承相似任務的動作序列。若目標姿態差在容忍閾值 ε 內，直接復用軌跡；否則調用 RRT 規劃器生成新軌跡。</p>
+<p><strong>高重疊模式</strong>：繼承動作序列後進行兩步驟處理——回溯檢查（back checking）防止無效回溯；碰撞檢查（collision checking）驗證參考軌跡在目前環境中無碰撞。然後自適應選取關鍵採樣點（以 z 軸最高點為中心、以擴展係數 η 進行雙向擴展），提供給 RRT 規劃器生成最終軌跡。</p>
+<h3 id="44-連續規劃">4.4 連續規劃</h3>
+<p>當 S-Planner 失敗時，將當前環境狀態存入 prompt，使 LLM 從失敗步驟繼續規劃而非從頭開始，實現 S-Planner 與 LLM 之間的無縫切換。</p>
+<h3 id="45-選擇性快取">4.5 選擇性快取</h3>
+<p>基於 LFU 策略：快取包含快取表（加速存取）與全域表（頻率更新）。當任務數量達到上限 k 時，保留使用頻率最高的 k 個任務。同時檢查任務的有效步驟數 S——若 S ≤ S_base（基線步驟數）則允許快取，過濾掉含冗餘步驟的低品質任務。</p>
+<h2 id="5-實驗評估">5. 實驗評估</h2>
+<h3 id="51-實驗設置">5.1 實驗設置</h3>
+<p>使用 DeepSeek-V3 作為基礎 LLM、MuJoCo 物理引擎進行模擬。<strong>MeCoBench</strong> 是 RoCoBench 的變體，引入相似性指標，支援三種模式：隨機生成（S1）、完全相似（S2）、完全相異（S3）。比較基線：RoCo、Central Plan、HMAS-2、ReAct。</p>
+<h3 id="52-快取任務數量對效能的影響">5.2 快取任務數量對效能的影響</h3>
+<p>高重疊任務的成功率與 token 節省隨快取增大而提升，但規劃時間呈「先降後升」——Pack Grocery 在超過 30 個任務後搜尋開銷反彈。低重疊任務則快取越大越好，無反彈現象。最優快取大小分別為 40、30、700、50、9、9。</p>
+<h3 id="53-meco-效能">5.3 MeCo 效能</h3>
+<ul>
+<li><strong>成功率</strong>：S1 場景平均提升 29%，S2 場景平均提升 32%，Move Rope/Make Sandwich/Sort Cubes 接近 100%；S3 場景與基線持平。Pack Grocery 因高碰撞風險整體成功率較低，MeCo 仍提升約 8%。</li>
+<li><strong>規劃時間</strong>：S1 場景平均減少 64%（Move Rope）、78%（Make Sandwich）、76%（Sort Cubes）；Pack Grocery 僅減少 5% 因其搜尋過程耗時。S2 場景最高減少 83%。</li>
+<li><strong>Token 消耗</strong>：S1 場景平均降低 73%，Move Rope/Make Sandwich/Sort Cubes 降幅超過 90%；S2 場景平均降低 82%。</li>
+</ul>
+<h3 id="54-消融研究">5.4 消融研究</h3>
+<ul>
+<li>移除相似度測試：成功率平均下降 12%，Move Rope 的 token 暴增 189%。</li>
+<li>移除 S-Planner：成功率下降約 30%，規劃時間暴增 222%。</li>
+<li>移除連續規劃：成功率的下降有限，但 token 與時間顯著增加。</li>
+<li>Sweep Floor 與 Arrange Cabinet 因任務本質高度相似，移除相似度測試幾乎無影響。</li>
+</ul>
+<h2 id="6-結論">6. 結論</h2>
+<p>MeCo 是首個探索多機器人協作中相似任務問題的框架。透過相似度測試、S-Planner、連續規劃與選擇性快取四個核心模組，MeCo 顯著降低了 LLM 的調用頻率與 token 消耗，同時提高任務成功率。實驗證明 MeCo 在大幅降低規劃成本的同時有效利用跨任務相似性。未來工作包括自動化參數學習、多模態輸入整合、更全面的快取策略，以及擴展至移動機器人與異構機器人場景。</p>
+<blockquote>
+<p>完整摘要見 <a href="../summarize/2601.20577_MeCo.%E6%91%98%E8%A6%81.html"><code>../summarize/2601.20577_MeCo.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

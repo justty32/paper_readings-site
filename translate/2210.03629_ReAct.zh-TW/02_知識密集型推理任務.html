@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_知識密集型推理任務 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2210.03629_ReAct.zh-TW.html">回 2210.03629_ReAct.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E6%B1%BA%E7%AD%96%E4%BB%BB%E5%8B%99.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-知識密集型推理任務">3 知識密集型推理任務</h2>
+<p>透過與 Wikipedia API 互動，ReAct 能檢索資訊支撐推理、又用推理決定下一步檢索什麼，展現推理與行動的協同。</p>
+<h3 id="31-設定">3.1 設定</h3>
+<p><strong>領域</strong>：(1) <strong>HotpotQA</strong>——需跨兩篇以上 Wikipedia 文章推理的多跳問答；(2) <strong>FEVER</strong>——事實查核，每條 claim 依是否存在 Wikipedia 文章佐證標為 SUPPORTS / REFUTES / NOT ENOUGH INFO。兩者皆採 question-only 設定：模型只拿到問題/主張，須靠內部知識或與外部環境互動檢索來支撐推理。</p>
+<p><strong>行動空間</strong>：設計一個簡單的 Wikipedia web API，含三種行動——(1) <code>search[entity]</code>：回傳對應實體頁面的前 5 句，不存在則給 Wikipedia 搜尋引擎的前 5 個相似實體；(2) <code>lookup[string]</code>：回傳頁面中含該字串的下一句（模擬瀏覽器 Ctrl+F）；(3) <code>finish[answer]</code>：以 answer 結束任務。此行動空間刻意<strong>遠弱於最先進的詞彙或神經檢索器</strong>，目的是模擬人類與 Wikipedia 的互動方式，強迫模型透過顯式語言推理來檢索。</p>
+<h3 id="32-方法">3.2 方法</h3>
+<p><strong>ReAct prompting</strong>：HotpotQA 與 Fever 各從訓練集隨機取 6 與 3 個案例（更多範例不再提升），人工撰寫 ReAct 格式軌跡作 few-shot 範例。thought 的用途組合包括：分解問題（「我需要搜 x、找到 y、再找 z」）、從 Wikipedia 觀察抽取資訊（「x 始於 1844」「該段落沒提 x」）、常識推理（「x 不是 y，所以 z 應該是…」）、算術推理（「1844 &lt; 1989」）、引導搜尋改寫（「或許可以改搜/查 x」）、綜合出最終答案。</p>
+<p><strong>基線</strong>：系統性消融 ReAct 軌跡構造多個基線 prompt——(a) <strong>Standard</strong>：移除所有 thought、action、observation；(b) <strong>CoT</strong>：移除 action 與 observation（只推理）；另建 <strong>CoT-SC</strong>（self-consistency）：溫度 0.7 取樣 21 條 CoT 軌跡採多數決，穩定優於 CoT；(c) <strong>Act</strong>：移除 thought（只行動），大致類似 WebGPT 與網際網路互動答題的方式（但任務與行動空間不同，且 WebGPT 用模仿/強化學習而非 prompting）。</p>
+<p><strong>內外知識結合</strong>：ReAct 的求解過程較事實化、接地，CoT 則推理結構較精準但易幻覺。故提出兩種組合並依啟發式切換：<strong>A) ReAct → CoT-SC</strong>——ReAct 在限定步數內（HotpotQA 7 步、FEVER 5 步）未能回答時退回 CoT-SC；<strong>B) CoT-SC → ReAct</strong>——n 次取樣的多數答案出現不足 n/2 次（內部知識可能不足以自信支撐任務）時退回 ReAct。</p>
+<p><strong>微調</strong>：因大規模人工標註推理軌跡與行動困難，採類似 STaR（Zelikman et al., 2022）的 bootstrapping：用 ReAct（及各基線）自產的 3,000 條答案正確的軌跡，微調較小的 PaLM-8B/62B，以問題/主張為條件解碼整條軌跡（所有 thought、action、observation）。</p>
+<h3 id="33-結果與觀察">3.3 結果與觀察</h3>
+<p><strong>ReAct 一致勝過 Act</strong>。PaLM-540B prompting 結果（表 1）：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>HotpotQA (EM)</th>
+<th>Fever (Acc)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Standard</td>
+<td>28.7</td>
+<td>57.1</td>
+</tr>
+<tr>
+<td>CoT</td>
+<td>29.4</td>
+<td>56.3</td>
+</tr>
+<tr>
+<td>CoT-SC</td>
+<td>33.4</td>
+<td>60.4</td>
+</tr>
+<tr>
+<td>Act</td>
+<td>25.7</td>
+<td>58.9</td>
+</tr>
+<tr>
+<td>ReAct</td>
+<td>27.4</td>
+<td>60.9</td>
+</tr>
+<tr>
+<td>CoT-SC → ReAct</td>
+<td>34.2</td>
+<td><strong>64.6</strong></td>
+</tr>
+<tr>
+<td>ReAct → CoT-SC</td>
+<td><strong>35.1</strong></td>
+<td>62.0</td>
+</tr>
+<tr>
+<td>監督式 SoTA</td>
+<td>67.5</td>
+<td>89.5</td>
+</tr>
+</tbody>
+</table>
+<p>ReAct 在兩任務上皆優於 Act，證明<strong>推理引導行動</strong>（尤其是綜合最終答案）的價值；微調結果（圖 3）亦確認推理軌跡使行動更有依據。</p>
+<p><strong>ReAct vs. CoT</strong>：ReAct 在 Fever 上勝 CoT（60.9 vs 56.3）、在 HotpotQA 上略遜（27.4 vs 29.4）。Fever 的 SUPPORTS/REFUTES 主張可能只差毫釐，行動取得準確且最新的知識至關重要。為理解行為差異，作者從兩法各隨機抽 50 條正確與 50 條錯誤軌跡（共 200 條）人工標註成功與失敗模式（表 2）：</p>
+<table>
+<thead>
+<tr>
+<th>模式</th>
+<th>定義</th>
+<th>ReAct</th>
+<th>CoT</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>成功·真陽性</td>
+<td>推理軌跡與事實皆正確</td>
+<td>94%</td>
+<td>86%</td>
+</tr>
+<tr>
+<td>成功·假陽性</td>
+<td>幻覺出的推理軌跡或事實</td>
+<td>6%</td>
+<td>14%</td>
+</tr>
+<tr>
+<td>失敗·推理錯誤</td>
+<td>錯誤推理軌跡（含無法跳出重複步驟）</td>
+<td>47%</td>
+<td>16%</td>
+</tr>
+<tr>
+<td>失敗·搜尋結果錯誤</td>
+<td>搜尋回空或無有用資訊</td>
+<td>23%</td>
+<td>–</td>
+</tr>
+<tr>
+<td>失敗·幻覺</td>
+<td>幻覺出的推理軌跡或事實</td>
+<td><strong>0%</strong></td>
+<td><strong>56%</strong></td>
+</tr>
+<tr>
+<td>失敗·標籤歧義</td>
+<td>預測正確但與標籤不精確匹配</td>
+<td>29%</td>
+<td>28%</td>
+</tr>
+</tbody>
+</table>
+<p>關鍵觀察：<strong>A) 幻覺是 CoT 的嚴重問題</strong>——成功案例中假陽性率遠高於 ReAct（14% vs 6%），且是其最主要失敗模式（56%）；ReAct 因能存取外部知識庫，求解軌跡更接地、事實導向、可信。<strong>B) 結構約束的代價</strong>——交錯的推理-行動-觀察步驟雖提升接地性與可信度，卻降低了構造推理步驟的彈性，使 ReAct 推理錯誤率高於 CoT；且 ReAct 有一種特有錯誤型態：<strong>重複生成先前的 thought 與 action</strong> 而跳不出迴圈（疑因次優的貪婪解碼，未來用 beam search 等或可改善）。<strong>C) 檢索是命門</strong>——成功檢索到有資訊量的知識至關重要；無資訊的搜尋佔錯誤案例 23%，會使模型推理脫軌且難以恢復重構思路。這是事實性與彈性間的預期取捨，也正是提出兩種組合策略的動機。</p>
+<p><strong>ReAct + CoT-SC 是 prompting 最佳解</strong>：HotpotQA 與 Fever 上最佳方法分別為 ReAct→CoT-SC 與 CoT-SC→ReAct；且兩種組合在不同取樣數下都顯著且一致地勝過 CoT-SC，<strong>僅用 3–5 個樣本就達到 CoT-SC 用 21 個樣本的表現</strong>——顯示妥善結合模型內部知識與外部知識的價值。</p>
+<p><strong>微調後 ReAct 成為最佳</strong>（圖 3 規模效應）：PaLM-8/62B 下 prompting ReAct 因難以從 in-context 範例同時學會推理與行動而墊底；但僅用 3,000 條範例微調後 ReAct 反成四法之首——<strong>微調的 PaLM-8B ReAct 勝過所有 PaLM-62B prompting 方法、微調的 62B 勝過所有 540B prompting 方法</strong>。相對地，微調 Standard/CoT 顯著劣於微調 ReAct/Act：前者本質是教模型<strong>背誦（可能幻覺的）知識事實</strong>，後者教的是<strong>如何（推理並）行動以從 Wikipedia 取得資訊</strong>——一種對知識推理更可泛化的技能。因所有 prompting 方法距領域專用 SoTA 仍遠，作者認為以更多人工撰寫資料微調可能是釋放 ReAct 潛力的更好途徑。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2402.05828_Temporally_Aware_RL_Algorithms.zh-TW.html">回 2402.05828_Temporally_Aware_RL_Algorithms.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-方法">4. 方法</h2>
+<h3 id="41-以-agent-壽命為條件">4.1 以 agent 壽命為條件</h3>
+<p>定義 agent 當前壽命為 <code>n/N</code>，n＝迄今環境互動步數、N＝總環境互動步數（即訓練時程）。據此提出兩個擴展：</p>
+<ul>
+<li><strong>Temporally-Adaptive LPG（TA-LPG）</strong>：把 agent 壽命與訓練時程附加到優化器輸入。因 N 無上界，取對數 <code>log(N)</code>。輸入變為 <code>x_t = [r, d, γ, π_θ(a|s), y_θ(s), y_θ(s'), n/N, log(N)]</code>。</li>
+<li><strong>Temporally-Adaptive LPO（TA-LPO）</strong>：把壽命提供給 drift 函數網路 D，並沿用 LPO 的結構化輸入以保證理論 drift 條件成立：<code>x_{p,A,t} = [x_{p,A}, (n/N)·x_{p,A}]</code>。因 TA-LPO 只在單一環境與時程 meta-train，不含 <code>log(N)</code> 項（它在更新間不變動）。</li>
+</ul>
+<h3 id="42-為壽命適應而做的-meta-最佳化">4.2 為壽命適應而做的 meta-最佳化</h3>
+<ul>
+<li><strong>無梯度 vs. 基於梯度</strong>：LPG 等用 meta-gradient 更新學到的損失，跨多步更新時須做時間反向傳播（BPTT），帶來穩定性問題（尤其 meta-train 初期更新規則不穩、內迴圈策略梯度可能呈混沌），且記憶體限制迫使反向傳播視窗截斷到遠低於訓練時程的步數→<strong>短視代理目標</strong>，可能阻止其有效以 agent 壽命為條件。</li>
+<li><strong>ES 是有吸引力的替代</strong>：可對無限多內迴圈更新步數最佳化、無額外記憶體成本，故能對 agent<strong>整個壽命</strong>最佳化——目標變成「訓練結束時的回報」而非截斷更新後的回報。</li>
+<li><strong>把 ES 適配到多任務 meta-learning——antithetic task sampling</strong>：對大型/連續任務分佈，無法對每個候選評估其在整個分佈上的期望適應度；對每個候選只用單一任務則 meta-更新偏差大。折衷：每個候選 ϵ_i 在不同任務 e_i 上評估，但會增大更新方差（尤其回報未跨任務正規化時）。解法是<strong>對偶任務取樣</strong>：建立在 antithetic sampling 之上（成對評估 <code>x+σϵ</code> 與 <code>x−σϵ</code> 以降方差），這裡讓<strong>每一對對偶候選在同一個隨機抽到的任務上評估</strong>。實務上先對該對適應度做 <strong>rank transformation</strong>（等同選表現較佳的成員），藉此跨任務正規化（每個任務回傳均勻適應度），實驗中穩定了訓練並提升表現，故所有多任務 ES 最佳化都採此法。</li>
+</ul>
+<h2 id="5-實驗">5. 實驗</h2>
+<h3 id="51-設定">5.1 設定</h3>
+<p>LPG/LPO 皆用參考超參。LPG 採「ES + 對偶任務取樣」meta-最佳化（5.3 節才把 ES 與原 meta-gradient 做消融）；LPO 全程用 ES。全程用 <strong>JAX</strong> 實作、用 <strong>evosax</strong> 做演化。訓練環境沿用原作：LPG 在連續分佈的 <strong>Grid-World</strong>（每任務可變時程）多任務 meta-train；LPO 在**單一環境（MinAtar Space Invaders、固定時程）**meta-train。測試：LPO 在 MinAtar 與 <strong>Brax</strong>（連續控制）套件、用 PureJaxRL 的 PPO 超參；LPG 在 held-out Grid-World 與 Minigrid、跨多種訓練時程。</p>
+<h3 id="52-基準評估">5.2 基準評估</h3>
+<ul>
+<li><strong>壽命條件化使其能適應可變訓練時程</strong>：TA-LPG 在所有時程上最終回報都一致高於 LPG——短時程上於「sparse」任務只用 LPG <strong>1/8 的訓練步數</strong>就達最高表現；長時程上於「dense」任務在 LPG 已停滯後仍持續進步。觀察到：長時程的 TA-LPG 在每一步常被短時程版「壓制」，但長時程版會在超過短時程後達到更高回報——體現「犧牲訓練中表現以換取更佳最終回報」（即探索 vs 利用權衡）這個被發現的理想學習模式。與「LPG + 啟發式學習率排程」相比，啟發式排程對 LPG 影響甚微、TA-LPG 仍勝出，顯示「靜態目標函數 + 啟發式排程」不足，凸顯時間感知目標函數的成功。</li>
+<li><strong>壽命條件化改善 OOD 環境表現</strong>：TA-LPO 在 MinAtar 與 Brax 套件上顯著勝過 LPO 與 PPO——而 LPO/TA-LPO <strong>只在 MinAtar 的 Space Invaders meta-train</strong>。MinAtar 超參訓練 10M 步、rollout 長 128；Brax 訓練 50M 步、rollout 長 5——顯示學到的策略目標對不同超參穩健。TA-LPO 常在訓練末期才超越 PPO，暗示 PPO <strong>過早收斂</strong>（RL 常見失敗模式），意味 lifetime awareness 或可緩解此問題。</li>
+</ul>
+<h3 id="53-學到更新的分析">5.3 學到更新的分析</h3>
+<ul>
+<li><strong>對訓練時程的適應</strong>：TA-LPG 的策略熵與更新範數隨時程出現適應。兩模型策略熵都隨訓練衰減，但 TA-LPG 在時程越長時熵衰減越慢（最終達相近最小熵，超過 25 步時程後）——反映「維持高熵直到訓練後期」的均衡探索。LPG 則學到時程無關的更新，導致靜態熵退火排程，故長時程要維持探索性策略就得犧牲短時程表現。更新範數亦類似：平均更新範數與其增長率都與訓練時程反比。</li>
+<li><strong>對相對訓練步的適應（TA-LPO，可視化目標導數；x 軸＝似然比 p、y 軸＝優勢 A、顏色＝梯度）</strong>：兩個關鍵特徵——
+<ul>
+<li><strong>非對稱 Rollback 排程</strong>：在 n=0，左下象限（A&lt;0 且 p&lt;1）有大片正值區，暗示演算法不是裁剪負優勢梯度，而是做 <strong>rollback</strong>（比 clipping 更激進、對極端比率反轉梯度）；右上象限（A&gt;0 且 p&gt;1）仍為正，暗示對正優勢完全不裁剪——對應「樂觀」目標，與原 LPO 分析吻合。但在 n=N 恰好相反：對正優勢做 rollback、對負優勢不裁剪，對應訓練末期的高度<strong>風險規避</strong>。</li>
+<li><strong>隱式熵正則化排程</strong>：n=0 時梯度平均偏正（鼓勵提高所有取樣動作機率＝<strong>最大化熵</strong>）；n=N 時相反（<strong>最小化熵</strong>）。整體：TA-LPO 在 n=0 像 LPO（樂觀、最大化熵），隨時間變得悲觀、抑制熵。</li>
+</ul>
+</li>
+<li><strong>meta-gradient 學不到自適應更新</strong>：用 meta-gradient 訓練的 TA-LPG 在所有時程上回報都更低、且更新範數<strong>對時程無一致適應</strong>（雖會回應相對步 n/N，但各時程排程幾乎相同）；ES 版才學到適應。佐證「meta-gradient 方法無法學到時間感知、截斷式 meta-最佳化不足以發現長視演算法」。</li>
+</ul>
+<h2 id="6-結論">6. 結論</h2>
+<p><strong>總結</strong>：提出一族<strong>時間感知</strong>的參數化 RL 目標函數。meta-train 後，學到的目標函數展現對 agent 壽命的適應、對未見訓練時程與環境有強泛化；它們納入隨學習改變的自適應母題，高層行為呈現「訓練過程中由樂觀轉向悲觀」。並證明<strong>演化最佳化是發現「能有效做壽命條件化」之 RL 演算法的關鍵因素</strong>。</p>
+<p><strong>局限</strong>：TA-LPG 難取得強（理論）穩健性保證（不利可靠部署）；LPO 路線 meta-learn 的空間受限較多、表達力可能較弱。</p>
+<p><strong>未來</strong>：本文只考慮以時間資訊為條件；未來可再增廣更多資訊（optimizer 統計、網路架構、任務資訊）；最終或可移除這些手挑增補，以黑箱 meta-learning 純粹 in-context 地做 RL。</p>
+<p>（附錄含超參、完整訓練曲線、啟發式排程對比等，此處從略。程式碼：github.com/EmptyJackson/groove。）</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2402.05828_Temporally_Aware_RL_Algorithms.%E6%91%98%E8%A6%81.html"><code>../summarize/2402.05828_Temporally_Aware_RL_Algorithms.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

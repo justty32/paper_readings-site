@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2303.11366_Reflexion.zh-TW.html">回 2303.11366_Reflexion.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<p>在決策、推理、程式三類任務評估：HotPotQA（搜尋式問答）、AlfWorld（家務多步任務）、HumanEval/MBPP/LeetcodeHard（程式撰寫）。最顯著結果：AlfWorld +22%、HotPotQA +20%、HumanEval +11%。</p>
+<h3 id="41-序列決策alfworld">4.1 序列決策：ALFWorld</h3>
+<p>AlfWorld 是基於 TextWorld 的文字互動環境，含 134 個環境、六類任務（找隱藏物、搬移物件、以物操物）。用 ReAct 當動作生成器。因環境只在任務完成時給訊號，需自我評估，故實作兩種：LLM 自然語言分類，與手寫啟發式（若同一動作同一回應重複超過 3 個循環、或當前環境動作數超過 30，即判定規劃低效並觸發自我反思）。基線觸發時直接重置重試（跳過反思）；Reflexion 則用反思找錯、更新記憶、再重試。記憶截斷為最近 3 條反思。</p>
+<p><strong>結果</strong>：ReAct+Reflexion 用簡單啟發式偵測幻覺與低效規劃，解出 130/134 題，並在 12 次連續試驗中持續學會更多題；ReAct-only 在第 6–7 試就停止進步。<strong>分析</strong>：基線常見錯誤是智能體「以為拿到某物件卻其實沒拿到」，之後在長軌跡中無法回溯找錯。Reflexion 用反思把長而失敗的軌跡蒸餾成可當「自我提示」的經驗，幾乎消除此類錯誤。長期記憶在兩種情形幫上忙：(1) 長軌跡中的早期錯誤易被辨識，可換動作或換長期計畫；(2) 待查表面/容器太多時，能跨試驗累積經驗徹底搜尋房間。ReAct-only 收斂在 22% 幻覺率且無長期恢復跡象。</p>
+<h3 id="42-推理hotpotqa">4.2 推理：HotpotQA</h3>
+<p>HotPotQA 為維基百科式、11.3 萬題的多跳問答。為隔離「純推理」能力，實作 Reflexion+CoT，做 Q→A 與 Q,C_gt→A（C_gt＝真值脈絡）；為測「整體問答」（需推理＋動作選擇），實作 Reflexion+ReAct（用維基 API 檢索脈絡）。試驗間用 exact-match 給二元成功訊號，再由自我反思迴圈放大，記憶大小 3。</p>
+<p><strong>結果</strong>：Reflexion 大幅超越所有基線。ReAct-only、CoT-only、CoT(GT)-only 在溫度 0.7 下<strong>無法</strong>在後續試驗解出首試失敗的題目。CoT(GT) 因有真值脈絡故準確率較高，但仍有 39% 題答錯；Reflexion 在無真值答案下幫智能體修正、準確率提升 14%。<strong>分析（消融）</strong>：以 CoT(GT) 為基線，先加「情節記憶（EPM，納入最近軌跡）」，再加標準自我反思步驟。結果顯示自我反思較「僅情節記憶」再帶來 <strong>+8% 絕對增益</strong>，支持「refinement-only 不如 reflection-guided refinement」。</p>
+<h3 id="43-程式">4.3 程式</h3>
+<p>在 MBPP、HumanEval、LeetcodeHardGym 上評估 Python 與 Rust 程式撰寫。用 MultiPL-E 編譯器把 HumanEval/MBPP 子集翻成 Rust（示範 Reflexion 對直譯與編譯語言皆語言無關）。LeetcodeHardGym 含 40 題 hard、發布於 GPT-4 預訓練截止（2022-10-08）之後。程式任務可用更接地的自我評估（自生單元測試套件），故符合 pass@1 資格：用 CoT 生成多樣測試、以能否建構有效 AST 過濾語法、取樣最多 6 條組成測試套件 T。程式智能體記憶上限設 1 條經驗。</p>
+<p><strong>結果（表 1，pass@1）</strong>：HumanEval PY 91.0（前 SOTA GPT-4 80.1）；HumanEval RS 68.0（GPT-4 60.0）；MBPP PY <strong>77.1</strong>（GPT-4 80.1，<strong>唯一落後</strong>）；MBPP RS 75.4（GPT-4 70.9）；Leetcode Hard PY 15.0（GPT-4 7.5）。</p>
+<p><strong>分析</strong>：自我反思程式智能體受限於「能否寫出多樣、完整的測試」。若測試套件不穩，可能出現：<strong>偽陽性</strong>（所有測試在錯誤解上通過→過早回報無效提交）或<strong>偽陰性</strong>（測試在正確解上失敗）。Reflexion 下<strong>偽陰性優於偽陽性</strong>——智能體可藉反思辨識出錯誤測試、保留原本正確的實作。表 2 顯示 MBPP Python 的偽陽性率 16.3%，遠高於 HumanEval Python 的 1.4%，正是 MBPP PY 落後的主因。</p>
+<p><strong>消融研究（表 3，HumanEval Rust 最難 50 題，GPT-4 為底）</strong>：(a) 拿掉內部測試生成與執行 → 52% vs 60%（基線），代表沒有單元測試時智能體無法判斷當前實作是否正確、被迫每輪都改動、做出有害編輯；(b) 拿掉失敗後的自然語言反思步驟 → 不優於基線，代表僅靠「測試生成＋編譯」能抓語法/邏輯錯，但修正並未反映這些指示。此結果顯示：<strong>近期若干「盲目試錯除錯、無自我反思」的方法，在較難任務（如寫複雜 Rust 程式）上是無效的</strong>。</p>
+<h2 id="5-局限">5. 局限</h2>
+<p>Reflexion 本質是用自然語言做策略最佳化——策略最佳化雖能藉經驗改進動作選擇，仍可能陷入<strong>非最優的局部極小</strong>。本研究把長期記憶限制為有最大容量的滑動窗口，鼓勵未來以向量嵌入資料庫或傳統 SQL 資料庫等更進階結構擴充。就程式而言，TDD 在指定精確輸入輸出映射時有諸多實務限制：非確定性生成函式、與 API 互動的不純函式、隨硬體規格變動輸出的函式、以及難以預測的並行/並發行為。</p>
+<h2 id="6-更廣泛影響">6. 更廣泛影響</h2>
+<p>LLM 愈來愈常與外部環境（網際網路、軟體、機器人）及人類互動。本工作有潛力賦能這些智能體提升自動化與效率，但也放大濫用風險，需在安全與倫理上投入更多。另一方面，RL 長期受困於黑箱策略、可解釋性與對齊困難；「言語」強化學習或能讓自主智能體更可解釋、可診斷——例如工具使用太複雜難懂時，可監看自我反思以確保使用工具前意圖正當。</p>
+<h2 id="7-結論">7. 結論</h2>
+<p>本文提出 Reflexion，利用言語強化教智能體從過去錯誤中學習，實證顯著超越目前廣泛使用的決策方法。未來可把傳統 RL 中深入研究的技術（自然語言中的 value learning、off-policy 探索）引入。</p>
+<h2 id="8-可重現性">8. 可重現性</h2>
+<p>強烈建議在隔離的執行環境中進行自主寫碼實驗，因生成程式碼在執行前未經驗證。</p>
+<h2 id="附錄要點">附錄要點</h2>
+<ul>
+<li><strong>附錄 A（不同模型）</strong>：以 starchat-beta 跑 HumanEval Python，Baseline 與 Reflexion pass@1 皆 0.26（無改善）——「能指定自我修正」是<strong>更強、更大模型的湧現特質</strong>。HotPotQA 上不同模型皆有增益（如 CoT(GT)+text-davinci-003 由 0.60→0.77、+gpt-4 由 0.68→0.80；ReAct+gpt-4 由 0.39→0.51）。</li>
+<li><strong>附錄 B（決策範例）</strong>：一則 AlfWorld 軌跡——首試因「先找 mug 再找 desklamp」的低效規劃失敗；反思認知到「應先找 desklamp 再找 mug」，第二試即以簡潔動作序列成功。<strong>B.1 WebShop 限制</strong>：Reflexion 難跳脫需高度創造性探索才能脫離的局部極小；WebShop（電商導購）四次試驗後仍無改善、也生不出有用反思，結論是它無法解「需大量多樣性與探索」的任務（AlfWorld/HotPotQA 因可行動作可見或搜尋空間較寬容而較成功）。</li>
+<li><strong>附錄 C/D（程式與推理 prompt 範例）</strong>：給出 Actor 與 Self-Reflection 的指令模板與完整範例（如 HotPotQA 先搜錯標題、反思後改搜對的角色而答對；CoT+Reflexion 修正「共同職業」誤判等）。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2303.11366_Reflexion.%E6%91%98%E8%A6%81.html"><code>../summarize/2303.11366_Reflexion.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

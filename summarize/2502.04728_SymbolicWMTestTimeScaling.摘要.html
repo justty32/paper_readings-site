@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Generating Symbolic World Models via Test-time Scaling of Large Language Models 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zhouliang Yu、Yuhuan Yuan、Tim Z. Xiao、Fuxiang Frank Xia、Jie Fu、Ge Zhang、Weiyang Liu</p><p>日期：2025-02-07（v1，cs.AI）</p><p>arXiv：2502.04728</p><p><a href="https://arxiv.org/abs/2502.04728" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="generating-symbolic-world-models-via-test-time-scaling-of-large-language-models-重點摘要">Generating Symbolic World Models via Test-time Scaling of Large Language Models 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>不靠額外訓練，只靠拉大 test-time 運算量：先用 Best-of-N 取樣找一個品質夠好的初始 PDDL domain，再用 instance verbalized machine learning（iVML）一輪輪自我批評、自我修正，讓開源 LLM 生成的 PDDL world model 品質超越 o1-mini，把規劃交還給 A* 這類經典搜尋演算法，而不是讓 LLM 自己硬猜下一步。</p>
+<h2 id="問題">問題</h2>
+<p>直接叫 LLM 用自然語言規劃，在 Barman、Termes 這類約束多、狀態轉移複雜的任務上容易規則違反、狀態估計錯誤、目標達成誤判，連 o1 也不例外——論文附圖顯示 o1 規劃 Termes 時把不相鄰的格子誤判成相鄰，還把自己的錯誤計畫判定為正確。作者認為根源是自然語言規劃本質上是 n-gram 式的文字接龍，缺乏顯式、無歧義的狀態表示。PDDL 提供形式化語法，可精確描述謂詞與動作的前置條件、效果，天生適合驗證與搜尋。但直接叫 LLM 生成 PDDL domain 品質很差：PDDL 訓練資料稀缺，且要在整份 domain 裡維持謂詞與動作間的邏輯一致性本身就難。</p>
+<h2 id="方法兩階段-test-time-scaling">方法：兩階段 test-time scaling</h2>
+<ul>
+<li><strong>Best-of-N（BoN）初始化（§3.2）</strong>：高溫度平行生成多個候選 PDDL domain，依生成 token 的 log-likelihood 加總打分，取分數最高的 top-K 候選當精修起點。BoN 負責探索，但取樣數過大後準確率就飽和甚至下滑。</li>
+<li><strong>iVML 精修（§3.3）</strong>：把 verbalized machine learning 改造成單一實例的最佳化——用自然語言而非數值參數化函式。每輪由 optimizer LLM 對照原始描述檢查目前 PDDL domain 的邏輯一致性，產出文字批評（當作「verbalized gradient」）；再由 learner LLM 依批評更新 domain。iVML 負責利用，持續改善但容易卡在區域最優，靠 BoN 給它夠好的起點。</li>
+</ul>
+<p><strong>驗證器沒有 ground truth 怎麼篩</strong>：iVML 的 optimizer LLM 本身就是驗證器，但它不是拿候選去比對一份「正確答案」PDDL，而是把候選 domain 拿回去對照原始輸入描述，檢查謂詞元數、前置條件與效果是否自我一致。論文舉例：TyreWorld 的 fetch 動作，BoN 生出的前置條件錯寫成「container 是 closed」，iVML 對照描述抓出應該是「not closed」並修正。這是一種自我一致性稽核，不需要外部標註。真正用來算成功率的是外部工具 VAL——只檢查語法正確性與計畫可執行性的形式驗證器，驗不到語意是否貼合原始意圖。作者在結論裡明白承認這是限制。</p>
+<h2 id="作者報告的結果">作者報告的結果</h2>
+<p>PDDL domain 生成（IPC benchmark，283 個 NL2Domain、332 個 Prob2Domain，成功率看能否通過 VAL）：Qwen2.5-Coder-7B 套 iVML-5-BoN-8 後 NL2Domain 85.2%、Prob2Domain 71.4%（平均 78.3%），大幅超過 o1-mini 的 41.7%、33.7%；同一設定換 Qwen2.5-Instruct-32B 平均達 88.6%，是全表最高分，也超過 o1-preview 的 54.1%。PDDL problem 生成（Planetarium benchmark）：Qwen2.5-Coder-7B 用 BoN-16 達 99.24%，加 iVML-1 到 99.60%，追平甚至超過在 13 萬筆資料上微調過的 Gemma-7B（98.79%）與 Mistral-7B(99.00%)，GPT-4o zero-shot 只有 35.12%。PDDL 抽象 vs. LLM 直接當 planner(plan accuracy)：BoN-16-iVML-5 在 Floortile、Barman、Tyreworld、Grippers、Termes 上全部 100%，Blockworld 81.0%；對照組 o1-preview 用 Pass@8 也才 Floortile 33.3%、Termes 19.0%。（以上均為作者自報）</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值/接點</h2>
+<p>這篇的核心結構——把模糊的自然語言描述先轉成 PDDL 這種結構化、可驗證的中介表示，再交給 A* 這種確定性演算法規劃，而不是讓 LLM 自己硬猜下一步——正是「模糊意圖→結構化意圖→固化成確定性程式碼」這條管線的乾淨案例。可以直接借的地方有兩個。</p>
+<p>第一，§3.2 的 BoN + iVML 兩階段設計本身就是一條成本梯度：BoN 便宜（平行取樣、單輪打分），先探索出一個夠好的起點；iVML 貴（逐輪 LLM 呼叫、序列化精修），只用在 BoN 已篩過的候選上做利用。這種「先便宜探索、再貴精修」的分工，可以直接套進 ai_core 決定何時該升級運算成本的判斷邏輯，不必每次固化都跑一輪完整迭代精修。</p>
+<p>第二、更重要的是驗證器設計對 §3.4 憑證准入治理的警示。論文把驗證拆成兩層：iVML 內部用 LLM 自我批評當精修訊號，外部用 VAL 這種確定性工具當是否成功的准入判準。作者自己承認 VAL 只驗語法與可執行性，驗不到語意是否貼合原始意圖——「通過驗證」和「語意正確」是兩件事，而且沒有真正的 ground truth 可以核對語意這一層。這對 §5 固化引擎是個具體提醒：若 ai_core 也用 LLM 自我批評驅動迭代修正，決定「要不要固化」的准入閘門就不能只信任同一顆 LLM 的自我評分，得有獨立、確定性的檢查（型別、介面契約、可執行性測試）當最後一關，並誠實記錄這個閘門驗不到什麼，避免把「通過閘門」誤讀成「完全正確」。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2502.04728_SymbolicWMTestTimeScaling.zh-TW.html"><code>../translate/2502.04728_SymbolicWMTestTimeScaling.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

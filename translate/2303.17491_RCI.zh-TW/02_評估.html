@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_評估 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2303.17491_RCI.zh-TW.html">回 2303.17491_RCI.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E8%A8%8E%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-評估">3. 評估</h2>
+<h3 id="31-推理任務">3.1 推理任務</h3>
+<p>作者先在推理基準上驗證 RCI 的效果，與 CoT 比較：包括 Few-Shot-CoT 與 Zero-Shot-CoT（加上「Let&#x27;s think step by step」）。依 Kojima 等人的設定，用兩類共 8 個資料集（算術與常識），底層模型改為 InstructGPT-3+RLHF（gpt-3.5-turbo），沿用 CoT 的 prompt、答案抽取與清洗方式。</p>
+<p><strong>最大 RCI 迴圈數設為 2</strong>，且一旦輸出與真值一致就停止迴圈。作者明言：<strong>若缺少這個外部回饋機制，RCI 容易產生「偽陰性批評」，反而導致效能下降</strong>——實驗顯示沒有外部回饋的 RCI 在一半基準上只達到零樣本水準，其餘則更差（附錄表 17）。</p>
+<p><strong>與零樣本比較（表 1）</strong>：Zero-Shot → Zero-Shot+RCI 在八個基準上全面提升——GSM8K 77.95→85.43、MultiArith 94.48→97.64、AddSub 88.58→89.76、SVAMP 80.70→84.65、SingleEq 86.61→94.49、AQuA 60.23→67.32、CommonSenseQA 64.56→68.11、StrategyQA 48.81→61.81。值得注意的是，RCI 連在<strong>不需要多步推理</strong>的 SingleEq 與 AddSub 上都有增益，這點與 CoT 類方法不同（CoT 在簡單推理任務上通常無用）。此外 RCI 在常識推理上增益顯著；Wei 等人曾指出只有 540B 的 PaLM 才能從 Few-Shot-CoT 受益，而 RCI 用 175B 的 InstructGPT-3+RLHF 就有增益。</p>
+<p><strong>與 CoT 比較（表 2，算術任務）</strong>：Zero-Shot+RCI 在五個任務中有四個勝過 Zero-Shot CoT 與 Few-Shot CoT（例外是 MultiArith，該任務標準 prompting 已有 96.06% 正確率，改進空間有限）。RCI 與兩種 CoT 基線有<strong>綜效</strong>：Zero-Shot CoT+RCI 與 Few-Shot CoT+RCI 在五個任務中的四個取得最高分（Few-Shot CoT+RCI：GSM8K 84.25、MultiArith 99.21、AddSub 90.55、SVAMP 87.40、SingleEq 93.70）。作者建議未來把 RCI 與 self-consistency 等方法結合。</p>
+<h3 id="32-電腦任務">3.2 電腦任務</h3>
+<h4 id="321-設定">3.2.1 設定</h4>
+<p><strong>MiniWoB++ 基準。</strong> MiniWoB++ 是 MiniWoB 的擴充，為網頁式模擬環境，涵蓋從單純按鈕點擊到需要進階推理（如解數學題）的複合任務。動作空間有兩類：打字（任意字元或 Backspace、Enter 等特殊鍵）與滑鼠移動點擊（與可見 HTML 元素互動）；所有動作都透過<strong>在初始 prompt 中以正規表示式定義的自然語言指令</strong>執行。與先前工作不同的是，打字動作<strong>不採用字典式（從預定義文字清單中挑選）</strong>，而是要求 agent 預測正確的輸入文字，因此對多樣電腦任務的泛化能力更好。<strong>狀態空間僅由 HTML 原始碼構成。</strong></p>
+<p><strong>模型選擇。</strong> 使用 GPT-3（davinci）、InstructGPT-3（text-davinci-002）、InstructGPT-3+RLHF（gpt-3.5-turbo、gpt-4）。主要評估以後者為主，前兩者用於消融。所有模型皆透過 OpenAI API 取得（2023 年 1 月至 3 月間），最大 token 長度 256、temperature 0（貪婪解碼）。</p>
+<p><strong>評估任務。</strong> 採用 <strong>55 個任務</strong>以便與基線公平比較，並特意納入需要自由形式文字輸入、先前工作成功率幾近為零的困難任務（如 terminal）；部分常見任務因 UI 元件的 HTML 過長而被排除。</p>
+<p><strong>評量指標。</strong> 沿用成功率（獲得正向獎勵的 episode 比例）。失敗模式有二：產生無法執行的動作（在隱式 RCI 步驟後仍不可執行則立即失敗），以及計畫執行完畢卻未完成任務。</p>
+<blockquote>
+<p><strong>圖 4 要旨</strong>：(a) 與基線的平均表現比較，RCI agent 在 MiniWoB++ 上達到 state-of-the-art；(b) 表現與專家訓練資料量的關係，本方法在<strong>使用最少資料</strong>的情況下達到與現有最佳分數相當的表現。</p>
+</blockquote>
+<h4 id="322-在-miniwob-上勝過基線">3.2.2 在 MiniWoB++ 上勝過基線</h4>
+<p>結果較用 12K 條專家示範微調的 <strong>WebN-T5-3B 高出 41%</strong>；也勝過需要多一個數量級環境互動的 RL 方法。所有基線中唯一整體勝過本方法的是 <strong>CC-Net</strong>（RL 與模仿學習共同訓練），但 CC-Net 在部分任務使用<strong>字典式打字動作</strong>（從預定義清單挑文字），與本文完全生成式的做法不可直接比較；與 <strong>CC-Net（去除字典式動作）</strong> 這個對等比較對象相比，本方法<strong>高出 6%</strong>。</p>
+<p>按類別彙整各任務最佳表現後：本方法<strong>較 SL 的 SotA 高 37 個百分點、較 RL 的 SotA 高 27 個百分點</strong>；即使對手（LLM 類 SotA）同時使用微調與 prompt 中的少樣本範例，RCI 仍勝出。相較同時使用大量專家資料與線上互動的 <strong>SL+RL 合併 SotA</strong>，本方法也<strong>些微領先（不到 1 個百分點）</strong>。</p>
+<p>觀察到三類主要失敗模式：(i) 需要<strong>長程規劃</strong>的任務表現較差（guess-number、search-engine、use-spinner）；(ii) 需要<strong>多步推理</strong>時難以選擇適當動作（tic-tac-toe、use-autocomplete）；(iii) 依賴 <strong>HTML 視覺渲染</strong>才能解的任務分數較低（count-shape）。</p>
+<h4 id="323-最低的樣本複雜度">3.2.3 最低的樣本複雜度</h4>
+<p>CC-Net 使用 <strong>240 萬條專家示範</strong>（相當於 6,300 小時，由 77 位人類參與者在 104 個任務上收集）做行為複製，平均<strong>每任務 23,076 條</strong>；WebN-T5-3B 使用 12,000 條專家示範微調 T5。相對地，本方法不更新任何參數，只把 <strong>2～3 條示範放進 prompt</strong> 做 in-context learning 來偏置模型輸出，因此能以極少示範泛化到未見任務。結果是：成功率高於所有基線，而所需樣本<strong>較 WebN-T5-3B 少 120 倍、較 CC-Net 少 11,000 倍</strong>。</p>
+<h4 id="324-接地的消融">3.2.4 接地的消融</h4>
+<p>作者分別移除三個階段的 RCI prompting：任務接地消融＝移除計畫採樣階段，直接由狀態產生動作；狀態接地消融＝直接把 agent 接地更新套用在任務接地動作上；agent 接地消融＝讓狀態接地動作直接成為最終輸出。任務依難度分三級（easy [0.9,1]、medium [0.6,0.9)、hard [0,0.6)）。</p>
+<p>結果顯示<strong>每一種接地都不可或缺，且三者對整體成功率的貢獻幾乎相等</strong>；部分原因是三種接地並非互斥而是互補，一種接地的改進會同時嘉惠其他接地（附錄 E 有跨接地改進的實例，例如狀態接地順手刪掉計畫中多餘的打字指令、或補回被漏掉的標點）。此外：<strong>狀態接地</strong>在初始狀態資訊不足的情境（如 terminal）特別關鍵；<strong>任務接地</strong>在需要長程動作計畫的任務（如 click-checkboxes-large）大幅提升成功率；<strong>agent 接地</strong>顯著提升動作的可執行性——<strong>即使在簡單任務上，移除 agent 接地也會讓成功率下降 60%</strong>。這點尤其重要，因為先前工作是靠額外訓練的模型元件來做接地，本文則<strong>完全仰賴語言模型自身的推理能力</strong>。</p>
+<h4 id="325-語言模型的消融">3.2.5 語言模型的消融</h4>
+<p>比較 GPT-3、InstructGPT-3、InstructGPT-3+RLHF（gpt-3.5-turbo）在不同難度任務上的平均成功率。結果顯示<strong>未經指令微調的 LLM 難以有效完成任務</strong>；作者認為這可能與缺少精細的 prompt engineering 有關，因為觀察上 GPT-3 對 HTML 程式碼、正規表示式與推理本身其實具備足夠理解力。</p>
+<h2 id="4-局限">4. 局限</h2>
+<ul>
+<li>主要聚焦 InstructGPT-3+RLHF（gpt-3.5-turbo、gpt-4），<strong>RCI 對其他模型的泛化能力尚未探索</strong>。</li>
+<li><strong>長 HTML 難以處理</strong>：現行模型難以應付龐大的 HTML 狀態；雖有人建議剪除非關鍵元素，但這件事本身並不簡單。LLM 的<strong>脈絡長度限制</strong>是根本約束，可能需要架構調整或新的解析方法。</li>
+<li>動作空間主要限於點擊與打字，限制了網頁導覽能力，需要更多元的動作。</li>
+<li>agent <strong>只顧短期決策</strong>，忽略了長期策略的必要性，對需要協調序列的任務尤其不利。</li>
+<li>現代網站複雜的 UI 元件難以僅由 HTML 完整理解，凸顯<strong>在狀態定義中加入更多模態</strong>的需求。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

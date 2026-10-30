@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《AutoGen：透過多代理對話賦能下一代 LLM 應用（Enabling Next-Gen LLM Applications via Multi-Agent Conversation）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Qingyun Wu, Gagan Bansal, Jieyu Zhang, Yiran Wu, Beibin Li 等（Microsoft Research / Penn State / U. Washington / Xidian）</p><p>日期：2023-08</p><p>arXiv：2308.08155</p><p><a href="https://arxiv.org/abs/2308.08155" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="autogen透過多代理對話賦能下一代-llm-應用重點摘要">《AutoGen：透過多代理對話賦能下一代 LLM 應用》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>AutoGen（可對話代理編排框架）</strong>：把複雜的 LLM 應用工作流統一抽象成<strong>多個「可對話代理（conversable agent）」之間的訊息傳遞</strong>，每個代理可任意組合 <strong>LLM／人類輸入／工具（程式碼或函式執行）</strong> 三種後端；再用**「對話式程式設計（conversation programming）」**——以自然語言＋Python 混合來定義代理的「計算」與「控制流」——就能組出從靜態到動態、含人類介入的各式協作模式，讓開發者用極少的程式碼跨數學、程式、問答、決策、賽局等領域快速搭建高效能多代理系統。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>單一 LLM 代理難以擴展到高複雜度任務；而把「多代理協作」落地時，開發者面臨兩個核心設計難題：(1) 如何設計<strong>能幹、可重用、可客製、能有效協作</strong>的個別代理；(2) 如何提供一個<strong>統一、直觀的介面</strong>去容納各式各樣的對話模式（單／多輪、不同人類介入程度、靜態 vs 動態拓撲），且允許用自然語言或程式碼來編排。既有系統各有侷限：AutoGPT／LangChain Agents／Transformers Agent 是單代理；BabyAGI／CAMEL／MetaGPT／Multi-Agent Debate 雖多代理，但<strong>多為靜態對話模式、不支援工具執行或人類介入</strong>（見附錄表 1 對照）。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>可對話代理（Conversable Agents，§2.1）</strong>：代理＝有特定角色、能收發訊息並維護自身脈絡的實體；能力由三類可組合後端賦予——<strong>LLM</strong>（角色扮演、隱式狀態推斷、給／收回饋、寫碼）、<strong>人類</strong>（在特定回合徵求輸入，可設頻率與跳過）、<strong>工具</strong>（執行程式碼或函式呼叫）。內建 <code>ConversableAgent</code> 為最高層抽象，預設可用三者；<code>AssistantAgent</code>（LLM 後端的 AI 助手）與 <code>UserProxyAgent</code>（代理人類、執行碼／函式）為兩個預設子類，很多任務只靠這兩者組合即可解。</li>
+<li><strong>對話式程式設計（Conversation Programming，§2.2）</strong>：把工作流拆成兩件事——<strong>計算</strong>（代理如何算出回應）與<strong>控制流</strong>（何時、依何條件計算），且兩者皆以「對話為中心」。核心機制：
+<ul>
+<li><strong>統一介面＋自動回覆（auto-reply）</strong>：所有代理有 <code>send</code>/<code>receive</code>/<code>generate_reply</code>；收到訊息即自動觸發回覆並回送，除非滿足終止條件——<strong>無需額外的中央控制平面</strong>，對話流自然湧現。可註冊自訂回覆函式改變行為。</li>
+<li><strong>自然語言＋程式語言融合控制</strong>：用自然語言 prompt 引導（如指示助手偵測錯誤就重寫碼、任務完成回覆「TERMINATE」、把輸出約束成便於下游工具解析的結構）；用 Python 指定終止條件、人類介入模式、工具執行、最大自動回覆數；兩者可互相轉換（自訂回覆函式內叫 LLM ↔ LLM 提出的 function call）。</li>
+<li><strong>動態對話</strong>：靠自訂 <code>generate_reply</code>、function call、或內建 <code>GroupChatManager</code>（動態選下一位發言者→廣播）實現不固定拓撲的群聊。</li>
+</ul>
+</li>
+</ul>
+<h2 id="結果六個應用-a1a63-與附錄-d">結果（六個應用 A1–A6，§3 與附錄 D）</h2>
+<ul>
+<li><strong>A1 數學（MATH，GPT-4）</strong>：直接重用兩個內建代理即勝過 vanilla GPT-4、Multi-Agent Debate、LangChain ReAct，及商用 ChatGPT+Code Interpreter／+Wolfram Plugin；<strong>全 5000 題測試集準確率 69.48% vs GPT-4 的 55.18%</strong>。並示範人類介入（<code>human_input_mode='ALWAYS'</code>）與多使用者（student／expert）情境。</li>
+<li><strong>A2 檢索增強問答／生成（RAG）</strong>：兩代理（Retrieval-augmented User Proxy ＋ Assistant，含 Chroma 向量庫）；創新的<strong>互動式檢索</strong>——找不到資訊時回「UPDATE CONTEXT」觸發再檢索而非終止；消融顯示此機制作用顯著。</li>
+<li><strong>A3 文字世界決策（ALFWorld）</strong>：兩代理（規劃＋執行）整合 ReAct；加入一個<strong>grounding agent</strong> 適時注入常識知識、避免陷入錯誤迴圈，<strong>平均帶來 15% 效能提升</strong>。</li>
+<li><strong>A4 多代理寫碼（OptiGuide）</strong>：Commander＋Writer＋<strong>Safeguard</strong> 三代理；核心工作流程式碼由 <strong>430+ 行縮到 100 行（約 4 倍精簡）</strong>；消融顯示多代理設計把辨識不安全程式碼的 F1 提升 <strong>8%（GPT-4）／35%（GPT-3.5-turbo）</strong>；並省約 3 倍使用者時間。</li>
+<li><strong>A5 動態群聊</strong>：<code>GroupChatManager</code> 以角色扮演式 prompt 選發言者，較純任務式 prompt 有更高成功率與更少 LLM 呼叫。</li>
+<li><strong>A6 對話式西洋棋</strong>：玩家代理（人或 LLM）＋第三方 <strong>board agent</strong> 驗證每步合法性；消融移除 board agent、改用 prompt 提醒守規，結果出現非法棋步破壞棋局——凸顯確定性驗證節點的必要。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>仍屬<strong>早期實驗階段</strong>；「最佳多代理工作流設計」（幾個代理、角色、拓撲、對話模式、哪部分自動化）尚無通解，留作開放問題。</li>
+<li><strong>完全自主的多代理對話需謹慎</strong>：高自主在高風險應用可能導致級聯失敗、reward hacking、失控；隨規模擴大，代理間對話可能變得難以記錄、除錯與理解（「不可理解的喋喋不休」）。</li>
+<li>LLM 不會完美遵循指令，系統須靠其他機制（如專責驗證代理）處理例外與錯誤；需維持有效的人類監督。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>ai_core 的通用編排層原型（§1）</strong>：AutoGen 正是「多節點計算圖」的一種可落地形態——把工作流表達成<strong>代理節點＋訊息傳遞邊</strong>，其中節點可為 LLM、確定性程式碼（工具執行）或人類；auto-reply 機制讓控制流「無中央控制平面」地湧現，對照 ai_core 想要的「少數 LLM 節點＋多數確定性節點」的圖式編排很有啟發。差別在：AutoGen 走<strong>對話驅動、鬆散自主</strong>路線，而 ai_core 追求「把 LLM 呼叫剃成可靠函數」的確定性收斂——AutoGen 可當上層編排骨架，但其自主對話的不可預測性正是 ai_core 治理原則要收束的對象。</li>
+<li><strong>可插入確定性驗證節點（對應 §3.4「拒絕為預設＋憑證准入」）</strong>：A4 的 <strong>Safeguard 代理</strong>（放行才執行程式碼）與 A6 的 <strong>board agent</strong>（驗證棋步合法性、非法即打回重提）就是「在 LLM 產出與副作用之間插入確定性守門」的具體範例，且兩篇消融都證明<strong>拿掉守門節點就出事</strong>——這為 ai_core「確定性驗證節點＋憑證准入」提供了實證支撐與 API 形態參考。</li>
+<li><strong>與已入庫 EcoAssistant 對照</strong>：EcoAssistant 正是建於 AutoGen 之上（assistant＋code-executor 兩代理＋solution demonstration＋LLM 級聯），可視為 AutoGen 這個「編排底座」上做**成本梯度／級聯路由（ai_core §3.3）**的具體優化案例；讀本篇能理解 EcoAssistant 的框架前提。</li>
+<li>定位：<strong>框架／基礎設施論文＋六個應用實證</strong>，開源（github.com/microsoft/autogen）。歸 <strong>I 類（編排框架／基礎設施）</strong>。適合做多代理編排、工具/人類/程式碼執行插點、對話式工作流設計的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2308.08155_AutoGen.zh-TW.html"><code>../translate/2308.08155_AutoGen.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

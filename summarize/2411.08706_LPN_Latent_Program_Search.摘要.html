@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《搜尋潛在程式空間》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Matthew V. Macfarlane、Clément Bonnet（University of Amsterdam，共同一作）</p><p>日期：2024-11，ARC-AGI／潛在程式空間／測試時搜尋</p><p>arXiv：2411.08706</p><p><a href="https://arxiv.org/abs/2411.08706" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="搜尋潛在程式空間重點摘要">《搜尋潛在程式空間》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>LPN (Latent Program Network)</strong>：把「測試時搜尋」直接內建進神經架構——<strong>編碼器</strong>將 I/O 範例對映進一個<strong>連續潛在程式空間</strong>、<strong>解碼器</strong>把「潛在程式 + 新輸入」逐像素解出輸出、中間用<strong>梯度上升在潛在空間搜尋</strong>最能解釋給定範例的潛在 z;<strong>無需預定義 DSL</strong>、只反傳一小部分參數（比測試時微調 TTT 省）、用均值聚合 I/O 對而擺脫注意力的二次成本與規格長度過擬合。在 ARC-AGI 上<strong>開啟測試時搜尋使 OOD 表現翻倍</strong>（FLOPs 2e11→2e15，OOD 7.75%→15.5%），且勝過 CodeIt (220M) 與 text-davinci (175B) 等更大模型。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>程式合成兩大路線各有痛點：<strong>(1) 歸納式 (inductive)</strong> 生成顯式 DSL 程式 → 手工 DSL 不可擴展、AI 生 DSL 進展有限；<strong>(2) 傳導式/上下文學習 (transductive/in-context)</strong> 直接學 I/O 映射 → 擺脫 DSL 但<strong>難維持與規格一致 (consistency)</strong>、缺結構化測試時適應、靠重度隨機取樣或昂貴梯度微調 （TTT，易過擬合）、且 transformer 自注意力的二次複雜度阻礙規格長度擴展。LPN 想取兩者之長：神經架構的可擴展 + 程式誘導的適應力。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>三組件架構</strong>（圖 1，全程端到端可微）：
+<ol>
+<li><strong>編碼器（System 1 直覺）</strong>：機率式，近似程式潛在的貝氏後驗；每個 I/O 對獨立編碼成多元常態分布，<strong>用均值聚合 → 對規格順序置換不變、規格長度穩健</strong>。</li>
+<li><strong>潛在優化（System 2 搜尋）</strong>：從編碼器均值 z₀ 出發，搜尋更能解釋觀測 I/O 的 z*。兩種實作：<strong>取樣</strong>（從先驗/後驗附近採批次選最高似然，隨潛在維度指數變差）、<strong>梯度上升</strong>（解碼器可微 → 一階法高效搜尋，主用）。</li>
+<li><strong>解碼器</strong>：條件於 （潛在 z + 輸入） 逐像素預測輸出（categorical 交叉熵），不經 DSL。</li>
+</ol>
+</li>
+<li><strong>訓練</strong>：重建損失 + KL 損失（β 加權，類 β-VAE）;reparameterization trick；為適應「測試時會做梯度搜尋」，<strong>訓練時也跑少量 （0–5 步） 梯度上升潛在優化</strong>（重要歸納偏置）；可選對潛在更新做 <strong>stop-gradient</strong>（更省算且測試表現更佳）。</li>
+<li>可視為<strong>半攤銷變分推論 (SVI)</strong>：編碼器做攤銷推論，測試時潛在梯度下降縮小攤銷間隙。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>Pattern 任務（1M 模型）</strong>：無測試時適應全爛 (~3%)；所有 LPN 變體隨梯度步數強擴展；訓練時帶 1 步梯度 (Grad 1) 在 100 步推論下達 <strong>99.5%</strong>（vs Grad 0 訓練 67.5%）→ 證「訓練感知測試時搜尋」的價值；梯度上升遠勝取樣；stop-gradient 更佳。<strong>編碼器初始化是關鍵</strong>（從先驗起始遠差於從編碼器起始）。</li>
+<li><strong>OOD</strong>：訓 1 步梯度 + 推論 100 步達 <strong>88%</strong>;In-Context 與 TTT 皆無法恢復 OOD 模式 (~0–2%)。</li>
+<li><strong>規格長度擴展</strong>：LPN 平滑泛化到訓練未見的規格大小（更多資料仍續升），In-Context 過擬合訓練長度、TTT 需大規格 + 高算力。</li>
+<li><strong>字串/序列任務</strong>（&gt;1 億程式）：TTT 過擬合（微調反降），LPN 穩健。</li>
+<li><strong>ARC-AGI（178M 模型、只訓 re-arc、top-2 accuracy）</strong>：In-Distribution LPN 顯著勝 TTT（如 2e13 FLOPs 80% vs 58.5%）;<strong>OOD 開搜尋翻倍</strong>（2e11→2e15：7.75%→15.5%），低算力區勝 TTT、極高算力時 TTT 反超（LPN 訓練程式多樣性不足，潛在空間不夠平滑）；兩者皆勝 CodeIt (220M) 與 Mirchandani/text-davinci (175B)。</li>
+<li>探索<strong>組合泛化</strong>：潛在搜尋能把訓練見過的程式組合成新組合（避免無搜尋模型只執行單一程式的過擬合），但<strong>不穩健</strong>（有成功也有明確失敗案例）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>訓練程式多樣性有限</strong>（即使用增強，分布仍窄，限制潛在空間的表達力與平滑度）——這也是 ARC OOD 高算力下被 TTT 反超的主因。</li>
+<li>只用標準優化器；未探索演化策略、離散程式表示（可能更利組合泛化）。</li>
+<li>成本遠低於頂尖 LLM（o3-preview(low) 75.7% @ $200/題），但也尚未擴到該規模。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 <strong>E 類 ARC-AGI</strong> 代表之一，與 <a class="paper-reference" href="2411.17708_GridCoder_ARC_Program_Induction.%E6%91%98%E8%A6%81.html">2411.17708</a> GridCoder 同期姊妹路線——同樣「神經 + 測試時搜尋」解 ARC，但 GridCoder 走<strong>離散 DSL token 枚舉</strong>、LPN 走<strong>連續潛在空間梯度搜尋且完全擺脫 DSL</strong>。兩者都把「結構/OOD 泛化」當核心戰場，且都點名「測試時搜尋」是泛化關鍵。</li>
+<li>最值得記：<strong>「VAE 式編碼器 + 潛在梯度搜尋 + 像素解碼器」內建測試時適應的配方</strong>;<strong>System 1（編碼器攤銷）/ System 2（潛在搜尋）</strong> 雙系統類比；<strong>訓練時就模擬測試時梯度搜尋</strong>的歸納偏置；以及均值聚合帶來的<strong>規格長度泛化</strong>與<strong>置換不變</strong>。</li>
+<li>與 <a class="paper-reference" href="2411.02272_Induction_Transduction.%E6%91%98%E8%A6%81.html">2411.02272</a>（結合歸納+傳導）、<a class="paper-reference" href="2411.07279_Test_Time_Training.%E6%91%98%E8%A6%81.html">2411.07279</a>（測試時訓練 TTT，本文主要對比基線）同屬 ARC 軌；對做 latent program、變分推論、測試時適應、ARC 的人有高參考價值。誠實標明組合泛化尚不穩健。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2411.08706_LPN_Latent_Program_Search.zh-TW.html"><code>../translate/2411.08706_LPN_Latent_Program_Search.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../1711.06664_LearningToDefer.zh-TW.html">回 1711.06664_LearningToDefer.zh-TW 目錄</a>　<a href="02_%E5%9C%A8%E6%B1%BA%E7%AD%96%E7%B3%BB%E7%B5%B1%E5%85%A7%E5%BD%A2%E5%A1%91%E8%87%AA%E9%81%A9%E6%87%89%E6%A8%A1%E5%9E%8B.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>許多機器學習應用中同時存在多個決策者（decision-makers），包括自動化的與人類的，但這些代理之間的互動在演算法開發中往往未被處理。本文探討此互動的一個簡單版本：由「自動化模型 + 外部決策者」組成的兩階段框架。模型可以選擇說「pass」把決策傳給下游——即拒絕學習（rejection learning）所探討的。我們提出<strong>學習委讓（learning to defer）<strong>加以延伸：它泛化拒絕學習，把決策流程中</strong>其他代理的效果</strong>納入考量。我們提出一個能顧及外部決策者潛在偏誤的學習演算法。實驗顯示學習委讓不僅能使系統更準確、也更不偏頗；即使面對不一致或有偏的使用者，會委讓的模型仍能大幅改善整個系統的準確與/或公平。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>人與機器能否共同決策？自動化決策在貸款審核、醫療診斷、刑事司法等高風險領域的應用日增，引發「機器學習在高風險決策中的角色」與「人類如何監督並運用機器預測」的疑問。考慮一個輸出風險分數（risk score）協助法官審理保釋案的黑箱模型：分數如何進入法官這個外部代理的決策過程？這又該如何影響分數的學習方式？模型孤立來看可能是最先進的，但其真正影響在於作為法官決策過程中的一個元素。</p>
+<p>我們主張：既然模型常作為更大系統的一部分（例如與法官等另一決策者搭配）使用，它就應該學會<strong>負責任地預測（predict responsibly）</strong>——只有當其預測可靠地符合系統目標時才預測；系統目標通常包含準確（accuracy，預測多半反映真值）與公平（fairness，預測對不同子群不帶偏頗）。</p>
+<p>拒絕學習（rejection learning）給了一種解法：允許模型在沒有把握時拒絕（不做預測）。但這本質上是<strong>非自適應的（nonadaptive）</strong>：模型與決策者彼此獨立行動。當模型與外部決策者協同運作時，「是否拒絕」不應只取決於模型自身的信心，也應取決於<strong>決策者的專長與弱點</strong>。例如：若法官的黑箱模型對某子群不確定，但法官對該子群更不準或更有偏，我們可能寧願模型儘管不確定仍自己做預測。</p>
+<p>主要貢獻是提出<strong>自適應拒絕學習（adaptive rejection learning）</strong>，我們稱為<strong>學習委讓（learning to defer）</strong>：模型與決策者自適應地協同運作。我們提供理論與實驗證據：若模型注定要在更大系統內運作，學習委讓優於標準拒絕學習範式；把會委讓的模型嵌入管線可提升系統整體的準確與公平。實驗模擬三種可委讓判斷的情境，對應現實中下游決策者不一致、有偏、或握有側面資訊（side information）的狀況。</p>
+<h2 id="2-學習委讓learning-to-defer">2 學習委讓（Learning to Defer）</h2>
+<h3 id="21-聯合決策框架">2.1 聯合決策框架</h3>
+<p>真實世界的決策系統可建模為多個代理（決策者、執法群體、學習系統）之間的互動過程。本文聚焦<strong>兩代理模型</strong>：一個決策者與一個學習模型，決策流分兩階段（圖 1）。第一階段是我們要學參數的自動化模型；第二階段是我們<strong>無法控制</strong>的外部決策者（decision-maker, DM），例如人類使用者或私有黑箱模型。決策流建模為級聯（cascade）：第一階段模型可<strong>預測</strong>（正/負）或說 <strong>pass</strong>。若預測，DM 就輸出模型的預測；若 pass，DM 自行決策。標準拒絕學習只把「模型階段」孤立地當成系統輸出來看；學習委讓則是<strong>針對系統整體輸出</strong>來優化模型。</p>
+<p>第一階段可視為：標記困難案例供覆核、篩減大量輸入、稽核 DM 的問題輸出、或單純作為輔助工具。我們假設 DM 握有模型沒有的資訊——對應許多實務情境（鏈條後端的 DM 基於效率、安全或情境理由擁有更多資源），但 DM 可能有缺陷（有偏或不一致）。由此浮現一個取捨：能否結合模型與 DM，<strong>借用 DM 的額外洞見、同時克服其潛在缺陷</strong>？</p>
+<p>形式化：資料 X、真值標籤 Y ∈ {0,1}、只有 DM 能看到的輔助資料 Z。令 s ∈ {0,1} 為 pass 指示變數（s=1 即 pass），系統聯合機率 P_defer(Y|X,Z) 是一個 <strong>Bernoulli 混合</strong>：標籤由模型（機率 P_M，僅依 X）或 DM（機率 P_D，依 X 與 Z）產生，由 s 決定。記模型預測 Ŷ_M = f(X)、DM 預測 Ŷ_D = h(X,Z)、系統預測 Ŷ = (1−s)·Ŷ_M + s·Ŷ_D，其中 s = g(X)。<strong>DM 函數 h 是固定、未知的黑箱</strong>，因此學習就是找能適應 h 的 f 與 g，使 Ŷ 成為 Y 的好預測器。最大化似然等價於最小化負對數似然：</p>
+<p>L_defer(Y, Ŷ_M, Ŷ_D, s) = −Σᵢ [(1−sᵢ)·ℓ(Yᵢ, Ŷ_{M,i}) + sᵢ·ℓ(Yᵢ, Ŷ_{D,i})]</p>
+<p>最小化 L_defer 即為<strong>學習委讓</strong>。關鍵在 s 的角色：它不只是不確定性的表達，而是一個<strong>閘控變數（gating variable）</strong>——試圖預測在任一給定樣本上，Ŷ_M 與 Ŷ_D 哪一個損失較低。這自然導向 mixture-of-experts 的學習設定，但我們只能優化其中一個專家（Ŷ_M）的參數，另一個專家（Ŷ_D）不受我們控制。</p>
+<h3 id="22-拒絕學習learning-to-reject">2.2 拒絕學習（Learning to Reject）</h3>
+<p>拒絕學習是「帶 pass 選項的模型」的主流範式，標準作法是優化準確率—拒絕率取捨：對每次拒絕收取固定罰項 γ_reject——</p>
+<p>L_reject(Y, Ŷ_M, s) = −Σᵢ [(1−sᵢ)·ℓ(Yᵢ, Ŷ_{M,i}) + sᵢ·γ_reject]</p>
+<p>若把 ℓ 取為標籤的對數機率，L_reject 也可機率化詮釋為某聯合分佈 P_reject 的負對數似然。</p>
+<h3 id="23-學習委讓自適應的拒絕學習">2.3 學習委讓＝自適應的拒絕學習</h3>
+<p>比較兩個損失函數：唯一差異是拒絕損失中的<strong>常數</strong> γ_reject，在委讓損失中換成了<strong>隨樣本變動的</strong> ℓ(Y, Ŷ_D)。由此得到——</p>
+<p><strong>定理</strong>：若 DM 具有常數損失（例如是 oracle），則存在 γ_reject、γ_defer 的取值使學習委讓與拒絕學習的目標函數等價。</p>
+<p>證明要點：在委讓損失中加入類似的委讓罰項 γ_defer；當 DM 每例損失恆為 α 時，取 γ_defer = γ_reject − α，兩式逐項相等。∎</p>
+<h3 id="24-為何要學習委讓">2.4 為何要學習委讓？</h3>
+<p>上述證明點出核心：<strong>拒絕學習恰是學習委讓的特例——「每個樣本上損失恆定的 DM」</strong>。而自適應版本（學習委讓）更貼近真實決策過程：pass 往往不是決策序列的終點——無論模型是否預測，<strong>每個樣本最終都得由 DM 做出決定</strong>，而 DM 的損失一般不會逐例恆定。</p>
+<p>例：模型偵測黑色素瘤，pass 時由醫師加做一套檢查。模型學到自己對無黑色素性（amelanocytic）黑色素瘤很不準，遇到可能案例便 pass。但若<strong>醫師對這類病症比模型更不準</strong>，我們反而希望模型儘管不確定仍自行預測。反之，若醫師熟知某些疾病，其判斷比模型更有見地，則模型應相對於自身不確定性<strong>更頻繁地 pass</strong>。</p>
+<p>在錯的樣本上 pass 也有公平後果：若醫師的決策對某群體有偏，較不偏的模型就應在該群體的案例上<strong>少委讓</strong>；若某側面資訊讓 DM 在某子群很準、卻在另一子群造成混淆，模型就應在 DM 的高準確子群上最常委讓，以確保各群體獲得公平對待。簡言之：<strong>若所訓練的模型是更大管線的一部分，就該把模型放進管線裡一起訓練與評估，而非只聚焦模型本身</strong>。另外，不必取得特定 DM 的決策資料——可從許多 DM 取樣（如群眾外包）；研究顯示 DM 行為存在共通趨勢，故在某 DM 上訓練的模型可望泛化到未見過的 DM。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

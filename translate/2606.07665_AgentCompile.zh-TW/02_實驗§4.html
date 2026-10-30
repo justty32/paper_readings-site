@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗§4 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.07665_AgentCompile.zh-TW.html">回 2606.07665_AgentCompile.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="實驗4">實驗（§4）</h2>
+<p><strong>設定</strong>：NVIDIA A800 SXM4 80GB；HuggingFace Transformers、FlashAttention-2、Triton、vLLM；Llama-3.2-1B/3B-Instruct、Qwen3-1.7B/4B（float16）；固定形狀貪婪解碼，輸入 128–40960、輸出 32–32768 tokens；編譯器管線 LLM 為 Claude-Opus-4.6。延遲含計時 prefill 與 decode，不含一次性準備（快取分配、attention 修補、擴展載入、暖機、CUDA Graph 捕捉）。兩次暖機 + 十次量測重複。</p>
+<p><strong>五個評估問題</strong>：(1) 編譯器控制管線是否完成區域到候選流程；(2) 混合執行期相較 PyTorch eager 的端對端延遲降低幅度；(3) 與 torch.compile 和 vLLM 的比較；(4) 逐步消融中各機制貢獻；(5) LLM 輔助最終組合對全系統影響。</p>
+<h3 id="41-端對端延遲比較">§4.1 端對端延遲比較</h3>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>vs PyTorch eager</th>
+<th>vs vLLM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen3-1.7B</td>
+<td><strong>5.66×</strong></td>
+<td>1.06×</td>
+</tr>
+<tr>
+<td>Qwen3-4B</td>
+<td><strong>4.05×</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Llama-3.2-1B-Instruct</td>
+<td><strong>4.26×</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Llama-3.2-3B-Instruct</td>
+<td>—</td>
+<td>1.07×</td>
+</tr>
+</tbody>
+</table>
+<p>輸出長度增加時加速比更顯著：自訂 KV 快取緩衝、CUDA Graph 重播、特化 GEMV/融合核降低長自迴歸循環中的逐 token 開銷。PyTorch eager 則保留大量框架 dispatch 與動態快取開銷。torch.compile 在短輸入工作負載有效，但長輸入時計算與 KV 快取流量主導執行期，融合無法消除的開銷減少；圖中斷、動態快取更新與形狀變化進一步降低圖重用或引入重編譯。極長輸出時加速比逐漸降低：成長中的 KV 快取使 attention 成本日益主導，且此成本在各系統間差異較小。</p>
+<p><strong>與 vLLM 比較的說明</strong>：vLLM 最佳化分頁 KV 快取管理、請求排程與生產解碼執行，AgentCompile 聚焦編譯器選擇核、融合解碼元件、自訂 KV 快取緩衝與單請求 CUDA Graph 重播。兩者最佳化推論堆疊不同層次，比較衡量端對端執行期行為而非互斥策略；原則上生成/融合核元件可補充服務層級系統。</p>
+<h3 id="42-消融研究qwen3-4b">§4.2 消融研究（Qwen3-4B）</h3>
+<table>
+<thead>
+<tr>
+<th>步驟</th>
+<th>對前一步加速</th>
+<th>累積加速</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>baseline (PyTorch eager + FA)</td>
+<td>1.00×</td>
+<td>1.00×</td>
+</tr>
+<tr>
+<td>+ CUDALinear &amp; GEMV</td>
+<td>1.45×</td>
+<td>1.45×</td>
+</tr>
+<tr>
+<td>+ FAKV &amp; fused QKV projection</td>
+<td>1.02×</td>
+<td>1.48×</td>
+</tr>
+<tr>
+<td>+ CUDA Graph replay</td>
+<td>2.06×</td>
+<td>3.05×</td>
+</tr>
+<tr>
+<td>+ LLM &amp; fused kernels</td>
+<td>1.33×</td>
+<td><strong>4.05×</strong></td>
+</tr>
+</tbody>
+</table>
+<p>CUDA Graph 重播為最大單一步驟（2.06×），消除重複 Python dispatch 與逐 token 啟動開銷。LLM 輔助搜尋 + 手寫 Triton/C++ 融合核貢獻額外 1.33×。全系統在五個工作負載上分別達 4.50×、4.37×、3.86×、4.31×、3.19× 加速。注意最後步驟綑綁 LLM 引導搜尋與融合核，未隔離 LLM 單獨貢獻。</p>
+<h3 id="編譯器管線統計">編譯器管線統計</h3>
+<p>Llama-3.2-3B：192 IR 節點 → 34 區域 → 174 計畫/候選 → 174/174 驗證通過 → 34 選定核（延遲 7.78–13.97 μs），模板建議覆蓋全部 34 區域。Qwen3-4B：236 IR 節點 → 34 區域 → 174 候選 → 174 驗證通過（最大絕對/相對差異 0.00e+00）→ 34 選定核（7.46–14.00 μs），產出 7 檔案/43 簽名。確定性對照結果保留給後續消融。</p>
+<h2 id="相關工作5">相關工作（§5）</h2>
+<ul>
+<li><strong>神經網路編譯器</strong>：TVM、XLA、PyTorch 2、MLIR、Triton；AutoTVM/Ansor（自動排程）；ROLLER、Welder、TASO、DNNFusion、AStitch、Rammer。AgentCompile 互補：以 LLM 語意引導優先探索，不削弱編譯器確定性約束、驗證與量測。</li>
+<li><strong>推論執行期與核</strong>：vLLM（分頁 KV 快取/排程）、ORCA、CUDA Graphs、FlashAttention。這些系統為評估提供效能背景。</li>
+<li><strong>LLM 用於程式碼與編譯器</strong>：Codex（評估 LLM 程式碼生成）、AlphaCode（競賽級程式碼）、StarCoder、Reflexion（語言代理反思）、NExT（教 LLM 推理程式碼執行）、KernelBench（評估 LLM 直接生成 GPU 核）。AgentCompile 關鍵區別：不讓 LLM 產生最終 CUDA 程式碼或依文字合理性選擇實作，LLM 僅形塑語意搜尋策略。</li>
+</ul>
+<h2 id="限制7">限制（§7）</h2>
+<p>AgentCompile 為原型。僅針對 transformer 推論區域，不受支援區域退回框架/函式庫路徑。LLM 引導是編譯器定義候選空間上的搜尋策略（可改善排序或提供語意假設），不保證最優實作。未來將探索更精細高效的 CUDA 核。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

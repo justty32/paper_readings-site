@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《基於自動機的語言模型解碼約束（Automata-based constraints for language model decoding）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Terry Koo, Frederick Liu, Luheng He（Google DeepMind）</p><p>日期：2024-07</p><p>arXiv：2407.08103</p><p><a href="https://arxiv.org/abs/2407.08103" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="基於自動機的語言模型解碼約束automata-based-constraints重點摘要">《基於自動機的語言模型解碼約束（Automata-based constraints）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>把「受約束解碼」整個問題重述為自動機理論</strong>：核心洞見是**「detokenization ＝有限狀態轉導（FST）」<strong>——一旦把 token→字元的還原寫成一個 detokenizing FST <code>T_V</code>，就能用標準的 <strong>FST-FSA／FST-PDA 組合（composition）</strong> 把「與詞彙無關的字元級約束（regex→FSA、文法→PDA）」自動接到「與詞彙相關的 tokenizer」上，得到一個接受 token 序列的</strong>閉式解**自動機，解碼時逐步遮罩 logits 即可；相較先前工作（Outlines）在自動機上疊客製方案，本文純自動機路線編譯快約 <strong>7,000×</strong>、可證明正確、且模組化可擴充。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LM 常需生成形式語言（結構化資料、API 呼叫、程式碼），但即使微調也不保證合規，對適合大規模部署的小模型尤然，且微調對罕見／任務專屬格式不划算。理想解法是「約束 LM 只產生合法輸出」，但被 <strong>tokenization 嚴重複雜化</strong>：資料驅動的子詞 tokenizer 切分對形式語法既有<strong>歧義</strong>又<strong>錯位</strong>（如 <code>foo(x=&quot;bar&quot;)</code> 可能被切成 <code>foo(</code>、<code>x=&quot;</code>、<code>ba</code>、<code>r</code>、<code>&quot;)</code>，token 跨越多個語法單元）。粗暴強迫 tokenization 對齊語法會<strong>扭曲 LM 評分、倒置排名</strong>（附錄 A 的 <code>foo(123)</code> vs <code>bar(456)</code> 例）。先前 Outlines 以客製 indexing 處理，但有速度、正確性、可擴充性問題。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>貢獻一（理論樞紐）</strong>：把 <strong>detokenization 表述為 FST</strong>（演算法 1）——從詞彙表建一個 token→字元的轉導器 <code>T_V</code>，共用前綴合併成 trie 結構。</li>
+<li><strong>貢獻二（正則約束）</strong>：對任意接受字元的 regex FSA <code>A_R</code>，組合 <code>A_{R∘V}=A_R∘T_V</code> 即得接受 token 的 FSA（演算法 2）。此為<strong>閉式解</strong>，解碼每步只需索引／切片／基本算術，可在加速器上低延遲執行。乾淨<strong>分離關注點</strong>：<code>T_V</code> 與詞彙相關可預算、<code>A_R</code> 與詞彙無關可跨 LM 移植——因組合是通用接合器，兩半皆可各自替換。</li>
+<li><strong>貢獻三（實用擴充）</strong>：以特命名捕獲群組實作。**終端標籤（terminal labels）**解決萬用字元 <code>/./</code> 造成近 |V| 條出邊（|V|&gt;10 萬）的高分支問題（預算好的 token 遮罩整批套用）；<strong>語法糖</strong>如 <code>SUBSTRING_OF</code> 把 O(|u|²) 的 regex 規格降到 O(|u|)。另有 <code>QUOTED_TEXT</code>、<code>DELIMITED_LIST</code> 等。</li>
+<li><strong>推廣到文法（PDA）</strong>：FST 與 PDA 亦可組合，故同一套方法（演算法 3，多維護一個堆疊）延伸到<strong>確定性上下文無關語言</strong>（涵蓋 LL(k)/LR(k)，即多數程式語言語法）；非確定性 PDA 無法通用確定化，故偵測到即報錯交作者改寫。token 可自然跨越（非）終端邊界，保留 tokenization 自由。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>編譯加速（vs Outlines，表 2）</strong>：多選 7,970×、ISO 日期時間 7,110×、IP 位址 6,850×、引號字串 13,400×、JSON 物件 7,240×；<strong>每步開銷</strong>加速 6.5×～33.6×。粗略延遲：JSON 編譯 Outlines 數十秒 vs 本系統數毫秒。加速主因是重述為自動機後可直接用 OpenFST 高度優化實作（類比 NumPy）。</li>
+<li><strong>正確性（GPQA + Gemma，表 3）</strong>：無約束時 schema 合規率 Gemma-2B 0.09、Gemma-7B 0.65；<strong>加約束後皆達 1.0（完美合規）</strong>。</li>
+<li><strong>應用</strong>：符合特定 schema 的 JSON 竟是<strong>正則語言</strong>（schema 限制遞迴）→ 可自動由 schema 生 regex；Python dataclass 反射生約束並解析回實例；約束推測解碼的近似模型以提高接受率（需可回捲、共享懲罰）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>對 PDA／文法探索仍淺（迄今聚焦更穩健的 FSA）：文法須小心撰寫以避免非確定性 PDA（如 LL(k) 無法解析左遞迴），系統只能報錯要作者改寫。</li>
+<li>確定性上下文無關是嚴格子集，無法表達完整上下文無關（雖有限 token 預算會縮小此差距）。</li>
+<li>貢獻偏概念，實證僅 Gemma 上小規模驗證速度與合規率。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>直擊 ai_core §5「受約束填碼」的理論統一</strong>：ai_core 第一目標是程式碼助手（上層結構化抽取生資產、<strong>下層受約束填碼</strong>）。本篇提供了那個「下層」最乾淨的<strong>通用表示——自動機即約束的母框架</strong>：regex 約束＝FSA、CFG／文法約束＝PDA，兩者靠同一個「detokenization＝FST」的組合機制接到任意 tokenizer 上。ai_core 若要把「schema-guided JSON／API 呼叫／dataclass 填碼」做成可靠函數，這正是把 Outlines(FSM) 與 SynCode(CFG) 兩條線收攏成<strong>單一理論框架</strong>的關鍵——不必為每種約束或每種 tokenizer 各寫客製方案。</li>
+<li><strong>對「把 LLM 呼叫包成可靠函數」的啟發</strong>：合規率從 0.65→1.0 意味著<strong>輸出格式合規可由建構（construction）保證而非靠模型自律</strong>——這把「解析下游 LLM 輸出」從機率事件變成確定性事件，正契合 ai_core「逐步剃除對 LLM 依賴」的北極星（格式正確性徹底移出 LLM 職責）。tokenization 對齊的評分扭曲問題（附錄 A）也提醒：約束設計不當會反噬取樣品質，是把約束納入可靠函數時的必查陷阱。</li>
+<li><strong>與固化引擎（§3.6）的呼應</strong>：「符合 schema 的 JSON 是正則語言」這類洞見，示範了如何把一個看似需 LLM 反覆處理的生成任務<strong>結晶成確定性自動機</strong>——即把約束從執行期的 LLM 判斷固化為編譯期的靜態結構，方向上與 ai_core 最硬的固化引擎同構。</li>
+<li>定位：<strong>理論／方法論文（Google DeepMind，COLM 2024）</strong>，歸 <strong>I 類</strong>。適合做 <strong>受約束解碼、結構化輸出、schema/JSON/程式碼生成、tokenization 對齊</strong> 的人；建議與 Outlines(FSM)、SynCode(CFG) 對照閱讀，本篇是收攏兩者的<strong>理論母框架</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2407.08103_AutomataConstraints.zh-TW.html"><code>../translate/2407.08103_AutomataConstraints.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

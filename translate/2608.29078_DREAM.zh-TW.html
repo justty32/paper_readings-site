@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>DREAM: Deployment-Time Demonstration Generation via Real-to-Sim for Scalable Policy Adaptation 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Makoto Sato、Tatsuya Matsushima、Yutaka Matsuo、Yusuke Iwasawa</p><p>日期：2026-08-29（v1，cs.RO）</p><p>arXiv：2608.29078</p><p><a href="https://arxiv.org/abs/2608.29078" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="dream-deployment-time-demonstration-generation-via-real-to-sim-for-scalable-policy-adaptation">DREAM: Deployment-Time Demonstration Generation via Real-to-Sim for Scalable Policy Adaptation</h1>
+<h2 id="摘要與問題">摘要與問題</h2>
+<p>預訓練的視覺－語言－動作模型到了新工作空間，常因物件、姿態、雜物、支撐面與可達性不同而表現不足。用人類遙操作補資料雖可靠，卻要反覆占用機器人、重設場景並監看安全；既有合成方法又常需要任務專屬的種子示範、真機互動或手寫獎勵。</p>
+<p>DREAM 的目標，是讓使用者只提供工作空間短片與自然語言指令，系統便能在重建的數位分身中產生帶動作標籤的資料，微調既有 VLA，且不要求人類先示範該任務。核心問題有二：重建環境裡量到的策略表現，能否反映真機上的相對優劣；自動生成資料若持續擴充，效益與成本能否優於遙操作。</p>
+<h2 id="系統方法">系統方法</h2>
+<h3 id="從實景到可規劃的數位分身">從實景到可規劃的數位分身</h3>
+<p>系統先從手持相機影片以 COLMAP 估計相機姿態與稀疏點雲，再訓練 3D Gaussian Splatting 場景。單目重建沒有公制尺度，因此 DREAM 利用掃描中機器人的外觀，將其點雲與已知關節姿態下的機器人模型配準，以 <code>SIM(3)</code>、RANSAC 與尺度感知 ICP 對齊到機器人基座座標。</p>
+<p>場景接著拆成可獨立移動的資產：去除機器人後的靜態背景、可由正向運動學重擺的逐連桿 splat，以及各操作物件的外觀 splat 與碰撞網格。視覺重建只負責渲染；碰撞、可達性與運動規劃則在只含機器人、物件與支撐面的簡化幾何世界中運作。這使視覺逼真度與物理可行性可以分開處理。</p>
+<h3 id="從語言到軌跡">從語言到軌跡</h3>
+<p>語言模型不能自由發明規則，只能從預先實作、帶型別的述詞與成功檢查器中選擇並填入物件。例如 <code>On(banana, plate)</code> 的語意由系統實作；模型只把指令組合成目標原子與分階段成功準則。輸出會檢查文法、元數與物件名稱，格式錯誤便關閉該次規格，不讓錯誤語意變成動作標籤。</p>
+<p>TAMP 先以廣度優先搜尋列舉 PDDL 操作骨架，再為抓取、放置與關節組態求解連續參數。候選經碰撞、可達性與運動學約束篩選，最後由碰撞感知的關節空間規劃器變成可執行軌跡。模擬執行時，若夾爪閉合卻沒抓到物件便中止；只有通過分階段準則的軌跡才會留下，且每一幀都帶有其所屬符號操作。</p>
+<h3 id="擴增渲染與微調">擴增、渲染與微調</h3>
+<p>規劃每條軌跡成本高，DREAM 因此依符號計畫直接切出子任務，把來源軌跡的末端執行器片段轉換到新物件座標，再以橋接動作串起。新軌跡須同時通過終局成功條件與物理合理性檢查，排除碰撞靜態物件、抓取前推撞目標、貼桌拖行與關節超速等情形。</p>
+<p>擴增得到的是狀態軌跡，影像則在事後重播時產生。系統把背景、依關節姿態變形的機器人連桿與依物件姿態擺放的 splat 合成，同時渲染固定相機與腕部相機觀測，連同語言指令、機器人狀態與動作寫成 LeRobot 資料。部署時只有微調後策略在真機上閉迴路預測動作，TAMP 不再參與。</p>
+<h2 id="實驗與結果">實驗與結果</h2>
+<p>作者自報：實驗使用 xArm7 與兩個桌面任務。BlockIntoBowl 是單步取放，FruitPacking 要依序把香蕉與桃子放上盤子；每個策略與任務以保留物件組態進行 15 次真機試驗。比較的 VLA 是 SmolVLA 與 <code>π0.5</code>，另以 Diffusion Policy 擴大數位分身相關性分析的效能範圍。</p>
+<p>作者自報：在模擬與真機配對評估中，兩項任務的平均最大排名違反量皆為 0.000；Pearson 相關在 BlockIntoBowl 為 0.98，在 FruitPacking 為 0.99。模擬成功率大多比真機低 7 至 14 個百分點，但三種策略的排序一致，表示此重建偏悲觀，仍可作相對比較。</p>
+<p>作者自報：資料擴充實驗中，BlockIntoBowl 的 <code>π0.5</code> 用 1000 份生成示範達 93.3％，用 100 份遙操作示範為 86.7％；SmolVLA 分別為 80.0％與 73.3％。FruitPacking 的 <code>π0.5</code> 分別為 86.7％與 80.0％，但 SmolVLA 的生成資料結果只有 6.7％，低於遙操作的 26.7％，而且超過 500 份後未再改善。這顯示可擴充資料量不保證每種模型都能吸收生成軌跡的分布特性。</p>
+<p>作者自報：DREAM 在兩任務產生第一份資料前，固定成本分別為 36 與 95 分鐘；總牆鐘時間在 73 與 168 份示範後低於遙操作。較長任務的來源軌跡規劃更難，FruitPacking 的規劃成功率為 62％，而 BlockIntoBowl 為 100％；擴增接受率則分別為 32.6％與 33.0％。成本主要是無須人員守候的機器時間，而人類投入不隨最終資料量線性增加。</p>
+<h2 id="結論與作者明示局限">結論與作者明示局限</h2>
+<p>DREAM 證明了一條部署時資料生成路徑：以工作空間掃描把外觀對齊現場，以 TAMP 提供可行動作，再由自動驗證與渲染把軌跡變成 VLA 微調資料。實驗支持數位分身可保留策略排序，也顯示大量生成資料能讓部分模型超越較少的真機遙操作資料。</p>
+<p>作者明示目前框架針對近似靜態的桌面場景與剛體物件；可變形、關節式物件及更依賴接觸的任務仍待擴充。實驗也直接呈現另一個邊界：生成軌跡含較頻繁的腕部旋轉與稍顯冗餘的動作，單份資料價值低於遙操作，且較弱模型未必能從規模增加受益。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2608.29078_DREAM.%E6%91%98%E8%A6%81.html"><code>../summarize/2608.29078_DREAM.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

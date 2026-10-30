@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_評估 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2405.17514_AbstractBeam.zh-TW.html">回 2405.17514_AbstractBeam.zh-TW 目錄</a>　<a href="02_AbstractBeam.html">← 上一節</a></p>
+</blockquote>
+<h2 id="評估">評估</h2>
+<h3 id="實驗設定">實驗設定</h3>
+<p><strong>資料集與 DSL。</strong> 使用與 LambdaBeam 相同的資料集與 DSL。資料集含 200 個任務，平均分為 100 個手寫任務與 100 個合成任務。手寫任務為人工設計以涵蓋多種情境；合成任務則透過窮舉由下而上搜尋生成。合成資料集用以檢驗「抽象唯有精準反映領域時才有益」的假設。兩資料集中每個任務含一至三個輸入變數、三至五個 I/O 範例。沿用相同資料集與 DSL 確保與 LambdaBeam 比較的一致與意義，也讓我們能在「並非為抽象發現而設計」的領域評估庫學習的潛力。</p>
+<p><strong>配置。</strong> 為控管訓練資料量與複雜度，每個生成回合設 1000 秒時限，其中生成最大長度 15 的程式；最多 300 個搜尋並行以加速資料生成。每新增一個抽象，資料生成逾時增加 100 秒（因生成訓練資料涉及完整的由下而上搜尋，較大的 DSL 會使搜尋時長指數增加）。清醒期每任務設 100 秒時限，每 10 秒隨機重啟以探索多樣解。兩演算法每輪最多訓練 10,000 步。這些參數皆設得比 LambdaBeam 原設定低，以配合有限的計算資源；其餘超參數相同。AbstractBeam 與 LambdaBeam 皆以四張 RTX 2080 Ti GPU 訓練 10 輪，取在手寫訓練任務上表現最佳的模型評估。LambdaBeam 也訓練 10 輪，但因其 DSL 不變，所有神經模組維持不變、生成更多資料後延續訓練（此設定確保公平比較、不使 LambdaBeam 吃虧）。用 50% 手寫任務來定義抽象（這些任務只在清醒期提供給模型以找解與定義抽象，不用於訓練模型本身），另 50% 用於評估表現。為緩解分佈效應，做二折交叉驗證；每個測試集評估五次，並在檢查等變異數與常態分佈後，以顯著水準 5% 的 Student t 檢定辨識兩法的顯著差異；跨試驗計算 95% 信賴區間並以誤差線呈現。</p>
+<h3 id="結果">結果</h3>
+<p><strong>成功率。</strong> LambdaBeam 在第一折解出 50.2% ± 2.0% 的手寫測試任務、第二折 36.0% ± 2.5%。AbstractBeam 以統計顯著之差勝出：第一折 53.6% ± 2.3%（p &lt; 0.05）、第二折 39.6% ± 1.5%（p &lt; 0.05）。此證實第一項假設：庫學習能提升 LambdaBeam 合成的表現。</p>
+<p>（圖 2 要旨：AbstractBeam 勝過 LambdaBeam，差距在程式長度 7 尤為顯著——該長度有 62% 的程式含抽象。所有「使用抽象的程式長度」差異皆顯著，唯長度 8 例外。）如圖 2 所示，顯著的效能差異只出現在「有用到抽象」的程式長度；在沒有或只有極少解含抽象的長度，兩法表現無統計顯著差異（第二折亦然）。這進一步證實整體效能提升是由抽象的使用所致。</p>
+<p><strong>效率。</strong> 我們假設抽象所致的搜尋深度縮減造成效能提升，並解決 LambdaBeam 在時間上的低效。（圖 3 要旨：AbstractBeam 以更少列舉時間、更少候選程式達到比 LambdaBeam 更好的表現。）圖 3(a) 顯示兩法隨列舉時間（enumeration time，即找到解前的耗時）的表現：AbstractBeam 明顯以更少列舉時間取得更高表現，證明其搜尋空間確實縮減。就「兩法皆解出的手寫任務」比較耗時，AbstractBeam 為 2.57s ± 5.58s、LambdaBeam 為 4.57s ± 7.07s；圖 3(c) 顯示 AbstractBeam 一致地更快解出這些任務。此外 AbstractBeam 也以更少候選程式取得更好表現（圖 3(b)）。有趣的是，在相同生成逾時下 AbstractBeam 列舉的程式反而比 LambdaBeam 少：把抽象加入 DSL 會<strong>增加搜尋寬度、但降低搜尋深度</strong>，深度降低則建議的候選程式變少。既然 AbstractBeam 仍勝出，可見「較大 DSL 與較低搜尋深度」之間的平衡是有利的。然而若加入未被使用、只是使 DSL 臃腫的抽象，將打破此平衡並抵消庫學習的所有好處——這凸顯設計初始 DSL、更動當前 DSL 時須格外謹慎。</p>
+<p><strong>合成資料集。</strong> 為評估抽象能否擴展到其被發現領域之外，在合成資料集上評估兩法。兩者無顯著效能差異（AbstractBeam 折1: 52.6% ± 1.4%、折2: 52.4% ± 1.9%；LambdaBeam 折1: 53.8% ± 1.2%、折2: 51.2% ± 1.7%），列舉時間與候選程式數亦無差異（圖 4）。因此，即便合成任務的解中用到抽象，也不會降低搜尋深度。就兩法皆解出的合成任務耗時，AbstractBeam 反而明顯更久（3.62s ± 12.14s vs LambdaBeam 1.37s ± 5.34s）。原因是抽象衍生自手寫資料集，而手寫資料集並不反映合成資料集的分佈——這與「抽象不會泛化到分佈外（out-of-distribution）領域」的假設一致。</p>
+<h3 id="局限">局限</h3>
+<p>AbstractBeam 的關鍵局限來自領域結構，帶來兩個約束：其一，庫學習唯有在抽象可能存在時才奏效——解空間中須有足夠的程式重複，且須有足夠任務（或資料樣本）含這些重複。其二（較實務面），模型須能解出足夠任務，尤其在第一輪；否則即便存在足夠含潛在抽象的任務，庫學習演算法也無法辨識程式重複——後者也關乎初始 DSL 的設計：DSL 須夠特定以能解任務、又須夠一般以容許重複。此外還須考量重生成訓練資料的開銷。再者，LambdaBeam 與 AbstractBeam 的絕對效能差異只是輕微，很可能源自 LambdaBeam 領域的結構；但實驗證明「顯著更多的解出任務數與更有效率的解生成」確實歸因於自動引入的領域特定抽象。此外，結果也凸顯庫學習在「非為展示庫學習效果而設計」的 DSL 與領域之外的普遍適用性。</p>
+<h2 id="相關工作">相關工作</h2>
+<p>人類行為長期是機器學習新方法的靈感來源，從最早的類神經網路到模仿人類社交互動的生成式代理皆然；在程式合成領域此理念亦盛行：有的在人類解題者的解答軌跡上訓練類神經網路，有的以階層式方法把複雜問題拆成更小、更好管理的子任務來模仿人類策略。這些技術旨在發展新解題策略，卻往往未直接處理程式合成的主要瓶頸——爆炸的搜尋空間。緩解此問題的常見作法是把搜尋演算法導向更有希望的區域：從利用先驗知識、到執行中間程式以條件化後續搜尋，通常以類神經網路辨識值得探索的區域。</p>
+<p>本文的框架受 DreamCoder 啟發，但建於 LambdaBeam 的搜尋策略之上（LambdaBeam 本身改編自 CrossBeam 以支援高階函數，兩者皆採多層、神經、由執行引導的合成）。藉由把 LambdaBeam 整合進受 DreamCoder 啟發的架構，我們把庫學習加為「縮減搜尋空間的第四種策略」。與 LambdaBeam 相對，DreamCoder 採由上而下搜尋、且不以中間執行資訊條件化程式生成；其 DSL 由基元運算組成、產出許多常用子程式；且其串列領域是人工設計成「僅差一參數的任務叢集」（如 add-k，k 由 0 到 5）以展示 DSL 強化效果。與 AbstractBeam 類似，<strong>LILO</strong> 也建於 DreamCoder 的清醒-睡眠循環、也用 Stitch，但它展示的是「利用人類可讀的語言說明來標註抽象，可改善 LLM 型程式合成並更貼合人類推理」——這與本文「創造更省資源之程式合成」的目標有所不同。</p>
+<h2 id="結論">結論</h2>
+<p>我們提出 AbstractBeam：一個由執行引導的程式合成框架，以庫學習用資料驅動的方式強化其 DSL。藉由讓 DSL 貼合其所應用的特定領域，AbstractBeam 取得更佳表現與更有效率的程式生成。結果顯示庫學習使 AbstractBeam 能自動辨識並納入有用抽象，帶來顯著的效率增益。然而由於庫學習本質上是資料驅動，它發現的抽象不會泛化到其衍生領域之外；此局限在實驗中明顯可見，凸顯「設計能容納廣泛任務之有效 DSL」的持續挑戰。把領域特定抽象納入 DSL 很可能嵌入了有價值的領域知識、或有助模型更了解該領域，但這對程式合成的助益程度仍是待解問題，值得進一步探究。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2405.17514_AbstractBeam.%E6%91%98%E8%A6%81.html"><code>../summarize/2405.17514_AbstractBeam.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

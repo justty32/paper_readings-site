@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>結構化生成的隱藏成本：草稿條件受約束解碼 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>arXiv：2603.03305</p><p><a href="https://arxiv.org/abs/2603.03305" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="結構化生成的隱藏成本草稿條件受約束解碼">結構化生成的隱藏成本：草稿條件受約束解碼</h1>
+<p><strong>arXiv</strong>: 2603.03305 | <strong>ICML 2026</strong><br />
+<strong>作者</strong>: Avinash Reddy, Thayne T. Walker, James S. Ide, Amrit Singh Bedi<br />
+（中佛羅里達大學 + Lockheed Martin AI Center）</p>
+<hr />
+<h2 id="一研究動機">一、研究動機</h2>
+<p>大型語言模型（LLM）日益被部署為軟體管線組件，必須產生機器可解析的輸出：JSON 物件、API 呼叫、SQL 查詢。在這些場景中，單一語法錯誤——缺少括號、錯誤的引號——就能讓整個輸出無法被下游系統使用。因此，「受約束解碼（Constrained Decoding, CD）」成為可靠部署 LLM 的關鍵技術：它在每個生成步驟遮罩非法 token 並重正規化剩餘機率，保證輸出永遠符合結構約束。</p>
+<p>然而，越來越多的證據表明 CD 並非免費：它會降低語意正確性，尤其在推理密集型任務上（Tam et al., 2024; Castillo, 2024; Schall &amp; De Melo, 2025）。根本原因在於：當嚴格格式強制低熵語法決策（括號、引號、欄位名），模型可能只對這些合法 token 分配極少機率，重正規化就變成大幅擾動。多次累積後，解碼被系統性推向「容易維持合法」的路徑——即使對應的解答是錯誤的。</p>
+<hr />
+<h2 id="二核心機制kl-投影與投影稅">二、核心機制：KL 投影與投影稅</h2>
+<h3 id="21-可行質量feasible-mass">2.1 可行質量（Feasible Mass）</h3>
+<p>對於前綴 <span class="math inline">\(h_t = (x, z_{&lt;t})\)</span>，令 <span class="math inline">\(A(h_t)\)</span> 為當前合法 token 集合。標準 CD 的每步分佈為：</p>
+<div class="math block">
+\[q(z_t \mid h_t) = \frac{\pi_\theta(z_t \mid h_t) \cdot \mathbb{I}[z_t \in A(h_t)]}{\alpha(h_t)}\]
+</div>
+<p>其中 <span class="math inline">\(\alpha(h_t) = \sum_{a \in A(h_t)} \pi_\theta(a \mid h_t)\)</span> 是「可行質量」——模型分配給所有合法後續 token 的總機率。</p>
+<h3 id="22-每步-kl-失真">2.2 每步 KL 失真</h3>
+<p>從 KL 投影觀點，CD 的每一步等價於將 <span class="math inline">\(\pi_\theta(\cdot \mid h_t)\)</span> 逆向 KL 投影到合法單形 <span class="math inline">\(\Delta_{A(h_t)}\)</span> 上，每步失真精確為：</p>
+<div class="math block">
+\[\text{KL}(q(\cdot \mid h_t) \mid\mid \pi_\theta(\cdot \mid h_t)) = \log\frac{1}{\alpha(h_t)}\]
+</div>
+<h3 id="23-累積投影稅projection-tax">2.3 累積投影稅（Projection Tax）</h3>
+<p>整條序列的總失真為各步累積：</p>
+<div class="math block">
+\[\text{KL}(\rho_q \mid\mid \rho_\theta) = \mathbb{E}_{z \sim \rho_q}\left[\sum_{t=1}^T \log\frac{1}{\alpha(h_t)}\right]\]
+</div>
+<p><strong>這就是結構化生成的隱藏成本</strong>。當 schema 強制模型在早期輸出 <code>{</code>、<code>&quot;</code>、欄位名等低機率 token——而模型原本傾向輸出自然語言如「答案是 14」——每一步 <span class="math inline">\(\alpha(h_t)\)</span> 極小，投影稅迅速累積。即使最終輸出合法，解碼已被推向語意錯誤的軌跡。</p>
+<h3 id="24-軌跡偏差">2.4 軌跡偏差</h3>
+<p>更微妙的是，即使兩條序列都在 <span class="math inline">\(L(x)\)</span> 內，重正規化按 <span class="math inline">\(\prod_t 1/\alpha(h_t)\)</span> 加權，使 CD 偏好「容易投影」的前綴而非「全域正確」的解答。</p>
+<hr />
+<h2 id="三dccd草稿條件受約束解碼">三、DCCD：草稿條件受約束解碼</h2>
+<h3 id="31-核心洞察">3.1 核心洞察</h3>
+<p>可行質量 <span class="math inline">\(\alpha(h_t)\)</span> 並非由約束單獨決定——它依賴上下文。如果先提供輔助內文 <span class="math inline">\(d\)</span>（草稿、計畫、中間表示），模型產生的下一個 token 分佈會改變：</p>
+<div class="math block">
+\[\alpha(h_t; d) = \sum_{a \in A(h_t)} \pi_\theta(a \mid h_t, d) \gg \alpha(h_t)\]
+</div>
+<p>當 <span class="math inline">\(d\)</span> 包含推理軌跡與正確答案時，schema 相容 token 的機率大幅提高，投影稅自然降低。</p>
+<h3 id="32-演算法">3.2 演算法</h3>
+<p><strong>階段 1 — 無約束草稿生成</strong>：</p>
+<div class="math block">
+\[y \sim p_{\text{draft}}(\cdot \mid x)\]
+</div>
+<p>產生自由形式推理，捕捉語意規劃，不需滿足任何結構約束。</p>
+<p><strong>階段 2 — 草稿條件受約束解碼</strong>：
+以 <span class="math inline">\((x, y)\)</span> 為條件進行 CD：</p>
+<div class="math block">
+\[\tilde{q}(z_t \mid \tilde{h}_t) = \frac{p_2(z_t \mid \tilde{h}_t) \cdot \mathbb{I}[z_t \in A(x, z_{&lt;t})]}{\tilde{\alpha}(\tilde{h}_t)}\]
+</div>
+<p>其中 <span class="math inline">\(\tilde{h}_t = (x, y, z_{&lt;t})\)</span>。硬約束僅在階段 2 生效，保證最終輸出合法性。因階段 2 主要是結構化實作（非開放推理），可使用相同或更小模型。</p>
+<p><strong>多草稿變體</strong>：採樣 <span class="math inline">\(K &gt; 1\)</span> 個草稿 → 以累積 log-可行質量進行延遲選擇 → 僅對選中草稿執行階段 2。<span class="math inline">\(K=1\)</span> 時退化為基本兩步驟方案。</p>
+<h3 id="33-為何有效">3.3 為何有效</h3>
+<p>DCCD 將「推理」與「格式化」明確分離：階段 1 讓模型自由思考，階段 2 僅做約束下的結構化實現。條件化於草稿後，格式 token（括號、引號、欄位名）變成「分佈內」token，大幅降低重複的「強迫意外」，保留模型對內容 token 的語意偏好。</p>
+<hr />
+<h2 id="四實驗設計">四、實驗設計</h2>
+<p><strong>資料集與約束類型</strong>：</p>
+<ul>
+<li>GSM8K、MATH500（數值數學）→ JSON schema</li>
+<li>GSM-Symbolic（符號數學）→ 運算式語法</li>
+<li>FOLIO（一階邏輯推理）→ FOL 語法，Prover9 驗證</li>
+</ul>
+<p><strong>模型</strong>：Llama-3.2-1B、Qwen2.5-1.5B/3B/7B/14B、Llama-3.1-8B</p>
+<p><strong>基線</strong>：Constrained Prompting (CP)、Constrained Few-Shot (CF)、標準 Constrained Decoding (CD, XGrammar)</p>
+<p><strong>指標</strong>：嚴格結構化正確率（同時滿足答案正確 + 結構合法）</p>
+<hr />
+<h2 id="五主要結果">五、主要結果</h2>
+<h3 id="a1-dccd-普遍提升嚴格正確率">A1. DCCD 普遍提升嚴格正確率</h3>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>CD 平均</th>
+<th>DCCD 平均</th>
+<th>提升</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1B</td>
+<td>10.2%</td>
+<td>20.9%</td>
+<td>+10.7</td>
+</tr>
+<tr>
+<td>1.5B</td>
+<td>22.8%</td>
+<td>38.3%</td>
+<td>+15.5</td>
+</tr>
+<tr>
+<td>3B</td>
+<td>36.1%</td>
+<td>47.2%</td>
+<td>+11.1</td>
+</tr>
+<tr>
+<td>7B</td>
+<td>42.7%</td>
+<td>54.2%</td>
+<td>+11.5</td>
+</tr>
+<tr>
+<td>8B</td>
+<td>37.9%</td>
+<td>43.8%</td>
+<td>+5.9</td>
+</tr>
+<tr>
+<td>14B</td>
+<td>47.4%</td>
+<td>58.1%</td>
+<td>+10.7</td>
+</tr>
+</tbody>
+</table>
+<p><strong>GSM8K 1B 模型</strong>：15.2% → 39.0%（+23.8pp）；<strong>1.5B</strong>：49.4% → 73.9%（+24.6pp）</p>
+<h3 id="a2-參數效率">A2. 參數效率</h3>
+<p>DCCD 使較小模型組合超越大模型 CD 基線：</p>
+<ul>
+<li>MATH500：1.5B+1.5B DCCD（3B 總參數）達到 12.7 acc/B param，對比 8B CD 僅 3.6（<strong>效率提升 253%</strong>）</li>
+<li>GSM8K：7B+1.5B DCCD（8.5B 總參數）超越 14B CD（10.7 vs 6.1 acc/B param，使用少 39% 參數）</li>
+</ul>
+<h3 id="a3-測試時擴展">A3. 測試時擴展</h3>
+<ul>
+<li>GSM8K（6 模型平均）：DCCD 從 n=1 的 78% 提升至 n=13 的 83%；CD 從 64% 至 73%</li>
+<li>MATH500：DCCD 從 42% 至 47%；CD 從 29% 至 37%</li>
+<li>DCCD 在每個 n 的效能差距均顯著大於 CD</li>
+</ul>
+<hr />
+<h2 id="六深入分析">六、深入分析</h2>
+<h3 id="61-cd-退化歸因">6.1 CD 退化歸因</h3>
+<p>MATH500 上比較三種設定：(1) 純 prompt（無 CD）、(2) 結構化 prompt（無 CD）、(3) 結構化 prompt + CD。結果：加入結構化 prompt 僅損失 0.2-5.2pp；疊加 CD 再損失 10-30pp。<strong>退化主要來自解碼時的重正規化，而非 prompt 提及結構。</strong></p>
+<h3 id="62-草稿品質為上限">6.2 草稿品質為上限</h3>
+<p>階段 1 草稿正確時，階段 2 保留率 72.9-83.6%；草稿錯誤時，極少被修正（0.2-3.3%）。DCCD 的角色是結構化實現草稿語意，而非自主修正。</p>
+<h3 id="63-延遲成本">6.3 延遲成本</h3>
+<p>vLLM + H100：DCCD 比 CD 增加約 13% wall-clock（7B 模型），但準確率從 37.8% 提升至 53.6%（+15.8pp），結構遵循率接近 100%。</p>
+<h3 id="64-schema-嚴格度效應">6.4 Schema 嚴格度效應</h3>
+<p>將 GSM8K schema 的 answer 欄位從 string 改為 int：CD 退化 3.4-18.6pp。更嚴格的約束放大投影稅，驗證了 DCCD 的動機。</p>
+<h3 id="65-與思考型生成對比">6.5 與思考型生成對比</h3>
+<p>DeepSeek R1 1.5B + CD at answer stage：51.2%。DCCD (R1 1.5B + Qwen2.5 1.5B)：62.6%。即使在回答階段才套用 CD 仍引入足夠投影稅——DCCD 的優勢不僅來自「先推理後回答」，而是來自<strong>推理過程不受約束</strong>。</p>
+<h3 id="66-非可驗證任務">6.6 非可驗證任務</h3>
+<p>TL;DR 256-token 摘要：DCCD win rate ~78-80.5%（整體品質/忠實度/覆蓋率）。</p>
+<hr />
+<h2 id="七與-ai_core-的對接">七、與 ai_core 的對接</h2>
+<table>
+<thead>
+<tr>
+<th>概念</th>
+<th>DCCD</th>
+<th>ai_core</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>成本模型</td>
+<td>累積投影稅 <span class="math inline">\(\sum \log(1/\alpha)\)</span></td>
+<td>§3.3 成本梯度——邊際受約束推論成本</td>
+</tr>
+<tr>
+<td>解方</td>
+<td>草稿條件降低可行質量缺口</td>
+<td>§5 受約束填碼——解耦語意再結構化</td>
+</tr>
+<tr>
+<td>效率</td>
+<td>小模型組合超越大模型 CD</td>
+<td>符合 §5 參數效率論述</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="八結論">八、結論</h2>
+<p>受約束解碼雖然保證結構合法性，但每一步都在繳納「投影稅」——當可行質量極低時，累積失真使模型偏離正確語意。DCCD 透過簡單的兩階段免訓練推論策略：先讓模型自由思考（草稿），再以草稿為條件進行受約束解碼，大幅提高可行質量，保留結構保證的同時近乎消除品質-合法性的取捨。</p>
+<p><strong>程式碼</strong>：https://github.com/avinashreddydev/dccd</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.13716_SkillOps.zh-TW.html">回 2605.13716_SkillOps.zh-TW 目錄</a>　<a href="02_%E5%95%8F%E9%A1%8C%E8%A8%AD%E5%AE%9A.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>LLM agent 越來越依賴技能庫來完成多步驟任務，然而這些技能庫隨著技能被新增、重用、修補、以及連結到不斷變化的依賴項，可能累積持續性缺陷。我們將這種失敗模式稱為<strong>技能技術債（skill technical debt）</strong>：庫層級的缺陷可能不會讓單一技能在本地出錯，但會損害未來的檢索、組合與執行。既有的技能型 agent 主要聚焦於任務時間的檢索、規劃與修復，而庫時間的維護仍未被充分探索。我們提出 <strong>SkillOps</strong>，一套與方法無關的插件式技能庫維護框架。SkillOps 將每個技能表示為型別化技能契約 (P, O, A, V, F)，以層次技能生態圖（HSEG）組織技能，並沿效用、相容性、風險與驗證等維度診斷圖書館健康。給定一個原始技能庫，SkillOps 產出一個已維護的技能庫，可供既有的檢索或規劃 agent 使用，無需修改其內部程式碼。在 ALFWorld 上，SkillOps 作為獨立 agent 達到 79.5% 的任務成功率，超越最強基線 +8.8 個百分點，且無額外任務時間 LLM 調用。作為插件層，它為檢索型基線帶來 +0.68 至 +2.90 個百分點的改進。目前的規則式維護實作近乎零庫時間 LLM 調用或 token 成本，顯示技能庫維護可以作為低開銷的架構層來添加。程式碼公開於 https://github.com/Hik289/SkillOps.git。</p>
+<hr />
+<h2 id="1-導論">1. 導論</h2>
+<p>LLM agent 越來越依賴技能庫來解決複雜的多步驟任務 [Wang et al., 2024, Zheng et al., 2025, Shen et al., 2026]。技能庫儲存可重用的可執行程式，例如解析器、控制器、API 包裝器、操作常式、驗證器與資料處理腳本。最近的基準測試顯示取得技能能改善任務成功率 [BenchFlow AI, 2026]，而最近的系統進一步透過檢索、依賴感知的圖搜尋與任務時間組合來改善技能使用 [Liu et al., 2026, Xia et al., 2026]。然而，隨著 agent 部署時間拉長，其技能庫並非保持靜態：技能被反覆新增、修補、在新情境中重用、並連結到不斷變化的下游依賴。這使技能庫從固定的檢索池轉變為需要管理的持久性軟體資產。</p>
+<p>我們將這種庫層級的失敗模式識別為<strong>技能技術債</strong>。遵循軟體與 ML 系統中的技術債概念 [Cunningham, 1992, Sculley et al., 2015]，技能技術債指的是技能庫中的持續性缺陷，例如冗餘、缺失驗證、介面漂移、或陳舊實作，這些缺陷可能不會讓單一技能在本地出錯，但會降低未來的檢索、組合與執行可靠性。關鍵問題在於<strong>持續性</strong>：任務時間的修復可能只解決一個失敗的 episode，而底層的庫缺陷仍然存在，並可能在技能被重複使用時引發未來的失敗。</p>
+<p>既有的技能型 agent 工作大多聚焦於任務時間的庫使用：如何為當前任務檢索正確的技能 [Liu et al., 2026, Xia et al., 2026, Qin et al., 2024]、如何將檢索到的技能組合成可執行計劃 [Shen et al., 2026, Liu et al., 2026, Qin et al., 2024]、或如何在執行期間驗證與修復輸出 [Zheng et al., 2025, Shen et al., 2026]。這些方法很重要，但它們並非直接解決庫時間的問題。一次任務時間的修復可能修補當前 episode 而不更新庫；缺失的驗證器仍然缺失；不相容的介面仍然暴露；冗餘的實作仍然可供未來檢索。因此，當前的技能庫系統通常假設庫是健康的，儘管此假設隨著庫增長而越發脆弱。</p>
+<p>基於此缺口，我們將技能技術債下的技能庫維護研究為 LLM agent 系統的<strong>插件問題</strong>。目標是提供一個庫管理層，在下游 agent 使用庫之前運行：給定一個原始技能庫，它診斷持續性缺陷、應用型別化修復、並返回一個已清理的技能庫，供既有的檢索型或任務導向 agent 使用，無需修改其內部程式碼。</p>
+<p>為此，我們提出 <strong>SkillOps</strong>，一套即插即用的維護框架，結合了契約式技能表示、圖結構化庫組織、健康診斷、以及回饋驅動的維護。SkillOps 將每個技能表示為技能契約 (P, O, A, V, F)，其中 P 表示前置條件、O 表示可執行操作、A 表示產出的 artifact、V 表示驗證器、F 表示已知失敗模式。這些契約被組織進層次技能生態圖（HSEG），技能之間透過型別化的依賴、相容性、冗餘與替代邊相連。基於 HSEG，SkillOps 沿效用、冗餘、相容性、失敗風險與驗證缺口等維度計算庫健康，然後應用合併（merge）、修復（repair）與退役（retire）等維護動作。</p>
+<p>核心介面為 <code>cleaned_lib = run_maintenance(raw_lib)</code>，產出的已修復庫可傳遞給任何下游檢索或規劃方法。在當前實作中，維護迴圈使用可觀測信號（如效用日誌、body-hash 碰撞、缺失驗證器、失敗日誌、型別不匹配），因此在庫時間幾乎不產生 LLM 調用。SkillOps 也包含一個可選的任務時間規劃器，用於型別化技能匹配、依賴拼接、驗證器或轉接器插入、以及局部修復，但此規劃器可被任何讀取已維護庫的下游 agent 替換。</p>
+<p>我們的實驗從四個方面支持 SkillOps。第一，作為獨立 agent，SkillOps 在 ALFWorld 上達到 79.5% 任務成功率，超越最強基線 +8.8pp，且零額外 LLM 調用。第二，作為插件層，SkillOps 持續改善檢索型基線，在 BM25、dense 與混合檢索設定下獲得 +0.68 至 +2.90pp 的增益。第三，規則式維護階段幾乎零庫時間 LLM 成本，且在任務時間 token 使用上為中性至負面。</p>
+<p>我們的貢獻如下：</p>
+<ol>
+<li>將技能庫可維護性形式化為 LLM agent 的庫時間問題，定義 HSEG 以及捕捉效用、冗餘、相容性、失敗風險與驗證缺口的健康維度。</li>
+<li>引入 SkillOps 作為與方法無關的插件式維護框架，原始庫透過型別化動作（merge、repair、retire、add_validator、add_adapter）轉換為已維護庫。</li>
+<li>實證顯示 SkillOps 對不同 agent 類型有方法條件性效果——幫助檢索型 agent，同時揭示庫時間維護何時為中性或與任務時間自我修復衝突。</li>
+<li>展示當前規則式實作在無額外 LLM 調用或 token 成本下執行庫維護，使維護成為低開銷架構層而非額外推論負擔。</li>
+</ol>
+<hr />
+<blockquote>
+<p>本檔為 <a href="../2605.13716_SkillOps.zh-TW.html">（內部參照）</a> 的第 1/4 部分。</p>
+</blockquote>
+<hr />
+<h2 id="title-skillops將-llm-agent-技能庫視為自我維護的軟體生態系來管理全文翻譯zh-twpart2-source-httpsarxivorgabs260513716">title: 《SkillOps：將 LLM Agent 技能庫視為自我維護的軟體生態系來管理》全文翻譯（zh-TW）part2
+source: https://arxiv.org/abs/2605.13716</h2>
+<hr />
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

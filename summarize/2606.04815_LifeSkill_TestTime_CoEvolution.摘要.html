@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Learning While Acting：技能增強的測試時共演化框架，給線上終身學習 agent（LifeSkill）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：LifeSkill 論文作者群（在 LifelongAgentBench 上評測技能增強測試時共演化）</p><p>日期：2026-06（v1）</p><p>arXiv：2606.04815</p><p><a href="https://arxiv.org/abs/2606.04815" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="learning-while-acting技能增強測試時共演化lifeskill重點摘要">《Learning While Acting：技能增強測試時共演化（LifeSkill）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>現有終身學習 agent 在推理時多用「離散技能/過去經驗檢索 + 靜態參數」，無法像人類那樣在測試時持續<strong>內化</strong>回饋；本文提出 <strong>LifeSkill</strong>——一個<strong>兩階段 RL</strong> 框架：①<strong>Verifier-Guided Skill Learning（VGSL）</strong> 用「多次技能條件化 rollout 的平均驗證者成功率」當獎勵訓練技能抽取器（讓它產出「對解題有用」而非「文字上看似合理」的技能）；②<strong>Online Skill Internalization（OSI）</strong> 把成功的技能條件化軌跡<strong>去掉技能文字、只用原始任務輸入更新 policy</strong>，把測試時發現的行為<strong>內化進模型參數</strong>而非留在外部記憶——在 LifelongAgentBench 上平均準確率 <strong>0.59</strong>，比最強免訓練基線高 <strong>10 個百分點</strong>、比最強訓練式基線高 <strong>7 個百分點</strong>（DB 0.82、OS 0.64）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>真實環境是動態的（任務分布演化、有用策略在反覆互動中浮現），終身/持續學習是 LLM agent 的核心需求：agent 應在互動中持續改進、把測試時回饋轉成<strong>持久的能力增長</strong>，而非把每個 episode 當孤立推理。現有方法三個關鍵限制：① 多數 agent 測試時<strong>凍結參數</strong>、靠外部記憶改善，無法真正在部署中學習；② 雖能總結軌跡或產反思，但<strong>如何從互動回饋抽取可重用技能（尤其在可靠、執行接地的監督下）<strong>仍探索不足；③ 習得知識多表示為</strong>離散外部文字</strong>，模型難內化、組合、泛化成參數知識——結果 agent 能檢索經驗，卻無法有效把它轉成持久能力。</p>
+<h2 id="核心方法">核心方法</h2>
+<p>LifeSkill 維護兩個同骨幹但不同參數的模型：<strong>Policy Model π_θ</strong>（執行任務）與 <strong>Skill Extraction Model π_ϕ</strong>（從失敗互動蒸餾可重用技能），透過兩個 RL 機制耦合成測試時共演化迴圈：</p>
+<ul>
+<li><strong>VGSL（驗證者引導的技能學習）</strong>：失敗後，技能抽取器 π_ϕ 提候選技能；每個技能以「多次<strong>技能條件化 policy rollout</strong> 的平均<strong>驗證者</strong>獎勵」評分（技能效用＝其經驗成功率），訓練 π_ϕ 產出「對解題有用」而非「文字上合理」的技能——監督來自<strong>任務驗證者</strong>而非偏好標籤或主觀 LLM 裁判。</li>
+<li><strong>OSI（線上技能內化）</strong>：對成功的技能條件化軌跡，<strong>移除輸入中的顯式技能 scaffold</strong>、僅在原始任務輸入下更新 π_θ，使互動中發現的行為被<strong>吸收進模型參數</strong>、而非留作外部記憶——解決「技能引導探索」與「部署（無技能）」的不匹配。</li>
+<li><strong>共演化迴圈</strong>：更好的技能抽取 → 更有效的失敗後探索 → 更強軌跡 → 更好的技能學習；acting、技能發現、參數適應整合進一個連續線上迴圈。在窗口 𝒲_t 上的互動既改善當前窗口表現、又提供線上監督更新兩模型，再進到 𝒲_{t+1}。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<p>在 <strong>LifelongAgentBench</strong>（三環境 DB / OS / KG）：</p>
+<ul>
+<li><strong>平均準確率 0.59</strong>，比最強免訓練基線高 <strong>10 個百分點</strong>、比最強訓練式基線高 <strong>7 個百分點</strong>。</li>
+<li><strong>DB</strong>：LifeSkill <strong>0.82</strong>，比最強檢索基線 Group Self-Consistency（0.63）高 <strong>19 點</strong>，且<strong>無任何檢索上下文</strong>——顯示「把技能內化進參數」比「prompt 檢索」更有效也更省上下文。訓練式基線 RFT 在 DB 僅 0.70（LifeSkill +0.12）。</li>
+<li><strong>OS</strong>：LifeSkill <strong>0.64</strong>（DAPO 0.53）。<strong>KG</strong>：0.32，未勝最強免訓練基線（0.36）——作者歸因 KG 軌跡更長、二元獎勵更稀疏，削弱學習信號。</li>
+<li><strong>消融</strong>：把 VGSL 換成 LLM-as-Judge，DB/OS 從 0.82/0.64 掉到 0.70/0.62（執行接地的驗證者獎勵比主觀評分更可靠）；<strong>移除技能抽取模型退化最大</strong>（DB 掉到 0.64、OS 0.53），凸顯雙模型共演化的重要；停用 OSI 也降（DB 0.79、OS 0.60），說明技能抽取本身不夠、需把行為內化進參數。</li>
+<li><strong>測試時計算</strong>：候選技能/軌跡數 K 從 1 增到 4，DB 準確率從 0.25 升到 0.82、之後 5 持平；OS 升到 0.64 後穩定——更大探索預算更好，但 &gt;4 後收益有限。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>稀疏獎勵長視野設定下表現不佳</strong>（KG：0.32 &lt; 0.36），二元獎勵在長軌跡上太稀疏，削弱技能抽取與 policy 內化的學習信號——作者列為未來方向。</li>
+<li>需在部署中做線上 RL 更新兩個模型（policy + 技能抽取器），計算成本與穩定性比「凍結 + 檢索」高；依賴可靠的<strong>任務驗證者</strong>（無驗證者的開放域任務不適用）。</li>
+<li>測試時計算需 K=4 的 rollout 才達峰值，增加每任務開銷。</li>
+<li>評測限於 LifelongAgentBench 三環境（DB/OS/KG），未涵蓋更廣的具身/網頁長視野終身任務。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>點出 agent 終身學習的一條關鍵分歧：<strong>「把經驗留在外部記憶（檢索）」vs「把經驗內化進參數」</strong>——本文證明在有可靠驗證者的設定下，<strong>內化進參數比 prompt 檢索更有效也更省上下文</strong>（DB 上 0.82 無檢索 vs 0.63 有檢索）；這直接挑戰 <a class="paper-reference" href="2606.25115_CURATOR_BudgetCurated_Memory.%E6%91%98%E8%A6%81.html">2606.25115</a> CURATOR / <a class="paper-reference" href="2606.19847_AtomMem_AtomicFacts_Memory.%E6%91%98%E8%A6%81.html">2606.19847</a> AtomMem / <a class="paper-reference" href="2603.01145_AutoSkill_Skill_SelfEvolution.%E6%91%98%E8%A6%81.html">2603.01145</a> AutoSkill 等「外部記憶/技能」路線的假設，值得對讀辯證。</li>
+<li>**「技能作為中間學習介面」**是值得記住的設計：技能不是最終要保留的外部 scaffold，而是「引導失敗後探索 → 再把行為內化回 policy」的橋——與 <a class="paper-reference" href="2509.04439_ArcMemo_Concept_Memory.%E6%91%98%E8%A6%81.html">2509.04439</a> ArcMemo（不動權重、累積記憶）、<a class="paper-reference" href="2603.01145_AutoSkill_Skill_SelfEvolution.%E6%91%98%E8%A6%81.html">2603.01145</a> AutoSkill（免訓練技能工件）形成鮮明對比（LifeSkill <strong>動權重</strong>）。</li>
+<li><strong>VGSL 用「驗證者成功率」而非「LLM 裁判」評技能</strong>呼應 <a class="paper-reference" href="2606.24428_EDV_ExecuteDistillVerify.%E6%91%98%E8%A6%81.html">2606.24428</a> EDV「執行接地的驗證優於自我評估」，兩者都強調<strong>可靠監督信號</strong>對 self-evolving agent 的關鍵性。</li>
+<li>最值得記：<strong>「測試時探索應被當成未來能力的監督，而非只是當前 episode 的額外計算」</strong>（否則 agent 在相關任務上反覆重做搜尋/自我修正）。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2606.04815_LifeSkill_TestTime_CoEvolution.zh-TW.html"><code>../translate/2606.04815_LifeSkill_TestTime_CoEvolution.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

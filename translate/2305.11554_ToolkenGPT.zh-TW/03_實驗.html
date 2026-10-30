@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.11554_ToolkenGPT.zh-TW.html">回 2305.11554_ToolkenGPT.zh-TW 目錄</a>　<a href="02_ToolkenGPT%EF%BC%9A%E6%8E%8C%E6%8F%A1%E6%B5%B7%E9%87%8F%E5%B7%A5%E5%85%B7.html">← 上一節</a>　<a href="04_%E7%B5%90%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<p>在三類有意義的工具使用情境套用 ToolkenGPT：數值推理的算術工具、知識庫問答的資料庫 API、具身規劃的機器人動作。關注「能否準確呼叫工具、能否成功解題」。</p>
+<h3 id="41-數值推理">4.1 數值推理</h3>
+<p>比較對象是 in-context 工具學習（如 ReAct）。先證明在 4 個基本算術函數（+、−、×、÷）下 ToolkenGPT 持平或勝過 in-context learning；再擴到 13 個函數的更複雜數學題並造合成資料，顯示 ToolkenGPT 僅用合成資料訓練即大幅勝出。（重申：目標非刷 SOTA，而是評估「工具可用時的工具學習能力」。）</p>
+<p><strong>資料集</strong>：（1）<strong>GSM8K-XL</strong>——把 GSM8K（小學數學應用題，需一串 +−×÷ 運算）測試集的數字放大以增加計算難度，含 568 題。（2）<strong>FuncQA</strong>——自造合成資料集，至少需 13 種運算子（power、sqrt、lcm 等），無外部計算機時對人與 LLM 都難；分 68 題 one-hop 與 60 題 multi-hop。GSM8K-XL 用 GSM8K 原訓練集的計算標註預處理得 5,054 訓練＋1,000 驗證；FuncQA 用 ChatGPT 為每個運算子生成 one-hop 模式再隨機賦值，得 611 訓練＋39 驗證。</p>
+<p><strong>方法</strong>：為每個算術運算子學 toolken embedding；推理時用 4-shot CoT 增強推理。baseline：0-shot ChatGPT、CoT、ReAct（把運算子以 <code>&lt;multiply&gt;(50,3.2)</code> 語法插入推理鏈）。除 0-shot 外主幹皆用 <strong>LLaMA-33B</strong>。</p>
+<p><strong>表 2（GSM8K-XL 與 FuncQA，準確率）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>GSM8K-XL(4)</th>
+<th>FuncQA one-hop(13)</th>
+<th>FuncQA multi-hop(13)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0-shot ChatGPT</td>
+<td>0.17</td>
+<td>0.55</td>
+<td>0.09</td>
+</tr>
+<tr>
+<td>CoT</td>
+<td>0.18</td>
+<td>0.20</td>
+<td>0.03</td>
+</tr>
+<tr>
+<td>ReAct</td>
+<td>0.32</td>
+<td>0.57</td>
+<td>0.06</td>
+</tr>
+<tr>
+<td><strong>ToolkenGPT</strong></td>
+<td><strong>0.33</strong></td>
+<td><strong>0.73</strong></td>
+<td><strong>0.15</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>分析</strong>：GSM8K-XL 上無工具的 0-shot/CoT 算不動大數，ReAct 與 ToolkenGPT 都大幅提升（工具只有 4 個基本運算子，兩者都能正確調用）。但 FuncQA 工具一多，ReAct 因 context 塞不下每個工具的示範（實驗只放 4 例含 5 個工具示範），易漏調、錯調、錯填參數，尤其對未示範的工具。ToolkenGPT 在 one/multi-hop 皆勝出；且<strong>僅用 one-hop 合成資料、無任何 CoT 範例訓練，仍能在 multi-hop 提升並與 CoT 提示良好整合</strong>，顯示 toolken embedding 具泛化性，降低對領域內資料的需求。</p>
+<h3 id="42-知識庫問答">4.2 知識庫問答</h3>
+<p>把「查 KB」表述為查資料庫的 API：每個關係查詢即一個工具，輸入為主體實體、輸出為對應尾實體（如 <code>P1346(2005-06 FA Cup)→Liverpool F.C.</code>，P1346 即 winner_of）。展示 ToolkenGPT 能準確查詢多達 **234 個工具（關係）**的大型知識庫，且僅用合成資料也能訓出勝過主流方法的 toolken embedding。</p>
+<p><strong>資料集</strong>：<strong>KAMEL</strong>（以 Wikidata 事實建的問答集，243 個關係、各附問題模板；本文用 234 個工具）。依關係數造 4 個子集（30/60/100/234 個關係），各 500 題。</p>
+<p><strong>方法</strong>：（1）<strong>ToolkenGPT(sup)</strong>——每關係採 200 例監督學習（代表有充足領域內資料）；（2）<strong>ToolkenGPT(syn)</strong>——假設無領域內資料，用各關係的文字描述請 ChatGPT 合成訓練資料（平均每 toolken 約 40 例）。baseline：Prompting（純靠 LLM 內部知識）、In-context Learning（ICL，列出所有可用工具的示範與描述，即 &quot;few-shot&quot;）、ICL(desc)（只給描述、不給示範，即 &quot;zero-shot&quot;）。主幹 <strong>LLaMA-13B</strong>。</p>
+<p><strong>圖 2（不同工具數下的表現，文字說明）</strong>：各測試集 Prompting 準確率僅約 20%，顯示 LLM 難把事實準確存於參數、必須接 KB。<strong>ToolkenGPT(sup) 以大幅領先居首</strong>；ICL 雖也在 context 見過領域內資料，仍搞混該調哪個工具，且<strong>超過 30 個工具就因 context 上限而急劇掉分</strong>——暴露 in-context learning 範式在多工具情境的根本限制。ToolkenGPT(syn) 未見任何領域內資料仍勝過所有 baseline（合成資料雖表達風格常與測試集不同，仍幫 LLM 理解關係）。ICL(desc) 大致失敗——LLM 難記住脈絡中的文字描述並映射到關係識別碼；可推測 LLM 多半是<strong>靠工具識別碼回憶工具</strong>，而非真從描述學會用工具。</p>
+<h3 id="43-具身規劃">4.3 具身規劃</h3>
+<p>把 LLM 當具身智能體的控制器。教 LLM 認識環境並做**接地（grounded）**預測仍具挑戰。展示本框架亦可用於具身智能體的規劃：為動作與物件學 toolken embedding，比只提示 LLM 更能理解環境。</p>
+<p><strong>資料集</strong>：<strong>VirtualHome</strong>（家庭活動模擬平台）與其 ActivityPrograms 知識庫，取 297 個任務子集。每任務給高階目標（如 &quot;Read book&quot;）、細節指令、環境描述（智能體初始狀態與可操作物件清單），要求輸出可執行的「動詞-物件」有序計畫（如 <code>[FIND] &lt;novel&gt;</code>）。附初始/終末狀態圖以在模擬器中驗證。切成 247 訓練 + 50 測試，共 25 個動詞、32 個物件。</p>
+<p><strong>方法</strong>：把所有動作與物件視為工具，加一個 <code>[END]</code> 表計畫結束，共 <strong>58 個 toolken</strong>（工具無參數，故免參數生成流程）；推理時交替生成動作與物件 toolken、以 <code>[END]</code> 收尾。baseline：In-context Learning、+Translation（用 SentenceRoBERTa 把生成翻到最相近的合法指令）、+Grounded Decoding（解碼時結合 LLM logits 與接地函數）。主幹 <strong>LLaMA-13B</strong>。</p>
+<p><strong>表 3（VirtualHome）</strong>：Grounding＝全部動作物件皆可接地的比例；Executable＝可在 VirtualHome 無違規執行的比例；Success＝達到正確終態的比例；Success(R)＝寬鬆版（曾到達正確終態但未必以此收尾）。</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>Grounding</th>
+<th>Executable</th>
+<th>Success</th>
+<th>Success(R)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>In-context Learning</td>
+<td>0.74</td>
+<td>0.42</td>
+<td>0.20</td>
+<td>0.30</td>
+</tr>
+<tr>
+<td>+ Translation</td>
+<td>1.00</td>
+<td>0.52</td>
+<td>0.24</td>
+<td>0.32</td>
+</tr>
+<tr>
+<td>+ Grounded Decoding</td>
+<td>1.00</td>
+<td>0.66</td>
+<td>0.38</td>
+<td>0.42</td>
+</tr>
+<tr>
+<td><strong>ToolkenGPT</strong></td>
+<td><strong>1.00</strong></td>
+<td><strong>0.82</strong></td>
+<td><strong>0.68</strong></td>
+<td><strong>0.70</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>分析</strong>：純 ICL 常無法把預測接地到合法指令，或雖合法卻違反 VirtualHome 物理規則、成功率低。Translation 解淺層接地（如 <code>[tv]→[television]</code>），Grounded Decoding 因在解碼早期考慮接地而再提升；但兩者都未真正改善 LLM 對動作物件的<strong>理解</strong>。ToolkenGPT 靠設計天然只預測合法動作物件，並從更多訓練任務學 toolken embedding 而達最高成功率。案例（圖 3）：所有 baseline 受 &quot;sit at desk&quot; 描述誤導而預測 <code>[SIT] &lt;desk&gt;</code>，但 VirtualHome 中 <code>[SIT]</code> 意為「坐上」、桌子不可坐；<strong>唯 ToolkenGPT 從示範學到此規則、改預測 <code>[SIT] &lt;chair&gt;</code></strong>。</p>
+<h3 id="44-分析">4.4 分析</h3>
+<p><strong>計算成本（表 4，LLaMA-7B，FuncQA）</strong>：與 LoRA 微調比。LoRA 在 FuncQA 效能略高（one-hop 0.62 / multi-hop 0.07），但需 <strong>8×A100(80G)、40 分鐘</strong>；ToolkenGPT 只需 <strong>1×RTX3090(24G)、2 分鐘</strong>，效能相近（one-hop 0.55 / multi-hop 0.06；ReAct 0.40/0.03、Prompting 0.10/0.00）。且 ToolkenGPT 另有微調沒有的好處——<strong>因不同工具參數解耦而支援海量工具即插即用</strong>。</p>
+<p><strong>消融（表 5，LLaMA-30B，FuncQA）</strong>：把 ReAct 加上「tool mode（只給選中工具的示範來補參數）」子程序後，one-hop 0.57→0.60、multi-hop 0.06→0.07 略升，顯示 tool mode 確能改善參數補齊；但 ToolkenGPT（0.73/0.15）仍大幅領先，說明 <strong>toolken embedding 真正幫 LLM 決定「何時、調哪個」工具</strong>。</p>
+<p><strong>訓練資料（表 6，KAMEL 30 工具測試集）</strong>：每工具取 10/20/40 例。合成資料準確率 0.36/0.46/0.52，監督資料 0.56/0.90/0.95——同資料量下<strong>監督優於合成</strong>（合成雖少見明顯錯誤，但與測試集的分佈落差拖累表現），且資料量越大兩種來源都越好。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

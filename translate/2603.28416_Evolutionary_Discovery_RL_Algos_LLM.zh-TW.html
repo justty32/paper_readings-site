@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>用大型語言模型演化發現強化學習演算法（Evolutionary Discovery of Reinforcement Learning Algorithms via Large Language Models） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Alkis Sygkounas、Amy Loutfi、Andreas Persson（Örebro University, Sweden）</p><p>日期：2026-03</p><p>arXiv：2603.28416</p><p><a href="https://arxiv.org/abs/2603.28416" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="用大型語言模型演化發現強化學習演算法">用大型語言模型演化發現強化學習演算法</h1>
+<p>Örebro University, Sweden — Machine Perception and Interaction Lab</p>
+<h2 id="摘要">摘要</h2>
+<p>RL 演算法由其學習更新規則定義，這規則通常手工設計且固定。我們提出一個演化框架，<strong>直接在「實作完整訓練程序的可執行更新規則」上搜尋</strong>，以發現 RL 演算法。方法建於 <strong>REvolve</strong>（用 LLM 當生成式變異算子的演化系統）之上，把它從「獎勵函數發現」擴展到「演算法發現」。為促進非標準學習規則的出現，搜尋<strong>排除正統機制</strong>——actor-critic 結構、TD loss、value bootstrapping。因為 RL 演算法對內部 scalar 參數高度敏感，我們引入<strong>演化後精煉階段</strong>：用 LLM 為每個演化出的更新規則提議可行的超參區間。在多個 Gymnasium benchmark 上以完整訓練 run 端到端評估，發現的演算法相對 SAC、PPO、DQN、A2C 等成熟基線達到具競爭力的效能。</p>
+<p><strong>關鍵詞</strong>：強化學習、演化演算法、大型語言模型、演算法發現。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>在 RL 中，更新規則決定如何把經驗轉成參數更新，直接塑造學習行為。雖然自動化已用於架構設計、超參調校、訓練訊號設計，<strong>更新規則本身通常仍固定</strong>。少數工作嘗試學更新規則（Oh 2020 最佳化可微更新函數、Co-Reyes 2021 演化結構化 loss 表達式），但都在受限參數化表示內操作，<strong>產不出以可執行訓練邏輯表達的根本不同更新規則</strong>。於是更新規則仍是 RL 中尚未被完全自動設計的核心元件之一。</p>
+<p>在更新規則上搜尋與梯度法/局部最佳化不相容，因為搜尋空間是<strong>離散程式結構</strong>（實作完整訓練程序），而非連續參數或可微更新模組。更新邏輯的小改動就能誘發質變的學習動態，而 RL 對實作細節惡名昭彰地敏感——穩定某規則的超參常對另一規則失效。因此每個更新規則必須當作獨立演算法、只能用完整訓練 run 評估其品質。這正適合 population-based 演化法（用端到端效能比較候選，不需梯度或平滑目標結構）。</p>
+<p>但 RL 更新規則違反了「演化算子需能產出語法有效且可執行後代」的要求：它們是緊耦合訓練程序而非孤立目標函數，小的結構改動就可能斷掉元件間依賴或讓資料流無效。因此盲目 mutation/crossover 不太可能可靠產出功能正常的更新規則——需要一個能提出<strong>連貫、可執行修改</strong>的引導機制。近期工作顯示 LLM 能在演化 pipeline 內充當這樣的提議機制。</p>
+<p>本文用「LLM 演化搜尋」直接在學習更新規則上搜尋來發現新 RL 演算法。建於 REvolve（用島嶼種群 + LLM 變異把獎勵函數發現形式化為演化）之上，但<strong>換搜尋空間</strong>：在固定策略架構、optimizer、訓練配置下演化「可執行的學習更新規則程式碼」，每個候選即一個不同 RL 演算法。為逼出非正統規則、檢驗能否真出現新規則，<strong>禁止標準機制</strong>（actor-critic 分解、bootstrapped value targets、TD 誤差）。每候選用固定環境集完整訓練評估，按聚合效能選擇。再用後演化超參優化提升 top 演算法的穩健與穩定。</p>
+<p><strong>貢獻</strong>：(1) 把 RL 演算法發現形式化為「在可執行學習更新規則上的演化搜尋」;(2) 把 REvolve 擴展到更新規則空間，用 LLM-guided mutation/crossover + 排除正統機制的顯式約束；(3) 實證顯示框架在多個 Gymnasium benchmark 上（經後演化超參優化後）發現具競爭力的新演算法。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>既有工作自動化的多是<strong>更新規則之外</strong>的元件：RL 的神經架構搜尋、大規模超參優化、輔助目標/訓練訊號設計——底層更新規則通常固定。演化/population-based 方法（neuro-evolution、ES、PBT、環境/課程演化）改善的是策略、參數或架構，仍在固定訓練迴圈內。近期 LLM 被納入類似迭代優化 pipeline（生成/精煉獎勵規格、提出策略級程式/啟發式）。但除了少數在受限形式內學/演化更新規則者，這些方法都把更新規則本身held固定。本文不同：在<strong>更新規則層級</strong>做演算法發現，把可執行學習邏輯當成演化搜尋對象。</p>
+<h2 id="3-方法">3. 方法</h2>
+<p>考慮 MDP <code>M=(S,A,P,r)</code>。RL 演算法由更新規則 f 定義，其核心是可微 loss <code>L_f(θ, ξ_t; D_t)</code>：θ 為策略參數（含固定 trunk 與 output head），ξ_t 為更新規則引入的所有輔助可訓練元件與內部狀態（如輔助網路或 target model 的參數）。誘發的更新為 <code>Δθ_t = -η_f ∇_θ L_f</code>、<code>Δξ_t = -η_f^ξ ∇_ξ L_f</code>（η 為規則特定係數），更新規則即程式級映射 <code>f(θ_t, ξ_t, D_t) := Δθ_t</code>。搜尋空間 F 為所有誘發有效參數更新的可執行更新規則；在固定架構/optimizer/迴圈下，每個 f 即一個不同 RL 演算法。</p>
+<ul>
+<li><strong>適應度</strong>：對每環境用「訓練視野內達到的最大評估回報」（最佳策略）總結，再用環境特定下/上界 L_i、U_i 正規化、跨環境聚合。</li>
+<li><strong>變異（LLM）</strong>：算子 op ∈ {macro, crossover};LLM 輸入摘要訓練指標 R 與環境介面 E（觀測/動作空間），輸出 f′＝可執行更新規則實作（含 loss 與 ξ 的輔助更新）。變異期顯式<strong>禁止實例化 actor-critic/bootstrap/TD</strong>（僅演化搜尋期施加）。</li>
+<li><strong>後演化超參</strong>：對每個 top 演算法 f̂，LLM 讀完整實作 + 環境規格，回傳有界數值區間。</li>
+</ul>
+<h2 id="4-實驗設定">4. 實驗設定</h2>
+<p>訓練環境：CartPole-v1（最小控制、驗證基本學習）、MountainCar-v0 與 Acrobot-v1（離散稀疏獎勵）、LunarLander-v3（離散 + shaped 獎勵 + 較複雜動態）、HalfCheetah-v5（高維連續、密集獎勵）——橫跨離散/連續、稀疏/密集。每候選用 5 環境 × 5 seeds = 25 runs；環境級分數取「各 seed 最佳 checkpoint 回報的平均」，正規化到 [0,1] 後聚合成 scalar fitness。實驗用 4×A100 40GB，<strong>單代約 30 小時 wall-clock</strong>。</p>
+<h2 id="5-結果">5. 結果</h2>
+<ul>
+<li><strong>演化進度</strong>（Fig. 3）：GPT-5.2 與 Claude 4.5 Opus 各跑兩 seed；最大 fitness 隨代單調上升。GPT-5.2 全程更高，末代 fitness <strong>0.65–0.69</strong> vs Claude 4.5 Opus <strong>0.37–0.47</strong>。Claude 一致較低、末代未產出有競爭力候選，後續分析排除。</li>
+<li><strong>選出兩演算法</strong>：GPT-5.2 兩個獨立 run 各產一個——<strong>CG-FPD</strong> 與 <strong>DF-CWP-CP</strong>（細節見附錄 B：CG-FPD ＝潛在表示 + 動力學學習 + 規劃當教師訊號 + 蒸餾式策略更新；DF-CWP-CP ＝世界模型 + 信心 + 雙流策略正則 + 可控性先驗 + 規劃式學習訊號）。值得注意：被禁掉 actor-critic/TD 後，演化自發收斂到 model-based 世界模型 + 規劃 結構。</li>
+<li><strong>泛化評估</strong>：在 10 個環境（5 訓練 + 5 未見）上評估兩演算法，與 PPO/A2C/DQN/SAC（相同 256×256 MLP，每法 5 seeds、各 seed 最佳 checkpoint 跑 100 episodes）比最大評估回報（Table 1）。兩演算法在多數環境達到具競爭力效能。</li>
+<li><strong>學習動態</strong>（Fig. 4）：多數環境內兩演算法都在預算內達到高效能，但學習<strong>常非單調、末端不一致維持</strong>；不過最佳 checkpoint（Table 1）對應的策略確實解或競爭性地完成任務。</li>
+</ul>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

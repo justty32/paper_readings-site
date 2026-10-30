@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《AgentSociety：以 LLM 生成式 Agent 進行大規模社會模擬》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jinghua Piao, Yuwei Yan, Jun Zhang, Nian Li, Junbo Yan, Xiaochong Lan, Zhihong Lu, Zhiheng Zheng, Jing Yi Wang, Di Zhou, Chen Gao, Fengli Xu, Fang Zhang, Ke Rong, Jun Su, Yong Li（Tsinghua University）</p><p>日期：2025-02，生成式社會科學 × 大規模 LLM Agent 模擬</p><p>arXiv：2502.08691</p><p><a href="https://arxiv.org/abs/2502.08691" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="agentsociety以-llm-生成式-agent-進行大規模社會模擬重點摘要">《AgentSociety：以 LLM 生成式 Agent 進行大規模社會模擬》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>AgentSociety 把社會模擬拆成三層：帶有情緒、需求、認知與事件／感知記憶流的 LLM 社會人；具客觀規則的城市、社交、經濟環境；以及以 Ray agent group、asyncio、MQTT、PostgreSQL 組成的分散式引擎。作者模擬超過 10,000 個 agent，每人每日平均約 500 次互動、合計約 500 萬次，並以五類社會實驗比對真實趨勢，但「像真」多以方向一致與案例展示為主，還不足以證明可作高精度政策預測。</p>
+<h2 id="agent-的思想模型">Agent 的思想模型</h2>
+<ul>
+<li><strong>穩定 profile</strong>：姓名、年齡、性別、教育、人格等相對固定屬性。</li>
+<li><strong>動態 status</strong>：當前心理、經濟狀態與社會關係。</li>
+<li><strong>三層心理狀態</strong>：情緒快速回應刺激；需求依 Maslow 式階層提供長期動機；認知保存對議題的態度並參與推理、規劃與決策。</li>
+<li><strong>顯式 mind-behavior coupling</strong>：需求先形成計畫，再分解成移動、社交、工作、消費或其他行為；行為結果反過來更新情緒、認知與需求。</li>
+<li><strong>兩條時間流</strong>：Event Flow 記客觀動作、外部事件與環境變化；Perception Flow 記 agent 對事件的想法、態度與情緒。感知節點可連到一或多個事件節點。</li>
+</ul>
+<p>這是一個工程化的心理狀態機，不是經實驗驗證的人類認知模型。情緒以六種強度 0–10 表示，議題態度也用 0–10，需求階層與 LLM 生成共同決策；可檢查、可干預是優點，心理效度則仍是最大疑問。</p>
+<h2 id="大規模編排方法">大規模編排方法</h2>
+<ul>
+<li>每個 agent 是獨立的非同步模擬單位，沒有預先固定的全域 SOP；彼此以訊息影響。</li>
+<li>多個 agent 聚成一個 <strong>agent group</strong>，每組是一個 Ray actor／行程，共用 LLM、MQTT、環境、資料庫與指標 client。這把 TCP 連線數從 agent 數降到 group 數的倍數，避開 65,535 埠資源瓶頸。</li>
+<li>group 內以 asyncio 隱藏 LLM 與環境 I/O 延遲，group 間由 Ray 跨核心、跨機器執行。</li>
+<li>MQTT 採 publish/subscribe，依 experiment ID 與 agent ID 分 topic；同一通道也承載使用者對話與結構化問卷。</li>
+<li>共享服務包括 LLM API、EMQX MQTT、PostgreSQL、MLflow；每場實驗有獨立 Ray cluster 與環境模擬器，GUI 讀資料庫並透過 MQTT 即時干預。</li>
+</ul>
+<h2 id="錯誤管理">錯誤管理</h2>
+<p>平台已有有限的防護：LLM API 錯誤預設重試 3 次、JSON parser 清理 code fence 並轉成物件、實驗 metadata 記錄錯誤、狀態、對話與思想。但論文沒有說明重試的錯誤分類、冪等性、訊息重送／重複處理、checkpoint、故障隔離、跨 agent 錯誤傳播、因果歸因或補償操作。固定分組還會被最慢 group 拖累，作者把動態排程與負載平衡列為未來工作。</p>
+<h2 id="效能結果">效能結果</h2>
+<ul>
+<li>城市環境從 1,000 到 100 萬個模擬個體，每步平均耗時由 0.008578 秒增至 0.1680 秒。這是環境承載測試，不是 100 萬個 LLM agent 完整執行。</li>
+<li>100,000 agent、每人傳給 10 個隨機對象、訊息 100 bytes 的測試中：MQTT 為 44,702.1±111.3 msg/s，Redis Pub/Sub 為 81,216.2±333.6，RabbitMQ 為 23,667.3±1,777.7；Kafka 在 5 分鐘內未完成 100,000 agent 初始化。</li>
+<li>10,000 agent 完成一輪時，8、16、32 groups 的平均耗時為 5681.18、1422.48、458.82 秒。環境呼叫約 30–34 ms，真正瓶頸是外部 DeepSeek-V3 API；LLM 延遲還會隨服務端負載劇烈變動。</li>
+<li>論文的代表性規模是 10,000+ agent、每人每天平均 491.68 次環境／訊息互動，合計約 500 萬次。它沒有實作千萬個 agent。</li>
+</ul>
+<h2 id="五類社會實驗">五類社會實驗</h2>
+<ul>
+<li><strong>極化</strong>：同溫層處理下 52% agent 變得更極化；接觸異質觀點時 89% 變溫和、11% 轉向對立立場。</li>
+<li><strong>煽動訊息</strong>：煽動內容傳得更廣、情緒強度更高；封鎖反覆散播者的 node intervention 比切斷傳播邊更有效。</li>
+<li><strong>UBI</strong>：每月無條件給 1,000 美元後，模擬的消費上升、CES-D 憂鬱分數下降，方向與德州實驗相似。</li>
+<li><strong>颶風衝擊</strong>：1,000 agent 在 Hurricane Dorian 期間的活動率由 70%–90% 降到約 30%，之後恢復；每日行程趨勢與 SafeGraph 真實資料相近，但峰值幅度與反應速度有落差。</li>
+<li><strong>都市永續</strong>：六組研究團隊設計環保規範干預，皆提升問卷態度並降低移動碳排；個人規範與認同規範較強的方案效果較好。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<p>AgentSociety 對「agent 思想模型」給出少見的顯式答案：思想不是一段 prompt，而是 profile、status、需求、情緒、態度、事件流與感知流構成的可變狀態。對「千萬 agent 管理」則提供實用的 group 化原則：agent 身分與邏輯狀態可以很多，但昂貴連線、行程與 client 必須共用。它同時暴露下一步問題：固定 group 的拖尾、LLM 服務容量、持久化與錯誤語意，會比 agent 類別本身更早成為瓶頸。</p>
+<h2 id="局限">局限</h2>
+<ul>
+<li>心理模組引用理論作設計靈感，不等於建立可驗證的心理測量模型；LLM 的角色順從與回答偏差可能直接塑造「社會發現」。</li>
+<li>五個實驗多證明趨勢方向相似，缺少預註冊、重複試驗、敏感度分析、信賴區間及與簡單基線的全面比較。</li>
+<li>模擬人口並非真人一對一數位孿生；論文卻在討論中主張接近最高層級、可與真實社會共存，證據明顯弱於主張。</li>
+<li>外部 LLM API 是主要瓶頸且效能不可控；若私有部署，成本與資源配置會成為新限制。</li>
+<li>經濟環境尚未顯式建模完整商品市場、勞動市場、失業與工資談判；社交模組也以線上訊息為主。</li>
+</ul>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2502.08691_AgentSociety.zh-TW.html"><code>../translate/2502.08691_AgentSociety.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

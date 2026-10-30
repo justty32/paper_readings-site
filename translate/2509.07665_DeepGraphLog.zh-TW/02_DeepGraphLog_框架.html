@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_DeepGraphLog_框架 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2509.07665_DeepGraphLog.zh-TW.html">回 2509.07665_DeepGraphLog.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-deepgraphlog-框架">3. DeepGraphLog 框架</h2>
+<p>DeepGraphLog 緊密整合 GNN 與機率邏輯程式，支援對符號與子符號資料的<strong>分層推理</strong>。它<strong>相容任何 GNN 架構</strong>（故不固定特定架構），透過引入<strong>圖神經謂詞</strong>擴展 ProbLog。它<strong>完整保留 DeepProbLog 的功能</strong>（含用神經謂詞處理子符號輸入）；由於 DeepProbLog 的語意最終歸結為 ProbLog，故本文直接擴展 ProbLog。</p>
+<h3 id="31-problog">3.1 ProbLog</h3>
+<p>ProbLog 程式在邏輯程式上允許某些 ground 事實標註機率：機率事實 <code>p::f</code> 表示 ground 原子 f 成立的機率為 p。形式上 ProbLog 程式＝（機率事實集 F, 規則集 R）。Figure 1 的範例（以機率值取代神經謂詞）：</p>
+<pre><code>0.7::on(a,b).  0.4::next_to(a,c).  0.5::light(a).
+move(X) :- on(X,Y).
+move(X) :- next_to(X,Y).
+legal_move(X) :- move(X), light(X).
+</code></pre>
+<p>可能世界＝「對機率事實取樣後的集合」與規則一起的最小模型。每個子集 L⊆F 定義一個可能世界。世界機率＝假設機率事實獨立後的乘積（式 1）。支援兩種推理：<strong>邊際機率</strong>（查詢 q 成立的機率＝所有滿足 q 的世界機率之和）、<strong>條件機率</strong>（給定證據後 q 的機率）。</p>
+<p><strong>隨機圖</strong>：含機率二元事實（如 <code>0.7::link(a,b)</code>）的 ProbLog 程式<strong>定義了一個對可能圖的分布</strong>——每個可能世界對應「某些邊在、某些不在」的一張圖。可遞迴定義 <code>path/2</code> 並查詢兩節點間存在路徑的機率。</p>
+<h3 id="32-deepgraphlog">3.2 DeepGraphLog</h3>
+<p>在 ProbLog 中相依由規則<strong>顯式</strong>引入，機率事實間<strong>邊際獨立</strong>（類似貝氏網路：根節點獨立、邊編碼相依）。但要在 ProbLog 編碼這種結構需<strong>事先手工指定所有相關規則並已知完整相依結構</strong>，複雜領域中很快不可行。多層推理時 ProbLog 是 <strong>symbol→symbol→symbol</strong>（符號層堆疊），只在整個推理過程預先顯式定義時才可行；相依一多，所需 ground 規則數<strong>指數成長</strong>。</p>
+<p><strong>DeepProbLog</strong> 用神經謂詞讓機率事實由神經網路參數化，但<strong>繼承「事實邊際獨立」假設</strong>（神經無法學事實間相依），且神經謂詞通常作用於子符號資料、<strong>不能處理圖/關係等結構化符號輸入</strong>——限制它為固定的 <strong>subsymbol→neural→symbol</strong> 架構。</p>
+<p><strong>DeepGraphLog</strong> 用<strong>圖神經事實</strong>同時解決兩個限制：以 GNN 定義原子間相依；因原子是機率性的，GNN 的輸入本身是<strong>隨機圖</strong>。這使得<strong>即使缺顯式規則也能在 symbol→neural→symbol 設定中推理</strong>。</p>
+<p><strong>語法</strong>：圖神經謂詞作為邏輯與神經之間的介面——不給 ground 原子固定機率，而是<strong>對「從可能世界抽取的關係結構」套用 GNN 來算機率</strong>。</p>
+<blockquote>
+<p><strong>圖神經事實</strong>形如 <code>gnn(m_id, G, [terms]) :: head_atom.</code></p>
+<ul>
+<li><code>gnn</code>：保留函數符號；</li>
+<li><code>m_id</code>：唯一指向某固定 GNN 架構（層數/類型、聚合策略等固定），但<strong>權重可學</strong>;</li>
+<li><code>G</code>：編碼輸入圖的 ground 原子集——<strong>一元＝節點屬性、二元＝邊</strong>；若其中含機率事實，則 G 不是單一圖而是<strong>隨機圖</strong>（每個可能世界給出一個由「該世界中為真的原子」構成的具體實例餵給 GNN）。實務上 G 可用 Prolog 風格變數指定、求值時 ground;</li>
+<li><code>[terms]</code>：ground 項；</li>
+<li><code>head_atom</code>：其機率由 GNN 計算的 ground 原子。</li>
+</ul>
+</blockquote>
+<p>直觀上，圖神經事實擴展了機率事實——其機率由 GNN 計算；但 G 中原子可為機率事實，故 GNN 須處理<strong>含不確定性的輸入圖</strong>。</p>
+<p><strong>範例</strong>（Figure 1）：判斷能否移動方塊 a。從 GNN 角度這是<strong>節點層級分類</strong>：<code>m_move</code> 依輸入圖（<code>on(a,b)</code>、<code>next_to(a,c)</code>）預測 a 是否可移。</p>
+<pre><code>0.7::on(a,b).  0.4::next_to(a,c).  0.5::light(a).
+gnn(m_move, [on(a,b), next_to(a,c)], [a]) :: move(a).
+</code></pre>
+<p>圖神經謂詞是建模各種圖任務的<strong>通用原語</strong>：邊分類 <code>gnn(m_livesIn, …, [x,y])::person(x,y).</code>、二元圖分類 <code>gnn(m_classification, …)::positive.</code>。</p>
+<p><strong>語意</strong>：DeepGraphLog 程式＝（機率事實集 F, 規則集 R, 圖神經事實集 N）。如 ProbLog，可能世界＝「機率事實（含標準機率事實與圖神經事實）」的最小模型；每個子集定義一個可能世界。程式定義可能世界上的機率分布（類似式 1，但<strong>加入條件化以表達事實間相依</strong>）：給定圖神經事實，令其輸入隨機圖對應的 ground 原子集為 G；因 G 中部分原子為機率性，<strong>實際輸入圖隨「該世界中哪些原子為真」而定</strong>——每個可能世界誘導隨機圖的一個具體實例，即呈給該神經謂詞的輸入圖（式 2）。</p>
+<p><strong>DeepGraphLog 推理</strong>：查詢是欲計算邊際機率的 ground 原子。依查詢結構分兩種模式：</p>
+<ul>
+<li>查詢<strong>只依賴機率事實與規則、不涉圖神經事實</strong> → 退化為<strong>標準 ProbLog 推理</strong>：SLD 消解抽取所有證明 → 編譯成可處理電路（如 <strong>SDD</strong>）→ 以 <strong>semiring</strong> 自底向上求值（知識編譯）。</li>
+<li>查詢<strong>涉圖神經事實</strong> → 求值依賴隨世界而變的輸入圖 G，<strong>知識編譯不再適用</strong> → 改為<strong>對所有可能世界顯式邊際化</strong>（每個世界依語意建輸入圖並評估 GNN）。這導致 <strong>naive 列舉，可能昂貴</strong>；但實務上不確定邊數（及搜尋空間）通常有限。未來探索更高效策略（近似、取樣，及整合知識編譯）。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

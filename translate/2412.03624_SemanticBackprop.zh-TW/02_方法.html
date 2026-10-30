@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2412.03624_SemanticBackprop.zh-TW.html">回 2412.03624_SemanticBackprop.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-方法">3. 方法</h2>
+<p>在 Linnainmaa、Pryzant et al.（ProTeGi）與 Yuksekgonul et al.（TextGrad）的基礎上，提出<strong>基於語意梯度的語意反向傳播</strong>。損失 l 對變數 v 的<strong>語意梯度 ∇v lQ</strong> 提供「改變 v 如何改善系統表現」的方向資訊。語意反向傳播以最終語意梯度 ∇A lQ（通常源自答案回饋 F(Q, A)）為起點，依逆拓撲序為所有變數生成 ∇v lQ。再以<strong>語意梯度下降</strong>求解 GASO，其迭代步驟為：(1) 從 D 抽樣 Q；(2) 若 <code>l(Q, A(Q, Θ))</code> 超過設定閾值，才用語意反向傳播算出各變數的 ∇v lQ；(3) 對每個參數 θ 用優化器 ϕ、依其語意梯度更新之。</p>
+<h3 id="31-語意反向傳播">3.1 語意反向傳播</h3>
+<p>把 RMAD 公式中的 <code>(∂l/∂w)·J</code> 一項，廣義化為一組<strong>反向函數 {ĥ^v_w}</strong>：對任一 query Q、節點 w、其前驅 v，<code>ĥ^v_w</code> 接收 Predecessors(w)、w、以及梯度 ∇w lQ，映射到 v 空間中的方向 <code>∇^w_v lQ</code>——代表「在固定 w 的其他前驅下，改變 v 會如何依 ∇w lQ 的方向影響 w」。再以<strong>聚合函數 A_v</strong> 把所有後繼傳來的方向 <code>{∇^w_v lQ : w∈Successors(v)}</code> 合併為單一語意梯度 ∇v lQ（廣義化 RMAD 中對後繼的求和）。形式：</p>
+<pre><code>∇v lQ = A_v({ ∇^w_v lQ : w∈Successors(v) })，其中 ∇^w_v lQ = ĥ^v_w(Predecessors(w), w, ∇w lQ)
+</code></pre>
+<p>Algorithm 1 描述其逆拓撲序反傳流程。本文中前向函數處理自然語言，故反向函數 ĥ^v_w 以<strong>查詢 LLM</strong> 實作——理解輸入值 v 如何影響輸出值 w，這需要<strong>考量 h_w 的所有輸入（即 Predecessors(w)）與輸出梯度 ∇w lQ</strong>。（Implementation 1：對可優化參數 θ，其梯度被設為一段字串，列出「除 θ 外的其他前驅輸入 / 我的輸出 w / w 上收到的回饋 ∇w lQ」，聚合器 A_θ 取字串串接。）</p>
+<h3 id="32-語意梯度下降">3.2 語意梯度下降</h3>
+<p><strong>參數更新函數 ϕ</strong>：給定參數 θ 與其語意梯度集合 <code>G_θ</code>，類比數值梯度下降的 <code>θ ← θ − α·Σ∇θ lQi</code>，ϕ 依 G_θ 移動 θ。本文以<strong>查詢 LLM 索取 θ 的改良版本</strong>實作（Implementation 2）：把當前 prompt θ 與「它答不好的例子（即各語意梯度）」餵給 LLM，要求「寫出改良後的 prompt、不得含 feedback 關鍵字或範例特定內容、以 <code>&lt;prompt&gt;&lt;/prompt&gt;</code> 包住」，再後處理抽出。</p>
+<p><strong>優化流程（Algorithm 2）</strong>：先初始化 Θ；反覆抽樣 Q，僅當 <code>l(Q, A) &gt; 閾值 τ</code> 時計算梯度並累積，直到某節點累滿 batch b；對每個 (θ, G_θ) 套 ϕ 得候選 θ&#x27;；最後套 <strong>update gate（更新閘）</strong>——定義驗證函數 <code>L_Val(Θ)=Σ_{Q∈Val} l(Q, A(Q, Θ))</code>，唯有候選在驗證集上不劣於當前值時才更新 Θ。<strong>備註</strong>：不同於數值梯度下降每步都更新，作者的實務經驗顯示 update gate 是必要的——因語意梯度下降<strong>缺乏改善的理論保證</strong>，此閘控可避免解漂移到較差區域（§5.2 有其重要性的實證）。</p>
+<h3 id="33-與-textgrad-的差異">3.3 與 TextGrad 的差異</h3>
+<p>TextGrad 受反向傳播啟發，沿計算圖逆向傳播「文本梯度（textual gradient）」（對某變數以自然語言表達的批評）。它可視為語意反向傳播的<strong>特例</strong>：令 A_v 為恆等函數，且反向函數 ĥ 滿足 Eq. (3)、(4)——即 <code>∇^w_v lQ</code> 的計算<strong>與 v 無關</strong>、也<strong>不依賴 w 的任何其他前驅</strong>。作者認為這是 TextGrad 的關鍵問題：這等於對前向函數的輸入變數<strong>隱含施加「相互獨立且對稱」<strong>的假設，而這在計算圖（尤其代理圖）中通常不成立——鄰居節點間的</strong>異質性</strong>正是互補、協同行為得以浮現的關鍵（如對話 LLM 中系統 prompt 需與使用者 prompt 良好協同）。</p>
+<p>具體例：變數 v_a 的前驅為使用者查詢 v_q 與指令 v_θ。按 TextGrad 的形式，對 v_θ 的梯度只顯式依賴 v_θ 與 v_a、<strong>不含問題 v_q</strong>——這可能導致學到「完全忽略問題性質」的指令（如把上次的答案硬記成指令）；且計算對 v_q 與對 v_θ 的梯度時套用相同函數，無視兩者在系統中的角色差異。語意反向傳播藉由把鄰居間的依賴與異質性納入公式來解決此問題（§5.2 有實證）。</p>
+<h2 id="4-相關工作">4. 相關工作</h2>
+<ul>
+<li><strong>文本梯度與 prompt 優化</strong>：textual gradient 最早由 Pryzant et al. 於 prompt 優化提出（含 ProTeGi 方法），GRAD-SUM 以梯度加總避免更新過度貼合單一樣本、並引入 LLM-as-a-judge 放寬對標準答案的需求。但這些一階式方法<strong>未定義於「未直接連到輸出變數」的變數</strong>。</li>
+<li><strong>其他反向傳播式 GASO 方法</strong>：<strong>Trace</strong> 把程式執行軌跡建模為 trace graph，其 <strong>OptoPrime</strong> 對每個節點 v 指派「所有經 v 影響輸出的子圖」為回饋。問題是：子圖雖含 v 影響輸出的全部資訊，<strong>卻不直接指出該如何改善（無梯度式方向資訊）</strong>，優化器須自行隱式估計此資訊（很難）；且子圖大小<strong>隨圖深度線性成長</strong>，使 Trace 難以擴展到大圖。相對地，語意反向傳播明確反傳梯度式資訊、無此線性擴展限制。<strong>Zhou et al. (2024)</strong>（並行工作，即 Agent Symbolic Learning）提出含<strong>邊優化</strong>的反傳式 GASO，但<strong>僅限鏈狀結構</strong>的代理系統。</li>
+<li><strong>其他 GASO 方法</strong>：<strong>DSPy</strong> 把 LLM pipeline 抽象為文本轉換圖，以 instruction 與 demonstration 參數化各節點；其優化器 BootstrapFewshot（找 few-shot 範例）與 <strong>COPRO</strong>（對各 instruction 做座標上升）皆<strong>只局部聚焦</strong>，每步僅隱式知曉整條 pipeline。<strong>GPTSwarm 的節點優化</strong>在邊固定時求解 GASO，但每個節點對「特定的局部目標函數」更新，而此類局部目標並非總是可得、且限制了節點透過全域優化改變其功能的可能；其邊優化方法則可與本法互補。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

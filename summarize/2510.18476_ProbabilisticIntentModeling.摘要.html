@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《社會智慧 LLM Agent 的機率式意圖建模》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Feifan Xia, Yuyang Fang, Defang Li, Yantong Xie, Weikang Li, Yang Li, Deguo Xia, Jizhou Huang（Baidu / Imperial College London / Zhejiang University / Carnegie Mellon University / Peking University）</p><p>日期：2025-10，Stochastic Theory of Mind × 對話中的意圖信念更新</p><p>arXiv：2510.18476</p><p><a href="https://arxiv.org/abs/2510.18476" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="社會智慧-llm-agent-的機率式意圖建模重點摘要">《社會智慧 LLM Agent 的機率式意圖建模》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>SToM 不讓 agent 直接猜一個「對方真正意圖」，而是維護 3–5 個意圖假設的機率分布；每收到一句話，就由 LLM 估計各假設產生此話的 likelihood，再做類 Bayes 更新。分布熵決定 agent 要直接追求目標、先問澄清問題，或兩者折衷。這是一個很清楚的「他心模型」骨架，但實驗僅有 SOTOPIA 的 90+14 情境，belief 的機率校準、更新正確性與成本都沒有驗證。</p>
+<h2 id="思想模型信念不是單一文字猜測">思想模型：信念不是單一文字猜測</h2>
+<p>兩人社交對話被視為 POMDP。對方意圖 <code>θ</code> 是不可觀察狀態，agent 在第 <code>t</code> 輪保存 <code>B_t(θ)=P(θ|h_t)</code>：</p>
+<ol>
+<li>**Intention Model（IM）**讀場景、雙方背景與自己的目標，提出 3–5 個可能的對方意圖並給初始先驗。</li>
+<li>**Likelihood Model（LHM）**對新話語逐假設估計 <code>P(o_{t+1}|θ_i)</code>，考慮語意吻合、策略一致與對話脈絡。</li>
+<li>以 <code>B_{t+1}(θ) ∝ P(o_{t+1}|θ)B_t(θ)</code> 更新，再把假設與機率序列化進 acting policy 的 prompt。</li>
+<li>用正規化熵定義信心：<code>C_t = 1 - H(B_t)/log|Θ|</code>。高信心時針對最可能意圖積極行動；低信心時先蒐集資訊；中間則折衷。</li>
+</ol>
+<p>它建模的是 <strong>agent 對另一個 agent 意圖的二階信念</strong>，不是 agent 自己完整的認知架構。自身情緒、長期記憶、價值與自我模型並未被機率化。</p>
+<h2 id="實作與實驗">實作與實驗</h2>
+<ul>
+<li>對話 policy 固定為 Qwen2.5-7B-Instruct；對手是 GPT-4o。</li>
+<li>IM 與 LHM 也都由 GPT-4o prompt 實作，不訓練、不做梯度更新，但每輪多出昂貴的模型推理。</li>
+<li>SOTOPIA-All 有 90 情境，SOTOPIA-Hard 有 14 情境；評分維度為 Goal、Believability、Relationship、Knowledge、Social Norms、Secret、Financial Benefit，Overall 是七項正規化平均。</li>
+<li>比較 Base、SToM 與每輪直接看到對手真實意圖的 Oracle。評分同樣由 GPT-4o 自動完成。</li>
+</ul>
+<h2 id="結果與原文數字矛盾">結果與原文數字矛盾</h2>
+<p>表格數字如下：</p>
+<table>
+<thead>
+<tr>
+<th>設定</th>
+<th style="text-align:right">SOTOPIA-All Goal / Overall</th>
+<th style="text-align:right">SOTOPIA-Hard Goal / Overall</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen2.5-7B baseline</td>
+<td style="text-align:right">6.71 / 3.13</td>
+<td style="text-align:right">5.90 / 2.90</td>
+</tr>
+<tr>
+<td>+ SToM</td>
+<td style="text-align:right">7.32 / 3.45</td>
+<td style="text-align:right">5.93 / 3.14</td>
+</tr>
+<tr>
+<td>+ ground-truth intention</td>
+<td style="text-align:right">7.62 / 3.38</td>
+<td style="text-align:right">6.14 / 3.03</td>
+</tr>
+</tbody>
+</table>
+<p>論文文字稱 SToM 的 Overall 相對 baseline 提升 9.0% 與 4.1%，並比 oracle 高 0.6% 與 1.7%。這些百分比無法由表中 Overall 直接重算：表值對 baseline 約為 <strong>10.2% 與 8.3%</strong>，對 oracle 約為 <strong>2.1% 與 3.6%</strong>。摘要忠實保留作者主張，但使用時應以表中絕對值為準，不能把兩組百分比混用。</p>
+<p>SToM 的 Overall 高於 oracle，但 Goal 仍低於 oracle。它可能是因不確定性提示促使 agent 多問、較保守，改善關係、知識或規範等維度，而非比真實意圖更準。論文沒有公布七個分項、對話長度與探索行為統計，作者的機制解釋仍是推論。</p>
+<h2 id="對-agent-編排的啟發">對 Agent 編排的啟發</h2>
+<ul>
+<li><strong>belief state 應是一級資料結構</strong>：不要只在 prompt 中留一句「我猜對方想 X」，而要保留候選、機率、更新來源與時間。</li>
+<li><strong>不確定性應改變控制流</strong>：低信心先問、高信心再承諾，是比固定「先規劃後執行」更適合社會互動的 policy。</li>
+<li><strong>訊息有雙重用途</strong>：一句話既推進任務，也是一個觀測，用來更新對他人的模型。</li>
+<li><strong>大規模時要壓縮</strong>：每個 agent 為每個對象都用兩次強 LLM 維護 3–5 個假設，成本會隨社交邊數與輪數爆炸。千萬級系統需要只對重要鄰居維護 belief，以快取、小模型與事件觸發更新取代逐輪全量推理。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>IM 提出的候選集合固定後，更新只在集合內重新加權；真實意圖不在候選中時，Bayes 形式也救不了模型。論文未說明新增、合併、淘汰假設的機制。</li>
+<li>likelihood 和 prior 都是 GPT-4o 產生的語言模型分數，沒有校準檢驗；形式像 Bayes，不代表數值真是機率。</li>
+<li>IM/LHM、對手與評分者都涉及 GPT-4o，可能產生同模型偏好與資訊洩漏式相關，沒有跨 judge、跨 partner 驗證。</li>
+<li>「training-free」只表示不更新參數，並不表示低成本。論文未報 token、延遲、每輪額外呼叫數或與同成本 prompting 基線比較。</li>
+<li>Oracle 的 Overall 較低不能證明不確定性勝過完整資訊；oracle policy 可能只是把真實意圖塞入 prompt，沒有配套的 confidence-aware 控制策略，並非公平上界。</li>
+<li>只有 14 個 hard 情境，且表稱 90／14 runs，正文又稱多 seeds；沒有逐項結果、誤差、p 值算法、消融、信念準確率或校準曲線。</li>
+<li>這是一篇 preliminary study，沒有獨立結論章，廣泛主張仍需更大規模與更嚴格實驗。</li>
+</ul>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2510.18476_ProbabilisticIntentModeling.zh-TW.html"><code>../translate/2510.18476_ProbabilisticIntentModeling.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>DIGEST: Discovery-Guided LLM Tuning for Symbolic Regression 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Kaifeng Jin、Ruizhong Qiu、Zihao Li、Xiao Lin、Dongqi Fu、Yinglong Xia、Hong Li、Hanghang Tong</p><p>日期：2026-10-24（v1，cs.LG）</p><p>arXiv：2610.33880</p><p><a href="https://arxiv.org/html/2610.33880v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="digest-discovery-guided-llm-tuning-for-symbolic-regression">DIGEST: Discovery-Guided LLM Tuning for Symbolic Regression</h1>
+<h2 id="摘要與第-12-節問題與設定">摘要與第 1～2 節：問題與設定</h2>
+<p>符號迴歸要直接從觀測資料找出數學式，同時搜尋式子結構與數值參數。本文處理沒有可靠科學描述、變數語意或物理單位的黑箱情境，輸入為數值觀測與預定符號詞彙。</p>
+<p>傳統方法的候選式生成受固定搜尋機制或專用學習先驗限制。多數 LLM 方法雖把過去式子與分數放入提示、記憶、概念庫或搜尋操作，底層模型參數仍固定。DIGEST 將 GP 搜尋發現轉成線上訓練訊號，讓 LLM 衍生的符號策略逐步學會生成更好的下一輪初始種群。（<a href="https://arxiv.org/html/2610.33880v1#S1">§1～2</a>）</p>
+<h2 id="第-31-節用樹結構脈絡生成式子">第 3.1 節：用樹結構脈絡生成式子</h2>
+<p>式子採先序遍歷序列表示。每生成下一個符號，已生成前綴決定父節點，以及先前完成的兄弟子樹之根；缺少脈絡時使用 <code>EMPTY</code>。父節點與兄弟節點嵌入交錯成結構序列，送入預訓練解碼區塊，再從當前兄弟位置的隱狀態預測下一符號。輸出經 LayerNorm、投影與 softmax，並加入生成限制的遮罩。</p>
+<p>符號介面以文字預訓練表示初始化。例如，乘法符號對應標籤 <code>multiply</code>；若標籤被 tokenizer 分成多個 token，便取其嵌入平均值。父、兄弟嵌入與輸出投影各持有獨立參數副本，之後和解碼器共同最佳化。這保留了預訓練來源，又把輸入輸出改成符號詞彙，無須每次請聊天模型以自然語言回答。（<a href="https://arxiv.org/html/2610.33880v1#S3.SS1">§3.1、附錄 A.1</a>）</p>
+<h2 id="第-3233-節搜尋提煉與線上適應">第 3.2～3.3 節：搜尋提煉與線上適應</h2>
+<p>策略生成的批次初始化 GP。GP 以錦標賽選擇、子樹交叉與突變探索結構；訓練獎勵為 <code>R(phi)=1/(1+NRMSE(phi))</code>。需要自由常數時，先以訓練資料擬合係數，再算適合度。GP 保存高分式子，與策略原先生成的批次合併為回饋。</p>
+<p>對回饋批次取高分尾部，只把其中分數最高的式子提交到持續優先佇列，保留跨重啟的優良且相異式子。每次均勻抽取一個佇列式子，最小化其序列負對數似然，另以當輪高分批次的條件 token 熵作探索正則化。這是 priority queue training，目標可寫成：</p>
+<p><code>L(theta)=-w_PQT log pi_theta(phi_tilde)-lambda_H mean_{phi in C_epsilon} H_theta(phi)</code>。</p>
+<p>似然與熵都沿有效序列位置加總，不除以式子長度。高分尾部的門檻會影響熵正則化涵蓋的軌跡；對同一有限分數批次，它不改變提交到佇列的最佳式。每次重啟做一次 AdamW 更新（作者自報，§3.3），再由更新後的策略播種。GP 種群與當輪精英重設，策略參數、最佳式、佇列、最佳化器狀態及式子快取保留。（<a href="https://arxiv.org/html/2610.33880v1#S3.SS2">§3.2～3.3、附錄 A.2～A.3</a>）</p>
+<h2 id="第-41-節與附錄評估方式">第 4.1 節與附錄：評估方式</h2>
+<p>主策略採 Qwen2.5-0.5B 的單一預訓練解碼區塊與符號介面，約 14.94M 可訓練參數；LLM 基線採 8B 骨幹（作者自報，§4.1、附錄 A.4）。數值觀測用於適合度與回訓樣本選擇，策略直接讀取的是樹結構脈絡。</p>
+<p>Nguyen、Livermore 分別有 12、22 個目標式，每式跑 25 個獨立隨機種子。成功判準為無雜訊測試資料的 <code>NMSE_test&lt;10^-12</code>，recovery 是滿足條件的執行比例，再跨式子平均。DIGEST 與傳統基線用名目 <code>2×10^6</code> 次評估；LLM 基線則採方法特定的有限搜尋預算，並以中性描述取代科學描述，保留原有搜尋回饋機制（作者自報，§4.1、附錄 B.1、C.2）。</p>
+<p>BlackBox 以 122 個資料集測試，報告跨資料集測試 <code>R^2</code> 中位數與式子大小中位數。TPSR 的比較另採其 57 資料集設定，大小指標為平均值（作者自報，附錄 B.2～B.3）。</p>
+<h2 id="第-4243-節主要結果">第 4.2～4.3 節：主要結果</h2>
+<p>以下均為作者自報。Nguyen／Livermore 的 DIGEST recovery 為 93.33%／74.00%，iMCTS 為 93.25%／71.41%，最強 LLM 基線 LaSR 為 29.67%／19.09%。正文列出 DIGEST 對 iMCTS 高 0.08／2.59 個百分點，對 LaSR 高 63.66／54.91 個百分點。摘要用百分比符號簡寫差值，此處依正文與表 3 譯為百分點，並非相對提升百分比。（<a href="https://arxiv.org/html/2610.33880v1#S4.SS2">§4.2、表 3</a>）</p>
+<p>DIGEST 在上述兩基準的平均搜尋時間為 49.2／118.8 秒，分別為 LaSR 的 7.2%／17.4%。後者是時間比值。所有本地評估每次執行使用一張 NVIDIA A40；時間排除初始 LLM 載入，各方法的其他計時邊界見附錄 C.3。（<a href="https://arxiv.org/html/2610.33880v1#S4.SS2">§4.1～4.2、圖 4、附錄 C.3</a>）</p>
+<p>在完整 BlackBox 比較中，DIGEST 的測試 <code>R^2</code> 中位數最高，式子大小中等，位於準確率與複雜度的 Pareto 前緣。TPSR 子集比較中，DIGEST／TPSR 的 <code>R^2</code> 中位數為 0.956／0.945，平均式子大小為 53.44／95.71。（<a href="https://arxiv.org/html/2610.33880v1#S4.SS3">§4.3、圖 5～6、表 12</a>）</p>
+<h2 id="第-57-節消融結論與限制">第 5～7 節：消融、結論與限制</h2>
+<p>作者自報，Livermore 的隨機種群 GP、凍結單區塊策略、DIGEST recovery 依序為 66.91%、72.91%、74.00%。全深度 LoRA 為 79.27%，平均搜尋時間卻增至 1213.8 秒；主版本為 118.8 秒。作者據此把單區塊設計定位為準確率與效率的取捨。結論是高品質 GP 發現能成為策略參數更新訊號，改善後續生成。（<a href="https://arxiv.org/html/2610.33880v1#S5">§5、表 4、§7</a>）</p>
+<p>原文沒有獨立 Limitations 節。作者明載的評估條件包括：計數可能含快取命中，不等於唯一式子數或常數擬合內全部數值呼叫；在重啟邊界才檢查額度，最後一輪可超出名目預算；DIGEST 的計時排除模型載入與初始化。作者的可重現性聲明表示，計畫待接受後公開實作。（<a href="https://arxiv.org/html/2610.33880v1#A1.SS3">附錄 A.3、C.3、可重現性聲明</a>）</p>
+<p><strong>本檔補註，非作者自陳</strong>：數值 recovery 不等於符號等價證明，也不能單憑此證實真實機制。對 LLM 基線的優勢受無科學脈絡與各別搜尋預算設定約束；是否能推廣到提供物理知識的科學發現情境，仍須另驗。（依據附錄 B.1、C.2）</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2610.33880_DIGEST.%E6%91%98%E8%A6%81.html">DIGEST 摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

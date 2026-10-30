@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>What Does Multi-Harness RL Learn? Credit Assignment and Portability in Coding Agents 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Chenqian Le、Jiayi Cheng、Qijia He、Runhao Li、Yinghao Li、Xupeng Chen</p><p>日期：2026-09-03（v1，cs.AI）</p><p>arXiv：2609.04518</p><p><a href="https://arxiv.org/abs/2609.04518" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="what-does-multi-harness-rl-learn-credit-assignment-and-portability-in-coding-agents-重點摘要">What Does Multi-Harness RL Learn? Credit Assignment and Portability in Coding Agents 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>多 harness 訓練不等於學到可攜能力：在相同軌跡、獎勵與更新預算下，把不同 coding harness 的軌跡放進同一個 GRPO 相對優勢群組，確實會讓信用訊號帶上 harness 身分，卻沒有在未見 harness 上產生可檢出的額外解題能力。</p>
+<h2 id="問題與方法">問題與方法</h2>
+<p>論文拆開多 harness RL 常被混在一起的兩件事：讓模型接觸多種 harness，以及讓不同 harness 的結果彼此競爭信用。作者以同一個 <code>Qwen3-8B</code> 監督微調起點與同一批凍結軌跡，比較兩種 GRPO 分組規則。<code>Within</code> 在每個 task–harness 配對內標準化獎勵；<code>Cross</code> 則把同一任務的各 harness 軌跡合併後標準化。兩組共享記錄、token、獎勵、loss mask 與更新預算，只有信用分組邊界不同。</p>
+<p>訓練素材來自 Aider、OpenHands、Qwen Code 與 SWE-agent。評估以同一個 sealed SWE-bench Verified oracle 檢查來源 harness，另用訓練時未見的 minimal weak-ReAct harness 測可攜性。主要 crossed campaign 對 6 個 checkpoint、4 個來源 harness 與 500 個任務完成 24,000 次 sealed evaluation，其中 99.1% 取得可用 verdict（作者自報）。作者也重訓多個 seed，並另做一條把後半訓練資料改為 on-policy 重收的 <code>Cross</code> arm，檢查結果是否只是離線 replay 的產物。</p>
+<h2 id="作者報告的實驗與結果">作者報告的實驗與結果</h2>
+<p>真正主導分數的是執行 harness。相同 checkpoint 在不同 harness 下的平均解題率由 2.14% 變到 9.27%，相差 7.13 個百分點，也就是 4.3 倍；6 種訓練 recipe 的平均值只落在 5.55% 到 6.46%，變動為 1.16 倍（作者自報）。這表示若沒有 harness-swap 評估，模型能力與介面加成很容易被算在一起。</p>
+<p>在未見 harness、每題 8 次嘗試時，<code>Cross − Within</code> 只有 +0.25 個百分點，95% 信賴區間為 −0.48 到 +1.02；各 arm 相對共同 SFT 起點的區間也都包含零（作者自報）。3 個訓練 seed 合併後，差距是 +0.16 個百分點，95% 信賴區間為 −0.41 到 +0.72，而且單一 seed 的差值會變號（作者自報）。把後半資料改成 on-policy 重收也沒有改變這個結論。</p>
+<p><code>Cross</code> 的優勢值確實攜帶 harness 痕跡。只看 advantage 的 out-of-fold 分類器，可比 shuffled-label null 多辨識出 4.48 個百分點的 harness 身分；<code>Within</code> 只高 0.02 個百分點（作者自報）。然而這個污染沒有轉成未見 harness 的優勢。行為分析也顯示，把同一 checkpoint 換到另一個 harness，動作分布的 Jensen–Shannon divergence 為 0.17 到 0.35 bits；同一 harness 內把 SFT 換成 <code>Cross</code>，只有 0.0003 到 0.0029 bits，至少小 59 倍（作者自報）。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>作者的結論是，跨 harness 比較獎勵學到的是 configuration adaptation，而不是比 within-harness credit 更可攜的能力。多 harness 報告因此應明示經驗由哪些 harness 產生、advantage normalization 是否跨越 harness 邊界，並同時提供來源 harness 與未見 harness 的差值。</p>
+<p>作者自陳的局限包括：除 <code>Within</code> 與 <code>Cross</code> 的 held-out level 外，多數估計只依賴單一 checkpoint；來源 harness 的每題嘗試次數較少；訓練只涵蓋單一模型家族、單一預算、四個來源 harness、一次 on-policy 重收與 Python-only 任務；第二模型比較的 context budget 不同；研究的解析力約只能穩定辨識一個百分點以上的差距；預先固定的 held-out contrasts 並未做外部註冊。</p>
+<h2 id="對讀者的價值ai_core-接點">對讀者的價值／ai_core 接點</h2>
+<p>這篇最有用的不是替某種分組規則背書，而是給出一個乾淨的拆因方法：共享模型與資料，只換信用邊界，再用未見介面分離「適應既有配置」與「內化可攜能力」。對 ai_core 而言，任何從多工具、多代理或多 workflow 軌跡萃取規則的機制，都不該只看原生執行環境中的增益。規則若只在來源 harness 有效，應被標成配置特定資產；只有跨 harness 仍成立的部分，才適合進入較高層的通用技能庫或憑證治理。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2609.04518_MultiHarnessRL.zh-TW.html"><code>../translate/2609.04518_MultiHarnessRL.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

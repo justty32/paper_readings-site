@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《LILO：透過壓縮與文件化程式碼學習可解讀的函式庫》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Gabriel Grand, Lionel Wong, Maddy Bowers 等（MIT CSAIL，ICLR 2024）</p><p>日期：2023-10</p><p>arXiv：2310.19791</p><p><a href="https://arxiv.org/abs/2310.19791" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="lilo透過壓縮與文件化程式碼學習可解讀的函式庫重點摘要">《LILO：透過壓縮與文件化程式碼學習可解讀的函式庫》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>LILO（Library Induction from Language Observations）</strong>：一個「<strong>搜尋→壓縮→文件化</strong>」三模組的神經符號迴圈——LLM 引導合成（快系統）＋枚舉搜尋（慢系統）解任務、<strong>Stitch</strong> 符號壓縮從解集中抽出最優 λ 抽象、<strong>AutoDoc</strong> 用指令微調 LLM 為匿名抽象補上名稱與 docstring——把「解過的案例」迭代結晶成<strong>有文件、可重用、對人與 LLM 都可讀的抽象函式庫</strong>；在 REGEX/CLEVR/LOGO 三領域全面勝過 DreamCoder 與 LLM-only 基線。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>LLM 會寫碼但不會「經營代碼庫」：軟體開發的核心是<strong>重構</strong>——把程式碼整併成簡潔、可重用、可讀的函式庫，這是多目標最佳化。</li>
+<li>DreamCoder 等經典函式庫學習法搜尋極貴（一個領域 &gt;2 CPU-月），大量時間耗在重新發現人類已知的基本抽象；學到的庫是匿名 λ 演算、難以解讀。</li>
+<li>直接把符號壓縮出的匿名抽象（fn_42）餵給 LLM <strong>反而降低解題率</strong>（REGEX −30.6）——等同程式碼混淆；抽象要能被 LLM 復用，必須自帶語義（名稱/docstring）。</li>
+</ul>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>雙系統搜尋</strong>：LLM（Codex）依「函式庫描述＋已解任務的描述–解配對＋目標描述」few-shot 生成候選程式（解析/類型/執行三重驗證）；再以辨識網路引導的枚舉搜尋補足語言推不出的領域結構。</li>
+<li><strong>Stitch 壓縮</strong>：把重構表述為語料壓縮（式 4），branch-and-bound 找最小描述長度抽象；比 DreamCoder 壓縮<strong>快 1000–10000 倍</strong>、單 CPU 數秒跑完 → 支撐每輪從 L0 <strong>深度重構</strong>整個函式庫、淘汰早期次優抽象。</li>
+<li><strong>AutoDoc</strong>：循序提示 gpt-3.5-turbo 依使用範例為每個抽象命名＋寫 docstring（JSON schema、零樣本）；命名循序級聯（vowel_regex → consonant → 子音替換），領域通用、極易移植。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>線上合成測試平均解題率：REGEX <strong>77.07</strong>（DreamCoder 43.93）、CLEVR <strong>96.76</strong>（94.50）、LOGO <strong>48.95</strong>（28.53）；對 LLM Solver 基線 +0.94/+8.09/+16.82。</li>
+<li>AutoDoc 是解鎖鍵：無它時加壓縮反而 −30.6（REGEX）；加上後 +9.73 回正。</li>
+<li><strong>離線合成（無語言、純枚舉）</strong>：LILO 的最終函式庫相對基礎 DSL 提升 +42.27/+63.43/+43.24，勝過 DreamCoder 庫與事後壓縮庫——庫本身即資產，不依賴 LLM 也能用。</li>
+<li>成本：一輪 LLM 合成 ≈ 48 CPU-小時枚舉搜尋，美元成本同數量級（每輪 $1.6–2.2）。</li>
+<li><strong>C.2 關鍵反面結果</strong>：GPT-4 做不了壓縮——壓縮率 ~1.0（Stitch 1.5–3.5x）、抽象僅 19% 語法有效。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>AutoDoc 會產生含糊/錯誤文件（LOGO 命名偏實作、循序「加倍下注」錯誤語義），既傷可解讀性也傷下游合成（LOGO 上 AutoDoc 增益 +0.00）；待引入自我一致性/驗證。</li>
+<li>實驗限於 λ 演算 DSL 的三個玩具級領域、合成語言描述為主；人類語言下效能有折損（但 LILO 最穩健）。</li>
+<li>延伸到 Python 等命令式語言仍是待解 PL 研究問題。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>ai_core §3.6 固化引擎的完整範式參考</strong>：LILO 就是一部可運轉的固化引擎——「案例（已解任務）→ 符號壓縮抽出共享結構 → 文件化入庫 → 下輪消費」的閉環，且<strong>每輪深度重構、允許淘汰次優抽象</strong>；「離線合成」實驗更直接證明固化出的庫<strong>可脫離 LLM 獨立發揮</strong>（枚舉搜尋解題率大增），正是「逐步剃除 LLM 依賴」的實證。</li>
+<li><strong>§2 資產文件化治理的硬證據</strong>：匿名抽象＝混淆，REGEX −30.6 → AutoDoc 回正——<strong>資產必須自帶規格（命名/docstring），否則便宜消費者（LLM）用不動</strong>；且文件品質直接影響下游復用率（LOGO 語義錯誤 → 增益歸零）。入庫審查應把「文件正確性」當准入條件（呼應 §3.4 拒絕為預設）。</li>
+<li><strong>分工啟示（§1 符號神經計算圖）</strong>：C.2 顯示 LLM 能合成、能文件化，但<strong>不能壓縮</strong>——找抽象這種需全語料形式推理的活要交給符號引擎。三部曲脈絡：DreamCoder <a class="paper-reference" href="2006.08381_DreamCoder.%E6%91%98%E8%A6%81.html">2006.08381</a> 立 Wake-Sleep 框架、Stitch <a class="paper-reference" href="2211.16605_Stitch.%E6%91%98%E8%A6%81.html">2211.16605</a> 解壓縮效率、LILO 補上 LLM 合成與 AutoDoc；C.1 的 LLM-vs-CPU 成本換算也呼應 §3.3 成本梯度。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2310.19791_LILO.zh-TW.html"><code>../translate/2310.19791_LILO.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

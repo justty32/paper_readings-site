@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《會自我演化的超網路：自我參照圖超網路》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：（含 IT University of Copenhagen 一脈，Joachim 等;self-referential / 神經演化）</p><p>日期：2025-12，自我參照／神經演化／可演化性</p><p>arXiv：2512.16406</p><p><a href="https://arxiv.org/abs/2512.16406" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="hypernetworks-that-evolve-themselves自我參照圖超網路重點摘要">《Hypernetworks That Evolve Themselves：自我參照圖超網路》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Self-Referential Graph HyperNetworks（自我參照 GHN）</strong>：把「變異與遺傳的機器」<strong>內嵌進神經網路本身</strong>，讓網路無需外部優化器就能自我演化——結合超網路 + 隨機參數生成 + 圖表示，每個 GHN 既給「自己的拷貝」生成帶<strong>可學習隨機變異</strong>的參數更新（隨機 hypernetwork），又給策略網路生成權重來評估自身適應度（確定性 hypernetwork）；且<strong>突變率本身是可被選擇的遺傳特質</strong>（node-specific mutation rate）。在帶環境切換的新 RL benchmark（CartPole-Switch、LunarLander-Switch）上幾代內就近乎完美恢復；在 Ant-v5 演化出協調步態，並<strong>自主降低種群變異</strong>以集中於有希望的解。核心論點：<strong>可演化性（evolvability）本身可從神經自我參照中湧現</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>大多數 neuroevolution 把「演化機器」放在被優化的神經基質<strong>之外</strong>——一個與種群分離的演算法負責對個體施加突變。但演化生物學的教訓是：<strong>突變的速率與結構很重要</strong>（低變異加速利用但易早熟收斂、高變異助探索但易失去既有適應度），而<strong>自適應突變率作為個體的可遺傳特質</strong>在開放式系統（適應度地景隨時間劇變）中尤其關鍵。因此需要把「產生變異的機制」收進神經基質內，讓 evolvability 也受選擇。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>承襲脈絡</strong>：HyperNetworks（小網路生大網路權重，類基因型-表現型映射）→ Graph HyperNetworks（GHN，直接在計算圖上用 GNN 處理拓撲、給任意未見架構生參數）→ 自我參照系（Neural Network Quine 預測自身權重但會「不育」、recursively fertile 自複製、Irie 的 SRWM 自參照權重矩陣、SeRANN 自複製 ANN）。本文與這些不同：<strong>對「自己的拷貝」改參數，演化迴圈中從不含梯度更新</strong>。</li>
+<li><strong>隨機自參照 hypernetwork</strong>：兩項改造滿足「能生足夠多參數更新自己」+「含隨機變異」——(1) 最終輸出層用<strong>固定隨機基底</strong>（永不改變→避開「需要生比自身更多參數的層」的循環悖論）;(2) GNN 的 node 表示不直接送輸出層，而是先生一個<strong>均值固定為 0 的多元高斯</strong>的標準差參數，採樣後再送輸出層 → 同一 GHN 對同一架構能生不同候選權重。</li>
+<li><strong>可調突變率</strong>（核心巧思）：每個 node embedding 過一個 M 個 sigmoid 輸出的線性層，<strong>取 max 當該 node 的突變率</strong>去縮放隨機 hypernetwork 輸出；再永遠加一點小噪聲（即使突變率全 0 仍有微變異、可重新打開突變）。M=5。直覺：種群都差不多差時增大變異（探索）、少數遠勝其餘時降低變異（集中資源）——<strong>全自主、無外部排程</strong>。</li>
+<li><strong>演化</strong>：parent 先精確拷貝 → 過自己的隨機 hypernetwork 生一組參數加到拷貝上 → 即產出自身變體；確定性 hypernetwork 給 policy 網路生參數、跑環境得分即 GHN 的 fitness;top 個體當 parents，各產 N=2 後代。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>CartPole-Switch / LunarLander-Switch</strong>（演化中途反轉控制器輸出、之後再轉回）：對比 OpenES、CMA-ES、GA、以及自適應突變率法 GESMR、SAMR——<strong>只有自我參照 GHN 在兩次切換後都一致恢復近滿分</strong>（OpenES 第一次切換後就再也回不來、GESMR 雖製造巨大變異仍失敗）。</li>
+<li><strong>Ant-v5</strong>（地景固定）：單調改善，常卡在 ~1000 的局部最優（機器人站著不動避免摔落罰分）；突破後種群變異<strong>急降</strong>;1000 代內未達 ~4000 滿分，但穩定 &gt;2000 → 已能運動。</li>
+<li><strong>湧現現象</strong>：環境變化後種群多樣性上升、找到高適應度 niche 後下降 → <strong>突變幅度的湧現式控制</strong>（呼應「evolvability 是可選擇特質」假說）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>「在個體內放可學習突變生成模組」<strong>計算昂貴</strong>——生成參數更新遠比從分布抽樣貴。</li>
+<li><strong>尺寸隨目標網路快速增大</strong>：確定性 hypernetwork 尺寸由 target policy 最大 node 參數需求決定，隨機網路尺寸又由 GHN 內最大 node 需求決定 → 大目標網路使參數生成更慢。</li>
+<li>超參未經廣泛搜尋（preliminary 找到即用）;Ant-v5 未達滿分。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 D 類**「自我參照 / 內嵌式演化 / evolvability」<strong>的純概念代表——延續 Schmidhuber 自參照系與 fast-weight programmers 一脈，把「演化機器」從種群外收進</strong>神經基質內**，是 <a class="paper-reference" href="2406.09020_evolvable_developmental_encoding.%E6%91%98%E8%A6%81.html">2406.09020</a>（可演化發育編碼）、<a class="paper-reference" href="2406.18532_AgentSymbolicLearning.%E6%91%98%E8%A6%81.html">2406.18532</a> 之外另一條「讓演化本身可學/可演化」的路線。</li>
+<li>最值得記：<strong>「固定隨機基底當輸出層」化解自參照的循環悖論</strong>;<strong>「突變率＝可遺傳、node-specific、取 M 個 sigmoid 的 max」讓 evolvability 受選擇</strong>；以及反直覺結果——<strong>內嵌式自參照在非靜止任務上完勝 CMA-ES/OpenES/GESMR/SAMR 的恢復能力</strong>。</li>
+<li>與 <a class="paper-reference" href="2606.26294_Red_Queen_Godel_Machine.%E6%91%98%E8%A6%81.html">2606.26294</a> RQGM 的「非靜止評估」呼應（都攻 non-stationarity），但 RQGM 在 agent 層、本文在 weight-generation 層；與 <a class="paper-reference" href="2505.13058_Universal_NCA.%E6%91%98%E8%A6%81.html">2505.13058</a> Universal NCA 等「網路生網路」自組織路線可對讀。</li>
+<li>定位：概念 + 玩具/MuJoCo 實證論文（開源 github.com/Joachm/self-referential_GHNs），適合做開放式學習、neuroevolution、自我參照/自我複製系統的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2512.16406_SelfReferential_Graph_HyperNetworks.zh-TW.html"><code>../translate/2512.16406_SelfReferential_Graph_HyperNetworks.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

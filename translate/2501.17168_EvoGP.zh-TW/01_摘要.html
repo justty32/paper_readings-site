@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2501.17168_EvoGP.zh-TW.html">回 2501.17168_EvoGP.zh-TW 目錄</a>　<a href="02_III._%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>樹型遺傳編程（TGP）是符號迴歸、分類、機器人控制等任務廣用的演化演算法。因 TGP 算力需求大，<strong>GPU 加速</strong>對可擴展性至關重要。然而 TGP 的高效 GPU 執行仍困難，主要卡三點：(1) <strong>程式個體結構異質</strong>；(2) <strong>整合多層並行的複雜性</strong>；(3) <strong>高效能 CUDA 執行與彈性 Python 環境不相容</strong>。本文提出 <strong>EvoGP</strong>，一個以<strong>群級（population-level）並行</strong>加速 TGP 的高效框架。其一，引入<strong>張量化表示</strong>，把變長樹編碼成定形、對齊記憶體的陣列，讓不同個體間能統一記憶體存取與並行計算。其二，採<strong>自適應並行</strong>策略，依資料量動態結合「個體內」與「個體間」並行，確保各類任務皆高 GPU 利用率。其三，把自製 CUDA kernel 嵌入 PyTorch runtime，無縫接 Gym、MuJoCo、Brax、Genesis 等 Python 環境。</p>
+<p>實驗顯示 EvoGP 峰值吞吐 <strong>超過 10¹¹ GPops/s</strong>，相當於比現有 GPU 版 TGP 快達 <strong>304×</strong>、比 SOTA CPU 庫快 <strong>18×</strong>；且精度相當、在大族群下擴展性更佳。開源於 https://github.com/EMI-Group/evogp 。</p>
+<p><strong>關鍵詞</strong>：遺傳編程、並行演算法、GPU、CUDA。</p>
+<hr />
+<h2 id="i-引言">I. 引言</h2>
+<p>GP 自主演化電腦程式，產<strong>人類可解釋</strong>解、結構可動態演化（非預先固定），同時搜尋結構與參數空間，降低人工設計與模型偏差。依結構表示分為 Linear GP、Cartesian GP、基因表達式編程、文法演化等，其中 <strong>TGP</strong> 因在搜尋效率與可解釋性間取得良好平衡而最被廣泛採用。TGP 把程式編碼成樹（內部節點＝運算子，葉節點＝變數／常數），用交叉、變異等遺傳算子做演化搜尋；成功應用於符號迴歸、分類、複雜系統設計、機器人控制。</p>
+<p>多數既有實作仍限於 <strong>CPU 執行</strong>；資料量與任務複雜度一升、效能急降。評估每個個體常要處理大資料集或模擬複雜環境互動，且每代每個個體都要重跑，龐大開銷阻礙演算法調參，更嚴重限制 meta-優化（自動調參、自適應算子選擇）——這些都需跑大量配置，高成本下不可行。</p>
+<p>為此，越來越多工作用 GPU 的大規模並行與高吞吐。TGP 的 GPU 並行有兩種直覺策略：<strong>個體內並行（intra-individual）</strong>——單一個體在所有資料點上並行求值，貼合 SIMD，多數既有 GPU 版 TGP 採此；<strong>個體間並行（inter-individual）</strong>——同時評估多個候選解，即<strong>群級並行</strong>，是現代高效能演化計算的核心（JAX 系 EvoJAX/evosax、PyTorch 系 EvoTorch，及 EvoX 等）。但群級並行在 TGP 中相對少被探索。對 TGP，個體間並行能讓 fitness 評估與遺傳操作（交叉／變異／選擇）並行執行、大幅降開銷，更為<strong>擴展到更大族群</strong>奠基。</p>
+<p><strong>三大技術障礙</strong>：(1) <strong>結構異質</strong>——TGP 個體大小／拓撲／求值邏輯差異大，與張量框架不合，連 CUDA 也須先把變長結構編成規則化、對齊記憶體格式（尚未解決）；(2) <strong>多並行整合</strong>——資料級並行貼合 SIMD 已被善用，但與群級並行結合須協調記憶體佈局、kernel 融合、排程以免資源競爭；(3) <strong>Python 互通</strong>——須在 Gym/MuJoCo/Brax/Genesis 等生態無犧牲效能地接軌。</p>
+<p><strong>四項貢獻</strong>：① 提出<strong>張量化表示</strong>做群級 GPU 並行，把結構各異的樹轉成定形對齊陣列、統一記憶體存取——<strong>EvoGP 是首個在全部演化階段（初始化／評估／遺傳操作）皆 GPU 加速的框架</strong>；② <strong>自適應並行</strong>策略，依資料量動態結合個體內／間執行；③ 把自製 CUDA 算子嵌 PyTorch，無縫部署 Gym/MuJoCo/Brax/Genesis 並提供豐富可客製介面；④ 大量實驗驗證——峰值 &gt;10¹¹ GPops/s、對 GPU 版加速達 304×、對最快 CPU 庫 18×、大族群擴展性更佳。</p>
+<h2 id="ii-背景">II. 背景</h2>
+<h3 id="ii-a-樹型遺傳編程tgp">II-A 樹型遺傳編程（TGP）</h3>
+<p>TGP 把候選解表示為樹，明確定義輸入到輸出的計算流。一棵樹是 （節點集， 邊集， 根節點），每節點恰一父。樹代表函數 Func，<strong>自底向上</strong>計算：每節點算其結果，根節點結果即最終輸出。每節點是 （類型， 值） 元組，分三類：<strong>常數節點</strong>（數值常數）、<strong>變數節點</strong>（值＝輸入向量索引）、<strong>函數節點</strong>（值＝函數類型，對子節點結果作用）。TGP 透過選擇、交叉、變異反覆精煉族群（Algorithm 1）：選擇＝依表現挑個體（好的較易傳代）、交叉＝父樹交換資訊增多樣性、變異＝隨機改節點／分支防早熟。</p>
+<h3 id="ii-b-gpu-架構與-cuda">II-B GPU 架構與 CUDA</h3>
+<p>現代 GPU 由數千核心組成 SM（流多處理器）達大規模並行；記憶體階層含高延遲全域記憶體、L1/L2 快取、唯讀最佳化的常數記憶體。但 GPU 上<strong>動態記憶體管理因執行緒競爭／同步開銷／碎片化而遠慢於 CPU</strong>，故處理變長結構（如樹）特別棘手。<strong>CUDA</strong> 採 SIMT 執行模型，並行組織成三層 grid／block／thread。</p>
+<h3 id="ii-c-既有-tgp-實作">II-C 既有 TGP 實作</h3>
+<ul>
+<li><strong>CPU 版</strong>：DEAP（重擴展性、多種演化算法、multiprocessing）、gplearn（專注 SR/分類、joblib 跨核並行）、<strong>Operon</strong>（現代 C++，靠 Taskflow 群級並行 + SIMD 向量化資料級並行，較舊庫明顯加速）。</li>
+<li><strong>GPU 版</strong>：KarooGP、TensorGP 建於 TensorFlow——KarooGP 為每個體建靜態計算圖、重複編譯開銷大；TensorGP 改 eager 執行避編譯，但缺對 GPU 資源細控、加上 Python/TF 抽象成本，效能仍次優。<strong>SRGPU</strong> 直接用 CUDA 實作核心操作、單一個體的所有資料點並行（資料級並行好），但評估／選擇／交叉／變異在<strong>群級仍序列</strong>執行，多數 GPU 並行未用、擴展性受限；且<strong>無 Python 綁定</strong>，難接主流 ML／機器人管線。</li>
+<li>多數庫用<strong>指標式／鏈式</strong>樹表示，序列執行內部夠用，但記憶體不規則、非連續，阻礙 memory coalescing 與共享記憶體，群級並行時全域記憶體存取低效、吞吐下降。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

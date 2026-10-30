@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2303.12570_RepoCoder.zh-TW.html">回 2303.12570_RepoCoder.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97%E8%A8%AD%E5%AE%9A.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>倉庫級程式碼補全的任務，是根據<strong>倉庫的更廣上下文</strong>續寫未完成的程式碼。對自動補全工具而言，要利用散落在不同檔案中的有用資訊並不容易。我們提出 <strong>RepoCoder</strong>——一個簡單、通用、有效的框架：它把<strong>相似度檢索器</strong>與<strong>預訓練程式碼語言模型</strong>組進一條<strong>迭代式檢索-生成（iterative retrieval-generation）</strong> 管線，能有效利用倉庫級資訊、並在不同粒度上生成程式碼。我們另提出新 benchmark <strong>RepoEval</strong>，取材自最新的高品質真實倉庫，涵蓋 line、API 呼叫、function body 三種補全情境。實驗顯示 RepoCoder 在所有設定下都把 In-File 補全基線提升<strong>超過 10%</strong>，並一致勝過原生的檢索增強補全法；我們也透過完整分析驗證其有效性，為後續研究提供洞見。原始碼與 benchmark 皆已開源。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>真實軟體開發中，開發者寫程式時必須顧及倉庫內的其他檔案。倉庫內的程式碼檔案常有互相關聯的依賴（模組化帶來的共用工具、設定、跨 API 呼叫），且每個倉庫通常遵循自訂的命名慣例與程式風格。因此倉庫級補全要求工具利用倉庫的更廣上下文，而非只靠檔案內（in-file）資訊。然而打造有效的倉庫級補全工具仍是未解難題：靠<strong>靜態程式分析與啟發式規則</strong>的方法能可靠解析特定倉庫上下文，卻限制了「在檔案任意位置做任意長度補全」的能力；在標註資料上<strong>微調語言模型</strong>的方法在各自評測情境表現好，但<strong>難以在不重新訓練下泛化到未見過的倉庫</strong>。</p>
+<p>本文提出用<strong>現成檢索器</strong>在倉庫中定位有價值資訊、增強語言模型的上下文。如圖 1，我們先以檢索增強生成（RAG）強化傳統的 In-File 補全——從倉庫搜相關片段來輔助生成；再進一步提出 <strong>RepoCoder</strong>，用一條<strong>迭代式管線</strong>，把「生成出來的補全」拿去強化檢索，藉此<strong>橋接「檢索上下文」與「意圖中的補全目標」之間的落差</strong>。</p>
+<p>圖 2 的例子說明設計動機：只靠未完成程式碼不足以從倉庫檢索到有用資訊。例中模型在第一輪「即興」寫出一個呼叫 COLMAP API 的語句，預測的參數看似合理卻<strong>不正確</strong>——因為補全點之前的殘缺程式碼，並不是能對準補全目標的良好檢索查詢。然而，只要<strong>用模型生成的補全</strong>再對倉庫做一次檢索，就能成功取回目標 API 的簽章、正確地補完程式碼。</p>
+<p>此外我們提出 <strong>RepoEval</strong> benchmark，取自 GitHub 最新高品質倉庫，補上倉庫級情境缺乏公認 benchmark 的空白。RepoEval 是<strong>首個涵蓋 line、API 呼叫、function body 三種補全粒度</strong>的 benchmark，並利用倉庫內既有的<strong>單元測試</strong>提升評估準確度、克服相似度指標的侷限。我們用不同大小的語言模型（含 GPT-3.5-Turbo 與 CodeGen）做大量實驗，證明 RepoCoder 在各設定下對 In-File 補全的增益超過 10%，且迭代框架一致優於單輪原生 RAG。</p>
+<p>貢獻：(1) 提出 RepoCoder——用於倉庫級補全的新式迭代檢索-生成框架；(2) 提出 RepoEval——支援多粒度評估、並用單元測試提升準確度；(3) 嚴謹實驗證明其顯著優於 In-File 範式、並強化原生 RAG。</p>
+<h2 id="2-方法">2. 方法</h2>
+<h3 id="21-整體框架">2.1 整體框架</h3>
+<p>用語言模型 M 做補全一般可寫成 <code>Ŷ = M(X)</code>，Ŷ 為預測 token、X 為檔案內未完成程式碼。引入檢索模型 R 後即成 RAG：先把倉庫檔案切成程式碼片段集合 <code>C_repo = {c1, c2, …}</code>；用 R 以未完成程式碼 X 為查詢取回最相關片段 <code>C_ret = R(C_repo, X)</code>；再 <code>Ŷ = M(C_ret, X)</code>，把倉庫級上下文帶進補全。</p>
+<p>但<strong>只用 X 當查詢會在「檢索上下文」與「意圖中的補全目標」之間造成落差</strong>（如圖 2）。為此我們提出 <strong>RepoCoder</strong> 這條迭代式檢索-生成管線：第 i 輪（i&gt;1）用上一輪的模型預測 <code>Ŷ^(i-1)</code> 構造新查詢，得到新的片段集合 <code>C_ret^i = R(C_repo, X, Ŷ^(i-1))</code>；再用 <code>C_ret^i</code> 構造新 prompt、生成新預測 <code>Ŷ^i = M(C_ret^i, X)</code>。新補全可作最終輸出、或供下一輪使用。重點：M 與 R 的參數<strong>全程不變</strong>，且<strong>不需靜態程式分析或啟發式規則</strong>來建檢索庫。</p>
+<h3 id="22-程式碼檢索">2.2 程式碼檢索</h3>
+<p>檢索器可為任何「給查詢就能找相關文件」的模型。建庫用<strong>滑動視窗</strong>：視窗掃過倉庫檔案、抽出符合視窗大小 <code>Sw</code> 的連續多行程式碼，每次移動固定行數（滑動步長 <code>Ss</code>）。</p>
+<p>首輪還沒有模型預測時，查詢用未完成程式碼 X 的<strong>最後 Sw 行</strong>，得 <code>C_ret^1 = R(C_repo, X)</code>。但此時查詢（基於 X）與目標（續寫 X）之間存在落差。先前工作曾用「把片段整體下移幾行以納入後續程式碼」的做法，但不分內容一律位移未必恰當。</p>
+<p>RepoCoder 改以「<strong>上一輪生成的程式碼 <code>Ŷ^(i-1)</code></strong>」增強第 i 輪（i&gt;1）的查詢：預訓練程式碼模型雖無新倉庫的自訂資訊，卻有很強的通用理解與生成力，生成的 <code>Ŷ^(i-1)</code> 即使不保證正確，仍能為檢索提供有價值的補充資訊。因此第 i 輪查詢由「X 的最後 <code>(Sw − Ss)</code> 行」串接「<code>Ŷ^(i-1)</code> 的前 <code>Ss</code> 行」構成，得到接地的檢索結果 <code>C_ret^i = R(C_repo, X, Ŷ^(i-1))</code>。</p>
+<blockquote>
+<p>這正是本文的核心機制——<strong>迭代式檢索-生成</strong>：先用未完成程式碼檢索 repo 相關片段 → 生成一份補全草稿 → 用<strong>草稿</strong>再檢索（縮小檢索與生成之間的落差）→ 再生成，如此循環；每一輪都用上一輪的產物把查詢往「真正要補的目標」推近。</p>
+</blockquote>
+<h3 id="23-程式碼生成">2.3 程式碼生成</h3>
+<p>生成器可為任何「給 prompt 就能續寫 token」的預訓練模型。補全時須同時納入倉庫上下文 <code>C_repo</code> 與目標檔案內上下文。RepoCoder 取回最相關片段 <code>C_ret</code> 並與未完成程式碼 X 串接；為求可讀，用一個 prompt 模板（圖 3）把 X 與 <code>C_ret</code> 整合：檢索片段依相似度分數<strong>升冪</strong>排列、各附其<strong>原始檔案路徑</strong>；片段最大數量 K 視 prompt 長度而定，盡量塞入相關資訊。</p>
+<h2 id="3-benchmark-建構repoeval">3. Benchmark 建構（RepoEval）</h2>
+<p>RepoEval 取自 GitHub 最新高品質倉庫，涵蓋 line、API 呼叫、function body 三種粒度；function body 用倉庫內<strong>單元測試</strong>評正確性（而非只靠相似度指標）。每題標註來源倉庫、檔案路徑、行號與 ground-truth 補全；為分析與跑測試，倉庫在 2023 年 1 月完整封存。</p>
+<p>篩選條件：開源授權、2022 年後建立（GPT-3.5-Turbo 與 CodeGen 的訓練資料到 2021，用 2022 資料防洩漏）、非 fork 原創、&gt;100 星、&gt;80% 檔案為 Python、且有明確單元測試。隨機選倉庫、建三個資料集：</p>
+<ul>
+<li><strong>Line completion</strong>：選 8 個大小/領域各異的倉庫，每倉庫隨機抽 200 行（非重複、非註解、每行至少 5 token），共 <strong>1600 題</strong>。</li>
+<li><strong>API Invocation completion</strong>：測<strong>倉庫內定義的 API</strong>（比補全內建/第三方 API 更難，因缺乏自訂訓練資料）；用與 line 相同的 8 倉庫，解析出倉庫內 API 呼叫、每倉庫隨機抽 200 個非重複呼叫，共 <strong>1600 題</strong>。</li>
+<li><strong>Function Body completion</strong>：需跑單元測試，故另選較小、易部署的倉庫；定位被單元測試覆蓋的函式、選主體 3–30 行者，共 <strong>373 題</strong>。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.15334_Gorilla.zh-TW.html">回 2305.15334_Gorilla.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%B5%90%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-方法">3. 方法</h2>
+<p>（圖 3 要旨：上半為訓練流程——三大模型庫的 API 文件經 self-instruct 生成訓練資料再微調；下半為推理——支援「帶檢索」與「零樣本」兩種模式，能為使用者的自然語言需求給出正確 API 呼叫。）</p>
+<h3 id="31-資料集蒐集">3.1 資料集蒐集</h3>
+<p>記錄 HuggingFace「The Model Hub」、PyTorch Hub、TensorFlow Hub 的線上 model cards。HuggingFace 平台託管約 203,681 個模型，但許多文件貧乏、缺依賴或 model card 空白，故每領域取前 20 名，涵蓋多模態 7 域、CV 8 域、NLP 12 域、音訊 5 域、表格 2 域、強化學習 2 域，過濾後得 925 個；TensorFlow Hub v2 共 801 個模型，過濾後留 626 個；Torch Hub 得 94 個。將這 <strong>1,645 個 API 呼叫</strong>的 model card 轉為 JSON 物件，欄位為 <code>{domain, framework, functionality, api_name, api_call, api_arguments, environment_requirements, example_code, performance, description}</code>——此欄位設計刻意可推廣至 ML 領域之外（含 RESTful API）。</p>
+<p><strong>指令生成</strong>：以 self-instruct 範式用 GPT-4 生成合成指令資料——給三個 in-context 範例與一份參考 API 文件，要求生成呼叫該 API 的真實使用情境，並<strong>明確禁止在指令中出現任何 API 名稱或暗示</strong>。每個模型庫僅手工建構 6 個「指令-API」範例，<strong>全篇僅這 18 筆為人工資料</strong>。對 1,645 個 API 各取 6 例中之 3 例為 context，生成 10 對指令-API。作者強調：生成指令的 GPT-4 可換成 LLaMA、Alpaca 等開源替代。</p>
+<h3 id="32-gorilla">3.2 Gorilla</h3>
+<p>Gorilla 是<strong>retriever-aware 微調的 LLaMA-7B</strong>，專為 API 呼叫而生。將 {指令， API} 對轉成使用者-代理各一輪的對話格式，做標準指令微調（instruction finetuning）。實驗中分別訓練帶檢索與不帶檢索兩種版本。</p>
+<p><strong>帶約束的 API 呼叫</strong>：API 呼叫常帶固有約束，LLM 不僅要理解功能、還要按約束參數分類。例如「呼叫一個參數少於 10M、但 ImageNet 準確率至少 70% 的影像分類模型」——模型須同時理解功能描述並推理內嵌的多重約束。這正是需要為 API 微調 LLM 的原因之一。</p>
+<p><strong>Retriever-aware 訓練</strong>：帶檢索訓練時，指令資料在 user prompt 後附加「Use this API documentation for reference: &lt;retrieved_API_doc_JSON&gt;」，目的是<strong>教 LLM 解析問題的後半段（文件）來回答前半段（需求）</strong>。這 (a) 使模型適應測試期 API 文件變更、(b) 提升 in-context learning 表現、(c) 降低幻覺錯誤。但作者也意外發現：<strong>給 LLM 加檢索不一定變好，有時反而傷害表現</strong>（詳見第 4 節）。</p>
+<p><strong>推理</strong>：使用者以自然語言給 prompt——可以是具體任務（「我想辨識影像中的物體」）或模糊目標（「我要去動物園，想追蹤動物」）。零樣本模式直接把 prompt 餵給 Gorilla；檢索模式先用 BM25 或 GPT-Index 從 API 資料庫取最新文件、串接到 prompt 後再餵入。除此之外<strong>不做任何額外 prompt 調整</strong>。輸出即是要呼叫的 API；執行系統存在但非本文重點。</p>
+<h3 id="33-驗證-apiast-子樹匹配">3.3 驗證 API（AST 子樹匹配）</h3>
+<p>以測試案例驗證的歸納式程式合成（inductive program synthesis）不適用於 API 呼叫——語意正確性難驗證：例如影像分類有 40 多個可用模型，光 Densenet 一族就有四種配置，<strong>存在多個正確答案</strong>，單元測試無法判斷功能等價。因此改以 AST 子樹匹配對照資料集判定功能等價：由於本文只考慮單一 API 呼叫，檢查候選呼叫的 AST 是否為資料庫中某參考 API 的子樹即可得知呼叫的是哪個 API。</p>
+<p><strong>幻覺的定義</strong>：呼叫的 API <strong>不是資料庫中任何 API 的子樹</strong>——即憑空捏造的工具——為幻覺（hallucination）；呼叫真實 API 但用法錯誤則為<strong>錯誤（error）</strong>，兩者區分開來。</p>
+<p><strong>匹配細節</strong>：每個 API 引數眾多且 Python 允許預設引數，故為每個 API 預先定義需匹配的引數（如 <code>torch.hub.load</code> 檢查 <code>repo_or_dir</code> 與 <code>model</code>）。圖 4 例：Gorilla 回傳的 torch 呼叫沿 <code>torch.hub.load</code>、<code>pytorch/vision</code>、<code>densenet121</code> 節點與資料庫子樹匹配成功，而 <code>pretrained=True</code> 屬可選引數不檢查。</p>
+<h2 id="4-評估">4. 評估</h2>
+<p><strong>基線</strong>：GPT-4（gpt-4-0314）、GPT-3.5-turbo（0301）、Claude（claude-v1）、LLaMA-7B，皆為零樣本。<strong>檢索器設定</strong>：0-shot（無檢索）；BM25 與 GPT-Index（OpenAI text-davinci-003）皆以每個 API 為一份文件、取 top-1 串接到 prompt；另設 <strong>oracle 檢索器</strong>（100% 給對文件）作為上界。評測用 holdout 測試集（self-instruct 資料按指令-API 對切分；HuggingFace 90/10、TorchHub 與 TensorHub 80/20）。</p>
+<h3 id="41-api-呼叫的-ast-準確率">4.1 API 呼叫的 AST 準確率</h3>
+<p>（表 1 擇要，overall 準確率↑／幻覺率↓，單位 %）</p>
+<table>
+<thead>
+<tr>
+<th>模型（零樣本）</th>
+<th>TorchHub</th>
+<th>HuggingFace</th>
+<th>TensorHub</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LLaMA</td>
+<td>0 / 100</td>
+<td>0.00 / 97.57</td>
+<td>0 / 100</td>
+</tr>
+<tr>
+<td>GPT-3.5</td>
+<td>48.38 / 18.81</td>
+<td>16.81 / 35.73</td>
+<td>41.75 / 47.88</td>
+</tr>
+<tr>
+<td>GPT-4</td>
+<td>38.70 / 36.55</td>
+<td>19.80 / 37.16</td>
+<td>18.20 / 78.65</td>
+</tr>
+<tr>
+<td>Claude</td>
+<td>18.81 / 65.59</td>
+<td>6.19 / 77.65</td>
+<td>9.19 / 88.46</td>
+</tr>
+<tr>
+<td><strong>Gorilla</strong></td>
+<td><strong>59.13 / 6.98</strong></td>
+<td><strong>71.68 / 10.95</strong></td>
+<td><strong>83.79 / 5.40</strong></td>
+</tr>
+</tbody>
+</table>
+<p>注意：HuggingFace 資料集不窮盡，故除 Gorilla 外其他模型只檢查 domain 是否正確（等同選擇題）。</p>
+<p><strong>不帶檢索微調</strong>：輕度微調的 Gorilla 零樣本即達 SOTA——整體勝 GPT-4 20.43%、勝 ChatGPT 10.75%、勝 LLaMA 達 83%，量化顯示<strong>在此範疇內微調優於檢索</strong>。且「微調時不帶檢索、測試時硬塞檢索」幾乎無益（TensorHub -0.88%、HuggingFace +0.97%），塞 BM25 或 GPT-Index 反而大跌（TorchHub -21.50%、HuggingFace -47.57%）——<strong>測試期加入次佳檢索器會誤導模型、產生更多錯誤</strong>。</p>
+<p><strong>帶檢索微調</strong>（表 2 擇要）：微調時納入 ground-truth（oracle）文件，比不帶檢索訓練好 12.37%（TorchHub）與 23.46%（HuggingFace）；oracle 檢索下 Gorilla 達 TorchHub 67.20、HuggingFace 91.26、TensorHub 94.16，幻覺低至 0／7.08／1.89。但現實檢索器與 oracle 落差巨大：評估時用 GPT-Index 掉 29.20%、BM25 掉 52.27%。結論：<strong>有好檢索器時 retriever-aware 微調較佳；沒有時零樣本微調可能是首選</strong>。</p>
+<p><strong>LLM 的幻覺</strong>：零樣本 prompt GPT-4/GPT-3.5 呼叫 API 時幻覺嚴重，常見如以任意 GitHub repo 名呼叫 <code>AutoModel.from_pretrained(dir_name)</code>、或假設使用者本地有 <code>your_model_name</code> 這種路徑。意外的是<strong>三個庫上 GPT-3.5 幻覺都比 GPT-4 少</strong>，且各檢索設定下一致——暗示 RLHF 可能在模型誠實性（truthful）上扮演核心角色。</p>
+<h3 id="42-測試期文件變更">4.2 測試期文件變更</h3>
+<p>API 文件更新頻率常超過 LLM 重訓／微調週期，使模型對其處理的資訊格外脆弱、效用隨時間衰退。Gorilla 的 retriever-aware 訓練使其可即時適應文件變更（圖 6 要旨）：如 FCN 的 backbone 從 ResNet-50 升級到 ResNet-101、model registry 從 <code>pytorch/vision</code> 換成 <code>NVIDIA/DeepLearningExamples:torchhub</code>，Gorilla 均能跟著文件給出更新後的正確呼叫——面對底層模型升級與 API 來源遷移仍維持準確。</p>
+<h3 id="43-帶約束的-api-呼叫">4.3 帶約束的 API 呼叫</h3>
+<p>選哪個 API 通常是多因素權衡：RESTful API 有單次成本（$）、回應延遲（ms）；ML API 則有準確率、可學習參數量、磁碟大小、峰值記憶體、FLOPS 等。例：使用者要求「ImageNet top-1 至少 80% 的影像分類模型」時，正確答案是 top-1 84.2% 的 ResNeXt-101 32x16d 而非 71.88% 的 MobileNetV2。實驗取 TorchHub 中 model card 至少含一組準確率數據的子集（占 65.26%）。結果（表 3 擇要）：加上約束後所有模型準確率均降；<strong>Gorilla 在零樣本下約束準確率最高（47.88，vs GPT-3.5 與 GPT-4 各 43.66）</strong>，帶 BM25/GPT-Index 檢索時與最佳的 GPT-3.5 相當——顯示 Gorilla 能在權衡多重約束下導航 API。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《s1: Simple Test-Time Scaling》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Niklas Muennighoff, Zitong Yang, Weijia Shi, Xiang Lisa Li, Li Fei-Fei, Hannaneh Hajishirzi, Luke Zettlemoyer, Percy Liang, Emmanuel Candès, Tatsunori Hashimoto（Stanford University, University of Washington, LMSYS 等）</p><p>日期：2025-01</p><p>arXiv：2501.19393</p><p><a href="https://arxiv.org/abs/2501.19393" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="s1-simple-test-time-scaling重點摘要">《s1: Simple Test-Time Scaling》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>s1</strong>：探索達成測試時推論擴展的最簡方案——僅以 <strong>1,000 條高品質推理軌跡（s1K）</strong> 做監督微調，加上一種名為 <strong>Budget Forcing</strong> 的新穎推論控制技術（追加 <code>Wait</code> 迫使模型繼續思考、或強制注入 <code>&lt;/thought&gt;</code> 提前結束），即讓 Qwen2.5-32B-Instruct 在競賽數學基準（AIME24 56.7% vs o1-preview 40.0%、MATH500 83.2% vs 81.4%）上超越 OpenAI o1-preview，訓練僅需 30 分鐘（8×H100）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>OpenAI 的 o1 展示了測試時運算擴展能顯著提升推理效能，但其訓練與推論方法完全不透明。核心問題：<strong>測試時擴展的最小必要配方是什麼？是否真的需要大規模 RL 訓練（如 DeepSeek-R1）才能實現？</strong> 作者假設：高品質推理軌跡的小型資料集配合簡單的推論時控制機制，即可達到競爭力級別的推理表現，無需複雜的 RL 管線或大規模訓練叢集。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>s1K 資料集</strong>（品質勝於數量）：僅 1,000 條推理軌跡，透過三階段篩選：(1) 難度——聚焦 AIME、MATH、GPQA 等標準模型失靈的難題；(2) 多樣性——跨數學（代數、幾何、數論）、程式碼、科學推理等子領域，依知識領域分類系統抽樣；(3) 品質——以 Gemini 1.5 Pro 與 Claude 3.5 Sonnet 生成長推理軌跡，保留含明確逐步思考、自我修正（backtracking/verification）且最終答案正確的樣本。最終以 s1K 對 Qwen2.5-32B-Instruct 做監督微調（SFT），訓練在單節點 8×H100 上不到 30 分鐘。</li>
+<li><strong>Budget Forcing</strong>（測試時運算控制）：不經訓練即控制模型「思考」長度的推論技術。(1) <strong>延長思考</strong>（增加運算）：當模型企圖輸出答案或過早結束思考時，在生成中追加 <code>Wait</code>——模型被強制回到推理軌跡，通常表現為重新檢查假設、驗證邊界案例、修正先前算術或邏輯錯誤；(2) <strong>截斷思考</strong>（減少運算）：當達到目標 token 預算時，強制注入 <code>&lt;/thought&gt;</code> 使模型立即給出最終答案。追加 <code>Wait</code> 可多次重複進行，每次追加通常使模型更深層檢查其推理、搜尋替代解法（對抗性自我驗證），持續提升準確率。</li>
+<li><strong>三種推論控制對比</strong>：作者實驗了 (1) 條件式長度控制——提示中指定最大/最小思考 token 數（效果有限、模型未必遵循指令）；(2) 預訓練時依長度過濾資料（序列長度→思考深度）：移除短推理事例可提升推理能力但減少對簡單問題的遵循能力；(3) Budget Forcing——唯一能在推論時靈活控制、不犧牲遵循能力的方案。</li>
+<li><strong>資料規模消融</strong>：從 59K 完整池逐步篩選至 1K，發現 1K 樣本（依品質/難度/多樣性三準則篩選）的 AIME24 分數已達 50%——接近隨機選 59K 的表現（~49%），品質篩選優於重量。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">Benchmark</th>
+<th style="text-align:center">Qwen2.5-32B-Instruct（基礎）</th>
+<th style="text-align:center">s1-32B（標準）</th>
+<th style="text-align:center">s1-32B + Budget Forcing</th>
+<th style="text-align:center">o1-preview</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">AIME 24</td>
+<td style="text-align:center">16.7%</td>
+<td style="text-align:center">50.0%</td>
+<td style="text-align:center"><strong>56.7%</strong></td>
+<td style="text-align:center">40.0%</td>
+</tr>
+<tr>
+<td style="text-align:left">MATH 500</td>
+<td style="text-align:center">58.2%</td>
+<td style="text-align:center">81.6%</td>
+<td style="text-align:center"><strong>83.2%</strong></td>
+<td style="text-align:center">81.4%</td>
+</tr>
+<tr>
+<td style="text-align:left">GPQA Diamond</td>
+<td style="text-align:center">49.0%</td>
+<td style="text-align:center">56.1%</td>
+<td style="text-align:center"><strong>59.6%</strong></td>
+<td style="text-align:center">56.6%</td>
+</tr>
+<tr>
+<td style="text-align:left">LiveCodeBench</td>
+<td style="text-align:center">35.8%</td>
+<td style="text-align:center">44.5%</td>
+<td style="text-align:center"><strong>46.2%</strong></td>
+<td style="text-align:center">43.6%</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Budget Forcing 的累進增益</strong>：在 AIME24 上每次追加 <code>Wait</code> 持續提升效能（50.0% → 56.7%），約 4–6 次追加後增益飽和。對 MATH500 的增益較小（81.6% → 83.2%），推測此基準的瓶頸已不在推理深度。</li>
+<li><strong>對比 DeepSeek-R1</strong>：s1-32B（50.0% AIME24）接近 DeepSeek-R1-Distill-Qwen-32B（49.1%，該模型由 800K RL 樣本蒸餾而來），但僅用 1/800 的資料量。</li>
+<li><strong>預算截斷的正向副作用</strong>：在某些案例中，截斷過長思考反而防止模型陷入循環推理或過度複雜化，強制模型在預算結束時提交簡潔答案。</li>
+<li><strong>初始 token 多樣性</strong>：Budget Forcing 追加的 <code>Wait</code> 導致模型重新起步產出不同的延續路徑——生成分佈的初始熵增加，模型探索替代推理分支。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>s1K 高度依賴 Gemini/Claude 作為推理軌跡生成教師，資料品質受限於教師模型能力上限。</li>
+<li>Budget Forcing 的 <code>Wait</code> 字串對特定模型的敏感性——對非英文或未經指令微調的基礎模型效果未充分測試。</li>
+<li>未與完整 RL 管線（如 DeepSeek-R1 原版、非蒸餾版）做受控對比——無法斷定 SFT-only 是否能完全替代 RL。</li>
+<li>截斷思考在某些情境下可能過早終止關鍵推理步驟，導致錯誤答案。</li>
+<li>僅評估數學/程式碼/科學推理領域，未測試常識推理或開放式寫作任務。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>§3.3 成本梯度的直接實例</strong>：Budget Forcing 是推論時「運算預算」的顯式 knobs——透過追加 <code>Wait</code> 增額花費 token 換取準確度、或透過 <code>&lt;/thought&gt;</code> 降低延遲——將測試時運算從隱式（模型自定長度）轉為顯式（使用者可控），正是 ai_core 成本梯度框架的核心：每個 LLM 呼叫對應一個可調整的成本/品質 knob。</li>
+<li><strong>§3.4 憑證准入的結構原型</strong>：Budget Forcing 的「強制模型在預算結束時提交答案」是一種推論層級的准入閘門——模型必須在給定計算預算內「收斂並提交」，無法無限期思考。對應 ai_core 的治理核心理念：在系統層設硬性限制（時間/預算/步驟），確保每個 LLM 節點被約束在可控範圍內。</li>
+<li><strong>資料效率主題</strong>：s1K 以 1,000 條高品質樣本達成接近 59K 隨機樣本的表現，強調精選推理軌跡的價值——對應 ai_core「固化引擎」中「行為被案例覆蓋到可以換成程式碼」的前提：高品質的小型軌跡集已足以捕捉大部分推理模式，資料效率是固化自動化的前提。</li>
+<li>與 <a class="paper-reference" href="2512.02008_ArtOfScalingTTC.%E6%91%98%E8%A6%81.html">2512.02008</a> TTS 分配策略實證研究並讀（不同推論預算策略的系統性比較）；與 <a class="paper-reference" href="2503.24235_TTC_Survey.%E6%91%98%E8%A6%81.html">2503.24235</a> TTS 綜述並讀（Budget Forcing 對應綜述中的「推理刺激」技術軸）。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2501.19393_s1.zh-TW.html"><code>../translate/2501.19393_s1.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

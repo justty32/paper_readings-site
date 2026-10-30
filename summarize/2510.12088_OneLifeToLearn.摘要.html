@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>One Life to Learn: Inferring Symbolic World Models for Stochastic Environments from Unguided Exploration 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zaid Khan、Archiki Prasad、Elias Stengel-Eskin、Jaemin Cho、Mohit Bansal</p><p>日期：2025-10-14（v1，cs.AI）</p><p>arXiv：2510.12088</p><p><a href="https://arxiv.org/abs/2510.12088" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="one-life-to-learn-inferring-symbolic-world-models-for-stochastic-environments-from-unguided-exploration-重點摘要">One Life to Learn: Inferring Symbolic World Models for Stochastic Environments from Unguided Exploration 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>OneLife 從一次沒有任務獎勵、沒有人工目標的探索軌跡中合成模組化程式規則，再用機率混合與稀疏 credit assignment 學出各規則的權重，讓 symbolic world model 能描述複雜環境中的隨機動態，並支援未來狀態排序與想像式規劃。</p>
+<h2 id="問題與測試環境">問題與測試環境</h2>
+<p>既有 symbolic world modeling 多半假設環境近乎確定、機制簡單、互動資料充足，甚至已有人工指定的目標或獎勵。OneLife 改問更接近開放世界的問題：agent 只有一次生命，在有敵人、隨機 NPC 與死亡風險的環境裡自由探索，能否自行逆向工程出可執行的世界法則。</p>
+<p>作者為此重寫 Crafter，得到 Crafter-OO。環境狀態是結構化、物件導向的文字資料，所有會影響下一狀態的資訊都顯式放在 state 中，ground-truth transition 是只依賴 state 與 action 的純函式。這排除了隱藏變數造成的假性失敗，也讓 LLM 能直接閱讀型別、欄位與觀察到的轉移，產生會修改狀態的程式。</p>
+<h2 id="方法架構">方法架構</h2>
+<p>OneLife 不把整個轉移函式寫成一支龐大程式，而把世界表示成 programmatic laws 的機率混合。每條 law 有 precondition 與 effect：前者判斷規則是否適用目前的 state-action pair，後者只預測自己負責的 observable。玩家移動、合成物品、生命恢復與殭屍移動因此可以由不同規則處理；多數規則在任一步都不啟動，不必共同解釋整個階層式狀態。</p>
+<p>學習流程有兩個核心元件。Law synthesizer 先比較探索軌跡前後狀態，找出實際改變的欄位，只把相關狀態切片與 action 交給 LLM，讓它產生候選 precondition-effect 程式。Parameter inference 再把同一 observable 上所有已啟動規則的輸出組成機率分布，用觀察到的下一狀態最佳化 law weights。梯度只流過當步真正啟動、且對該 observable 作出預測的規則，形成隨 state 與 action 改變的動態 computation graph。這種局部 credit assignment 是 OneLife 相對 product-of-experts baseline 的主要差異。</p>
+<p>推論時，模型對每個 observable 建立條件分布，抽樣出具體值，再重建完整的 symbolic next state。評估也拆成兩軸。State ranking 用人工 mutator 從真實下一狀態製造語意合理但違反規則的 distractor，測模型能否把真實狀態排前；state fidelity 則用 JSON Patch edit distance 測生成狀態離真實狀態多遠。前者重視法則判斷，後者重視完整生成，避免只靠其中一種指標掩蓋問題。</p>
+<h2 id="作者報告的結果">作者報告的結果</h2>
+<p>在 Crafter-OO 的整體評估中，完整 OneLife 的 Rank@1 為 <code>18.7％</code>，MRR 為 <code>0.479</code>（作者自報）。這兩項 state-ranking 指標都優於使用相同探索與 law synthesizer、但改採 PoE-World inference 的強化 baseline，顯示改善主要來自規則啟動方式與參數推論，而不只是 LLM 生成了不同程式。</p>
+<p>細分不同遊戲機制後，OneLife 在 <code>16／23</code> 個 scenarios 的 MRR 勝過 PoE-World（作者自報）。優勢跨越資源蒐集、合成、移動與戰鬥，並非只由少數簡單任務拉高平均。想像式規劃實驗另比較成對策略，例如先做武器再戰鬥、先做工具再採礦；在所測任務中，world model 對策略優劣的排序與真實環境一致，說明學到的規則已保留部分下游決策所需的因果差異。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>OneLife 證明了在互動極少且沒有外部任務訊號時，模組化程式規則與機率推論可以共同處理隨機 symbolic dynamics。它的強項不是逐像素逼真，而是把「哪條法則在何時改變哪個欄位」做成可讀、可編輯、可執行的結構，並讓這個結構真的參與 likelihood 與 rollout。</p>
+<p>限制也很清楚（<strong>以下為本檔依實驗設計與結果推得，非作者自列的 limitations 節</strong>）。實驗只在作者重寫的 Crafter-OO 中進行，前提是完整物件狀態與純 transition function 已可取得；真實感知、狀態抽取錯誤與未觀察混淆不在範圍內。完整模型的絕對 state-ranking 表現仍低，精確生成複雜下一狀態也依然困難。規劃展示使用人工編寫的候選 policies 與 reward functions，證明 world model 能分辨給定方案，尚未證明它能自行搜尋長期最佳計畫。Law synthesizer 仍依賴 LLM 產碼，錯誤規則的可驗證性與跨環境遷移也需要更多測試。</p>
+<h2 id="對讀者的價值ai_core-接點">對讀者的價值／ai_core 接點</h2>
+<p>對 ai_core 最有用的是「只把責任分給實際啟動的規則」。若一個結果由多條固化規則共同產生，整包更新權重很容易讓沒參與的規則背鍋；OneLife 先用 precondition 與 observable 建立稀疏依賴圖，再只更新相關 law，提供了較乾淨的 credit assignment 範本。這可映射到 ai_core 的規則庫治理：每條規則不只存內容，還應存適用條件、影響欄位、觀察證據與可學權重。</p>
+<p>第二個接點是評估拆成 ranking 與 fidelity。對下游 agent 而言，生成狀態看起來接近真實，不代表能判斷哪個行動違法；反過來，能排除錯誤狀態，也不代表能生成可執行的完整 rollout。ai_core 若要讓固化模型進入規劃，應同時驗「拒絕不可能結果」與「產生足夠忠實狀態」，再另以計畫排序是否保真作端到端檢查。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2510.12088_OneLifeToLearn.zh-TW.html"><code>../translate/2510.12088_OneLifeToLearn.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

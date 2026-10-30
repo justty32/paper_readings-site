@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《CORAL：朝向自主多 Agent 演化以達成開放式發現》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Ao Qu、Han Zheng、Zijian Zhou、Yihao Yan、Yihong Tang、Shao Yong Ong 等（MIT、NUS、MiniMax、McGill、Stanford、SambaNova、Meta、SMART、Amazon、Microsoft）</p><p>日期：2026-04，多 agent 自主演化框架／開放式發現／LLM-based 演化搜尋</p><p>arXiv：2604.01658</p><p><a href="https://arxiv.org/abs/2604.01658" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="coral朝向自主多-agent-演化以達成開放式發現重點摘要">《CORAL：朝向自主多 Agent 演化以達成開放式發現》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>CORAL（Collaborative Open-Ended Reasoning and Learning）</strong>：現有 LLM-based 演化搜尋（FunSearch、AlphaEvolve、EvoX 等）把 LLM 嵌在<strong>外部固定規則</strong>驅動的演化迴圈裡——誰是父代、何時評估、存什麼知識，全由預定啟發式決定，LLM 只在 PROPOSE 階段被動生成候選解。CORAL 把這四個階段（RETRIEVE / PROPOSE / EVALUATE / UPDATE）的控制權全交還給 <strong>long-running 自主 agent</strong>，搭配<strong>共享持久記憶（attempts/notes/skills 三層）</strong>、<strong>非同步多 agent 組織</strong>與<strong>心跳式反思機制</strong>，在十一個任務上以 3-10x 改善率勝固定演化搜尋 baseline、僅需 5-20 次評估即收斂（baseline 需 60-100 次），並在 Anthropic Kernel Engineering 上以四 agent 協同演化把最佳成績從 1,363 cycles 壓至 1,103 cycles。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>開放式發現任務（數學最佳化、演算法設計、系統最佳化）沒有標準答案，需反覆<strong>提案→評估→修正→累積</strong>。現有 LLM-based 演化搜尋（FunSearch、AlphaEvolve、EvoX、OpenEvolve、ShinkaEvolve）把關鍵搜尋決策外包給<strong>固定演算法</strong>，agent 無權決定：</p>
+<ul>
+<li><strong>檢索什麼</strong>：用預設選擇規則抽取父代與歷史，而非 agent 自己判斷。</li>
+<li><strong>何時測試</strong>：何時跑本地驗證、何時提交正式評估。</li>
+<li><strong>如何反應</strong>：失敗時無法自主調整方向或 pivot。</li>
+<li><strong>存什麼知識</strong>：什麼觀察值得寫入知識庫供後續重用。</li>
+</ul>
+<p>對困難的開放式問題，這些決策本身就是問題的一部分，交給固定啟發式限制了搜尋效率。多 agent 系統更糟：現有方法依賴人類預先分解任務、指定角色、定義溝通拓撲（如 AI Scientist、AI Co-Scientist），但在開放式問題上，人類事先不知道最佳分解與互動架構。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>共享持久記憶即檔案系統</strong>（§3.3）：M 結構化成檔案系統，透過 symbolic link 與各 agent 的 workspace 同步。三層根目錄：
+<ul>
+<li><strong>attempts/</strong>：記錄歷史評估與候選解，agent 可瀏覽高分方案並取回比較。</li>
+<li><strong>notes/</strong>：所有 agent 的觀察、學習、反思，以 markdown 檔儲存。</li>
+<li><strong>skills/</strong>：可重用的程序、工具、腳本與實作模式（<code>SKILL.md</code>＋可執行 artifact）。agent 獲得 skill-creator skill 引導創建新技能。</li>
+</ul>
+</li>
+<li><strong>非同步多 agent 組織</strong>：N 個 agent 各維護獨立 context、在隔離 worktree 中執行，僅透過共享持久記憶間接協調（非直接通訊協議）。一個 agent 的發現經由寫入 M 影響另一個 agent 的未來搜尋——技術擴散、自發共識、交互引用全無硬編碼。</li>
+<li><strong>心跳式介入</strong>（§3.3）：三種週期性 prompt 防止 agent 陷入局部極值或忘記維護共享記憶：
+<ol>
+<li><strong>per-iteration reflection</strong>：每次迭代提示記錄觀察。</li>
+<li><strong>periodic consolidation</strong>：固定嘗試次數後觸發，回顧進度、整理 notes、蒸餾可重用程序為 skills。</li>
+<li><strong>stagnation-triggered redirection</strong>：連續無改善時觸發，提示重新評估方向、決定繼續/修正/pivot。</li>
+</ol>
+</li>
+<li><strong>執行安全機制</strong>（附錄 C.7）：隔離 workspace、評估器分離、資源管理、agent session 與健康管理。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<h3 id="單-agenttable-1vs-openevolve--shinkaevolve--evox">單 agent（Table 1）：vs OpenEvolve / ShinkaEvolve / EvoX</h3>
+<ul>
+<li>全部 11 個任務上 CORAL 取得<strong>最佳最終分數</strong>，其中 8 個任務建立新 SOTA。</li>
+<li>改善率 3–10x 高於固定演化搜尋 baseline;CORAL 通常 <strong>5–20 次評估內收斂</strong>，baseline 需 60–100 次。</li>
+<li>效能非靠更多評估硬堆（CORAL 使用更少），而是 agent 自主選擇探索方向避開無效嘗試。</li>
+</ul>
+<h3 id="多-agenttable-2vs-單-agent-coral">多 agent（Table 2）：vs 單 agent CORAL</h3>
+<ul>
+<li><strong>Kernel Engineering</strong>：四 agent 從 1,350 → <strong>1,103 cycles</strong>（18.3% 改善），超越原最佳 1,363 cycles（20% gain）。對比單 agent 達 1,350 cycles、速率快但 plateau 早。</li>
+<li><strong>Polyominoes</strong>：80.2 → 84.2（+5.0%）。開 web search 更達 89.4（超越原 SOTA 87.0）。</li>
+<li>開源模型（MiniMax M2.5 + OpenCode）上多 agent gains 依然成立，證明架構優勢非依賴專有模型。</li>
+</ul>
+<h3 id="消融table-3">消融（Table 3）</h3>
+<ul>
+<li><strong>拔除知識累積</strong>（disable notes/skills）：Kernel Engineering 從 1,350 → <strong>1,601 cycles（-18.6%）</strong>——知識產物因果貢獻於搜尋品質。</li>
+<li><strong>Co-evolution vs 獨立 best-of-4</strong>：協同演化在所有三任務上勝過四獨立的 best-of-4（非僅多算力）。</li>
+</ul>
+<h3 id="機制分析44">機制分析（§4.4）</h3>
+<ul>
+<li><strong>本地驗證</strong>：有本地測試的 attempt 改善率高於平均（如 Kernel Eng. 57% 本地測試率→47% 改善率 vs 平均 43%）。</li>
+<li><strong>知識累積</strong>：進階任務上知識創建量是標準任務的 10x+（0.55–0.68 vs 0.05 每 attempt），存取知識的 attempt 改善率達 55%（Kernel Eng.）vs 26%（標準任務）。</li>
+<li><strong>跨 agent 資訊傳遞</strong>：Kernel Eng. 36% attempt 以其他 agent 的 commit 為父代，這些 attempt 改善率 17%（全體 9%）;66% 新記錄源自跨 agent parent。</li>
+<li><strong>探索多樣性</strong>：每 agent 的策略詞彙過半獨特（Jaccard 0.31–0.43），群體探索空間遠大於任何單一 agent。</li>
+</ul>
+<h2 id="局限與未來">局限與未來</h2>
+<ul>
+<li>依賴 frontier 基礎模型（需處理複雜 coding-agent workflow），本地部署困難。</li>
+<li>所有 agent 初始同質（相同 prompt 與資訊存取），未來可注入不同人格/角色/私有資訊提升行為多樣性。</li>
+<li>假設可取得合理定義的 evaluator；對許多開放式問題 evaluator 自身也不完整或模糊，需 evaluator 與解<strong>協同演化</strong>。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 D 類**「開放式演化 × 自主 agent」<strong>旗艦——與 <a class="paper-reference" href="2606.26294_Red_Queen_Godel_Machine.%E6%91%98%E8%A6%81.html">2606.26294</a> 紅皇后哥德爾機（agent 與 evaluator 協同演化）、<a class="paper-reference" href="2606.26327_EVOM_MetaEvolution_ActorCritic.%E6%91%98%E8%A6%81.html">2606.26327</a> EVOM（agentic 元演化 actor-critic 架構）、<a class="paper-reference" href="2606.26173_AlgoEvolve_MetaEvolution.%E6%91%98%E8%A6%81.html">2606.26173</a> AlgoEvolve（LLM 驅動演算法交易元演化）形成族群：CORAL 在</strong>架構層<strong>把演化控制權交還 agent，紅皇后在</strong>博弈層<strong>讓 agent 與 evaluator 軍備競賽，EVOM 在</strong>設計空間層<strong>搜尋 actor-critic 架構，AlgoEvolve 在</strong>領域落地層**做交易策略演化。</li>
+<li>§3.6 固化引擎接點：CORAL 的 <strong>skills/</strong> 資料夾就是固化引擎的實例——agent 把反覆使用的程序蒸餾成可重用技能（SKILL.md + artifact），正是「LLM 反覆處理的案例結晶成確定性程式碼/抽象庫」。值得記的是 <strong>periodic consolidation heartbeat</strong> 觸發固化（而非自動），以及 <strong>attempts/notes/skills 三層記憶</strong>對應固化引擎三種原料（案例/觀察/抽象）。</li>
+<li>§1 多 agent 計算圖接點：CORAL 的非同步共享記憶架構示範了一種<strong>去中心化計算圖</strong>——無預定義角色與通訊拓撲，agent 透過讀寫共享記憶間接協調，自發湧現技術擴散與共識。</li>
+<li>與 FunSearch/AlphaEvolve 系列的關係最關鍵：<strong>CORAL 不是更好的演化演算法，而是把演化演算法的控制權從演算法交還 agent</strong>——這是「固定搜尋 → 自主演化」的範式轉移。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2604.01658_CORAL.zh-TW.html"><code>../translate/2604.01658_CORAL.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

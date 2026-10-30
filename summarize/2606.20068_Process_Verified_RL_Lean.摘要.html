@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Process-Verified RL：以 Lean 戰術級驗證回饋訓練定理證明》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Minsu Kim, Se-Young Yun（KAIST）</p><p>日期：2026-06，形式化定理證明／可驗證獎勵強化學習（RLVR）</p><p>arXiv：2606.20068</p><p><a href="https://arxiv.org/abs/2606.20068" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="process-verified-reinforcement-learning-for-theorem-proving-via-lean重點摘要">《Process-Verified Reinforcement Learning for Theorem Proving via Lean》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>這篇主張：<strong>Lean 證明助手不只是評測時的驗證器，在訓練時還能當「符號級流程預言機（process oracle）」</strong>——把一次證明嘗試解析成戰術（tactic）序列，靠 Lean 的 elaboration 同時標出「<strong>局部健全的步驟</strong>」與「<strong>最早失敗的那一步</strong>」，得到根植於型別論、又密又可靠的逐戰術信用信號；再把這些結構化獎勵以 <strong>first-error propagation（首錯傳播）+ first-token credit（首詞元賦信）</strong> 注入 <strong>GRPO</strong> 目標，平衡 outcome 級與 process 級優勢。在 STP-Lean 與 DeepSeek-Prover-V1.5 上，戰術級監督在多數設定優於只看最終 0/1 的 outcome-only 基線，MiniF2F、ProofNet 一致提升。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>RLVR（可驗證獎勵強化學習）一般只用<strong>單一二元信號</strong>（整個證明對/錯）。但形式推理裡，符號證明助手能給出<strong>豐富、細粒度的結構化回饋</strong>——這個「結構化流程」與「非結構化獎勵」之間的落差，正是 credit assignment（信用分配）稀疏的根源：一個長證明只在最後拿到一個 scalar，中間哪一步好哪一步壞無從得知。作者要把 Lean 的細粒度回饋變成可用於線上 RL 的密集、健全訓練信號。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>Lean 當 process oracle</strong>：對每次生成的證明，Lean 提供 (i) 全域 outcome 信號，(ii) 經由 info tree／error log 的逐戰術回饋；<strong>全程不用任何自然語言 CoT 或外部 PRM（過程獎勵模型）</strong>。</li>
+<li><strong>戰術級 MDP</strong>：把證明建模成以戰術為動作的 Markov 決策過程，獎勵函數對每個戰術賦分。</li>
+<li><strong>三個橋接元件</strong>（把樹狀符號回饋接到自回歸 token 級 RL）：
+<ol>
+<li><strong>回饋形式化</strong>——用 Lean parser 的 AST 區分戰術狀態：成功 elaborate（型別正確、局部健全，但可能留未解子目標）vs. 型別錯誤／parser 不匹配。</li>
+<li><strong>First-Error Propagation（首錯傳播）</strong>——戰術序列 (T₁…T_N) 中一旦在 T_j 觀察到錯誤，就把失敗傳播給其後所有 T_k(k≥j)：因為 LLM 自回歸生成下，首個錯誤戰術之後的續寫都建立在無效前綴上，不可能構成有效推理，符合因果與型別論的信用分配。</li>
+<li><strong>First-Token Credit（首詞元賦信）</strong>——把每戰術分數映射到「該戰術第一個 token」的優勢上，保留 GRPO 簡潔性同時解決稀疏信用。</li>
+</ol>
+</li>
+<li><strong>不算 return</strong>：捨棄跨整條軌跡的累積回報（在證明裡可能不健全——首錯後續步皆無效，且 return-based 信用實測優化不穩、需 value function），改用「正規化 outcome 信號 + 戰術級獎勵」的簡單組合。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>MiniF2F／ProofNet</strong>：戰術級監督在多數設定優於 outcome-only RL 與 vanilla 基線，更穩、更 robust。</li>
+<li>具體數字（pass@32／64）：STP-Lean(7B) 基線 ProofNet 17.2%、+Ours 升至 <strong>18.6–19.1%</strong>；MiniF2F pass@64 約 56.7%→<strong>59.2%</strong>。DeepSeek-Prover-V1.5+STP 亦同步提升（MiniF2F 57.2%→更高、ProofNet 16.8%→<strong>18.x%</strong>）。</li>
+<li>增益<strong>不靠自然語言標註，也不靠外部 PRM</strong>。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>提升幅度多為個位百分點，且依基線模型／benchmark 而異（「多數設定」而非全部）。</li>
+<li>戰術級獎勵設計（首錯傳播＋首詞元）是啟發式折衷；只在 7B 規模、兩個既有 prover 上驗證。</li>
+<li>仍受 Lean elaboration 能解析的回饋粒度所限。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 B 類**「LLM＋Lean 形式定理證明」的訓練信號創新代表**：核心洞見是把驗證器從「評測時的裁判」升格為「<strong>訓練時的密集過程獎勵來源</strong>」——這對所有 RLVR 場景（不只證明）都有啟發。</li>
+<li>最值得記：<strong>「first-error propagation + first-token credit」</strong> 這套把符號樹狀回饋塞進 GRPO 的配方，以及「證明裡 return-based 信用不健全、首錯後皆無效」的論證。</li>
+<li>與 <a class="paper-reference" href="2604.26311_DreamProver.%E6%91%98%E8%A6%81.html">2604.26311</a>（DreamProver，wake-sleep 庫學習）、<a class="paper-reference" href="2606.19315_Diffusion_Proof.%E6%91%98%E8%A6%81.html">2606.19315</a>（Diffusion-Proof，非自回歸生成）同屬 LLM 形式證明，但本篇切點是<strong>RL 信用分配</strong>；與 <a class="paper-reference" href="2606.08728_AI4Math_Survey.%E6%91%98%E8%A6%81.html">2606.08728</a>（AI4Math 綜述）可互為地圖與案例。</li>
+<li>適合做 <strong>RLVR、過程獎勵、LLM 定理證明、Lean 工具鏈整合</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2606.20068_Process_Verified_RL_Lean.zh-TW.html"><code>../translate/2606.20068_Process_Verified_RL_Lean.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

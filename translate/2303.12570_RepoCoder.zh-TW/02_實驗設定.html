@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗設定 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2303.12570_RepoCoder.zh-TW.html">回 2303.12570_RepoCoder.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗設定">4. 實驗設定</h2>
+<p><strong>比較方法</strong>：</p>
+<ul>
+<li><strong>In-File</strong>：只用未完成程式碼填 prompt，直接用預訓練模型 zero-shot 補全（基線）。</li>
+<li><strong>Oracle</strong>：單次檢索的上界法——用 X 的最後 <code>Sw − Ss</code> 行 + <strong>ground-truth 程式碼 Y</strong> 的前 <code>Ss</code> 行做查詢取 <code>C_ret^gt</code>，再 <code>Ŷ = M(C_ret^gt, X)</code>；代表在給定 R、M 下 RepoCoder 的效能上界。</li>
+</ul>
+<p><strong>實作</strong>：主實驗檢索器用<strong>稀疏 bag-of-words + Jaccard 相似度</strong>；另用 <strong>UniXcoder 密集檢索器</strong>（附錄 B）驗證，效果相當。生成模型：GPT-3.5-Turbo，以及 CodeGen 的 6B/2B/350M 三版。超參數（模型對超參不敏感，依經驗設定）：輸入+輸出最大 token 數 GPT-3.5-Turbo 4096、CodeGen 2048；檢索片段長度設為 prompt 一半；line/API 的生成上限、<code>Sw</code>、<code>Ss</code> 分別為 100、20、10，function body 為 500、50、10；最大檢索片段數 K=10。單輪 RAG、迭代 RepoCoder、Oracle 用相同超參以求公平。</p>
+<p><strong>評估指標</strong>：line/API 用 <strong>Exact Match（EM）</strong> 與 <strong>Edit Similarity（ES，基於 Levenshtein 距離）</strong>；function body 用<strong>執行式評估</strong>——跑倉庫內單元測試，全過為 1、否則 0，報 <strong>Pass Rate（PR）</strong>。</p>
+<h2 id="5-實驗結果">5. 實驗結果</h2>
+<h3 id="51-line-與-api-補全表-2">5.1 Line 與 API 補全（表 2）</h3>
+<p>RepoCoder 在兩個資料集、所有模型大小上都一致提升 In-File：<strong>EM 絕對提升超過 10%、ES 超過 8%</strong>，且逼近 Oracle。<strong>兩輪以上</strong>時一致勝過單輪原生 RAG。搭配 RepoCoder 的 CodeGen-350M 可與 In-File 的 GPT-3.5-Turbo 相當。以 GPT-3.5-Turbo 的 line 為例：In-File EM 40.56 → Iter-2 55.31 → Iter-3 56.81，Oracle 57.75。改用 UniXcoder 密集檢索器結果一致，顯示 RepoCoder 對檢索/生成模型的選擇具穩健性。</p>
+<h3 id="52-function-補全表-3">5.2 Function 補全（表 3）</h3>
+<p>因函式主體補全較難，用 GPT-3.5-Turbo。趨勢與 line/API 一致：多數倉庫上顯著優於 In-File、逼近 Oracle，且多輪迭代穩定勝過原生 RAG。整體 Pass Rate：In-File <strong>23.32%</strong> → Iter-1 38.34% → <strong>Iter-2 42.63%</strong>（與 Oracle 42.63% 持平），Iter-3/4 為 41.82%/42.36%。</p>
+<h2 id="6-分析">6. 分析</h2>
+<h3 id="61-檢索片段的品質">6.1 檢索片段的品質</h3>
+<p>檢索品質對補全效能影響顯著；最有用的片段通常含與目標補全相似的語句、或目標 API 的用法示例。設計 GT-Code 對照（用靜態分析定位含 ground-truth API 呼叫的片段、按與未完成程式碼相似度排序入 prompt）：GT-Code 普遍最佳；而 <strong>RepoCoder Iter-2 對 ground-truth API 的召回率高於單輪</strong>，這很可能是其補全更佳的原因；且<strong>模型越強，Iter-2 召回越高</strong>——證實模型預測確實幫到檢索。</p>
+<h3 id="62-檢索片段的位置">6.2 檢索片段的位置</h3>
+<p>選「Oracle/RepoCoder 補對、但 In-File 補錯」的樣本，依 Shrivastava et al. (2022) 分五類來源：Imported、Current File、Current Directory、Similar Import、Similar Name。發現 Oracle 與 RepoCoder 分佈相近，且相當比例來自「<strong>Similar Import／Similar Name／Current Directory</strong>」，凸顯上下文資訊的重要。消融（只限這些位置檢索）會使效能下降，反顯 RepoCoder 檢索的有效與簡潔。</p>
+<h2 id="7-相關工作">7. 相關工作</h2>
+<ul>
+<li><strong>補全中的倉庫上下文</strong>：傳統靠分析+重排（效率好但無法任意粒度生成）；另一線把補全當語言建模，用 n-gram/LSTM/Transformer 把倉庫上下文納入訓練（但蒐標註+微調成本高）。Shrivastava et al. (2022) 也探索倉庫級補全，但靠不靈活的啟發式與分類器訓練來構造 prompt。</li>
+<li><strong>檢索與生成的聯合建模</strong>：LLM 離線訓練限制了取得自訂/最新資訊；近期在 QA、對話上探索檢索-生成聯合建模，並延伸到把檢索到的文件/程式碼範例納入生成；隨模型變強，趨勢是把 LLM 當固定黑箱做<strong>上下文內</strong>的聯合檢索-生成，並有研究用<strong>模型預測</strong>當補充上下文來輔助檢索。本文證明「迭代結合檢索與生成」是倉庫級補全的有效方法。</li>
+</ul>
+<h2 id="8-結論與未來工作">8. 結論與未來工作</h2>
+<p>RepoCoder 是簡單有效的倉庫級補全框架：用檢索器 + 語言模型有效利用倉庫級資訊，透過<strong>迭代式檢索-生成橋接檢索上下文與目標程式碼的落差</strong>，提升補全效能。RepoEval 上的大量實驗證明它一致且顯著地勝過 In-File、超越原生 RAG。憑其簡單、通用、有效，RepoCoder 有望成為真實開發中的重要工具。</p>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>低重複度倉庫收益有限</strong>：倉庫幾乎沒有重複程式碼時，相似度檢索找不到足夠相關資訊（附錄 C 進一步佐證重複度與增益的相關性）。</li>
+<li><strong>最佳迭代輪數難定</strong>：兩輪優於原生 RAG，但更多輪可能不穩（附錄 D 顯示每輪都會修好前一輪的錯、也弄壞前一輪對的）；作者試過自動終止策略，但無損效能的最佳停止準則仍待研究。</li>
+<li><strong>即時部署的時間效率</strong>：額外檢索-生成步驟帶來延遲，可用量化/蒸餾/硬體加速/快取常用片段/預處理倉庫、或依延遲目標動態調整輪數來緩解，但超出本文範圍。</li>
+<li><strong>實驗範圍有限</strong>：未探索不同 prompt 模板；主要只用相似度檢索；未納入 GPT-4／StarCoder／WizardCoder 等更新模型；baseline 僅 In-File 與 Oracle（因倉庫級補全是較新任務、缺可重現基線，另在附錄 E 對比 Copilot／Tabnine／CodeWhisperer 三商業產品做定性展示，該例中僅 RepoCoder 補對）。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2303.12570_RepoCoder.%E6%91%98%E8%A6%81.html"><code>../summarize/2303.12570_RepoCoder.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

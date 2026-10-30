@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>CHIME: Credit-Aware Hierarchical Memory Evolution for Long-Horizon Agentic Planning 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yongshi Ye、Tian Lan、Feihu Jiang、Muyang Ye、Bin Zhu、Qianghuai Jia、Longyue Wang、Zhao Xu、Weihua Luo、Xiaodong Shi</p><p>日期：2026-09-02（v1，cs.AI）</p><p>arXiv：2609.02074</p><p><a href="https://arxiv.org/abs/2609.02074" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="chime-credit-aware-hierarchical-memory-evolution-for-long-horizon-agentic-planning">CHIME: Credit-Aware Hierarchical Memory Evolution for Long-Horizon Agentic Planning</h1>
+<h2 id="摘要與第-1-節問題">摘要與第 1 節：問題</h2>
+<p>長時程任務要求 agent 把目標拆成互相依賴的子任務，還要在執行途中持續遵守限制。測試時搜尋會反覆探索候選計畫，成本高且不保留經驗；訓練 planner 又需要大量軌跡與後訓練。自我演化記憶雖能在模型參數不變時，把互動經驗存入外部記憶庫，卻把最終成敗直接當作計畫品質，造成信用分配錯誤：成功可能來自 executor 補救壞計畫，失敗也可能是執行錯誤或環境因素。錯誤經驗一旦寫入，還會在後續任務反覆被取回。</p>
+<p>CHIME 採「先歸因，再記憶」原則。它先判斷成果應歸因於規劃、執行、兩者或皆非，再只更新相應記憶庫，避免低階操作經驗污染高階規劃，也避免把外部故障寫成可重用策略。</p>
+<h2 id="第-23-節分層記憶與信用感知演化">第 2～3 節：分層記憶與信用感知演化</h2>
+<p>任務串流中的 policy 保持凍結，適應全由外部記憶承擔。CHIME 把記憶拆成 planning bank 與 execution bank。前者存放子任務分解、依賴建模與限制整合，後者存放工具選擇及呼叫細節。每筆記憶為 <code>m_i=(c_i,e_i,v_i,n_i)</code>：適用情境、可重用經驗、價值分數與重用次數。</p>
+<p>每回合先用任務查詢規劃庫，產生計畫後，再用任務與計畫查詢執行庫。兩階段都先做語意相似度召回，再以經重用次數平滑的價值分數重排；價值只修正排序，不取代相似度，避免少量回饋主導檢索。</p>
+<p>任務完成後，Credit Attribution Gate 檢視任務、計畫、執行軌跡、結果與取回記憶，輸出四類歸因、各層新經驗、信心與誤導性記憶。記憶演化分兩步：成功且被歸功的記憶得到依信心加權的正回饋，誤導性記憶受罰，其餘不變；新經驗則依信心、具體性與相似度決定合併、插入或捨棄。被充分重用但價值持續偏低者才會剪枝。新記憶以中性價值起步，交由日後重用結果估值。</p>
+<h2 id="第-46-節主要實驗與分析">第 4～6 節：主要實驗與分析</h2>
+<p>**作者自報：**實驗涵蓋四個長時程 benchmark 與兩個 backbone，任務串流按 <code>7:3</code> 分成可更新記憶的 train split 與凍結記憶的 eval split，並對三種隨機順序取平均。相較最強 baseline，CHIME 在兩個 backbone 的 eval 平均分別高 <code>2.96%</code> 與 <code>3.68%</code>；移除分層記憶、歸因 gate、價值重排或信用感知演化都使 eval 平均下降。</p>
+<p>**作者自報：**在記憶品質分析中，CHIME 有 <code>81.04%</code> 的記憶同時通過正確、不重複與可泛化三項外部評審。累積結束時只保留 <code>129</code> 筆記憶，而 A-MapReduce 保留 <code>3,585</code> 筆，CHIME 仍有最高準確率。記憶價值也與下游效用同向：規劃記憶由低值組到高值組的準確率從 <code>21.7%</code> 升至 <code>50.8%</code>，執行記憶則從 <code>23.7%</code> 升至 <code>35.4%</code>。</p>
+<p>**作者自報：**Credit Attribution Gate 的重複歸因一致率為 <code>87.8%</code>～<code>97.9%</code>，僅以 gate 產生的經驗重跑時，可補救 <code>56.3%</code>～<code>67.6%</code> 的已歸因失敗。跨 backbone 移植時，CHIME 記憶在四種設定都優於 A-MapReduce，顯示它學到的較像任務條件下可重用的指引，而非單一模型的表面模式。</p>
+<h2 id="第-7-節與附錄-b結論與局限">第 7 節與附錄 B：結論與局限</h2>
+<p>CHIME 的重點不是多記，而是先辨認經驗屬於哪個決策層。分離規劃與執行記憶、以軌跡診斷歸因，再依實際重用價值管理內容，能減少最終成敗造成的錯誤監督，並讓凍結模型在任務串流中持續累積較乾淨的經驗。</p>
+<p>作者在附錄明列兩項邊界。第一，CHIME 不改 backbone；即使記憶正確，模型若無法理解指引或執行必要動作，結果仍不會改善。第二，跨 backbone 移植在 benchmark 不變時較有效，因工具、合法動作與成功條件相近；跨 benchmark 時，語意相似不保證操作條件一致，轉移能力仍有限。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2609.02074_CHIME.%E6%91%98%E8%A6%81.html"><code>../summarize/2609.02074_CHIME.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

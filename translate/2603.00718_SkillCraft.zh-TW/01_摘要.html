@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>SkillCraft：LLM Agent 能否學會熟練地使用工具？（2/2） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.00718_SkillCraft.zh-TW.html">回 2603.00718_SkillCraft.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>真實世界的工具使用 agent 運行於長時程工作流中，有效行為不僅要求調用原子工具，還需要抽象化並重用更高層次的工具組合——本文稱之為「技能（Skills）」。既有基準主要測量靜態工具集下的單個任務成功率，無法反映 agent 獲取可重用技能的能力。本文提出 <strong>SkillCraft</strong>：一個明確壓力測試 agent 形成與重用高層工具組合（即 Skills）的基準，共 126 個任務，難度沿著量化與結構兩維度遞增。進一步提出輕量級評估協議 <strong>Skill Mode</strong>——使 agent 能自動將原子工具組合成可執行的 Skill、快取並在任務內/跨任務重用，從而提升效率並累積一個持久的可重用技能庫。在 SkillCraft 上評估頂尖 agent 發現：技能保存與重用使 token 用量降最高 <strong>80%</strong>；成功率與工具組合能力（skill execution rate）強正相關（<strong>r=0.65</strong>），顯示組合性技能獲取是長期穩健工具使用的核心能力。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>認知科學視角下，智慧的標誌不是執行孤立動作，而是從經驗中<strong>高效獲取、重用、重新組合</strong>高層程序——François Chollet（2019）將智慧定義為「在任務範圍內、考慮先驗與經驗後，技能獲取效率的度量」。這引出基本問題：agent 能否獲取並重用跨結構相似任務泛化的組合性工具技能？</p>
+<p>既有工具使用基準（Toolathlon、WebArena、AgentCompany）的典型範式為「agent 能否用給定工具解決這個任務？」，固定工具集與固定模型，對 agent 能否累積、抽象、跨任務重用組合性技能的訊號有限。本文引入 SkillCraft 以隔離並測量此缺失能力。</p>
+<p>SkillCraft 基於兩個設計原則：(1) 任務須多步驟、多工具，單一原子工具不足以解決，高層組合提供明顯優勢；(2) 任務須呈現重複結構——一個上下文發現的技能可在其他上下文被有意義地重用。這也反映真實世界工具使用場景的特徵：長時程、結構化重複。</p>
+<p>Skill Mode protocol 在系統提示中注入四個 MCP 原語（save_skill / get_skill / list_skills / execute_skill），使 agent 能在測試期間擴展行動空間，實現「測試時工具演化」：agent 通過發現與重用，在解決任務的過程中累積能力。</p>
+<h2 id="2-skillcraft-基準">2. SkillCraft 基準</h2>
+<h3 id="21-三階段任務建構管線">2.1 三階段任務建構管線</h3>
+<p><strong>Stage 1（探索階段）</strong>：從 Toolathlon、AgentCompany、WebArena、M3ToolEval 等基準取樣 60+ 個複雜多步驟工具使用任務，系統性實驗後識別有效的 API 與任務類型，提取任務設計原則。</p>
+<p><strong>Stage 2（種子任務創建）</strong>：從三個來源構建 21 個種子任務：(i) 從 Stage 1 挑選並改編的高品質任務，要求所需 API 可靠、穩定、無嚴重速率限制，確保大規模長時程互動與工具組合可行（5 個）；(ii) 手寫 web API 任務——調查、測試並過濾穩定的公共端點（GitLab、Open-Meteo、TVMaze），以標準化本地工具包裝後設計任務（12 個）；(iii) 手寫本地檔案與資料處理任務——準備資料集、實現標準化處理工具，在此之上構建任務（4 個）。</p>
+<p><strong>Stage 3（系統性擴展）</strong>：沿兩個正交軸擴展——quantitative scaling（增加實體數 N：3→4→5）與 complexity scaling（增加每子任務工具呼叫數 M：3→4→5），產生 126 個任務涵蓋 6 個難度層級。例如從「分析一個 repository 的 commit 歷史」擴展為「分析五個 repository」再擴展為「分析 100 個 repository 並計算其 contributor 數量的相關性」。</p>
+<h3 id="22-任務特徵">2.2 任務特徵</h3>
+<p>六個應用領域：娛樂與遊戲（28.6%）、教育與社會（19.0%）、參考與知識（19.0%）、科學與環境（14.3%）、開發者與 Web（9.5%）、食品與生活（9.5%）。難度：Easy 50%（N=3,M=3）、Medium 33.3%（N=4,M=4）、Hard 16.7%（N=5,M=5）。</p>
+<h2 id="3-skillcraft-protocol">3. SkillCraft Protocol</h2>
+<h3 id="31-四個-mcp-原語">3.1 四個 MCP 原語</h3>
+<p>為支援技能重用且保持最少系統假設，以輕量 MCP 介面讓 agent 儲存與重用基於代碼的可執行 Skills。維護一個 Skill Library（經驗證技能及其元資料的快取），僅暴露四個原語：</p>
+<ul>
+<li><strong>save_skill</strong>：將工作流持久化為代碼與元資料</li>
+<li><strong>get_skill</strong>：獲取指定技能的源碼與元資料</li>
+<li><strong>list_skills</strong>：枚舉 Skill Library 中所有可用技能</li>
+<li><strong>execute_skill</strong>：將技能作為更高層次工具執行</li>
+</ul>
+<p>四個原語定義了評估邊界——agent 是否嘗試重用、重用是否成功、失敗如何處理，均可直接觀測。</p>
+<h3 id="32-coding-verifier三階段驗證">3.2 Coding Verifier：三階段驗證</h3>
+<p>任何技能進入 Skill Library 前須通過三階段驗證：</p>
+<ol>
+<li><strong>語法驗證</strong>：解析技能代碼，拒絕語法無效的提交，返回錯誤行號與上下文片段</li>
+<li><strong>執行期錯誤報告</strong>：execute_skill 失敗時返回結構化除錯資訊（異常訊息、traceback、輸入參數），幫助模型區分語法問題、工具調用問題、參數不匹配</li>
+<li><strong>執行後品質檢測</strong>：檢測靜默失敗——若 &gt;50% 輸出欄位為 Unknown/None/0，標記技能為低品質並拒絕</li>
+</ol>
+<h3 id="33-protocol-執行流程">3.3 Protocol 執行流程</h3>
+<p>四個階段循環：</p>
+<h2 id="1-重用嘗試對新任務agent-查詢既存技能list_skills嘗試以任務特定參數調用匹配的技能execute_skill-2-探索若無合適技能或執行失敗agent-以原子工具解決任務並記錄成功工具序列-3-組合將成功的工具序列抽象為參數化候選技能將重複子程序合併中間結果透過程式碼變數而非自然語言傳遞以消除冗餘狀態序列化-4-驗證與儲存候選技能在受控-coding-env-中透過統一的-call_tool-介面執行經-coding-verifier-驗證後通過者以-save_skill-存入-skill-library-供後續任務可靠重用">(1) <strong>重用嘗試</strong>：對新任務，agent 查詢既存技能（list_skills），嘗試以任務特定參數調用匹配的技能（execute_skill）
+(2) <strong>探索</strong>：若無合適技能或執行失敗，agent 以原子工具解決任務並記錄成功工具序列
+(3) <strong>組合</strong>：將成功的工具序列抽象為參數化候選技能——將重複子程序合併，中間結果透過程式碼變數（而非自然語言）傳遞以消除冗餘狀態序列化
+(4) <strong>驗證與儲存</strong>：候選技能在受控 Coding Env 中透過統一的 call_tool() 介面執行，經 Coding Verifier 驗證後，通過者以 save_skill 存入 Skill Library 供後續任務可靠重用</h2>
+<h2 id="title-skillcraftllm-agent-能否學會熟練地使用工具part-22實驗至結論-source-httpsarxivorgabs260300718-arxiv_id-260300718-date-2026-03">title: SkillCraft：LLM Agent 能否學會熟練地使用工具？（part 2/2：實驗至結論）
+source: https://arxiv.org/abs/2603.00718
+arxiv_id: 2603.00718
+date: 2026-03</h2>
+<h1 id="skillcraftllm-agent-能否學會熟練地使用工具22">SkillCraft：LLM Agent 能否學會熟練地使用工具？（2/2）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

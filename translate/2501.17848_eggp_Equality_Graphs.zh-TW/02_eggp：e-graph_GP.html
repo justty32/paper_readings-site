@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_eggp：e-graph_GP · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2501.17848_eggp_Equality_Graphs.zh-TW.html">回 2501.17848_eggp_Equality_Graphs.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-eggpe-graph-gp">4. eggp：e-graph GP</h2>
+<p>eggp（e-graph genetic programming）沿用傳統 GP 結構：用 ramped half-and-half 建初始族群（受最大 size 與最大 depth 約束），每代用錦標賽選父代、以機率 pc 套子樹交叉、再以機率 pm 套子樹變異、依準則替換後代。<strong>關鍵差異</strong>：</p>
+<ol>
+<li>插入新表達式後<strong>執行單步等式飽和</strong>，合併等價式。</li>
+<li>子樹交叉與變異被改造為<strong>設法生成未訪表達式</strong>。</li>
+</ol>
+<p>注意：單步等式飽和不保證插入所有等價形，但若多迭代，e-graph 會指數膨脹（因我們同時存多個式子更嚴重）；如 §6 所見，<strong>單步似乎已足夠改善</strong>，增加步數的效益留待未來。</p>
+<p>實作有<strong>單目標 eggp_so</strong>（用後代取代族群）與<strong>多目標 eggp_mo</strong>（用以下集合取代族群：Pareto front、排除第一 front 後的次層 front、隨機選最後一批後代補滿到目標族群大小——保兩層支配 front、其餘填新式以兼顧探索與利用）。執行結束時可從整個搜尋史抽 Pareto front（因支配關係可遞移，等同傳統 NSGA-II）。並維護按 fitness 與 size 排序的表達式資料庫，使 Pareto front 可在 O(m) 抽出、新式可在 O(log n) 插入；插入 <code>θ·x</code> 時等式飽和會生成把常數換成參數的等價形並存入。</p>
+<h3 id="41-e-graph-交叉與變異">4.1 e-graph 交叉與變異</h3>
+<p><strong>e-graph 交叉</strong>：兩父代以錦標賽選出，把第一父代的隨機子樹換成「從第二父代所有可能子樹的一個<strong>子集</strong>抽出的隨機子樹」；該子集建構成「替換第一父代所選子樹後會生成未訪式」。若該集為空、或以機率（1−pc）選擇不交叉，則回傳未改的第一父代。</p>
+<p><strong>e-graph 變異</strong>：以機率 pm 套在交叉後代上。像傳統子樹變異般用 grow 或 full（隨機選）替換隨機子樹；新式生成後檢查是否已在當前 e-graph，若是則把生成子樹的根節點換成另一個從「同 arity 且會生成未訪式」的符號子集隨機選的節點；該子集為空則回傳當前變異式。</p>
+<p>eggp 完整實作有<strong>九個超參</strong>：世代數、族群大小、最大表達式 size、損失函數（MSE / Gaussian / Poisson / Bernoulli / ROXY）、參數優化的迭代數與重試數、交叉與變異機率、非終端清單。</p>
+<h2 id="5-實驗">5. 實驗</h2>
+<p>為量測「用 e-graph 記錄的造訪史與等價形來刺激新穎」的效益，選三個基線：用同後端函式庫實作的 <strong>tinyGP</strong>、<strong>Operon</strong>、<strong>PySR</strong>。Operon 是精心打造、注重 runtime 的 GP，含多種變異運算子、每個變數節點裹一個用非線性優化調整的縮放參數。PySR 同樣支援這些運算子與非線性參數優化，特色是用 <strong>island model</strong> 保多樣性、並對部分式子套簡化啟發。兩者皆用「精度 + 表達式大小」的多目標。為與 tinyGP 直接可比，<strong>eggp 只保留子樹交叉與變異</strong>，以單純量測此修改的效益。</p>
+<p>共同超參固定為經驗預設值；少數差異：PySR 用 10 個 island（每島族群為他者的 1/10，單一族群時 PySR 明顯較差）；Operon 最大優化迭代數較高（不支援多重隨機起點）；eggp 分出部分訓練資料當驗證集算 fitness、其餘擬合參數。</p>
+<p><strong>第一組實驗</strong>用提案的 <strong>reduced SRBench</strong>（含不同特性的代表性資料集），做 10-fold CV 重複 10 次（共 100 runs/題）；再選 <strong>9 個真實資料集</strong>（已有預定訓練/測試集，跑若干重複）。每實驗存最終 Pareto front，報告 performance plot、AUC、平均排名、排名統計檢定、執行時間平均與標準差；<strong>所有算法限單核</strong>以確保公平。SRBench 訓練集隨機上限資料點數；Operon 的最大 size 設為他者的某倍數（因內部不把終端縮放係數計入模型大小），以使其搜尋於相近空間。</p>
+<h2 id="6-結果與討論">6. 結果與討論</h2>
+<p><strong>SRBench</strong>（取各 run 訓練集最高 R² 的最佳解）：performance plot 的 x 軸為測試 R²、y 軸為「達到 ≥ 該 R² 的 run 百分比」。多數資料集上兩版 eggp 都<strong>可靠</strong>達同一 R²（幾乎每次執行都同分），而對手有時得分較低或某些執行失敗。以<strong>測試 R² 中位數與 AUC</strong> 排名（表 3）：<strong>eggp_mo 平均排名第一、Operon 次之</strong>；eggp_so 與 tinyGP 相比，用提案運算子讓平均排名略升。統計檢定可拒絕「PySR 不劣於 eggp」的虛無假設；AUC 上 eggp_mo 平均優於其他、且對每個比較都拒絕虛無假設（除 Operon 外）。<strong>eggp 兩版平均都回傳更小的模型</strong>，原因有二：i) 每次插入後做等式飽和可得插入式的簡化版；ii) 插入時自動消除部分冗餘參數，避開 de Franca &amp; Kronberger 2023 報告的過參數化問題。</p>
+<p><strong>真實資料集</strong>（圖 4）：eggp 覆蓋面積接近或優於最佳對手；最大落差在 friction（eggp_mo 略小於 Operon）。AUC 上 eggp_mo、Operon、eggp_so 平均分相近並依此排名，PySR 與 tinyGP 明顯較差。以 R² 中位數排名（表 4），多目標版多穩居第二、但此組 Operon 多數資料集第一；不過 eggp 結果總是貼近最佳對手，連 Operon 都在兩個資料集（flow、niku-2）失常。統計檢定：eggp_mo 與 Operon 無顯著差異，但可拒絕「eggp 等同 PySR/tinyGP」。模型大小上此組各算法平均都接近最大 size；PySR 一貫回傳較小模型，但代價是 AUC 顯示的較低精度。</p>
+<p><strong>執行時間</strong>：以最快的 Operon 為基準算比值（圖 5）——eggp 與 tinyGP 都約為 Operon 的數倍；PySR 隨資料集從數倍到更高（高維/大資料集比值更高）。所有算法限單執行緒，故 Operon、PySR 開多執行緒時可更快。</p>
+<h3 id="61-其他考量">6.1 其他考量</h3>
+<p>主要限制在於超參用預設/合理值；eggp 含應細調的超參，PySR 約有數十個、Operon 也有相當多超參，仔細實驗下兩者或可達相近結果。話雖如此，eggp 朝<strong>近乎無參數</strong>的 SR 體驗邁進一步——使用者只需設「行為直覺」的超參（如增加評估次數絕不會讓結果變差，不像交叉/變異率行為難測）。eggp 另一特性：可把當前 e-graph 狀態<strong>匯出檔案、之後載入續跑</strong>（eggp_mo 回復當前 Pareto front、eggp_so 隨機抽解），且可改超參續跑（加新非終端、增大最大 size）；該檔也可餵給探索工具 <strong>rEGGression</strong>，讓使用者瀏覽解歷史、取出 Pareto front 之外的迴歸模型。</p>
+<h3 id="62-資料可得性">6.2 資料可得性</h3>
+<p>以 <strong>Haskell</strong> 實作、用 <strong>srtree</strong> 函式庫做 SR 與等式飽和；eggp 與 tinyGP 的二進位與原始碼、以及全部資料/腳本/結果皆開源。</p>
+<h2 id="7-結論">7. 結論</h2>
+<p>本文探索用 e-graph 與等式飽和<strong>追蹤 SR 搜尋史</strong>、並利用其 pattern matching 能力，對傳統子樹交叉與變異提出「<strong>提高生成新穎表達式機率</strong>」的變體。e-graph 緊湊存一組式子共享元素與等價關係、並高效查詢式子部件；據此改造子樹運算子只抽「會生成未訪式」的子樹。在多個文獻基準上對比簡單 GP（原始運算子）與兩個 SOTA（PySR、Operon），結果顯示：改造運算子能把簡單 GP 提升到與 SOTA 競爭，亮點是<strong>一致地等於或優於最佳對手</strong>。runtime 上 eggp 一致快於 PySR、但明顯慢於 Operon；與 tinyGP 相比，用 e-graph 與等式飽和<strong>不顯著增加 runtime</strong>。</p>
+<p>結論：e-graph 的表達力讓我們只做一個對原始子樹運算子的簡單修改，就顯著提升 GP for SR 的表現，得到比 SOTA 實作<strong>更穩健、更可靠</strong>的算法。後續：同樣的修改可套用於 SOTA 算法的任何其他運算子；e-graph 還開啟眾多可能（查「具備某組性質組合」的式子 → 保多樣性族群、易整合先驗知識；存搜尋史 → 分析學到的構件並據此生成新解）。</p>
+<blockquote>
+<p>作者註：本工作自豪地未使用任何 LLM。</p>
+</blockquote>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2501.17848_eggp_Equality_Graphs.%E6%91%98%E8%A6%81.html"><code>../summarize/2501.17848_eggp_Equality_Graphs.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

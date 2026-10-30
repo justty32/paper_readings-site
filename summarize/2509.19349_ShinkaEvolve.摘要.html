@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《ShinkaEvolve：邁向開放式且樣本高效的程式演化（Towards Open-Ended And Sample-Efficient Program Evolution）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Robert Tjarko Lange、Yuki Imajuku、Edoardo Cetin（Sakana AI）</p><p>日期：2025-09</p><p>arXiv：2509.19349</p><p><a href="https://arxiv.org/abs/2509.19349" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="shinkaevolve邁向開放式且樣本高效的程式演化重點摘要">《ShinkaEvolve：邁向開放式且樣本高效的程式演化》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>用 novelty rejection sampling + 適應性父代選擇 + bandit LLM 集成，把 LLM 驅動的演化式程式發現的樣本效率提升一個數量級</strong>：僅 150 次評估即發現超越 AlphaEvolve 的圓堆積（circle packing）解法，並在 AIME 數學推理 agent 設計、ALE-Bench 競賽程式優化、MoE 負載平衡損失函數發現等四個領域展現一致優勢。核心洞見：把程式碼嵌入相似度過濾（加 LLM novelty judge）、父代加權取樣、與 bandit 自適應模型選擇三者疊加，讓演化少走重複路——不做沒有新意的突變。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>目前 LLM 驅動的演化式程式發現（AlphaEvolve、OpenEvolve、LLM4AD）<strong>極度樣本低效</strong>：需要數千次評估才能找到有效解，計算成本與時間昂貴。</li>
+<li>低效根源：<strong>純真的探索策略未能有效利用已累積的代間知識</strong>；大量 LLM 呼叫浪費在近重複的程式變體上。</li>
+<li>絕大多數領先系統仍<strong>閉源</strong>，阻礙複現與社群擴展。</li>
+</ul>
+<h2 id="核心方法">核心方法</h2>
+<p>ShinkaEvolve 的控制流分三階段：</p>
+<p><strong>Phase 1：父代與靈感取樣（平衡探索/利用）</strong></p>
+<ul>
+<li>維護固定大小的程式島嶼子族群歸檔（island model），島間可遷移但最優個體不遷移。</li>
+<li>兩種父代取樣策略：(a) power-law：依適應度排名取樣，α 控制從均勻（α=0）到爬山（α→∞）；(b) weighted：結合 sigmoid 效能分數（與中位數比較）與子代倒數獎勵（子代少的受偏好），以乘積權重機率選父代。</li>
+<li>實證結果：weighted sampling 一致優於隨機搜尋與爬山法——後者初期強但快速停滯，weighted 維持穩定提升。</li>
+</ul>
+<p><strong>Phase 2：程式突變＋新穎性拒絕取樣</strong></p>
+<ul>
+<li>三種突變模式：diff 編輯（SEARCH/REPLACE）、完整重寫（保護不可變區塊）、crossover（跨程式重組）。</li>
+<li>新穎性過濾：用 embedding model 嵌入可變程式碼 → 計算與島內子族群的餘弦相似度 → 若超過閾值（η=0.95），再以 LLM 做 novelty judge 二次判定。</li>
+<li>消融實驗：embedding-based rejection sampling 大幅優於無過濾；LLM novelty judge 在此之上提供邊際增益。</li>
+</ul>
+<p><strong>Phase 3：執行與世界回饋</strong></p>
+<ul>
+<li>多目標評估產出純量適應度＋公開指標＋文字回饋，全部存入歸檔供後代突變參考。</li>
+<li>Bandit-based LLM 集成選擇：用 UCB1 演算法自適應調整各 LLM 的取樣機率；獎勵信號用相對改進量（exp(max(r - r_baseline, 0)) - 1），獎勵大膽的高風險高回報突變而非保守微調。</li>
+<li>Meta-Scratchpad：每 T 代將近期評估總結為設計原則與可操作建議，附加到突變 prompt 中加速知識擴散。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>Circle Packing</strong>：150 次評估即超越 AlphaEvolve 最佳解（原本需數千次），成本約 $160。演化出的解法結合 golden-angle spiral 初始化、SLSQP 梯度精煉、模擬退火、自適應退火排程。</li>
+<li><strong>AIME Agent Scaffold</strong>：演化出三階段架構（三位領域專家獨立解題 → 批判同儕審查 → 主編合成），用 gpt-4.1-nano 的 7 次呼叫達成 34.4% 準確率，超越手設計的多數投票基線。跨年份（2023/2025）與跨模型（gpt-4.1-mini/gpt-4.1/o4-mini）泛化良好。</li>
+<li><strong>ALE-Bench</strong>：在 ALE-Agent 的 10 題最佳解基礎上平均提升 2.3%；其中 ahc039 從競賽第 5 名提升至第 2 名（若參賽）。</li>
+<li><strong>MoE Load Balancing Loss</strong>：發現新的正則化項：補全球批次 LBL，對低於使用閾值 τ 的專家施加軟約束，強度由層路由熵調製——路由集中度高的層推力更強。在 2.7B MoE 模型上驗證，七個下游基準一致優於 baseline。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>使用固定配置，探索-利用平衡需手動調整，跨領域可能不一致。</li>
+<li>任務規範需人工定義目標函數與評估，限於有明確數值目標的問題。</li>
+<li>框架尚未達到真正開放式（自訂目標）；自我參照的精煉與線上 meta-learning 是未來方向。</li>
+<li>API 成本可能構成經濟壁壘，弱化開源民主化目標。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>對 ai_core §3.6 固化引擎</strong>：ShinkaEvolve 的 novelty rejection sampling 是固化決策的關鍵閘門——程式若非「足夠新」就不值得執行評估，更不值得被固化入庫。這正是固化引擎選擇「什麼該固化成確定性函數」時需要的成本效益篩子：不新 = 不做。</li>
+<li><strong>對 §3.4 治理（拒絕為預設）</strong>：embedding similarity + LLM novelty judge 形成一個兩層過濾器——快速 embedding 過濾先行，ambiguous case 才呼叫 LLM。這是「便宜的模型先審、貴的模型只在邊界案例介入」的成本分級拒絕模式，與 ai_core 的治理階層設計高度對齊。</li>
+<li><strong>對 §3.1 技能庫</strong>：每個演化出的程式本身就是一個可入庫的技能模組。parent sampling（基於適應度與子代數的加權）對應技能庫的「哪些既有技能值得重組」——不是最高分就該被重用，低子代數的高分技能代表尚未充分開發的新方向。</li>
+<li><strong>對 §3.3 成本梯度</strong>：bandit-based LLM ensemble selection 是另一種成本梯度——在演化過程中動態調整對各 LLM 的依賴，讓強模型在它們擅長的階段多被調用、弱模型少被浪費呼叫。150 次評估打數千次，本質就是把「昂貴模型呼叫」的數量壓到最低。</li>
+<li>最值得記：<strong>新穎性拒絕取樣 = 演化的 dedup</strong>、<strong>加權父代選擇 = 低子代數的高分者是未開發金礦</strong>、<strong>bandit LLM 選擇 = 讓對的模型在對的階段多跑</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2509.19349_ShinkaEvolve.zh-TW.html"><code>../translate/2509.19349_ShinkaEvolve.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

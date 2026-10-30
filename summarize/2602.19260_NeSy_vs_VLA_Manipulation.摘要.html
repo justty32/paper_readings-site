@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《價格不對：在結構化長程操作任務上，神經符號方法以遠低能耗勝過 VLA》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Timothy Duggan、Pierrick Lorang、Hong Lu、Matthias Scheutz（Tufts University 人機互動實驗室／AIT 奧地利理工）</p><p>日期：2026-02，神經符號 vs VLA 機器人操作實證對比（I 類）</p><p>arXiv：2602.19260</p><p><a href="https://arxiv.org/abs/2602.19260" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="價格不對在結構化長程操作任務上神經符號方法以遠低能耗勝過-vla重點摘要">《價格不對：在結構化長程操作任務上，神經符號方法以遠低能耗勝過 VLA》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>一篇<strong>正面對撞的實證對比</strong>：在「河內塔」式結構化長程機器人操作上，把當紅的開源 <strong>VLA（視覺-語言-動作）模型 π₀</strong> 對上一個 <strong>PDDL 符號規劃 + 學習低階控制的神經符號模型（NSM）</strong>，結果 NSM <strong>成功率碾壓（3 塊 95% vs 34%）、能泛化到沒見過的 4 塊（78% vs 0%），且微調訓練能耗少近兩個數量級</strong>——說明對需要序列推理的結構化任務，<strong>顯式符號結構</strong>在可靠性、資料效率、能耗上都有巨大優勢。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>VLA 模型被視為通用機器人策略之路，但其在<strong>結構化、長程</strong>操作上的效果與效率（尤其微調/部署的算力與能耗成本）<strong>仍不明</strong>，且 VLA 研究<strong>極少報告能耗</strong>。本文用受控基準回答：在這種設定下，端到端基礎模型 vs 結構化推理架構，到底誰更划算？</p>
+<h2 id="核心方法對比設置">核心方法（對比設置）</h2>
+<ul>
+<li><strong>任務</strong>：Robosuite 模擬中的「河內塔」變體（用方塊與矩形區代替圓盤與柱，降低操作失敗），含 Individual Move、3 塊、4 塊三種環境；機器人為 Franka Panda（與 π₀ 訓練平台一致）。輸入同為影像 + 本體感知。</li>
+<li><strong>VLA 兩配置</strong>（皆 LoRA 微調 π₀／OpenPi，PaliGemma 2B + Gemma 300M，30k 步）：
+<ul>
+<li><strong>E2E-VLA</strong>：端到端，恆定高階指令「Play Towers of Hanoi」，自行從示範推斷規則。</li>
+<li><strong>PG-VLA</strong>：規劃器引導，依子任務語言指令執行；評估時<strong>給最優計畫</strong>以隔離「執行」與「規劃」品質。另測三個 VLM 規劃器（GPT-5、Qwen2.5-7B-VL、PaliGemma-3B）產生 pick/place 序列。</li>
+</ul>
+</li>
+<li><strong>NSM（神經符號模型，基於 Lorang et al.）</strong>：從少量示範<strong>同時學</strong>符號域與低階控制。流程：示範軌跡→抽節點轉移建圖→算最小雙模擬壓縮→用 <strong>ASP 求解器推出 PDDL 符號域</strong>；用 <strong>YOLOv8 + 梯度提升回歸</strong>從兩相機估 3D 物件姿態；每個算子配一個<strong>擴散策略</strong>（options 框架再拆動作步子策略 + 終止條件，並用任務相關特徵選擇器）。測試時用古典規劃器 <strong>MetricFF</strong> 產抽象計畫，逐算子調用策略執行。</li>
+<li><strong>能耗量測</strong>：單張 RTX 4090；W&amp;B 量 GPU 功率、RAPL 量 CPU 功率，含閒置功率，數值積分得能量。</li>
+</ul>
+<h2 id="關鍵結果">關鍵結果</h2>
+<ul>
+<li><strong>訓練能耗（表 I）</strong>：每個 VLA LoRA 微調耗時 &gt;1.5 天、NSM 僅 <strong>34 分鐘</strong>；總能耗 E2E-VLA 68.5 MJ、PG-VLA 64.9 MJ vs <strong>NSM 0.85 MJ</strong>——VLA 比 NSM 多耗近<strong>兩個數量級</strong>能量。</li>
+<li><strong>推理執行（表 II，50 回合均）</strong>：NSM <strong>不用 GPU</strong>；總功率 NSM 19.4 W vs VLA ~115 W（&gt;5×）。
+<ul>
+<li>Individual Move 成功率：NSM <strong>99%</strong> / E2E 87% / PG 59.6%。</li>
+<li><strong>3 塊河內塔成功率：NSM 95% vs E2E-VLA 34% vs PG-VLA 0%</strong>；推進度 97.3% vs 49.6% vs 23.9%；每回合能耗 0.83 kJ vs 7.96/6.94 kJ（約一個數量級差）。</li>
+<li><strong>4 塊（未見過）：NSM 78% 成功、兩個 VLA 皆 0%</strong>——VLA 完全無法泛化。</li>
+</ul>
+</li>
+<li>資料效率：VLA 用 300 回合完整任務軌跡；<strong>NSM 只用 50 個更簡單的「堆疊」示範</strong>、且<strong>從未直接看過河內塔解法</strong>，靠推論規則與符號域即可解。</li>
+</ul>
+<h2 id="局限作者自陳">局限（作者自陳）</h2>
+<ul>
+<li>基準聚焦<strong>單一結構化操作域</strong>（河內塔），是受控分析「範式取捨」的試驗台，非泛化結論；VLA 強項（多樣、非結構、開放任務）未在此體現。</li>
+<li>VLA 與 NSM 訓練資料形態不同（完整軌跡 vs 堆疊示範），雖共享同樣感知/動作格式，但「公平性」需在此脈絡下理解；4 塊能耗較低部分因 VLA 提早觸發 750 步終止而縮短。</li>
+<li>結論限定「結構化長程、需序列推理」設定。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 <strong>I 類</strong> 罕見的**「打臉基礎模型」實證**：給「VLA 是否值得」一個量化答案——<strong>結構化長程任務上，顯式符號結構在成功率、泛化、資料效率、能耗四方面同時占優</strong>。與 [[2510.25445_Agentic_AI_Survey]]「符號主宰安全關鍵/結構化域、神經主宰資料豐富自適應域」的範式-市場契合論點<strong>正面互證</strong>。</li>
+<li>最值得記：<strong>3 塊 95% vs 34%、4 塊 78% vs 0%、訓練能耗近兩個數量級差</strong>這組數字；以及 NSM「<strong>從堆疊示範推出河內塔規則</strong>」展現的符號抽象資料效率。</li>
+<li>與 [[2606.06877_iFlax_NeSy_Task_Planning]]（符號規劃效率）、[[2604.16871_GRAIL_Concept_Grounding_NeSyRL]]（NeSy-RL）並讀，可看出 NeSy 在機器人操作/規劃上對端到端學習的系統性優勢與其邊界。適合在「VLA vs 結構化規劃」做技術選型、或關心具身 AI 能耗的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2602.19260_NeSy_vs_VLA_Manipulation.zh-TW.html"><code>../translate/2602.19260_NeSy_vs_VLA_Manipulation.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Remembering Is Not Enough: Refining Memories and Learning When to Use Them in Multi-Agent Systems 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yipeng Hao、Yuxuan Cai、Wenkai Ji、Jie Zhou、Liyang Yu、Qin Chen、Zhiguo Yan、Shulei Zheng、Liang He</p><p>日期：2026-10-27（v1，cs.AI／cs.MA）</p><p>arXiv：2610.36652</p><p><a href="https://arxiv.org/html/2610.36652v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="discernmem-重點摘要">DiscernMem 重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>DiscernMem 用單記憶對無記憶的整隊重播，區分「規則本身有缺陷」與「有用規則用錯場合」：前者提出局部修復並回測，後者學使用及避用條件。它不訓練模型參數，但需要可重播、可自動評分的任務，且單條隔離測試無法處理多條規則交互作用。</p>
+<h2 id="問題與系統位置">問題與系統位置</h2>
+<p>團隊任務成功不代表每條記憶都有幫助，失敗也不代表每條規則都錯。DiscernMem 固定 LLM、角色與通訊結構，將每條記憶設為特定角色擁有的行為規則，另帶適用邊界、非來源任務的效果紀錄及既有修正驗證紀錄。缺陷感知記憶精煉（DMR）更新規則正文，邊界學習元記憶（BLM）更新何時使用及避免使用。（<a href="https://arxiv.org/html/2610.36652v1#S3.SS1">§1、§3.1</a>）</p>
+<p>每題先使用先前已提交的記憶執行並評分，之後才重播、修復或新增記憶。任務後重播不能替換原題成績，更新只影響後續題目。當已供應記憶沒有任何一條被歸因為正文缺陷，才允許從本題抽新經驗；每角色至多提一條規則或棄權。語意等價的新提案附到既有身份，不直接覆蓋其正文；新身份先列為 provisional，再用較早、非來源任務校準。（<a href="https://arxiv.org/html/2610.36652v1#S3.SS1">§3.1</a>、<a href="https://arxiv.org/html/2610.36652v1#A1.SS2">附錄 A.2</a>）</p>
+<h2 id="dmr隔離效果診斷與修復驗證">DMR：隔離效果、診斷與修復驗證</h2>
+<p>對曾用記憶 <span class="math inline">\(m\)</span>，完整重跑兩次協作：一次只把 <span class="math inline">\(m\)</span> 給其擁有者，另一次所有角色都不給記憶；設定與種子相同，各角色仍正常重新行動，不固定在原軌跡。效果為</p>
+<div class="math block">
+\[\Delta(m,q)=s(q;m)-s(q;\varnothing).\]
+</div>
+<p>同題的無記憶重播可共用。這測的是<strong>隔離注入對整隊的效果，不是原多記憶集合內的邊際貢獻</strong>。預設效果容忍值 <span class="math inline">\(\epsilon=0.01\)</span>。（<a href="https://arxiv.org/html/2610.36652v1#S3.SS2">§3.2</a>）</p>
+<p>現有避用條件一旦符合，優先歸為 Scope，不論量測效果為何；負效果且不在適用範圍，也屬 Scope。只有負效果、在適用範圍內，且 LLM 能從配對軌跡指出具體錯誤步驟、順序或停止條件，才歸為 Content 並提出正文修復。無足夠缺陷證據時不改正文。Scope 標記只是目前證據下的歸因，不能證明規則在所有其他場合都正確。（<a href="https://arxiv.org/html/2610.36652v1#S3.SS2">§3.2，式 5–7</a>）</p>
+<p>重用觸發的修復，預設最多三輪、每輪三候選，檢查當前觸發任務、最多兩個保留任務及一個其他相關歷史任務。歷史集合只取較早任務、排除來源及觸發題，且各修復輪固定不變；保留集合取自已知正效果或先前能力修正的驗證題，相關集合用語意檢索。（<a href="https://arxiv.org/html/2610.36652v1#A1.SS2">附錄 A.2–A.3</a>）</p>
+<p>每個測試題 <span class="math inline">\(h\)</span> 的候選都須滿足</p>
+<div class="math block">
+\[s(h;c)\geq\max\{s(h;m),s(h;\varnothing)\}-\epsilon,\]
+</div>
+<p>且完全失敗的題數不多於父版本。這要求觸發題的負效果在容忍範圍內消失，並守住測過歷史題的表現，<strong>不要求相關歷史題有正向遷移增益，也不保證未測題不退步</strong>。改善觸發題者優先，再比較觸發增益、最差歷史差距與較小編輯；非改善候選還須有缺陷證據、預期修正與實際正文變更。修復提交後清空新版本效果紀錄，重回 provisional，不能繼承父版可靠性。重用修復全失敗會停用；新記憶的初始校準修復失敗則保留原文並維持 provisional。（<a href="https://arxiv.org/html/2610.36652v1#S3.SS2">§3.2</a>、<a href="https://arxiv.org/html/2610.36652v1#A1.SS2">附錄 A.2</a>）</p>
+<h2 id="blm學可觀察邊界而非把結局當輸入">BLM：學可觀察邊界，而非把結局當輸入</h2>
+<p>使用及避用條件只能用擁有者行動前可觀察的任務、狀態與上游訊息描述。任務後的效果可作學習證據，不能把未來結果寫成部署時已知條件。Scope 歸因須有具體可觀察例外才新增避用條件；至少兩個不同任務有正效果且未命中避用條件，才概括新的使用條件。正向重用不必已符合原使用條件，因此範圍可擴張。（<a href="https://arxiv.org/html/2610.36652v1#S3.SS3">§3.3</a>、<a href="https://arxiv.org/html/2610.36652v1#A5.SS4">附錄 E.4、E.6</a>）</p>
+<p>條件只追加、不移除，避用優先。這帶來明確缺陷：過寬的避用條件不能靠之後的正效果推翻；真正正文缺陷若被誤歸 Scope，既不修復，也不計為持續有害退役證據。（<a href="https://arxiv.org/html/2610.36652v1#Sx1">Limitations</a>）</p>
+<p>provisional 與 active 可檢索，inactive 留身份及歷史但不檢索。檢索先限制角色、相似度至少 0.25，最多取三候選，再由 LLM 選擇，預設每題每角色最多注入一條，連同使用及避用條件交給接收者。效果影響生命週期與可用資格，不直接變成檢索排序權重。（<a href="https://arxiv.org/html/2610.36652v1#S3.SS3">§3.3</a>、<a href="https://arxiv.org/html/2610.36652v1#A1.SS1">附錄 A.1、A.3</a>）</p>
+<h2 id="作者自報結果與比較口徑">作者自報結果與比較口徑</h2>
+<p>三種協作架構為 AutoGen、CAMEL、MacNet，共用凍結 Qwen3-4B-Instruct-2507、溫度零，所有記憶 LLM 決策也用同一模型；檢索嵌入為 Qwen3-Embedding-0.6B。固定順序的英語資料流含 TriviaQA 6,993 題、PopQA 7,267 題、KodCode 2,000 題與 AgentBoard PDDL 60 題。QA 可查 Wikipedia；PDDL 指標是每段執行曾達到的最高目標條件完成比例，<strong>不是完整任務成功率</strong>。（<a href="https://arxiv.org/html/2610.36652v1#S4.SS1">§4.1</a>、<a href="https://arxiv.org/html/2610.36652v1#A3">附錄 C</a>）</p>
+<table>
+<thead>
+<tr>
+<th>架構</th>
+<th style="text-align:right">四基準不加權平均</th>
+<th style="text-align:right">最強報告基線平均</th>
+<th style="text-align:right">差值</th>
+<th style="text-align:right">DiscernMem PDDL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AutoGen</td>
+<td style="text-align:right">59.03</td>
+<td style="text-align:right">58.33</td>
+<td style="text-align:right">+0.70</td>
+<td style="text-align:right">29.15</td>
+</tr>
+<tr>
+<td>CAMEL</td>
+<td style="text-align:right">56.93</td>
+<td style="text-align:right">56.42</td>
+<td style="text-align:right">+0.51</td>
+<td style="text-align:right">37.71</td>
+</tr>
+<tr>
+<td>MacNet</td>
+<td style="text-align:right">59.67</td>
+<td style="text-align:right">55.35</td>
+<td style="text-align:right">+4.32</td>
+<td style="text-align:right">36.99</td>
+</tr>
+</tbody>
+</table>
+<p>數字為 0–100 分尺度，差值是分數點。DiscernMem 在十二組架構／基準中八組最高，三架構的 KodCode 與 PDDL 均領先；CAMEL PDDL 對 ConMem 為 37.71 對 28.48，但 QA 結果混合，未在每個設定都贏。（<a href="https://arxiv.org/html/2610.36652v1#S4.SS2">§4.2，表 1</a>）</p>
+<p><strong>比較限制不可省略</strong>：表 1 的基線數字沿用 ConMem，所有報告設定都是單次執行，沒有跨種子顯著性結論。本實作的 AutoGen 零注入掃描得到 PDDL 26.43、KodCode 80.75，而主表 No-memory 是既有報告的 16.39、68.40。零注入仍保留記憶建構及評估管線；它也不是整套記憶系統關閉。（本檔補註，非作者自陳）因此主表 Gain over base 不能直接當成同實作、同執行條件下僅由記憶注入造成的因果增益。（<a href="https://arxiv.org/html/2610.36652v1#A3">附錄 C</a>、<a href="https://arxiv.org/html/2610.36652v1#A4.SS0.SSS0.Px5">附錄 D「Score differences across runs」</a>）</p>
+<h2 id="消融與使用觀測">消融與使用觀測</h2>
+<p>在 AutoGen/PDDL、CAMEL/KodCode，完整系統為 29.15／81.35；移除元記憶引導的重用，降至 27.40／80.20；移除修復驗證，為 26.31／79.50；兩功能都移除為 25.36／78.80。這些消融仍保留配對效果評估、歸因、元記憶更新與生命週期，<strong>並非刪除整個 BLM 或 DMR 模組</strong>。（<a href="https://arxiv.org/html/2610.36652v1#S4.SS3">§4.3</a>）</p>
+<p>79.9–94.2% 的記憶正文未修訂，但可能改過邊界；已修正文的記憶，在注入中所占比例是其庫存占比的 1.2–4.3 倍。統計含修訂前後的使用，不能推出「修訂造成更多重用」。注入比例也只量可用經驗被實際拿來用多少，不代表它有正效益。獨立掃描中 PDDL 在每角色兩條注入達 31.28，KodCode 在一條達 81.90；這些不是主結果設定，不能用掃描最佳值替換主表。（<a href="https://arxiv.org/html/2610.36652v1#S4.SS4">§4.4</a>、<a href="https://arxiv.org/html/2610.36652v1#A4">附錄 D</a>）</p>
+<h2 id="作者明示限制">作者明示限制</h2>
+<p>方法依賴可用相同設定重播、可自動評分的任務；人工評分、開放生成及不可逆行動環境不直接具備此證據。單條隔離可能把需多角色規則合作才有益的記憶誤判為無效或有害，也無法單靠編輯一條規則修好交互作用。二元 QA 回饋常使配對差值為零，延緩證據累積；行為規則不能補足骨幹缺少的事實知識。（<a href="https://arxiv.org/html/2610.36652v1#Sx1">Limitations</a>）</p>
+<p>每題非空供應集的效果評估至少需每條一個單記憶重播加一個共用無記憶重播，修復、附加與校準另增成本。作者報主結果、消融與掃描合計約 900 GPU 小時，含檢索及程式執行；沒有把這個總量拆成每題部署延遲或證明成本優於基線。（<a href="https://arxiv.org/html/2610.36652v1#A1.SS3">附錄 A.3、C</a>）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.36652_DiscernMem.zh-TW.html">DiscernMem 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

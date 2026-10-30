@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Causal Reward World Models：為自動化技能生成做零樣本 Reward 設計（Causal Reward World Models: Zero-shot Reward Design for Automated Skill Generation） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yang Yang、Yuchuang Tong、Zhengtao Zhang、Miao Xin 等</p><p>日期：2026-06</p><p>arXiv：2606.23280</p><p><a href="https://arxiv.org/abs/2606.23280" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="crwm為自動化技能生成做零樣本-reward-設計">CRWM：為自動化技能生成做零樣本 Reward 設計</h1>
+<h2 id="摘要">摘要</h2>
+<p>Automated Reward Design（ARD）想用語言驅動的 reward 函數合成取代人手 reward 工程。但現有 LLM 方法本質上<strong>相關性驅動</strong>，靠對每個任務反覆用環境 feedback 精煉 reward 假設——不僅推理低效，還讓 LLM 易受「語意合理但因果虛假」的 reward 元件影響、導致無效優化。為此我們提出 <strong>Causal Reward World Model（CRWM）</strong>，透過離線多任務互動資料預訓練，顯式建模「候選 reward 元件 ↔ 任務目標物理變數」的<strong>因果拓撲關係</strong>。基於 coarse-to-fine 預訓練策略，我們引入 <strong>Joint Optimization Module</strong>，整合 <strong>Explicit Mechanism Decoupling</strong> 與 <strong>Confidence-Aware Soft Fusion</strong>，用 micro-level 軌跡精煉粗結構先驗、建出穩健可詮釋的因果骨架。推論時 LLM 把 CRWM 當<strong>任務無關的因果先驗</strong>約束 reward 生成，達成 zero-shot reward 設計。連續控制 benchmark 上 CRWM 不需 feedback 精煉就生成可執行 reward，大幅降低取得新技能的設計延遲、同時匹敵或勝過 SOTA，並跨未見任務與不同機器人形態強泛化。</p>
+<h2 id="i-引言">I. 引言</h2>
+<p>賦予機器人自主技能習得能力是 embodied AI 的長期目標，而 RL 的 reward 函數設計一直是難題。LLM 帶起 ARD（給任務描述 → 生成候選 reward 元件 → 環境 feedback 迭代精煉）減輕人手依賴。但這些方法<strong>全靠 trial-and-error</strong>：LLM 挑「與任務相關」的元件，卻可能<strong>虛假相關</strong>：</p>
+<ul>
+<li><strong>ShadowHandLiftUnderarm</strong>（雙手舉鍋）：LLM 把 velocity（鍋的瞬時舉升速度）當 reward——語意上跟「lifting」相關，但在連續物理互動中是高頻、因果模糊訊號，引入嚴重梯度噪聲 → <strong>Optimization Collapse</strong>。</li>
+<li><strong>ShadowHandScissors</strong>：LLM 用 <code>scissors_open</code> 當 reward → agent 鑽漏洞讓剪刀微開不停累積 reward 而不達真目標（reward hacking）。</li>
+</ul>
+<p>這些例子顯示：語意合理的 reward 元件若不對齊有效因果拓撲，會遮蔽真任務目標。而 LLM 在因果歸因與反事實推理的弱點，使迭代式方法難一致改善。</p>
+<h2 id="iv-方法">IV. 方法</h2>
+<ul>
+<li><strong>A. Structural Prior Extraction via Causal Foundation Models</strong>：用因果基礎模型從多任務資料抽<strong>粗粒度結構先驗</strong>（reward 元件與物理變數的因果拓撲）。</li>
+<li><strong>B/C. Joint Optimization Module + Causal-ARD</strong>：
+<ul>
+<li><strong>Explicit Mechanism Decoupling（EMD）</strong>：顯式解耦各因果機制。</li>
+<li><strong>Confidence-Aware Soft Fusion</strong>：依信心軟融合粗結構先驗與 micro-level 軌跡證據，精煉成穩健因果骨架。</li>
+<li><strong>Causal-ARD</strong>：推論時 LLM 以 CRWM 因果骨架為<strong>任務無關先驗</strong>，單次生成可執行 reward（ESI=0）。</li>
+</ul>
+</li>
+</ul>
+<h2 id="v-實驗">V. 實驗</h2>
+<ul>
+<li><strong>設定</strong>：所有 LLM 方法（含本文與 baseline）用同一 foundation model <strong>DeepSeek-v3</strong> 以隔離架構增益。benchmark：Dexterity 套件 + <strong>ManiSkill2</strong>（跨任務與機器人形態）。</li>
+<li><strong>Baselines</strong>：<strong>ZS-LLM</strong>（純語意、單次生成 reward，無因果引導/無 feedback）、<strong>Eureka</strong>（演化式 ARD，LLM 突變精煉、靠密集環境 feedback）、<strong>URDP</strong>（雙層優化，LLM 結構精煉 + 不確定性感知 Bayesian 優化，比 Eureka 省樣本但<strong>缺顯式因果機制解耦</strong>）。</li>
+<li><strong>指標</strong>：<strong>Success Rate（SR）</strong> + **Evolutionary Search Iterations（ESI）**＝初始生成後的 feedback 精煉輪數（CRWM=0）。</li>
+</ul>
+<p><strong>結果</strong>：</p>
+<ul>
+<li>全部未見任務上，CRWM 以 <strong>ESI=0</strong> 達到與 SOTA 迭代法相當、避開 Eureka/URDP 的昂貴 trial-and-error;ZS-LLM 在動態/長視界任務明顯較差。</li>
+<li>六個未見靈巧操作任務：CRWM <strong>勝多迭代 Eureka（4 ESI）並匹敵 URDP（1–4 ESI 收斂）</strong>，自己 ESI=0。</li>
+<li><strong>消融</strong>：CRWM w/o Prior 全面變差（純離線 transition 不足以穩定估結構）；移除 EMD 明顯不穩。</li>
+<li><strong>跨形態/跨環境（ManiSkill2）</strong>：zero-shot SR PickCube <strong>0.64</strong>、OpenCabinetDoor <strong>0.89</strong>、TurnFaucet <strong>0.80</strong>;Eureka 要多達 <strong>6 ESI</strong> 才達近似且更不一致 → CRWM 捕捉可遷移因果結構，能在大幅 domain shift 下構造 reward 而不需迭代互動。</li>
+<li><strong>Sim-to-Real</strong>：用 CASBOT W1 移動操作臂 + Offline Trajectory Evaluation——人遙操運動學軌跡餵進生成的 reward 評估對齊，獨立於 RL 優化與 sim-to-real 落差。</li>
+</ul>
+<h2 id="vii-結論">VII. 結論</h2>
+<p>CRWM 把因果世界模型當任務無關先驗約束 LLM 的 reward 生成，達成 zero-shot、可執行、可遷移的 reward 設計，把相關性驅動的迭代式 ARD 轉為因果驅動的單次生成，匹敵或勝過 SOTA 同時大幅降低設計延遲。限制詳見論文 Limitations 章。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

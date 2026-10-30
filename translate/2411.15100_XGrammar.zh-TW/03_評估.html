@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_評估 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2411.15100_XGrammar.zh-TW.html">回 2411.15100_XGrammar.zh-TW 目錄</a>　<a href="02_XGrammar.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-評估">4. 評估</h2>
+<p>XGrammar 以 12,000 行核心 C++ 實作並提供 Python 綁定，便於與推理框架無縫整合。回答四問：mask 生成效率、端到端開銷、各優化效果、對下游任務影響。</p>
+<h3 id="41-mask-生成效率">4.1 mask 生成效率</h3>
+<p>以 JSON schema（可轉 regex）測試 regex-based 方法；再以超出 regex 能力的 CFG 測試：無約束 JSON（ECMA-404，因任意巢狀無法被 regex 處理）、XML（XML 1.0）、Python DSL（基本控制流與資料型別，忽略縮排）。基線：Outlines(v1.0)、llama.cpp 文法引擎（b3998）、lm-format-enforcer（v0.10.9，regex-based、不支援 CFG）。硬體 Llama-3.1-8B-Instruct＋Ryzen 9 7950X＋RTX 4090。<strong>結果（圖 9）</strong>：XGrammar 各任務延遲最低——JSON Schema 與 CFG(JSON) 每 token &lt;40µs，XML 與 Python DSL &lt;200µs；JSON Schema 最高 <strong>3×</strong>、CFG 最高 <strong>100×</strong> 加速（對各自最佳基線）。</p>
+<h3 id="42-端到端-llm-引擎評估">4.2 端到端 LLM 引擎評估</h3>
+<p>以 §3.5 重疊技術與服務引擎協同，整合進 C++ 的 MLC-LLM 與 Python 的 SGLang。先比較支援結構化生成的引擎（vLLM v0.6.3＋Outlines、llama.cpp 內建文法引擎），指標為每輸出詞元時間（TPOT），Llama-3.1-8B-Instruct、JSON schema 與 CFG，AMD EPYC 7R13＋H100，固定 batch，平均輸入 139 / 輸出 53 token。<strong>結果（圖 10）</strong>：XGrammar 在 JSON Schema 與 CFG 皆取得最佳 TPOT；vLLM 在大 batch 時因文法處理壓在 CPU 而明顯變慢；整體最高 <strong>80×</strong> 輸出詞元率。</p>
+<p><strong>表 1（TPOT ms，JSON Schema，SGLang）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>+Outlines</th>
+<th>+XGrammar</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Llama-3.1 8B</td>
+<td>44.2</td>
+<td><strong>6.8</strong></td>
+</tr>
+<tr>
+<td>DeepSeek-V2-Lite 16B MoE</td>
+<td>15.8</td>
+<td><strong>4.8</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>表 2（MLC-LLM 上開/關 XGrammar，TPOT ms）</strong>：JSON Schema batch 1：6.2→6.3、batch 16：9.0→9.2；CFG(JSON) batch 1：6.3→6.3、batch 16：9.0→9.1——<strong>近零開銷</strong>且輸出品質更佳。</p>
+<h3 id="43-優化技術消融表-3">4.3 優化技術消融（表 3）</h3>
+<p>CFG（無約束 JSON）、Llama-3.1 8B、json-mode-eval，逐步疊加優化的每詞元延遲：</p>
+<table>
+<thead>
+<tr>
+<th>配置</th>
+<th>每詞元延遲（ms）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PDA Baseline</td>
+<td>65.776</td>
+</tr>
+<tr>
+<td>+ Node merging</td>
+<td>38.280（1.7×↓）</td>
+</tr>
+<tr>
+<td>+ Adaptive token mask cache</td>
+<td>0.154（<strong>248.6×↓</strong>）</td>
+</tr>
+<tr>
+<td>+ Rule inlining</td>
+<td>0.035（4.4×↓）</td>
+</tr>
+<tr>
+<td>+ Context Expansion</td>
+<td>0.018（1.9×↓）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>adaptive token mask cache 貢獻最大</strong>，其餘技術亦有明顯改善。</p>
+<h3 id="44-對結構化生成任務的影響表-4">4.4 對結構化生成任務的影響（表 4）</h3>
+<p>評估 function calling（JSON schema 導引）與 XML 生成的語法正確率，Llama-3.1 8B：function calling <strong>62%→100%</strong>、XML 生成 <strong>80%→100%</strong>。沒有 XGrammar 時模型常在程式輸出外夾帶額外解釋、或生出非預期型別的 JSON，令輸出無法被下游直接使用；XGrammar 以強制文法約束避免此問題，達 <strong>100% 語法正確</strong>。</p>
+<h2 id="5-相關工作">5. 相關工作</h2>
+<ul>
+<li><strong>演算法改進</strong>：Koo et al.(2024) 把字元級 PDA 轉 token 級 PDA；有工作以 prompting 指定輸出結構；也有以 finetune 提升結構化生成品質——XGrammar 與這些正交、可結合。</li>
+<li><strong>受約束解碼</strong>：lm-format-enforcer 用 regex 表示語法但無法處理複雜 CFG；Synchromesh、llama.cpp 分別用 LR parser/PDA 處理 CFG 生 mask，但執行期須檢查整個詞彙表、開銷大；<strong>Outlines</strong> 以 lexer+parser＋快取加速，但只考慮最近一個 lexer token，當 LLM token 跨多個 lexer token 時可能誤判；<strong>SynCode</strong> 用跨多 lexer token 快取的 lexer+parser，但須全部離線處理、前置開銷大。XGrammar 以 PDA 支援 CFG，並以 adaptive token mask cache 在預處理與執行期自適應處理 token、結合系統優化，兩階段皆達最小開銷。</li>
+<li><strong>宣告式框架</strong>：Guidance、LMQL、SGLang 提供靈活的結構宣告方式——XGrammar 與其互補，可作後端引擎加速。</li>
+<li><strong>服務引擎</strong>：MLC-LLM、SGLang、vLLM 等用 continuous batching、PagedKVCache 等技術；AICI 提出 CPU-GPU 平行範式加速結構化生成——這些皆可用 XGrammar 做高效結構化生成。</li>
+</ul>
+<h2 id="6-結論">6. 結論</h2>
+<p>XGrammar 把詞彙分成 context-independent 與 context-dependent 兩類，預先檢查前者存進 adaptive token mask cache，以持久化堆疊加速後者檢查，並與 LLM 推理協同設計讓文法執行與 GPU 計算重疊。系統大幅加速 token mask 生成，在端到端 LLM 推理達成零開銷結構化生成，期望能支援跨平台更廣泛的結構化生成。</p>
+<h2 id="附錄要點">附錄要點</h2>
+<ul>
+<li><strong>附錄 A</strong>：PDA 變體的形式定義（本文採用之等價定義）。</li>
+<li><strong>附錄 B（與 jump-forward decoding 的協同）</strong>：jump-forward decoding 在「後續輸出可由文法確定推得」時繞過 LLM 解碼、直接 tokenize 並附加到上下文以加速；此技術與受約束解碼正交，XGrammar 進一步支援並與之結合。SGLang＋Llama-3.1-8B（RTX 4090、batch 1）上（圖 11），XGrammar 一貫優於 Outlines，且與 jump-forward 結合達最佳 TPOT。</li>
+<li><strong>附錄 C（跨平台部署）</strong>：以 Emscripten 把 XGrammar 編成 WebAssembly、建 JavaScript 綁定，使其能在筆電/手機的瀏覽器端執行，並整合進瀏覽器內 LLM 框架 WebLLM。以 4-bit 量化 Llama-3.1-8B（MacBook Pro M3 Max＋Chrome）與 Qwen-2.5-0.5B（iPhone 14 Pro Max＋Safari）測 TTFT 與 TPOT（圖 12），XGrammar 在兩者皆帶來<strong>近零開銷</strong>，展現支援未來裝置端 agent 的潛力。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2411.15100_XGrammar.%E6%91%98%E8%A6%81.html"><code>../summarize/2411.15100_XGrammar.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2406.15627_LMPolygraph.zh-TW.html">回 2406.15627_LMPolygraph.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）快速普及，促使研究者尋求有效且高效的方法來處理幻覺與低品質輸出。不確定性量化（UQ）是機器學習應用的關鍵元素，但迄今 LLM 的 UQ 研究在技術與評估方法論上都相當碎片化。本文對此提出<strong>一個新基準</strong>，實作一系列最新 UQ 基線，並提供可控、一致的環境來評估各種文本生成任務的新型 UQ 技術。此基準也支援信心歸一化方法的評估，看它們能否產生可解釋的分數。我們以該基準對 UQ 與歸一化技術橫跨十一個任務進行大規模實證研究，辨識出最有效的方法。貢獻包括：(1) 綜合性 UQ 與歸一化評估基準，支援校準與 selective QA/generation / claim-level fact-checking;(2) 多語言自動評估管線（英/中/阿/俄）;(3) 產出有界且校準良好的信心分數的歸一化方法；(4) 最新 UQ 方法的大規模實證評測。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>UQ 逐漸被視為 AI 應用的關鍵安全元件。它讓系統能對不確定預測棄權、轉由備援路徑處理（如升級給人類）。不確定性分數還可用於 OOD 偵測、主動學習標註、對抗攻擊偵測、降低延遲等應用。LLM 對應的 UQ 方法陸續出現，但研究景觀碎片化——各篇用不同基準、不同品質指標、不同門檻，難以整合結論。</p>
+<p>本文致力於橋接這些分散的研究，解決既有評估協定的問題，建立統一的 UQ 基準。基準以 <strong>LM-Polygraph 框架</strong>為基礎，統一實作最新 UQ 基線，實現在 selective QA、selective generation（機器翻譯 MT、文本摘要 TS）與 claim-level fact-checking 上的大規模一致比較。另引入信心校準指標，評估歸一化方法產出可解釋分數的能力。</p>
+<h2 id="2-背景與-uq-方法概覽">2. 背景與 UQ 方法概覽</h2>
+<h3 id="21-背景">2.1 背景</h3>
+<p>預測不確定性是 ML 基礎概念，指模型預測因資訊不足而有變異程度。在選擇性分類中，若信心不足則棄權。實務上 UQ 靠近似或啟發式（如 ensemble）；但 ensemble 計算開銷大（多重推論+多組權重），因此如何高效 UQ 同時維持表現是關鍵研究問題。</p>
+<p>文本生成的 UQ 挑戰更大：模型每 token 預測一次，須聚合為單一分數；且原始機率分布反映多種不確定性（語言表面形式、語意等價），部分與任務無關；此外 LLM 輸出 token 不條件獨立，開頭的錯誤可能滾雪球。</p>
+<h3 id="22-uq-方法分類table-1">2.2 UQ 方法分類（Table 1）</h3>
+<p><strong>白箱方法</strong>（需 logits/內部表示/模型本身）：</p>
+<ul>
+<li><strong>資訊型</strong>：MSP、Perplexity、Mean/Max Token Entropy、PMI、Conditional PMI、Rényi Divergence、Fisher-Rao Distance、TokenSAR、CCP——基於 token 機率分布分析，最簡單、成本最低。</li>
+<li><strong>取樣多樣性</strong>：MC-SE、MC-NSE、語意熵（以語意聚類後計熵，排除表面形式變異）、SentenceSAR、SAR（以語意相似度軟聚合、抑制無關 token/樣本）——需多次取樣，計算較高但更準。</li>
+<li><strong>密度型</strong>：MD、RDE、RMD、HUQ——用訓練資料嵌入近似高斯分布估 likelihood，擅長 OOD 偵測，推論零額外成本但需訓練資料。</li>
+<li><strong>自反型</strong>：P(True)——生成後再問 LLM 自身驗證，算「True」選項機率。Kadavath 等人顯示在 70B+ 模型上優於 MSP，但小模型可能無效。</li>
+</ul>
+<p><strong>黑箱方法</strong>（只取得生成文本）：</p>
+<ul>
+<li><strong>基於取樣多樣性（一致性）</strong>：NumSet、EigValLaplacian、DegMat、Eccentricity、Lexical Similarity（ROUGE-L/BLEU）——Lin 等人框架：K 次取樣→算相似矩陣 S→分析 S（聚類數/圖譜特徵值/度矩陣/離心率）。</li>
+<li><strong>自反型（黑箱）</strong>：BB P(True)、Verbalized 1S（top-1/top-k）、Verbalized 2S（top-1/top-k/CoT）、Linguistic 1S、LabelProb——引導模型口頭表達信心或做後續信心請求。</li>
+</ul>
+<h3 id="23-claim-level-延伸">2.3 Claim-Level 延伸</h3>
+<p>部分方法可適配到文字片段（原子主張）層級：MSP 改為僅計 claim 內 token 聯合機率；Perplexity/Token Entropy/PMI 類似延伸；P(True) 改為對單一 claim 查詢正確性；CCP 專為 claim-level 設計，以 token 替換擾動取樣比較語意相似度。</p>
+<h3 id="24-信心歸一化方法">2.4 信心歸一化方法</h3>
+<p>原始不確定性分數雖好於排序，但對終端使用者的絕對值難解讀。歸一化目標：產生 [0,1] 內的有界信心分數，且直接反映預期品質（校準，非僅歸一化）。</p>
+<ul>
+<li><strong>簡單法</strong>：線性縮放、分位數縮放（只依 ui 值分布）。</li>
+<li><strong>PCC（Performance-Calibrated Confidence）</strong>：Binned PCC（分 bin 估平均品質，但可能破壞排序）;Isotonic PCC（Centered Isotonic Regression，單調分段線性，保持原始排序）。兩者都用校準集擬合不確定性-品質關係。</li>
+</ul>
+<h2 id="3-基準設計">3. 基準設計</h2>
+<p><strong>三區塊</strong>：
+(1) <strong>Selective QA/generation</strong>：測 UQ 分數偵測低品質生成的能力。資料集：CoQA（對話 QA）、TriviaQA（複雜無上下文 QA）、MMLU（多選題 QA）、GSM8k（數學應用題）、WMT&#x27;14 Fr-En、WMT&#x27;19 De-En（MT）、XSum（摘要）。每資料集限 2k 測試例，保留 1k 訓練例當校準集。</p>
+<p>(2) <strong>Claim-level fact-checking</strong>：自動化管線（GPT-4 驅動、支援英/中/阿/俄）——生成傳記→拆原子主張→GPT-4 標真偽（CoT、語言特定 prompt）→以人類標註驗證（F1 0.80–0.93、Fleiss Kappa 0.85–0.90）。UQ 方法在此評估能否以 ROC-AUC/PR-AUC 分辨不實主張。</p>
+<p>(3) <strong>信心歸一化評估</strong>：在 selective QA/generation 校準集上擬合歸一化器，測歸一化前後 PRR 變化（品質不可降）與 MSE（校準）。</p>
+<p><strong>指標</strong>：PRR（預測拒絕比）以拒絕曲線面積衡量 UQ 排序品質，免選品質門檻。品質度量以 AlignScore（LLM 評語意相似度）+ COMET（MT）+ ROUGE-L（相容性）+ 準確率（MMLU/GSM8k）為主。</p>
+<p><strong>模型</strong>：白箱——Mistral 7B v0.2、StableLM 2 12B（base，非 instruct）。黑箱——對應 instruct 版 + GPT-4o-mini。Claim-level——Mistral 7B-v0.1（英）、Jais 13B（英/阿）、Vikhr 7B-0.2（俄）、Yi 7B（中）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

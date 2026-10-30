@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_SAECache：語意感知的前綴驅逐 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.18825_SemanticCacheEviction.zh-TW.html">回 2605.18825_SemanticCacheEviction.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-saecache語意感知的前綴驅逐">3. SAECache：語意感知的前綴驅逐</h2>
+<p>基於以上分析，SAECache 將設計洞察轉化為實用的線上學習演算法，有效改善 prefix caching 效率。策略由三個組件構成：佇列路由、局部優先序計分、與自適應參數學習。</p>
+<h3 id="31-佇列路由局部優先序計分與自適應參數學習">3.1 佇列路由、局部優先序計分與自適應參數學習</h3>
+<p><strong>佇列路由</strong>：每個 KV block 根據其主導復用模式被路由到四個專屬佇列：</p>
+<ul>
+<li><strong>Evict-First Queue</strong>：容納解碼區塊與低復用價值的非模板 prefill 區塊。此佇列在任何其他佇列之前被清空。</li>
+<li><strong>Structural Queue</strong>：容納模板化的單輪 prefill 區塊。此佇列捕捉來自共享 prompt 結構的復用。</li>
+<li><strong>Chat Queue</strong>：獨立維護 chat 多輪區塊。此佇列建模會話局部的時間性復用。</li>
+<li><strong>Agentic Queue</strong>：獨立維護 agentic 多輪區塊，同樣建模會話局部的時間性復用，但與 chat 相比在 token 內容與請求間隔存在差異。</li>
+</ul>
+<p><strong>局部優先序計分</strong>：對於多輪佇列中的區塊 b，令 Δt_b 為自上次存取以來的經過時間。其局部生存優先序為該佇列學習到的對數正態模型下的生存機率：p_q(b)=1-F_LN(Δt_b; μ_q, σ_q)。我們為 chat 與 agentic 佇列使用獨立的 μ_c, σ_c 與 μ_a, σ_a，因它們的請求間隔差異顯著。</p>
+<p>對於 Structural Queue 中的區塊 b，令 o_b 為其區塊偏移量、o_max 為請求中的最大偏移量。局部生存優先序為：p_q(b)=1-(o_b/o_max)^γ，其中 γ 為線上學習的衰減冪次——較早的區塊獲得較高的保留優先序。</p>
+<p>SAECache 非直接比較不同佇列的局部優先序分數，而是引入兩個額外的細粒度 token 語意資訊。第一，w_τ(b) 表示區塊 b 的 token 類型權重——我們為不同 token 類型設定不同初始權重並以 miss-after-eviction 回饋調整（命中則增，反之減）。因區塊大小遠小於 prompt 大小（16 token/block），同一區塊內的 token 極可能共享相同類型，我們取區塊內中位數 token 的類型代表 τ(b)。第二，引入佇列層級的命中效率權重 α_q 衡量該佇列的近期命中效率，準確反映驅逐有效性的動態。總體局部優先序分數為：P(b) = α_q · w_τ(b) · p_q(b) / Δt_b。</p>
+<p><strong>驅逐程序</strong>：SAECache 首先從 Evict-First Queue 驅逐。若該佇列為空，則從多輪與結構佇列中選擇最小分數的區塊驅逐。</p>
+<p><strong>自適應參數學習</strong>：所有參數經由統一的反饋迴圈線上學習——token 類型權重、對數正態參數 (μ, σ)、位置衰減冪次 γ、佇列權重 α、以及溫度 T 與 EMA 平滑因子 β 等元參數。每項參數的更新規則輕量，僅使用 cache 正常操作期間收集的佇列層級計數器。</p>
+<ul>
+<li>
+<p><strong>Token 類型權重</strong>：以 EMA 根據命中與失誤回饋更新。收斂後權重排序為 system prompt (4.13) &gt; user prompt (2.00) &gt; response ≈ tool output (1.86/1.80) &gt; CoT (0.77)，與實測復用率排序完全一致。System prompt 權重從初始值 2.0 上升 107%。</p>
+</li>
+<li>
+<p><strong>對數正態參數</strong>：當多輪區塊發生 cache hit 時，記錄自上次存取以來的時間，週期性計算線上 MLE。單獨對 chat 與 agentic 型態維護估算器，最低樣本門檻 n≥10。EMA 因子 β 本身自適應——高變異性觸發更低 β 以加速追蹤。</p>
+</li>
+<li>
+<p><strong>位置衰減冪次</strong>：將 prompt 分成位置 bin，追蹤每 bin 的命中率。比較前半段與後半段的命中率比值來推導，經由 EMA 平滑並夾在 [0.3, 3.0]。實驗中學習到的冪次範圍為 0.94 至 1.0。位置衰減學習在 token 類型加權之上額外貢獻 12% 改善。</p>
+</li>
+<li>
+<p><strong>佇列權重更新</strong>：計算各佇列的近期命中效率 E_q = H_q / C_q（命中 token 數/容量份額），以溫度縮放相對效率更新。圖 9 顯示在多輪主導工作負載下多輪佇列權重達 2.42 而結構權重為 0.10（約 24:1），在單輪主導下比例反轉至約 1:8——SAECache 可自動根據工作負載重配快取優先序而不需人工調參。</p>
+</li>
+</ul>
+<h3 id="32-多輪會話預測器">3.2 多輪會話預測器</h3>
+<p>在對話的首個請求處出現一個微妙的路由挑戰。若已完成的請求帶有對話歷史，SAECache 將其視為進行中的多輪會話並將可復用的 prefix block 路由至對應的多輪佇列。但無歷史的請求是模糊的：它可能是 stateless 單輪請求，也可能是多輪會話的首個請求。SAECache 以一個輕量多輪會話預測器解決此歧義：預測為會繼續的無歷史請求被路由至多輪佇列；模板化請求路由至 Structural Queue；非模板低復用區塊歸入 Evict-First Queue。</p>
+<p>預測器僅使用 serving model 自身的最終層 hidden state。在 prefill 期間取最後一個輸入 token 的最終層 hidden state h ∈ R^d，通過一個三層 MLP（隱藏維度 256, 64）產生二進制預測 ŷ∈{0,1}。MLP 約 1M 參數 / 4MB 記憶體，吞吐量為每秒 1,137 次預測，相較於 LPC 的 e5-small（118M 參數 / 472MB / 129 pps）快了 8.8 倍。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

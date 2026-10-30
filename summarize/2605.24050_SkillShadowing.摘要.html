@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《更多技能，更差的智能體？技能陰影效應在擴展技能庫時使效能退化》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Hongwen Song, Song (Vinson) Wei（Databricks Inc.）</p><p>日期：2026-06，技能庫擴展退化機制</p><p>arXiv：2605.24050</p><p><a href="https://arxiv.org/abs/2605.24050" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="更多技能更差的智能體技能陰影效應在擴展技能庫時使效能退化重點摘要">《更多技能，更差的智能體？技能陰影效應在擴展技能庫時使效能退化》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>技能陰影效應（skill shadowing）</strong>：Databricks 將 LLM 智能體技能庫擴張導致的效能退化（最多 -21%）<strong>分解為兩個可分離的因果機制</strong>——<strong>技能陰影</strong>（技能描述語意重疊使智能體選錯技能）與<strong>上下文開銷</strong>（擴大的提示語境使執行品質下降）——並從理論與實驗雙重證明：<strong>技能陰影是主要瓶頸</strong>（統計顯著、佔退化主導份額），上下文開銷的影響與噪音無法區分。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 智能體愈來愈依賴技能庫——以自然語言描述的任務特定指令包，讓非專家使用者用自然語言就能完成領域任務。但當技能庫從一組少量有效技能擴張到 202 個技能時，通過率最多下降 21%（跨越 Haiku 4.5 與 Sonnet 4.6 兩個模型）。既有工作大多一次只評估一個技能，缺少對「庫規模導致的退化」的形式化與因果歸因。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>技能定義形式化</strong>：技能 S_i=(n_i, d_i, b_i)（名稱、自然語言描述、執行體）。選擇時只看到 (n_i, d_i)，調用後才注入 b_i 到語境。</li>
+<li><strong>三類調用事件</strong>：每條軌跡歸入互斥的三類——o（僅調用 oracle 技能）、m（混合調用，包含 oracle 以外）、n（未調用任何技能）。</li>
+<li><strong>精確分解</strong>：庫導致通過率下降 ∆(q, S) = p(q, S^*) − p(q, S) 經全機率公式分解為：
+<ul>
+<li><strong>上下文開銷 ∆_ctx</strong>：保留 oracle 技能庫下的事件機率、僅條件通過率隨庫擴張變化（⇒ 選對了但執行變差）。</li>
+<li><strong>技能陰影 ∆_shd</strong>：保留全庫下的條件通過率、僅事件機率變化（⇒ 選錯了）。</li>
+</ul>
+</li>
+<li><strong>理論上界</strong>：推導 ∆_ctx 與 ∆_shd 各自的理論上界。∆_ctx 上界 ≤ max{ρ*_n − ρ_n, ρ*_o − ρ_o}（始終很小且不顯著）；∆_shd 上界 ≤ |π*_n − π_n| + |π*_o − π_o|（隨庫規模大幅增長且顯著為正）。</li>
+<li><strong>實驗設計</strong>：SkillsBench 38 對 （任務， 模型）；從 oracle 技能集（S*）到 |S| ∈ {52, 102, 202} 三種擴張庫；共 2,545 條軌跡；95% 雙層分群 bootstrap CI。</li>
+</ul>
+<h2 id="關鍵發現數據">關鍵發現／數據</h2>
+<ul>
+<li><strong>|S|=202 時整體退化 ∆ = .21 [.15, .27]</strong>（通過率從 oracle 技能的 52% 掉到全庫的約 31%）。</li>
+<li><strong>∆_shd = .14 [.06, .26]（CI 排除零）、∆_ctx = .07 [−.13, .25]（CI 包含零）</strong>——技能陰影是唯一統計顯著的效果，佔退化主導份額。</li>
+<li><strong>軌跡分佈急遽劣化</strong>：oracle-only 軌跡佔比從 S* 的 88.0% → |S|=52 時 80.3% → 102 時 64.4% → 202 時 <strong>52.6%</strong>；「未調用技能」軌跡從 12.0% 升至 <strong>38.5%</strong>。</li>
+<li><strong>mario-coin-counting 案例</strong>：video-frame-extraction 技能因描述語意重疊更匹配查詢，在全部 26 條軌跡中<strong>排擠了正確的 oracle 技能</strong>。</li>
+<li><strong>理論上界驗證</strong>：∆^sup_ctx 在所有條件下皆小且無 CI 排除零；∆^sup_shd 隨庫規模大幅增長且幾乎在所有場景排除零。</li>
+<li><strong>按模型拆分</strong>：Haiku 的 ∆_shd 在最大庫時 CI 排除零且主導退化；Sonnet 的 ∆_ctx 點估計匹配或超過 ∆_shd，但樣本量不足以區分為非零。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>僅覆蓋 202 個技能、兩個模型、同一供應商（Anthropic），技能庫再成長一個數量級或跨異構架構時模式是否持續未知。</li>
+<li>Sonnet 的上下文開銷點估計雖正向但樣本不足，不能排除大型庫下的上下文開銷影響。</li>
+<li>未提出解決方案——僅建立問題的形式化與診斷框架。</li>
+</ul>
+<h2 id="對讀者的價值ai_core-接點--36-固化引擎退休是必要的">對讀者的價值（ai_core 接點 → §3.6 固化引擎「退休是必要的」）</h2>
+<ul>
+<li><strong>直接量化「不退休的代價」</strong>：當技能庫從少量有效技能擴張到 202 個時，智能體效能<strong>最多掉 21%</strong>——這是對 §3.6 固化引擎「技能須經過審查、退休是多餘技能的必要處置」的<strong>資料層級硬證據</strong>。技能陰影效應說明「留著無害」的直覺是錯的：多餘技能會主動排擠正確技能。</li>
+<li><strong>診斷框架可重用</strong>：∆_ctx 與 ∆_shd 的分解 + 理論上界可作為評估任何技能庫/工具庫退化機制的<strong>通用診斷工具</strong>——在引入退休/剪枝機制後，可直接用此框架測量改善來自「減少選錯」還是「減少上下文負擔」。</li>
+<li>與 <a class="paper-reference" href="2605.22148_Ratchet.%E6%91%98%E8%A6%81.html">2605.22148</a> Ratchet（outcome-driven retirement）成對閱讀：Ratchet 給出退休的<strong>操作機制</strong>（失敗就退役+bounded active-cap），本論文給出「不做退休的<strong>實證代價</strong>」，兩篇聯立形成 §3.6 的證據閉環。</li>
+<li>定位：形式化 + 控制實驗 + 理論上界的機制論文，適合做<strong>技能庫管理、智能體架構治理、檢索增強選擇、工具/技能退化診斷</strong>的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2605.24050_SkillShadowing.zh-TW.html"><code>../translate/2605.24050_SkillShadowing.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

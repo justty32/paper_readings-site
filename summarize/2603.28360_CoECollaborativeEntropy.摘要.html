@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《CoE：協作熵用於多 LLM 代理系統的不確定性量化（CoE: Collaborative Entropy for Uncertainty Quantification in Agentic Multi-LLM Systems）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Kangkang Sun, Jun Wu, Jianhua Li, Minyi Guo, Xiuzhen Chen（上海交大）, Jianwei Huang（港中深）</p><p>日期：2026-03</p><p>arXiv：2603.28360</p><p><a href="https://arxiv.org/abs/2603.28360" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="coe協作熵collaborative-entropy多-llm-代理系統的不確定性量化重點摘要">《CoE：協作熵（Collaborative Entropy）——多 LLM 代理系統的不確定性量化》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Collaborative Entropy（CoE）是首個針對多 LLM 協作系統的系統級語意不確定性度量</strong>：將不確定性分解為 intra-model aleatoric（UA，各模型內部語意熵均值）與 inter-model epistemic（UE，各模型到 ensemble mean 的加權非對稱 KL 散度）兩個可解釋分量，並提供三個形式化定理（非負性、零值確定性、Delta 分佈行為），闡明何時單模型確定性足以保證系統級確定性，何時跨模型對齊仍是必要條件。實驗在 TriviaQA/SQuAD 上用 LLaMA-3.1-8B + Qwen-2.5-7B + Mistral-7B 驗證：三模型 CoE AUROC 0.772（TriviaQA）／0.878（SQuAD），顯著超越單模型語意熵，且 CoE 引導的後處理協調啟發式以非對稱 KL 達成 +39.0% 準確率增益。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>既有 LLM 不確定性量化（token-level entropy、semantic entropy、self-consistency、conformal prediction）全是 <strong>single-model-centric</strong>：只能量測單模型內部信心，無法刻畫多個異質 LLM 之間的<strong>語意分歧（semantic disagreement）</strong>。</li>
+<li>最直覺的 ensemble 做法——各模型 semantic entropy 取平均——有兩個根本缺陷：(1) 將模型視為獨立可互換，忽略跨模型 epistemic divergence；(2) 把 aleatoric（單模型內部歧異）與 epistemic（跨模型分歧）混為一標量，丟棄了「該改善取樣還是該對齊模型」的診斷資訊。</li>
+<li>多 LLM 協作系統在醫療、法律等高風險領域需要知道「整組模型是否達成共識」，而非僅「個別模型有沒有把握」——這需要系統級 UQ 度量，而此前文獻對此完全空白。</li>
+</ul>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>系統架構</strong>（兩層）：(1) Local Inference and Clustering — 各 LLM agent 獨立生成候選回答，經 bidirectional entailment 聚類為語意簇，形成簇層級機率分佈 p_i(c|x)；(2) Central Aggregation — 收集所有 agent 的簇分佈，計算 CoE 並找出使 CoE 最低的語意簇作為最可靠答案。</li>
+<li><strong>CoE 定義</strong>（Definition 2）：U_CoE(K) = (1/K) Σ SE(x_i) + Σ w_i · D_KL(p_i ∥ p̄)。第一項 UA = 平均 semantic entropy（intra-model aleatoric）；第二項 UE = 各模型到 ensemble mean 的加權 KL 散度（inter-model epistemic）。CoE 不是 ensemble predictor 或 scoring rule，而是系統級不確定性度量。</li>
+<li><strong>三個定理</strong>（Appendix A）：Theorem 1（非負性）U_CoE ≥ 0；Theorem 2（零值確定性）U_CoE = 0 iff 所有模型將全部機率質量放在<strong>同一個</strong>語意簇上；Theorem 3（Delta 分佈行為）各模型坍縮到 Delta 時 UA=0，但若各模型選了不同簇（Case B），UE &gt; 0 且不可再由單模型最佳化消除——這是純跨模型 epistemic 分歧。</li>
+<li><strong>四象限解讀</strong>（§4）：(1) High UA + High UE = &quot;We do not know&quot;；(2) Low UA + High UE = &quot;Models are confident but disagree&quot;（最危險、最需診斷的狀態）；(3) Low UA + Low UE = &quot;We are very sure&quot;（理想態）；(4) High UA + Low UE = &quot;Multiple reasonable answers exist&quot;。</li>
+<li><strong>CoE-guided 後處理協調啟發式</strong>（Algorithm 1）：training-free、inference-time 兩階段——Step 2a 貪婪將各模型推向其 Delta 分佈（選最大簇），Step 2b 以熵比例更新 ensemble 權重（已收斂模型獲更大權重），迭代至 CoE 收斂。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>TriviaQA 兩模型</strong>（Llama+Qwen）：CoE AUROC 0.683，優於 SE (0.670)、UE (0.661)、UA (0.666)、Regular Entropy (0.475)、Pfalse (0.586)。</li>
+<li><strong>TriviaQA 三模型</strong>（+Mistral）：CoE AUROC 0.772，優勢隨 ensemble 規模增大而擴大——與 Theorem 3 一致：更多異質模型加入時 inter-model epistemic divergence 貢獻更大。</li>
+<li><strong>SQuAD</strong>：三模型 CoE AUROC 達 0.878，六模型（2× each）0.811，CoE 持續領先所有 baseline。</li>
+<li><strong>Divergence 消融</strong>：非對稱 KL 是唯一將 CoE 推到接近理論下界的方法（+39.0% 準確率增益）；對稱替代（JS +27.5%、Hellinger +23.0%、Wasserstein +20.5%）明顯較差——驗證方向性 epistemic divergence 的關鍵性：問題是「個別模型是否偏離群體共識」，而非「彼此有多不同」。</li>
+<li><strong>收斂穩健性</strong>：CoE 最佳化對收斂閾值 ε 不敏感，對取樣溫度與生成數量具良好穩健性。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>UA（semantic entropy）可能在單模型層級混入 epistemic 汙染（模型因缺乏知識而幻覺多樣但錯誤的答案，膨脹 SE）；這是 LLM UQ 領域已知的開放問題。</li>
+<li>UE（KL divergence）可能捕捉表面風格差異（verbosity、格式偏好）而非真正語意分歧；future work 建議在聚類前加入語意正規化（如提取 canonical answer span）。</li>
+<li>僅驗證於 7-8B 開源模型；作者建議擴展到更大模型與 closed-source API（需以生成頻率代替 token probability）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>ai_core §3.4 憑證（多 agent 協作熵 = 多節點 UQ）</strong>：CoE 直接提供了將「多 agent 共識」形式化為可計算度量的工具——UA + UE 分解框架即對應多節點不確定性量化：各 agent 節點內部不確定性（UA）與節點間語意分歧（UE）聯合決定系統級「可靠度憑證」，而 CoE 四象限診斷對應 ai_core 的升級／拒絕／固化決策語義。</li>
+<li><strong>CoE 不是 ensemble predictor 而是 UQ 度量</strong>：這對 ai_core §3.3 成本梯度／級聯路由至關重要——CoE 告訴你「這組模型對這個輸入是否達成共識」，不直接給答案；若共識低（高 CoE），可觸發升級或人工介入，是「可靠函數」的系統級信心訊號。</li>
+<li><strong>非對稱 KL 的教訓</strong>：群體方向性（個體是否偏離群體）優於對稱比較——對固化引擎判斷「哪些案例已穩定」同樣適用：要的是個別節點是否發散於群體共識，而非兩兩差異矩陣。</li>
+<li>定位：理論＋度量＋實證的工作坊論文（ICLR 2026 Agentic AI in the Wild Workshop），是 multi-LLM 系統級 UQ 的奠基 formalization。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2603.28360_CoECollaborativeEntropy.zh-TW.html"><code>../translate/2603.28360_CoECollaborativeEntropy.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_決策任務 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2210.03629_ReAct.zh-TW.html">回 2210.03629_ReAct.zh-TW 目錄</a>　<a href="02_%E7%9F%A5%E8%AD%98%E5%AF%86%E9%9B%86%E5%9E%8B%E6%8E%A8%E7%90%86%E4%BB%BB%E5%8B%99.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-決策任務">4 決策任務</h2>
+<p>在兩個語言互動決策 benchmark（ALFWorld、WebShop）上測試——兩者皆為長時程、稀疏獎勵的複雜環境，需要推理來有效行動與探索。</p>
+<p><strong>ALFWorld</strong>：對齊具身 ALFRED 的合成文字遊戲，6 類任務，代理需以文字行動（<code>go to coffeetable 1</code>、<code>take paper 2</code>、<code>use desklamp 1</code>）在模擬居家環境中導航互動以達成高階目標（如「檢查檯燈下的紙」）。單一任務實例可有 50+ 地點、專家策略需 50+ 步，挑戰子目標規劃追蹤與系統性探索；環境內建的一項挑戰是判斷常見家居物品的可能位置（檯燈通常在書桌、架子或梳妝台上），正適合 LLM 發揮預訓練常識。每類任務隨機標註 3 條軌跡作 prompt，含稀疏 thought：(1) 分解目標、(2) 追蹤子目標完成、(3) 決定下一個子目標、(4) 用常識推理物品位置與用法。依慣例在 134 個未見評估遊戲上評測；為求穩健，每類任務由 3 條標註軌跡的兩兩排列構造 6 組 prompt。Act 基線用相同軌跡但去掉 thought（公平對照）。外部基線為 BUTLER——每類任務用 10^5 條專家軌跡訓練的模仿學習代理。</p>
+<p><strong>WebShop</strong>：含 118 萬真實商品、1.2 萬條人類指令的線上購物網站環境，充滿結構化與非結構化雜訊文本（爬自 Amazon 的商品標題、描述、選項），代理需依用戶指令（如「找一個有抽屜的床頭櫃，鎳面處理，價格低於 140 美元」）透過網頁互動（搜尋、選商品、選選項、購買）完成購買。以 500 條測試指令的平均分數（所選商品覆蓋期望屬性的百分比）與成功率（所選商品滿足全部要求的比例）評估。ReAct prompt 額外加入推理：決定探索什麼、何時購買、哪些商品選項與指令相關。基線為以 1,012 條人類標註軌跡訓練的模仿學習（IL），與再加 10,587 條訓練指令的 IL+RL。</p>
+<p><strong>結果</strong>：ReAct 在兩者上皆勝 Act。ALFWorld（表 3）：最佳 ReAct trial 平均成功率 <strong>71%</strong>，顯著勝過最佳 Act（45%）與 BUTLER（37%）trial；甚至<strong>最差的 ReAct trial（48%）都勝過兩者最佳</strong>。六組對照試驗中 ReAct 對 Act 的相對增益 33%–90%、平均 62%。定性上，完全沒有 thought 的 Act 無法正確把目標分解為子目標、或跟丟環境當前狀態。WebShop（表 4）：一-shot Act 已與 IL、IL+RL 打平；加上稀疏推理的 ReAct 顯著更佳（分數 66.6 vs 62.3；成功率 <strong>40.0</strong> vs Act 30.1、IL+RL 28.7）——對先前最佳成功率絕對提升 10%。案例顯示 ReAct 更能藉推理橋接雜訊觀察與行動、識別與指令相關的商品和選項。但距專家人類（分數 82.1、成功率 59.6）仍遠——人類做的商品探索與查詢改寫量遠多於 prompting 方法所能及。</p>
+<p><strong>內部推理 vs. 外部回饋的價值</strong>：據作者所知，ReAct 是<strong>首個在閉環系統中把 LLM 的推理與行動結合應用於互動環境</strong>的展示。最接近的先前工作 Inner Monologue（IM）的「內心獨白」僅限於環境狀態的觀察與「目標達成還缺什麼」，而 ReAct 的推理軌跡彈性、稀疏，可為不同任務誘導多樣推理型態。以 IM 式稠密外部回饋構造 thought 的消融（<strong>ReAct-IM</strong>）顯著劣於 ReAct（整體成功率 53 vs 71，六類任務中五類佔優）：ReAct-IM 因缺乏高階目標分解，常搞錯子目標何時完成、下一個子目標為何；因缺乏常識推理，難以判斷物品可能位置。</p>
+<h2 id="5-相關工作">5 相關工作</h2>
+<p><strong>用語言模型推理</strong>：最知名者為 CoT，揭示 LLM 能自行構造「思考程序」求解問題；後續有 least-to-most prompting、zero-shot-CoT、self-consistency 等，以及更複雜的推理架構——Selection-Inference 把推理分為選擇與推斷兩步；STaR 以模型自產的正確推理鏈微調自身做 bootstrap；Faithful reasoning 把多步推理拆給三個專責 LM；Scratchpad 在中間計算步驟上微調。與這些<strong>孤立、固定的推理</strong>不同，ReAct 把模型行動及其觀察整合進連貫的輸入流，使推理更準確、並能處理推理之外的任務（如互動決策）。</p>
+<p><strong>用語言模型決策</strong>：WebGPT 用 LM 與瀏覽器互動答覆 ELI5 難題，但不顯式建模思考推理程序、依賴昂貴的人類回饋做強化學習。對話領域的 BlenderBot、Sparrow 與任務導向對話系統 SimpleTOD 也訓練 LM 決定 API 呼叫，同樣不顯式考慮推理程序、依賴昂貴的資料集與人類回饋收集。ReAct 以便宜得多的方式學習策略——決策過程只需推理程序的語言描述。機器人領域最相關的是 SayCan（LLM 直接預測可能行動、由視覺接地的可供性模型重排序）與 Inner Monologue（加入環境回饋注入式的「內心獨白」；據作者所知是首個閉環系統展示，ReAct 在其上發展，但如 §4 所論，IM 並非真正的內在思考）。語言作為語義豐富的輸入用於互動決策已在多種設定中被證明有效；語言作為基礎認知機制將在互動與決策中扮演關鍵角色。</p>
+<h2 id="6-結論">6 結論</h2>
+<p>本文提出 ReAct——在大型語言模型中協同推理與行動的簡單而有效的方法。在多跳問答、事實查核與互動決策任務上的多樣實驗顯示，ReAct 帶來更優的效能與可解釋的決策軌跡。方法雖簡單，但行動空間大的複雜任務需要更多示範才能學好，而這很容易超出 in-context learning 的輸入長度上限。作者在 HotpotQA 上探索了微調途徑並獲初步可喜結果，但要進一步提升，仍需從更多高品質人工標註中學習。以多任務訓練擴展 ReAct、並與強化學習等互補範式結合，可能造就更強的代理，進一步釋放 LLM 在更多應用上的潛力。</p>
+<h2 id="附錄擇要">附錄擇要</h2>
+<ul>
+<li><strong>A.1 GPT-3 實驗</strong>：GPT-3（text-davinci-002，貪婪解碼）在 HotpotQA（30.8 vs 29.4 EM）與 ALFWorld（78.4% vs 70.9%）上一致優於 PaLM-540B，可能因其經人類指令遵循微調——顯示 ReAct prompting 對不同 LLM、不同任務皆有效。</li>
+<li><strong>A.2 ReAct 取得最新知識</strong>：檢視軌跡時發現部分 HotpotQA 標籤本身已過時（如某飯店規模在資料集建立後擴增）。Standard 與 CoT 因幻覺答錯、Act 雖能上網互動但缺推理引導也失敗，只有 ReAct 能從網際網路檢索到最新資訊給出合理答案。</li>
+<li><strong>A.3 人在迴路的行為矯正</strong>：在 ALFWorld 上讓人類檢查並編輯 ReAct 的推理軌跡——僅移除 Act 17 中一句幻覺、在 Act 23 加些提示，就能徹底改變 ReAct 行為使任務成功。從人類角度，解這類任務從「輸入幾十個行動」變成「編輯兩三個 thought」，開啟新的人機協作形式；這種即時策略編輯是 Act 與既往 RL 方法做不到的（人類無法改模型參數，改個別行動也不會傳播到其餘行為），且超越單純用對話更新（子）目標——編輯 thought 可修改模型的內部信念、推理風格等彈性思考空間所能承載的一切。</li>
+<li><strong>B.1 微調細節</strong>：batch size 64；PaLM-8B 上 ReAct/Act 微調 4,000 步、Standard/CoT 2,000 步；PaLM-62B 上 ReAct/Act 4,000 步、Standard/CoT 1,000 步。ReAct/Act 通常受益於更多訓練步數與資料，Standard/CoT 則微調不久便退化。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2210.03629_ReAct.%E6%91%98%E8%A6%81.html"><code>../summarize/2210.03629_ReAct.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>The Objective Is the Bottleneck: Latent World Models Encode What Their Planners Cannot Use 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Joyjeet Singh</p><p>日期：2026-08-13（v1，cs.LG）</p><p>arXiv：2608.12959</p><p><a href="https://arxiv.org/abs/2608.12959" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="the-objective-is-the-bottleneck-latent-world-models-encode-what-their-planners-cannot-use-重點摘要">The Objective Is the Bottleneck: Latent World Models Encode What Their Planners Cannot Use 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>在 TwoRoom 的 LeWorldModel 重現模型上，長程規劃失敗並非預測器看不遠，而是規劃器把潛在空間的平方歐氏距離誤當成可達性；換掉成本函式、不重訓世界模型，長程成功率便大幅回升。</p>
+<h2 id="問題與診斷">問題與診斷</h2>
+<p>潛在世界模型通常以預測準確度驗收，因此長程規劃變差時，直覺會先怪自回歸誤差累積。本文把「預測器是否保留資訊」與「規劃目標是否能使用資訊」拆開檢查。研究對象是 TwoRoom 上公開的 LeWorldModel 重現模型；其 CEM 規劃器用想像終點與目標影像編碼之間的平方潛在距離評分。</p>
+<p>診斷結果指向成本函式。模型向前想像七十五個環境步時，誤差仍只有靜止世界基準的 0.189，而實際規劃只展開二十五步（作者自報）。相反地，潛在距離與真實距離的整體 Pearson 相關只有 0.426；約八十個場地單位後幾乎飽和，約一百二十個單位後甚至反向（作者自報）。這代表 agent 可能真的保留了目標位置，卻因錯誤尺規而把「走遠」評成「改善」。</p>
+<p>作者再用凍結表徵訓練 ridge probe。留出資料的位置解碼達到 R² 0.9922、平均絕對誤差 1.72 個場地單位（作者自報），證明幾何資訊仍在表徵裡。四個 checkpoint 的長程成功排序也與距離尺規品質完全一致，卻與一步預測準確度反向；這是相關證據，不足以把差異歸因到 history size、action width 或像素正規化中的任何單一因素。</p>
+<h2 id="修復方法">修復方法</h2>
+<p>作者凍結 encoder 與 predictor，只替換規劃成本。第一種成本先用線性 probe 把潛在向量解碼成位置，再量位置距離。第二種不依賴可讀環境狀態，而是以同一 episode 兩幀相隔多少時間為監督，訓練小型 MLP 估計到達時間。</p>
+<p>關鍵不在純粹的空間精度，而在可達性。時間距離 head 與真實空間距離的相關為 0.819，低於位置 probe 的 0.9897，規劃表現卻更好（作者自報）。原因是 TwoRoom 中間有牆；在真實距離相配的樣本上，時間距離 head 對跨牆路徑多收 24％ 成本，原本的潛在距離反而少收 4％（作者自報）。它學到的是繞門所需路徑，而非直線接近。</p>
+<h2 id="作者報告的結果">作者報告的結果</h2>
+<p>在重現 checkpoint 的 offset 100、budget 150 設定下，原始成本成功率為 26.0％，位置成本為 88.0％，時間距離成本為 98.0％（作者自報）。把 budget 縮到 50，時間距離成本仍由原始基準的 20.0％ 提升到 92.0％（作者自報）。短程 offset 25 上，時間距離成本同樣達 98.0％，因此長短程成功率不再分裂（作者自報）。</p>
+<p>修復並非對所有 checkpoint 都同樣穩。原作者釋出的權重上，位置成本由 14.0％ 提升到 70.0％，針對想像分佈再訓練的時間距離 head 只到 34.0％（作者自報）。該 predictor 的一步誤差為 0.410，時間距離 head 從真實編碼對移到「想像狀態對真實目標」後，誤差仍明顯惡化；線性 readout 對離開資料流形的輸入較能平順退化（作者自報）。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>本文最強的結論是診斷性的：世界模型的表徵含有規劃所需資訊，不代表規劃器採用的幾何能把它取出。成本函式應按可達性設計，若採 learned cost，訓練資料還必須涵蓋規劃器實際評分的想像表徵。</p>
+<p>證據只來自 TwoRoom、每個 checkpoint 各一個 seed。不同 checkpoint 同時改變多項訓練條件，無法判定潛在距離飽和的成因；可直接解碼位置也仰賴環境存在低維可讀狀態。本文修的是 planner，沒有證明把可達性目標納入世界模型訓練後會得到何種表徵。</p>
+<h2 id="對讀者的價值ai_core-接點">對讀者的價值／ai_core 接點</h2>
+<p>這篇把一個常被混成「模型不夠準」的失敗拆成兩張證書：表徵是否含有任務資訊，以及消費這份表徵的 objective 是否保留正確排序。對 ai_core 而言，這直接對應模組准入與端到端驗收。上游元件即使在自身 loss 上很好，下游若用錯 metric，整條鏈仍會穩定地做錯事。</p>
+<p>更實用的接點是 learned evaluator 的分佈契約。評分器若在真實資料上訓練、卻在生成或想像狀態上執行，必須另外測試分佈轉移；否則一個非線性、看似更懂語意的評分器，可能不如簡單但單調的線性規則可靠。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2608.12959_ObjectiveBottleneck.zh-TW.html"><code>../translate/2608.12959_ObjectiveBottleneck.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

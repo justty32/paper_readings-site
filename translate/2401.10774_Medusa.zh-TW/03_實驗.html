@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2401.10774_Medusa.zh-TW.html">回 2401.10774_Medusa.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">← 上一節</a></p>
+</blockquote>
+<h2 id="3-實驗">3. 實驗</h2>
+<p>先在 Vicuna-7B/13B 上展示 Medusa-1 與 Medusa-2；再用 Vicuna-33B（私有資料訓練、無法取得微調配方）與 Zephyr-7B（RLHF）驗證自蒸餾可行性。評估用 <strong>MT-Bench</strong>（多輪對話式基準）。</p>
+<h3 id="31-案例研究vicuna-7b13b-上-medusa-1-vs-medusa-2">3.1 案例研究：Vicuna-7B/13B 上 Medusa-1 vs Medusa-2</h3>
+<p>用 Vicuna（從 Llama 微調的聊天模型），7B/13B 在 ShareGPT 上訓 Medusa 頭 2 個 epoch（v1.5 版、序列長 4096）。基線為預設 Huggingface 實作。結果（圖 3）：7B 上 Medusa-1 <strong>2.18×</strong>、Medusa-2 <strong>2.83×</strong>；13B 上 Medusa-1 <strong>2.33×</strong>、Medusa-2 <strong>2.83×</strong>。分任務看（Medusa-2 Vicuna-7B）：coding <strong>3.29×</strong>、extraction 最高 <strong>3.62×</strong>——顯示 Medusa 對結構化／程式相關任務加速尤佳。</p>
+<h3 id="32-案例研究vicuna-33b-與-zephyr-7b-的自蒸餾訓練">3.2 案例研究：Vicuna-33B 與 Zephyr-7B 的自蒸餾訓練</h3>
+<p>針對需自蒸餾的情形。用 ShareGPT 與 UltraChat 當種子資料，各收集約 100k 樣本（Zephyr 能自延續多輪對話，易蒐集）。Vicuna-33B 以溫度 0.3 隨機採樣生成多輪對話；兩模型皆序列長 2048、batch 128。</p>
+<p><strong>表 1（各 Medusa-2 模型比較）</strong>：報告加速率（每解碼步平均解碼 token 數）、開銷（overhead）、品質（MT-Bench，GPT-4 評分 0–10，括號為與原模型之差）與加速倍率：</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>加速率 Acc.</th>
+<th>開銷</th>
+<th>品質（差）</th>
+<th>S（推測解碼）</th>
+<th>S(Medusa)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Vicuna-7B</td>
+<td>3.47</td>
+<td>1.22</td>
+<td>6.18 (+0.01)</td>
+<td>1.47</td>
+<td><strong>2.83</strong></td>
+</tr>
+<tr>
+<td>Zephyr-7B</td>
+<td>3.14</td>
+<td>1.18</td>
+<td>7.25 (-0.07)</td>
+<td>-</td>
+<td><strong>2.66</strong></td>
+</tr>
+<tr>
+<td>Vicuna-13B</td>
+<td>3.51</td>
+<td>1.23</td>
+<td>6.43 (-0.14)</td>
+<td>1.56</td>
+<td><strong>2.83</strong></td>
+</tr>
+<tr>
+<td>Vicuna-33B</td>
+<td>3.01</td>
+<td>1.27</td>
+<td>7.18 (+0.05)</td>
+<td>1.60</td>
+<td><strong>2.35</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Vicuna-33B 加速率較低但品質相當；推測其隱藏訓練集與自蒸餾用資料不匹配，故自蒸餾能對齊品質、而頭學到的分佈略偏離訓練集。整體凸顯 Medusa-2 在保品質下提效的潛力。</p>
+<h3 id="33-消融研究">3.3 消融研究</h3>
+<p><strong>3.3.1 樹狀注意力配置</strong>（用 Medusa-2 Vicuna-7B、writing/roleplay 類）：圖 4 比較隨機密集樹（藍點）與最佳化稀疏樹（紅星）。<strong>64 節點稀疏樹的加速率勝過 256 節點密集樹</strong>。速度下降源於算力受限（compute-bound）帶來的開銷——更複雜的樹雖提升加速率（呈對數趨勢、後段趨緩），但因大量矩陣乘法而犧牲 wall-time 速度；初期增益顯著，故 Medusa 仍能取得可觀加速。</p>
+<p><strong>3.3.2 典型接受的閾值</strong>：ε 從 0.01 增到 0.25（步進 0.01），設 α = √ε。觀察到取捨：<strong>ε 增大→品質升、加速率降</strong>。需創意的任務中，隨機採樣勝過 greedy；ε 增大時典型採樣與隨機採樣表現相當（圖 5）。</p>
+<p><strong>3.3.3 兩階段微調的有效性（表 2）</strong>：Vicuna-7B 上，Medusa-1（只訓頭）2.18× 且不損品質（6.23，基線 6.17）；Medusa-2（兩階段）品質維持（6.18）且加速更大（2.83×）；而<strong>直接微調（頭與主幹一起、無兩階段配方）品質退化</strong>（5.925）。</p>
+<p><strong>表 3（各技術對加速的貢獻）</strong>：只有 Medusa-1 頭、無樹注意力 ~1.5×；加樹注意力 ~1.9×；用最佳化樹配置 ~2.2×；以 Medusa-2 訓頭 ~2.8×。</p>
+<h2 id="4-討論">4. 討論</h2>
+<p>Medusa 藉外加預測解碼頭使 LLM 推論加速 2.3–2.8×，可同時生成多 token、繞過循序解碼限制。主要優點：<strong>簡單、參數高效、易整合</strong>；避免了獨立 draft 模型；典型接受移除 rejection sampling 的複雜性又給出合理輸出；兩種訓練程序在各模型與 prompt 類型上都保持高品質。本文聚焦 batch size 1 以求簡單，但所提想法可推廣到更大 batch（本文之後已被 TensorRT、Huggingface TGI 等庫支援）。</p>
+<h2 id="附錄重點">附錄重點</h2>
+<ul>
+<li><strong>附錄 A 相關工作</strong>：LLM 推論加速可分兩類——降低記憶體佔用（Multi-query/Grouped-query attention 減 KV cache、量化、分頁記憶體管理）與減少解碼步數。<strong>推測解碼</strong>與上述正交，Medusa 的差異是「用原模型自身預測、免額外 draft 模型」，較易整合。Miao et al. 與 Spector &amp; Re 亦用樹狀注意力，但前者用多 draft 模型集成、後者為 draft 加一層階層；Medusa 則直接用各頭 top token 建<strong>靜態稀疏樹</strong>、無自回歸、不動態調整結構，更簡單高效。採樣方案上，典型接受承襲截斷採樣（top-k/top-p/typical decoding）的「允許集合」概念，但<strong>不堅持輸出與語言模型分佈精確對應</strong>，換取更高效率。</li>
+<li><strong>附錄 B 設定</strong>：三個常用詞——加速率（每步平均解碼 token 數，標準自回歸為 1.0）、開銷（Medusa 每步延遲 / 原模型每步延遲）、加速（wall-time），關係為 <strong>加速 = 加速率 / 開銷</strong>。訓練用 Axolotl 框架、8-bit AdamW、5 個單層頭、λk=0.8^k；Medusa-2 用 LoRA/QLoRA、頭學習率為主幹 4 倍、LoRA rank 32、α=16。</li>
+<li><strong>附錄 D 推測解碼結果</strong>：對 Vicuna 7B/13B/33B 用開源 draft 模型（Llama-68M/160M、Tiny-Llama、Tiny-Vicuna）評估，最佳 draft 設定隨模型大小而變（7B 用 Llama-68M γ=4、13B 用 γ=3、33B 用 Tiny-Vicuna γ=3），加速皆遜於 Medusa。</li>
+<li><strong>附錄 C/E/F/G</strong>：稀疏樹可視化（64 節點、深度 4、向左傾表示偏好高機率節點）；各模型 Medusa-2 加速（自蒸餾模型因保品質而加速較弱）；AlpacaEval 上加速與 MT-Bench 一致；硬體約束的 roofline 建模與 Medusa 效能預測。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2401.10774_Medusa.%E6%91%98%E8%A6%81.html"><code>../summarize/2401.10774_Medusa.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

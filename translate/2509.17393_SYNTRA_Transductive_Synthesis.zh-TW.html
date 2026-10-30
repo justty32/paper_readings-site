@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Program Synthesis via Test-Time Transduction（透過測試時轉導的程式合成） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Kang 等（Seoul National University，ECE + IPAI）</p><p>日期：2025-09</p><p>arXiv：2509.17393</p><p><a href="https://arxiv.org/abs/2509.17393" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="program-synthesis-via-test-time-transduction">Program Synthesis via Test-Time Transduction</h1>
+<p>Seoul National University（ECE 系 + IPAI）</p>
+<h2 id="摘要">摘要</h2>
+<p>我們提出<strong>轉導式程式合成（transductive program synthesis）</strong>——一種<strong>在合成時顯式利用測試輸入</strong>的程式合成新表述。既有程式合成法（無論基於自然語言描述或輸入-輸出範例）通常都想<strong>從訓練範例泛化</strong>，但常苦於魯棒性，尤其在「訓練範例有限、測試輸入含各種邊界案例」的真實情境。為此，我們提出一個新框架：把合成視為<strong>在「由程式輸出定義的有限假設類」上做主動學習</strong>，藉此提升魯棒性。我們證明此法在<strong>準確率與效率</strong>上都顯著改進程式合成。程式碼開源於 github.com/klee972/SYNTRA。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>從少數範例合成的程式，套到測試輸入時可能<strong>缺乏魯棒性</strong>，尤其當測試輸入含<strong>邊界案例</strong>（相對訓練範例 atypical、或暴露程式邏輯的角落 bug）。為此，我們引入<strong>轉導式程式合成</strong>：一種<strong>在合成時顯式利用可得測試輸入</strong>來降低不確定性、產出更魯棒程式的方法。</p>
+<p>如圖例：給訓練範例（第 1、2 列），歸納式合成器產一個滿足它們的程式；然而該程式對第 4 列的測試輸入（一個<strong>邊界案例</strong>）產出錯誤輸出。轉導式合成則利用測試輸入避開此失誤。</p>
+<p>我們的貢獻：(1) 把轉導式程式合成<strong>形式化為新任務</strong>——輸入為程式規格 + N 個測試輸入，目標是合成對這些測試輸入產正確輸出的程式；(2) 提出 **SYNTRA（Synthesis-by-TRAnsduction）**通用框架，藉 transduction 模型利用測試輸入，<strong>顯著提升程式在邊界案例上的魯棒性</strong>；(3) 用 LLM 實例化框架，在 4 個資料集上評估，<strong>任務準確率最高提升 196%</strong>。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>歸納式程式合成（inductive program synthesis）</strong>：本工作與之密切相關（從輸入-輸出範例歸納程式）。</li>
+<li>我們的工作藉「利用可得測試輸入 + LLM 的轉導預測能力」來在這類設定中提升魯棒性。</li>
+</ul>
+<h2 id="3-轉導式程式合成與-syntra-框架">3. 轉導式程式合成與 SYNTRA 框架</h2>
+<h3 id="31-問題定義">3.1 問題定義</h3>
+<p>在轉導式程式合成中，先合成程式 f、再套到測試輸入來預測輸出。我們期望 f 對給定測試輸入產正確輸出；<strong>首要關切不是 f 的整體正確性或通用性，而是它在這批特定測試集上的準確率</strong>。</p>
+<h3 id="32-synthesis-by-transductionsyntra">3.2 Synthesis-by-Transduction（SYNTRA）</h3>
+<ul>
+<li>上述假設類<strong>只在訓練輸入-輸出對上被驗證</strong>，故須挑一個能對「測試輸入中可能出現的多樣案例」<strong>穩健泛化</strong>的假設。</li>
+<li><strong>轉導預測 + 假設淘汰</strong>：用一個 <strong>transduction 模型</strong>觀察某測試輸入與各候選程式對它的輸出，挑一個輸出當<strong>偽標籤</strong>；與此偽標籤不一致的假設被從當前假設類<strong>淘汰</strong>。迭代重複「<strong>輸入查詢選擇 → 轉導預測 → 假設淘汰</strong>」直到只剩一個假設。</li>
+<li><strong>greedy maximin 查詢選擇</strong>：每次轉導預測都要呼叫 LLM，成本高。為省呼叫，提一個 <strong>greedy maximin</strong> 演算法：對每個輸入，先考慮 transduction 模型的<strong>最壞情況預測</strong>（淘汰最少假設者，即圖 2 的「min」欄），再<strong>選 min 值最大的輸入</strong>（最壞情況下能淘汰最多假設者）。平手時，選「候選輸出集總長最短」的輸入——減少下一步傳給 transduction 模型的輸入長度，降算力與推理負擔。類似查詢選擇機制在主動學習文獻廣用；在無額外資訊下，要勝過此類貪婪演算法常被證為困難。</li>
+</ul>
+<h2 id="4-以-llm-實例化">4. 以 LLM 實例化</h2>
+<ul>
+<li><strong>程式合成模型</strong>：產生候選程式（建假設類）。</li>
+<li><strong>轉導模型</strong>：用 LLM 實作，<strong>借其推理能力與世界知識產高準確偽標籤</strong>。對選定測試輸入，觀察各程式輸出當候選，選一個當偽標籤。</li>
+</ul>
+<h2 id="5-實驗">5. 實驗</h2>
+<ul>
+<li><strong>四個基準</strong>：
+<ul>
+<li><strong>Playgol</strong>：字串轉換的歸納程式設計資料集（源於 spreadsheet 自動化如 FlashFill/Smart Fill 的脈絡）。每任務 5 對範例；為模擬含認知不確定性的真實條件，<strong>只用 1 對當訓練範例、其餘 4 對當測試輸入</strong>。</li>
+<li><strong>MBPP+</strong>：從自然語言描述生成 Python。比 MBPP 提供更多更多樣的測試案例，特別適合「假設多測試輸入、潛在邊界案例」的本框架。每任務至少 52 對，用 1 對當訓練、5–50 對當測試。</li>
+<li><strong>1D-ARC</strong>：視覺推理基準（ARC 家族的一維簡化版）。</li>
+<li><strong>MiniGrid 上的程式化世界建模</strong>。</li>
+</ul>
+</li>
+<li><strong>主要結果</strong>：SYNTRA<strong>顯著勝過純歸納或純轉導方法</strong>；<strong>任務準確率最高提升 196%</strong>。</li>
+<li><strong>效率</strong>：依 maximin 準則選測試輸入，<strong>用遠少的 LLM 呼叫達到與隨機選輸入相當的準確率</strong>（把「超出下界的額外呼叫」腰斬）。</li>
+</ul>
+<h2 id="結論">結論</h2>
+<p>把程式合成從「純歸納」推進到「<strong>轉導式</strong>」——<strong>在合成時利用測試輸入</strong>，並把問題框成「在程式輸出定義的有限假設類上做主動學習」。SYNTRA 用 LLM 當轉導偽標籤器迭代淘汰假設、以 greedy maximin 控制成本，在 4 個多領域基準上同時提升準確率（最高 +196%）與效率。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2509.17393_SYNTRA_Transductive_Synthesis.%E6%91%98%E8%A6%81.html"><code>../summarize/2509.17393_SYNTRA_Transductive_Synthesis.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

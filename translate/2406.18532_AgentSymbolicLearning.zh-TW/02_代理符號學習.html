@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_代理符號學習 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2406.18532_AgentSymbolicLearning.zh-TW.html">回 2406.18532_AgentSymbolicLearning.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="3-代理符號學習">3. 代理符號學習</h2>
+<p><strong>演算法 1（流程）</strong>：輸入 → 初始化 trajectory →（<strong>Forward Pass</strong>）逐 node 取輸入、產輸出、附加進 trajectory →（<strong>Loss Computation</strong>）計算語言損失 →（<strong>Back-propagation</strong>）從最後 node 倒推逐 node 算語言梯度、附加進 trajectory →（<strong>Weight Update</strong>）逐 node 用更新 prompt 更新其 prompt 與工具、再更新整體 pipeline → 回傳更新後的代理系統。</p>
+<h3 id="31-問題形式化關鍵概念類比連結主義學習">3.1 問題形式化（關鍵概念，類比連結主義學習）</h3>
+<ul>
+<li><strong>Agent Pipeline</strong>：類比計算圖，代表代理處理輸入所經 node 序列；某些框架的 pipeline 隨輸入動態指派 node（類比動態神經網路）。</li>
+<li><strong>Node</strong>：pipeline 中的單一步驟，類比一層；接收自然語言形式的 <strong>Node Input</strong>（前一 node 輸出 +（選用）環境/人類輸入），用 LLM 配 prompt 與工具處理，輸出自然語言傳給下一 node。</li>
+<li><strong>Trajectory</strong>：類比計算圖，存前向傳播全部資訊（各 node 的輸入/輸出/prompt/工具使用），負責梯度反向傳播。</li>
+<li><strong>Language Loss</strong>：類比損失，衡量期望與實際結果的落差；差別在於它是<strong>文字形式</strong>、由精心設計的 prompt 式損失函式產生（而非數值方程）。</li>
+<li><strong>Language Gradient</strong>：類比梯度，是用於依語言損失更新各組件的「文字分析與反思」。</li>
+</ul>
+<h3 id="32-流程細節">3.2 流程細節</h3>
+<p><strong>Forward Pass</strong>：幾乎等同標準代理執行，唯一差別是把輸入/prompt/工具使用/輸出存入 trajectory（類比 PyTorch/TensorFlow 存中間輸出與激活）。</p>
+<p><strong>語言損失計算</strong>：把 trajectory 餵給 LLM、用精心設計的 prompt 模板，整體評估代理表現。模板含：任務描述、輸入、trajectory、few-shot 示範、原則、輸出格式控制（後三者對所有任務固定）。語言損失含<strong>自然語言評語 + 數值分數</strong>（皆由 prompt 生成）。<strong>可選擇餵入 ground-truth → 監督式代理學習；不餵則僅依任務描述評估輸出與 trajectory → 非監督式代理學習，這使語言代理能自我進化。</strong></p>
+<p><strong>語言梯度反向傳播</strong>：仿反向傳播，從最後 node 倒推到第一個，逐 node 用 prompt 讓 LLM 產出該 node 內符號組件的分析與反思。關鍵：給 LLM 看「下一個（已執行之後）node 的語言梯度」加上「當前 node 在 trajectory 中的執行資訊」，使分析時不僅考量 prompt/工具是否合當前 node 子目標，<strong>也考量其如何影響下一 node 子目標的達成</strong>。如此由上而下串接，各 node 的語言梯度都與整體成功相關，<strong>有效降低各孤立 prompt/工具趨向局部最優的風險</strong>。</p>
+<p><strong>語言梯度式更新</strong>：靠「<strong>符號優化器（symbolic optimizers）</strong>」——精心設計的 prompt pipeline。三種：</p>
+<ul>
+<li><strong>PromptOptimizer</strong>：把 prompt 拆成任務描述、few-shot 範例、原則、輸出格式控制，各設專屬優化 prompt，皆聚焦於依語言梯度推理如何編輯該組件。</li>
+<li><strong>ToolOptimizer</strong>：先讓 LLM 決定操作類型（改善工具描述 / 刪除 / 實作新工具），再呼叫對應的編輯/刪除/建立 prompt。</li>
+<li><strong>PipelineOptimizer</strong>：優化由 node 與連線構成的 pipeline。先介紹用來定義 pipeline 的「<strong>代理程式語言</strong>」（採用 Zhou et al. 2023b 的 Agents 框架），再定義 add/delete/move node 等原子操作，讓 LLM 先分析如何改善再用原子操作實作更新。</li>
+</ul>
+<p><strong>工程保障</strong>：因優化在自然語言空間進行、部分操作需落到程式空間，採「<strong>非法更新最多重試 3 次否則丟棄</strong>」與「<strong>rollback</strong>（更新後重跑當前樣本，若語言損失下降則回退至原代理）」；每個優化 prompt 含「<strong>learning rate</strong>」組件控制優化激進程度。</p>
+<p><strong>Batched Training</strong>：上述為單樣本（類比 SGD）。仿 mini-batch SGD 更穩，設計批次變體：各樣本分別做前向/損失/反向傳播，再把<strong>同一 node 的一批語言梯度</strong>一起餵給 LLM、整體考量後更新代理。</p>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-設定">4.1 設定</h3>
+<ul>
+<li><strong>標準 benchmark</strong>：HotpotQA（多跳 QA，用較難的 hard split，F1/EM）、MATH（競賽級數學，accuracy）、HumanEval（由 docstring 合成程式，Pass@1）；這些任務<strong>停用工具</strong>以便與既有文獻公平比較。</li>
+<li><strong>複雜代理任務</strong>：創意寫作（給 4 個隨機句子，寫 4 段且各段以對應句子結尾，用 GPT-4 評分）、軟體開發（依簡單 PRD 開發可執行軟體，依可執行性給 1–4 分：失敗/可執行/符合預期流程/完美對齊）。</li>
+<li><strong>Baseline</strong>：GPTs（GPT + 精心 prompt）、Agents（用 Agents 框架手工設計 prompt/工具/pipeline）、DSPy（搜尋最佳 prompt 組件組合，<strong>不適用無法以方程定義指標的複雜任務</strong>）、Agents+AutoPE（逐 node 用 LLM 優化 prompt，但無語言梯度反向傳播）。本法從 Agents baseline 起再做代理符號學習。報 GPT-3.5（gpt-3.5-turbo-0125）與 GPT-4（gpt-4-turbo-0409）。</li>
+</ul>
+<h3 id="42-結果">4.2 結果</h3>
+<ul>
+<li><strong>標準 benchmark（表 1）</strong>：本法在三項上<strong>一致勝過</strong>所有比較法，<strong>MATH 增益尤大</strong>（GPT-3.5：23.8→38.8；GPT-4：56.0→60.7）。反觀 AutoPE 與 DSPy <strong>不穩</strong>（有時改善、有時顯著退步），顯示本法更穩健、更能整體優化。</li>
+<li><strong>複雜任務</strong>：軟體開發（表 2）平均可執行性 GPTs 1.6 / Agents 2.4 / <strong>本法 3.8</strong>；創意寫作（表 3）GPT-3.5 達 <strong>6.9</strong>（vs Agents 4.2、ToT 3.8）、GPT-4 達 7.4——增益比標準 benchmark 更大，且<strong>勝過 Tree-of-Thoughts</strong> 這類精心設計的 prompt/推理演算法。本法自動找到「plan → write → revise」pipeline 且各步 prompt 優化良好，<strong>重現了 MetaGPT 式的標準作業流程</strong>——印證其在「無 ground-truth、表現無法以方程/程式計算」的真實任務上有效（與 DSPy 等搜尋法相反）。</li>
+</ul>
+<h3 id="43-案例與分析">4.3 案例與分析</h3>
+<p>案例（圖 3，創意寫作）顯示本法能如人類專家般做 prompt engineering 與設計 pipeline。另發現：<strong>初始化影響不可忽視</strong>（如神經網路）——以最簡方式初始化、讓符號優化器去學通常較佳；過度工程化的初始代理反而不穩定。一個自然延伸是先在大規模多樣任務上「<strong>預訓練</strong>」出通用初始代理，再以代理符號學習適配特定任務。本法在複雜真實任務上的成功比在 accuracy/F1 式標準 benchmark 上更顯著、更穩定 → 未來代理學習研究應更聚焦真實任務，社群應建「以代理學習評估為核心、含多樣複雜代理任務」的 benchmark。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>本文提出代理符號學習：一個<strong>聯合優化代理系統內所有符號組件</strong>的框架，借鏡連結主義學習，用語言式的損失、梯度、優化器優化 prompt、工具與 pipeline。它是最早針對「用複雜 pipeline 解真實任務的代理」做優化的嘗試之一，讓語言代理能「從資料學習」並在部署後「自我進化」。我們相信這從 model-centric 到 data-centric 的轉變是邁向 AGI 的有意義一步，並開源全部程式與 prompt。</p>
+<p>（附錄：採用 Agents 框架的「代理程式語言」與 config 檔定義代理系統，便於符號優化器執行更新操作；附 Language Loss、梯度反向傳播、各優化器的 prompt 模板。）</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2406.18532_AgentSymbolicLearning.%E6%91%98%E8%A6%81.html"><code>../summarize/2406.18532_AgentSymbolicLearning.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

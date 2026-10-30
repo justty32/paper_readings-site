@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2401.15077_EAGLE.zh-TW.html">回 2401.15077_EAGLE.zh-TW 目錄</a>　<a href="02_EAGLE.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>自回歸解碼（autoregressive decoding）使大型語言模型（LLM）推論耗時。本文重新審視推測取樣（speculative sampling），得出兩個關鍵觀察：其一，在<strong>特徵（feature，倒數第二層、LM head 之前的隱狀態）層級</strong>做自回歸比在 token 層級更直接；其二，特徵層級自回歸<strong>固有的（取樣）不確定性</strong>制約其效能。基於這些洞見，我們提出 <strong>EAGLE</strong>（Extrapolation Algorithm for Greater Language-model Efficiency），一個簡單而高效的推測取樣框架：藉由納入<strong>提前一個時間步的 token 序列</strong>，EAGLE 有效消解不確定性，以極小開銷實現精準的倒數第二層特徵預測。我們在 Vicuna 與 LLaMA2-Chat 全系列、MoE 模型 Mixtral 8x7B Instruct，以及對話、程式碼生成、數學推理、指令遵循等任務上全面評估。對 LLaMA2-Chat 70B，EAGLE 達成 <strong>2.7x–3.5x 延遲加速、吞吐量加倍</strong>，且<strong>維持生成文本的分佈不變</strong>。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>自回歸解碼逐一生成 token，緩慢且昂貴。推測取樣類方法（Leviathan et al., 2023; Chen et al., 2023a）把生成過程拆為<strong>低成本 draft 階段</strong>與<strong>對草稿 token 的平行化驗證階段</strong>，讓單次 LLM 前向即可驗證多個 token。更重要的是，驗證階段確保文本分佈與原始 LLM 的解碼結果<strong>精確一致</strong>。</p>
+<p>推測取樣的關鍵在找到「功能近似原 LLM 但延遲更低」的 draft model（草稿模型），通常取同系列低參數版本。但 LLaMA2 系列（7B/13B/70B）中，<strong>最小的 7B 找不到合適草稿模型</strong>；改用 TinyLLaMA 又因指令模板不一致而不可行於 instruct-tuned 模型；即便可用 7B 當草稿，其高開銷也侵蝕加速收益。為推測取樣<strong>專門訓練新草稿模型也不划算</strong>：TinyLLaMA 訓練用 3,000B tokens，而 <strong>EAGLE 只用 2–4B tokens</strong>。</p>
+<p>提升加速的關鍵在<strong>降低 draft 時間開銷、提高草稿被原 LLM 接受的比率</strong>。Lookahead（Fu et al., 2023）用 n-gram 與 Jacobi 迭代；Medusa（Cai et al., 2023）用一組 MLP 基於原 LLM 的倒數第二層特徵預測 token。它們顯著降低了草稿延遲，但<strong>草稿準確率偏低</strong>——Medusa 約 0.6，Lookahead 更低；相較之下，<strong>本方法達約 0.8</strong>。</p>
+<p>EAGLE 建立在兩個觀察上：</p>
+<ol>
+<li><strong>特徵層級的自回歸比 token 層級更簡單</strong>。本文「特徵」指原 LLM 倒數第二層（LM head 之前）的特徵。token 序列是自然語言的簡單轉換，特徵序列則展現更多規律性。先在特徵層級自回歸、再用原 LLM 的 LM head 導出 token，效果優於直接自回歸預測 token：draft 模型只吃 token 加速比 1.5x，改吃特徵升到 1.9x（圖 4）。</li>
+<li><strong>取樣過程固有的不確定性顯著制約「預測下一個特徵」的表現</strong>。目標 LLM 預測 token 分佈後<strong>取樣</strong>，引入隨機性；特徵是高維連續的，無法同樣處理。如圖 3 所示，取樣到「am」或「always」會導向<strong>不同的特徵序列</strong>，給特徵層級自回歸帶來歧義（Medusa 預測隔位 token 也面臨類似問題：不確定輸入 f_I 的真目標該是 p_am 還是 p_always）。EAGLE 的解法：把<strong>提前一個時間步、包含取樣結果的 token 序列</strong>一併輸入草稿模型——即基於 (f_I, t_always) 預測 f_always、基於 (f_I, t_am) 預測 f_am。消解不確定性後，加速比從 1.9x 進一步升到 <strong>2.8x</strong>（圖 4）。</li>
+</ol>
+<p>在 MT-bench 上，EAGLE 相較 Lookahead 快 <strong>1.7x–2.1x</strong>、相較 Medusa 快 <strong>1.5x–1.6x</strong>。EAGLE 與量化、編譯等其他加速技術<strong>正交</strong>：搭配 gpt-fast，單張 RTX 3090 上把 LLaMA2-Chat 7B 解碼提升到 <strong>160.4 tokens/s</strong>。</p>
+<p><strong>訓練成本低</strong>：對 LLaMA2-Chat 70B，EAGLE 只訓練一個<strong>參數量 &lt;1B 的 decoder 層</strong>，用不超過 7 萬筆 ShareGPT 對話，4x A100（40G）1–2 天完成；7B/13B/33B 甚至可在 RTX 3090 節點上 1–2 天訓完。訓練一次即可為所有後續查詢提供加速，查詢量越大攤提成本越趨近於零。</p>
+<p><strong>其他優點</strong>：</p>
+<ul>
+<li><strong>通用性</strong>：原則上適用任何自回歸 LLM；已零樣本（zero-shot）應用於 LLaMA2-Chat（7B/13B/70B）、Vicuna（7B/13B/33B）、Mixtral 8x7B Instruct——所有實驗共用同一組僅在 ShareGPT 上訓練的權重，不在評測資料集上額外訓練。只需在 LLM 上加一個輕量外掛（單個 transformer decoder 層），易於生產部署。</li>
+<li><strong>可靠性</strong>：<strong>完全不微調原 LLM</strong>，且在 greedy 與 non-greedy 兩種設定下都有<strong>輸出分佈保持不變的理論保證</strong>——與只顧 greedy 或不保證分佈的 Lookahead / Medusa 形成鮮明對比。</li>
+</ul>
+<h2 id="2-預備知識">2. 預備知識</h2>
+<p><strong>符號</strong>：「target LLM」指要加速的 LLM，「draft model」指產草稿的模型。「特徵」指 LLM 倒數第二層、LM head 之前的隱狀態。token 記 t、embedding 記 e、特徵記 f、分佈記 p；序列用大寫如 T_{i:j}。LLM 中，輸入 T_{1:j} 經 embedding 層變 E_{1:j}、再變特徵 F_{1:j}，LM head 把 f_j 映為分佈 p_{j+1} = LM_Head(f_j)，取樣得下一 token。原生 token 層級自回歸即 T_{1:j} → E_{1:j} → f_j → p_{j+1} → t_{j+1}。</p>
+<p><strong>推測取樣</strong>：分 draft 與驗證兩階段。draft 階段用小模型生成 γ 個 token T̂ 及其分佈 P̂；驗證階段 target LLM 一次前向得到機率 P，逐一評估：token t̂_{j+i} 以機率 min(1, p_{j+i}(t̂)/p̂_{j+i}(t̂)) 被接受；一旦拒絕某 token，其後全部丟棄，並從調整後分佈 norm(max(0, p−p̂)) 重取樣該位置。Leviathan et al. (2023) 附錄 A.1 已證明此法<strong>等價於直接從 target LLM 取樣</strong>。EAGLE 採用此法，確保 greedy 與 non-greedy 下生成文本分佈皆不變。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

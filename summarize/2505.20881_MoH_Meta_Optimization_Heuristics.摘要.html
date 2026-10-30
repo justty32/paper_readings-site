@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《透過元優化的 LLM 實現可推廣的啟發式生成（MoH）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yiding Shi 等（NTU + 山東大學 + 新加坡管理大學 + Eindhoven）</p><p>日期：2026-03（ICLR 2026），LLM × 組合最佳化 × 元優化</p><p>arXiv：2505.20881</p><p><a href="https://arxiv.org/abs/2505.20881" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="透過元優化的-llm-實現可推廣的啟發式生成moh重點摘要">《透過元優化的 LLM 實現可推廣的啟發式生成（MoH）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>MoH（Meta-Optimization of Heuristics）</strong>：把 LLM 啟發式設計從「設計啟發式」往上提升一層到「<strong>設計優化器本身</strong>」——用 LLM 迭代精煉一個能<strong>自我（遞迴）調用</strong>、自動生成多樣 <strong>heuristic-optimizer</strong> 的 <strong>meta-optimizer</strong>，擺脫人工預設的固定 EC（演化計算）流程；再配<strong>多任務訓練</strong>提升跨規模泛化。在 TSP／CVRP／線上＋離線 BPP 上達 SOTA，尤其在**跨規模（cross-size）**設定優勢明顯，且產出的 meta-optimizer 可解釋。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>現有 <strong>LLM-EC</strong> 啟發式設計（FunSearch、EoH、ReEvo、HSEvo、MCTS-AHD）有兩大限制：</p>
+<ol>
+<li><strong>搜尋空間被人工預設的固定 EC 優化器框死</strong>（如「先交叉再變異」的固定工作流），限制多樣啟發式的探索。</li>
+<li><strong>優化過程只針對單一任務（固定規模 COP）</strong>，泛化差——隨問題規模增大，性能差距（gap）持續擴大（圖 1）；單純混入跨規模資料也只能部分緩解（No Free Lunch）。</li>
+</ol>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>兩層優化（圖 2）</strong>：
+<ul>
+<li><strong>外迴圈＝優化器設計</strong>：當前 meta-optimizer 透過 <strong>（自我）調用</strong> 生成 M 個候選 heuristic-optimizer。</li>
+<li><strong>內迴圈＝啟發式設計</strong>：每個 heuristic-optimizer 對 N 個下游任務各演化 K 個啟發式。</li>
+<li>各任務取最佳啟發式，依任務權重 wᵢ＝sᵢ/Σsⱼ（sᵢ＝問題規模）加權成優化器效用 U(I)；<strong>效用最高者升格為下一輪 meta-optimizer</strong>。</li>
+</ul>
+</li>
+<li><strong>統一個體格式</strong>：heuristic 與 optimizer 皆為三元組（程式碼 String、核心策略的自然語言描述 String、效用 Float）。</li>
+<li><strong>優化器簽名</strong>（圖 3）：<code>optimize_algorithm(population, utility, language_model, subtask_prompt, subtask)</code>，<strong>支援遞迴調用</strong>（可把自身實作當輸入）。</li>
+<li><strong>族群管理</strong>：H 與 P 各維持 <strong>10 個個體</strong>，以堆（heap）依效用排序，新個體勝過最差者則替換。</li>
+<li>生成三步：個體選擇（平衡探索/利用）→ 自然語言點子生成 → 程式碼實作生成。</li>
+<li><strong>多任務訓練</strong>：天然支援，維持任務多樣性以拓寬啟發式探索。</li>
+<li>主幹 LLM 預設 <strong>GPT-4o-mini</strong>，另測 o1-mini／DeepSeek-v3／Qwen-plus 皆有效。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>TSP</strong>：建構式啟發式平均 gap <strong>11.444%</strong>（次佳 HSEvo 12.102%、MCTS-AHD 12.499%）；改進式（GLS）平均 gap 低至 <strong>0.453%</strong>（基線多 &gt;0.7%）；KGLS 設定亦最佳。<strong>規模愈大優勢愈顯</strong>（如 TSP-1000 gap 1.476% vs 基線 ~2.7%）。</li>
+<li><strong>線上 BPP</strong>：大規模（5k／10k）一致最佳（如容量 100、10k：MoH 0.414% vs Best Fit 4.030%）。</li>
+<li>同時涵蓋 CVRP、離線 BPP、TSPLib 等；產出的 meta-optimizer 可解釋（部分像傳統元啟發式，部分為混合/非常規策略）。</li>
+<li><strong>消融</strong>：自然語言「點子生成」確有助益；族群大小 10 最佳；單次迭代明顯較差。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>搜尋效率</strong>：外迴圈 + 多任務優化帶來額外計算開銷，需更高效的搜尋策略。</li>
+<li>範圍僅限<strong>經典 COP</strong>；**跨問題（轉到完全不同的 CO 問題）**留待未來。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 D 類「<strong>LLM 自我改進／元優化</strong>」代表——與演化 RL 演算法（<a class="paper-reference" href="2101.03958_Evolving_RL_Algorithms.%E6%91%98%E8%A6%81.html">2101.03958</a>、<a class="paper-reference" href="2402.05828_Temporally_Aware_RL_Algorithms.%E6%91%98%E8%A6%81.html">2402.05828</a>）、「如何元學習 RL 演算法」（<a class="paper-reference" href="2507.17668_meta_learn_rl_algorithms.%E6%91%98%E8%A6%81.html">2507.17668</a>）路線呼應，但載體是 <strong>LLM 生成程式碼</strong>而非數值更新規則。</li>
+<li>最值得記：<strong>「優化器設計 &gt; 啟發式設計」的抽象躍升</strong>＋<strong>meta-optimizer 自我（遞迴）調用</strong>＋<strong>統一個體三元組（碼/NL/效用）<strong>＋</strong>多任務加權促泛化</strong>的配方；以及「跨規模才是真考驗」的 benchmark 視角。</li>
+<li>開源（github.com/yiding-s/MoH）；適合做 <strong>LLM × 組合最佳化、自動演算法設計、啟發式生成、跨規模泛化</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2505.20881_MoH_Meta_Optimization_Heuristics.zh-TW.html"><code>../translate/2505.20881_MoH_Meta_Optimization_Heuristics.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

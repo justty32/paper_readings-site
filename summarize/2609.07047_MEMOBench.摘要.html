@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>MEMOBench: A Process Level Memory Benchmark for Robotic Manipulation 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Haiyang Sun、Haoxiao Wang、Junming Chen、Weicheng Fang、Zihao Su、Jingkun Yi、Wenyou Yi、Hao Chen、Zhou Zhao</p><p>日期：2026-09-07（v1，cs.RO）</p><p>arXiv：2609.07047</p><p><a href="https://arxiv.org/abs/2609.07047" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="memobench-a-process-level-memory-benchmark-for-robotic-manipulation-重點摘要">MEMOBench: A Process Level Memory Benchmark for Robotic Manipulation 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>MEMOBench 不只問機器人最後有沒有成功，而是在示範過程中放入可由模擬器執行驗證的 Storage、Update、Compression checkpoints，藉此把「忘了什麼」與「記得但操作失敗」拆開，並把 checkpoint 文字反過來用作記憶對齊監督。</p>
+<h2 id="問題與方法">問題與方法</h2>
+<ul>
+<li><strong>問題</strong>：目前觀察常不足以決定下一個動作，例如先前指定的物件已離開視野、爐具狀態已改變，或某動作需要重複特定次數。只看最終成功率會把記憶、感知與控制失敗混在一起，無法知道模型是沒存、沒更新，還是沒把歷史壓成可行動的狀態。</li>
+<li><strong>雙層分類</strong>：任務內容分成 temporal、spatial、object 與 procedural memory；每個過程 checkpoint 再標成 Storage、Update 或 Compression。Storage 表示新資訊進入記憶，Update 表示外部狀態改變後修訂舊條目，Compression 表示把累積事件整理成緊湊任務狀態。Retrieval 因可能發生在任一決策步驟而不另標。</li>
+<li><strong>可執行 checkpoint</strong>：每個 checkpoint 同時有由粗到細的自然語言、操作標籤與 simulator predicate。評估不讀模型隱狀態，而是檢查環境是否達到記憶內容所指向的狀態；順序敏感分析使用 prefix completion，避免晚一步的孤立 predicate 被誤認為有效進度。</li>
+<li><strong>指標</strong>：最終 Task Success Rate 之外，作者定義 Memory Storage Rate、Memory Update Rate 與 Memory Compression Rate。高過程分數但低成功率較可能指向控制瓶頸；某一操作率特別低，則能定位記憶生命週期中的失敗位置。</li>
+<li><strong>訓練用途</strong>：checkpoint 文字還可監督同一記憶模組的 semantic、contrastive 與 framewise alignment。這些輔助 loss 只在訓練時使用，測試時不提供答案文字。</li>
+</ul>
+<h2 id="資料與作者報告的結果">資料與作者報告的結果</h2>
+<p>MEMOBench 含 30 個 history-dependent tasks、1500 段專家示範，以及由 84 種模板展開的 4200 個 demonstration-level checkpoint instances（作者自報）。預設粒度包含 1750 個 Storage、1600 個 Update 與 850 個 Compression instances；每項任務各有 50 段示範與 50 次 held-out 評估（作者自報）。盲重標研究由三位未參與原標籤的 annotators 覆蓋全部 84 個模板，Fleiss’ <code>κ = 0.799</code>，其中 70 個模板三人完全一致（作者自報）。</p>
+<p>未做 alignment 前，最佳 <code>π0.5</code> memory module 在最頻繁重規劃設定下平均成功率只有 31.9%，標準 <code>π0.5</code> 為 30.4%（作者自報）。標準 <code>π0.5</code> 的 object memory 成功率為 99.6%，但 temporal、spatial、procedural 分別只有 2.2%、0.0%、19.6%（作者自報）。另一個典型落差是 <code>π0</code> 的 temporal MSR 達 94.0%，temporal SR 卻只有 4.4%，說明「起初存到」不代表後續會更新、整合並正確使用（作者自報）。</p>
+<p>oracle memory 把真實 checkpoint 文字加入 prompt 後，temporal／spatial MUR 分別由 <code>18.4%／0.3%</code> 升到 <code>54.2%／84.1%</code>，temporal／spatial SR 由 <code>2.2%／0.0%</code> 升到 <code>54.9%／45.8%</code>（作者自報）。這種選擇性恢復支持作者的診斷：大量 Update 與 Compression 問題確實來自記憶內容，而非一概歸咎於操弄。</p>
+<p>在相同 backbone 上，contrastive alignment 把最頻繁重規劃設定的平均成功率由 31.9% 提升到 34.7%，temporal SR 由 9.8% 提升到 14.4%，procedural SR 由 16.0% 提升到 23.6%（作者自報）。增益不大且依目標而異：framewise 偏向 Storage，semantic 偏向 Update，contrastive 偏向 Compression。文字越細也不保證越好；指定的 temporal task 上，粗粒度文字成功 <code>4/50</code>，中、細粒度各 <code>3/50</code>（作者自報）。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>MEMOBench 的主要結論是：現有 VLA 即使加上顯式 memory module，也較會保存初始資訊，較不會在狀態改變後更新記憶或把長歷史壓成行動所需的摘要。過程指標因此不是最終成功率的替代品，而是把失敗分解成可研究、可訓練的操作層訊號。</p>
+<p>作者明確列出三項局限。第一，整個 benchmark 都在模擬器內，尚未涵蓋真實感測雜訊、接觸動力學與視覺 domain shift。第二，主比較與 alignment 研究的模型家族有限，後者尤其只在同一 <code>π0.5</code> memory module backbone 上控制比較。第三，checkpoint 操作標籤依賴人的判斷，Update 與 Compression 的邊界仍有主觀性；雖有盲重標一致性證據，未來仍需自動或半自動標註以提高規模與一致性。</p>
+<h2 id="對讀者的價值ai_core-接點">對讀者的價值／ai_core 接點</h2>
+<p>這篇最適合 ai_core 借用的是「不要只驗終局，要驗狀態轉換」。若記憶或工作流只有最終 pass／fail，便無法知道資料是在准入時沒寫入、更新時沒淘汰舊值，還是在壓縮時遺失關鍵條件。Storage、Update、Compression 加上可執行 predicate，正好形成一組過程憑證；prefix completion 則避免系統碰巧達到後段狀態就冒領完整成功。它也提醒記憶治理的目標不是無限追加 context，而是讓「新資訊進來、舊資訊改正、長歷史收斂」三件事各自可觀測、可回歸測試。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2609.07047_MEMOBench.zh-TW.html"><code>../translate/2609.07047_MEMOBench.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

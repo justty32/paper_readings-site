@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_行為範式：Pattern_Builder · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.23244_Online_Library_Learning_Human.zh-TW.html">回 2603.23244_Online_Library_Learning_Human.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E8%A1%8C%E7%82%BA%E7%A0%94%E7%A9%B6.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-行為範式pattern-builder">3. 行為範式：Pattern Builder</h2>
+<p>本文建立一個新的 <strong>Pattern Builder Task（PBT）</strong>，讓人們在建立日益複雜的視覺圖案時，能取用可延續到未來任務的可重用 helper。</p>
+<h3 id="31-以組合程式建構圖案">3.1 以組合程式建構圖案</h3>
+<p>在 PBT 中，參與者在畫面左側看到 10×10 方格上的目標圖案，右側是空白畫布。目標是用一小組幾何與變換 primitive 重建目標：五種形狀——水平線、垂直線、對角線、方框（僅邊框）、三角形；三種二元變換——add、subtract、overlap；四種一元運算——invert、reflect_horizontal、reflect_vertical、reflect_diag。參與者可組合運算與 primitive，逐步在「你的圖案」方格中建構圖案。除了最初的 primitive 外，參與者也可以把「步驟序列」中任何一行當作運算元使用。</p>
+<p>舉例來說，要建構一個「粗十字」，可先把一條水平 primitive 線水平反射：<code>refl_h(line_h)</code>，再與另一條水平 primitive 線相加：<code>add(line_h,refl_h(line_h))</code>，得到一條粗水平線；接著把這條粗線沿對角線反射，得到粗垂直線：<code>refl_d(add(line_h,refl_h(line_h)))</code>；最後把兩條粗線相加成最終十字：<code>add(add(line_h,refl_h(line_h)),refl_d(add(line_h,refl_h(line_h))))</code>。作者邀請讀者在 https://bococo-81.inf.ed.ac.uk/ 親自試玩此任務。</p>
+<h3 id="32-建立與使用-helper">3.2 建立與使用 helper</h3>
+<p>在 PBT 中，參與者可點擊「+」按鈕，把任何中間步驟存成 helper。Helper 以縮圖形式出現在「你的 Helper」欄（見圖 1 D–E），之後可當作運算元使用，有效延伸了 primitive 詞彙表。已存的 helper 會跨試驗持續存在，除非被點擊「-」按鈕移除。舉例來說，在第 5 題建構出一個 X 形圖案後，參與者可將其存為 helper，並在後續涉及 X 形結構的第 6、7、13、14 題重用它，而不需從 primitive 重新拼出 X 形。透過讓參與者外化並保留有用結構以供重用，這個機制讓研究者得以觀察他們的線上庫學習過程。</p>
+<h3 id="33-自由創作free-play">3.3 自由創作（Free play）</h3>
+<p>PBT 也支援一個自由創作模式：參與者從空白畫布、空的 helper 庫、無目標圖案開始，可自由探索任意想建構的圖案。他們可以把作品提交到一個畫廊，並可選擇為作品命名。每次提交後，畫布與操作歷史會被清空，但在整個自由創作階段中，已建立的 helper 會持續保留。自由創作模式讓研究者得以觀察，在沒有任務指令的情況下，人如何探索他們已學會的組合空間。</p>
+<h2 id="4-計算模型">4. 計算模型</h2>
+<p>本文以程式歸納在 programming-by-example（PBE）範式下形式化 PBT 問題。在 PBE 中，一個定義域專屬語言（DSL）決定了程式搜尋空間，一組輸入-輸出範例則限制了有效解法的空間、捕捉使用者意圖。本研究的 DSL 由 PBT 中定義的 primitive 與變換組成。PBE 歸納的目標，即找到 DSL 中的程式 p，使其作用於空白畫布 c₀ 能產生目標圖案 c*（即 ⟦p⟧(c₀)=c*）。</p>
+<h3 id="41-對-primitive-的-bottom-up-搜尋">4.1 對 primitive 的 bottom-up 搜尋</h3>
+<p>解決 PBE 歸納的一種方式是窮舉搜尋。每個候選程式 p 表示為一棵抽象語法樹，葉節點對應 DSL 中的 primitive，內部節點對應變換運算子（記為 𝒯）。本文對依大小排序的程式執行 <strong>bottom-up 搜尋</strong>。令 |p| 表程式大小，ℋₖ 為大小 k 的程式集合（ℋ₀ 僅含 primitive）；大小 k+1 的程式，由對 ℋ≤ₖ 中程式套用變換運算子產生：ℋₖ₊₁ = {t(p₁,…,pₙ) | t∈𝒯, pᵢ∈ℋ≤ₖ}。搜尋依序枚舉 ℋ₀, ℋ₁, ℋ₂,…，對應對程式空間的廣度優先遍歷。</p>
+<p>為緩解窮舉搜尋固有的組合爆炸，本文以「觀察等價（observational equivalence）」原則剪枝：淘汰輸出行為等價（即作用於空白畫布時產生相同圖案）的程式。觀察等價的程式依兩種準則之一排序：字典序（實驗中稱 Baseline）或程式長度（稱 Short）。剪枝時，每個等價類只保留排序最前的程式。</p>
+<h3 id="42-線上庫學習">4.2 線上庫學習</h3>
+<p>上述 bottom-up 搜尋演算法在 Baseline 下保證完整性、在 Short 下保證最小性，但在線上情境中擴展性差，因為每個新目標圖案都必須從 primitive 重新開始搜尋。為解決此限制，本文引入一個簡單形式的庫學習。令 𝒫 為 DSL 中 primitive 的集合，p⁽ⁱ⁾ 為圖案 i 找到的程式；解出圖案 i 後，把 p⁽ⁱ⁾ 加入 primitive 集，擴增 DSL：𝒫⁽ⁱ⁺¹⁾ = 𝒫⁽ⁱ⁾ ∪ {p⁽ⁱ⁾}。後續搜尋便在擴增後的 DSL 上進行，讓先前找到的程式能當作原子成分被重用。此機制減少了重複計算，並能在固定搜尋預算內建構更深的程式。本文對 Baseline 與 Short 兩種變體都加上此庫學習成分，分別稱為 <strong>Library</strong> 與 <strong>Short+Library</strong>。</p>
+<h3 id="43-人類模型比較">4.3 人類—模型比較</h3>
+<p>本文的模型定義兩個計算量測：<strong>程式長度（program length）<strong>與</strong>展開節點數（nodes expanded）</strong>。程式長度是 Short+Library 找到的最短解程式中 primitive 的數量，作為圖案難度的代理指標。展開節點數則計算搜尋過程中模型評估過的每一個候選程式 p∈ℋ≤ₖ（含觀察等價剪枝前所考慮的程式），反映所探索程式空間的有效大小。這些計算量測會與人類行為量測相關聯：完成一個圖案所需的步數（即透過 helper 重用壓縮後的「人類心智程式」長度）、以秒計的解題時間（認知計算量的代理）、以及準確率（目標圖案與產出結果是否完全相符）。此外也追蹤每個圖案的成功率，作為母體層次難度的量測。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

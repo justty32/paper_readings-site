@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2203.14465_STaR.zh-TW.html">回 2203.14465_STaR.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>逐步生成「思維鏈（chain-of-thought）」理據（rationale）能提升語言模型在數學、常識問答等複雜推理任務上的表現。然而現行誘發理據生成的方法，要麼得建造大規模理據資料集，要麼只能用 few-shot 推論而犧牲準確率。我們提出一種技術：迭代地利用<strong>少量理據範例</strong>與<strong>一個沒有理據的大資料集</strong>，自舉（bootstrap）出逐步執行更複雜推理的能力。此技術「自學推理器（Self-Taught Reasoner, STaR）」倚賴一個簡單迴圈：用少量理據範例提示模型為大量問題生成理據與答案；若答案錯誤，<strong>改為給定正確答案再試著生成理據</strong>；在所有最終導出正確答案的理據上微調；重複。實驗顯示 STaR 顯著優於直接預測最終答案的微調模型，在 CommonsenseQA 上與微調一個 <strong>30 倍大</strong>的最先進模型表現相當。因此，STaR 讓模型<strong>藉由學習它自己生成的推理來改進自己</strong>。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>人類決策常是長思維鏈的結果。近期研究顯示，顯式的中間推理（「理據」）同樣能提升 LLM 表現：如 Nye et al. 證明顯式訓練使用「scratchpad（草稿紙）」做中間步驟的 LLM 可在算術上達到完美的分布內表現與強分布外泛化，而直接預測答案的模型兩者皆失敗。但誘發理據生成的兩條主流路徑各有硬傷：</p>
+<ol>
+<li><strong>人工/模板建造理據微調資料集</strong>：人工標註昂貴、不可能為每個問題都建一套；模板法只在通解已知或可寫死啟發式時可行。</li>
+<li><strong>few-shot 提示中夾帶少量理據範例</strong>：雖優於無理據的直接提示，但普遍<strong>大幅遜於</strong>用更大資料集直接微調預測答案的模型。</li>
+</ol>
+<p>本文採取不同路徑：<strong>利用 LLM 既有的推理能力，迭代自舉出生成高品質理據的能力</strong>。具體而言，few-shot 提示模型自行生成理據，只在<strong>導出正確答案</strong>的理據上微調，再用改進後的模型生成下一輪訓練集，重複這個過程。這是一個相互增益（synergistic）的過程：理據生成的改進改善訓練資料，訓練資料的改進又進一步改善理據生成。</p>
+<p>然而我們發現這個迴圈最終會失效——它對模型解不出的問題<strong>得不到任何直接訓練訊號</strong>。為此我們提出 <strong>rationalization（給定答案的合理化）</strong>：對模型答錯的每個問題，把正確答案提供給模型、讓它反向推理生成新理據。這些理據併入訓練資料，往往能提升整體準確率。</p>
+<p>在算術、小學數學文字題、常識推理上應用 STaR，能把少量 few-shot 提示有效轉譯成大型理據資料集，帶來顯著提升。在 CommonsenseQA 上，STaR 較 few-shot 基線 <strong>+35.9%</strong>、較直接預測答案的微調基線 <strong>+12.5%</strong>，並與 30 倍大的微調模型相當（72.5% vs 73.0%）。</p>
+<p><strong>貢獻</strong>：(1) 從少量帶理據範例迭代生成理據資料集的自舉機制——<strong>無需檢查新理據本身的正確性</strong>；(2) 以 rationalization 補足理據生成，加速並改善自舉；(3) 在數學與常識推理域做多項消融評估；(4) 據我們所知，<strong>第一個讓預訓練 LLM 迭代利用其語言建模能力改進自身</strong>的技術。</p>
+<h2 id="2-背景與相關工作">2 背景與相關工作</h2>
+<ul>
+<li><strong>In-context learning</strong>：把 few-shot 學習視為語言建模問題；已有貝氏推論詮釋與「induction heads」機制性解釋。本文不強調問題的表徵，而聚焦<strong>模型輸出</strong>——模型在下結論前把問題推理一遍的能力。</li>
+<li><strong>Rationales</strong>：Rajani et al.（2019）顯示在「理據先於答案」的資料集上訓練可改善最終答案，但需數千條人工標註推理。Nye et al. 的 scratchpad、Wei et al. 的 chain-of-thought 分別以微調與 few-shot 提示改善推理。Polu et al. 的形式數學課程學習則需要：譯成 Lean、證明可直接驗證、可大量抽樣、另訓價值函數、以 GPT-f 起步——許多領域不同時滿足這些條件。</li>
+<li><strong>Iterated Learning</strong>：本法受 Expert Iteration（ExIt）啟發——「學徒」自我對弈、由較慢的「專家」給回饋做模仿學習、再以進步後的學徒取代專家。STaR 中「以最終答案是否命中目標來過濾生成範例」可視為專家回饋；但我們的「專家」固定，且不需另外訓練價值函數。</li>
+<li><strong>自然語言解釋</strong>：可解釋 ML 脈絡下的解釋著重事後 justification 而非推理，一般並未發現要求事後解釋能提升模型表現。</li>
+</ul>
+<h2 id="3-方法">3 方法</h2>
+<h3 id="31-理據生成自舉無-rationalization-的-star">3.1 理據生成自舉（無 rationalization 的 STaR）</h3>
+<p>給定預訓練 LLM <span class="math inline">\(M\)</span> 與問題—答案資料集 <span class="math inline">\(\mathcal{D}=\{(x_i,y_i)\}\)</span>，以及一個<strong>很小</strong>的帶中間理據提示集 <span class="math inline">\(\mathcal{P}=\{(x^p,r^p,y^p)\}\)</span>（<span class="math inline">\(P\ll D\)</span>，如 <span class="math inline">\(P=10\)</span>）。像標準 few-shot 一樣把 <span class="math inline">\(\mathcal{P}\)</span> 接在每個問題前，誘導模型先產理據 <span class="math inline">\(\hat r_i\)</span> 再產答案 <span class="math inline">\(\hat y_i\)</span>。<strong>我們假設：導出正確答案的理據，品質優於導出錯誤答案者</strong>。因此過濾生成的理據、只保留 <span class="math inline">\(\hat y_i=y_i\)</span> 者，在此過濾後資料集上微調基礎模型 <span class="math inline">\(M\)</span>，然後用新微調的模型重新生成理據、重啟流程，直到表現飽和。注意每輪蒐集到新資料集後，都<strong>從原始預訓練模型 <span class="math inline">\(M\)</span> 重新訓練</strong>（而非持續訓練同一模型）以避免過擬合。</p>
+<p><strong>RL 詮釋</strong>：<span class="math inline">\(M\)</span> 可視為離散潛變量模型 <span class="math inline">\(p_M(y\mid x)=\sum_r p(r\mid x)\,p(y\mid x,r)\)</span>——先抽潛在理據 <span class="math inline">\(r\)</span> 再預測 <span class="math inline">\(y\)</span>。給定指示函數獎勵 <span class="math inline">\(\mathbb{1}(\hat y=y)\)</span>，STaR 是對策略梯度目標 <span class="math inline">\(J(M,X,Y)=\sum_i\mathbb{E}[\mathbb{1}(\hat y_i=y_i)]\)</span> 的近似：指示函數丟棄所有未導出正確答案的理據之梯度（即 STaR 的過濾步驟）；STaR 進一步以 (1) 貪婪解碼降低估計變異數（代價是理據探索可能有偏）、(2) 在同一批資料上走多步梯度來近似 <span class="math inline">\(J\)</span>。這些近似使 STaR 成為可用標準 LLM 訓練機件實作的簡單通用方法。</p>
+<h3 id="32-rationalization給定答案的合理化">3.2 Rationalization（給定答案的合理化）</h3>
+<p>理據生成自舉有個限制：模型只在它答對的範例上訓練，一旦解不出訓練集裡的新問題，改進即告終——因為演算法<strong>無法從失敗案例取得任何訓練訊號</strong>。我們提出「rationalization」：把正確答案當作提示（hint）給模型，要求它以同樣風格生成理據。<strong>有了答案，模型能反向推理，更容易生成導向正確答案的理據</strong>。rationalization 只施用於理據生成失敗的問題；把 rationalization 生成的理據加入資料集時，<strong>其對應提示不含 hint</strong>——如同模型未靠提示就自行想出該理據。過濾後，把兩路資料合併微調。</p>
+<p><strong>演算法 1（STaR 全流程）</strong>：每輪外循環——(3) 用當前模型做理據生成 <span class="math inline">\((\hat r_i,\hat y_i)\leftarrow M_{n-1}(x_i)\)</span>；(4) 用加了 hint 的輸入做 rationalization <span class="math inline">\((\hat r_i^{rat},\hat y_i^{rat})\leftarrow M_{n-1}(\text{add\_hint}(x_i,y_i))\)</span>；(5) 以 ground truth 答案過濾理據：<span class="math inline">\(\mathcal{D}_n=\{(x_i,\hat r_i,y_i)\mid \hat y_i=y_i\}\)</span>；(6) 過濾合理化理據：<span class="math inline">\(\mathcal{D}_n^{rat}=\{(x_i,\hat r_i^{rat},y_i)\mid \hat y_i\neq y_i \wedge \hat y_i^{rat}=y_i\}\)</span>；(7) 在 <span class="math inline">\(\mathcal{D}_n\cup\mathcal{D}_n^{rat}\)</span> 上微調<strong>原始模型</strong> <span class="math inline">\(M\)</span>。在 rationalization 生成的資料上微調，關鍵益處是讓模型接觸到<strong>否則不會出現在其微調資料集裡的困難問題</strong>——可理解為逼模型對失敗問題「跳出框架思考」；次要益處是資料集變大。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

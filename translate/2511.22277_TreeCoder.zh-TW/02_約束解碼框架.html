@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>TreeCoder：解碼函數與約束函數實例（3/4） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2511.22277_TreeCoder.zh-TW.html">回 2511.22277_TreeCoder.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%B4%84%E6%9D%9F%E5%87%BD%E6%95%B8%E5%AF%A6%E4%BE%8B.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-約束解碼框架">3. 約束解碼框架</h2>
+<p>框架將約束程式生成視為由 LLM 與使用者指定約束聯合引導的樹搜尋。結構組件（解碼樹、節點、節點狀態）定義共享基底；插入式組件（解碼函數、終止條件、聚合函數、約束模組、優化演算法）封裝遍歷策略與外部規則。</p>
+<h3 id="結構組件">結構組件</h3>
+<ul>
+<li><strong>解碼樹</strong>：統一抽象，最小化程式碼重複。所有演算法使用根節點與 active/inactive/terminal/complete 節點存取。</li>
+<li><strong>節點</strong>：含父子連結與品質分數 s。分數通常等於節點機率 p_x，更一般地從樹狀態計算（MCTS 基於訪問次數與是否導向無違反解決方案）。</li>
+<li><strong>節點狀態 k</strong>：每次應用約束函數後自動儲存約束狀態（如增量解析器位置），供解碼函數決定回溯距離與探索分支。</li>
+</ul>
+<p>節點分類：terminal（分數零，不可擴展——約束違反點）；complete（含 EOS token 且分數大於零）；active（非終端，將在下一迭代擴展）；inactive（通常不被後續擴展）。所有 active 節點並行擴展使框架能同時探索多個假設。</p>
+<h3 id="插入式組件">插入式組件</h3>
+<ul>
+<li><strong>優化演算法</strong>：在解碼函數、約束集合與超參數的聯合空間上進行 grid/random/Bayesian optimization（通過 Optuna），分離優化邏輯與解碼。</li>
+<li><strong>解碼函數 δ</strong>：遵循 expand-update-prune-move 四階段，迭代擴展 active 節點直到終止條件滿足（Algorithm 1）。</li>
+<li><strong>約束函數集合 Φ</strong>：通過重新加權（急切）或延遲驗證來引導 LM。</li>
+<li><strong>終止條件 ρ</strong>：基於 terminal 節點數、解長度或時間限制。</li>
+<li><strong>聚合函數 ⊗</strong>：max-based（top-k 最高分）或 count-based（最常見節點）。</li>
+</ul>
+<h3 id="31-優化演算法algorithm-2">3.1 優化演算法（Algorithm 2）</h3>
+<p>每次迭代優化器基於過去評估提出新配置，執行 TreeCoder，記錄表現。預定義迭代次數後回傳最佳配置。通過 Optuna 實現 Gaussian-process Bayesian optimization 與 log Expected Improvement。</p>
+<h3 id="32-解碼函數-δalgorithm-3">3.2 解碼函數 δ（Algorithm 3）</h3>
+<p><strong>Expand</strong>：設 N 為待擴展節點。Expand(N, LM, Φ) = ∪_{n∈N} Expand(n, LM, Φ)。子節點 (x = n_x ◦ t, p_x)，其中 p_x = p_parent · p(t|n_x) · Φ(n_x ◦ t) / Z。約束分數 Φ = ∏ φ_i（product-of-experts）。若無有效延續，所有子節點機率設為零不進行正規化。</p>
+<p><strong>近似展開</strong>（解實務瓶頸）：詞彙 32k+ 無法全數評估。啟發自 SMC：(1) 生成 LM 對當前節點的單一 token 分佈；(2) 抽取 j 個樣本；(3) 評估約束。兩種採樣模式：greedy（top-k，用於 MAP 型）與 stochastic（從原始分佈採樣，用於分佈型）。提供 token allow-list 確保關鍵 token（如對齊不良時的 <code>def</code>）總被考慮。參數 j 暴露效率與完備性的顯式取捨。</p>
+<p><strong>Roll-out</strong>：對不進行 roll-out 的演算法，active 節點展開一次即完成。對進行 roll-out 的演算法，迭代展開 active 節點直到滿足結束條件（如 EOS）。概念上為框架的遞迴調用，實作中展開為迴圈。</p>
+<p><strong>Update</strong>：局部更新（新擴展節點）與全域更新（樹中所有其他節點）。分數計算決定演算法目標：sampling/beam search/best-first 按機率。MCTS 使用 PUCT（基於機率、roll-out 成功次數、訪問次數）。ASAp 使用預期未來語法性（EFG）。SMC 檢查 effective sample size 並在低於閾值時重採樣。</p>
+<p><strong>Prune</strong>：Beam search 保留 k 個最高分子節點。SMC 條件性重採樣低分節點。每次應用後清除 inactive 節點的 KV cache（可達 0.5GB），保留 active 節點 cache 維持快速解碼。</p>
+<p><strong>Move</strong>：族群型（beam search、sampling、SMC）更換 active 節點。MCTS/ASAp 為靜態（不離開根節點，但其 roll-out 序列仍存於樹中用於終止與聚合）。Best-first search 為軌跡型——啟動最高分可擴展節點，被拒絕時回溯並跳到不同分支。</p>
+<h3 id="33-約束函數-φ">3.3 約束函數 Φ</h3>
+<p>區分解碼函數（高層決策）與約束函數（引導 LM）使框架模組化。採用 potential functions：約束函數對 token 序列分配品質分數，update/prune 階段可複製硬遮罩（零分否決）或軟遮罩（降權）。</p>
+<p>Product-of-experts Φ = ∏ φ_i：每個 φ_i 獨立評分，乘法聚合使任何專家具否決權，符合程式生成中任何語法錯誤/測試失敗即否定解決方案的情境。此分解提升可解釋性——使用者可見哪個約束被違反。</p>
+<p><strong>提升表達力</strong>：兩 CFG G1 生成 a^i b^n c^n、G2 生成 a^n b^n c^j，其交集 {a^n b^n c^n | n ≥ 0} 為經典非 CF 語言。單一 CFG 無法辨識，但添加兩個 CFG 作為解碼約束，框架可自然表示此交集——product-of-experts + GCD 增加 CF 語言的表達力。</p>
+<h3 id="34-終止條件-ρ">3.4 終止條件 ρ</h3>
+<p>決定樹是否完成。例如 beam search (size k)：ρ: (#{terminal nodes}) ≥ k。實驗中使用：找到 1 個 complete 節點、或達 10,000 節點、或無更多 active 節點、或節點超 256 token。</p>
+<h3 id="35-聚合函數-">3.5 聚合函數 ⊗</h3>
+<h2 id="組合所有-terminal-節點產生輸出max-basedtop-k-最高分或-count-based最常見節點實驗中優選-complete-且分數-0-的節點其次為含語法錯誤的-complete-節點取-top-5">組合所有 terminal 節點產生輸出：max-based（top-k 最高分）或 count-based（最常見節點）。實驗中優選 complete 且分數 &gt;0 的節點，其次為含語法錯誤的 complete 節點，取 top-5。</h2>
+<h2 id="title-treecoderllm-程式生成的解碼與約束之系統化探索與優化part-34解碼函數與約束函數實例-source-httpsarxivorgabs251122277-arxiv_id-251122277-date-2025-11--pldi-2026">title: TreeCoder：LLM 程式生成的解碼與約束之系統化探索與優化（part 3/4：解碼函數與約束函數實例）
+source: https://arxiv.org/abs/2511.22277
+arxiv_id: 2511.22277
+date: 2025-11 / PLDI 2026</h2>
+<h1 id="treecoder解碼函數與約束函數實例34">TreeCoder：解碼函數與約束函數實例（3/4）</h1>
+<h2 id="4-解碼函數實例">4. 解碼函數實例</h2>
+<p>框架函式庫實現三種經典（best-first search、beam search、sampling）與三種新興（MCTS、SMC、ASAp）方法，展示通用性。</p>
+<p><strong>Expand（圖 2）</strong>：不進行 roll-out 的方法僅在 expand 方式上不同——MAP 型用 greedy 近似，分佈型用 stochastic。每個解碼函數繪製不同數量子節點：SMC 繪製單個並在 update 中複製違反節點；Sampling 直接繪製 |N_k| 個；Beam search 每節點繪製 k 個（總共 k² 個，隨後保留 k 個）；Best-first search 繪製最多 k 個 greedy 候選。進行 roll-out 的 MCTS/ASAp 在 expand 內經歷全部四階段——MCTS 在 while 迴圈中：expand → update (PUCT) → prune → move；ASAp 唯一差異在評分方式。</p>
+<p><strong>Update（圖 3）</strong>：Sampling/beam search 以機率評分（局部更新）。SMC 以約束滿足度評分（0/1），effective sample size &lt;0.6 時重採樣。Best-first search 以機率評分，最高分延續違反約束時回溯至最後一行起點並 downweight 失敗路徑（延遲驗證）。MCTS 全域回傳 wins/visits 沿 lineage 計算 PUCT。ASAp 回傳 EFG 沿 lineage 更新。</p>
+<p><strong>Prune &amp; Move（圖 4）</strong>：Beam search 保留前 k 個分子節點 + 清除 cache + 設為 active。Sampling 保留非負分節點 + 清除 cache + 設為 active。SMC 保留所有新節點 + 清除 cache + 設為 active。MCTS/ASAp 清除 cache + 設根節點為 active（靜態，但 roll-out 序列存於樹中）。Best-first search 清除 cache + 將單一最高分可擴展節點設為 active（軌跡型）。</p>
+<p>Roll-out 演算法需注意 while 迴圈的終止條件：若程式開頭有錯誤，單純依賴 EOS token 採樣會導致展開函數分配零機率、終端節點永遠不被選取→無窮迴圈。MCTS 和 ASAP 以 is_complete 檢查解決此問題。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

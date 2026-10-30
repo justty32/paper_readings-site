@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_Optimization_View最佳化觀點 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2511.15715_GraphMemoizedReasoning.zh-TW.html">回 2511.15715_GraphMemoizedReasoning.zh-TW 目錄</a>　<a href="01_Abstract%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="3-optimization-view最佳化觀點">3. Optimization View（最佳化觀點）</h2>
+<h3 id="3a-目標效率一致性取捨">3.A 目標：效率–一致性取捨</h3>
+<p>將重用表述為計算效率與語意保真度之間的原則性取捨。對組合推理圖 Ĝ_T：</p>
+<div class="math block">
+\[\min_{\hat{G}_T \in \mathcal{H}} L(\hat{G}_T) = \text{Cost}(\hat{G}_T) + \lambda \cdot \text{Inconsistency}(\hat{G}_T)\]
+</div>
+<p>典型 Cost 實例化：Cost(Ĝ_T)=α₁·calls + α₂·latency + α₃·depth；Inconsistency(Ĝ_T)=1−S(Ĝ_T, G̃)，其中 G̃ 為被重用的子圖拼接集。λ≥0 控制取捨，H 為策略可採納 DAG 的假設類別。</p>
+<h3 id="3b-離散-vs-可微最佳化">3.B 離散 vs. 可微最佳化</h3>
+<p>Ĝ_T 的搜尋本質上是離散的（編輯/匹配/拼接操作）。當存在可微代理（如學習到的節點/邊嵌入或軟鄰接鬆弛），可以最佳化平滑目標：∇L(Θ)=∇Cost(Θ)+λ·∇Inconsistency(Θ)，其中 Θ 參數化一個鬆弛圖（如邊 logit、連續節點特徵）。這使基於梯度的候選子圖選擇分數成為可能，同時保留強制策略約束的最終投影步驟。</p>
+<h3 id="3c-重用決策作為局部策略">3.C 重用決策作為局部策略</h3>
+<p>全域最小化為組合問題；實務上沿拓撲順序應用局部策略。設 M(v) 為節點 v 的候選匹配集合、ΔL(v←m) 為重用候選 m 的邊際目標變化：</p>
+<div class="math block">
+\[\text{reuse}(v) \iff \min_{m \in M(v)} \Delta L(v \leftarrow m) &lt; -\tau\]
+</div>
+<p>τ≥0 控制保守程度。僅當至少一個先前記憶 m 將總損失降低超過 τ 邊際時才觸發重用——防止對邊際匹配的過度熱切重用。此策略產生 L 的單調下降（在可行合併下）並自然與候選拼接的束搜尋整合。</p>
+<h3 id="3d-基本保證概述">3.D 基本保證（概述）</h3>
+<ul>
+<li><strong>命題 1（可行合併下的單調改進）</strong>：若合併操作 (v←m) 在策略 π 下可行且滿足 ΔL(v←m)&lt;0，則合併後 L 嚴格下降。此類合併的序列應用產生非遞增序列 L₀≥L₁≥…，終止於 π-穩定圖。</li>
+<li><strong>註記 1（重用悔恨）</strong>：令 G* 為 (1) 的未知最小化器。k-束貪婪策略返回的 Ĝ_T 的悔恨分解為搜尋次優性（束寬度）與模型錯誤指定（(3) 中的代理）。收緊任一因子單調降低悔恨。</li>
+</ul>
+<h3 id="3e-實用成本儀表">3.E 實用成本儀表</h3>
+<p>部署時以加法儀表使 Cost 可觀測：Cost = c_llm·Σ tokens(e) + c_tool·Σ calls(e) + c_lat·walltime，其中係數可由使用者或租戶自訂。</p>
+<h3 id="3f-從目標到系統旋鈕">3.F 從目標到系統旋鈕</h3>
+<p>λ 與 τ 提供可解釋旋鈕：較高 λ 偏向保真而非節省、較低 λ 偏向積極重用。將其對映到系統控制項（候選集大小、相似度切斷值、合併門檻），並記錄 L 組件以支持離線調參。</p>
+<h2 id="4-evaluation-conceptual概念性評估">4. Evaluation (Conceptual)（概念性評估）</h2>
+<h3 id="4a-評估目標">4.A 評估目標</h3>
+<p>評估核心問題：推理子圖的持久重用是否在保持語意保真度的同時降低總推理成本？</p>
+<h3 id="4b-指標">4.B 指標</h3>
+<p>遵循 L=Cost+λ·Inconsistency：</p>
+<ol>
+<li>計算成本 Cost：token/工具/牆鐘時間加權和</li>
+<li>一致性懲罰 Inconsistency：以嵌入距離衡量的語意偏離</li>
+<li>重用比率 ρ：Ĝ_T 中繼承自先前圖的節點或邊比例</li>
+<li>複合目標 L：每任務觀測到的總推理成本，支持效率與保真度之間的帕累托分析</li>
+</ol>
+<h3 id="4c-實驗設定模擬">4.C 實驗設定（模擬）</h3>
+<p>模擬來自共享領域（SQL 生成、特徵合成、工作流規劃）的重複推理工作負載 {T₁,…,Tₙ}。冷運行從空開始重算所有步驟；memoized 運行在相似度超過門檻 τ 時重用先前任務的子圖。平均成本、延遲與一致性差異作為重用效率的代理指標。</p>
+<h3 id="4d-示意情境">4.D 示意情境</h3>
+<p>連續任務：T₁「為月度銷售趨勢生成特徵」→ T₂「更新銷售特徵供 Q2 分群」→ T₃「使用先前特徵按類別預測銷售」。T₂ 重用 T₁ 的特徵定義子圖，T₃ 同時重用特徵與聚合子圖。實證上約 60–80% 節點語意重疊，產生可量測的成本與延遲降低。</p>
+<h3 id="4e-預期結果">4.E 預期結果</h3>
+<ul>
+<li>線性成本降低：總成本隨重用比率約線性下降直至飽和</li>
+<li>有界不一致性：較大 λ 以極小效能損失強制更嚴格一致性</li>
+<li>穩定收斂：迭代重用收斂至效率與保真之間的帕累托前沿</li>
+</ul>
+<h3 id="4f-未來量化評估">4.F 未來量化評估</h3>
+<p>完整實證研究將整合：LLM 與代理推理軌跡、每節點成本與重用效率指標、嵌入相似度的語意保真度、跨重用迭代的輸出再現性。</p>
+<h2 id="5-discussion討論">5. Discussion（討論）</h2>
+<h3 id="5a-局限與假設">5.A 局限與假設</h3>
+<ul>
+<li>重用品質高度依賴相似度算子 S(·,·)；對齊不良的嵌入或脆弱啟發式將降低候選精確度與召回率</li>
+<li>重用策略 π 可能在過度保守（錯失有益重用）與過度寬鬆（引入語意漂移）之間振盪</li>
+<li>儲存庫增長引入擴展性問題：高效的索引、版本管理與修剪策略是維持檢索延遲與相關性的關鍵</li>
+</ul>
+<h3 id="5b-風險與安全考量">5.B 風險與安全考量</h3>
+<p>持久重用引入新的安全維度：memoized 子圖可能編碼過時或有偏的推理軌跡。緩解措施：(1) 為每個重用組件附加溯源元資料；(2) 強制型別安全與無環性策略驗證；(3) 記錄 ΔL 與語意偏離供事後審計；(4) 允許低信心子圖在重用前於沙箱中重新評估。</p>
+<h3 id="5c-工程取捨">5.C 工程取捨</h3>
+<p>混合結構–語意檢索提高召回但增加索引與儲存開銷。生產環境應按邊記錄成本儀表，支持多租戶最佳化與 A/B 測試。原則性快取階層（RAM、Redis、Postgres、S3）可在保持一致性的同時進一步降低查詢延遲。</p>
+<h3 id="5d-擴展與開放研究方向">5.D 擴展與開放研究方向</h3>
+<ul>
+<li><strong>Rolled DAG</strong>：將循環依賴展開至固定深度，擴展至需要有限迭代或回饋迴路的領域</li>
+<li><strong>型別化節點介面</strong>（如 FeatureDef、SQLCTE、ToolCall）：強制結構安全並啟用靜態分析</li>
+<li><strong>神經–結構共學習</strong>：透過對比重用訊號聯合訓練嵌入與策略，實現自適應推理重用</li>
+</ul>
+<h3 id="5e-評估路線圖">5.E 評估路線圖</h3>
+<p>量化評估應檢驗：重用比率 vs. 總成本降低、一致性漂移作為 λ 的函數、不同 top-k 檢索下的延遲敏感性、領域與任務轉移下的穩健性。候選基準含 SQL 合成、分析特徵規劃、工具使用 LLM 代理、具程序推理的多跳 QA。</p>
+<h3 id="5f-理論開放問題">5.F 理論開放問題</h3>
+<ul>
+<li>近似檢索下的形式悔恨界</li>
+<li>最適儲存庫修剪與飽和條件</li>
+<li>用於認證反事實重用的影響函數或路徑 Shapley 近似</li>
+<li>隨機或串流更新下的收斂保證</li>
+</ul>
+<h2 id="6-conclusion-and-future-work結論與未來工作">6. Conclusion and Future Work（結論與未來工作）</h2>
+<p>我們提出了 graph-memoized reasoning——將推理工作流重用形式化為標記 DAG 的框架。透過最小化複合損失 L=Cost+λ·Inconsistency，該方法在效率與語意保真度之間提供了可解釋的取捨。理論分析產出可行合併的局部策略與單調改進的實用保證。</p>
+<p>未來三條主軸：(1) 學習增強檢索——端到端訓練圖嵌入與策略以實現自適應重用；(2) 型別化介面與溯源綱要——在持久推理圖中強制安全性、版本管理與可解釋性；(3) 實證驗證——在真實推理工作負載上基準測試成本節省、保真度與再現性。</p>
+<p>長期願景：一個持久推理系統的生態系——能記住、重用並改進自身計算歷史的架構，構成可解釋且自我改進智慧的基底。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

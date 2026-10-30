@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2401.12869_TroVE.zh-TW.html">回 2401.12869_TroVE.zh-TW 目錄</a>　<a href="02_%E8%A9%A6%E9%A9%97%E5%A0%B4%EF%BC%9A%E7%A8%8B%E5%BC%8F%E5%8F%AF%E8%A7%A3%E4%BB%BB%E5%8B%99.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>語言模型（LM）能藉由撰寫程式來解決諸如回答表格或圖片相關問題等任務。然而使用原始函數（primitive functions）常導致冗長且易錯的程式，而高階函數又需要專家設計。為了在不耗費人力的前提下得到更好的解答，我們讓 code LM 自行策展（curate）可復用的高階函數，並用它們撰寫解答。我們提出 <strong>TroVE</strong>——一個<strong>免訓練（training-free）<strong>的方法，透過</strong>使用（using）、生長（growing）、週期性修剪（trimming）<strong>工具箱來歸納出一個可驗證且高效的函數工具箱。在數學、表格問答與圖像推理三類任務的 11 個資料集上，TroVE 使用 CodeLLaMa 時持續產出比基線更簡單、正確率更高的解答，也勝過既有使用 GPT 的方法，同時工具箱</strong>小 79–98%</strong>。TroVE 更使人工驗證<strong>加快 31%、準確 13%</strong>。以同一條管線，它能為不同任務與資料集創建多樣的函數，並揭示各資料集的個別特性。程式碼與資料公開於 github.com/zorazrw/trove。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>由自然語言指令生成程式碼，長期以來是解決問答、代理導航等任務的首選方法之一。近年 LM 已能以 Python 等通用語言寫程式，進一步擴大了程式生成的適用範圍。這些程式通常依賴對 Python 內建函數或 pandas 等函式庫的多次呼叫，但在許多情況下，依賴這些原始函數會導致程式<strong>冗長、複雜、易錯</strong>（圖 2 中間的例子：只因錯把 row_2016 寫成 row_2015 這一個小失誤，即使其他步驟全對，輸出仍然錯誤），且<strong>難以驗證</strong>——使用者可能得檢查整支程式中每個操作及其組合與交互。</p>
+<p>人類開發者遇到類似情況時，會創建應用特定的函數（即工具），把常一起使用的原始函數組合起來。例如圖 2 右側的 calc_rate_of_change 工具更易理解、更不易誤用，因而帶來更簡潔且準確的解答。</p>
+<p>近期已有一些工作嘗試讓 LM 自動歸納工具，但既有方法往往<strong>工具箱龐大笨重</strong>，且／或<strong>附加複雜度與資料需求</strong>：Qian et al. (2023) 的 CREATOR 將規劃（造工具）與執行解耦，代價是產出數百甚至更多、模型難復用、人類難驗證的工具；Wang et al. (2023a) 的 Voyager 需自動課程與迭代自我驗證的終身學習；Cai et al. (2023)（LATM）與 Yuan et al. (2023)（CRAFT）需要額外的訓練與驗證資料集來預先造工具，外加自我驗證或工具去重等輔助模組——而標準（Primitive）設定只需測試資料即可產生解答。</p>
+<p>本文提出 <strong>TroVE</strong>，一個免訓練的方法，歸納出可驗證且高效的函數工具箱（§3）並用其撰寫解答。TroVE 有三大組件：<strong>使用並生長一個隨時間維護的工具箱</strong>、<strong>基於執行一致性（execution agreement）的選擇</strong>、<strong>週期性工具箱修剪</strong>。值得注意的是，本方法<strong>不需任何額外訓練或監督</strong>，僅以生成間的執行一致性挑選程式。給定一串問題流，TroVE 在產出解答的同時，也歸納出一個好用的工具箱。</p>
+<p>我們在三個真實任務的 11 個資料集上實驗（§4）：(1) MATH 數學題、(2) TabMWP／WTQ／HiTab 表格問答、(3) GQA 組合式視覺推理。與使用 CodeLLaMa 的基線及既有使用 GPT 的 SOTA 方法相比，TroVE 持續產出正確率更高、複雜度更低的解答，並維持一個顯著更小、更高效的函數庫（§5）。人工研究（§6）進一步顯示，驗證 TroVE 生成的解答比基線<strong>快 31%、準 13%</strong>。</p>
+<h2 id="2-問題陳述與基線方法">2. 問題陳述與基線方法</h2>
+<h3 id="21-以程式解題">2.1 以程式解題</h3>
+<p>我們聚焦可用自然語言描述、可用程式解決的問題。給定一個例子 x——即一個以環境 e 為基礎（grounded）的自然語言查詢 q——請 LM 組合多個函數 F = {f₁, …, fₙ} 寫出程式解答 s；f 與 s 可在 e 上執行以得到最終答案。實驗用 Python 作為程式語言（通用、對多數任務都能靈活創建函數）。</p>
+<p>解答生成的難度深受函數集 F 可用性的影響。函數可分為兩類：</p>
+<ul>
+<li><strong>原始函數（primitive functions）</strong>：對任務環境的原子級低階操作（如減法 -、除法 /），無需領域專家知識即可取得；但解一題往往需要大量函數的複雜組合，因而極易出錯。</li>
+<li><strong>組合函數（composed functions）</strong>：如 calc_rate_of_change，組合多個原始函數。概念上更易使用（與問題所要求的動作對齊得更好——把「What is the rate of change…」對應到一個名為 calc_rate_of_change 的函數，遠比對應到資料切片、相等檢查、取值、減、除的特定組合容易）；實務上只暴露 API 介面、把細節抽象在內部，更不易出錯。組合函數向來由人類專家透過辨識與泛化共享功能來打造，但此過程昂貴且難以擴展到新領域——因此自動創建這類函數至關重要。</li>
+</ul>
+<h3 id="22-基線方法">2.2 基線方法</h3>
+<p>所有方法（含 §3 的主方法）都只透過提示（prompting）操作 LM，不更新 LM 參數。</p>
+<ul>
+<li><strong>Primitive</strong>：要求模型只用原始函數寫程式——這是無工具歸納的程式輔助解題（program-aided problem solving）的事實標準做法。提示含四部分：(1) 任務的自然語言指令、(2) 原始函數的簽名與 docstring（內建函數不展示，因 LM 已充分見過；額外原始函數僅 1–2 個）、(3) c 組（例子， 解答）示範、(4) 當前測試例的 (q, e)。</li>
+<li><strong>Instance</strong>：要求模型<strong>為每個例子</strong>創建工具並在該例的解答中使用（對應 Qian et al. 2023 的兩步流程；初步實驗顯示「一次回應同時生成函數與解答」與「兩次連續回應」表現相當，故採前者）。每例獨立查詢以允許逐例函數歸納——但<strong>函數無法跨例共享</strong>，即使功能相似。</li>
+</ul>
+<h2 id="3-即時歸納可復用函數trove-主方法">3. 即時歸納可復用函數（TroVE 主方法）</h2>
+<h3 id="31-使用並生長工具箱">3.1 使用並生長工具箱</h3>
+<p>為了學出能跨例復用的函數，我們維護一個隨時間演進的共享函數庫 F。為使方法以線性時間運行，所有例子以**串流（streaming）**方式線上處理。從 F = ∅ 開始，逐步增刪函數。</p>
+<p>定義 LM 與當前工具箱 Fᵗ 互動的 3 種模式：</p>
+<ol>
+<li><strong>IMPORT</strong>：指示 LM 從工具箱匯入已定義的函數並用以解 xᵗ。</li>
+<li><strong>CREATE</strong>：指示 LM 創建新函數 fᵗ_new 並加入工具箱。</li>
+<li><strong>SKIP</strong>：指示 LM 只用原始函數（同 Primitive 設定）。</li>
+</ol>
+<p>每個例子在三種模式下各採樣 K 個回應，共 3K 個。（初步研究曾嘗試讓模型自選一種模式並只在該模式下生成，但結果顯著劣化。）每個回應含解答 s 與函數 f（SKIP 模式只含 s）。</p>
+<h3 id="32-基於一致性的選擇">3.2 基於一致性的選擇</h3>
+<p>從 3K 個 (f, s) 候選中，經由自我一致性（self-consistency）與解答複雜度選出一個：先執行所有解答並剔除無法成功執行者；再依<strong>執行輸出的一致性</strong>選答案——保留產出最高頻答案的解答；若多個解答同頻，按所需<strong>操作數</strong>排序，取最少者（偏好簡單解）；仍有多個候選則取模型預測清單中最先出現者。把當選回應中的函數加入工具箱，其解答定為當前例子的解答。</p>
+<h3 id="33-週期性工具箱修剪">3.3 週期性工具箱修剪</h3>
+<p>並非所有模型歸納的函數都高度可復用，故週期性修剪工具箱以移除低效用函數：測試期間定期移除使用次數低於 λ 的函數。觀察到函數使用頻率與資料量呈對數關係，設 λ = C × log₁₀(n)，C = ½，n 為已處理例數。（為確保所有例子仍能由庫中函數解出，先前使用了被修剪函數的例子——不到資料集的 5%——會在 IMPORT 與 SKIP 模式下重新生成解答。）</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

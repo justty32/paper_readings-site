@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要Abstract · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2601.16286_SemanticALLI.zh-TW.html">回 2601.16286_SemanticALLI.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95Methods.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要abstract">摘要（Abstract）</h2>
+<p>智能體 AI 管線存在一個隱藏的無效率：即使使用者的自然語言措辭全新，系統仍頻繁重構相同的中間邏輯（如指標正規化或圖表鷹架）。傳統邊界快取將推論視為單體黑箱，無法捕捉這種效率。</p>
+<p>本文提出 SemanticALLI（PMG 旗艦行銷智慧平台 Alli 的一部分），一個管線感知架構，旨在將推理的重複性操作化。透過將生成分解為<strong>解析意圖解析（Analytic Intent Resolution, AIR）<strong>和</strong>視覺化合成（Visualization Synthesis, VS）</strong>，SemanticALLI 將結構化中間表徵（IR）提升為一級可快取工件。</p>
+<p>快取在智能體迴圈內的影響顯著。評估中，基線單體式快取因語言變異而限制在 38.7% 命中率。相比之下，我們的結構化方法使 VS 階段達到 83.10% 命中率，避開 4,023 次 LLM 呼叫，中位延遲僅 2.66 ms。此內部重複利用降低了總 token 消耗，為 AI 系統設計提供了實務教訓：即使使用者很少重複自己，管線卻經常重複——在穩定、結構化的檢查點，快取最可靠。</p>
+<h2 id="1-導論introduction">1. 導論（Introduction）</h2>
+<p>對當今企業 LLM 技術棧的有效壓力測試極其簡單：用自然語言要求一份儀表板，然後看時鐘。在 UI 上看起來像單一請求的動作，實際上展開為一個小管線——schema 檢查、意圖解析、指標與過濾器選擇，最後是圖表或儀表板程式碼合成。一切順利時輸出令人印象深刻；但當耗時一分鐘（或三分鐘），印象便不會持久。</p>
+<p>本文將此失敗模式稱為<strong>延遲–效用鴻溝（Latency–Utility Gap）</strong>：系統有能力進行高品質分析推理，但其延遲輪廓將它推到人類願意等待的窗口之外。注意力經濟相關研究指出，一旦回應速度超出使用者預期，參與度表現得像脆弱的閾值現象而非品質的線性函數。實證上，互動式系統在回應時間超出約 7–10 秒時開始流失使用者——而許多生產級分析代理遠超此界限。</p>
+<p>預設的工程反應是讓模型更快。量化、蒸餾和更小的前端替代方案可在受控設定中顯著縮減鐘面時間。但此策略有一個尷尬的二階成本：更輕的模型經常在企業分析無法承受失敗的關鍵點失敗——資料接地、約束滿足和組合推理。團隊接著用 prompt tuning、回歸測試和重試補償，系統的「節省」（token 用量與延遲）便在操作摩擦中慢慢流失。</p>
+<p>進一步看，瓶頸往往不是推論速度本身，而是<strong>推理的重複性</strong>。企業提問中有相當比例是先前意圖的改述，且延遲與 API 成本隨 token 吞吐量線性增長。此觀察催生了單體式快取：以使用者 prompt（或其嵌入鄰域）為鍵、以最終系統輸出為值。Prompt→output 快取在表面級重複時有用，但也很脆弱：一旦使用者問了真正的新問題，快取要麼在膚淺語意相似度上「命中」並回傳一個向量空間接近但業務語意錯誤的結果，要麼完全錯失快取。</p>
+<p><strong>更穩定的重複利用機會在於工作流內部</strong>。分析管線中包含即使 prompt 不同也重現的中間工件：指標選擇、標準維度分群和可重用工件。SemanticALLI 正是圍繞此前提建構。與其將智能體系統視為黑箱，我們讓內部結構在邏輯檢查點上顯式化並可快取：</p>
+<ol>
+<li><strong>AIR</strong>——一個正規化、結構化的「要計算什麼」表徵（指標、維度、過濾器和分析框架），抽離渲染細節；</li>
+<li><strong>VS</strong>——描述「如何渲染該意圖」的實作層（如可重用圖表規格或儀表板程式碼）。</li>
+</ol>
+<p>這些結果共同縮小了延遲–效用鴻溝，藉由利用管線已知之事物：許多「新」使用者請求共享共同的內部結構。</p>
+<h3 id="11-貢獻contributions">1.1 貢獻（Contributions）</h3>
+<p>三項貢獻：</p>
+<ol>
+<li><strong>智能體系統的管線感知快取</strong>：透過生產實例（AIR + VS 兩階段分解），將中間推理工件視為可快取單元而非附帶副產品。</li>
+<li><strong>高基數領域的混合檢索機制</strong>：整合精確雜湊與稠密檢索及 BM25 詞彙約束，使用 RRF 排名融合與重排來減少業務術語中的語意碰撞。</li>
+<li><strong>實證證據顯示內部重複利用的顯著可用性</strong>：在受控評估中，當 prompt→output 重複利用在嚴格相似度閾值下變得稀缺時，仍可在結構化中間檢查點回收大量重複利用。</li>
+</ol>
+<h2 id="2-相關工作related-works">2. 相關工作（Related Works）</h2>
+<h3 id="21-語意快取semantic-caching">2.1 語意快取（Semantic Caching）</h3>
+<p>語意快取以嵌入空間相似度取代精確字串比對，即使使用者改述也能重複利用答案。GPTCache、InstCache、GenCache 等系統將此理念用於 LLM 應用。SCALM、Cache Saver、Asteria 等近期工作則透過偵測並優先處理重複出現的模式來提高有效命中率。然而，單體式 prompt→output 快取繼承了 prompt 的歧義性：兩個 prompt 可能在向量空間中接近，但在單一業務關鍵實體上不同（如&quot;CPC&quot;vs&quot;CPM&quot;），而檢索層沒有原生概念知道哪些詞項不可妥協。</p>
+<h3 id="22-混合快取hybrid-caching">2.2 混合快取（Hybrid Caching）</h3>
+<p>混合方法承認上述失敗模式，將詞彙與語意證據視為互補訊號。精確比對提供重複的高精度；詞彙檢索（BM25）守護關鍵實體；稠密檢索回收改述與組合變體。然而多數混合快取仍架構為邊界系統：攔截使用者 prompt、檢索候選完整回應、要麼回傳要麼退回生成。SemanticALLI 將混合邏輯向內移動：不僅用混合檢索決定最終答案可否重複利用，還鎖定兩個中間檢查點（AIR 與 VS），在這些點重複結構即使措辭不同也經驗上經常出現。</p>
+<h3 id="23-bi-系統bi-systems">2.3 BI 系統（BI Systems）</h3>
+<p>SiriusBI 等先前 BI 系統使用結構化語意中間表徵來改善正確性與組合推理。SemanticALLI 與此工作正交：我們的貢獻不在於引入新的解析 IR，而在於將此類 IR 視為跨使用者請求的可快取、持久化工件。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

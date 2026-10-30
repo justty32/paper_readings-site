@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2303.08896_SelfCheckGPT.zh-TW.html">回 2303.08896_SelfCheckGPT.zh-TW 目錄</a>　<a href="02_SelfCheckGPT.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>生成式大型語言模型（LLM）如 GPT-3 能對各種使用者提示生成高度流暢的回應。然而，LLM 已知會虛構事實、產生非事實陳述，這會削弱使用者對其輸出的信任。既有事實查核法要嘛需要存取輸出機率分佈（對 ChatGPT 這類系統可能拿不到），要嘛需要透過另外、通常複雜的模組介接外部資料庫。本文提出「<strong>SelfCheckGPT</strong>」，一個簡單的、基於取樣的方法，可用零資源方式（即不需外部資料庫）對黑箱模型的回應做事實查核。SelfCheckGPT 利用一個簡單的想法：若 LLM 對某概念有知識，取樣出的多份回應通常會相似且內容一致；但對於幻覺出的事實，隨機取樣的回應則容易發散、彼此矛盾。我們用 GPT-3 對 WikiBio 資料集中的人物生成段落來驗證此方法，並人工標註生成段落的事實性。我們證明 SelfCheckGPT 能：(i) 偵測非事實與事實句；(ii) 依事實性為段落排序。我們把此方法與多個基線比較，顯示本方法在句子級幻覺偵測的 AUC-PR 分數，以及段落級事實性評估的相關分數上，皆顯著優於灰箱方法。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>GPT-3（Brown et al., 2020）、PaLM（Chowdhery et al., 2022）等 LLM 能對各種使用者提示生成流暢逼真的回應，已用於自動草擬報告、虛擬助理、摘要系統等應用。儘管 LLM 生成的文本看似令人信服，一個日益受關注的隱憂是它們傾向於<strong>虛構事實</strong>。已被廣泛觀察到：模型能自信地生成虛構資訊，而目前幾乎沒有適合的方法能識別 LLM 幻覺。</p>
+<p>一種可能的幻覺偵測途徑，是利用既有的內在不確定性指標來判斷輸出序列中系統最不確定的部分（Yuan et al., 2021；Fu et al., 2023）。然而 token 機率、熵這類不確定性指標需要存取 token 級機率分佈，而透過受限外部 API 存取的系統（如系統只提供文字介面時）未必能取得這些資訊。另一條路是事實查核：從外部資料庫檢索證據來評估陳述真偽（Thorne et al., 2018；Guo et al., 2022），但事實只能相對於資料庫中的知識來評估，而且幻覺出現的場景遠不只事實查核（Kryscinski et al., 2020；Maynez et al., 2020）。</p>
+<p>本文提出 SelfCheckGPT，一個基於取樣的方法，可偵測 LLM 生成的回應是否為幻覺。就作者所知，SelfCheckGPT 是<strong>第一個</strong>分析一般 LLM 回應之模型幻覺的工作，也是<strong>第一個可套用於黑箱系統的零資源幻覺偵測方案</strong>。其動機直覺是：當 LLM 對某概念曾在訓練中學過，取樣出的回應會彼此相似、內容一致；但對於幻覺出的事實，隨機取樣的回應會發散甚至矛盾。透過從 LLM 取樣多份回應，可以測量不同回應間的資訊一致性，藉此判斷陳述是事實還是幻覺。由於 SelfCheckGPT 只利用取樣的回應，它有一項額外優點：可用於黑箱模型，且不需外部資料庫。本文考慮五種衡量資訊一致性的 SelfCheckGPT 變體：BERTScore、問答式（question-answering）、n-gram、NLI、以及 LLM prompting。透過對 GPT-3 生成、經人工標註的文章分析，我們證明 SelfCheckGPT 是高度有效的幻覺偵測方法，甚至能超越灰箱方法，可作為這個日益重要問題的強力第一基線。</p>
+<h2 id="2-背景與相關工作">2. 背景與相關工作</h2>
+<h3 id="21-大型語言模型的幻覺">2.1 大型語言模型的幻覺</h3>
+<p>幻覺已在文本生成任務中被研究，包括摘要（Huang et al., 2021）與對話生成（Shuster et al., 2021），以及其他多種自然語言生成任務（Ji et al., 2023）。自我一致性解碼（self-consistency decoding）已被證明能提升思維鏈提示在複雜推理任務上的表現（Wang et al., 2023）。此外，Liu et al.（2022）引入一個幻覺偵測資料集，然而其文本是透過擾動事實文本取得，未必能反映真實的 LLM 幻覺。</p>
+<p>近期，Azaria and Mitchell（2023）訓練一個多層感知器分類器，用 LLM 的隱藏表徵作輸入來預測句子的真實性。然而這是白箱方法，需要存取 LLM 的內部狀態（透過 API 呼叫可能拿不到），且需要標註資料做監督訓練。另一種近期做法是自我評估（self-evaluation）（Kadavath et al., 2022），讓 LLM 對自己先前的預測做評估，例如預測其生成回應/答案為真的機率。</p>
+<h3 id="22-序列層級不確定性估計">2.2 序列層級不確定性估計</h3>
+<p>Token 機率已被用作模型確定性的指標。例如 OpenAI 的 GPT-3 網頁介面允許使用者顯示 token 機率（如圖 2），基於偶然性與認知性不確定性的估計方法也已被研究於自迴歸生成（Xiao and Wang, 2021；Malinin and Gales, 2021）。此外，條件語言模型分數已被用於評估文本屬性（Yuan et al., 2021；Fu et al., 2023）。近期語意不確定性（semantic uncertainty）被提出以處理自由格式生成任務中的不確定性，把機率附加在概念而非 token 上（Kuhn et al., 2023）。</p>
+<h3 id="23-事實查核">2.3 事實查核</h3>
+<p>既有事實查核法通常遵循「宣稱偵測 → 證據檢索 → 判決預測」的多階段流程（Guo et al., 2022；Zhong et al., 2020）。此類方法需要存取外部資料庫，且推理成本可觀。</p>
+<h2 id="3-灰箱事實性評估">3. 灰箱事實性評估</h2>
+<p>本節介紹在<strong>擁有完整輸出分佈存取權</strong>時，可用於零資源設定判斷 LLM 回應事實性的方法（白箱方法如 Azaria and Mitchell（2023）需要完整內部狀態，較不實用，本文不考慮）。本文以「事實（factual）」指陳述根植於有效資訊（即未出現幻覺），以「零資源（zero-resource）」指不使用外部資料庫。</p>
+<h3 id="31-基於不確定性的評估">3.1 基於不確定性的評估</h3>
+<p>要理解如何在零資源設定下判斷生成回應的事實性，可從 LLM 預訓練考慮：模型在龐大語料上以next-word prediction 訓練，因而獲得強大的語言理解能力（Jawahar et al., 2019；Raffel et al., 2020）、強大的脈絡推理能力（Zhang et al., 2020），以及世界知識（Liusie et al., 2023）。以輸入「Lionel Messi is a _」為例，由於梅西是世界知名運動員，可能在預訓練中多次出現，LLM 很可能知道他是誰，因此 token「footballer」可能被賦予高機率，而「carpenter」等其他職業則機率甚低。但對於「John Smith is a _」這類輸入，系統會不確定該如何續寫，可能導致平坦的機率分佈，推理時容易生成非事實詞彙。</p>
+<p>這揭示了不確定性指標與事實性之間的關聯：事實句往往包含較高似然、較低熵的 token，而幻覺往往來自機率分佈平坦、不確定性高的位置。</p>
+<p><strong>Token 級機率</strong>：給定 LLM 回應 R，令 i 表示 R 中第 i 句，j 表示第 i 句中第 j 個 token，J 為該句 token 數，pᵢⱼ 為 LLM 在第 i 句第 j 個 token 上生成的詞的機率。使用兩種機率指標：Avg(-log p) 取該句所有 token 負對數機率的平均；Max(-log p) 取該句中最不可能 token 的負對數機率（即以句中最不可能的 token 衡量整句似然）。</p>
+<p><strong>熵</strong>：輸出分佈的熵 ℋᵢⱼ 定義為該位置詞彙表上所有候選詞機率的資訊熵；同樣用 Avg(ℋ) 與 Max(ℋ) 兩種聚合方式。</p>
+<h2 id="4-黑箱事實性評估">4. 黑箱事實性評估</h2>
+<p>灰箱方法的缺點是需要輸出 token 級機率，這個要求乍看合理，但對於僅透過受限 API 存取的大型 LLM（如 ChatGPT），這類 token 級資訊可能根本拿不到。因此本文考慮<strong>即使只能取得文字回應</strong>也依然適用的黑箱方法。</p>
+<p><strong>代理 LLM（Proxy LLMs）</strong>：一種近似灰箱方法的簡單做法，是用另一個我們有完整存取權的 LLM（代理 LLM，例如 LLaMA，Touvron et al., 2023）來近似黑箱 LLM 生成該文本的 token 級機率。下一節提出的 SelfCheckGPT 同樣是一種黑箱方法。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

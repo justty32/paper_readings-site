@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_離線_Token_預處理 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2502.05111_FlexibleGCD.zh-TW.html">回 2502.05111_FlexibleGCD.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-離線-token-預處理">3. 離線 Token 預處理</h2>
+<p>方法先預處理 lexer，有效率地建立「LLM token ↔ 終端符序列」雙向查表（§3.1、§3.2），再用預處理過的 lexer 分析剖析器，判定文法中實際可能出現哪些終端符序列（§3.3）。</p>
+<h3 id="31-lexer-預處理">3.1 Lexer 預處理</h3>
+<p>終端符以一組正規式指定，方便起見以<strong>詞法自動機（lexing automaton）</strong>（接受符合任一終端符定義之字串的 FSA）表達。</p>
+<ul>
+<li><strong>簡化假設。</strong> lexer 採兩個實務假設以提升效率、避免回溯：<strong>最長匹配原則（maximal munch）</strong>——lexer 從當前位置起匹配符合某 token 樣式的最長子字串（例如 <code>++</code> 優先當成遞增運算子而非兩個 <code>+</code>）；以及 <strong>1-lookahead（1 個字元前瞻）</strong>——在每一步只需檢視下一個字元即可解決所有分詞歧義。若掃到的前綴無法被詞法化為單一終端符，多數 lexer（含 Python）會報錯停止。</li>
+<li><strong>詞法轉換器（lexing transducer）。</strong> 由詞法自動機建構一個有限狀態轉換器（FST，能在讀字元時產出終端符）<code>T_A</code>：逐字元轉移；當某字元無合法轉移時，檢查當前狀態是否對應合法語言 token，據此吐出終端符並重置。無法消耗的字元即為無效字元，指示解碼時該遮哪些 token。</li>
+<li><strong>LLM token 到終端符。</strong> 執行時若逐字元跑 lexing transducer 開銷大。於是把「字元→終端符」的 lexing transducer 與 Koo et al.(2024) 的<strong>去分詞轉換器（detokenizing transducer）</strong> <code>T_V</code>（把 LLM token 映回其字元序列）組合，得到 <strong>token 級的組合轉換器 <code>T_{A∘V} = T_A ∘ T_V</code></strong>（確定化後）。此「token→終端符」轉換器讓「在每個狀態查合法下一 token 與所產終端符」變得高效；共享前綴以 trie 結構重用計算。</li>
+</ul>
+<h3 id="32-可實現的終端符序列realizable-terminal-sequences">3.2 可實現的終端符序列（Realizable Terminal Sequences）</h3>
+<p>有了上述機制，便能把 LLM token 映到可能的終端符序列。對組合轉換器 <code>T_{A∘V}</code> 的每條轉移 <code>q -[t:T1…Tk]-&gt; q'</code>，我們檢查是否存在終端符 <code>T</code> 使得 (i) <code>T</code> 能從 <code>q'</code> 沿某路徑產生、且 (ii) <code>T1…Tk T</code> 被文法接受。由此定義：<strong>可產生終端符（Producible Terminals）</strong> <code>Prod(q)</code>——從 <code>q</code> 出發某路徑可產生的終端符集合；以及 <strong>可實現終端符序列（Realizable Terminal Sequences）</strong> <code>Re_{A∘V}</code>——所有「某轉移產出 <code>T1…Tk</code>、且 <code>T∈Prod(q')</code>」的序列 <code>T1…Tk T</code> 之集合。由於 LLM 詞彙表含 <code>Σ</code> 中所有字元（故 <code>Σ*=V*</code>），可產生性檢查可只在較小的 <code>T_A</code> 上算可達性，不必分析龐大的 <code>T_{A∘V}</code>。</p>
+<ul>
+<li><strong>逆向 token spanner 表（Inverse Token Spanner Table）<code>Tinv</code>。</strong> 演算法 4 建構此關鍵結構：對 lexer 狀態 <code>q</code> 與序列 <code>T1…Tk T</code>，<code>Tinv(q, T1…Tk T)</code> 是「能從狀態 <code>q</code> 產生該終端符序列的 token 集合」。可達性算法（Floyd 1962）可預算每個狀態的可產生終端符。此表讓解碼器能反查「哪些 LLM token 能從某 lexer 狀態產出某可實現終端符序列」。例如序列 <code>BC</code> 在狀態 <code>q0</code> 由 token <code>aba</code> 產生，在狀態 <code>q2</code> 由 token <code>ac</code> 產生。</li>
+</ul>
+<h3 id="33-剖析器預處理">3.3 剖析器預處理</h3>
+<p>CFG 剖析器通常形式化為 PDA（FSA 加執行堆疊）。與 lexer 預處理一樣，目標是預處理剖析器以免執行時逐一遍歷 lexer 產生的每個終端符序列。PDA 相較 lexer 的難處在於<strong>需要堆疊</strong>：堆疊內容須在執行時才知，故無法在預處理時完全判定某序列是否可從某狀態被接受。但仍可辨識許多「無論堆疊為何都必被接受或必被拒絕」的序列。</p>
+<ul>
+<li>作法：把去分詞得到的 <code>Re_{A∘V}</code> 直接與剖析器產生的 PDA <code>P</code>（其轉移操作於單一終端符）組合，得到新 PDA <code>P ∘ T_{Re_{A∘V}}</code>（轉移操作於終端符序列），能有效率地從每個剖析器狀態判定合法終端符序列。<strong>同時（in tandem）預處理 lexer 與剖析器，是本文與先前工作（Beurer-Kellner et al. 2024；Ugare et al. 2024）的關鍵區別。</strong></li>
+<li><strong>命題 3.5（堆疊不變性 Stack Invariance）。</strong> 若 PDA <code>P</code> 在狀態 <code>q</code>、堆疊 <code>γ</code> 下接受輸入 <code>w</code>，則堆疊為 <code>γ'·γ</code> 時（<code>γ</code> 在頂、下方多疊符號）也接受。故以空堆疊被接受的終端符序列，在任何堆疊下皆被接受——給出「何時序列必被接受」的充分條件。</li>
+<li><strong>命題 3.6（以 FSA 過近似 Overapproximation）。</strong> 把 PDA 的所有堆疊操作移除得 FSA <code>A_P</code>；若 <code>w</code> 不被 <code>A_P</code> 在狀態 <code>q</code> 接受，則 <code>w</code> 在任何堆疊配置下都不被 <code>P</code> 接受——給出「必被拒絕」的判定。</li>
+<li>據此為每對 <code>(lexer 狀態 q_A, 剖析器狀態 q_P)</code> 建兩張表：<strong>永遠被接受的 token 表 <code>A(q_A,q_P)</code></strong>（不論堆疊皆被接受）與<strong>依上下文而定的終端符序列表 <code>D(q_A,q_P)</code></strong>（某些堆疊下才接受）。一個效率關鍵是：組合轉換器裡許多轉移產出相同終端符序列，使 <code>|Re_{A∘V}|</code> 小於 <code>|V|</code> 或 <code>|δ|</code>，讓預計算「剖析器該考慮哪些終端符序列」更有效率。</li>
+</ul>
+<h2 id="4-線上-token-遮罩">4. 線上 Token 遮罩</h2>
+<p>有了預處理好的 <code>Tinv</code>、永遠被接受表 <code>A</code>、依上下文表 <code>D</code>，即可描述線上解碼（演算法 6 ComputeValidTokenMask）。每個解碼步驟分析 lexer 狀態 <code>q_A</code>、剖析器狀態 <code>q_P</code> 與當前堆疊 <code>γ</code>，產出「所有能導向被文法接受序列」的 LLM token 集合 <code>V_allowed</code>。</p>
+<p>雖然預處理時用組合 PDA <code>P ∘ T_{Re_{A∘V}}</code> 來算「一個 token 能產生哪些終端符序列」，但在解碼時用同一自動機做檢查會很沒效率——PDA 未必能確定化，且須對不同堆疊配置算可達性，等於在解碼時測試 <code>Re_{A∘V}</code> 中所有序列，使剖析器預處理白費。因此演算法 6 <strong>盡量用永遠被接受表 <code>A</code></strong> 以避開遍歷 PDA，只對 <code>D</code> 描述的「依上下文序列」在解碼時才分析 PDA 能接受哪些終端符；接著對每個被文法接受的終端符序列查逆向 token spanner 表 <code>Tinv</code>，取出能導向該序列的 token 集合，得到下一步合法 token。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

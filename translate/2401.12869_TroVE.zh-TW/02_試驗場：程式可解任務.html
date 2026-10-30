@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_試驗場：程式可解任務 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2401.12869_TroVE.zh-TW.html">回 2401.12869_TroVE.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E6%B6%88%E8%9E%8D%E7%A0%94%E7%A9%B6.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-試驗場程式可解任務">4. 試驗場：程式可解任務</h2>
+<p><strong>預設原始函數（§4.1）</strong>：所有實驗指示模型以 Python 程式作答，預設原始函數即 Python 內建函數；MATH 只用預設，TableQA 與 VisualQA 另加資料相關函數。</p>
+<ul>
+<li><strong>數學題（§4.2）</strong>：MATH 資料集，涵蓋代數、計數與機率、幾何、中階代數、數論、預代數、預微積分七科（各 156–881 個測試例；本方法只需測試資料）。</li>
+<li><strong>表格問答（§4.3）</strong>：表格以 pandas DataFrame 表示（pandas 加入原始函數集）。<strong>TabMWP</strong>（5,376 例）：關聯式表格上的數學文字題，問題較簡單（數值計算、論元選擇），表格小、直接以 markdown 序列化入提示。<strong>WTQ</strong>（4,344 例）：半結構化 Wikipedia 表格，儲存格未正規化，需字串處理（如從「$ 100.00」解析數字）與外部知識檢索；表格可能過長，提示中放 DataFrame 預覽並讓模型用 pandas.read_table 從 CSV 載入。<strong>HiTab</strong>（1,574 例）：階層式矩陣表格，結構更複雜，需沿雙維表頭階層做多跳選擇等特殊操作；另加 parse_table 為原始函數。</li>
+<li><strong>視覺推理（§4.4）</strong>：GQA（12,578 例），真實圖像上的組合式問題。僅靠 PIL／cv2 這類影像庫，模型幾乎寫不出可行解（正確率僅 1%），遑論歸納高階函數。故採 VisProg 的三個主要原始動作：神經模組 visual_qa、locate_objects 與處理模組 crop_region，加上 PIL.Image 載圖。為減少專家工程，未採用 VisProg 其餘六個可能為 GQA 量身打造的動作（如 check_exists）；移除它們會輕微降低模型表現。</li>
+</ul>
+<h2 id="5-實驗">5. 實驗</h2>
+<p><strong>設定（§5.1）</strong>：比較 TroVE 與 Primitive、Instance 兩基線。主要使用 <strong>CodeLLaMa2-7b-Instruct</strong>（我們是第一個證明開源 LM 能造工具的工作），另用 GPT-4 與既有 SOTA 公平比較。提示含 c=2 個範例，每模式採樣 K=5 個回應，每 200 步修剪一次工具箱。解碼溫度 0.6、top-p 0.95，最多生成 512 tokens。為容納採樣隨機性，每個實驗跑五次、報告最佳一次。</p>
+<p><strong>評估指標（§5.2）</strong>：(1) <strong>答案正確率</strong>（acc ↑）：解答程式的執行結果是否與標準答案完全匹配；(2) <strong>解答複雜度</strong>（# ops ↓）：程式中函數呼叫的數量（附錄 B：把解答拆成多個表達式、各解析為 AST，以 AST 深度為該表達式操作數，加總為全程式複雜度）——函數越少越易、越快被理解與驗證；(3) <strong>函數庫大小</strong>（# lib ↓）：只計額外歸納的函數數；控制庫的大小並鼓勵跨例共享至關重要——相較於多個功能相近的工具，少而功能互異的工具讓解答生成時的工具選擇更容易。</p>
+<p><strong>模型表現（§5.3，表 2，CodeLLaMa）</strong>：TroVE 產出最準確的解答、複雜度普遍更低，並維持一個小而高效的函數庫。</p>
+<table>
+<thead>
+<tr>
+<th>資料集（節選）</th>
+<th>Primitive acc</th>
+<th>Instance acc（# lib）</th>
+<th>TroVE acc（# lib）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MATH-algebra</td>
+<td>0.15</td>
+<td>0.22（39）</td>
+<td><strong>0.25</strong>（10）</td>
+</tr>
+<tr>
+<td>MATH-prealgebra</td>
+<td>0.21</td>
+<td>0.26（16）</td>
+<td><strong>0.29</strong>（4）</td>
+</tr>
+<tr>
+<td>TabMWP</td>
+<td>0.43</td>
+<td>0.36（3,175）</td>
+<td><strong>0.47</strong>（10）</td>
+</tr>
+<tr>
+<td>WTQ</td>
+<td>0.20</td>
+<td>0.17（537）</td>
+<td><strong>0.21</strong>（11）</td>
+</tr>
+<tr>
+<td>HiTab</td>
+<td>0.09</td>
+<td>0.12（31）</td>
+<td><strong>0.18</strong>（5）</td>
+</tr>
+<tr>
+<td>GQA</td>
+<td>0.37</td>
+<td>0.16（395）</td>
+<td><strong>0.44</strong>（7）</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>數學題</strong>：TroVE 較 Primitive 在 7 個資料集上大幅提升正確率 30–120%；較 Instance 高 8.7–83.3%，且<strong>少用 60.0–90.2% 的工具</strong>。</li>
+<li><strong>表格問答</strong>：值得注意的是，Instance 在多數資料集上正確率<strong>低於 Primitive</strong>，同時生成數百甚至數千個函數。我們推測原因是任務難度與資料集規模（相較 MATH）上升，推高函數數量，過多低效用選項反而干擾模型；TroVE 透過復用與修剪緩解此干擾，取得最佳結果。</li>
+<li><strong>視覺問答</strong>：TroVE 仍最佳，Instance 則大幅劣化（較 Primitive 掉 0.21），同樣創建了大量函數（395 個）嚴重挑戰解答生成。分析推測 GQA 上很難創建大量有效的可復用函數，故多數歸納出的函數無效並損害解答生成。</li>
+</ul>
+<p><strong>與其他造工具方法比較（§5.4，表 3，GPT-4）</strong>：與 LATM、CREATOR、CRAFT 比較——三者皆含本方法不需要的額外模組或監督，且先前只在閉源 GPT 上證明有效（LATM 需額外訓練集預先造工具＋驗證集驗證工具；CREATOR 跑多輪決策、執行、修正；CRAFT 需額外訓練資料與工具檢索模組，且必須用 GPT）。為公平比較，TroVE 也改用 GPT-4，在與這些工作重疊的三個資料集上測試：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>MATH-algebra acc（# lib）</th>
+<th>TabMWP acc（# lib）</th>
+<th>GQA acc（# lib）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LATM（額外監督）</td>
+<td>0.30（–）</td>
+<td>0.09（–）</td>
+<td>0.29（–）</td>
+</tr>
+<tr>
+<td>CRAFT（額外監督）</td>
+<td>0.68（282）</td>
+<td>0.88（181）</td>
+<td><strong>0.45</strong>（525）</td>
+</tr>
+<tr>
+<td>CREATOR（修正＋迭代）</td>
+<td>0.65（875）</td>
+<td>0.81（4,595）</td>
+<td>0.34（–）</td>
+</tr>
+<tr>
+<td><strong>TroVE</strong>（皆不需）</td>
+<td><strong>0.72</strong>（<strong>16</strong>）</td>
+<td><strong>0.92</strong>（<strong>38</strong>）</td>
+<td>0.44（<strong>8</strong>）</td>
+</tr>
+</tbody>
+</table>
+<p>TroVE 以簡單得多的管線在所有資料集與多數評估面向上勝過既有 SOTA；且不僅適用於閉源 GPT，也適用於開源 CodeLLaMa（CRAFT 曾報告其方法在 CodeLLaMa 上近乎隨機）。</p>
+<p><strong>已見過原始函數的訓練優勢</strong>：GPT-4 在多數任務上勝過 CodeLLaMa，但兩者在 GQA 上表現相當（表 4：TroVE 下皆為 0.44）。我們推測差異來自模型對原始函數的熟悉度——pandas 在訓練資料中頻繁出現，模型更擅長／傾向用它寫解答；而 GQA 的手工原始函數從未有大規模標註資料，模型在語境中學它們的難度與學歸納函數相當。GQA 消除了 GPT-4 的原始函數優勢後，7B 的 CodeLLaMa 靠造工具與（重）用工具<strong>與 GPT-4 打平</strong>，頗值得玩味。</p>
+<h2 id="6-人類的高效驗證">6. 人類的高效驗證</h2>
+<p>模型產出的解答未必可靠，因此我們研究 TroVE 是否讓人類更高效地驗證解答。隨機選 100 例，請 6 位人類評估者在 WTQ 資料集上驗證 Primitive、Instance、TroVE 三法生成解答的正確性（選 WTQ 因 TableQA 函數較其他任務複雜，而 WTQ 是中等難度的最公平代表）。兩個評估面向：<strong>偵測準確率</strong>（能否正確判斷解答對錯，越高越好）與<strong>耗時</strong>（平均每例驗證秒數，越低越好）。</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>偵測準確率（std）</th>
+<th>耗時秒（std）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Primitive</td>
+<td>0.77（0.109）</td>
+<td>25.5（6.671）</td>
+</tr>
+<tr>
+<td>Instance</td>
+<td>0.88（0.024）</td>
+<td>30.7（12.750）</td>
+</tr>
+<tr>
+<td>TroVE</td>
+<td>0.87（0.057）</td>
+<td><strong>17.5</strong>（4.855）</td>
+</tr>
+</tbody>
+</table>
+<p>解答中使用工具（Instance 與 TroVE）使偵測準確率較只用原始函數提升 13.0–14.3%；耗時方面，TroVE 較 Primitive 減少 31.4%、較 Instance 減少 43.0%——但使用<strong>不可復用</strong>工具（Instance）反而使耗時增加 20.4%。整體而言 TroVE 大幅加速驗證流程，同時保持相近的偵測準確率。（附錄 C：個別受試者結果——多數人在 TroVE 上驗證最準最快，僅一人例外。）</p>
+<h2 id="7-歸納專門化函數">7. 歸納專門化函數</h2>
+<p>TroVE 以同一管線展現通用性，且能產出 (1) 跨任務<strong>形式不同</strong>、(2) 跨資料集<strong>功能各異</strong>的專門化函數（以 CodeLLaMa2-7B 結果為例）：</p>
+<ul>
+<li><strong>跨任務的函數形式</strong>：MATH 上模型常匯入外部庫（sympy）以啟用進階函數，或創建針對特定題型的函數（calculate_remainder）；TableQA 歸納出組合大量原始函數的較複雜函數（如 get_match_after_condition）；VisualQA 函數涉及較少原始函數，如 get_image_region 只是 locate_objects 與 crop_region 兩個原始函數的鏈接。</li>
+<li><strong>跨資料集的功能差異</strong>：MATH 七科間，math／sympy 等核心函數重疊，但某些函數對特定題型特別有用（數論的自定義 calculate_remainder、幾何的 sympy.Polygon）；TableQA 三資料集因問題型態與表格結構差異更大，除基本 pandas 外多數函數互不相同。</li>
+</ul>
+<p>整體上，TroVE 能有效提出既<strong>通用於任務</strong>、又<strong>特定於各領域</strong>的函數；這些函數不僅助於解題，也刻畫了資料的功能分佈特性。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

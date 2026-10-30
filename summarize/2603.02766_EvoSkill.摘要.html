@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《EvoSkill：多智能體系統的自動化技能發現》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Noah Provenzano, Salaheddin Alzubi, Jaydon Bingham, Weiyuan Chen, Tu Vu（Sentient / Virginia Tech）</p><p>日期：2026-03，agent skill × evolutionary optimization × textual feedback</p><p>arXiv：2603.02766</p><p><a href="https://arxiv.org/abs/2603.02766" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="evoskill多智能體系統的自動化技能發現重點摘要">《EvoSkill：多智能體系統的自動化技能發現》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>讓一個 Proposer 代理分析執行失敗軌跡、一個 Skill-Builder 代理把提議固化成結構化技能資料夾</strong>——透過迭代失敗分析（textual feedback descent）自動發現與精煉可復用的 agent skills，不更動底層模型權重，在 OfficeQA 上準確率 +7.3%（60.6%→67.9%）、SealQA 上 +12.1%（26.6%→38.7%），且技能可 zero-shot 遷移到 BrowseComp（+5.3%）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>現有 coding agent（Claude Code、OpenHands、Codex）雖是通用解題器，但<strong>缺乏領域專長</strong>；既有的 agent skills 多為<strong>人工手工製作</strong>，難以規模化。</li>
+<li>現有演化方法（AlphaEvolve、GEPA）最佳化的是<strong>低層 artifact</strong>（prompt 或 code），與特定模型／任務緊密耦合，不產生可復用、可遷移的組件。</li>
+<li>需要一種在<strong>技能抽象層級</strong>操作的自動化框架，產出<strong>結構化、可解釋、可跨任務遷移</strong>的技能。</li>
+</ul>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>三代理架構</strong>：Executor（執行任務、產出軌跡）、Proposer（分析失敗軌跡與正確答案，診斷能力缺口，提議新建或編輯技能）、Skill-Builder（把高層提議實作爲具備 SKILL.md／觸發元資料／輔助腳本的技能資料夾）。</li>
+<li><strong>Textual Feedback Descent 演化迴圈</strong>（Algorithm 1）：維護一個容量 k 的 Pareto frontier，每輪 round-robin 選出一父程式，在訓練批次上收集失敗案例，Proposer 診斷失敗並產生提議 π，Skill-Builder 實作出候選版本，在保留驗證集上評分；分數超過 frontier 最弱者則加入並淘汰最弱成員。<strong>底層模型凍結</strong>，只演化技能庫與代理元資料。</li>
+<li><strong>結構化輸出</strong>：技能被實體化為符合 Agent Skills spec 的資料夾，含觸發條件、程序性指令與可選的輔助 Python/TypeScript 腳本。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>OfficeQA</strong>（美國財政部公報接地推理，246 題）：只用 10% 訓練資料，exact-match 從 60.6%→65.8%（+5.2%）；合併多次獨立運行的技能庫達 67.9%（+7.3%）。發現的技能包括 data-extraction-verification（數值提取驗證協議）、quantitative-analysis-methodology（量化分析檢查點）。</li>
+<li><strong>SealQA</strong>（搜尋增強 QA，含噪音檢索，111 題）：10% 訓練，準確率 26.6%→38.7%（+12.1%）。發現 search-persistence-protocol（強制窮盡搜尋後才能作答）。</li>
+<li><strong>Zero-shot 遷移</strong>：SealQA 上發現的 search-persistence-protocol 未經任何修改直接用到 BrowseComp（128 題），準確率 43.5%→48.8%（+5.3%），證明技能級別最佳化的產物具備跨任務泛化性。</li>
+</ul>
+<h2 id="與-ai_core-的關聯">與 ai_core 的關聯</h2>
+<p>本論文的核心機制——<strong>自動技能發現（automated skill discovery）</strong>——與 ai_core §3.6 描述的**「固化引擎創建機制」**直接對應：EvoSkill 的 Skill-Builder 代理將 Proposer 分析失敗後產生的能力缺口提議，<strong>固化</strong>為結構化、可復用的技能資料夾（SKILL.md＋腳本），正是 ai_core §3.6 中「將已驗證有效的代理行為模式沉澱為持久化技能單元」的具體實現範式。EvoSkill 進一步以 frontier-based 演化迴圈自動化了「何時該創建新技能、何時該編輯既有技能」的決策，為 ai_core 的技能固化管線提供了可操作的演算法藍圖。</p>
+<h2 id="局限">局限</h2>
+<ul>
+<li>每次迭代需執行 Opus 4.5 等級的昂貴模型（Proposer + Skill-Builder + Executor），計算成本高，論文每種配置僅跑一次，未做多 seed 變異數分析。</li>
+<li>訓練資料超過 10% 後出現收益遞減（OfficeQA 15% 反而略低於 10%），提示可能過擬合。</li>
+<li>技能遷移目前僅驗證了一對任務（SealQA→BrowseComp），跨更多領域、模型與 agent harness 的泛化性尚待系統性研究。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本庫「<strong>agent skill / 多智能體自動化</strong>」方向的關鍵論文：它是第一個在技能抽象層級（而非 prompt/code 層級）運作的<strong>自動化技能發現框架</strong>，產出符合 Agent Skills spec 的標準化可復用技能。</li>
+<li>與本庫其他論文對讀：EvoSkill 把 Voyager（<a class="paper-reference" href="2305.16291_Voyager.%E6%91%98%E8%A6%81.html">2305.16291</a>）的「技能庫自動增長」思路從 Minecraft 推進到通用 coding agent，並在演化機制上借鑑 Feedback Descent（<a class="paper-reference" href="https://arxiv.org/abs/2511.07919">2511.07919</a>）的 frontier-based 文字回饋最佳化；其 skill-building meta-skill 設計也與 Roma（<a class="paper-reference" href="https://arxiv.org/abs/2602.01848">2602.01848</a>）的遞迴元代理框架形成互補——Roma 組織多代理協作，EvoSkill 則自動發現協作所需的技能本身。</li>
+<li>一條脈絡：Voyager（2023，Minecraft 技能自動發現）→ Feedback Descent（2025，文字回饋驅動的開放式最佳化）→ <strong>EvoSkill（2026，技能抽象層級的自動發現與跨任務遷移）</strong>——從遊戲到通用 agent、從 artifact 最佳化到技能級別最佳化，代表了 agent capability acquisition 正從手工工程走向自動化發現。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2603.02766_EvoSkill.zh-TW.html"><code>../translate/2603.02766_EvoSkill.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

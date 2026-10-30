@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_GP與序列決策搜尋 · 論文閱讀</title><link rel="stylesheet" href="../../../html/_shared.css"><link rel="stylesheet" href="../../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../../html/index.html">總覽</a><a href="../../../index/README.html">論文索引</a><a href="../../../html/deep.html">深掘綜述</a><a href="../../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../02_%E5%90%84%E6%B4%BE%E5%88%A5%E4%BB%A3%E8%A1%A8%E8%AB%96%E6%96%87%E8%88%87%E8%A9%95%E6%9E%90.html">回本章目錄</a>　<a href="02_%E7%A8%80%E7%96%8F%E8%BF%B4%E6%AD%B8%E8%88%87%E8%B2%9D%E6%B0%8F%E6%8E%A8%E6%96%B7.html">下一子節 →</a></p>
+</blockquote>
+<h3 id="a1-gp-演化genetic-programming-最成熟的主力">A1. GP 演化（Genetic Programming）— 最成熟的主力</h3>
+<p>把表達式表示為樹，用族群 + 交叉/變異 + 選擇演化，多目標權衡「準確 vs 複雜度」的 Pareto 前沿。是 SRBench 上長年的 SOTA 底盤（Operon、PySR、Brush 皆屬此）。</p>
+<table>
+<thead>
+<tr>
+<th>論文</th>
+<th>核心思想</th>
+<th>優點</th>
+<th>缺點</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a class="paper-reference" href="../../../summarize/2512.01682_SR_Current_Challenges_Thesis.%E6%91%98%E8%A6%81.html">2512.01682</a> SR 當前挑戰（Aldeia 博論，Brush）</td>
+<td>不提新 solver，而系統改進 GP-SR 四支柱：參數最佳化（LM+OLS）、選擇（ε-lexicase 的 MVT 閾值）、簡化（LSH/SimHash 不精確簡化）、benchmark 重評</td>
+<td>工程「四支柱」最系統的參考手冊；達準確-簡單度 Pareto 最優</td>
+<td>無單一突破；不精確簡化會微改函數行為，不宜精確科學發現</td>
+</tr>
+<tr>
+<td><a class="paper-reference" href="../../../summarize/2512.07961_Brush_Clinical_SR.%E6%91%98%E8%A6%81.html">2512.07961</a> Brush 臨床評分</td>
+<td>把決策樹 split 節點（3 分支、可學閾值、最小化兩側變異數）+ 非線性常數優化（LM） 融入 SR，產「規則+方程」混合模型</td>
+<td>填補 SR 長年缺口（規則邏輯）；模型遠小於 DT/RF；split 同時提升可解釋與 AUPRC</td>
+<td>偏應用，新穎性集中於 split 節點</td>
+</tr>
+<tr>
+<td><a class="paper-reference" href="../../../summarize/2504.05756_SR_Survival_Analysis.%E6%91%98%E8%A6%81.html">2504.05756</a> 演化生存分析</td>
+<td>SR 當「特徵建構」嵌入 Cox 比例風險：h(t)=h₀·exp（演化特徵的線性組合），多目標（IPCW C-index vs 維度數）</td>
+<td>每維度準確勝玻璃盒、與黑盒相當且可解釋；開源 pyNSGP</td>
+<td>防數值錯誤的保護運算損害可解釋性</td>
+</tr>
+<tr>
+<td><a class="paper-reference" href="../../../summarize/2412.08143_SR_Kinetic_Energy_Functional.%E6%91%98%E8%A6%81.html">2412.08143</a> 動能密度泛函（KEDF）</td>
+<td>把 SymbolicRegression.jl 從「學函數」改造成「學泛函」（加空間維、運算子升級為逐點矩陣、損失對候選密度積分）</td>
+<td>解析式 → 泛函導數天然可算，正中 OF-DFT 需求</td>
+<td>結果偏負面：多電子下半局域 SR 不足</td>
+</tr>
+</tbody>
+</table>
+<p><strong>G 類 GP 基礎設施與加速（旁支但關鍵）</strong>：</p>
+<ul>
+<li><a class="paper-reference" href="../../../summarize/2501.17168_EvoGP.%E6%91%98%E8%A6%81.html">2501.17168</a> EvoGP：整條 GP 流程搬上 GPU 群級並行（張量化變長樹 + 自適應並行），峰值 &gt;10¹¹ GPops/s、比 Operon 快 18×——<strong>解決 GP「慢」的硬傷</strong>。</li>
+<li><a class="paper-reference" href="../../../summarize/2504.10253_TinyverseGP.%E6%91%98%E8%A6%81.html">2504.10253</a> TinyverseGP：模組化跨域基準框架（SR/邏輯合成/策略搜尋共用核心），破解 GP 領域碎片化。</li>
+<li><a class="paper-reference" href="../../../summarize/2411.05820_EvoNUDGE_GNN_Guided_GP.%E6%91%98%E8%A6%81.html">2411.05820</a> EvoNUDGE：GNN（GAT）導引 GP——演化前先「讀出」問題知識生成子程式庫播種初始族群，對所有子樹高度系統性勝純 GP。</li>
+</ul>
+<p><strong>GP 派總評</strong>：通用性最強、不需訓練語料、Pareto 控制天然；硬傷是慢（EvoGP 在解）與易 bloat（簡化/e-graph 在解）。</p>
+<hr />
+<h3 id="a2-mcts--rl-搜尋--把建樹視為序列決策">A2. MCTS / RL 搜尋 — 把建樹視為序列決策</h3>
+<p>把「逐節點搭建表達式樹」建模成序列決策，用 RL 策略梯度或 MCTS 引導搜尋。關鍵洞見：<strong>SR 要找的是「單一全域最優式」而非「平均高獎勵」</strong>，故標準 RL/UCB 目標其實不對。</p>
+<table>
+<thead>
+<tr>
+<th>論文</th>
+<th>核心思想</th>
+<th>優點</th>
+<th>缺點</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a class="paper-reference" href="../../../summarize/2509.15929_Improved_MCTS_SR.%E6%91%98%E8%A6%81.html">2509.15929</a> 改進 MCTS-SR</td>
+<td>兩創新：①極值老虎機（UCB-extreme） 取代標準 UCB（對齊「找極值非找平均」）；②演化式「狀態跳躍」動作（變異/交叉）非局部跳轉並重塑獎勵地形</td>
+<td>回復率 SOTA、Pareto 前沿頂尖、有有限時間最優性理論保證</td>
+<td>extreme-bandit 對尾衰減參數敏感，複雜目標式上仍掙扎</td>
+</tr>
+<tr>
+<td><a class="paper-reference" href="../../../summarize/2503.06879_RL_SR_Load_Modeling.%E6%91%98%E8%A6%81.html">2503.06879</a> RL 負荷建模</td>
+<td>Actor-Critic + risk-seeking 策略梯度（只優化頂端 ε 分位數），固定深度二元樹交替 unary/binary</td>
+<td>產緊湊式、多數故障場景勝 ANN/ZIP；兼顧準確/效率/可解釋</td>
+<td>純領域應用、無新理論</td>
+</tr>
+<tr>
+<td><a class="paper-reference" href="../../../summarize/2311.02104_ESPL_Symbolic_Policy.%E6%91%98%E8%A6%81.html">2311.02104</a> ESPL 符號策略（NeurIPS23）</td>
+<td>把 RL 策略表為「可微符號網路 + 路徑選擇器遮罩」，off-policy 梯度直接訓練；擴展到 meta-RL(CSP)</td>
+<td>資料效率比 DSP 高數千倍、緊湊可解釋、端到端從零學</td>
+<td>運算子集需預先設計、表達力受候選庫限</td>
+</tr>
+<tr>
+<td><a class="paper-reference" href="../../../summarize/2609.05207_FluxDisco.%E6%91%98%E8%A6%81.html">2609.05207</a> FluxDisco</td>
+<td>用 Monte Carlo Graph Search 聯合生成全部 flux；以 canonicalization 合併等價狀態，並把已知化學計量矩陣寫進表示</td>
+<td>重用不同生成路徑抵達同一式子的評價；不必先以有限差分估導數；硬約束版在耦合項識別與效率上勝無化學計量消融版（作者自報）</td>
+<td>執行時間比比較方法高數個數量級（作者自報）；依賴正確化學計量矩陣與完全可觀測狀態，聯合搜尋擴充性有限</td>
+</tr>
+</tbody>
+</table>
+<p>FluxDisco 擴張了本節「逐節點建樹」的界線：<a class="paper-reference" href="../../../summarize/2509.15929_Improved_MCTS_SR.%E6%91%98%E8%A6%81.html">2509.15929</a>靠變異與交叉跳離局部狀態，FluxDisco 則把不同操作順序抵達、經常數折疊與詞彙排序後相同的候選合併為同一圖節點，讓評價沿多個祖先路徑回傳<a class="paper-reference" href="../../../summarize/2609.05207_FluxDisco.%E6%91%98%E8%A6%81.html">2609.05207</a>。後者也填補本章 C3 現有段落只談量綱先驗的空白：它把已知化學計量矩陣直接寫進整組 flux 的表示，並以 ODE 軌跡誤差評分，不再各自擬合狀態導數<a class="paper-reference" href="../../../summarize/2609.05207_FluxDisco.%E6%91%98%E8%A6%81.html">2609.05207</a>。因此可把它看成 A2 搜尋與 C3 物理先驗的交叉，而不是另一個純 MCTS 變體（本檔補註，非作者自陳）。不過，這項優勢依賴正確的化學計量矩陣與完全可觀測狀態，且聯合搜尋會隨系統維度與式子複雜度迅速失去擴充性；能否在較大且先驗不確定的真實系統維持優勢，仍是尚待實測的假設<a class="paper-reference" href="../../../summarize/2609.05207_FluxDisco.%E6%91%98%E8%A6%81.html">2609.05207</a>。</p>
+<p><strong>MCTS/RL 派總評</strong>：理論最漂亮（regret 界、極值老虎機），近兩年的共識是「<strong>把 GP 的演化動作（變異/交叉）當作 MCTS/RL 的跳躍算子</strong>」——搜尋式內部的混血趨勢明顯（<a class="paper-reference" href="../../../summarize/2509.15929_Improved_MCTS_SR.%E6%91%98%E8%A6%81.html">2509.15929</a> 即此）。</p>
+<hr />
+<blockquote>
+<p>← <a href="../02_%E5%90%84%E6%B4%BE%E5%88%A5%E4%BB%A3%E8%A1%A8%E8%AB%96%E6%96%87%E8%88%87%E8%A9%95%E6%9E%90.html">回本章目錄</a>　<a href="02_%E7%A8%80%E7%96%8F%E8%BF%B4%E6%AD%B8%E8%88%87%E8%B2%9D%E6%B0%8F%E6%8E%A8%E6%96%B7.html">下一子節 →</a></p>
+</blockquote>
+<footer class="site-footer"><a href="../../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

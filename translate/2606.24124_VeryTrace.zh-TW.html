@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《VeryTrace：以可編譯形式化與結構化驗證來查核推理軌跡》逐節精要翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>arXiv：2606.24124</p><p><a href="https://arxiv.org/abs/2606.24124" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="verytrace以可編譯形式化與結構化驗證來查核推理軌跡">VeryTrace：以可編譯形式化與結構化驗證來查核推理軌跡</h1>
+<blockquote>
+<p>逐節精要翻譯（非逐字）。原文 arXiv:2606.24124v1（UT Austin）。</p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>以 CoT prompting 進行多步推理仍然脆弱：早期步驟的邏輯錯誤或幻覺會靜默傳遞，產生「自信但錯誤」的結論。VeryTrace 是一個<strong>零樣本的驗證與修復框架</strong>，把自然語言推理軌跡形式化成結構化、可編譯的表示。其 DSL 做到：(i) 使步驟相依顯式化、(ii) 把量化內容機械化為可執行運算式、(iii) 用演繹 schema 結構化語義推論。混合驗證器結合「確定性檢查（運算正確性、相依解析、約束滿足）」與「針對不可機械化語義判斷的 LLM 審計」，達成<strong>步級錯誤定位與修復</strong>。在競賽數學（AIME 2025）、機器人規劃（LLM-BabyBench）、親屬推理（CLUTRR）三領域，VeryTrace 免領域訓練、免上下文示例即提升 SOTA LLM 的準確率。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>CoT 讓 LLM 能多步推導，但根本上脆弱：第 k 步一個算術錯／未言明假設／邏輯謬誤會層層擴散成連貫但錯誤的結論。既有手段面臨取捨：端到端驗證只看最終答案、無診斷粒度；自一致／投票需多次昂貴取樣卻不解釋為何失敗；另一極端的形式化證明器（Lean/Coq/Isabelle）嚴謹但需領域專屬形式化與專家語法，無法跨題型轉移。<strong>缺的是「步級驗證粒度 ＋ 領域無關泛化」</strong>——驗證推理「過程」。</p>
+<p>VeryTrace 把推理軌跡視為<strong>可編譯程式</strong>逐步驗證。借鑑 tactic 式定理證明，把推理建模為狀態轉移序列：每步宣告相依、套用運算或演繹 schema、產出更新狀態（變數綁定＋活躍約束）。這帶來兩個關鍵能力：(i) 對可形式化部分（算術、符號求值、相依排序）做機械驗證；(ii) 對不可形式化的語義部分（自然語言約束、常識推論）做結構化 LLM 審計。形式化邏輯與驗證管線<strong>跨領域通用，無需專屬處理器</strong>。</p>
+<p><strong>四項貢獻</strong>：(1) 領域無關的推理軌跡 DSL;(2) 混合狀態轉移驗證器（確定性檢查＋結構化 LLM 審計，沿步驟傳遞推理狀態）;(3) 驗證驅動的修復框架（步級診斷 → 局部修正、無需訓練／示例）;(4) 跨領域評估（AIME 2025、LLM-BabyBench、CLUTRR，多個 SOTA LLM 一致增益）。</p>
+<h2 id="2-相關工作">2 相關工作</h2>
+<ul>
+<li><strong>CoT 推理與驗證</strong>：Tree-/Graph-of-Thoughts、least-to-most 缺錯誤偵測；自一致投票昂貴又不診斷；Self-Refine、Chain-of-Verification、Natural Program 做迭代精修；Process reward models、step 級 verifier 需大量訓練且領域專屬。VeryTrace 以<strong>領域無關 DSL</strong> 讓步驟「能機械驗就機械驗」，無需訓練 verifier 或多次取樣即提供精準定位。</li>
+<li><strong>形式方法／求解器整合</strong>：Lean/Isabelle/Coq 嚴謹但需專家語法；autoformalization、Draft-Sketch-Prove、Logic.py、LELMA、SMT 等橋接自然語言與求解器，但形式化需專業知識、機械為領域專屬、完整形式化常不切實際。VeryTrace 採 tactic 式精神（顯式狀態轉移、宣告相依、結構化推論規則）但以輕量 DSL 與混合策略保持領域無關。</li>
+<li><strong>神經符號方法與學習式 verifier</strong>：傳統 NeSy 多用於視覺問答，未處理語言模型的多步推理驗證。</li>
+</ul>
+<h2 id="3-推理軌跡形式化的-dsl">3 推理軌跡形式化的 DSL</h2>
+<ul>
+<li><strong>3.1 推理狀態</strong>：每步輸出更新的狀態（變數綁定 ＋ 活躍約束）。</li>
+<li><strong>3.2 形式化問題脈絡</strong>：抽出 𝒦 ＝ {初始事實 F、假設 A、不變約束 C_inv、目標約束 C_goal}。</li>
+<li><strong>3.3 型別化推理步驟</strong>：每步宣告相依、套用一個運算（<code>COMPUTE</code>）或演繹 schema（直接蘊含／modus ponens／遞移／case 分析）。</li>
+</ul>
+<h2 id="4-結構化驗證">4 結構化驗證</h2>
+<ul>
+<li><strong>4.1 兩階段 DSL 轉換</strong>：Stage 1「脈絡抽取」——LLM 在<strong>看不到推理軌跡</strong>下抽出 𝒦（防止為合理化錯誤而幻覺脈絡）;Stage 2「軌跡翻譯」——把 CoT＋𝒦 譯成可編譯 DSL。</li>
+<li><strong>4.2 混合驗證管線</strong>：
+<ul>
+<li>結構驗證 V_str（相依解析、無前向引用）;</li>
+<li>約束驗證 V_cst（可機械化約束滿足）;</li>
+<li>運算驗證（求值右手式、檢查狀態更新）;</li>
+<li>假設與演繹驗證（步級有效性 — 不可機械化處觸發範圍受限的 LLM 審計，綁定特定步驟、schema、狀態快照）;</li>
+<li>結論驗證 V_conc（與宣告目標一致）。</li>
+</ul>
+</li>
+<li><strong>4.3 驗證驅動修復</strong>：產出可操作診斷（「Step 7 在 s₆ 下違反 c」「Step 12 算出 42 但狀態宣告 x=35」），LLM 只局部修補；迭代迴圈：生成 CoT → 形式化 → 驗證 →（無效則回傳定位錯誤）→ 再驗證。</li>
+</ul>
+<h2 id="5-評估">5 評估</h2>
+<ul>
+<li><strong>設定</strong>：AIME 2025（精確匹配）、LLM-BabyBench Planning（在 Gymnasium 網格世界執行預測動作序列算成功率）、CLUTRR 測試集 1048 題（精確匹配）。基線含零樣本、Self-Refine、Chain-of-Verification（CoVe）等。</li>
+<li><strong>主結果</strong>（Table 1，三領域三模型）：VeryTrace 普遍取得最高準確率；<strong>Qwen3-Next-80B-A3B-Thinking 在 AIME 2025 由 83.33% → 90.00%</strong>。增益跨領域泛化，但在 CLUTRR（純語義）對 CoVe 的優勢縮小——可機械驗證機會少。</li>
+<li><strong>規劃地平線</strong>：BabyBench 由 Small→Large，地平線變長時 VeryTrace 相對優勢更明顯。</li>
+<li><strong>消融（兩階段翻譯）</strong>：在 AIME、Planning（約束/運算密集）有益；在 CLUTRR 反而略遜 Direct（純語義時分離脈絡引入雜訊）。</li>
+<li><strong>附錄 E（ProcessBench）</strong>：VeryTrace 的獨立驗證能力評估；附錄 D 顯示機械驗證在 AIME/BabyBench 用得多，CLUTRR 主要靠 LLM 審計但仍有競爭力（DSL 帶來的結構本身有益）。</li>
+</ul>
+<h2 id="6-結論">6 結論</h2>
+<p>形式化推理軌跡 ＋ 結構化驗證，為「校驗邏輯推理」提供穩健框架；對推理特化模型亦有增益。</p>
+<h2 id="f-局限與未來">F 局限與未來</h2>
+<ul>
+<li>驗證成本與可擴展性；</li>
+<li>演繹步驟仍依賴語義審計；</li>
+<li>推論 schema 庫的表達力有限；</li>
+<li>未來：擴展更多語義資料集與更大 CLUTRR 切片的消融。</li>
+</ul>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2606.24124_VeryTrace.%E6%91%98%E8%A6%81.html"><code>../summarize/2606.24124_VeryTrace.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

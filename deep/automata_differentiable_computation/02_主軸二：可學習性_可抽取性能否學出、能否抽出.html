@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_主軸二：可學習性_可抽取性能否學出、能否抽出 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../automata_differentiable_computation.html">回 automata_differentiable_computation 目錄</a>　<a href="01_%E4%B8%80%E5%8F%A5%E8%A9%B1%E5%9C%B0%E5%9C%96.html">← 上一節</a>　<a href="03_%E4%BB%A3%E8%A1%A8%E4%BD%9C%E9%80%9F%E6%9F%A5%E8%A1%A8%E6%A0%B8%E5%BF%83_%2B_%E5%84%AA%E7%BC%BA%E9%BB%9E.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-主軸二可學習性--可抽取性能否學出能否抽出">3. 主軸二：可學習性 / 可抽取性（能否學出、能否抽出）</h2>
+<p>表達力只說「解存在於權重空間」，不保證「梯度訓練到得了」，也不保證「事後能把離散結構抽回來」。這條軸把論文分成三種姿態：</p>
+<h3 id="31-三種離散--神經的方向">3.1 三種「離散 ↔ 神經」的方向</h3>
+<pre><code class="language-mermaid">flowchart LR
+    subgraph BUILD[&quot;① 構造塞入(build-in)：把自動機硬編成權重&quot;]
+        B1[&quot;NN=DFA 逐層展開 [[2505.11694]]&quot;]
+        B2[&quot;NN函式庫 權重編譯 [[2605.08150]]&quot;]
+        B3[&quot;AFA 精確模擬 [[2604.01228]]&quot;]
+    end
+    subgraph LEARN[&quot;② 端到端學出(learn)：可微鬆弛+梯度下降&quot;]
+        L1[&quot;Diff-FSA 機率自動機 [[2408.11042]]&quot;]
+        L2[&quot;DiffLogic CA 連續邏輯 [[2506.04912]]&quot;]
+        L3[&quot;DeepDFA/NeSyA 可微DFA層 [[2602.03486]] [[2412.07331]]&quot;]
+        L4[&quot;PD-SSM surrogate梯度 [[2509.22284]]&quot;]
+    end
+    subgraph EXTRACT[&quot;③ 事後抽出(extract)：從訓練好的網路反向回收&quot;]
+        E1[&quot;RNN隱狀態→FST [[2601.10918]]&quot;]
+        E2[&quot;AFA雙向無損抽回 [[2604.01228]]&quot;]
+        E3[&quot;AutomataGPT 反推規則矩陣 [[2506.17333]]&quot;]
+        E4[&quot;NCA→離散電路結晶 [[2506.04912]]&quot;]
+    end
+    BUILD -.-&gt;|&quot;可解釋但不遷移到訓練網路&quot;| LEARN
+    LEARN -.-&gt;|&quot;訓完離散化&quot;| EXTRACT
+</code></pre>
+<h3 id="32-表達力--可學習性本批最重要的裂縫">3.2 表達力 ≠ 可學習性：本批最重要的裂縫</h3>
+<ul>
+<li>
+<p><a class="paper-reference" href="../../summarize/2603.01959_Diagonal_SSM_StateTracking_Limits.%E6%91%98%E8%A6%81.html">2603.01959</a> 的核心發現不是表達力，而是<strong>落差</strong>：2 層 AUSSM 理論上能表達 S₃／A₄（皆長度 2 次正規列），<strong>實際梯度訓練卻失敗</strong>；但 2 層 negative Mamba 的 C₂×C₄ 增量卻學得到。「解在權重空間存在，標準訓練到不了」——用<strong>近解初始化探針</strong>證明該解落在損失景觀的吸引盆地內，只是隨機初始化跳不進去。</p>
+</li>
+<li>
+<p><a class="paper-reference" href="../../summarize/2412.01417_ECA_Transformers.%E6%91%98%E8%A6%81.html">2412.01417</a> 在 ECA 上量到平行版本：Transformer 能跨 Boolean 函數泛化（規則抽象 acc 0.96），但<strong>多步規劃急遽崩潰</strong>，且<strong>深度直接決定可規劃步數</strong>（2 層 1 步、10 層 4 步）——即使把規則明給（RO-S）仍崩，瓶頸在「中間狀態的隱表徵傳播」而非缺規則。</p>
+</li>
+<li>
+<p>教訓：<strong>設計新架構時，「能不能模擬」只是入場券，「梯度走不走得到」才是真關卡</strong>。GraphFSA 的 Diff-FSA、PD-SSM 的 surrogate 梯度、AFA 的三階段課程＋sigmoid 鬆弛，全都是在補「可學習性」這一課的工程技巧。</p>
+</li>
+</ul>
+<h3 id="33-可抽取性把黑箱拆回離散自動機">3.3 可抽取性：把黑箱拆回離散自動機</h3>
+<ul>
+<li><strong>天然準離散</strong>：<a class="paper-reference" href="../../summarize/2601.10918_Neural_FST_Induction.%E6%91%98%E8%A6%81.html">2601.10918</a> 的關鍵觀察是 RNN 隱狀態軌跡<strong>本身就自組織成準離散模式</strong>，無需訓練時強加狀態機約束，事後分群即可抽出 FST（比古典 OSTIA 最多高 87%）。</li>
+<li><strong>無損雙向</strong>：<a class="paper-reference" href="../../summarize/2604.01228_LG_TSFFN_AFA.%E6%91%98%E8%A6%81.html">2604.01228</a> 最強——LG-TS-FFN 與 AFA <strong>結構同構</strong>，可從權重門檻化<strong>無損</strong>抽回 δ 與邏輯型別（非近似編碼）。</li>
+<li><strong>退化解現象</strong>：<a class="paper-reference" href="../../summarize/2506.17333_AutomataGPT.%E6%91%98%E8%A6%81.html">2506.17333</a> AutomataGPT 反推規則矩陣時，<code>a_appRM</code>（套用準確）恆高於 <code>a_RM</code>（精確匹配）——模型常找到<strong>不同卻管用</strong>的等效規則，「對訓練集越陌生的規則反而越會被創造性解出」。</li>
+<li><strong>一個誠實的警告</strong>：<a class="paper-reference" href="../../summarize/2605.08150_Turing_Complete_NN_Library.%E6%91%98%E8%A6%81.html">2605.08150</a> 指出<strong>手工建構的可解釋性不遷移到梯度訓練出的網路</strong>（神經元會被置換／縮放）。這給「抽取」一條紅線：抽得出 ≠ 訓練網路天生長這樣。</li>
+</ul>
+<hr />
+<h2 id="4-工程主旋律連續鬆弛訓練--離散結晶">4. 工程主旋律：「連續鬆弛訓練 → 離散結晶」</h2>
+<p>這是本批反覆出現、最具可移植性的範式。它讓你<strong>兩頭通吃</strong>：訓練期享受可微（梯度好走、樣本效率高），推論期享受離散（確定性、可上硬體、可審計、外推穩定）。</p>
+<table>
+<thead>
+<tr>
+<th>階段</th>
+<th>做什麼</th>
+<th>為何要</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>鬆弛（relax）</strong></td>
+<td>把離散運算換成連續可微版本：AND→a·b、OR→a+b−ab（<a class="paper-reference" href="../../summarize/2506.04912_DiffLogic_CA.%E6%91%98%E8%A6%81.html">2506.04912</a>）；hardmax→softmax surrogate（<a class="paper-reference" href="../../summarize/2509.22284_PD_SSM_State_Tracking.%E6%91%98%E8%A6%81.html">2509.22284</a>）；硬布林→機率分佈（<a class="paper-reference" href="../../summarize/2602.03486_DeepDFA_Temporal_Logic.%E6%91%98%E8%A6%81.html">2602.03486</a>、<a class="paper-reference" href="../../summarize/2412.07331_NeSyA.%E6%91%98%E8%A6%81.html">2412.07331</a>）；單一下一態→機率自動機（<a class="paper-reference" href="../../summarize/2408.11042_GraphFSA.%E6%91%98%E8%A6%81.html">2408.11042</a>）</td>
+<td>讓梯度能穿過離散決策</td>
+</tr>
+<tr>
+<td><strong>結晶（crystallize）</strong></td>
+<td>推論時每個閘取最可能運算 / 離散化轉移矩陣 / 抽出決策表：DiffLogic CA 結晶成確定電路、Diff-FSA 離散化抽轉移矩陣、PD-SSM 逐列 hardmax</td>
+<td>得到確定、稀疏、可部署的離散物件</td>
+</tr>
+</tbody>
+</table>
+<p><strong>代表案例與其賣點</strong>：</p>
+<ul>
+<li><strong>DiffLogic CA</strong>（<a class="paper-reference" href="../../summarize/2506.04912_DiffLogic_CA.%E6%91%98%E8%A6%81.html">2506.04912</a>）：訓練時連續邏輯閘、推論時結晶成確定電路——<strong>5 個閘畫棋盤、336 個閘做生命遊戲</strong>，可直接映射 FPGA/ASIC 做奈秒推論，且<strong>免設計的容錯／自癒</strong>。這是「結晶」範式最漂亮的展示。</li>
+<li><strong>DeepDFA</strong>（<a class="paper-reference" href="../../summarize/2602.03486_DeepDFA_Temporal_Logic.%E6%91%98%E8%A6%81.html">2602.03486</a>）：DFA＝PFA 特例 → 3D 轉移矩陣矩陣乘＝可微前向；半監督符號落地（落地函數從資料＋邏輯學得），且首度把時序知識注入延伸到互動式 RL（Neural Reward Machine）。</li>
+<li><strong>AFA 門控</strong>（<a class="paper-reference" href="../../summarize/2604.01228_LG_TSFFN_AFA.%E6%91%98%E8%A6%81.html">2604.01228</a>）：sigmoid 鬆弛 + 三階段課程學習，訓完門檻化抽回符號 AFA，100% 完美還原。</li>
+<li><strong>GraphFSA / Diff-FSA</strong>（<a class="paper-reference" href="../../summarize/2408.11042_GraphFSA.%E6%91%98%E8%A6%81.html">2408.11042</a>）：機率自動機鬆弛 + final-state loss + random iteration offset 兩個穩定性技巧，訓完離散化——<strong>離散狀態帶來迭代穩定外推</strong>（訓小圖測大圖、多跑步數不崩，基線會崩）。</li>
+</ul>
+<blockquote>
+<p><strong>共同代價</strong>：<a class="paper-reference" href="../../summarize/2506.04912_DiffLogic_CA.%E6%91%98%E8%A6%81.html">2506.04912</a> 明言訓練有顯著數值不穩、需大量超參調校；<a class="paper-reference" href="../../summarize/2509.22284_PD_SSM_State_Tracking.%E6%91%98%E8%A6%81.html">2509.22284</a> P 矩陣生成比純對角慢約 7×；鬆弛—結晶之間的 gap 永遠是調參戰場。<strong>這條範式好用，但不免費</strong>。</p>
+</blockquote>
+<hr />
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

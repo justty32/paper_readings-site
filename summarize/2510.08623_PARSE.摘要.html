@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《PARSE：LLM 驅動的結構描述優化以實現可靠實體抽取（LLM Driven Schema Optimization for Reliable Entity Extraction）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Anubhav Shrimal, Aryan Jain, Soumyajit Chowdhury, Promod Yenigalla（RBS Tech Sciences, Amazon）</p><p>日期：2025-10（EMNLP 2025）</p><p>arXiv：2510.08623</p><p><a href="https://arxiv.org/abs/2510.08623" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="parsellm-驅動的結構描述優化以實現可靠實體抽取重點摘要">《PARSE：LLM 驅動的結構描述優化以實現可靠實體抽取》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>PARSE（Parameter Automated Refinement and Schema Extraction）</strong>：不再把 JSON schema 當成「給人類開發者用的靜態合約」硬逼 LLM 遵守，而是<strong>把 schema 本身視為一種自然語言理解合約、交給 LLM 自動優化</strong>——用 <strong>ARCHITECT</strong> 離線把 schema 改寫成「利於 LLM 消費」的版本（並用子模組 <strong>RELAY</strong> 自動產出 Python 轉換碼保持對舊系統的向後相容），再用 <strong>SCOPE</strong> 以反思式（reflection）＋靜態與 LLM 雙重護欄（guardrail）做可靠抽取；把「結構化抽取」重新框定為 <strong>schema 設計與抽取機制的共同優化（co-optimization）問題</strong>，在 SWDE 上抽取準確率最高提升 <strong>64.7%</strong>，並在首次重試內把抽取錯誤減少 <strong>92%</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>在 <strong>Software 3.0</strong>（LLM agent 自主呼叫 API／工具）情境下，可靠的結構化抽取是任務成敗關鍵。但現有 JSON schema 是<strong>為人類開發者與靜態系統設計的合約</strong>，常有描述含糊、驗證規則不全、為人類可讀性而非機器理解而做的結構選擇；LLM 用這些「以人為中心」的 schema 抽取時，會遇到實體邊界不清、需求衝突、欄位關係缺乏上下文，導致頻繁幻覺與不遵守 schema（GPT-4 在複雜抽取上有 11.97% 無效回應率）。既有工作只從<strong>約束解碼（constraint decoding）、強化學習、自我修正</strong>去「強迫 LLM 遵守既有 schema」，把 schema 當不可變合約，只顧語法有效性，而<strong>不去優化結構本身</strong>以利 LLM 理解。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>兩階段設計</strong>：Build Phase（ARCHITECT 一次性優化 schema）＋ Extract Phase（SCOPE 以優化後 schema 抽取，再經 RELAY 映射回原 schema）。二者形成良性循環：好 schema 提升抽取，抽取錯誤又回饋改進 schema。</li>
+<li><strong>ARCHITECT（自動 schema 優化）</strong>：把問題形式化為 <code>S* = argmax P(S', D_synthetic, M_llm)</code>（在合成驗證資料上使抽取效能最大化的 schema）。做法：分析原 schema→產生更清晰描述／結構／驗證規則的版本→用<strong>合成對抗測試資料</strong>（由當前 schema＋種子真實樣本生成）評估→迭代 <code>Refine</code>，達準確率門檻 τ 或最大迭代 K 停止。多在<strong>前 5-6 次迭代</strong>收斂，過久會過擬合。</li>
+<li><strong>RELAY（Reverse Engineering Layer for Automated Yoking）</strong>：ARCHITECT 子模組，自動產生並驗證 Python 轉換碼，把優化 schema 的輸出映射回原始 schema 格式，靠「產樣本對→測試→迭代」確保語意保存，讓下游系統無痛沿用舊格式。</li>
+<li><strong>SCOPE（反思式抽取＋護欄）</strong>：三階段驗證——(1) 缺漏屬性檢查、(2) <strong>grounding 驗證</strong>（抽出值必須能在原文找到）、(3) 規則遵循檢查（pattern／長度／enum／日期格式等）。每階段回傳 pass/fail 與錯誤細節；失敗時產生<strong>結構化反思</strong>引導 agent 修正，而非單純重試重問。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>SWDE 增益最大</strong>：原始 schema 下 baseline 僅約 19-26% 準確率；PARSE（ARCHITECT schema＋SCOPE）各模型達 <strong>86-93%</strong>（Claude 3.7 Sonnet 24.5→93.14），最高提升 <strong>64.7%</strong>。</li>
+<li><strong>跨資料集穩定</strong>：Retail-Conv、SGD、SWDE 三資料集、五模型（Claude 3.5/3.7 Sonnet、3.5 Haiku、Llama 4-Maverick、DeepSeek-R1）上組合框架平均提升可達 <strong>10%</strong>，ARCHITECT+SCOPE 一致最強。</li>
+<li><strong>可靠性</strong>：SCOPE 相比單純失敗重問，首次重試內減少抽取錯誤 <strong>92%</strong>；ARCHITECT 優化過的 schema 更少需要重試。</li>
+<li><strong>schema 修改樣態</strong>：結構重組 55%、實體描述強化 34%、pattern 規則 3%、驗證規則 0.08%。schema 具<strong>模型無關</strong>遷移性（用 Claude 優化的 schema 套 Llama 仍受益）。</li>
+<li><strong>成本</strong>：SCOPE 因反思平均增 10.16s 延遲，但 ARCHITECT schema 可減少約 4.05s（少幾輪反思）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>ARCHITECT 迭代優化對<strong>屬性眾多的複雜 schema 計算昂貴</strong>（每輪都要合成資料＋評估＋失敗分析），大規模部署有擴展瓶頸。</li>
+<li>優化品質<strong>高度依賴種子資料集的可得性與代表性</strong>；全新領域或快速演變的 schema 難有足量高品質種子。</li>
+<li>假設 schema 相對靜態、可離線優化，對<strong>持續演變的 schema</strong> 較吃力。</li>
+<li>目前僅限文字；多模態（文字＋視覺）抽取需擴充驗證框架處理跨模態 grounding。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>對 ai_core <strong>§5 第一目標「程式碼助手」的上層「結構化抽取生資產」<strong>最直接：程式碼助手上層要把使用者的自然語言意圖抽成</strong>可靠的結構化規格</strong>，PARSE 正是「把非結構化文字轉成可信結構化資產」的成套機制——與 §5 下層「受約束填碼」互補，二者可拼成完整程式碼助手管線。</li>
+<li>三個可搬用的設計原語：(1) <strong>ARCHITECT＝把 schema 當可優化介面</strong>（而非固定合約），呼應「貴稀有智能做一次性優化、便宜高頻智能反覆消費」的資產工廠 vs 消費者觀（§2）——schema 優化是一次性 Build，抽取是高頻 Extract；(2) <strong>SCOPE 的 grounding／規則護欄＋結構化反思</strong>＝把「可靠函數」的驗證與自我修正落到結構化抽取上，正是「把 LLM 呼叫包成可靠函數」（北極星）的具體樣板；(3) <strong>RELAY 自動生成確定性轉換碼</strong>＝「把 LLM 反覆處理的映射結晶成確定性程式碼」，直接呼應 §3.6 <strong>固化引擎</strong>的精神（雖只做 schema 映射這一小塊，卻是可運行範例）。</li>
+<li>歸 <strong>I 類</strong>。短名 <code>PARSE</code>。定位：Amazon 產業界系統論文＋三資料集實證（EMNLP 2025 Industry），適合做 <strong>agent 工具參數抽取、slot filling、NER-as-schema、可靠結構化輸出護欄</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2510.08623_PARSE.zh-TW.html"><code>../translate/2510.08623_PARSE.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

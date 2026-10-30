@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_結果與討論 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2406.11695_MIPRO.zh-TW.html">回 2406.11695_MIPRO.zh-TW 目錄</a>　<a href="02_%E5%84%AA%E5%8C%96%E5%99%A8.html">← 上一節</a></p>
+</blockquote>
+<h2 id="6-結果與討論">6. 結果與討論</h2>
+<p>主結果（表 2，5 次平均；粗體為各欄最佳，經 Wilcoxon 檢定 p&lt;.05）。MIPRO 測試分數（對比未優化 0-shot 指令基線）：ScoNe <strong>79.4</strong>（69.1）、HotPotQA 46.4（36.1）、HoVer <strong>39.0</strong>（25.3）、HotPotQA Cond. 23.3（6）、Iris 88.6（34.7）、Iris-Typo <strong>74.2</strong>（26.8）、Heart Disease 74.2（26.8）。由此歸納五個教訓：</p>
+<ul>
+<li><strong>教訓 1：把自舉示範當 few-shot 範例來優化，是拿到最佳表現的關鍵。</strong> 多數任務裡，只優化自舉示範就顯著勝過只優化指令；即便簡單的 Bootstrap Random Search，除一例（HotPotQA Conditional）外都勝過該任務最佳的純指令優化器。不同 few-shot 集合間表現差異大，可見「好的自舉範例」傳遞的是「成功推理行為」的資訊，而不只是教任務格式。</li>
+<li><strong>教訓 2：用 MIPRO 聯合優化指令與示範，整體表現通常最佳（七取五）。</strong> 例外是 HotPotQA、Heart Disease、無 typo 的 Iris。推測指令對 HotPotQA 這類「最終模組是相對直白、對多數模型 in-distribution 的問答」較無價值；Heart Disease 則因初始 seed 指令未含分類準則，而當前指令優化器推斷此類準則的能力有限。</li>
+<li><strong>教訓 3：指令優化在「有條件規則、且該規則 (i) 對 LM 不明顯、(ii) 無法用有限示範表達」的任務最重要。</strong> 由 Iris-Typo、尤其 HotPotQA Conditional 支持——後者對 seed 指令（陳述任務規則）優化時，連 0-shot 指令優化都勝過純示範優化。任務複雜時務必對 seed prompt 優化，因優化器尚無法自行推斷全部規則；Iris-Typo 中指令優化器甚至能修正 seed prompt 的錯誤。</li>
+<li><strong>教訓 4：Grounding 整體有益，但最佳提案策略因任務而異。</strong> Grounding 對 HotPotQA、HoVer 的改進是必要的，卻損害 ScoNe——這促成了 MIPRO++ 這類「能為特定任務學出客製提案策略」的做法；0-Shot MIPRO++ 確實能學回 ScoNe 的這段損失。此外，貝氏模型學到的重要度分數可洞察各提案成分的效用：跨任務看，最高重要度多落在「meta-prompt 中選哪組自舉示範」與「tip」；而資料集摘要對 ScoNe 重要度高、對 HotPotQA/HoVer 反而最低之一。</li>
+<li><strong>教訓 5：LM program 優化器仍有許多待學。</strong> Module-Level OPRO、0-Shot MIPRO、0-Shot MIPRO++ 三者互有勝負；Bayesian Bootstrap 在 ScoNe 勝 Bootstrap RS，但在 HotPotQA、HoVer 不顯著。推測 0-shot MIPRO 因用 minibatch 能以同預算探索更多選項，可能在極低預算最佳；0-shot MIPRO++ 則可能在預算充裕、值得花多次試驗學提案動態時勝出——留待未來研究。</li>
+</ul>
+<h2 id="7-相關工作">7. 相關工作</h2>
+<p>既有 prompt 優化含梯度導引搜尋、重排暴力搜尋、演化演算法、以 LM 提示 LM（OPRO、APE、ProTeGi）、以及 RL（RLPrompt 等，多限於詞級/片語級編輯或文生圖）。<strong>DSPy</strong>（Khattab 2024）提出表述並優化 LM program prompt/權重的程式模型，但只探索基於「自舉強示範」的優化器。Sordoni 等人（2023）把堆疊 LLM 呼叫的聯合 prompt 優化建模為變分推論，但<strong>依賴取用傳給 LM 的顯式 token 的 log-prob</strong>——在只允許 text-in-text-out 的商用 LM API 下愈發受限；相對地，本文的優化器對任意數量模組、任意 LM program 開箱即用。</p>
+<h2 id="8-結論">8. 結論</h2>
+<p>形式化了 LM program 的 prompt 優化問題（§2），指出兩大挑戰——(1) 提出少量高品質 prompt、(2) 優化中的信用分配——並以三種提案 + 三種信用分配策略應對（§3），在新 benchmark（§5.1）上探索一組代表性優化器（§4）。發現：優化 few-shot 示範非常有力，但對「含多條件規則的複雜任務規格」而言指令優化可能不可或缺；而用 <strong>MIPRO 聯合優化指令與示範，在七情境中的五個最有效</strong>。</p>
+<h2 id="局限">局限</h2>
+<ul>
+<li>只在固定預算下研究，未探極低/極高預算下優化動態的差異（如「逐步改進提案者」與「在既有提案上高效優化者」的取捨）。</li>
+<li>proposer LM 與 task LM 固定，未測不同模型下的一致性。</li>
+<li>優化器在<strong>無手寫 seed prompt 時，難以推斷複雜任務的完整規則</strong>；Grounding 提供的資料/範例仍可能不足以外推整套規則。</li>
+<li>benchmark 雖多樣，對更複雜任務/程式的優化器表現仍待探究，改進 benchmark 是有前景的方向。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2406.11695_MIPRO.%E6%91%98%E8%A6%81.html"><code>../summarize/2406.11695_MIPRO.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

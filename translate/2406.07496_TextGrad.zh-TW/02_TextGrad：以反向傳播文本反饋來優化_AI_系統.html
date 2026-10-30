@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_TextGrad：以反向傳播文本反饋來優化_AI_系統 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2406.07496_TextGrad.zh-TW.html">回 2406.07496_TextGrad.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="2-textgrad以反向傳播文本反饋來優化-ai-系統">2. TextGrad：以反向傳播文本反饋來優化 AI 系統</h2>
+<p><strong>暖身：兩次 LLM 呼叫的系統。</strong> 考慮簡單系統：<code>Prediction = LLM(Prompt + Question)</code>、<code>Evaluation = LLM(Evaluation Instruction + Prediction)</code>，其中 <code>+</code> 表字串串接、待優化的自由參數是 Prompt。以鏈式記號寫作 <code>Prompt+Question →LLM Prediction →LLM Evaluation</code>。</p>
+<p><strong>梯度計算。</strong> 要用 evaluation 改進 Prompt，我們實例化反向傳播的類比：</p>
+<ul>
+<li><code>∂Evaluation/∂Prediction = ∇_LLM(Prediction, Evaluation)</code>；</li>
+<li><code>∂Evaluation/∂Prompt = ∇_LLM(Prompt, Prediction, ∂Evaluation/∂Prediction)</code>。</li>
+</ul>
+<p>其中 <strong>∇_LLM 是「前向函數為 LLM 呼叫」時的梯度算子</strong>，回傳形如「這個預測可以這樣改進…」的自然語言反饋，描述如何修改變數以改善下游目標——類比優化裡的梯度。一個具彈性的實作（對 <code>x →LLM y →LLM L</code>）是把提示組成：「這是與 LLM 的一段對話 {x|y}。以下是對 {y} 的批評：{∂L/∂y}。請說明如何改進 {x}。」再交給 LLM。<strong>梯度物件＝變數出現的脈絡＋從 LLM 取得的反饋</strong>；此算子不依賴應用領域，一旦實作，全框架所有應用共用同一套。</p>
+<p><strong>優化器。</strong> 標準梯度下降是 <code>θ_new = θ − ∂L/∂θ</code>。延續類比，我們用<strong>文本梯度下降（Textual Gradient Descent, TGD）</strong>：<code>Prompt_new = TGD.step(Prompt, ∂Evaluation/∂Prompt)</code>。一種具體實作是把「對 x 的批評 {∂L/∂x}」餵給 LLM，指示「納入這些批評、產生一個新變數」。此函數同樣與領域無關，全框架共用。</p>
+<p><strong>一般情況。</strong> 抽象可直接套用到任意複雜系統。定義計算圖 <code>v = f_v(PredecessorsOf(v))</code>，∀ v ∈ 𝒱；v 的值可為文字、影像等非結構化資料（本文多數為文字），f_v 是消耗一組變數、產生 v 的轉換（可為 LLM 或數值模擬器）。梯度由 <code>∂L/∂v = ⋃_{w ∈ SuccessorsOf(v)} ∇_f(v, w, ∂L/∂w)</code> 計算——即<strong>從變數 v 被使用過的每個脈絡蒐集反饋並聚合</strong>。此式遞迴算出下游目標對各變數的梯度；更新任意變數用 <code>v_new = TGD.step(v, ∂L/∂v)</code>。對有 n 條邊的圖，每輪優化最多多做 n 次 LLM 呼叫（每條邊一次梯度算子）。</p>
+<p><strong>目標函數。</strong> 數值優化中目標多為可微函數（MSE、交叉熵）；TextGrad 的目標可以是複雜、可能不可微、定義域與值域皆為非結構化資料的函數——這帶來重要的通用性。目標可由「LLM prompt」（§3.3）、「跑單元測試的程式直譯器輸出」（§3.1）、「分子模擬引擎輸出」（§3.4）給出。例如程式片段的 loss 可寫成 <code>Loss(code, target goal) = LLM(這是程式片段 {code}。這是它的目標 {target goal}。請就正確性與執行複雜度評估它。)</code>，此評估訊號即可用來優化程式碼，靠的是 LLM 已被充分驗證的「模擬人類反饋、自我評估、自我改進」能力。</p>
+<p><strong>Instance 優化 vs Prompt 優化。</strong> 兩類問題：</p>
+<ul>
+<li><strong>instance optimization（實例優化）</strong>：直接把「某問題的解」——程式片段、解答、分子——當優化變數，框架對它產生梯度並就地優化（如 Eq.13 的程式碼在測試時被改進）。</li>
+<li><strong>prompt optimization（prompt 優化）</strong>：目標是找一個能<strong>跨多筆查詢泛化</strong>的 prompt（如找一個能改善數學推理的 system prompt）。與 instance 優化不同，這裡要求 prompt 具泛化性，而非只改好單一查詢的解。</li>
+</ul>
+<p>兩類問題都無須手工調校框架即可求解。</p>
+<p><strong>優化技巧</strong>（自動微分作為強類比，為框架提供概念支撐）：</p>
+<ul>
+<li><strong>批次優化（Batch）</strong>：實作隨機 minibatch 梯度下降；前向對一批實例算各自 loss，用 <code>tg.sum</code>（類比 <code>torch.sum</code>）加總；反向時各 loss 對變數的梯度被串接，鏡像「穿過加法的反向傳播」。</li>
+<li><strong>約束優化（Constrained）</strong>：用自然語言約束（如「回應最後一行須為 &#x27;Answer: $LETTER&#x27; 格式」）引導優化器；拜 instruction-tuning 之賜 LLM 能遵守，但約束過多時可靠度會下降。</li>
+<li><strong>動量（Momentum）</strong>：類比梯度下降的動量——優化某變數時，TGD 可選擇性地看到該變數的前幾輪版本。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

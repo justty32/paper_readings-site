@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_在決策系統內形塑自適應模型 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../1711.06664_LearningToDefer.zh-TW.html">回 1711.06664_LearningToDefer.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="3-在決策系統內形塑自適應模型">3 在決策系統內形塑自適應模型</h2>
+<p>模型須對每個樣本輸出兩項：預測機率 Ŷ_M 與 pass 指示 s。作法啟發自 mixture-of-experts，但其中一位「專家」是不受控的 DM。引入混合係數 π（s ~ Ber(π)）：π 是委讓機率（DM 做最終決定），1−π 是模型決定成為系統輸出的機率。學習委讓即最小化對 s 的期望損失（Eq. 9）；拒絕學習則把 DM 項換回常數 γ_reject（Eq. 10）。</p>
+<h3 id="31-事後閾值法post-hoc-thresholding">3.1 事後閾值法（Post-hoc Thresholding）</h3>
+<p>讓 π 只是 Ŷ_M 的函數：學兩個閾值 t₀ &lt; t₁，得到<strong>三元分類器</strong>——分數 β 落在 (t₀, t₁) 之間就輸出 pass（π=1，委讓）；β ≤ t₀ 預測 0、β ≥ t₁ 預測 1。優點是可在任何輸出 [0,1] 的既有二元分類器上<strong>事後</strong>訓練閾值（作者用隨機搜尋，並可為各群體學不同閾值以促進公平；見附錄 D）。</p>
+<h3 id="32-學習可微分模型">3.2 學習可微分模型</h3>
+<p>若想用梯度優化端到端訓練，可讓 π 同時是 X 與 Ŷ_M 的函數：π = g(Ŷ_M, X)。這更有彈性，因為 DM 的行為可能對資料<strong>異質地</strong>依賴——DM 的期望損失會隨 X 變化，且變化方式可能與模型不同。用神經網路參數化 Ŷ_M 與 π，直接以梯度下降優化；測試時 π &gt; 0.5 即委讓。訓練時對 s ~ Ber(π) 取樣（每例一次），用 <strong>Concrete 鬆弛</strong>（Gumbel-softmax）估計穿過取樣的梯度；另外<strong>阻斷 π 的梯度回傳到 Ŷ_M</strong> 有幫助——讓 Ŷ_M 獨立於 π 仍是好的預測器。（附錄 F 另探討第三種模型：貝氏神經網路權重不確定性。）</p>
+<h3 id="33-以正則化實現公平分類">3.3 以正則化實現公平分類</h3>
+<p>在損失中加入公平正則項 R 與係數 α_fair 以平衡準確與公平。設定：二元分類、敏感屬性 A（性別、種族、年齡等）已知。加入公平約束已被證明可能損害分類誤差，故以正則化作取捨。公平度量選 <strong>equalized odds</strong>——要求兩群體的偽陽性率與偽陰性率相等，兩率之差稱為 <strong>disparate impact（DI）</strong>。定義 DI 的連續鬆弛（模型輸出機率 p、視 Ŷ ~ Ber(p)），取 Y=0 與 Y=1 兩種 DI 之平均作為正則項 D。此方案類似 Kamishima et al. 與 Bechavod &amp; Ligett；附錄 B 驗證其在二元分類上有效，附錄 E 實驗確認「以 oracle 為 DM 的學習委讓 ≡ 拒絕學習」在公平情境亦成立。</p>
+<h2 id="4-相關工作">4 相關工作</h2>
+<p><strong>公平概念</strong>：個體公平（相似者相似對待）、統計均等（statistical parity）、校準（calibration）、equalized odds 等；已知 equalized odds 與 calibration 無法（非平凡地）同時滿足；Hardt et al. 提出相關的 equal opportunity；Zafar et al. 與 Bechavod &amp; Ligett 以正則化把 equalized odds 納入學習。</p>
+<p><strong>納入 pass 選項</strong>：始於 Chow（1957/1970）研究錯誤率—拒絕率取捨；Cortes et al. 把 pass 直接整合進學習框架；Attenberg et al. 討論模型難以「知道自己不知道」（尤其稀有案例）與人類稽核；Wang et al. 提出可端到端學習的級聯模型（IDK Cascades）。<strong>但這些工作皆未考察此程序的公平影響</strong>。AI 安全方面，Hadfield-Menell et al.（cooperative inverse RL）給出人機協作達成共同目標的 RL 演算法。兼涉兩者的：Bower et al. 描述公平的序貫決策但無 pass 概念與學習程序；Grgić-Hlaca et al. 討論由分類器混合產生的公平；Varshney &amp; Alemzadeh 提出 safety reserves 與 safe fail，但未分析學習程序或更大決策框架。</p>
+<h2 id="5-實驗">5 實驗</h2>
+<p>模擬三種代表現實決策者的情境：</p>
+<ol>
+<li><strong>高準確、忽視公平的 DM</strong>：DM 握有的額外資訊重要，卻因隱私或計算理由對模型保密。</li>
+<li><strong>高度偏頗、強烈不公的 DM</strong>：高風險/敏感情境中 DM 可能帶多種偏誤。</li>
+<li><strong>不一致、忽視公平的 DM</strong>：DM 準確率隨子群起伏、總準確率低於模型——人類 DM 即使握有額外資訊仍可能較不準；在部分子群的 DM 輸出加噪音以模擬人類不一致。</li>
+</ol>
+<p>因真實決策資料難以取得與評估，採<strong>半合成資料（semi-synthetic data）</strong>：真實資料集＋模擬 DM（在略為不同的條件下另訓練一個分類器；各情境中模擬 DM 都能看到模型看不到的額外資訊）。</p>
+<p><strong>資料集與細節</strong>：COMPAS（預測被告再犯，不得依種族歧視；DM 額外資訊＝是否暴力再犯；模擬 DM 錯誤率 24%，優於基線模型的 29%）與 Heritage Health（預測病患 Charlson 指數〔共病指標〕，不得依年齡歧視；DM 額外資訊＝主要病症群組；模擬 DM 錯誤率 16%，優於基線的 21%）。所有模型與 DM 皆為兩層全連接神經網路。高偏 DM（情境 2）以 α_fair = −0.1 的<strong>負向</strong>正則化訓練出高 DI 的「DM」；不一致 DM（情境 3）對特定子群（COMPAS：低於平均年齡者；Health：男性）以 30% 機率翻轉 DM 預測。事後閾值模型與端到端模型在高準確 DM 下表現定性相似（展示前者）；但事後閾值模型的 π 不吃 X、無法適應不一致 DM，該情境展示端到端模型。結果均為測試集上多組超參數（α_fair、γ_defer/γ_reject）掃描的 Pareto 前緣，每點為 5 次執行的中位數。</p>
+<h3 id="51-對三類-dm-學習委讓圖-3圖-4圖-5">5.1 對三類 DM 學習委讓（圖 3、圖 4、圖 5）</h3>
+<p><strong>高準確 DM</strong>：學習委讓取得比拒絕學習<strong>更好的準確—公平取捨</strong>——自適應的第一階段能改善「比模型更準的 DM」的公平性；對設計或監督多環節系統的人而言是有價值的公平工具。公平拒絕學習也勝過二元基線（整合了 DM 在部分樣本上的額外準確度）。按委讓率細分（附錄 H）：此情境的收益主要來自模型帶來的<strong>公平性</strong>提升（DM 本已提供高準確）。</p>
+<p><strong>高偏 DM</strong>：委讓模型的優勢依然成立——它能適應 DM 的極端偏誤。分析委讓率（附錄 I）發現自適應帶來兩重優勢：能<strong>對兩個敏感群體以不同比率委讓</strong>以抵銷 DM 的偏誤；並能在 DM 有偏時<strong>調低整體委讓量</strong>（面對偏頗 DM 時多數執行的委讓率不到 20%）。</p>
+<p><strong>不一致 DM</strong>：DM 有額外資訊但各子群準確率不一、總準確率低於模型。在每個委讓率下，學習委讓的分類準確率都高於拒絕學習；最好的委讓模型<strong>同時勝過 DM 單獨與基線二元分類器</strong>。關鍵觀察：雖然 DM 比模型不準，<strong>最準的方案不是取代 DM，而是 DM–模型混合</strong>——且唯有模型是自適應的（學會委讓），此混合的潛力才被解鎖。曲線形態也顯示差異：拒絕模型「最先 pass 的 10%」不比「最後 10%」好多少；委讓模型<strong>最先 pass 的約 40% 樣本都在提升系統準確率</strong>。</p>
+<p><strong>子群分析（圖 4）</strong>：委讓模型在 <strong>DM 可靠的子群上委讓較多、在不可靠子群上委讓較少</strong>（相對拒絕模型尤然）——模型確實學會了適應 DM 的強弱。</p>
+<p><strong>最低子群準確率（圖 5）</strong>：以敏感屬性 × 不可靠屬性的交叉積定義四個子群，檢視最低子群準確率（minimum subgroup accuracy, MSA）。委讓模型的整體準確優勢<strong>不以最弱子群為代價</strong>：最準的委讓模型往往也有最高的 MSA，而非呈現取捨——這是學習委讓一個引人注目的天然公平性質，留待未來深究。</p>
+<h2 id="6-結論">6 結論</h2>
+<p>本文定義了一個描述許多實務系統的多代理決策框架，提出<strong>學習委讓（自適應拒絕學習）</strong>——在此框架下泛化拒絕學習——並給出在更大系統脈絡中（且公平地）學習委讓的演算法。實驗證明：會委讓的模型能優化決策管線<strong>整體</strong>的表現，超越拒絕學習所能提供的改進。這是一個有力而通用的框架，對自動化模型與其他決策代理互動的諸多複雜領域皆有意涵。透過委讓，模型學會在其所處系統內負責任地預測——邁向更公平、更負責任的機器學習的關鍵一步。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/1711.06664_LearningToDefer.%E6%91%98%E8%A6%81.html"><code>../summarize/1711.06664_LearningToDefer.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

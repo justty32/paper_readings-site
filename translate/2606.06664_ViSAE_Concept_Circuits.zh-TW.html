@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>ViSAE：以神經科學啟發的概念電路詮釋與引導 Vision Transformer（Inside the Visual Mind: Neuroscience-Motivated Concept Circuits for Interpreting and Steering Vision Transformers） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：deep-real 實驗室團隊（ViSAE 作者群）</p><p>日期：2026-06</p><p>arXiv：2606.06664</p><p><a href="https://arxiv.org/abs/2606.06664" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="visae以神經科學啟發的概念電路詮釋與引導-vision-transformer">ViSAE：以神經科學啟發的概念電路詮釋與引導 Vision Transformer</h1>
+<p>deep-real 實驗室團隊</p>
+<h2 id="摘要">摘要</h2>
+<p>儘管準確度高，Vision Transformer（ViT）的預測可能被<strong>偽相關線索</strong>驅動，這使我們在安全部署前需理解其內部運作。稀疏自編碼器（SAE）提供把模型表徵分解為人類可解釋概念的有力視角，但把 SAE 詮釋搬到 ViT 仍困難——<strong>概念覆蓋難控</strong>、<strong>特徵詮釋主觀且不可規模化</strong>。為填補此缺口，受神經科學原則啟發，我們提出 <strong>ViSAE</strong>，一個透過<strong>概念電路</strong>理解 ViT 內部運作的機制可解釋性工具箱。ViSAE 含三組件：(1) 一個含 <strong>64K 圖、16K 視覺接地概念詞彙</strong>的探測套件，較 ImageNet <strong>概念覆蓋效率高 20×</strong>、詮釋準確度較既有概念集<strong>高 28.7%</strong>;(2) <strong>自上而下的概念讀取</strong>與<strong>自下而上的電路追蹤</strong>演算法，自動經概念電路回復 ViT 內部運作；(3) 審計與引導 ViT 行為的應用。透過概念編輯，ViSAE 在 WaterBirds 上把最差群組準確度<strong>提升 48.2%</strong>，較既有方法<strong>高 23.8%</strong>。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>既有可解釋 ML 多只辨識「證據在哪（where）」；我們的<strong>概念電路揭示概念如何跨層交互（how）以支撐預測</strong>。我們提出 ViSAE——整合用於 SAE 訓練與詮釋的探測資料、概念讀取與電路追蹤演算法、以及模型審計與引導的應用。其設計受<strong>研究生物視覺與神經計算的神經科學原則</strong>啟發。</p>
+<p>三個問題與貢獻：</p>
+<ul>
+<li><strong>(1) 概念覆蓋</strong>：建神經科學啟發的探測套件（64K 圖 + 16K 概念）供 SAE 訓練與自動詮釋。</li>
+<li><strong>(2) 概念電路</strong>：兩階段因果追蹤演算法，逐層發現 ViT 內的概念電路。
+<ul>
+<li>(i) <strong>自上而下概念讀取</strong>：每層訓 SAE，經 CLIP 視覺-語言嵌入空間把學到的特徵對應到概念詞彙，<strong>免人工總結</strong>。</li>
+<li>(ii) <strong>自下而上電路追蹤</strong>：以反事實干預估計跨層因果效應，產出概念的有向交互圖。</li>
+</ul>
+</li>
+<li><strong>(3) 應用</strong>：審計（追蹤內部決策、把概念視覺證據定位到像素、診斷失效模式）與引導（提供概念「旋鈕」精準控制行為，如調低偽相關背景概念）。</li>
+</ul>
+<h2 id="2-方法">2. 方法</h2>
+<pre><code class="language-mermaid">flowchart TD
+    P[&quot;探測套件&lt;br/&gt;64K 圖 + 16K 視覺接地概念&lt;br/&gt;(受視覺皮層階層啟發)&quot;] --&gt; TR[&quot;每層訓 SAE&quot;]
+    TR --&gt; TD[&quot;自上而下概念讀取&lt;br/&gt;Soft-WPMI + CLIP 自動對應特徵→概念&quot;]
+    TR --&gt; BU[&quot;自下而上電路追蹤&lt;br/&gt;反事實干預估跨層因果&quot;]
+    TD --&gt; CC[&quot;概念電路&lt;br/&gt;(原始特徵→中間樣式→高層語意)&quot;]
+    BU --&gt; CC
+    CC --&gt; A[&quot;審計: 概念像素定位 / 失效模式診斷&quot;]
+    CC --&gt; S[&quot;引導: 概念旋鈕 → 去偽相關 (WaterBirds +48.2%)&quot;]
+</code></pre>
+<ul>
+<li><strong>2.1 SAE 基礎</strong>：把 ViT 激活分解為稀疏可解釋特徵。</li>
+<li><strong>2.2 探測套件</strong>：受人類視覺皮層階層組織啟發，建廣覆蓋概念集；用 CLIP 嵌入相似度算圖像概念覆蓋；剪枝（121K 原始候選中 CLIP-ViT-B-32 空間 cosine &gt; 0.85 的成對去一）降冗餘、提視覺接地。較既有以文字挖掘（Google Books n-gram、LAION caption）的概念集更貼圖像。</li>
+<li><strong>2.3 訓練 SAE 與追蹤概念電路</strong>：
+<ul>
+<li><strong>自上而下概念讀取</strong>：對概念集 D_concept={c₁,…,c_M}，用 VLM（CLIP）算概念激活矩陣 P∈ℝ^{N×M}（P_nm＝圖 x_n 與概念 c_m 的嵌入相似度）；以 <strong>Soft-WPMI（Soft 加權點互資訊）</strong> 把 SAE 特徵 i 關聯到概念 c_m，自動命名。</li>
+<li><strong>自下而上電路追蹤</strong>：以反事實干預估跨層因果效應，得概念有向交互圖，揭示原始特徵逐步組合成中間樣式、最終成驅動預測的高層語意。</li>
+</ul>
+</li>
+<li><strong>2.4 審計與引導</strong>：審計追蹤決策、定位概念像素證據、彙總失效模式；引導以概念旋鈕編輯表徵內概念精準控制行為。</li>
+</ul>
+<h2 id="3-實驗精要">3. 實驗（精要）</h2>
+<ul>
+<li><strong>概念集品質（表 3）</strong>：以冗餘度（CLIP 文字嵌入 cosine &gt; 0.8 的概念對比例）與視覺接地度（概念-圖像 cosine &gt; 0.3 比例）比較自家 ~16K 概念集 vs LAION-15K、Google-20K；自家更低冗餘、更高接地。概念覆蓋效率較 ImageNet <strong>20×</strong>；同 SAE 詮釋準確度**+28.7%**。</li>
+<li><strong>引導下游</strong>：詮釋忠實捕捉模型行為，下游引導任務較既有對手**+23.8%**。</li>
+<li><strong>去偽相關（WaterBirds）</strong>：調低偽相關概念（陸地背景）後，最差群組準確度**+48.2%**。</li>
+</ul>
+<h2 id="4-結論">4. 結論</h2>
+<p>ViSAE 把 SAE 概念抽取與電路追蹤在 ViT 上合流成<strong>概念電路</strong>，並做到端到端自動化（視覺接地概念集 → Soft-WPMI/CLIP 自動命名 → 反事實跨層因果圖 → 像素定位 → 概念旋鈕引導）。它讓 ViT 的「概念如何跨層交互支撐預測」可讀、可審計、可修復（去偽相關）。侷限在對 CLIP 嵌入與概念詞彙的依賴、反事實干預成本，以及聚焦視覺域。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2606.06664_ViSAE_Concept_Circuits.%E6%91%98%E8%A6%81.html"><code>../summarize/2606.06664_ViSAE_Concept_Circuits.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

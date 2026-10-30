@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Krites：非同步驗證式語意快取用於分層 LLM 架構》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Asmit Kumar Singh、Haozhe Wang、Santosh Attaluri、Tak Chiam、Weihua Zhu（Apple）</p><p>日期：2026-02 (v2: 2026-03)</p><p>arXiv：2602.13165</p><p><a href="https://arxiv.org/abs/2602.13165" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="krites非同步驗證式語意快取用於分層-llm-架構重點摘要">《Krites：非同步驗證式語意快取用於分層 LLM 架構》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>靜態閾值不變 + 非同步 LLM 法官 + auxiliary overwrite</strong>：在分層（static/dynamic）語意快取中，維持保守的 serving-path 相似度閾值不動，但對落入「相似度灰色地帶」的靜態 miss，以離線 LLM 法官驗證靜態答案是否適用於新 prompt；核准後將靜態答案以 auxiliary overwrite 注入動態快取（pointer layer），使後續命中直接使用已審查的 curated 答案——靜態覆蓋率最多提升 3.9 倍，且完全不增加關鍵路徑延遲。</p>
+<h2 id="核心貢獻">核心貢獻</h2>
+<ul>
+<li><strong>Krites 策略</strong>：第一個將驗證與 serving 解耦的非同步語意快取策略。Serving path 完全保留 GPTCache-style 閾值決策；靜態 miss 落在 <code>[σmin, τstatic)</code> 灰色地帶時，排程離線 LLM judge 做 binary APPROVE/REJECT。</li>
+<li><strong>Auxiliary overwrite 耦合機制</strong>：核准的 <code>(q, static_answer)</code> 配對以 upsert 寫入動態快取，將 dynamic tier 轉化為 static tier 的可變指標層——不複製靜態內容，僅建立 (prompt → static origin) 的映射；受 LRU/TTL 常規回收，無須 pinning。</li>
+<li><strong>Trace-driven 實驗</strong>：在 vCache 的 SemCacheLMArena（對話）與 SemCacheSearchQueries（搜尋）基準上，靜態來源服務佔比分別提升 +136.5%（8.2%→19.4%）與 +290.3%（2.2%→8.6%），對照組為 vCache Pareto-optimal 靜態閾值基線。</li>
+<li><strong>Claude Opus 4.5 法官可行性驗證</strong>：100 對人工標註灰色地帶樣本，法官與人類標註一致 99/100——證明 LLM-based 驗證實務可行。</li>
+<li><strong>ROI 模型</strong>：法官成本為 <code>λ * pgrey * cJ</code>，收益為 <code>E[papp * N]</code>（N = 動態條目在被回收前的重複命中次數）——頻繁重現的 paraphrase 場景 ROI 最高。</li>
+</ul>
+<h2 id="對讀者的價值與-ai_core-的接點">對讀者的價值（與 ai_core 的接點）</h2>
+<ul>
+<li><strong>直擊 ai_core §3.4 憑證（驗證式快取）</strong>：Krites 的核心機制就是「LLM judge 核發憑證後才准入靜態答案」——這正是 ai_core「拒絕為預設＋憑證准入」在快取層的實例化。離線 judge 的角色等同於治理層的驗證器：只有在 equivalence 被確認後，答案才被「核准」進入服務路徑。ai_core backlog 標註本文為「快取+憑證（§3.4+§3.3）」，因為它示範了如何在不阻塞服務的前提下插入驗證關卡。</li>
+<li><strong>釋放 §3.3 成本梯度中被束縛的價值</strong>：分層架構本身就是成本梯度的體現——static（最便宜，離線審查）→ dynamic（中等）→ backend（最貴，全推理）。傳統單一閾值讓大量合格的靜態答案困在灰色地帶無法被重用；Krites 以微量離線 judge 成本為代價，將這些答案「從成本梯度低端解放出來」，直接減少高成本 backend 呼叫。</li>
+<li><strong>輔助寫入 = 固化引擎的輕量類比</strong>：auxiliary overwrite 將 curated 答案從 static 推到 dynamic，就像固化引擎將 LLM 反覆處理的模式結晶為確定性執行——二者都是「經一次驗證後永久受益」的模式。差異在於 Krites 保留可回收性（LRU/TTL），適合 dynamic 場景；固化引擎的產出是長期存留的程式碼/抽象庫。</li>
+<li><strong>灰色地帶概念通用於治理</strong>：Krites 的灰色地帶 <code>[σmin, τstatic)</code> 與 ai_core 治理層的「信心不足不拒絕」設計同構——某些請求落在無法自信判定的區間，不阻斷服務，但排入非同步驗證隊列。這個模式可推廣到其他 ai_core 治理場景（如模糊查詢的參數推斷、意圖歧義的消歧）。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2602.13165_VerifiedSemanticCaching.zh-TW.html"><code>../translate/2602.13165_VerifiedSemanticCaching.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

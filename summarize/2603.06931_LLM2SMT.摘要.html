@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《LLM2SMT：用零人類手寫程式碼造出一個 SMT 求解器》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Mikoláš Janota、Mirek Olšák（附屬未列）</p><p>日期：2026-03，神經符號（主題 B：LLM 寫「會推理的程式」/ 形式驗證工具自動生成）</p><p>arXiv：2603.06931</p><p><a href="https://arxiv.org/abs/2603.06931" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="llm2smt用零人類手寫程式碼造出一個-smt-求解器重點摘要">《LLM2SMT：用零人類手寫程式碼造出一個 SMT 求解器》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>LLM2SMT</strong>：一個案例研究——讓一個 LLM 編碼 agent（Claude Code，Sonnet 4.6）在<strong>零人類手寫程式碼</strong>下，從一句「實作 Nieuwenhuis–Oliveras 同餘閉包演算法」的最小描述出發，造出一個完整的 <strong>DPLL(T) 式 QF_UF SMT 求解器</strong>（含前處理、對 UNSAT 實例輸出 Lean 證明）；問的不是「LLM 能不能推理」，而是「<strong>LLM 能不能寫出『本身會推理』的軟體</strong>」——結果在 SMT-LIB QF_UF 基準上求解 7,468 個實例，逼近 z3（7,500）與 cvc5（7,494）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>「LLM 能否推理 / 能否寫軟體」已被廣泛辯論，但「<strong>LLM 能否寫出自身會推理的軟體</strong>」幾無探討。SMT 求解器是「會推理的程式」的標竿（邏輯原理 + 精細演算法 + 正確性要求高）。本文以此為試金石，檢驗 LLM agent 在適當鷹架下能否獨力產出有競爭力、且其判決可被形式認證的求解器。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>開發流程</strong>：用 Claude Code（Sonnet 4.6）生成全部實作，從引用 Nieuwenhuis–Oliveras 同餘閉包的最小描述起步。開發者透過 <code>維護說明</code> 加永久指令（如求解器跑要設 timeout）；agent 在拿到失敗測例時<strong>自主除錯</strong>；LLM 自己生成 fuzzing 與 delta-debugging 工具來省 token；用 git 歷史＋回歸測試支援迭代。<strong>具體範例</strong>比抽象描述更能引導修正。</li>
+<li><strong>DPLL(T) 架構（QF_UF）</strong>：lazy SMT；理論原子變成布林變數交給標準 SAT。CaDiCaL SAT 求解器透過 <strong>IPASIR-UP</strong> 介面產候選賦值，再由理論專屬檢查驗證（QF_UF＝無量詞等式＋未解釋函式）。</li>
+<li><strong>同餘閉包</strong>：Nieuwenhuis–Oliveras 演算法偵測不一致的項等式；含公式 hash-consing；處理 SMT2 中布林「既是命題又是項」的雙重性（一開始導致假 UNSAT）。</li>
+<li><strong>Lean 證明輸出</strong>：不建低階證明，而依賴 Lean 自動化——<code>grind</code> tactic 驗理論引理、<code>bv_decide</code> 處理命題片段；SMT 型別/常數變成 Lean 公理、理論引理變成獨立定理。初期把上千個假設塞進單一定理導致 Lean 解析失敗，須拆分。</li>
+</ul>
+<h2 id="結果含數字">結果（含數字）</h2>
+<ul>
+<li><strong>SMT-LIB QF_UF 非增量基準、180 秒 timeout、並行</strong>：</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>求解器</th>
+<th>求解實例數</th>
+<th>獲勝數</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>z3</td>
+<td>7,500</td>
+<td>7,491</td>
+</tr>
+<tr>
+<td>cvc5</td>
+<td>7,494</td>
+<td>7,308</td>
+</tr>
+<tr>
+<td><strong>llm2smt</strong></td>
+<td><strong>7,468</strong></td>
+<td>6,486</td>
+</tr>
+<tr>
+<td>llm2smt-no-prepro</td>
+<td>7,355</td>
+<td>6,150</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>反直覺</strong>：關閉理論傳播（theory propagation）反而更好（7,478 vs 7,468）——在這批基準上傳播帶來開銷卻無補償。</li>
+<li><strong>證明認證</strong>：285 個認證成功、2,244 因 <code>grind</code> 能力不足失敗、1,314 timeout、240 超 Lean heartbeat、86 stack overflow；<strong>未發現任何錯誤證明</strong>。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>完整證明認證仍超出當前能力</strong>（僅 285/~4000+ 成功）；agent 在「理論引理 vs 最終證明」的區分上掙扎最久，須人工給正確 Lean 證明範例。</li>
+<li>只覆蓋單一理論（QF_UF）。</li>
+<li>「Jagged Intelligence」：agent 能做複雜推理卻在瑣事翻車（一開始不把 <code>t=t</code> 化簡為 true）；無 timeout 的程序會默默累積。</li>
+<li>仍需開發者提供標準工具（fuzzing、delta-debugging）、明確資源上限與謹慎的輸入規格。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本主題 B 中**「LLM 不只用符號工具、而是親手造出符號工具」的奇點式案例**——與 <a class="paper-reference" href="2606.00669_NeuroLog_Datalog_SMT.%E6%91%98%E8%A6%81.html">2606.00669</a>（NeuroLog，LLM 當事實抽取器接 Z3）、<a class="paper-reference" href="2602.18095_Logitext_NeSy_SMT.%E6%91%98%E8%A6%81.html">2602.18095</a>（Logitext 把 LLM 當 SMT theory）形成對照：這裡 LLM 是<strong>求解器本身的作者</strong>。</li>
+<li>與 <a class="paper-reference" href="2606.08728_AI4Math_Survey.%E6%91%98%E8%A6%81.html">2606.08728</a>（AI4Math 綜述）、<a class="paper-reference" href="2604.26311_DreamProver.%E6%91%98%E8%A6%81.html">2604.26311</a>（DreamProver）、<a class="paper-reference" href="2606.19315_Diffusion_Proof.%E6%91%98%E8%A6%81.html">2606.19315</a>（Diffusion Proof）對讀，補足「LLM 與形式證明/求解器」光譜的另一端——程式合成出可被 Lean 認證的求解器。</li>
+<li>最值得記：<strong>零人類手寫程式碼即逼近 z3/cvc5（7,468 vs 7,500）</strong>；以及那組誠實的工程教訓——具體範例 &gt; 抽象描述、agent 自帶 fuzz/delta-debug、「Jagged Intelligence」與「證明認證仍是硬骨頭」。</li>
+<li>定位：<strong>案例研究 / 立場探針</strong>；適合做 LLM 程式合成、自動推理工具開發、agent 開發方法論的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2603.06931_LLM2SMT.zh-TW.html"><code>../translate/2603.06931_LLM2SMT.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

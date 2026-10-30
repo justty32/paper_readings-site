@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《ARC-AGI-2 的多視角 Transformer：TinyLM + TTT + Product-of-Experts（一份誠實的「失敗」報告）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Caleb Talley、Seun Adekunle、Weiwen Dong、Fariha Sheikh、Vedant Tibrewal、Xinyu Wu（USC，6 人學生團隊）</p><p>日期：2026-05，ARC-AGI-2 課程／競賽技術報告</p><p>arXiv：2605.01154</p><p><a href="https://arxiv.org/abs/2605.01154" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="arc-agi-2-多視角-transformertinylm--ttt--poe重點摘要">《ARC-AGI-2 多視角 Transformer：TinyLM + TTT + PoE》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>一支六人學生團隊在 ARC-AGI-2 上的完整解法報告，用<strong>僅約 2000 萬參數的自製 decoder-only「TinyLM」<strong>配上</strong>多視角（旋轉/翻轉/轉置/換色）資料增強</strong>，再疊上 <strong>Product-of-Experts（PoE）集成評分</strong>與<strong>測試時訓練（TTT）</strong>；結果在訓練集達 <strong>96.1%</strong>、評測集僅 <strong>21.7%</strong>——而且關鍵發現是：<strong>TTT 與 PoE 在這個小模型上不但沒幫忙、反而把成績打到接近 0%</strong>。這是一份珍貴的「負結果」報告，把 <a class="paper-reference" href="2603.06590_ARC_AGI2_TTT_LongT5.%E6%91%98%E8%A6%81.html">2603.06590</a> 那種「TTT/多視角是冠軍主路」的樂觀敘事反過來打了一巴掌。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>ARC-AGI-2（Chollet 系列最新版，1000 訓練 + 120 評測公開題）要求從極少範例推出符號規則並做像素級精確輸出。團隊想驗證：在一個<strong>刻意做小</strong>（省下算力給測試時適應）的 transformer 上，把 2024 冠軍那套「多視角增強 + 測試時微調 + 集成評分」搬過來，能不能work？</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>Grid 表示層</strong>：單一真相來源的 2D NumPy 網格型別 + 嚴格驗證 + palette 抽取/差異遮罩等 helper，防止轉換時靜默損壞。</li>
+<li><strong>Views（多視角）</strong>：對每題做可逆變換——幾何（旋轉/反射/轉置）+ 雙射換色，每題產生 <strong>40–80 個視角</strong>，把「在原表示下複雜、在某變換下平凡」的解暴露出來。</li>
+<li><strong>序列化</strong>：自訂詞彙表（[BOS] 等特殊 token + 顏色 id），網格逐行（row-major）編碼成 token，可逆解碼回網格。</li>
+<li><strong>TinyLM</strong>：decoder-only，約 <strong>20M 參數</strong>、8 層、8 頭（56 維子空間 / 448 維嵌入）、可學位置嵌入、GELU、pre-norm、dropout 10%、context 2048 token。刻意小，因為 ARC 資料太少、過大容量在 TTT 階段算力代價高。</li>
+<li><strong>PoE 集成</strong>：利用同一網格多視角的「變換不變性」，把各視角的 token 級信心相加評分，只保留能<strong>完全重現訓練範例</strong>的候選。</li>
+<li><strong>TTT</strong>：受 MAML 啟發，對每題用其 2–4 個範例對構造小增強集，做 10–50 步保守學習率梯度下降專化權重，再預測。</li>
+</ul>
+<h2 id="結果含關鍵負結果">結果（含關鍵負結果）</h2>
+<ul>
+<li><strong>TinyLM 預訓練後（無 TTT/PoE）</strong>：訓練集 <strong>96.1%</strong>、評測集 <strong>21.7%</strong>——是全文最佳評測分。</li>
+<li><strong>Qwen3-8B 零樣本對照</strong>：訓練集 6.24%、評測集 <strong>0%</strong>（生成有效率高但答不對）。</li>
+<li><strong>TTT（10 步、lr=5e-5）</strong>：訓練集掉到 23.8%、評測集 <strong>趨近 0%</strong>——模型過擬合到範例的特異性、無法遷移到測試輸入。</li>
+<li><strong>PoE</strong>：訓練集 30.6%、評測集 <strong>0%</strong>——因模型只在 row-major 序列化上訓練，其他「視角」對它無效。</li>
+<li><strong>TTT+PoE</strong>：繼承兩者缺點，評測集 <strong>0%</strong>，整體最差。</li>
+<li><strong>訓練-評測落差高達 74.4%</strong>：模型精通「學過的變換」，但對新模式幾乎不泛化。</li>
+</ul>
+<h2 id="局限作者自陳">局限（作者自陳）</h2>
+<ul>
+<li><strong>TTT 在小模型 + 極少範例下會災難性過擬合</strong>；建議未來加 dropout/weight decay、更多步 + 更小學習率做溫和適應。</li>
+<li><strong>PoE 失效是自找的</strong>：模型只訓 row-major 一種序列化，導致 column-major 等替代視角根本沒被學過；應從一開始就多序列化格式混訓。</li>
+<li><strong>資料太少</strong>：建議併入完整 ARC-AGI-1 + Re-ARC 擴充模式多樣性。</li>
+<li>半私有/私有評測集當時不可用，所有數字在 120 題公開評測集上。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>是本批 E 類的<strong>反面教材／對照組</strong>：和 <a class="paper-reference" href="2603.06590_ARC_AGI2_TTT_LongT5.%E6%91%98%E8%A6%81.html">2603.06590</a>（同樣 LongT5+TTT+多視角但達 27%）、<a class="paper-reference" href="2505.07859_Product_of_Experts_ARC.%E6%91%98%E8%A6%81.html">2505.07859</a>（Product of Experts 把 ARC 變成「視角問題」）正面對撞，告訴你<strong>同一套配方在「模型太小 + 只訓單一序列化 + 沒做足正則」時會整組失效</strong>。</li>
+<li>把「TTT 不是萬靈丹」講得很實在：<strong>測試時技術的收益高度依賴底層模型品質與超參</strong>，盲目套用會把 21.7% 打成 0%。值得與 <a class="paper-reference" href="2411.07279_Test_Time_Training.%E6%91%98%E8%A6%81.html">2411.07279</a> TTT 理論、<a class="paper-reference" href="2411.08706_LPN_Latent_Program_Search.%E6%91%98%E8%A6%81.html">2411.08706</a> LPN 潛在程式搜尋、<a class="paper-reference" href="2411.02272_Induction_Transduction.%E6%91%98%E8%A6%81.html">2411.02272</a> 歸納 vs 轉導對讀。</li>
+<li>最值得記：<strong>「多視角」必須在訓練階段就被模型內化（多序列化混訓），事後才套 PoE 是空的</strong>；<strong>小模型的測試時微調要靠強正則才不會把少數範例死背</strong>；以及一份學生報告敢誠實貼出「我們的招數讓分數歸零」的勇氣。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2605.01154_MultiPerspective_ARC_AGI2.zh-TW.html"><code>../translate/2605.01154_MultiPerspective_ARC_AGI2.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

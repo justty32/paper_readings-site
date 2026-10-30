@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>What Has a Foundation Model Found? Using Inductive Bias to Probe for World Models 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Keyon Vafa、Peter G. Chang、Ashesh Rambachan、Sendhil Mullainathan</p><p>日期：2025-07-09（v1，cs.LG）</p><p>arXiv：2507.06952</p><p><a href="https://arxiv.org/abs/2507.06952" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="what-has-a-foundation-model-found-重點摘要">What Has a Foundation Model Found? 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>基礎模型把下一詞元預測做到極準，不代表它學到了資料背後那個更深的世界模型；作者提出「歸納偏誤探針（inductive bias probe）」，靠模型在大量小型合成任務上的外推行為反推它依賴的內部結構，結果發現一個把行星軌跡預測得極準的 transformer，一旦要求外推出力向量，完全推不出牛頓力學，甚至對不同資料切片各自捏造出不同的物理定律。</p>
+<h2 id="為什麼準確預測不能當證據">為什麼準確預測不能當證據</h2>
+<p>Kepler 的橢圓軌道公式能精準預測行星位置，卻要等 Newton 把它擴展成能解釋質量、力與加速度的力學體系，才算真正理解了背後的機制。作者把這個類比搬到基礎模型：一個模型在訓練任務上表現優異，不代表它學到了任務背後那個更深的狀態表徵（world model）。困難在於怎麼從外部檢驗這件事，而不用去猜測模型內部權重代表什麼——那條路（機制可解釋性、探針分類器）本身就有可靠性爭議。</p>
+<h2 id="方法讓模型在小樣本上外推">方法：讓模型在小樣本上外推</h2>
+<p>作者借用 no-free-lunch 定理：任何學習演算法在小樣本下都得外推，它「傾向學到哪些函式」就是它的歸納偏誤。若基礎模型真學到某個世界模型，歸納偏誤應偏向只依賴該狀態的函式。做法是反覆生成大量與假設世界模型一致的小型合成資料集（同一狀態必須對應同一輸出），用基礎模型微調擬合每個資料集，再看它在保留輸入上的預測，量測「外推可預測性」：兩個輸入的模型預測跨越上百個合成資料集時彼此有多可預測，再拿一個「直接讀取真實狀態」的 oracle 模型當校準基準，畫出模型 vs oracle 的曲線，45 度線代表兩者一致。有限狀態、二元輸出的特例下，這退化成兩個指標：R-IB（同狀態輸入是否被同等對待）與 D-IB（不同狀態輸入是否被區分開來），兩者類似精確率與召回率，缺一不可。</p>
+<h2 id="三個領域的實驗作者自報數字">三個領域的實驗（作者自報數字）</h2>
+<ul>
+<li><strong>軌道力學</strong>：訓練一個 109M 參數 transformer，在 2B～20B token 的模擬太陽系軌跡上做下一詞元預測（8 張 H100、25 epoch），預測準確度顯著優於基準。但用探針比對「牛頓狀態向量（相對位置、速度、質量）」，結果遠低於 oracle 的 45 度線。進一步拿太陽系的那 8 條軌跡序列微調它去預測力向量，每條序列只給 1% 的觀測當標記，力向量預測明顯失真；再用 10K 個模擬太陽系微調成預測力的量級，拿 PySR 對預測值做符號迴歸，得出的重力定律是荒謬的。更關鍵的是，把同一個微調後模型分別套用到 5 組隨機抽樣的「銀河系」各自做符號迴歸，五組各得到不同的定律，而讀真實狀態的 oracle 五組都還原出同一條正確定律。</li>
+<li><strong>格子世界（lattice）</strong>：一維、有邊界的位置狀態，狀態數從 2 增到 5 時，RNN、LSTM、transformer、Mamba、Mamba-2 的歸納偏誤都明顯下滑，transformer 表現持續最差。</li>
+<li><strong>Othello</strong>：以 8x8 棋盤格局為狀態，作者自報全體模型在 Othello 上的歸納偏誤都比格子世界差（NTP 預訓練的 transformer R-IB 0.668、D-IB 0.593；1 為完美、0 等同無資訊模型）。這些模型下出合法著法的比例接近 100%，卻不拿真實棋盤當外推時的歸納偏誤。</li>
+</ul>
+<h2 id="模型在學什麼">模型在學什麼</h2>
+<p>作者驗證一個替代假說：模型的歸納偏誤其實偏向「下一步合法詞元集合相同」的粗粒度劃分，而非底層真實狀態——兩個棋盤即使不同，只要合法著法集合相同，模型外推行為就顯著更相似。這解釋了為什麼模型在原始任務上近乎完美，卻推不出深層結構：它學到的是任務捷徑式的啟發式，而非可遷移的世界模型。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>這篇論文給的不是結論，是一套可直接搬用的<strong>憑證產生程序</strong>。ai_core §3.4「憑證准入」目前最缺的是判準：一個意圖翻譯或蒸餾出來的節點光在原任務上準確，夠不夠格晉升。這篇論文示範了為什麼不夠——模型可以把「合法輸出集合」學得極準，卻對真正的結構化狀態毫無歸納偏誤。可以把 inductive bias probe 改造成固化前的准入測試：對候選節點反覆做小規模合成微調，檢查「同結構狀態的不同表面輸入是否被一致對待」與「不同結構狀態是否被區分」，而不是只驗一次目標任務準確率。</p>
+<p>「五個銀河系各自得到不同偽物理定律」這個結果，對 §3.2 成本梯度與 §5 固化引擎是雙重警示。成本梯度上，一個看似便宜、表現不錯的替代模型若內部沒有一致規律，換到新資料切片就會行為不穩定，這種脆弱性在單一切片準確率上完全看不出來。固化引擎上，若把某個資料切片驗證通過的規則直接寫死成確定性程式碼，很可能只是固化了一條偽規律；固化前應跨多個獨立資料切片重複驗證同一條規則能否穩定重現，而不是通過一次就永久入庫。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2507.06952_InductiveBiasProbe.zh-TW.html"><code>../translate/2507.06952_InductiveBiasProbe.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

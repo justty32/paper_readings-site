@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_品質分數與便宜閘門 · 論文閱讀</title><link rel="stylesheet" href="../../../html/_shared.css"><link rel="stylesheet" href="../../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../../html/index.html">總覽</a><a href="../../../index/README.html">論文索引</a><a href="../../../html/deep.html">深掘綜述</a><a href="../../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../04_2026-07-22_%E6%93%B4%E5%85%85%EF%BC%9A%2B49_%E7%AF%87%E5%B8%B6%E4%BE%86%E7%9A%84%E5%9B%9B%E9%A0%85%E4%BF%AE%E6%AD%A3.html">回本章目錄</a>　<a href="02_%E5%9B%BA%E5%8C%96%E6%99%82%E6%A9%9F%E8%88%87%E5%83%B9%E5%80%BC.html">下一子節 →</a></p>
+</blockquote>
+<h3 id="61-修正一品質分數不再是缺口是選型問題且-gate-本身要夠便宜">6.1 修正一：品質分數不再是缺口，是<strong>選型問題</strong>（且 gate 本身要夠便宜）</h3>
+<p>初版說「可靠品質分數是 §2.1 成本梯度與 §3.4 治理的<strong>同一個</strong> missing piece」。這句話仍對，但它現在有了完整的方法光譜——分三條互斥的技術路線，按<strong>你能不能碰到模型內部</strong>與<strong>願不願意多次取樣</strong>來選：</p>
+<pre><code class="language-mermaid">graph TD
+    Q{&quot;要一個品質/信心分數&quot;} --&gt; B[&quot;只有 API（黑箱）&quot;]
+    Q --&gt; W[&quot;拿得到隱藏狀態（白箱）&quot;]
+    B --&gt; B1[&quot;多次取樣比一致性&lt;br/&gt;語意熵 [[2302.09664]]&lt;br/&gt;SelfCheckGPT [[2303.08896]]&lt;br/&gt;成對相似度 [[2506.00245]]&quot;]
+    B --&gt; B2[&quot;問模型自己&lt;br/&gt;P(True)/P(IK) [[2207.05221]]&quot;]
+    W --&gt; W1[&quot;內部表徵&lt;br/&gt;INSIDE [[2402.03744]]&quot;]
+    W --&gt; W2[&quot;把貴分數壓成便宜探針&lt;br/&gt;SEP [[2406.15927]]&quot;]
+    B1 -.成本 N 倍.-&gt; C[&quot;再決定粒度與保證強度&quot;]
+    B2 -.自簽憑證風險.-&gt; C
+    W1 --&gt; C
+    W2 --&gt; C
+    C --&gt; G1[&quot;粒度：逐主張 [[2410.13246]]&quot;]
+    C --&gt; G2[&quot;從分數升級為證書&lt;br/&gt;PAC/FDR-E [[2307.09254]]&lt;br/&gt;conformal [[2402.10978]]&quot;]
+</code></pre>
+<p>四個對 ai_core 直接可用的判斷：</p>
+<ol>
+<li><strong>黑箱路線（一致性）最通用但成本是 N 倍取樣</strong>。<a class="paper-reference" href="../../../summarize/2302.09664_Semantic_Uncertainty.%E6%91%98%E8%A6%81.html">2302.09664</a> 語意熵的關鍵是先用 NLI 把答案聚成<strong>語意等價類</strong>再算熵（不是 token 熵）；<a class="paper-reference" href="../../../summarize/2506.00245_Pairwise_Semantic_UQ.%E6%91%98%E8%A6%81.html">2506.00245</a> 進一步指出「硬分群」對邊界樣本脆弱，改用連續的成對相似度，並證明語意熵是其特例。<a class="paper-reference" href="../../../summarize/2303.08896_SelfCheckGPT.%E6%91%98%E8%A6%81.html">2303.08896</a> SelfCheckGPT 則完全不需 token 機率，最適合套在<strong>外部 API 型 LLM 節點</strong>上——ai_core 若用第三方模型當節點，這是唯一能用的一類。</li>
+<li><strong>模型自評（P(True)/P(IK)）便宜，但它是自己簽自己的憑證</strong>。<a class="paper-reference" href="../../../summarize/2207.05221_LMs_Know_What_They_Know.%E6%91%98%E8%A6%81.html">2207.05221</a> 證明自評確實有訊號、且隨模型變大更準，但這與 <a class="paper-reference" href="../../../summarize/2401.10020_Self_Rewarding_LM.%E6%91%98%E8%A6%81.html">2401.10020</a> Self-Rewarding 暴露的污染風險是同一件事的兩面。<strong>結論：自評只配當便宜預篩 gate，不能當准入憑證的最終依據。</strong></li>
+<li><strong>「gate 必須比它省下的更便宜」現在有解</strong>。<a class="paper-reference" href="../../../summarize/2406.15927_Semantic_Entropy_Probes.%E6%91%98%E8%A6%81.html">2406.15927</a> SEP 把要 10 次取樣的語意熵壓成單次生成隱狀態上的線性探針，推論成本近乎零；<a class="paper-reference" href="../../../summarize/2311.08692_ZOOTER.%E6%91%98%E8%A6%81.html">2311.08692</a> Zooter 在路由端做同一件事——把「跑完所有候選再用 reward model 排序」壓成 86M 只看 query 的路由器。<strong>這兩篇是同一個母題的兩個實例，值得當作 ai_core 的通用設計手法：任何昂貴判斷都應該問一句「能不能蒸餾成單次前向」。</strong></li>
+<li><strong>分數可以升級成證書</strong>。<a class="paper-reference" href="../../../summarize/2307.09254_Selective_Generation.%E6%91%98%E8%A6%81.html">2307.09254</a> 用文字蘊涵取代精確比對定義 FDR-E，讓棄權門檻帶 PAC 保證 P(FDR-E≤ε)≥1−δ；<a class="paper-reference" href="../../../summarize/2402.10978_Conformal_Factuality.%E6%91%98%E8%A6%81.html">2402.10978</a> 提供<strong>第三選項</strong>——不拒答而是<strong>降級輸出</strong>（逐步剔除不可靠子主張，換取 1−α 的事實性保證，FActScore 30%→80%）。對 ai_core 的意義：憑證上的「穩定度%」不必只是一個浮點數，可以是有統計保證的證書；而治理動作也不必是二元的放行/拒絕，<strong>放行／降級／拒絕</strong>三選一更實用。</li>
+<li><strong>粒度不能停在整段</strong>。<a class="paper-reference" href="../../../summarize/2410.13246_Atomic_Calibration.%E6%91%98%E8%A6%81.html">2410.13246</a> 證明整段校準良好<strong>不蘊含</strong>逐項校準良好——長輸出裡對錯混雜，整段一個分數在實務上不可用。逐 atomic claim 校準正好接上 §5 的上層結構化抽取：<strong>先拆成可逐項驗證的資產，再逐項准入</strong>。</li>
+</ol>
+<p>選型導航另見 <a class="paper-reference" href="../../../summarize/2412.12767_BlackBox_LLM_Calibration_Survey.%E6%91%98%E8%A6%81.html">2412.12767</a> 黑箱校準綜述（信心估計→校準→量測三層分類），可當方法目錄。</p>
+<p>FARM 為白箱路線補上一個具身例子：只讀凍結世界模型的內部預測狀態，用小型 readout 產生逐步因果風險，支持「昂貴表徵可蒸餾成常駐便宜 gate」；但它在完全未見任務上不一定勝基線，且尚未把分數接到任何介入策略。因此 §6.1 的選型表還要把「偵測是否可轉移」與「觸發後是否真能降低失敗」分成兩次驗收（本檔補註，非作者自陳）<a class="paper-reference" href="../../../summarize/2609.11445_FARM.%E6%91%98%E8%A6%81.html">2609.11445</a>。</p>
+<blockquote>
+<p>← <a href="../04_2026-07-22_%E6%93%B4%E5%85%85%EF%BC%9A%2B49_%E7%AF%87%E5%B8%B6%E4%BE%86%E7%9A%84%E5%9B%9B%E9%A0%85%E4%BF%AE%E6%AD%A3.html">回本章目錄</a>　<a href="02_%E5%9B%BA%E5%8C%96%E6%99%82%E6%A9%9F%E8%88%87%E5%83%B9%E5%80%BC.html">下一子節 →</a></p>
+</blockquote>
+<footer class="site-footer"><a href="../../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

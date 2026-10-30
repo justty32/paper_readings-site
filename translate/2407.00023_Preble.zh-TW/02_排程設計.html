@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_排程設計 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><p>← <a href="../2407.00023_Preble.zh-TW.html">回母檔</a>｜<a href="03_%E8%A9%95%E4%BC%B0%E8%88%87%E7%B5%90%E8%AB%96.html">下一節</a></p>
+<h2 id="3-preble-設計">3. Preble 設計</h2>
+<h3 id="31-整體架構">3.1 整體架構</h3>
+<p>Preble 支援 data parallel 與標準 model parallel。兩層 scheduler 分工如下：</p>
+<ul>
+<li>Global scheduler：request-level placement，維護整個 cluster 的 load 與 prefix-cache view。</li>
+<li>Local scheduler：每 model instance／GPU 一個，做 iteration-level batching、queue 與 eviction。</li>
+</ul>
+<p>中心化 global view 讓 E2 能看見 prefix 在哪裡，也避免把 iteration 級細節搬到分散式 control plane。作者的 implementation 估計單 global scheduler 可支撐至少 70–391 GPUs；更大規模則以多個 Preble clusters 分區。</p>
+<h3 id="32-e2-global-scheduler">3.2 E2 global scheduler</h3>
+<p>Global scheduler 維護 radix trees。每個 node 記錄 token count、cache 該 node 的 GPU set，以及 history window <code>H</code> 中各 GPU 使用該 node 的 request count。沒有任何 GPU cache、且 <code>H</code> 內無 request 使用的 node 會移除。</p>
+<p>新 request 先做 prefix match：</p>
+<ul>
+<li>若 matched tokens &gt; unmatched tokens，節省的重算大於需要平衡的新工作，選 exploitation。Request 送到 cache 最長 matched prefix 的 GPU；多張卡都有時選 load 最輕者。</li>
+<li>若 matched prefix 較短，選 exploration，依 prompt-aware load cost 找 GPU。這讓 prefix 能在新卡落地，換取長期負載平衡。</li>
+</ul>
+<p>Explore cost 將三項都換算為 GPU compute time：</p>
+<ol>
+<li>最近 <code>H</code> 內的 prefill + decode load；預設 <code>H=3 分鐘</code>。</li>
+<li>為容納新 request 而 eviction 的 KV，日後重新使用時造成的 miss／recomputation cost。</li>
+<li>新 request 在該 GPU 的計算 cost，已 cache 的 tokens 計為零。</li>
+</ol>
+<p>實作只在 global scheduler 保存 token counts，再用 regression 估 prefill time、用 token count 估 decode time，避免維護過細的 runtime profile。</p>
+<p>Prefix placement 後仍可能因熱門度改變而失衡。當最重 GPU 超過最輕 GPU 的 configurable threshold，Preble 把原本會 exploit 熱卡的未來 request 轉送到輕卡；若 popular prefix 的平均 queue time 在 history window 中加倍，系統複製 prefix 並按 subtree load 拆分流量。</p>
+<p>Prefill 比 decode 更 compute-intensive。完全 cache-hit 的 request 幾乎只剩 decode，可當 decode-phase unit；cache miss 的長 prompt 加短 output 則是 prefill-phase unit。Global scheduler 優先把 miss-heavy request 配給 decode-heavy GPU，以利用尚未占滿的 compute；local scheduler 另保留傳統 chunked prefill。</p>
+<h3 id="33-local-scheduler">3.3 Local scheduler</h3>
+<p>每個 local scheduler 維護 waiting queue、local radix tree 與各 node 的 active-request count。每個 iteration 後重組 batch；長而不共享的 prompt 會 chunk。GPU memory 不足時，依 tree-node access time 做 LRU eviction，並非同步阻塞 global scheduler。</p>
+<p>FCFS 公平但忽略 reuse；最高共享量優先會 starvation。Preble 建立 <code>P</code> 個 priority groups，依 request 的 cached-token percentage 分組。例如 63/100 tokens cache-hit、<code>P=10</code> 時進第 6 組。組 batch 時按 priority 配額比例取 requests，高組取得較多名額，低組仍有固定前進機會。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

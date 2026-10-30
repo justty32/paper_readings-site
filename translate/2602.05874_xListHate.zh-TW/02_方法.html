@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2602.05874_xListHate.zh-TW.html">回 2602.05874_xListHate.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%88%86%E6%9E%90%E8%88%87%E5%8F%AF%E8%A7%A3%E9%87%8B%E6%80%A7.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="31-檢查清單仇恨言論的診斷化因子觀點">3.1 檢查清單：仇恨言論的診斷化因子觀點</h3>
+<p>從法律標準、平台政策與規範框架中歸納出反覆出現的概念維度，轉化為十個二元問題：</p>
+<p><strong>核心定義條件：</strong></p>
+<ul>
+<li><strong>q1（受保護目標鎖定）</strong>：文本是否明確或隱含地鎖定一個基於固有受保護特徵的個人或群體？作為整個清單的閘門條件</li>
+<li><strong>q2（貶損或敵意內容）</strong>：是否對受保護群體傳達敵意、輕蔑或仇恨？檢查貶損語氣、侮辱、指控或與受保護身份掛鉤的負面概括</li>
+</ul>
+<p><strong>仇恨內容的實現形式：</strong></p>
+<ul>
+<li><strong>q3（明確蔑稱使用）</strong>：是否使用明確蔑稱、蔑視詞或負面刻板印象？</li>
+<li><strong>q4（去人化或妖魔化）</strong>：是否將某群體去人化、比作非人實體，或妖魔化為威脅？</li>
+<li><strong>q5（歸咎或代罪羔羊）</strong>：是否將社會問題或過錯歸咎於某群體，僅基於其身份？</li>
+</ul>
+<p><strong>嚴重性與升級訊號：</strong></p>
+<ul>
+<li><strong>q6（鼓吹排斥或歧視）</strong>：是否鼓吹剝奪權利、隔離或排斥某群體？</li>
+<li><strong>q7（威脅或傷害願望）</strong>：是否表達對某群體傷害或暴力的願望（即使隱含）？</li>
+<li><strong>q8（煽動或支持暴力）</strong>：是否直接呼籲他人對某群體施暴，或將其暴力行為正當化？</li>
+</ul>
+<p><strong>情境與影響基礎的限定條件：</strong></p>
+<ul>
+<li><strong>q9（說話者背書 vs 引用/諷刺）</strong>：說話者是否真誠地倡導仇恨訊息，而非引用、報導或諷刺？</li>
+<li><strong>q10（對目標群體的可能感知傷害）</strong>：目標群體成員是否會合理感到被攻擊、威脅或貶損？</li>
+</ul>
+<p>這些因子來自聯合國、ECRI、UNESCO、Rights for Peace、ALA，以及 Meta、YouTube、X、Reddit、TikTok 的政策（見 Table 1 的文本證據交叉比對）。</p>
+<h3 id="32-prompt-構建llm-推論與二元表徵">3.2 Prompt 構建、LLM 推論與二元表徵</h3>
+<p><strong>Prompt 結構</strong>：每個 prompt 含三個組件——(1) 明確陳述因子問題；(2) 簡短引導理由以釐清範圍、消歧邊界案例；(3) 少樣本範例（正例+反例）促使模型先給自然語言理由再輸出格式化的二元答案（<code>&lt;a&gt;Yes&lt;/a&gt;</code> 或 <code>&lt;a&gt;No&lt;/a&gt;</code>）。</p>
+<p>關鍵設計：<strong>prompt 從不詢問模型該文本是否為仇恨言論</strong>，最終標籤既不提及也不暗示，防止捷徑推理與下游目標洩漏。</p>
+<p><strong>二元診斷表徵</strong>：對文本 t，清單產生二元向量 z(t) ∈ {0,1}¹⁰，每個維度對應一個明確定義的概念因子——空間僅 1024 種可能組態，支援直接檢視、規則推理與因子交互分析。</p>
+<p><strong>模型無關與平行性</strong>：任何能遵循指令的 LLM 皆可用。每題獨立推論——無跨題共享狀態，防止強訊號污染其他答案，且允許平行執行。</p>
+<p><strong>log-probability 強制二元解析</strong>：小模型可能拒答（安全機制觸發）或輸出格式不符。此時在已產出文字後附加 <code>&lt;a&gt;</code>，查詢 Yes/No 的 token 級 log-probability，強制模型在兩可選結果中擇一：ẑ = argmax P(y | concat(o, <a>)) over y∈{Yes, No}。</p>
+<h3 id="33-特徵聚合">3.3 特徵聚合</h3>
+<p>在診斷表徵 z(t) ∈ {0,1}¹⁰ 上訓練分類器 fθ(z(t)) → ŷ ∈ {0,1}。聚合層刻意輕量且完全可解釋。</p>
+<p><strong>選擇決策樹的三個理由</strong>：(1) 顯式可解釋推理路徑——每條預測即 satisfied predicates 的合取；(2) 訓練/推論快速低資源，10-bit 輸入不需高容量參數化；(3) 學到的分裂暴露出哪些概念因子在給定標註方案下最資訊性。</p>
+<p><strong>硬編碼規則 vs 學習式聚合</strong>：刻意不強制固定聚合規則，因為不同資料集編碼異質的隱含操作定義。改為將清單視為<strong>穩定診斷表徵</strong>，讓輕量分類器自適應各資料集標註機制，同時保留因子層級可解釋性。</p>
+<h2 id="4-實驗設定">4. 實驗設定</h2>
+<h3 id="41-資料集">4.1 資料集</h3>
+<p>五個資料集用於訓練或評估：Measuring Hate Speech（MHS，最大/多樣/廣義定義）、HateXplain（社群媒體，附標註者 rationale）、Stormfront（白優論壇，極端/領域特定）、ETHOS（小、僅評估）、HateCheck（功能測試套件，僅評估）。二元分類設定，標準 train-test 分割。</p>
+<h3 id="42-基線">4.2 基線</h3>
+<ul>
+<li><strong>零樣本 LLM 分類</strong>：prompt 直接要求輸出 Yes/No，無清單、無訓練</li>
+<li><strong>域內監督微調</strong>：從基礎（非指令微調）checkpoint 開始，編碼器模型用 [CLS] 池化+線性分類頭，解碼器 LLM 用最終 token 隱藏態+分類頭。解碼器模型採 LoRA/QLoRA（8B+ 用 4-bit QLoRA）</li>
+<li>編碼器模型（BERT-base、RoBERTa-base、DeBERTa-base、ModernBERT-base）僅用於監督微調</li>
+</ul>
+<h3 id="43-模型選擇">4.3 模型選擇</h3>
+<p>解碼器 LLM 分三級：小（LLaMA 3 1B/3B、Gemma 3 4B）、中（Mistral 7B、LLaMA 3 8B、Gemma 3 12B）、大（Mistral 24B、Gemma 3 27B）</p>
+<h3 id="44-決策樹配置">4.4 決策樹配置</h3>
+<p>scikit-learn DecisionTreeClassifier，預設參數，僅設 min_weight_fraction_leaf=0.01。<strong>無超參數優化</strong>——刻意展示診斷表徵本身的解釋力，而非模型調校增益。</p>
+<h3 id="45-評估指標">4.5 評估指標</h3>
+<p>以 <strong>AUC（ROC 曲線下面積）</strong> 為主（因跨域評估關注排序能力、不受閾值選擇影響、對類別不平衡穩健）。另報告 <strong>Relative AUC</strong>（域外 AUC / 域內 AUC × 100%）量化跨域穩健性，以及 <strong>OOD AUC</strong>（排除域內後所有目標資料集的平均相對 AUC）。</p>
+<h3 id="46-實作細節">4.6 實作細節</h3>
+<p>基於 vLLM 推論（continuous batching）。單張 NVIDIA RTX 4500 Ada（24GB VRAM）。</p>
+<h2 id="5-結果">5. 結果</h2>
+<h3 id="51-checklist-prompt-一致優於直接零樣本分類">5.1 Checklist prompt 一致優於直接零樣本分類</h3>
+<p>8 個 LLM × 5 資料集（Table 5）：3B 以上模型所有資料集皆正增益。改善在需要細粒度語意判斷的資料集上尤為明顯（HateXplain: +0.146~+0.197 AUC）。1B 模型變異較大（部分輕微退化），但 3B+ 無例外。</p>
+<h3 id="52-微調最大化域內但-checklist-改善跨域穩健性">5.2 微調最大化域內、但 checklist 改善跨域穩健性</h3>
+<p>Tables 6-8（分別以 MHS/HateXplain/Stormfront 為訓練集）：</p>
+<ul>
+<li>端到端微調域內 AUC 最高，但<strong>差距隨模型增大而縮小</strong></li>
+<li>Checklist 的 <strong>Relative AUC 平均 &gt;100%</strong>，表示跨域時效能保存優於微調</li>
+<li>以 HateXplain/Stormfront 為訓練集時，<strong>部分模型的 checklist OOD AUC 超越微調</strong>（llama3-3b、mistral-7b、mistral-24b、gemma3-27b）</li>
+<li>跨所有實驗的綜合結論：微調域內強、checklist 相對穩健性（相對 AUC）更優、OOD 絕對效能因訓練集品質而異——<strong>監督泛化對分佈差異與資料集品質更敏感</strong>，符合預期</li>
+</ul>
+<h3 id="53-編碼器域內競爭力強但領域轉移下更脆弱">5.3 編碼器域內競爭力強但領域轉移下更脆弱</h3>
+<p>BERT/RoBERTa/DeBERTa/ModernBERT 微調 vs LLM：編碼器域內 AUC 不差，但域外退化比因果 LLM（含 checklist 管線）更大——高域內分數可能部分反映對詞彙/統計規律的利用，而非對仇恨言論抽象概念的學習。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

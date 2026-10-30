@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>LeetProof：以多模態驗證器實現認證程式合成（續 2） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.16584_LeetProof.zh-TW.html">回 2604.16584_LeetProof.zh-TW 目錄</a>　<a href="02_LeetProof_%E6%B8%AC%E8%A9%A6%E5%9F%BA%E7%A4%8E%E8%A8%AD%E6%96%BD.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>認證程式合成（vericoding）是從自然語言任務描述自動生成程式、其形式規格、以及程式滿足規格的機器可檢證明的過程。兩大挑戰使之困難：(1) 從自然語言合成的規格常<strong>太弱</strong>（無意義）或<strong>太強</strong>（無法實作），卻缺乏系統性的偵測與修正手段；(2) 程式驗證器碎片化為 auto-active（Dafny、Verus）與 interactive（Rocq、Lean）兩大陣營，每種合成方法都被迫為單一驗證範式量身訂做。本文提出以<strong>多模態驗證器</strong>——同時支援動態驗證（測試）、自動化證明（SMT）、與互動式證明腳本的單一工具——為核心，將認證合成工作流結構化為多個階段。我們在 <strong>LeetProof</strong> 中實現此構想：一個建立在 <strong>Velvet</strong>（嵌入 Lean 定理證明器的多模態程式驗證器）之上的 agentic 管線。多模態使 LeetProof 能在合成任何程式碼前以**隨機化屬性測試（PBT）**驗證生成規格、將合成任務按驗證條件分解為子問題、並將殘餘證明義務委託給專精 Lean 的前沿 AI prover。在涵蓋先前認證合成研究的廣泛 benchmark 套件上，我們的規格驗證揭露了既有參考 benchmark 中的缺陷，且 LeetProof 的分階段管線在相同固定預算下達到顯著高於單模式 baseline 的完全認證解比例——跨兩種不同前沿 LLM 後端皆一致。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>認證程式合成（vericoding）要求從自然語言描述產出三件產物：程式、形式規格、以及程式滿足規格的機器可檢證明。這本質上困難，因為它把兩個各自獨立的難題編織在一起——(a) 把非正式意圖翻成精確形式規格，(b) 證明合成實作滿足該規格——且兩者互相回饋：錯誤的規格連累正確的程式，而不足的證明策略讓正確的規格也無法驗證。</p>
+<p>LLM 程式碼生成的進展使 vericoding 變得可行，因為模型能產生形式規格與證明腳本，而程式驗證器擔任可信賴的神諭（oracle）檢查結果。但現有驗證器分裂為兩大陣營：auto-active（Dafny、Viper、Verus、F*）要求程式標註前置／後置條件與迴圈不變量，由 SMT 求解器自動檢查；interactive（Rocq、Lean）則要求使用者逐步建構證明腳本，換取完全的表達力。兩種範式上的 LLM vericoding 努力各自為政，提示策略與回饋迴圈都深嵌於工具細節中，難以提煉可跨驗證器重用的原則。</p>
+<p>更關鍵的是<strong>規格品質問題</strong>：既有管線中驗證形式規格通常只靠人工檢查，無系統性方式偵測規格太弱或太強。本文作者發現兩個最新 benchmark（VERINA 與 CLEVER）中約 10% 的參考規格存在缺陷——要麼欠約束、要麼錯誤表述了預期輸出的性質。</p>
+<p>本文提出以<strong>多模態驗證器</strong>（Velvet，基於 Loom 框架嵌入 Lean）為核心，把 vericoding 工作流設計為三階段管線，每階段配上最有效的推理模式。關鍵洞察：隨機化規格測試（PBT）比符號規格測試更適合 Lean——PBT 快、不需證明工程、且在規格驗證階段抓到與 SMT 式檢查相同類別的缺陷，成本卻是零頭。</p>
+<h2 id="2-背景">2. 背景</h2>
+<h3 id="21-lean">2.1 Lean</h3>
+<p>Lean 是開源定理證明器與依賴型別程式語言，其數學庫 Mathlib 包含超過 21 萬條形式化定理，是 AlphaProof（2024 IMO 銀牌）與 Aristotle（2025 IMO 金牌）等重大 AI 數學推理成果的平台。Lean 也以 hygienic 巨集系統與元程式設計設施充當 meta-verifier，允許嵌入特定領域推理框架。</p>
+<h3 id="22-velvet">2.2 Velvet</h3>
+<p>Velvet 是嵌入 Lean 的 Hoare 式命令式程式驗證器（基於 Loom 框架）。程式標註前置／後置條件與迴圈不變量，Loom 生成驗證條件（VC），其有效性隱含程式正確性——且因 Loom 自身在 Lean 中形式化，此隱含關係是機器可檢的定理，使 Velvet 成為<strong>基礎性驗證器</strong>（不需信任）。</p>
+<p>Velvet 的多模態體現在三種推理模式的統一：(1) SMT 自動化（lean-auto/cvc5）處理常規義務；(2) 互動式 Lean 證明處理 SMT 無法觸及的義務；(3) QuickCheck 式 PBT 快速驗證規格與不變量。</p>
+<h2 id="3-leetproof-管線">3. LeetProof 管線</h2>
+<p>LeetProof 以自然語言程式任務為輸入，產出帶機器可檢正確性證明的 Velvet 程式。任務分解為三階段：</p>
+<h3 id="31-規格合成">3.1 規格合成</h3>
+<p>第一階段把自然語言問題描述翻成形式 Lean 規格（前置條件 + 後置條件）＋約 10 個具體測試案例。LLM 先提出草稿，由 LLM judge 審查常見問題，若任一環節失敗則 LLM 修改草稿。然後進行<strong>三道 PBT 檢查</strong>（基於 Lean 的 Plausible 庫）：</p>
+<ol>
+<li><strong>輸入檢查</strong>：測試輸入滿足前置條件——過濾不相干輸入</li>
+<li><strong>正確性檢查</strong>：預期輸入／輸出對滿足後置條件——抓規格太強</li>
+<li><strong>唯一性檢查</strong>：對同一輸入不存在其他輸出滿足後置條件——抓規格太弱（欠約束）</li>
+</ol>
+<p>唯一性檢查最難，因為需證明「沒有意外輸出滿足後置條件」——這是對無界輸出域的全稱命題。對確定性問題（typical LeetCode），可簡化為 ∀o ≠ o_expected, ¬φ(i, o)。實作上透過<strong>型別導向突變</strong>搜尋虛假滿足的輸出：Boolean 翻轉、數值型別（Nat/Int/Char）做小幅加性擾動、對 (α × β) 突變一個分量或交換、對集合（Array/List/String）做元素級突變／刪除／插入。所有突變以 Lean 型別類 Mutatable 實作，支援複合型別的自動遞迴解析。</p>
+<p>PBT 使用 <code>plausible'</code>（Plausible 的非失敗變體）：搜尋反例，若找到則標記失敗，否則以 <code>sorry</code> 承認目標讓管線繼續——這在驗證層面安全，因為這些檢查是<strong>驗證守衛</strong>而非最終正確性憑證的一部分。</p>
+<h3 id="32-程式與不變量合成">3.2 程式與不變量合成</h3>
+<p>Velvet 是內在程式驗證器：正確性證明依賴程式層級標註（尤其迴圈不變量）來驅動 VC 生成。因此此階段耦合兩個子任務：合成程式碼與推斷迴圈不變量。</p>
+<p><strong>程式碼生成</strong>：LLM 從已驗證規格生成候選 Velvet 命令式程式，立即以具體測試案例（<code>#guard</code>）與 PBT 測試——PBT 隨機生成滿足前置條件的輸入並核驗後置條件與不變量。LLM judge 額外審查輸出（如是否意外產出純函數式 Lean 而非命令式 Velvet）。</p>
+<p><strong>不變量推斷</strong>：LLM 提出候選不變量，觸發 VC 生成並以自動化 tactic 嘗試關閉。剩餘 VC 以 PBT 搜尋反例——若找到反例或 LLM 評估剩餘 VC 為「在目前不變量下無法證明」，則回饋給 LLM 修改不變量。此階段的目標是<strong>高信心不變量</strong>（通過所有自動檢查但尚未形式證明），而非保證歸納性——最終證明留給下一階段。</p>
+<h3 id="33-證明合成與殘餘義務">3.3 證明合成與殘餘義務</h3>
+<p><code>prove_correct</code> 命令觸發 VC 生成。每個 VC 是普通 Lean 定理，可用 Lean 生態系中任何方法關閉。LeetProof 先以 SMT（lean-auto/cvc5）+ 內建 tactic（grind、aesop）自動嘗試。殘餘 VC 交給 <strong>LLM prover agent</strong>（仿 Hilbert 分解技術），有 Mathlib 搜尋能力、可註冊輔助引理、遞迴分解子目標。極難義務委託給 Aristotle（IMO 金級 AI prover）。</p>
+<p>嘗試以互動證明迴圈取代早期階段的 PBT 過濾在實驗中被證明不切實際——即使對簡單任務，形式證明的 token 與時間成本也遠超 PBT，而 PBT 以零頭成本提供相同過濾效果。這確認了「互動證明只保留給最後一哩（strictly necessary）」的設計選擇。</p>
+<h1 id="leetproof以多模態驗證器實現認證程式合成續-2">LeetProof：以多模態驗證器實現認證程式合成（續 2）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

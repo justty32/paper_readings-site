@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Diffusion-Proof：超越自迴歸生成的形式定理證明配方》逐節精要翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>arXiv：2606.19315</p><p><a href="https://arxiv.org/abs/2606.19315" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="diffusion-proof超越自迴歸生成的形式定理證明配方">Diffusion-Proof：超越自迴歸生成的形式定理證明配方</h1>
+<blockquote>
+<p>逐節精要翻譯（非逐字）。原文 arXiv:2606.19315v1（UIUC、NVIDIA）。</p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>強化 LLM 的形式數學推理已成數學與電腦科學社群焦點。雖然用 SOTA 自迴歸（AR）LLM 做形式定理證明已有顯著進展，這些模型有天生限制：下一 token 預測因長程一致性挑戰與長序列誤差複合，可能表現次優。近期擴散 LLM（dLLM）以「多 token 區塊迭代去噪」重構生成，提供有前途的替代。我們提出 <strong>Diffusion-Proof</strong>（據我們所知是首個訓練並應用 dLLM 於形式定理證明的框架），含兩個協同的 7B 模型 <strong>dLLM-Prover-7B</strong> 與 <strong>dLLM-Corrector-7B</strong>。實驗顯示其相對顯著勝過同資料集訓練的 AR 基線，於 <strong>MiniF2F-Test 取得絕對 6.14% 改善</strong>（pass@32），並解出一道 DeepSeek-Prover-V2-7B 解不出的 IMO 題。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>AR LLM 做形式證明有天生缺陷：下一 token 預測使長程一致性差、長序列誤差累積；且 AR 自然<strong>無法做填補式（in-filling）證明修正</strong>。另一方面，dLLM 把生成重構成多 token 區塊的迭代去噪，天生具長程一致性與雙向感知，已在程式碼任務展現潛力（有高效訓練/推理框架支援），但用於形式推理幾乎未被探索。</p>
+<p>Diffusion-Proof 是首個為形式定理證明訓練並應用 dLLM 的框架，含兩個協同的 7B 模型：</p>
+<ul>
+<li><strong>訓練階段</strong>：蒐集 550 萬筆既有定理證明資料，清洗篩選 30 萬筆 SFT 資料，微調 <strong>Fast-dLLM-V2-7B → dLLM-Prover-7B</strong>（強化整段證明書寫）。隨後提出新穎的 <strong>Large Block Correction 訓練法</strong>，讓模型用雙向資訊做形式證明的局部填補式修正。</li>
+<li><strong>推理階段</strong>：dLLM-Prover-7B 先據定理陳述產出證明；若初版錯但<strong>證明骨架正確</strong>，用 dLLM-Corrector-7B 以大擴散區塊生成在局部精修。</li>
+</ul>
+<p><strong>貢獻</strong>：(1) 首個微調並應用 dLLM 於形式定理證明的框架；(2) 新穎的大區塊修正訓練與推理法，利用雙向資訊做填補式修正；(3) 實驗顯示相對顯著勝過同資料 AR LLM——ProofNet-Test +1.61%、MiniF2F-Test +6.14%（pass@32），並解出一道 DeepSeek-Prover-V2-7B 解不出的 IMO 題。承諾開源全部訓練代碼、模型與資料集。</p>
+<h2 id="2-方法">2 方法</h2>
+<h3 id="21-預備知識">2.1 預備知識</h3>
+<p>AR LLM 以左到右順序生成，建模 ℙ_θ(xᵢ｜x[0:i−1])，訓練最小化僅基於前序 token 的交叉熵。dLLM 不同：引入時間步 t∈[0,1]，以機率 t 獨立遮罩 token 成 x⁽ᵗ⁾；模型 ℙ_ω(x⁽⁰⁾｜x⁽ᵗ⁾) 迭代從噪聲輸入還原原 token，訓練目標為被遮罩位置的還原損失 ℒ(θ)＝−𝔼[∑ᵢ 𝕀[xᵢ⁽ᵗ⁾=MASK]·log ℙ_ω(xᵢ⁽⁰⁾｜x⁽ᵗ⁾)]。</p>
+<h3 id="22-資料蒐集與前處理">2.2 資料蒐集與前處理</h3>
+<p>彙整 550 萬筆證明資料，清洗篩成 30 萬筆 SFT 資料。</p>
+<h3 id="23-prover-與-corrector-訓練">2.3 Prover 與 Corrector 訓練</h3>
+<p>SFT 微調 Fast-dLLM-V2-7B 成 Prover-7B；以 Large Block Correction 訓練 Corrector-7B 做局部填補式修正。</p>
+<h3 id="24-證明書寫與修正">2.4 證明書寫與修正</h3>
+<p>Prover 產出整段證明 → 若錯但骨架正確 → Corrector 以大區塊生成局部精修。</p>
+<h2 id="3-實驗">3 實驗</h2>
+<ul>
+<li><strong>資料/任務</strong>：含 IMO、AIME、AMC 形式化競賽題與 Math-500 子集等基準（MiniF2F、ProofNet）。</li>
+<li><strong>設定</strong>：不允許 Long CoT（Diffusion-Proof 與基線皆不支援長脈絡），以公平比較架構本身。主要目的是探究 dLLM 相對 AR 的架構優勢，而非追 SOTA。採標準 pass@32。</li>
+<li><strong>結果</strong>：相對顯著勝過同資料 AR 基線——ProofNet-Test +1.61%、MiniF2F-Test +6.14%（pass@32）；解出一道 DeepSeek-Prover-V2-7B 解不出的 IMO 題。含驗證損失研究、修正過程消融、與 AR 基線及 DeepSeek-Prover-V2 的案例對比。</li>
+</ul>
+<h2 id="4-相關工作">4 相關工作</h2>
+<p>LLM 形式定理證明（autoformalization、proof-state、retrieval、Draft-Sketch-Prove 等）；擴散 LLM（近期在語言/程式碼生成的進展）。</p>
+<h2 id="5-結論">5 結論</h2>
+<p>本工作凸顯 dLLM 在定理證明的獨特優勢（長程一致性、雙向填補式修正），為首個此領域的探索，承諾開源全部成果。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2606.19315_Diffusion_Proof.%E6%91%98%E8%A6%81.html"><code>../summarize/2606.19315_Diffusion_Proof.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

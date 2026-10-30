@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2212.04596_babble.zh-TW.html">回 2212.04596_babble.zh-TW 目錄</a>　<a href="02_%E7%B8%BD%E8%A6%BD%E4%BB%A5_running_example_%E8%AA%AA%E6%98%8E.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p><strong>函式庫學習（library learning）</strong> 透過從一個程式語料中抽取共同結構、化為可重用的函式庫函式，來壓縮該語料。先前的函式庫學習有兩個限制，使其無法擴展到更大、更複雜的輸入：第一，它探索了太多對壓縮無用的候選函式；第二，它對輸入的語法變異不魯棒。我們提出<strong>帶等式理論的函式庫學習（library learning modulo theory, LLMT）</strong>——一種新演算法，額外把某問題領域的**等式理論（equational theory）**作為輸入。LLMT 用 <strong>e-graph</strong> 與 <strong>equality saturation（等式飽和）</strong> 緊湊表示「在該理論下等價」的程式空間，並用一種新的 <strong>e-graph 反統合（anti-unification）</strong> 技術更直接、更高效地在語料中找出共同模式。我們把 LLMT 實作成工具 <strong>babble</strong>。評估顯示 babble 比當前最先進技術取得更好的壓縮、且快數個數量級；質性評估也顯示 babble 能在先前函式庫學習力有未逮的輸入上學到可重用函式。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>抽象是管理軟體複雜度的關鍵。函式庫學習想自動化「從程式碼抽取有用抽象」這件事，應用涵蓋重構／反編譯、人類認知建模、以及藉由把目標語言特化到某領域來加速程式合成。</p>
+<p>以 Fig. 1 為例：語料是三個用 Wong et al. (2022) 的 <strong>2d CAD DSL</strong> 寫的圖形程式（每個對應由正多邊形組成的圖，每個多邊形由多段旋轉線段構成）。學到的函式庫只有一個函式 f0，抽象出「縮放正多邊形」的構造，三個程式因而可重構得更簡潔。本文沿用 <strong>DreamCoder</strong>（Ellis et al. 2021）的做法，以<strong>壓縮率（以 AST 節點數計）<strong>作為函式庫學習的度量（此例從 208 壓到 72 節點）。關鍵在於：語料總大小</strong>包含函式庫本身的大小</strong>，這能防止學出太多過度特化的函式，並偏好更通用、更可重用的抽象。</p>
+<p>函式庫學習可表述為兩階段的程式合成問題：<strong>生成候選抽象</strong>，然後<strong>選擇</strong>能產出最佳（最小）重構語料的抽象。最先進的 DreamCoder 有兩個主要限制：（1）<strong>候選生成不精確</strong>——產生大量不可能有用的候選，拖慢選擇與整體演算法；（2）<strong>純語法、對表面變異不魯棒</strong>——例如人類立即知道 <code>2+1</code> 與 <code>1+3</code> 可用 <code>λx→x+1</code> 抽象（因加法可交換），純語法方法卻做不到。</p>
+<p>本文提出 <strong>LLMT</strong> 解決這兩點：</p>
+<ul>
+<li><strong>經由反統合達成精確的候選生成</strong>：基於兩個觀察——(a) 有用的抽象必須在語料中被用到<strong>至少兩次</strong>；(b) 抽象應「在該語料下盡可能具體」（如對 <code>2+1</code>、<code>3+1</code>，<code>λx→x+1</code> 優於更通用的 <code>λx y→x+y</code>，因兩者都適用但後者需多一個參數）。換言之，有用抽象對應「匹配語料中某對子項的<strong>最不通用模式（least general pattern）</strong>」，這可用<strong>反統合（anti-unification, AU）</strong>（Plotkin 1970）算出。</li>
+<li><strong>經由 e-graph 達成魯棒性</strong>：LLMT 額外吃進領域等式理論，用它找出「與原語料語義等價、但共享最多語法結構」的程式。例如算術領域的 <code>X+Y ≡ Y+X</code>，可把 <code>1+3</code> 改寫成 <code>3+1</code>，從而發現共同抽象 <code>λx→x+1</code>。挑戰在於要在龐大的等價程式空間中搜尋——故用 <strong>e-graph 資料結構與 equality saturation</strong> 來計算並表示這個空間，再用新的候選生成演算法（<strong>動態規劃</strong>）高效算出 e-graph 所表示子項對之間的所有反統合子。</li>
+<li>最後，選最佳函式庫化約成「在有共用子式下從 e-graph 抽取最小項」——這在一般形式下極耗算力（現有法可擴展性有限）。作者提出 <strong>targeted subexpression elimination</strong>：一種用領域知識縮小搜尋空間、並支援 beam search 近似的新 e-graph 抽取演算法。</li>
+</ul>
+<p><strong>貢獻</strong>：(1) LLMT——能納入任意領域等式理論、對語法變異魯棒的函式庫學習演算法；(2) e-graph 反統合——把反統合從項推廣到 e-graph 以高效生成候選；(3) targeted common subexpression elimination——在有共用子式下抽取最佳項的新近似演算法。babble 建於 <strong>egg</strong> e-graph 函式庫之上。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

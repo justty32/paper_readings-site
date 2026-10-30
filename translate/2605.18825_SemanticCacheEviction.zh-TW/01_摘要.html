@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.18825_SemanticCacheEviction.zh-TW.html">回 2605.18825_SemanticCacheEviction.zh-TW 目錄</a>　<a href="02_SAECache%EF%BC%9A%E8%AA%9E%E6%84%8F%E6%84%9F%E7%9F%A5%E7%9A%84%E5%89%8D%E7%B6%B4%E9%A9%85%E9%80%90.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>Prefix caching 透過在共享前綴的請求間復用注意力 KV state 來減少 LLM 推理中的 prefill 計算。然而 GPU 記憶體稀缺，其效益關鍵取決於驅逐策略。現有策略如 LRU 僅依賴快取區塊的存取時間，對所有區塊一視同仁。這種均質觀點忽略了 LLM prompt 的一個根本特性：不同 token 因其固有的語意特徵而有截然不同的快取價值。實證上，我們首先觀察到 prompt 中的不同 token 類型——system prompt、使用者查詢、工具輸出、模型回覆、CoT 推理——其復用率差異高達 756 倍，凸顯出 token 特徵在 prefix caching 中的重要性。基於此洞察，我們提出 SAECache（Semantic-Adaptive Eviction），一個語意自適應的 prefix cache 驅逐策略，透過三項創新彌補此缺口：(1) 一個多佇列架構，將 KV block 路由到特定佇列並搭配針對性的優先序計量，同時捕捉多輪互動中的會話復用與模板化單輪請求中的結構性復用；(2) 一個語意感知的 token 加權機制，透過驅逐回饋線上學習不同 token 類型的復用價值；(3) 所有參數的全自適應線上學習模式，消除人工調參並實現對部署特定工作負載特徵的自動適應。跨異質工作負載的廣泛評測證明 SAECache 相較生產級基線達成 1.4–2.7 倍 TTFT 改進，同時展示固定參數替代方案在工作負載錯配下效能嚴重退化（差距可達 2.7 倍）——此失效模式被我們的線上學習方法完全避免。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>Prefix caching 旨在提高 LLM 推理階段 KV state 的儲存效率。其核心原理是利用先前計算的 KV state 來消除後續請求中的計算冗餘。透過快取並復用在共享輸入前綴的請求間相同的 KV state，prefix caching 可顯著降低計算開銷並改善 TTFT 延遲。</p>
+<p>然而，prefix caching 的效益受到 GPU 記憶體容量限制。以四張 A100 GPU 服務 LLaMA-70B 為例，僅能快取約 36K 個 prefix token。在這種條件下，prefix caching 需要驅逐某些既有區塊以容納儲存價值更高的新 KV state。因此，制定有效的驅逐策略已成為首要設計選擇。</p>
+<p>現有的驅逐策略僅試圖捕捉狹義的重要性概念，對異質 LLM 工作負載與多樣 token 語意仍不足。具體而言，LRU（vLLM 的預設策略）僅依賴區塊的最近使用時間；LFU 則面臨相反問題——長時間會話累積高存取次數，使已結束會話的陳舊 KV state 滯留。LPC（Learned Prefix Caching）雖透過預測指引改進 LRU，仍是粗粒度的：同一對話的所有 KV block 繼承相同的「是否將繼續」信號。總結而言，過往驅逐策略的根本限制在於其 token-agnostic 設計。</p>
+<p>我們透過實證觀察揭示此不足。首先，單輪會話同樣透過共享 prompt 結構產生大量復用——尤其在模板化的 tool-use 與程式設計請求中。其次，token 語意在實務中導致顯著不同的復用水準：復用率從 system prompt 的 92.3% 到 CoT token 的僅 2.2%，跨 token 類型變異達 44 倍。再者，多輪會話中的復用幾乎完全是會話內的，但復用時機在不同工作負載間差異急遽（chat vs. agentic）。此外，各會話的 inter-turn interval 可被對數正態分佈良好建模，其參數隨不同會話而異。</p>
+<p>基於這些觀察，我們提出 SAECache：一個整合 token 語意結構與線上工作負載適應的語意感知驅逐策略。核心構想是超越固定的 token-agnostic 啟發式驅逐策略，讓 cache 以細粒度方式學習驅逐。我們匯聚 token 特徵與即時服務回饋來構建加權驅逐分數，以決定哪些內容最不值得保留。</p>
+<h2 id="2-前綴復用特徵分析與設計洞察">2. 前綴復用特徵分析與設計洞察</h2>
+<p>本節闡述驅動我們設計的前綴復用關鍵觀察。LPC 先前展示了多輪對話創造有價值的前綴復用以及僅靠最近使用不足。我們重訪此設定並新增三個缺失維度：單輪 prompt 中的結構性復用、prompt 內部的語意復用異質性、以及分佈式的 inter-turn 時間。</p>
+<p><strong>2.1 單輪復用來自 Prompt 結構</strong></p>
+<p>單輪請求通常來自 stateless API call 會話。雖然此類會話初看不利於 prefix caching，但它們仍因共享 prompt 結構而展現可觀復用。例如 tool-use prompt 通常共享 system prompt 與工具描述；程式設計工作負載復用固定指令與會話框架；文件 QA 即使文件變更仍共享穩定的請求外殼。此復用是會話局部的（跨會話復用低於 0.01%）。</p>
+<p>我們識別出兩個影響單輪驅逐的額外模式。第一，解碼區塊的復用率低於 3.17%（因為復用需要生成 token 的完全匹配），應在侵佔 prefill 前綴容量前優先驅逐。第二，prefill 復用隨 prompt 位置衰減——越前面的區塊（包含 system instruction 或共享框架）比後面的區塊（包含請求特定內容）更有價值，因為前綴匹配是嚴格的。設計洞察：模板化單輪區塊應按位置評分，較早區塊獲得較高優先序。</p>
+<p><strong>2.2 多輪復用是會話局部的且具分佈性</strong></p>
+<p>多輪會話中，由於每個新請求通常包含前面的對話歷史，前綴區塊的復用主要由會話連續性驅動。此復用幾乎完全是會話內部的：ShareGPT 風格 chat 軌跡中 99.28% 的復用區塊來自同一會話，CC-Bench 風格 agentic 軌跡中則為 99.96%。跨會話復用可忽略不計。</p>
+<p>我們觀察到請求的到達時間（請求間隔）跨會話差異顯著。每個會話的請求間隔遵循具獨特超參數的對數正態分佈：人機 chat 具有跨兩個數量級的重尾（Bailian 上 P50≈110s, P99≈2,207s），而 agentic 軌跡則快一個數量級（CC-Bench 上 P50≈8.5s, P80≈25s）。然而兩者均可被對數正態分佈良好擬合（R² ≥ 0.987, K-S ≤ 0.060）。這是一個重要的進展，超越 LPC 的手動調參指數衰減。設計洞察：多輪會話的 cached prefix block 復用是會話局部的。請求間隔雖跨會話變異顯著但各自遵循唯一的對數正態分佈，參數應當線上學習。</p>
+<p><strong>2.3 Token 類型具有不等的復用價值</strong></p>
+<p>除會話結構外，LLM 請求通常包含語意上不同的 token：system prompt、使用者查詢、工具輸出、模型回覆與 CoT 軌跡。這些 token 在 prompt 中扮演不同角色並具有不同的未來價值。System prompt 復用率最高（92.3%）因其編碼穩定的應用指令；使用者 prompt 具有中等復用率（30.8%）來自結構化查詢模板被可變內容稀釋；回覆 token 呈現顯著的不對稱現象——高會話內復用（36.3%）因多輪 prompt 包含先前歷史回覆，但低會話間復用（1.5%）；CoT token 復用率最低（2.2%）因推理軌跡高度查詢特定。設計洞察：驅逐應當是語意感知的——一個 system prompt block 與一個 CoT block 不應獲得相同優先序。Token 類型權重應從回饋中學習。</p>
+<p><strong>2.4 固定參數的脆弱性</strong></p>
+<p>固定策略在動態 LLM 系統中是脆弱的。一個針對 chat 主導流量擬合的策略在單輪主導流量下會學到不恰當的時序與佇列權重。從 chat 主導軌跡擬合的對數正態參數在單輪主導工作負載上導致 2.7 倍 TTFT 退化。固定佇列權重（24:1 優先序）在工作負載組成反轉時災難性地錯配快取容量。設計洞察：參數與權重應當從回饋（如命中效率）線上更新，因為不同 token 類型的相對復用價值是工作負載相關的且可能隨時間變化。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

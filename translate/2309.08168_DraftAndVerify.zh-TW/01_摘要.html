@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2309.08168_DraftAndVerify.zh-TW.html">回 2309.08168_DraftAndVerify.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>我們提出一種新的推論方案——<strong>自我推測式解碼（self-speculative decoding）</strong>，可在<strong>不需輔助模型（auxiliary model）<strong>的情況下加速大型語言模型（LLM）。此方法由兩階段組成：草稿（drafting）與驗證（verification）。草稿階段以稍低品質但更快的速度產生草稿 token，作法是在草稿時</strong>選擇性地跳過某些中間層（intermediate layers）</strong>；驗證階段則用原始 LLM 在一次前向傳播中驗證這些草稿輸出 token。此流程確保最終輸出與未改動的 LLM 完全一致。此外，本方法<strong>不需訓練任何額外神經網路、也不佔額外記憶體</strong>，是即插即用（plug-and-play）且低成本的推論加速方案。在 LLaMA-2 及其變體上的實測顯示，加速最高可達 <strong>1.99×</strong>。（程式碼將以 Apache-2.0 授權釋出。）</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>Transformer 架構的 LLM（GPT-3/4、PaLM、LLaMA 等）已廣泛落地，但推論成本引發顧慮，尤其在延遲敏感場景。主要效率瓶頸是<strong>自迴歸解碼（autoregressive decoding）</strong>：逐 token 串行解碼導致大量 Transformer 呼叫，且每次呼叫通常受記憶體頻寬限制（memory bandwidth-bound），計算利用率低、牆鐘時間長。例如在 A100 上用 LLaMA-2-13B 逐 token 自迴歸解碼 128 個 token，可比同樣 token 數的一次序列級前向慢達 <strong>100×</strong>。</p>
+<p>既有的模型壓縮（量化、剪枝、蒸餾）雖有效，但通常要改模型架構／訓練流程、重訓或微調，且<strong>不維持相同輸出</strong>。與之並行的 **speculative execution（推測式執行）**則訓練一個能快速產生草稿 token 的輔助 draft 模型，再用原 LLM（verify 模型）一次前向檢查草稿的可接受性，確保輸出仍源自原模型的機率分佈。</p>
+<p>然而既有推測式方法的核心難題是：<strong>必須找到或訓練一個能與 verify 模型輸出一致的合適 draft 模型</strong>。當 LLM 本身已是微調模型（如 LLaMA-2-Chat、CodeLLaMA）時，要找／訓一個能有效模仿其輸出的 draft 模型極為困難，且沒有現成保證的解法；此外，額外的 draft 模型會<strong>升高 GPU 顯存負擔</strong>，在記憶體受限裝置上更難部署。</p>
+<p>本文提出 <strong>self-speculative decoding</strong>：沿用推測式執行的原理，但<strong>用同一個 LLM 同時擔任草稿與驗證</strong>。關鍵洞見是——<strong>跳過 LLM 的某些層不會顯著損害生成品質</strong>（Liu et al. 2023）。因此選擇性繞過部分中間層，即可用 LLM 自身產生草稿 token，再由原 LLM 一次前向驗證。兩條推論路徑共用同一模型，故<strong>不需獨立 draft 模型、無額外顯存負擔</strong>。</p>
+<p>實作面臨兩大挑戰：(a) 草稿時該跳哪些層、跳幾層；(b) 何時停止產生草稿 token。對第一項，作者將其形式化為最佳化問題（輸入為欲繞過的層組合，目標為最小化每 token 平均推論時間），用<strong>貝氏最佳化（Bayesian optimization）<strong>求解，離線在模型層級進行、所得跳層組合固定。對第二項，草稿 token 數 K 對端到端加速影響很大（如圖 2：接受率 &lt;80% 時 K=1 最佳、&gt;80% 時需較大 K），故靜態 K 不通用；作者提出</strong>自適應草稿退出（adaptive draft-exiting）</strong>，一旦信心低於門檻即停止產生草稿。</p>
+<p><strong>主要貢獻</strong>：(1) 推論方案——self-speculative decoding，免訓練、免額外顯存、即插即用；(2) 最佳化策略——用貝氏最佳化選跳層，並提出簡單有效的方法自適應決定草稿 token 數；(3) 評估——在文本摘要與程式生成任務上驗證，端到端加速最高 1.99×。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>Transformer LLM 推論系統</strong>：FasterTransformer、Orca、LightSeq、FlexGen、TGI 等針對推論做系統最佳化；token 生成階段通常佔端到端時間的大部分，但演算法與系統的協同設計仍有缺口。</li>
+<li><strong>模型壓縮</strong>：量化、剪枝／稀疏化、蒸餾雖有效，但常須改架構與訓練流程、重訓或微調，且<strong>不產生相同輸出</strong>。</li>
+<li><strong>推測式執行</strong>：源自電腦架構的 speculative execution；Speculative decoding（Chen et al. 2023；Leviathan et al. 2023）與 block-wise parallel decoding（Stern et al. 2018）能加速，但都須訓練／挑選高品質 draft 模型並增加顯存。Yang et al.（2023）複製參考文本 token 再驗證，但依賴「重複性假設」，不適用一般生成。本法<strong>不增顯存、不依賴資料分佈假設</strong>。</li>
+<li><strong>Early Exit（提前退出）</strong>：讓模型依輸入選不同計算路徑加速，多見於 encoder-only Transformer；Schuster et al.（2022）驗證其在 encoder-decoder LLM 上的有效性。受此啟發，本文在草稿時選擇跳過某些中間層。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Finite Automata Extraction: Low-data World Model Learning as Programs from Gameplay Video 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Dave Goel、Matthew Guzdial、Anurag Sarkar</p><p>日期：2025-08-15（v1，cs.AI）</p><p>arXiv：2508.11836</p><p><a href="https://arxiv.org/abs/2508.11836" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="finite-automata-extraction-low-data-world-model-learning-as-programs-from-gameplay-video-重點摘要">Finite Automata Extraction: Low-data World Model Learning as Programs from Gameplay Video 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>Finite Automata Extraction 先把 gameplay video 壓成 sprite grid，再替每種 sprite 搜尋短小的 if-then 程式，得到可讀、可修改、低資料量的遊戲世界模型；代價是表示與 DSL 一旦漏掉尺寸、時間或隨機性，學習器便無法重現那些機制。</p>
+<h2 id="問題">問題</h2>
+<p>可互動的 neural world model 能從 action 生成後續畫面，卻不易讓遊戲開發者檢查或修改規則，訓練所需資料與算力也高。既有 symbolic Game Engine Learning 雖輸出規則，但搜尋出的條件可能冗長，且不一定從有限影片學到可轉移機制。本文希望直接由 gameplay video 學出每個 sprite 的可執行程式，讓世界模型同時具備可預測性與可編輯性。</p>
+<h2 id="方法架構">方法架構</h2>
+<p>管線有兩段。第一段改造 Marionette 自監督模型，學一個有限 sprite dictionary，並把每幀轉為每格只放一種 sprite 的 symbolic grid。固定背景會先從輸入與輸出扣除，重建 loss 權重設為 γ＝10（作者自報），讓表徵集中在動態 sprite。</p>
+<p>第二段使用作者提出的 Retro Coder DSL。每個 sprite 各有一支由 if-then 組成的程式；condition 可測某類 sprite 是否存在或相鄰，action 可朝實體、方向或座標移動，也可把 sprite 轉成另一種類型。Finite Automata Extraction 對每個人工挑出的可學 sprite 逐一做局部搜尋，加入或移除條件，以最小化程式執行後的下一幀 grid 與真實下一幀之間的 absolute error。每次用三個相鄰轉移評估候選（作者自報），藉由逐 sprite 分解壓低搜尋空間。</p>
+<p>評估分成兩種 rollout。Approach 1 每一步都從真實當前幀預測下一幀，測單步規則；Approach 2 只在起點給真實幀，之後餵回模型預測，測誤差累積。畫面品質使用 FID 與自訂 prediction error，程式品質則看 training time 與平均 condition 數。</p>
+<h2 id="作者報告的結果">作者報告的結果</h2>
+<p>實驗涵蓋簡化 Pac-Man 與 River Raid 兩個 domain。Pac-Man 地圖由 20×31 縮成 8×8、sprite dictionary 設為十五類，River Raid 設為十六類；表示模型各訓練一千個 epoch（作者自報）。</p>
+<p>在 Pac-Man 的 Approach 1，FAE test FID 為 0.28，優於 Game Engine Learning 的 0.39 與 GameGAN 的 10.46；test prediction error 為 7.06，接近 Game Engine Learning 的 6.91，低於 GameGAN 的 40.64（作者自報）。FAE 的平均程式只有 1.75±0.83 個 condition，Game Engine Learning 為 73±22.55，顯示前者的規則短得多；訓練時間則是 801.23 秒，介於 Game Engine Learning 的 2.01 秒與 GameGAN 的 7200.00 秒之間（作者自報）。</p>
+<p>規則內容有成有敗。Pac-Man 中需要學習的四種 sprite 行為，兩種正確重現（作者自報）；ghost 的隨機移動與較少出現的狀態沒有學好。River Raid 的 Approach 2 中，FAE test FID 為 0.13，略優於 Game Engine Learning 的 0.14，兩者 test prediction error 分別為 84.04 與 84.14，GameGAN 則為 144.2（作者自報）。但 FAE 未能學到罕見船隻的行為，也無法穩定表示跨多格的 fuel sprite。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>FAE 證明少量 gameplay video 可以產生部分可讀遊戲規則，且短程畫面指標能與既有 symbolic baseline 相當或更好。不過結果也提醒讀者，好的 FID 不等於完整的遊戲機制。Game Engine Learning 在部分設定只是複製上一幀，仍可得到很強的畫面距離基準；FAE 若漏學一個 sprite，autoregressive rollout 也會在它出現後迅速分岔。</p>
+<p>限制主要卡在表示能力。grid 會把跨格 sprite 幻覺成兩個物件，無法處理旋轉與不同尺寸；逐 sprite 程式沒有 GameManager，因此不能生成 sprite。Retro Coder 也沒有時間概念與隨機行為。再加上必須人工指定哪些 sprite 要學，這仍是一個適用於簡單 2D 遊戲的 prototype，而非通用的程式世界模型。</p>
+<h2 id="對讀者的價值ai_core-接點">對讀者的價值／ai_core 接點</h2>
+<p>這篇最有用的不是證明 symbolic 一定勝過 neural，而是展示可編輯模型的失敗面會比較清楚。某條規則沒學到、DSL 沒有時間、表示不能容納尺寸，都是能直接定位的契約缺口；神經影片模型的錯誤通常只能從畫面漂移反推。</p>
+<p>對 ai_core 而言，Retro Coder 也示範了「搜尋空間即治理邊界」。小 DSL 讓結果容易驗證、局部修改，但它排除的語意就是系統永久看不見的能力。設計固化語言時，除了追求簡短與安全，還要明列時間、隨機性、全域管理等無法表達的部分，否則短程指標會掩蓋結構性缺口。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2508.11836_FiniteAutomataExtraction.zh-TW.html"><code>../translate/2508.11836_FiniteAutomataExtraction.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

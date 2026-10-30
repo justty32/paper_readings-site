@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.20050_VerifyStepByStep.zh-TW.html">回 2305.20050_VerifyStepByStep.zh-TW 目錄</a>　<a href="02_%E5%B0%8F%E8%A6%8F%E6%A8%A1%E5%90%88%E6%88%90%E7%9B%A3%E7%9D%A3.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>近年大型語言模型的多步推理能力大幅提升，但即使最先進的模型仍常犯邏輯錯誤。要訓練更可靠的模型，可採 <strong>outcome supervision（結果監督）</strong>——只對最終結果給回饋，或 <strong>process supervision（過程監督）</strong>——對每個中間推理步驟給回饋。鑑於可靠模型的重要性與人類回饋的高成本，兩者值得仔細比較。我們的研究發現：在具挑戰性的 MATH 資料集上，<strong>過程監督顯著勝過結果監督</strong>。我們的過程監督模型解出 MATH 測試集代表性子集中 <strong>78%</strong> 的問題。此外，<strong>active learning（主動學習）顯著提升過程監督的資料效率</strong>。我們同時釋出 <strong>PRM800K</strong>——用於訓練最佳 reward model 的全部 80 萬筆步級（step-level）人類回饋標籤。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 能以逐步的 chain-of-thought 格式解需要複雜多步推理的任務，但即使最先進模型也易在不確定時捏造事實——這類幻覺（hallucination）在多步推理領域特別致命，因為<strong>一個邏輯錯誤就足以毀掉整個更大的解答</strong>。</p>
+<p>一種有效方法是訓練 **reward model（獎勵模型）**去區分好壞輸出，再用於 RL 管線或 rejection sampling 搜尋。但整個系統的可靠度以 reward model 為上限，因此如何訓練可靠的 reward model 是關鍵。</p>
+<p>延續 Uesato et al. (2022) 的區分：**ORM（outcome-supervised reward model，結果監督獎勵模型）**只用 chain-of-thought 的最終結果訓練；**PRM（process-supervised reward model，過程監督獎勵模型）**對思路鏈中每一步接收回饋。偏向過程監督的理由：回饋更精確（指明錯誤的確切位置）；更利於 AI 對齊——人類更易解讀、更直接獎勵「遵循人類認可的思路」。結果監督下模型常以錯誤推理得到正確答案，過程監督已被證明能緩解此失準行為。</p>
+<p>然而 Uesato et al. 在小學數學（GSM8K）領域發現兩種監督最終表現相近。我們自行做更詳盡的比較，有三點不同：<strong>更強的基礎模型、多得多的人類回饋、在更難的 MATH 資料集上訓練與測試</strong>。</p>
+<p><strong>主要貢獻</strong>：</p>
+<ol>
+<li>過程監督能訓練出遠比結果監督可靠的 reward model；我們最先進的 PRM 解出 MATH 測試代表子集 <strong>78.2%</strong> 的問題。</li>
+<li>大型 reward model 可可靠地近似人類監督來訓練較小的 reward model，可用於高效進行大規模資料收集消融實驗。</li>
+<li>主動學習使過程監督的資料效率提升 <strong>2.6 倍</strong>。</li>
+<li>釋出完整過程監督資料集 <strong>PRM800K</strong>。</li>
+</ol>
+<h2 id="2-方法">2. 方法</h2>
+<p>比較方法沿襲 Uesato et al. (2022)。結果監督可不靠人（MATH 所有題目的答案可自動核對）；過程監督無法簡單自動化，故由人類標註者標記模型生成解答中<strong>每一步的正確性</strong>。</p>
+<p>實驗分兩種規模：<strong>大規模</strong>（全部從 GPT-4 微調，目標是推進最先進水準）與<strong>小規模</strong>（可做更直接的同條件比較；用大規模模型代替昂貴的人類回饋來監督小模型訓練，使多項原本不可行的消融成為可能）。</p>
+<p><strong>2.1 範圍</strong>：每種規模用單一固定模型生成所有解答，稱為 <strong>generator（生成器）</strong>。本文<strong>刻意不用 RL 改進生成器</strong>——所談的結果／過程監督專指給 reward model 的監督。評估方式：reward model 對生成器均勻抽樣的解答做 <strong>best-of-N 搜尋</strong>——每題選 reward model 評分最高的解答，按最終答案自動判分，回報正確比例。更可靠的 reward model 會更常選中正確解答。</p>
+<p><strong>2.2 基礎模型</strong>：大規模模型皆從 GPT-4 基礎模型微調（僅做過 next-token 預訓練、未經 RLHF）；小規模模型設計類似但預訓練計算量約少 200 倍。所有模型先在約 15 億 token 的數學相關資料集 <strong>MathMix</strong> 上做額外預訓練（類似 Minerva 但更小、過濾更嚴），可提升數學推理能力。</p>
+<p><strong>2.3 生成器</strong>：為方便解析單一步驟，訓練生成器以<strong>換行分隔的逐步格式</strong>產生解答——few-shot 生成 MATH 訓練題解答、過濾出最終答案正確者、以此微調一個 epoch。此步只為教格式、不為教新技能。</p>
+<p><strong>2.4 資料收集</strong>：人類標註者對大規模生成器抽樣的逐步解答，給每一步標 <strong>positive（正確且合理）／negative（錯誤或不合理）／neutral（含糊，如「微妙誤導」或「技術上有效但很差的建議」）</strong>。允許 neutral 是為延後決定如何處理歧義——測試時可把 neutral 當 positive 或 negative。全部步級標籤資料集稱 <strong>PRM800K</strong>：訓練集含 <strong>12K 題、75K 個解答、共 80 萬筆步級標籤</strong>。為降低過擬合，訓練集混入 4.5K 個 MATH 測試題，故僅在其餘 <strong>500 題</strong>測試題上評估。</p>
+<p><strong>資料收集的主動學習策略</strong>：均勻呈現解答會浪費人力在明顯錯誤上。我們改為策略性呈現 <strong>convincing wrong-answer（有說服力的錯誤答案）解答</strong>——被目前最佳 PRM 評分很高（有說服力）、但最終答案錯誤者。標這種解答資訊量最大，因為已知 PRM 至少對其中一步判斷錯誤。收集過程中多次以最新資料重訓 PRM，每輪每題生成 N 個解答、只呈現最有說服力的前 K 個錯誤答案解答。</p>
+<p><strong>2.5 ORM</strong>：沿襲 Cobbe et al. (2021)（GSM8K verifier）方法。每題從生成器均勻抽固定數量的解答，訓練 ORM 預測每個解答正確與否（實務上以自動核對最終答案決定正確性）。測試時以最後一個 token 的預測值作為整體分數。注意自動判分並非完全可靠：<strong>以錯誤推理得到正確答案的偽陽性解答會被誤判為正確</strong>。</p>
+<p><strong>2.6 PRM</strong>：訓練 PRM 在每步的最後一個 token 之後預測該步的正確性，預測即單一 token，訓練即最大化目標 token 的對數概似——<strong>可在標準語言模型管線中訓練，無需特殊改造</strong>；測試時對整個解答做一次前向傳播即得所有步級預測。比較多個解答時需要單一分數：定義<strong>解答的 PRM 分數＝所有步皆正確的機率</strong>，實作為各步正確機率的乘積。</p>
+<p>過程監督<strong>刻意只標到第一個錯誤步為止</strong>：對正確解答，兩種監督提供相同資訊；對錯誤解答，兩者都揭示至少有一個錯，而過程監督額外揭示<strong>錯誤的精確位置</strong>。這也讓人類標註成本相近——不依賴易核對的最終答案時，「判斷解答正確與否」等價於「找出第一個錯誤」。MATH 多數題目答案易核對，但預期在更複雜領域不再如此。</p>
+<h2 id="3-大規模監督">3. 大規模監督</h2>
+<p>大規模 PRM 用 PRM800K 的步級標籤訓練；為讓 ORM 基線盡量強，用每題 100 個均勻樣本訓練（與 PRM800K 無重疊、且大一個數量級）。兩個訓練集不能直接比較，但各代表對該監督形式的最佳嘗試。（用 PRM800K 的解答訓練 ORM 會有問題——主動學習已使資料嚴重偏向錯誤答案；混入均勻樣本的超集也沒有改善 ORM 表現。）</p>
+<p><strong>結果（圖 3）</strong>：best-of-1860 的解題率——<strong>ORM 72.4%、PRM 78.2%、多數決（majority voting）69.6%</strong>。ORM 略勝多數決這個強基線，而 <strong>PRM 大幅勝過兩者</strong>；且 N 越大差距越大，顯示 PRM 在大量模型生成解答中搜尋的能力遠強於 ORM 與多數決。試過 RM 加權投票結合 PRM 與多數決，未見明顯改善。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

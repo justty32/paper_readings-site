@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2511.05849_EGG_SR.zh-TW.html">回 2511.05849_EGG_SR.zh-TW 目錄</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>符號迴歸（SR）藉搜尋閉式表達式從實驗資料發掘物理定律，是 AI 驅動科學發現的重要任務。但表達式搜尋空間指數成長使其計算困難。一個有望但未充分探索的縮空間與加速方向在於<strong>符號等價（symbolic equivalence）</strong>：許多語法不同的表達式定義同一函數——如 log(2x)、log2+logx、log(x)+log(2)。既有演算法把這些變體當不同輸出 → 冗餘探索、學習慢。本文提出 <strong>Egg-SR</strong> 統一框架，把符號等價整合進一類現代 SR 方法（<strong>MCTS、深度強化學習 DRL、LLM</strong>）。Egg-SR 經提出的 <strong>Egg 模組（用等式圖）</strong> 緊湊表示等價表達式，經以下方式加速學習：(1) 在 Egg-MCTS 剪枝冗餘子樹探索；(2) 在 Egg-DRL 跨等價生成序列聚合獎勵；(3) 在 Egg-LLM 豐富回饋 prompt。理論上：收緊 MCTS 的 regret 界、降低 DRL 梯度估計器的變異數。實驗上：Egg-SR 在多個 benchmark 上一致增強一類 SR 模型，在相同時限內發現更準表達式。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>SR 旨在從實驗資料自動發掘物理知識。許多當代方法把「搜尋最優表達式」形式化為<strong>序列決策過程</strong>（學預測文法規則序列、表達式樹的遍歷序列、或遵 Python 語法的可執行字串）。因 <strong>NP-hard</strong>（候選表達式空間隨資料維度指數成長）而困難。</p>
+<p>縮空間與加速的有望但未充分探索方向是<strong>把符號等價整合進學習演算法</strong>。理想上訓練好的模型應辨識等價、對對應預測表達式賦予相同擬合度/獎勵/損失（因它們函數輸出相同、預測誤差相同）。但既有 SR 把它們當不同輸出 → 冗餘探索、訓練慢。主要挑戰：<strong>如何統一可擴展地表示符號等價表達式並嵌入現代學習框架?</strong></p>
+<p>因等價變體數隨表達式長度指數成長，顯式維護不可擴展。近期引入 <strong>等式圖（e-graph）</strong>——緊湊編碼等價變體集（只儲存共享子表達式一次）的資料結構，已用於程式優化、等價表達式資料集生成；GP-based SR 中用於去重、表達式簡化、模板模式匹配。但缺「讓多種 SR 演算法與 e-graph 互動加速學習」的統一框架。</p>
+<p>本文提出 <strong>Egg-SR</strong>，經 e-graph 把符號等價整合進一類學習演算法，涵蓋 <strong>Egg-MCTS、Egg-DRL、Egg-LLM</strong>。核心：用 Egg 高效取樣 SR 預測表達式的等價變體、計算新的等價感知學習目標。(1) Egg-MCTS 剪枝等價子樹冗餘探索；(2) Egg-DRL 跨等價表達式聚合獎勵穩定訓練；(3) Egg-LLM 用多個等價式豐富回饋 prompt。溫和理論假設下：(1) Egg-MCTS 比標準 MCTS 更緊 regret 界；(2) Egg-DRL 梯度估計器比標準 DRL 變異數更低。</p>
+<h2 id="2-預備知識">2. 預備知識</h2>
+<p><strong>符號表達式</strong>：用文法（context-free grammar）表示——非終端符號（任意子表達式）、終端符號（輸入變數與係數）、產生式規則（數學運算）、起始符號。給規則序列，從起始符號對最左非終端依序套用建表達式。</p>
+<p><strong>改寫系統下的符號等價</strong>：改寫規則 <code>LHS→RHS</code>（匹配模式 + 替換）。給規則集 R，兩表達式等價 ⟺ 一者可經有限次改寫轉成另一者。已知數學恆等式編碼為 R 中的改寫規則；§3.1 在 e-graph 上套這些規則經匹配與替換生成一批等價表達式。</p>
+<p><strong>符號迴歸</strong>：假設資料由底層閉式表達式生成；給資料集找最小化損失的最優表達式（係數常用 BFGS 等數值優化）。NP-hard。</p>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="31-egg文法式符號表達式的等式圖">3.1 Egg：文法式符號表達式的等式圖</h3>
+<p>枚舉所有等價變體組合上昂貴、顯式儲存低效。採 <strong>e-graph</strong> 緊湊表示（共享共同子表達式），擴展到文法式符號表達式（稱 <strong>Egg</strong>）。e-graph 由 <strong>e-class（等價類）</strong> 組成，每類含多個 <strong>e-node</strong>（等價子表達式；編碼數學運算、指向子 e-class 的邊）。</p>
+<ul>
+<li>與 SR 演算法互動：不像先前用 e-graph 找最簡形式（Occam），本文<strong>刻意暴露 SR 一批等價變體</strong>做等價感知學習。給 SR 預測的產生式規則序列 → Egg 建 e-graph → 經<strong>隨機遊走取樣抽取</strong>回傳一批等價序列。</li>
+</ul>
+<h3 id="32-經-egg-把符號等價嵌入-sr">3.2 經 Egg 把符號等價嵌入 SR</h3>
+<p><strong>嵌入 MCTS</strong>：MCTS 維護搜尋樹探索最優決策序列（產生式規則）。四步：選擇（依 UCT 選最高分邊）、擴展（葉節點生子節點）、模擬（rollout 完成表達式、擬合係數、評獎勵 1/(1+NMSE)）、反向傳播（更新獎勵與訪問次數）。</p>
+<ul>
+<li><strong>Egg-based 反向傳播</strong>（靈感自 transposition table——快取相同節點共享統計；但 SR 中節點只在符號等價下相同，雜湊表不適用 → 用 Egg 辨識等價路徑）：把路徑轉初始 e-graph → 用改寫規則飽和 → 取樣等價序列、檢查樹中是否有對應路徑 → 有則對全部反向傳播。<strong>分享等價路徑/節點的獎勵與訪問次數</strong>避免冗餘探索。改變 UCT 中 N 的詮釋（不再數特定節點，而數該等價類任一代表的訪問）。</li>
+<li><strong>例 3.2</strong>：兩節點對應 cos(x₂)·x₁ 與 x₁·cos(x₂)，在改寫規則 <code>a·b→b·a</code> 下等價 → 獎勵應約相等。標準 MCTS 獨立探索兩子樹（冗餘）;Egg-MCTS 同時更新兩路徑的訪問與獎勵。</li>
+<li><strong>Theorem 3.1</strong>：Egg-MCTS 經減小搜尋樹<strong>有效分支因子</strong>加速學習（防等價子樹冗餘探索、集中取樣於真正不同的近最優路徑），達<strong>漸近更緊的 regret 界</strong>。</li>
+</ul>
+<p><strong>嵌入 DRL</strong>：DRL 用神經序列解碼器取樣產生式規則序列預測表達式，獎勵偏好更擬合資料者。目標最大化生成表達式的期望獎勵，梯度經蒙地卡羅近似（策略梯度估計器，含 baseline 降變異）。</p>
+<ul>
+<li><strong>Egg-based 策略梯度估計器</strong>：對每個取樣序列建 e-graph 編碼所有等價式 → 取樣等價序列 → 修訂估計器（式 4，加總共享同獎勵的所有等價序列機率）。</li>
+<li><strong>Theorem 3.2</strong>：Egg 使 DRL 梯度估計器<strong>無偏 + 嚴格降低變異數</strong>（同獎勵的等價軌跡分組平均減組內變異）→ 更穩定高效的策略更新。</li>
+</ul>
+<p><strong>嵌入 LLM</strong>：LLM 經 prompt tuning 搜最優表達式（假設生成 → 資料驅動評估 → 經驗管理回饋）。</p>
+<ul>
+<li><strong>Egg-based 回饋 prompt</strong>：LLM 生 Python 函數 → wrapper 解析成符號表達式 → 用改寫規則轉 e-graph → 抽語意等價式 → 摘成回饋訊息併入下輪 prompt。讓 LLM 觀察更豐富的功能等價式集，改善後續預測品質與準確。</li>
+</ul>
+<h3 id="33-與既有方法的連結">3.3 與既有方法的連結</h3>
+<p>SymNet（層式符號網路）不直接相容文法式表述（係數等價→子表達式等價是開放問題）;DRL 擴展能否相容整合符號等價是開放問題；Transformer 端到端編碼可在訓練時用 Egg 生多個等價正確目標序列（推理時如何用 Egg 是開放問題）。</p>
+<h3 id="34-理論論證">3.4 理論論證</h3>
+<p>Theorem 3.1（Egg-MCTS 有效分支因子更小 → 更緊 regret 界，更快聚焦近最優區）;Theorem 3.2（Egg-DRL 無偏 + 嚴格降梯度變異數）。證明分別基於「合併相同樹節點的圖展開」分析與「等價軌跡分組平均減變異」觀察。</p>
+<h2 id="4-相關工作">4. 相關工作</h2>
+<ul>
+<li><strong>知識引導科學發現</strong>：AI-Feynman（約束到組合性/加性/廣義對稱）、物理單位約束、整合使用者假設與先驗。<strong>Egg-SR 是與這些正交的新知識引導維度</strong>。</li>
+</ul>
+<h2 id="5-實驗">5. 實驗</h2>
+<p>(1) Egg 增強既有演算法發現更小 NMSE 的表達式；(2) 案例顯示時間與空間效率。</p>
+<ul>
+<li><strong>Egg 對 MCTS 的影響</strong>：在含大量等價變體的<strong>三角函數資料集</strong>上，<strong>Egg-MCTS 一致找到更低 NMSE</strong>（無噪與有噪皆然）;Egg-MCTS 維持<strong>更廣更深搜尋樹</strong>（探索更大更多元空間）。歸功於涵蓋豐富三角恆等式的改寫規則。</li>
+<li><strong>Egg 對 DRL 的影響</strong>：Egg-DRL 亦改善（梯度估計變異數更低，圖 3 右）。</li>
+</ul>
+<h2 id="6-結論">6. 結論</h2>
+<p>Egg-SR 統一框架經 e-graph 把符號等價整合進 MCTS/DRL/LLM 類 SR 方法，理論上收緊 MCTS regret 界、降 DRL 梯度變異數，實驗上一致在固定時限內發現更準表達式。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2511.05849_EGG_SR.%E6%91%98%E8%A6%81.html"><code>../summarize/2511.05849_EGG_SR.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

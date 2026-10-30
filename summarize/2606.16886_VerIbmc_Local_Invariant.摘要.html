@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《神經符號軟體驗證：用本地開源權重 LLM 大規模強化符號推理（VerIbmc）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Muhammad A. A. Pirzada、Julian Parsert、Weiqi Wang、Konstantin Korovin、Lucas C. Cordeiro（附屬未列）</p><p>日期：2026-06，神經符號（主題 B：神經符號形式驗證 / LLM＋符號迴圈不變量合成）</p><p>arXiv：2606.16886</p><p><a href="https://arxiv.org/abs/2606.16886" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="神經符號軟體驗證veribmc本地-llm-強化符號迴圈不變量合成重點摘要">《神經符號軟體驗證：VerIbmc——本地 LLM 強化符號迴圈不變量合成》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>VerIbmc</strong>：一條神經符號迴圈不變量合成管線，把<strong>確定性符號不變量列舉</strong>＋<strong>本地可部署開源權重 LLM（7B–120B）<strong>＋</strong>ESBMC 驗證器</strong>配在一起——「<strong>只在必要時升級</strong>」三階段（Phase 0 直接驗 → Phase 1 符號列舉原子、零 LLM 呼叫 → Phase 2 由 ESBMC 結構化回饋驅動的 LLM 精修迴圈），在 499 題基準上單一最佳組態（GPT-OSS-120B）解 431 題（86.4%），全程僅靠<strong>單機本地、無雲端 API</strong>，與昂貴 frontier 雲端工具有競爭力，主打<strong>隱私保護、能源高效</strong>的工業部署。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>迴圈不變量合成是形式軟體驗證的核心瓶頸。近期 LLM 神經符號工具求解率亮眼，但<strong>依賴專有、昂貴的雲端 API</strong>——對「原始碼不能離開組織」的隱私敏感工業部署是門檻，且有成本、可復現性問題。VerIbmc 證明：本地開源權重模型＋符號推理＋ESBMC，就能在不靠 frontier 專有模型下有效做不變量合成。</p>
+<h2 id="核心方法三階段只在必要時升級">核心方法（三階段「只在必要時升級」）</h2>
+<ul>
+<li><strong>Phase 0</strong>：ESBMC 直接驗未標註程式，若 trivially safe/unsafe 就退出（解 114 題、22.8%）。</li>
+<li><strong>Phase 1 符號不變量合成（零 LLM）</strong>：確定性列舉原子候選 <code>vi⋈vj</code> 或 <code>vi⋈c</code>（⋈∈{&lt;,≤,=,≠,≥,&gt;}），對 |V| 活變數、|C| 常數最多產 <code>6(|V|²+|V|·|C|)</code> 個；ESBMC 判每個原子的歸納性。<strong>光是符號合取就解 75 題（15%）零 LLM 呼叫</strong>。</li>
+<li><strong>Phase 2 LLM 精修迴圈</strong>：Phase 0 回 unknown 時，反覆「以迴圈原始碼＋當前原子庫（可證 𝒫／可否證 𝒟／未知 𝒰 三庫）＋few-shot 提示 LLM → ESBMC 驗 → 失敗候選拆成子公式、把歸納原子濾進 𝒫 → 測合取 ⋀𝒫 是否整程式驗過」；解析錯誤不罰、續跑。</li>
+<li><strong>CoT vs ToT 兩種 prompt 策略</strong>：ToT 探四種推導風格（歸納含/不含解釋、Hoare 邏輯三元組、Horn 子句編碼），先用 <code>score(s)=(0.6|𝒫ₛ|−0.3|𝒟ₛ|+0.1|𝒰ₛ|)/|聯集|</code> 評分、取 top-2 精修至 R=10 輪、每 6 輪重排。</li>
+</ul>
+<h2 id="結果含數字">結果（含數字）</h2>
+<ul>
+<li><strong>5 模型</strong>：GPT-OSS-120B/20B、Qwen2.5-32B/7B、Llama-3.1-8B；<strong>5 基準族 520 題（去 21 不可避溢位後 499 有效）</strong>：C2I 133、L4I-SVC 99、L4I-SY 84、SVC 154、NL 50；硬體 4× RTX A6000（48GB）、ESBMC v8.2、每題 600s。</li>
+<li><strong>RQ1 有效性</strong>：最佳組態 GPT-OSS-120B（Basic）解 <strong>431/499（86.4%）</strong>；GPT-OSS-20B 424、Qwen2.5-32B 382、Qwen2.5-7B 352、Llama-3.1-8B 342。Basic（帶符號先驗）全面勝 LLM-Only，對弱模型優勢最大（Llama 307→342，+35）。</li>
+<li><strong>RQ2 對比 SOTA</strong>：完勝傳統符號（CPA-Checker 282、2ls 194、ESBMC-Kind 145）與神經（Code2Inv 210）；在四共享套件上 VerIbmc 346–348（聯集）對 LaM4Inv 338、Clause2Inv 356、LORIS 351；在 SV-COMP 可比子集（43 題）VerIbmc（本地）36/43，逼近 LORIS 39/43、勝 Clause2Inv/LaM4Inv 各 30/43。</li>
+<li><strong>RQ3 ToT 影響</strong>：ToT 多解 49 個 CoT 未解的 （模型，題） 對，但聚合多為負（GPT-OSS-120B 431→421、Llama 342→285），開銷至多 1.40× wall-clock——<strong>model-dependent，弱模型反受傷</strong>。</li>
+<li><strong>RQ4 各階段貢獻</strong>：Phase 0 114（22.8%）、Phase 1 符號 75（15.0%）、Phase 2 需 LLM 248（49.7%）、永遠未解 62（12.4%）。Phase 1 對弱模型淨增（Llama +36、Qwen-7B +22；GPT-OSS-120B +0，自己就能導同樣原子）。</li>
+<li><strong>收斂</strong>：65.1% 的 LLM 解在第 1 輪、85.1% 在 5 輪內、88% 在 10 輪內（最多 171 輪）。20 組態間 Jaccard 中位數 0.73；<strong>模型身份對變異的貢獻是策略選擇的 3–7×</strong>。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>整數語意</strong>：管線在 ℤ 上推理而非 C 的定寬整數（排除 21 個不可避溢位題）。</li>
+<li><strong>非確定性</strong>：用 best-of-three / pass@k 協定回報。</li>
+<li><strong>基準代表性</strong>：限迴圈密集程式；架構雖語言無關但無其他語言實證。</li>
+<li><strong>前端限制</strong>：與 Clause2Inv/LaM4Inv 的比較受其解析限制（僅單迴圈純量整數程式）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本主題 B 中**「把神經符號形式驗證帶下雲端、用本地開源權重模型」這條務實工程路線的代表**——與 <a class="paper-reference" href="2606.00669_NeuroLog_Datalog_SMT.%E6%91%98%E8%A6%81.html">2606.00669</a>（NeuroLog，LLM 事實＋Datalog＋SMT）、<a class="paper-reference" href="2602.18095_Logitext_NeSy_SMT.%E6%91%98%E8%A6%81.html">2602.18095</a>（Logitext）、<a class="paper-reference" href="2604.27960_LLM_ASP_Self_Correction.%E6%91%98%E8%A6%81.html">2604.27960</a>（LLM＋ASP）對讀，補上「隱私/成本/可復現」這個常被忽略的部署維度。</li>
+<li>與 <a class="paper-reference" href="2511.00776_CodeHallucinationSLR.%E6%91%98%E8%A6%81.html">2511.00776</a>（程式碼幻覺 SLR）、<a class="paper-reference" href="2606.24245_AutoSpec_ILP.%E6%91%98%E8%A6%81.html">2606.24245</a>（AutoSpec ILP）對照：示範如何用確定性符號層（Phase 1）為弱模型托底、把不變量合成做成神經符號分工。</li>
+<li>最值得記：<strong>「只在必要時升級」三階段 + 符號合取零 LLM 解 75 題托底 + 86.4% 全本地逼近雲端 frontier</strong>；以及那個反直覺結論——<strong>ToT 對弱模型常是負收益、模型身份比 prompt 策略重要 3–7×</strong>。</li>
+<li>定位：<strong>系統/實證論文（神經符號迴圈不變量合成）</strong>；適合做形式驗證、本地 LLM 部署、ESBMC/SV-COMP 生態的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2606.16886_VerIbmc_Local_Invariant.zh-TW.html"><code>../translate/2606.16886_VerIbmc_Local_Invariant.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

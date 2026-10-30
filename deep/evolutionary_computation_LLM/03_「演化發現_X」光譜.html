@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_「演化發現_X」光譜 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../evolutionary_computation_LLM.html">回 evolutionary_computation_LLM 目錄</a>　<a href="02_Quality-Diversity_%E8%88%87%E9%96%8B%E6%94%BE%E5%BC%8F%E9%80%B2%E5%8C%96%E5%B0%88%E7%AB%A0.html">← 上一節</a>　<a href="04_%E8%88%87%E7%AC%A6%E8%99%9F%E8%BF%B4%E6%AD%B8%EF%BC%8F%E7%A8%8B%E5%BC%8F%E5%90%88%E6%88%90%E7%9A%84%E4%BA%A4%E5%8F%89.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-演化發現-x光譜">3. 「演化發現 X」光譜</h2>
+<p>把軸一（演化什麼）攤開，本批構成一條完整的「自動發現 RL/優化演算法元件」光譜。下表是本檔的骨幹：</p>
+<pre><code class="language-mermaid">graph TD
+    DISCOVER[&quot;演化發現 X：外層演化 / 內層跑一遍評估&quot;]
+
+    DISCOVER --&gt; LOSS[&quot;① 損失 / 更新規則&quot;]
+    DISCOVER --&gt; REWARD[&quot;② 獎勵&quot;]
+    DISCOVER --&gt; ARCH[&quot;③ 架構&quot;]
+    DISCOVER --&gt; ALGO[&quot;④ 演算法本身&quot;]
+
+    LOSS --&gt; L1[&quot;Evolving RL [[2101.03958]]&lt;br/&gt;計算圖搜尋 → DQNReg/DQNClipped&quot;]
+    LOSS --&gt; L2[&quot;Temporally-Aware [[2402.05828]]&lt;br/&gt;壽命條件 n/N + ES 學動態目標&quot;]
+    LOSS --&gt; L3[&quot;LLM update rule [[2603.28416]]&lt;br/&gt;禁 TD → 自發長出 world-model&quot;]
+
+    REWARD --&gt; RW1[&quot;READY [[2601.21847]]&lt;br/&gt;為 MetaBBO 發現 reward 函數&quot;]
+    REWARD --&gt; RW2[&quot;發育型獎勵排程 [[2606.20858]]&lt;br/&gt;發現 reward 的時變權重&quot;]
+
+    ARCH --&gt; AR1[&quot;EVOM [[2606.26327]]&lt;br/&gt;actor-critic 網路架構&quot;]
+
+    ALGO --&gt; AL1[&quot;LQD [[2502.02190]]&lt;br/&gt;QD 的局部競爭規則&quot;]
+    ALGO --&gt; AL2[&quot;MoH [[2505.20881]]&lt;br/&gt;組合優化的優化器本身&quot;]
+</code></pre>
+<h3 id="31-1-損失--更新規則奠基與表達力之爭">3.1 ① 損失 / 更新規則——奠基與表達力之爭</h3>
+<p><strong><a class="paper-reference" href="../../summarize/2101.03958_Evolving_RL_Algorithms.%E6%91%98%E8%A6%81.html">2101.03958</a>（Evolving RL Algorithms, Co-Reyes 2021）是整條線的奠基作</strong>：把「設計 RL 演算法」形式化成 meta-learning，外層用<strong>正規化演化</strong>在「計算 RL 損失函數的型別化 DAG」空間搜尋，內層用該損失訓練 agent。產出可被人讀懂的閉式損失：</p>
+<ul>
+<li><strong>DQNReg</strong> <code>L = 0.1·Q(s,a) + δ²</code>——極簡卻能從非影像簡單環境 meta-train，泛化到 Atari 勝 DQN/DDQN/PPO。</li>
+<li>分析顯示它透過<strong>壓低 Q 值高估</strong>獲益，結構上對應到後來人工提出的 <strong>CQL、M-DQN</strong>——「演化出來的東西可被人讀懂並對應到研究者正手動探索的方向」是它最大的可解釋性賣點。</li>
+</ul>
+<p>三項工程加速值得記：<strong>功能等價檢查</strong>（對隨機輸入雜湊輸出，等價就複用分數）、<strong>早期關卡</strong>（先在 CartPole 跑，低於閾值即終止）、<strong>從 DQN 自舉</strong>（比從零學收斂快、最終表現 +40%）。</p>
+<p><strong><a class="paper-reference" href="../../summarize/2402.05828_Temporally_Aware_RL_Algorithms.%E6%91%98%E8%A6%81.html">2402.05828</a>（Temporally-Aware）的核心洞見是「meta-優化方法 &gt; 參數化本身」</strong>：給 meta-learned 目標函數加「訓練壽命」條件 <code>n/N</code>，讓演算法在訓練中<strong>動態改變自己的損失</strong>。關鍵發現——<strong>只有 ES 學得到這種動態更新，meta-gradient 因目標短視（截斷 BPTT）會失敗</strong>。學到的動態母題：訓練初期樂觀+最大化熵 → 末期悲觀+最小化熵。這對整條光譜是警示：<strong>想發現非短視的演算法，外層用 ES（適應度＝整個壽命的最終回報）比 meta-gradient 關鍵</strong>。</p>
+<p><strong><a class="paper-reference" href="../../summarize/2603.28416_Evolutionary_Discovery_RL_Algos_LLM.%E6%91%98%E8%A6%81.html">2603.28416</a>（LLM 演化發現 update rule）把搜尋空間從「受限參數化/符號 loss」拉到「完整可執行訓練邏輯」</strong>，並用 LLM 解決「盲目變異多半無效」。最反直覺的自發現象：<strong>刻意禁用 actor-critic/TD/bootstrap，演化竟自發收斂到「世界模型 + 規劃蒸餾」這類 model-based 結構</strong>——暗示 RL 演算法空間中 model-based 是一個強吸引子。代價極高：每代約 30 小時、每候選 25 個完整訓練 run。</p>
+<blockquote>
+<p>對照三者：<a class="paper-reference" href="../../summarize/2101.03958_Evolving_RL_Algorithms.%E6%91%98%E8%A6%81.html">2101.03958</a> 走<strong>符號計算圖</strong>（產可分析閉式損失）；<a class="paper-reference" href="../../summarize/2402.05828_Temporally_Aware_RL_Algorithms.%E6%91%98%E8%A6%81.html">2402.05828</a> 走<strong>神經參數化 + 加時間輸入 + ES</strong>（不演化符號圖）；<a class="paper-reference" href="../../summarize/2603.28416_Evolutionary_Discovery_RL_Algos_LLM.%E6%91%98%E8%A6%81.html">2603.28416</a> 走<strong>完整可執行程式 + LLM 算子</strong>。這正是 §0 軸二「算子是誰」在同一個「發現 loss」任務上的三個切片。</p>
+</blockquote>
+<h3 id="32-2-獎勵函數本身-vs-時間排程">3.2 ② 獎勵——函數本身 vs 時間排程</h3>
+<ul>
+<li>
+<p><a class="paper-reference" href="../../summarize/2601.21847_READY_Reward_Discovery_MetaBBO.%E6%91%98%E8%A6%81.html">2601.21847</a> <strong>READY</strong> 發現的是 <strong>MetaBBO（用 RL meta-learn 黑箱優化器設計策略）的 reward 函數本身</strong>，填補「自動獎勵設計 × MetaBBO」此前無人碰的交叉。三大設計：<strong>多任務 niche</strong>（一個 run 同時替三個 MetaBBO 找獎勵且互相加速）、<strong>五個 reflection-based 程式級算子</strong>、<strong>rejection sampling 強制每個入種群個體都支配人類 baseline</strong>。最反直覺：<strong>零樣本跨 MetaBBO 獎勵遷移</strong>（為某 MetaBBO 設計的獎勵能直接 boost 未見的 MetaBBO，暗示存在通用良好獎勵結構）。</p>
+</li>
+<li>
+<p><a class="paper-reference" href="../../summarize/2606.20858_Developmental_Reward_Schedules.%E6%91%98%E8%A6%81.html">2606.20858</a> <strong>發育型獎勵排程</strong>發現的是<strong>獎勵的時變權重排程</strong>（被忽略的「動機如何隨訓練時間演進」這條軸）。複合獎勵 <code>r(t) = r_task + λ[α(t)·agency + β(t)·novelty + γ(t)·reactivity]</code>，三分量時變權重 θ∈ℝ¹⁵ 由 EA（CMA-ES/xNES/DE/L-SHADE）外層演化、PPO 內層訓練。最反直覺：<strong>讓演化無先驗地排發育順序，結果 novelty 自發成為早期主導訊號</strong>，推翻 agency→novelty→reactivity 的生物直覺——「計算上的最優可能異於生物上的最優」。</p>
+</li>
+</ul>
+<blockquote>
+<p>注意 <a class="paper-reference" href="../../summarize/2402.05828_Temporally_Aware_RL_Algorithms.%E6%91%98%E8%A6%81.html">2402.05828</a> 與 <a class="paper-reference" href="../../summarize/2606.20858_Developmental_Reward_Schedules.%E6%91%98%E8%A6%81.html">2606.20858</a> 的共鳴：兩者都發現「<strong>時間排程</strong>」是被忽略的軸——前者讓 loss 隨壽命變、後者讓 reward 權重隨訓練變，且都得用 ES/EA 外層才能優化整個壽命的最終表現。</p>
+</blockquote>
+<h3 id="33-3-架構把-nas-引進被忽視的-actor-critic">3.3 ③ 架構——把 NAS 引進被忽視的 actor-critic</h3>
+<p><a class="paper-reference" href="../../summarize/2606.26327_EVOM_MetaEvolution_ActorCritic.%E6%91%98%E8%A6%81.html">2606.26327</a> <strong>EVOM</strong> 把長期被當成「固定實作繼承自前人」的 actor-critic 架構，做成<strong>雙層最佳化</strong>：外層 LLM 演化「架構程式」種群（開放拓撲但受 PolicyNet/ValueNet 介面約束），內層低保真 PPO（100k 步）給便宜 fitness。守衛：編譯失敗/非有限/崩潰 → 罰 −1000。在 MuJoCo 上演化出含殘差 + LayerNorm/SiLU 的架構，大幅勝手工 PPO（Ant 4652 vs 2517）。兩個演化工程觀察：<strong>mutation/crossover 互補（mixed 最佳）</strong>、<strong>種群增大不單調獲益</strong>（更大候選池更依賴 noisy 低預算訊號）。</p>
+<h3 id="34-4-演算法本身元學習決定誰存活的規則">3.4 ④ 演算法本身——元學習「決定誰存活」的規則</h3>
+<p>光譜頂端是「發現演算法本身」。<a class="paper-reference" href="../../summarize/2502.02190_LQD_MetaBBO_QD.%E6%91%98%E8%A6%81.html">2502.02190</a> <strong>LQD</strong>（已在 §2.2 詳述）發現的是 <strong>QD 演算法的局部競爭規則</strong>——這是純度最高的「演算法即被發現對象」：它不發現某個 loss 或 reward，而是發現「<strong>這個演算法用什麼規則決定誰跟誰競爭、誰存活</strong>」。<a class="paper-reference" href="../../summarize/2505.20881_MoH_Meta_Optimization_Heuristics.%E6%91%98%E8%A6%81.html">2505.20881</a> <strong>MoH</strong> 則發現<strong>組合優化的優化器本身</strong>（見 §1.3）。兩者一個用 ES-based Meta-BBO、一個用 LLM，恰好標出軸二的兩端。</p>
+<h3 id="35-光譜總表">3.5 光譜總表</h3>
+<table>
+<thead>
+<tr>
+<th>層級</th>
+<th>被發現的 X</th>
+<th>代表作</th>
+<th>外層方法</th>
+<th>內層 fitness 訊號</th>
+<th>反直覺亮點</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>① loss/update</td>
+<td>損失計算圖</td>
+<td><a class="paper-reference" href="../../summarize/2101.03958_Evolving_RL_Algorithms.%E6%91%98%E8%A6%81.html">2101.03958</a></td>
+<td>正規化演化</td>
+<td>多環境訓練回報</td>
+<td>演化出的損失對應 CQL/M-DQN</td>
+</tr>
+<tr>
+<td>① loss/update</td>
+<td>動態目標</td>
+<td><a class="paper-reference" href="../../summarize/2402.05828_Temporally_Aware_RL_Algorithms.%E6%91%98%E8%A6%81.html">2402.05828</a></td>
+<td><strong>ES（非 meta-grad）</strong></td>
+<td>整個壽命最終回報</td>
+<td>樂觀→悲觀時間排程</td>
+</tr>
+<tr>
+<td>① loss/update</td>
+<td>可執行 update rule</td>
+<td><a class="paper-reference" href="../../summarize/2603.28416_Evolutionary_Discovery_RL_Algos_LLM.%E6%91%98%E8%A6%81.html">2603.28416</a></td>
+<td>島嶼 + <strong>LLM 算子</strong></td>
+<td>完整訓練 run 回報</td>
+<td>禁 TD → 自發 model-based</td>
+</tr>
+<tr>
+<td>② reward</td>
+<td>reward 函數</td>
+<td><a class="paper-reference" href="../../summarize/2601.21847_READY_Reward_Discovery_MetaBBO.%E6%91%98%E8%A6%81.html">2601.21847</a></td>
+<td>多任務 niche + LLM</td>
+<td>MetaBBO 優化效能</td>
+<td>零樣本跨任務遷移</td>
+</tr>
+<tr>
+<td>② reward</td>
+<td>reward 時變權重</td>
+<td><a class="paper-reference" href="../../summarize/2606.20858_Developmental_Reward_Schedules.%E6%91%98%E8%A6%81.html">2606.20858</a></td>
+<td>CMA-ES/L-SHADE</td>
+<td>PPO 稀疏回報</td>
+<td>novelty 自發早期主導</td>
+</tr>
+<tr>
+<td>③ 架構</td>
+<td>actor-critic 網路</td>
+<td><a class="paper-reference" href="../../summarize/2606.26327_EVOM_MetaEvolution_ActorCritic.%E6%91%98%E8%A6%81.html">2606.26327</a></td>
+<td>雙層 + <strong>LLM 設計師</strong></td>
+<td>低保真 PPO</td>
+<td>種群增大不單調</td>
+</tr>
+<tr>
+<td>④ 演算法</td>
+<td>QD 競爭規則</td>
+<td><a class="paper-reference" href="../../summarize/2502.02190_LQD_MetaBBO_QD.%E6%91%98%E8%A6%81.html">2502.02190</a></td>
+<td>Sep-CMA-ES Meta-BBO</td>
+<td>內層 QD score</td>
+<td>純 fitness 下多樣性湧現</td>
+</tr>
+<tr>
+<td>④ 演算法</td>
+<td>組合優化器</td>
+<td><a class="paper-reference" href="../../summarize/2505.20881_MoH_Meta_Optimization_Heuristics.%E6%91%98%E8%A6%81.html">2505.20881</a></td>
+<td>遞迴 LLM 元優化</td>
+<td>下游 COP gap</td>
+<td>優化器自我調用</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

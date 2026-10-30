@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2301.12726_Specializing_Smaller_LMs.%E6%91%98%E8%A6%81.html">回 2301.12726_Specializing_Smaller_LMs.摘要 目錄</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>模型特化（model specialization）</strong>：把 code-davinci-002（≥175B）的思維鏈（CoT）解題能力，用<strong>分佈匹配蒸餾</strong>（KL 散度、以 GPT/T5 分詞器動態規劃對齊）蒸餾進 FlanT5／T5（≤11B），只用「最終答案正確」這個確定性濾網篩選教師生成的 130K 筆 CoT 資料做微調；核心發現是<strong>能力並非白拿</strong>——小模型把容量集中到數學 CoT 後，通用推理測試 BigBench-Hard 上的 CoT 提示能力<strong>幾乎歸零</strong>、答案式提示能力也掉四分之一到三分之一，以此為代價換來 4 個數學推理資料集平均 <strong>+10～+25 準確率</strong>的提升，11B 特化模型平均分數（40.8）已逼近甚至略優於 LaMDA 137B（35.9），逼近 PaLM 60B。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>Wei et al.（2022a）「湧現能力（emergent abilities）」假說主張思維鏈推理只在超過 100B 參數的模型上出現，小模型的 CoT 準確率隨規模呈近乎**平坦（flat）**的曲線；FlanT5（Chung et al., 2022）部分改善了這個曲線但仍明顯遜於大模型。這造成一個實務困境：極少機構有算力微調百billion 級模型，若小模型永遠學不會多步推理，這項能力就對多數研究者與開發者不可及。本文要問的是：<strong>小模型的 CoT scaling curve 究竟能被拉到多高、以及要付出什麼代價</strong>。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>特化假說</strong>：大模型（≥100B）容量夠大、能力分散在極廣的任務譜上；小模型（≤10B）容量有限，若把有限容量<strong>集中</strong>到單一目標任務，仍可達到不錯的表現——這與「泛化型」指令微調（FlanT5、UL2）的設計哲學相反。</li>
+<li><strong>資料生成</strong>：以 GSM8K（7K 訓練題）為種子，用 code-davinci-002 為每題生成 40 個候選 CoT 解答，只保留<strong>最終答案正確</strong>者（確定性、可驗證的篩選器）——不做人工標註或額外品質判斷，篩出約 130K 筆訓練資料。</li>
+<li><strong>分佈匹配蒸餾</strong>：不用「對教師生成文字做最大似然」的樣本匹配，而是最小化學生逐 token 自回歸分佈與教師分佈間的 KL 散度；因 OpenAI API 只回傳每步 top-5 token 機率，以此近似完整詞彙分佈。</li>
+<li><strong>分詞器對齊</strong>：GPT 與 T5 分詞器不同，作者用類似 Needleman–Wunsch 序列比對的<strong>動態規劃</strong>演算法對齊兩套 token 序列；一對一映射時直接沿用 GPT 分佈當監督訊號，一對多／多對一時退化為 one-hot 目標。</li>
+<li><strong>四種資料格式</strong>（in-context/zero-shot × answer-only/CoT）用來研究「上下文學習 vs. 零樣本」這一額外的能力取捨維度。</li>
+<li><strong>雙軸評估</strong>：目標能力＝GSM8K（in-distribution）＋MultiArith/ASDiv/SVAMP（M-A-S，OOD，各資料集實體詞彙不同但推理型態相同）；通用能力＝BigBench-Hard（26 個高難度推理任務，分別測 AO 答案式與 CoT 提示式表現）。</li>
+<li><strong>新的模型選擇法</strong>：不用同分佈驗證集（GSM8K dev）挑 checkpoint，改用<strong>跨資料集的 M-A-S held-out 驗證集</strong>挑選，避免對單一資料分佈過擬合、更能反映 OOD 泛化。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>代價-收益表（Table 1，FlanT5 全系列一致模式）</strong>：以 FlanT5-XXL（11B）為例，GSM8K 16.1→27.1（+11.0）、MultiArith 51.7→63.0（+11.3）、ASDiv 36.5→37.6（+1.1）、SVAMP 39.7→35.6（<strong>-4.1</strong>，唯一退步的目標任務）；同時 BBH 答案式提示（AO）47.4→19.6（<strong>-27.8</strong>）、BBH 思維鏈提示（CoT）41.8→<strong>0.0</strong>（<strong>-41.8，完全歸零</strong>）。此模式在 3B/760M/250M 各尺寸重現：BBH-CoT 一律崩潰至 0 附近，BBH-AO 掉 20～37 分，數學任務平均漲 10～25 分。</li>
+<li><strong>以小博大</strong>：特化後 11B 模型四個數學資料集平均分 40.8，優於 LaMDA 137B 的 35.9、逼近 PaLM 60B；特化後的 <strong>3B</strong> 模型 GSM8K 22.4 分，已超過同期蒸餾工作 Magister22（T5 11B，21.9）與 Shridhar22（GPT 6B，21.0）。</li>
+<li><strong>指令微調基座勝過原始預訓練基座（Table 2）</strong>：FlanT5 3B 13.5→23.8（+10.3）vs. 原始 T5 3B 0.73→20.6（+19.9）——T5 起點極低、增益絕對值更大，但特化後 FlanT5 分數仍全面領先 T5，故建議實務上以指令微調 checkpoint 為起點。</li>
+<li><strong>對數線性而非平坦的 scaling curve</strong>：特化後小模型的 CoT 準確率隨模型規模呈<strong>對數線性</strong>（log-linear）成長，而非傳統認為的「小模型平坦、越過門檻才突然湧現」；作者據此主張多步 CoT 推理可能<strong>不是</strong>真正的湧現能力，只是尚未被正確引導出來。</li>
+<li><strong>In-dist vs. OOD 選模型取捨（Table 3）</strong>：以 GSM8K dev 選 checkpoint 得到更高 in-distribution 分數但較低 OOD 分數；改以 M-A-S dev 選則反過來（如 FlanT5 3B：in-dist 23.8→21.2，OOD 33.2→35.0）——沒有一個 checkpoint 同時是兩邊最佳。</li>
+<li><strong>in-context vs. zero-shot 的另一條取捨線</strong>：用 in-context 格式資料微調可同時保留 zero-shot 與 in-context 能力；但用 zero-shot 格式資料微調會<strong>犧牲</strong> in-context 學習能力。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>論文未設獨立「Limitations」章節，取捨證據散見各節，須自行歸納：(1) 訓練中後期 in-distribution 與 OOD 表現走勢<strong>分岔</strong>，同一 checkpoint 難以兩者兼顧；(2) 只以數學推理為測試場（testbed），未驗證特化框架是否適用到其他推理領域；(3) 分佈匹配依賴 OpenAI API 只回傳 top-5 token 機率的近似，並非完整詞彙分佈；(4) 教師模型 code-davinci-002 為已停用的 OpenAI Codex 系列 API，方法對可取得完整教師模型／分佈的持續性有依賴；(5) 作者明言未整合計算機工具、self-consistency 解碼等正交技術，留待未來工作，故本文數字並非「可達上限」。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>定位為 ai_core <strong>主題10「蒸餾端的代價論」<strong>的關鍵反例。ai_core 的路線隱含一個假設：把稀有貴能力</strong>蒸餾</strong>進便宜小模型是可行的降本路徑（§2 貴稀有智能＝資產工廠 vs 便宜高頻智能＝資產消費者）。本篇的核心貢獻恰恰是<strong>這個假設的邊界條件</strong>：小模型容量有限，特化到某項能力<strong>必然</strong>以犧牲其他能力為代價（BBH-CoT 歸零、BBH-AO 腰斬），能力不是可以無痛疊加的資產，而是<strong>零和的容量配置</strong>。</li>
+<li>對 <strong>§3.3 成本梯度</strong>的意義：便宜節點若想承接「多步推理」這類任務，不能指望它同時維持通用能力再兼職推理——<strong>專用小模型只該負責一件事</strong>。這反而支持 ai_core「多數確定性節點＋少數 LLM」的分工直覺：與其造一個又便宜又通用的推理節點，不如把小模型釘死在單一任務上、把「這題是否落在它的專長範圍內」的判斷交給路由層或確定性前濾網。</li>
+<li>與庫中已入庫論文對照：<strong>Orca（2306.02707）<strong>用漸進式學習（先學 ChatGPT 再學 GPT-4）試圖同時保留通用能力與拉近與教師的差距，某種程度上是想</strong>避開</strong>本篇揭示的零和取捨，但 Orca 也仍明顯落後教師模型；<strong>Symbolic KD（2110.07178）<strong>與</strong>Distilling Step-by-Step（2305.02301）<strong>同樣做「大模型產監督訊號、小模型學」，但聚焦單一目標任務（常識知識圖譜／單一分類任務），天然避開了本篇的多任務容量取捨問題——本篇等於指出這</strong>不是巧合</strong>，而是小模型能成功蒸餾的<strong>必要條件</strong>；**STaR（2203.14465）<strong>與</strong>ReST^EM（2312.06585）**用「答案正確」當確定性濾網自我迭代，與本篇的資料篩選機制同構，但兩者都在單一任務内打轉，未觸及通用能力代價；**HybridLLM（2404.14618）<strong>與</strong>FrugalGPT（2305.05176）**的路由／級聯設計，正是對「小模型有能力天花板」最務實的工程回應——與其奢望一個小模型什麼都會，不如用路由器把落在小模型能力邊界外的查詢升級給大模型，本篇的零和證據替這類級聯架構的必要性提供了實證支撐。歸 <strong>I 類</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../../translate/2301.12726_Specializing_Smaller_LMs.zh-TW.html"><code>../translate/2301.12726_Specializing_Smaller_LMs.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

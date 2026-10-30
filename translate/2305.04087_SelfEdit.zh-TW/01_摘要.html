@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.04087_SelfEdit.zh-TW.html">回 2305.04087_SelfEdit.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）在競賽程式設計（competitive programming）任務上展現了令人印象深刻的程式碼生成能力，但在取樣數受限時準確率仍偏低。受人類程式設計流程啟發，我們提出一種「生成後編輯（generate-and-edit）」方法 <strong>Self-Edit</strong>：利用 LLM 生成程式碼的<strong>執行結果</strong>來提升程式碼品質。我們把生成的程式碼放到題目提供的<strong>範例測資（example test case）<strong>上執行，將執行結果包裝成一段</strong>補充註解（supplementary comment）</strong>；以此註解為指引，用我們的**故障感知程式碼編輯器（fault-aware code editor）**修正程式碼中的錯誤。我們在兩個競賽程式設計資料集、九個不同 LLM 上做了廣泛評估。相較於直接由 LLM 生成，本方法把 pass@1 平均提升了 <strong>APPS-dev 89%、APPS-test 31%、HumanEval 48%</strong>（涵蓋參數量 110M 到 175B 的九個熱門模型）。相較其他後處理方法，本方法在準確率與效率上都更優。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>LLM 近來被用於競賽程式設計任務——需理解含範例測資的複雜自然語言題述，並正確實作可能長達數百行的解答，最後以隱藏測資（hidden test cases）執行來評判。但既有 LLM 在此任務準確率與通過率都低：在熱門基準 APPS-test 上，近乎最強的 GPT3 在只准提交一份程式（pass@1）時僅約 7% 準確率。</p>
+<p>我們從人類程式設計流程取得靈感：程式設計師通常先寫初版、跑幾個範例測資、再依測試結果修改；他們能從測試結果中取得關鍵資訊（程式輸出、編譯／執行期錯誤訊息）來除錯。圖 1(b) 展示 GPT3 在 APPS-test 上生成的一段與題述不符的程式碼，而錯誤訊息直接指出了 bug 所在——這啟發我們用執行結果來編輯、改良 LLM 的輸出。</p>
+<p>我們提出的 <strong>Self-Edit</strong> 以三步驟模仿上述行為：❶ <strong>用 LLM 生成</strong>——把 LLM 當黑箱生成器，依題述產生程式；❷ <strong>執行</strong>——在範例測資上執行生成碼取得結果，並用模板把結果包成補充註解；❸ <strong>編輯</strong>——用一個<strong>故障感知神經程式碼編輯器</strong>吃「生成碼＋補充註解」並輸出修正碼。</p>
+<p>在 APPS 與 HumanEval 兩個公開基準、九個 110M–175B 的 LLM 上，相較直接生成：❶ 顯著提升效能（APPS-dev pass@1 平均 +89%、APPS-test +31%），連最大的 GPT3-175B 都能靠相對小的編輯器把 APPS-dev pass@1 由 26.6% 提到 32.4%；❷ 對不同風格資料集 HumanEval 也能遷移（+48%）。</p>
+<p>相較既有後處理法（大規模取樣後重排／過濾），本框架有兩大優勢：❶ <strong>維持固定取樣預算</strong>、大幅降低 LLM 的運算開銷；❷ 編輯器<strong>直接修改</strong>程式，在有限預算（如 pass@1）下勝過重排法。據我們所知，這是<strong>首個</strong>把「編輯式後處理」用於競賽程式設計任務的工作。</p>
+<p><strong>貢獻</strong>：提出生成後編輯方法 Self-Edit；開發吃「生成碼＋錯誤訊息」的故障感知神經編輯器；在兩資料集、九 LLM 上驗證有效性與普適性。</p>
+<h2 id="2-相關工作">2 相關工作</h2>
+<p><strong>2.1 程式碼生成</strong>：程式碼生成可基於自然語言描述、虛擬碼、舊版程式碼或程式設計工具的回應。競賽程式設計是其中特別具挑戰的一類，可衡量模型建構完整解的能力。近年 AlphaCode、GPT3 系列展現強大能力，其他開源模型包括 GPT-Neo、GPT-J、CodeParrot、PolyCoder、CodeGen、InCoder。本文使用 OpenAI 的 text-davinci-002 API 與多個競賽程式碼生成模型。</p>
+<p><strong>2.2 LLM 程式碼生成的後處理</strong>：研究者用各種後處理來過濾／重排 LLM 輸出。數學題領域用訓練好的 ranker 選最高分者；程式碼領域，AlphaCode 與 Shi et al. 用執行輸出做分群與過濾，Inala et al.（CodeRanker）訓練故障感知神經重排器，Chen et al.（CodeT）讓大模型自產測資並依測試驅動的雙重執行一致性排序，Zhang et al.（Coder-Reviewer）用回譯的生成機率重排。<strong>但這些方法都需大規模取樣</strong>——如 AlphaCode 每題需 100 萬份、耗 10^5 TPU-秒，現實中不實用。Self-Edit 以固定取樣預算解決此問題（見 §4.3）。</p>
+<h2 id="3-方法">3 方法</h2>
+<p>Self-Edit 流程（圖 2）：給定題述，先用 LLM 生成初版碼；接著在範例測資上執行取得結果並構造補充註解；最後訓練一個故障感知編輯器，依「題述、生成碼、補充註解」修正程式碼。</p>
+<h3 id="31-llm-作為黑箱生成器">3.1 LLM 作為黑箱生成器</h3>
+<p>以固定參數的 LLM 作黑箱生成器。此設計因訓練 LLM 昂貴且存取常受限（如 OpenAI 只提供付費 API 推論 GPT3），且能讓方法靈活適配不同 LLM。本文研究九個 110M–175B 的程式碼生成 LLM（見表 2）。</p>
+<h3 id="32-執行器與補充註解">3.2 執行器與補充註解</h3>
+<p>生成後用執行器跑範例測資，把執行結果分三類：❶ <strong>Passed</strong>：通過測資；❷ <strong>Wrong Answer</strong>：正常執行但輸出錯誤；❸ <strong>Error</strong>：因語法錯誤、執行期例外或超時而異常終止。</p>
+<p>在 APPS-train 上分析發現：不同模型的測試結果分佈不同——小模型（PyCodeGPT-110M）較常出現 SyntaxError，大模型（GPT3-175B）語法錯與執行期錯較少、正常執行的案例較多（圖 3）。</p>
+<p>為讓編輯器理解各種執行結果，針對三類結果設計註解模板（圖 4）：❶ 通過者用「Pass the example test case.」；❷ 輸出錯誤者，附上相關<strong>輸入、期望輸出、實際輸出</strong>，並加指示「Rewrite the code」引導編輯器重新實作演算法；❸ 報錯者，附上<strong>錯誤行號、行內容與完整錯誤訊息</strong>。這些補充註解為生成碼提供額外脈絡，用來指引編輯。</p>
+<h3 id="33-故障感知程式碼編輯器">3.3 故障感知程式碼編輯器</h3>
+<p>構造好補充註解後，訓練一個吃「自然語言描述、生成碼、補充註解」並產出更高品質修正碼的故障感知編輯器。</p>
+<p><strong>3.3.1 編輯器模型</strong>：把故障感知編輯定義為 seq2seq 任務——給定描述 N、LLM 生成程式 S、補充註解 C，要求模型生成能實作 N 並通過測資的更高品質程式碼 Ĉ。輸入三段用特殊分隔符串接為 <code>[SOS] n… [CODE] s… [CMNT] c… [EOS]</code>。以 decoder-only 模型完成任務，具體用 <strong>PyCodeGPT-110M</strong> 微調實作。</p>
+<p>推論時：先用 LLM 依描述生成多份程式；對每份，把範例測資餵給執行器取得故障感知註解；再用編輯器生成一份新程式作為最終版評估。此法相較大規模取樣＋過濾／重排維持了<strong>小取樣預算</strong>。</p>
+<p><strong>3.3.2 編輯器資料構造</strong>：需含「生成程式＋對應補充註解」的資料集。用不同 LLM 在 APPS-train 上每題取樣 10 份程式，執行範例測資得結果並構造註解，得到各 LLM 的三元組 (N, S, C)。真值程式 Ĉ 取自 APPS-train 原始標準解與「通過所有隱藏測資的生成程式」。每個 LLM 建約 <strong>4.5k</strong> 筆的專屬編輯器資料集，每份生成程式最多配 15 份真值程式。因不同 LLM 的註解分佈不同，須用<strong>各 LLM 專屬</strong>的訓練集才能最佳化其編輯器效能。</p>
+<p><strong>3.3.3 訓練目標</strong>：依 (N,S,C) 編輯出高品質程式是「一對多」任務（多份正解都滿足要求）。標準最大概似會顧及訓練集所有解（類似 recall），但我們關注「在有限嘗試預算內編出<strong>單一</strong>正解」的能力（類似 precision）。為此採 <strong>GOLD</strong>（Pang and He, 2021）變體，在標準最大概似梯度中加入 off-policy 重要性權重：</p>
+<p>∇L(θ) = −Σ_{t∈Ĉ} P_θ(t) ∇log P_θ(t)</p>
+<p>其中額外權重 P_θ(t) 讓模型聚焦於「本已具高概似、較易學」的真值解，提高「至少得到一份正確輸出」的機會。此損失設定也讓編輯器學會<strong>從既有生成程式複製部分內容</strong>以得到更好輸出。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

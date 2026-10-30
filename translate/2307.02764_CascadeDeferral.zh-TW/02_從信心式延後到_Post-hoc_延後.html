@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_從信心式延後到_Post-hoc_延後 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2307.02764_CascadeDeferral.zh-TW.html">回 2307.02764_CascadeDeferral.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-從信心式延後到-post-hoc-延後">4 從信心式延後到 Post-hoc 延後</h2>
+<p><strong>4.1 信心式延後何時足夠？</strong>：信心式延後採規則 <code>r̂_conf(x)=1[max_y p^(1)_y(x) &lt; c^(1)]</code>（式 7），可視為「母體信心」規則 <code>r_conf=1[η_{h^(1)}(x)&lt;c^(1)]</code> 的插入式估計。對照 Prop 3.1 得——</p>
+<p><strong>Lemma 4.1</strong>：若對所有 x,x&#x27;，「η_{h^(1)}(x) 的排序」與「η_{h^(1)}(x)−η_{h^(2)}(x) 的排序」一致，則 r_conf 產生與貝氏最優規則相同的延後曲線。直覺：<strong>信心式延後最優 ⟺ 模型 1 預測的絕對信心，與「模型 1 對模型 2 的相對信心」給出一致排序</strong>。</p>
+<p>由此界定成功與失效情境：</p>
+<ul>
+<li><strong>成功模式：下游是 expert</strong>。Lemma 4.1 的直接推論——當<strong>下游模型錯誤率為常數</strong>（如標籤在給定輸入下確定、且 h^(2) 完美預測）時，信心式延後最優（此為充分非必要條件）。</li>
+<li><strong>失效模式：下游是 specialist（專家）</strong>。若下游只在子群 X_good 上表現好（η_{h^(2)}≈1）、在 X_bad 上很差（η_{h^(2)}≈1/L）：即使模型 1 在 X_bad 信心低，也<strong>強烈不該把這些樣本往上丟</strong>（下游更差），反而該去辨識並延後 X_good 的樣本。信心式延後對此視而不見，會誤丟。</li>
+<li><strong>失效模式：標籤雜訊</strong>。若 X_bad 的樣本被隨機錯標，則兩模型在其上答對率都掉到隨機水準 1/L；模型 1 信心低會傾向往上丟，但這是次優決策——因為模型 2 更貴且同樣是隨機水準。</li>
+<li><strong>失效模式：分布偏移</strong>。即使 h^(2) 是專家，若訓練與測試的 ℙ(y|x) 有偏移（如訓練標籤偏斜），模型 1 在訓練端的機率估計會在測試端失真。後文聚焦標籤偏斜情形。</li>
+</ul>
+<p><strong>4.2 延後規則的 Post-hoc 估計</strong>：既然信心式延後在上述情境次優，遂考慮<strong>以 post-hoc 方式學習的規則</strong>，明確同時考量模型 1 與模型 2 的信心。核心思想是<strong>直接模仿最優規則（式 3），但只用 p^(1) 的輸出來估計</strong>（因為推論時查詢 h^(2) 就違背了級聯的初衷）。<strong>表 1</strong> 三個估計器（分別對應 §3.3 的 One-hot／Probability／Relative Confidence oracle）：以驗證集 { (x_i, z_i) } 訓練一個 post-hoc 模型 g(x) 去回歸預測標籤 z——</p>
+<ul>
+<li><strong>Diff-01</strong>：z=<code>1[y=h^(2)]−1[y=h^(1)]</code>（均方誤差），延後規則 g(x)&gt;c。學「何時模型 1 錯而模型 2 對」。</li>
+<li><strong>Diff-Prob</strong>：z=<code>p_y^(2)−p_y^(1)</code>（平均絕對誤差），g(x)&gt;c。</li>
+<li><strong>MaxProb</strong>：z=<code>max_y p^(2)_y</code>（均方誤差），延後規則 <code>g(x) − max_y p^(1)_y &gt; c</code>。</li>
+</ul>
+<p><strong>Post-hoc 亦有失效模式</strong>：(a) <strong>Bayes p^(2)</strong>：若 p^(2) 恰為貝氏機率且模型 1 已夠準，則在無額外資訊（如新資料集）下，無法得到比 p^(1) 自身更好的估計——即使 ℙ(y|x) 非確定、模型 2 有非平凡誤差亦然。(b) <strong>不可預測的 p^(2) 誤差</strong>：若 z=max p^(2) 不易預測，估計會退化為常數 𝔼[z]，等同「模型 2 錯誤率為常數」的假設，也就退回信心式延後。</p>
+<p><strong>4.3 有限樣本分析（Lemma 4.2）</strong>：以平方損失在假設類 𝒢 上選 ĝ、構造 r̂(x)=1[ĝ(x)&gt;c]。以覆蓋數 𝒩(𝒢,ε) 給出 r̂ 相對 r* 的過度風險上界，由<strong>逼近誤差</strong>（類內最佳模型與 oracle 評分函式之距）與<strong>估計誤差</strong>（隨驗證集大小 |S_val| 收斂）兩部分構成。</p>
+<p><strong>4.4 與既有工作的關係</strong>：學雙模型級聯的延後規則與「學習延後給專家」相關，後者又是經典「學習拒答（learning to reject）」的推廣——其母體風險是式 2 中「h^(2) 完美預測 y」的特例，最優解即 Chow&#x27;s rule，恰與 Lemma 4.1 的延後規則一致。若允許修改 h^(1) 的訓練，可設計聯合優化 h^(1) 與 r 的損失，但不適用於本文的預訓練黑箱設定。</p>
+<h2 id="5-實驗說明">5 實驗說明</h2>
+<p>對 §4.1 的三種失效模式提供實證，畫「分類準確率 vs 延後給第二模型的樣本比例（隱含整體算力成本）」的延後曲線。</p>
+<p><strong>5.1 信心式 vs Oracle 延後</strong>：h^(1) 為通才（MobileNetV2，全 ImageNet 類別），h^(2) 為狗專家（EfficientNet-B0，訓於全部狗類影像 + 一部分非狗影像，比例可變；狗 synset 共 119 類）。當非狗訓練影像比例為 100%（模型 2 也是通才）時，Relative Confidence 相對 Confidence 幾無增益；隨比例降到 4%、2%，模型 2 錯誤率的<strong>非均勻性增加</strong>（越專精於狗），此時信心式延後會把非狗影像誤丟給狗專家，而考慮模型 2 信心的 Relative Confidence 帶來顯著增益——與 §4.1 分析一致。</p>
+<p><strong>5.2 信心式 vs Post-hoc 延後</strong>：因推論時查詢模型 2 違背級聯初衷，改比較<strong>只在推論時用模型 1 輸出</strong>的 post-hoc 估計器。Post-hoc 模型為輕量三層 MLP：<code>g(x)=MLP(p^(1)(x))</code>，在留出驗證集上以表 1 目標訓練（兩基礎模型固定）。</p>
+<ul>
+<li><strong>專家情境</strong>（ImageNet-Dog，比較 Confidence、Random、MaxProb、Diff-01、Diff-Prob、Entropy）：post-hoc 有增益，尤其在低延後率區間能準確判斷模型 2 是否會出錯；通才對通才時信心式延後仍高度競爭。</li>
+<li><strong>標籤雜訊情境</strong>（CIFAR-100，前 L_noise∈{0,10,25} 類指派隨機標籤；h^(1)=CIFAR ResNet-8、h^(2)=ResNet-14，皆訓於雜訊資料）：有雜訊時 post-hoc 在大範圍延後率上準確率更高；信心式延後會把雜訊樣本丟給同樣表現差的 h^(2) 浪費預算，而 post-hoc 能學會對模型 1 信心極低的樣本「放棄」。</li>
+<li><strong>分布偏移情境</strong>（長尾 CIFAR-100，head 類 h∈{100,50,25}，head 每類 500 張、tail 每類 50 張；h^(1)=ResNet-8、h^(2)=ResNet-56，訓於長尾、測於平衡集）：偏移越大（h 由 100 降到 50、25），post-hoc（尤其 Diff-01）增益越明顯——ResNet-56 對尾類處理更好，Diff-01 能辨識並延後尾類樣本。無偏移（h=100）時 post-hoc 幾無增益。</li>
+</ul>
+<p><strong>5.3 Post-hoc 估計器的泛化</strong>：須控制 post-hoc 模型容量。在模型 2 訓於全部狗影像 + 較大比例（8%）非狗影像的設定下，兩模型答對機率之差較不可預測，<strong>Diff-01 會嚴重過擬合、無法泛化</strong>（即使 MLP 只用 64、16 兩隱藏層）；提升 post-hoc 泛化是有趣的未來課題。</p>
+<h2 id="6-結論與未來工作">6 結論與未來工作</h2>
+<p>貝氏最優延後規則指出：<strong>最優延後的關鍵在於辨識「第一個模型錯、第二個模型對」的樣本</strong>。據此研究了數個 post-hoc 延後規則（表 1），證明能改進常用的信心式延後。已識別的失效條件（專家、標籤雜訊、分布偏移）並非窮盡；未來可為其他分布偏移（如 OOD）設計 post-hoc 方案、研究更精細的信心度量（如 conformal prediction），並把分析從影像分類延伸到 NLP 模型。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2307.02764_CascadeDeferral.%E6%91%98%E8%A6%81.html"><code>../summarize/2307.02764_CascadeDeferral.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

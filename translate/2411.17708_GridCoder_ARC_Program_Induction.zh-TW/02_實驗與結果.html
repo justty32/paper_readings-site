@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗與結果 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2411.17708_GridCoder_ARC_Program_Induction.zh-TW.html">回 2411.17708_GridCoder_ARC_Program_Induction.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="實驗與結果">實驗與結果</h2>
+<p><strong>實驗一（ARC 評估集對比，DSL V1，15 分鐘預算）</strong>（表 1，可解子集 = 29 題，佔評估集 7%）：GridCoder 全集 5.75% / 子集 79.3%（5 分鐘亦 79.3%）;GridCoder cond.（不做條件獨立）75.9%（5 分鐘 72.4%）;MCTS+VLM 69%;Pixelwise Sim 44.8%;Learned Sim 37.9%;VLM-only 13.8%。兩個 LGS 實作在真值程式 &gt;5–6 原語時失敗，只擅長小程式。</p>
+<p><strong>實驗二（GridCoder 跨 DSL 擴展，5 分鐘預算）</strong>（表 2、3）：V1→V3 評估全集 5.75%→8.25%，DSL V1 子集恆 79.3%（<strong>無遺忘</strong>）；每任務平均解時 4.74→5.66 秒，<strong>每原語</strong>正規化時間 0.064→0.057 秒（<strong>次線性擴展</strong>，理想性質）。</p>
+<p><strong>實驗三（LTS 泛化，10 個結構 OOD 手作任務）</strong>（表 4）：含 ARC 評估任務 #48131b3c（2×2 拼貼後反色，訓練從未呈現拼貼後反色）+ 9 個手作（連用 3+ 原語、2×4 拼貼、物件選擇與拼貼組合等，皆訓練未見組合）。<strong>GridCoder 只解 1/10 (10%)</strong>；模擬執行引導的 proxy（可在前一程式的中間輸出上重啟搜尋以組合子程式）<strong>解 8/10 (80%)</strong>。Task 5、6 兩者皆失敗（神經網路對 2×4 直接猜 3×3、物件裁切後對所需水平拼貼給近零機率）。</p>
+<h2 id="討論">討論</h2>
+<h3 id="泛化特性">泛化特性</h3>
+<p>VLM-only (13.8%) 到 GridCoder (79.3%) 的差距純為 OOD 泛化增益——搜尋機率空間顯著擴展神經網路超出訓練分布的觸及範圍。但表 4 顯示結構泛化仍極差（10 題只 1 題）。<strong>核心假設</strong>：搜尋能解的 OOD 主要是<strong>網格層分布漂移</strong>（測試網格與訓練不同 → 預測「逐網格變換」型 token 時高熵 → 搜尋可在高熵分布上解決）；但<strong>設定整體程式結構的 token 熵極低</strong>（如區分「拼貼」vs「split-merge」類），故無法在此意義上泛化。以 task 59341089 為例：位置 4–9（4 路拼貼「骨架」）機率近 1（低熵），位置 0–3（決定施加哪些變換）高熵。<strong>再訓練也解決不了</strong>：訓練從未出現的 token 子序列機率必近 0，總在某型輸入下出現的子序列機率必為 1。加一點熵（使機率不為 0/1）可能突破硬機率牆，但代價是搜尋空間暴增，且難發現極低機率（高複雜度）的修改。這正是 LTS（執行引導反饋 + 在中間網格重估機率）的用武之地。</p>
+<h3 id="lgs-的缺陷">LGS 的缺陷</h3>
+<ul>
+<li><em><em>A</em> vs Q</em>**：相似度模型暗示 A* 用法（每原語各評一次相似度，選增益最大者），Agostinelli 等 (2024) 證其時空低效，提 <em><em>Q</em> search</em>*（一次預測所有原語的 cost-to-go）。A* 需 N 次評估（N=DSL 大小），Q* 為常數次——這其實已從 LGS 滑向 LTS。作者認為<strong>學機率比學 cost-to-go 更直接高效</strong>（後者易從冗餘原語的程序生成中產出錯誤標籤）。</li>
+<li><strong>資訊不完整</strong>：程式是語法樹非扁平網格操作序列，中間狀態其實是物件清單。只憑某一前序變換輸出選下一原語 = 依賴不完整資訊（如 XOR/OR/AND 合併需知餵入的兩網格，但相似度只涉兩網格 → 訓練於不完整資訊 → cost-to-go 估計弱）。</li>
+<li><strong>ARC 本質非網格到網格問題</strong>：解的執行軌跡多數步驟非嚴格網格到網格變換，故網格相似度只能引導小部分搜尋。</li>
+</ul>
+<h2 id="限制與未來工作">限制與未來工作</h2>
+<p><strong>有限 DSL</strong>（主要限制，幾乎未做 DSL 改進；競爭級須補全所有 ARC 任務所需原語，並使 DSL 更通用、介於泛用程式語言與高度特定 DSL 之間）;<strong>函數式 DSL</strong>（據 Hocquette &amp; Cropper 2024，關係式 DSL 允許部分驗證子集規則，比現用函數式「全對/全錯」二元更可漸進）;<strong>get_objects 原語</strong>（6 種物件偵測次優，擬改用物件分割神經網路收斂為 1 個）;<strong>程式語法</strong>（4 拼貼與 5 拼貼結構差太大、低層需大量重複子樹，傷搜尋）;<strong>LTS</strong>（GridCoder 只能提出訓練見過的程式結構，transformer 解碼器不自然維護步間隱藏狀態，傾向懶用位置編碼與既定序列模板；顯式回饋中間狀態是有益的歸納偏置）。</p>
+<h2 id="相關工作">相關工作</h2>
+<ul>
+<li><strong>執行引導程式誘導</strong>（適用 LGS/LTS）：Nye 等 2020、Chen 等 2018/2021;Kapur 等 2024 用影像相似度啟發式 + 去噪/擴散範式做程式編輯。</li>
+<li><strong>神經引導機率程式誘導</strong>：<strong>DreamCoder</strong>（Ellis 等 2021，LPS 範式）主創新為 DSL 增長機制（把高頻語義等價子程序加入 DSL）與「dreaming」隨機任務生成。GridCoder <strong>不用 DSL 增長</strong>（ARC 自然樣本少、偏好手動調 DSL 粒度），dreaming 改用「手設高層任務類別 + 隨機變化參數」的折衷。GridCoder 與其他法主要差在神經架構與<strong>重用自回歸序列輸出</strong>枚舉機率空間（多數用 n-gram 機率，更重搜尋輕學習）。Alford (2021) 用 DreamCoder 於 ARC 結論瓶頸是搜尋效率；GridCoder 瓶頸<strong>不在搜尋效率</strong>（神經網路很擅長辨識程式結構），而在<strong>泛化到未見程式結構</strong>。</li>
+</ul>
+<h2 id="結論">結論</h2>
+<p>比較 LGS、LPS (GridCoder)、LTS 三範式。對 GridCoder 的實驗使作者相信擴大 DSL 與訓練資料可達競爭級表現（除非其他方法是靠訓練集無意中含隱藏測試集解、而非真正解決結構泛化）。但鑑於 LPS 在結構泛化的根本挑戰，作者不確信它能「真正」解 ARC-AGI；初步實驗暗示用<strong>執行引導搜尋 (LTS)</strong> 擴展 GridCoder 可突破泛化障礙，為未來工作焦點。</p>
+<p>（附錄 A 為三版 DSL 全原語清單，從略。）</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2411.17708_GridCoder_ARC_Program_Induction.%E6%91%98%E8%A6%81.html"><code>../summarize/2411.17708_GridCoder_ARC_Program_Induction.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_影像分類問題 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2509.07025_Binary_Normalized_NN.zh-TW.html">回 2509.07025_Binary_Normalized_NN.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="3-影像分類問題">3. 影像分類問題</h2>
+<p>用 <strong>Food-101 資料集</strong>（101,000 張、101 類食物；75,750 訓練 / 25,250 驗證）配置二進制卷積模型。</p>
+<h3 id="31-模型配置bcvnn演算法-7">3.1 模型配置（BCVNN，演算法 7）</h3>
+<p>輸入為影像與濾波器維度 f，輸出 101 類機率。含<strong>五個卷積區塊</strong>（每塊兩個 BNCVL + max-pooling，relu 激活、stride 1、padding 保尺寸；pooling 2×2 stride 2）+ 分類層（global average pooling + 兩個 relu 的 BNFCL + softmax 輸出）。</p>
+<h3 id="32-訓練">3.2 訓練</h3>
+<p>配兩個不同濾波器維度的模型測參數量影響：<strong>3×3（5,132,165 參數）</strong> 與 <strong>5×5（13,505,925 參數）</strong>。另配同結構的 32-bit「標準」模型當基準（標準模型在前兩個全連接層後加 dropout 0.4/0.3 以防過擬合；二進制模型不用任何正則化或參數約束）。權重 Glorot Uniform、偏置零初始化。超參（表 1）：影像解析度、categorical cross entropy、Adam、batch 64、warmup+decay（最大學習率 0.0001、warmup 20、decay 1100）、<strong>1000 epoch</strong>（需相當多 epoch 才完全收斂）。</p>
+<h3 id="33-結果表-2最佳訓練結果">3.3 結果（表 2，最佳訓練結果）</h3>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>訓練損失</th>
+<th>驗證損失</th>
+<th>訓練準確率</th>
+<th>驗證準確率</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>標準 3×3</td>
+<td>0.0369</td>
+<td>1.37</td>
+<td>0.989</td>
+<td>0.703</td>
+</tr>
+<tr>
+<td>二進制 3×3</td>
+<td>1.46</td>
+<td>1.55</td>
+<td>0.670</td>
+<td>0.637</td>
+</tr>
+<tr>
+<td>標準 5×5</td>
+<td>0.0495</td>
+<td>1.48</td>
+<td>0.986</td>
+<td>0.679</td>
+</tr>
+<tr>
+<td>二進制 5×5</td>
+<td>0.836</td>
+<td>1.35</td>
+<td>0.834</td>
+<td><strong>0.686</strong></td>
+</tr>
+</tbody>
+</table>
+<p>觀察：二進制模型<strong>無任何訓練不穩定、效能幾乎等同標準模型</strong>；標準模型學得較快（需較少 epoch）但<strong>強過擬合</strong>，二進制模型<strong>幾乎不過擬合</strong>；驗證準確率標準模型略高（3×3）但二進制 5×5 反略勝標準 5×5；5×5 二進制優於 3×3 二進制。二進制正則化層有效解決了二進制參數模型的訓練不穩定與低準確度問題（Cabral &amp; Driemeier 2025 指出傳統二進制參數模型無法有效訓練）。</p>
+<h2 id="4-語言解碼問題">4. 語言解碼問題</h2>
+<p>用 <strong>WikiText-103-raw 資料集</strong>（Salesforce，英文維基 25,000 篇高品質文章、約 1.03 億詞；前處理成 782,208 個句子例，95% 訓練 / 5% 驗證）配置二進制 Transformer。以 WordPieceTokenizer（子詞策略，詞彙 30,522，未登錄詞替為 [UNK]）分詞。</p>
+<h3 id="41-配置與訓練blm演算法-8">4.1 配置與訓練（BLM，演算法 8）</h3>
+<p>嵌入（BEMB）→ 正則化 → 經一串 BTFB → MLP head（兩個 gelu 的 BNFCL）→ 最終 softmax 全連接層算下一 token 機率。配兩個不同參數量的二進制模型（表 3）：<strong>小模型（12 區塊、嵌入 768、16 頭、MLP 4096-2048，≈154.4M 參數）</strong> 與 <strong>大模型（16 區塊、嵌入 1024、16 頭、MLP 8192-4096，≈332.8M）</strong>；另配同小模型配置的 32-bit 標準模型（其正則化層有可訓練參數，故參數量略多）。權重 Glorot Uniform、偏置零初始化、皆不用 dropout/正則化。訓練超參（表 4）：categorical cross entropy、AdamW、<strong>100 epoch</strong>、指標含準確率與困惑度。</p>
+<h3 id="42-結果表-5最佳結果">4.2 結果（表 5，最佳結果）</h3>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>訓練損失</th>
+<th>驗證損失</th>
+<th>訓練準確率</th>
+<th>驗證準確率</th>
+<th>訓練困惑度</th>
+<th>驗證困惑度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>標準</td>
+<td>1.35</td>
+<td>1.94</td>
+<td>0.726</td>
+<td>0.664</td>
+<td>3.98</td>
+<td>7.47</td>
+</tr>
+<tr>
+<td>小二進制</td>
+<td>2.03</td>
+<td>1.99</td>
+<td>0.653</td>
+<td>0.659</td>
+<td>8.08</td>
+<td>7.92</td>
+</tr>
+<tr>
+<td>大二進制</td>
+<td>1.87</td>
+<td>1.91</td>
+<td>0.666</td>
+<td><strong>0.666</strong></td>
+<td>6.95</td>
+<td><strong>7.47</strong></td>
+</tr>
+</tbody>
+</table>
+<p>觀察：二進制模型<strong>無訓練不穩定、效能近似標準模型</strong>；標準模型<strong>大幅過擬合</strong>而二進制模型<strong>皆無過擬合</strong>；驗證結果二進制與標準很接近；<strong>大二進制略優於小二進制、且等同標準模型最佳結果</strong>（大二進制參數約為小/標準的兩倍）。再次證明二進制正則化層有效解決訓練不穩定與低準確度。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>本文開發<strong>所有參數僅單位元</strong>的新型模型，以二進制正則化層構建（可用於全連接、卷積、注意力等架構），在影像分類與語言解碼兩問題上以同配置 32-bit 標準模型為基準。結果：二進制正則化層模型<strong>幾乎等同 32-bit 模型效能、訓練無不穩定</strong>（訓練不穩定是低解析度模型的主要顧慮，Cabral &amp; Driemeier 2025 指傳統二進制參數模型常因此無法有效訓練）。<strong>加大二進制模型參數可提升效能且不過擬合</strong>——此為一大優勢，使其能達 32-bit 模型水準。本文未刻意精調架構或消除過擬合，目的僅為引入二進制正則化模型並證明其泛化與可比性。</p>
+<p>二進制正則化層使模型<strong>少用 32 倍記憶體卻效能相當</strong>，可用 1-bit 陣列在標準硬體高效實作、不需專用電子元件，開啟「以手機/純 CPU 等簡單廉價硬體部署大型網路」之路。1-bit 參數模型還能在更少記憶體下發展更複雜、更多處理單元的架構，有望支撐 LLM 在嵌入式裝置部署。<strong>未來工作</strong>：以單位元陣列運算實作二進制正則化層、並把層活化量化到 8 或 16-bit，以進一步提升效率與效能。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2509.07025_Binary_Normalized_NN.%E6%91%98%E8%A6%81.html"><code>../summarize/2509.07025_Binary_Normalized_NN.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

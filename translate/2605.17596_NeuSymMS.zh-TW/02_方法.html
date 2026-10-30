@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.17596_NeuSymMS.zh-TW.html">回 2605.17596_NeuSymMS.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%B5%90%E6%9E%9C%E8%88%87%E8%A8%8E%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-方法">4. 方法</h2>
+<h3 id="41-基於-llm-的事實萃取">4.1 基於 LLM 的事實萃取</h3>
+<p>寫入路徑首先調用輕量 LLM（如 gpt-4.1-mini，經 LiteLLM），以專門的系統提示詞指示模型嚴格作為事實萃取引擎。給定一段對話片段，模型輸出候選事實的 JSON 陣列，包含 subject、relation、value、confidence 與 scope。提示詞強制低溫度（0.1）、每輪至多 10 個事實、明確的否定編碼（如 no_longer_has、lost、stopped）。將 LLM 主要用作萃取器（解析器）是一種實用設計模式，相較於將大型模型用於推理與檢索，可減少幻覺與成本。</p>
+<p>萃取範例——使用者說「我剛搬到多倫多，開始在 iVedha 的新工作」，萃取器輸出：</p>
+<pre><code class="language-json">{&quot;subject&quot;:&quot;user&quot;,&quot;relation&quot;:&quot;lives_in&quot;,&quot;value&quot;:&quot;Toronto&quot;,&quot;confidence&quot;:0.95,&quot;scope&quot;:&quot;user&quot;},
+{&quot;subject&quot;:&quot;user&quot;,&quot;relation&quot;:&quot;works_at&quot;,&quot;value&quot;:&quot;iVedha&quot;,&quot;confidence&quot;:0.9,&quot;scope&quot;:&quot;user&quot;}
+</code></pre>
+<p>當萃取模型不可用時，系統優雅降級——返回空事實清單，平台在無記憶的情況下運行。</p>
+<h3 id="42-clips-規則引擎">4.2 CLIPS 規則引擎</h3>
+<p>每次請求，候選事實與使用者現有的活躍事實被傳入 CLIPS，防止跨使用者或跨會話的工作記憶污染。三個核心 CLIPS 模板——<code>memory-fact</code>、<code>candidate-fact</code> 與 <code>engine-decision</code>——分別編碼既有知識、新進候選事實，以及將應用於資料庫的決策（包含事實 id、動作 action 與理由 reason）。額外的 <code>prompt-context</code> 模板捕捉關鍵詞與意圖，以支援相關性感知的規則。使用 CLIPS 作為產生式規則引擎，提供了快速的前向鏈推理與可被檢視用於除錯與審計的透明規則追蹤。</p>
+<h3 id="43-分類階段">4.3 分類階段</h3>
+<p>CLIPS 規則根據對 relation 與 value 欄位的模式匹配，為每個未分類的候選事實分配語意類別。一系列級聯規則將 has_pet、family、lives_in、prefers、speaks_language 等關係映射到 personal、preference、skill 等類別，並有 catch-all 規則將剩餘事實標記為 other。以 CLIPS 而非 LLM 實作分類，提供了確定性、微秒級效能、零 API 成本與從模式到類別的透明映射。</p>
+<h3 id="44-矛盾檢測與真值維護">4.4 矛盾檢測與真值維護</h3>
+<p>第二階段實現真值維護，確保知識庫中不存在關於同一主體與關係的不一致事實。實體正規化包括小寫化、Unicode 正規化與簡單詞法清理。對於矛盾，採用近似字串匹配（正規化值上的 Levenshtein 距離），以固定相似度門檻 0.85 判定兩個值是否指涉同一底層實體（如僱主名稱或地點）。</p>
+<p>對於本質上可多值的關係（如 speaks_language），引擎將每個不同值視為獨立事實，並僅在否定時撤回匹配的值；單值關係（如 works_at、lives_in）預設採用「最新值獲勝」策略。否定由萃取器以 no_longer_has、stopped、lost 等關係編碼；規則將其轉換為正向事實的撤回，不將否定形式持久化為長期事實。</p>
+<p>否定範例：系統儲存了 <code>(has_pet &quot;cat named Whiskers&quot;)</code>，後續觀察到「我的貓死了」。萃取器發射否定候選 <code>(died &quot;cat named Whiskers&quot;)</code>。CLIPS 規則檢測到 died 關係，經正規化字串比對後發射撤回正向 has_pet 事實的決策，並丟棄否定候選而非儲存。</p>
+<h2 id="4-方法續">4. 方法（續）</h2>
+<h3 id="45-晉升儲存與淘汰">4.5 晉升、儲存與淘汰</h3>
+<p>最終階段決定儲存策略與事實生命週期：</p>
+<ul>
+<li>高顯著性預過濾器丟棄低信心度事實（confidence &lt; 0.3）並跳過與既存活躍事實完全重複的項。</li>
+<li>自動晉升規則將 personal、preference、instruction、skill 類別事實直接存為 long_term，反映其持久性與重要性。</li>
+<li>其他類別預設為 short_term，受基於存取次數的晉升規則約束：short_term 事實的 access_count &gt;= 3 則晉升為 long_term。</li>
+<li>背景淘汰程序停用超過 TTL（如 24 小時）且存取次數低的短期事實。</li>
+</ul>
+<p>此設計以 access_count 作為從實際 Agent 使用中衍生的有機重要性訊號，無需獨立的評分模型，與認知心理學中的復述與鞏固理論一致。</p>
+<h3 id="46-端到端寫入路徑範例">4.6 端到端寫入路徑範例</h3>
+<p>使用者說：「我剛開始在 Google Mountain View 的新工作。我會 Python 和 Go。」</p>
+<p><strong>步驟</strong>：</p>
+<ol>
+<li>萃取：產出 works_at Google、lives_in Mountain View、speaks_language Python、speaks_language Go。</li>
+<li>既存事實假設：works_at Meta、lives_in Menlo Park。</li>
+<li>分類：works_at/lives_in → personal; speaks_language → skill。</li>
+<li>矛盾檢測：works_at Google 與 lives_in Mountain View 分別與舊事實衝突——引擎發射撤回舊事實、儲存新事實為長期知識的決策（示範信念修正）。</li>
+<li>晉升與儲存：skill 事實自動晉升為長期記憶。結果：資料庫包含更新後的僱主與地點，加上兩項耐久的語言技能。</li>
+</ol>
+<h3 id="47-讀取路徑與上下文注入">4.7 讀取路徑與上下文注入</h3>
+<p>讀取路徑查詢使用者的活躍 user scope 事實，先按 memory_type（長期優先於短期），再按 access_count，最後按新近度排序。系統限制注入的事實數量（如 30 條）以避免 prompt 過載，格式化為 <code>[Memory – Known facts about this user]</code> 開頭、附帶記憶類型與類別標籤的文字區塊。此直接注入結構化事實的模式與 RAG/DPR 的嵌入檢索不同——避免超載 prompt 並維持原子性。</p>
+<h3 id="48-讀取路徑範例">4.8 讀取路徑範例</h3>
+<p>假設資料庫中長期事實為：works_at Google、lives_in Mountain View、speaks_language Python、speaks_language Go、prefers dark mode。使用者問「我會哪些語言？」系統查詢並格式化上下文區塊：</p>
+<pre><code>[Memory -- Known facts about this user]
+[LT/personal] user works_at Google
+[LT/personal] user lives_in Mountain View
+[LT/skill] user speaks_language Python
+[LT/skill] user speaks_language Go
+[LT/preference] user prefers dark mode
+</code></pre>
+<p>注入 LLM 系統提示詞後，回應如：「根據我所知，你精通 Python 和 Go。」</p>
+<h2 id="5-實作">5. 實作</h2>
+<p>NeuSymMS 實作為 Nexa Agent 平台內的記憶系統，同時透過後端 API 與 UI 暴露。後端使用 Django + Django REST Framework 管理 <code>NeuSymMS_memory_facts</code> 模型與相關端點。CLIPSPy 提供 CLIPS 6.4 的 Python 綁定，使規則引擎在進程內以低延遲運行、無外部依賴。LiteLLM 作為跨 provider 之 LLM 閘道（OpenAI、Anthropic、Google、Azure 等）。</p>
+<p>前端以 React + TypeScript 在設定 UI 中暴露 Memory 標籤頁，允許使用者檢視、搜尋、過濾、編輯與清除記憶事實。後端與 Agent/Flow 的整合透過 <code>enrich_instructions_with_memory</code> 與 <code>process_memory</code> 等工具函數實現，確保每次 LLM 互動都能同時消費與更新記憶。</p>
+<p>資料庫索引：(user, is_active, scope) 用於讀取路徑查詢；(user, agent_id, is_active)、(user, flow_id, is_active) 用於 Agent/Flow 作用域查詢；(user, category, is_active) 用於 UI 過濾；(subject, relation) 用於矛盾檢測（高效找到共享 subject–relation 對的現有事實）。</p>
+<p>API 提供列出、摘要、更新、刪除與清除記憶事實的 REST 端點。記憶操作參與與文件、Agent 相同的使用者與存取控制模型：僅已驗證使用者可檢視或編輯自身事實；租戶管理員可設定分類與保留策略；所有編輯皆透過可審計的 REST 端點服務。Memory 標籤頁 UI 顯示摘要卡片（活躍／長期／短期）、類別與類型過濾器、可搜尋的事實清單（含行內編輯）以及帶可選作用域的「Clear All」批次操作。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

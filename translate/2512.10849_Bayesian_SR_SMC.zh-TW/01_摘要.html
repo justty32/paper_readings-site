@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2512.10849_Bayesian_SR_SMC.zh-TW.html">回 2512.10849_Bayesian_SR_SMC.zh-TW 目錄</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>符號迴歸是直接從資料發掘支配方程的有力工具，但對噪聲的敏感性妨礙其更廣應用。本文提出用於貝氏符號迴歸的<strong>序貫蒙地卡羅（SMC）框架</strong>，近似符號表達式的後驗分布，增強穩健性並在噪聲下實現不確定性量化。不同於傳統 GP 法，這個 SMC 演算法結合**機率式選擇、自適應回火、正規化邊際似然（NML）**來高效探索符號表達式搜尋空間，產出泛化更好的簡約表達式。相較標準 GP baseline，本法更善處理挑戰性的含噪 benchmark。降低過擬合傾向、增強發現準確可解釋方程的能力，為科學發現與工程設計中更穩健的 SR 鋪路。</p>
+<p><strong>關鍵詞</strong>：符號迴歸、貝氏統計、序貫蒙地卡羅。</p>
+<hr />
+<h2 id="引言">引言</h2>
+<p>阻礙 SR 廣泛採用的一大挑戰是<strong>對噪聲與有限資料的敏感性</strong>——而這正是 SR「從資料抽可解釋關係」最有益的場景。benchmark 顯示連名義噪聲都使許多 SR 大幅退化。</p>
+<p>本文經近似「給定資料下符號表達式的機率分布（貝氏後驗）」追求穩健 SR → 產出一族表達式（各帶反映其相對似然的機率密度），最終得 (1) <strong>MAP 表達式</strong>（最可能/最具預測力）、(2) <strong>量化並表達預測不確定性</strong>（形式 + 參數）。用 <strong>SMC</strong> 高效探索表達式空間：迭代精煉表達式族群、導向非零後驗密度區、維持多樣候選集、據資料證據調整族群；族群式特性利於估計多峰後驗（SR 常見）。</p>
+<p>相關工作用 <strong>MCMC</strong> 做貝氏 SR，但 MCMC：(1) 比 SMC 不可擴展（須長序列序列計算）;(2) 難高效探索複雜高維域（尤後驗多峰時）。SMC 是族群式 → 自然有效。先前貝氏模型選擇已用於 GPSR（減 bloat、增泛化、經先驗引入物理知識）；本文擴展之，加入有原則的貝氏推論，確保最終族群收斂到後驗近似。</p>
+<p><strong>貢獻</strong>：(1) 穩健 SMC 框架探索表達式空間、近似貝氏後驗；(2) 不確定性量化；(3) 在含噪 benchmark 上勝 GPSR。</p>
+<h2 id="1-方法">1. 方法</h2>
+<p><strong>貝氏 SR</strong>：估計模型 M 與參數 θ 給定資料 D 的聯合後驗 p(M,θ|D)（式 1）。M 的域離散、θ 的域連續且維度隨 M 變 → 跨維度空間難探索。對 θ <strong>邊際化</strong> → 模型後驗 p(M|D)（式 2）：好處是免在 θ 做跨維度跳躍（標準 MCMC/SMC 即可），代價是須對每個提議 M 算 <strong>marginal likelihood</strong>（雙重迴圈，內層等同固定模型貝氏推論的正規化常數）。</p>
+<p><strong>NML</strong>：SR 中模型形式先驗無資訊 → 常取非正規均勻分布 → marginal likelihood 出現不定常數 → 用**正規化邊際似然（NML）**解決（式 3）。NML 可用 SMC 直接估或用 <strong>Laplace 近似</strong>（式 4，比 SMC 快數量級但對許多 SR 模型較不準）。本文用 Laplace 近似（假設內層 SMC 計算不可行）。</p>
+<p><strong>為何 SMC 而非 MCMC</strong>：(1) MCMC 需細調提議否則接受率極低，SMC 全域族群式更穩健；(2) MCMC 有嚴格遍歷性要求，SMC 可放寬；(3) MCMC 本質序列，SMC 可平行。</p>
+<h3 id="11-smc-後驗取樣smc-sr">1.1 SMC 後驗取樣（SMC-SR）</h3>
+<p>演化一群加權符號表達式，經一系列目標分布（用<strong>似然回火 likelihood-tempering</strong>，目標分布隨參數 φ 從先驗（φ=0）平滑過渡到後驗（φ=1），式 5）。每步<strong>自適應更新 φ</strong>（用二分法維持使用者指定的<strong>有效樣本數 ESS</strong>）並依新目標重加權（重要性取樣，式 6）。</p>
+<ul>
+<li>防權重退化兩策略：(1) 依新目標重加權並<strong>有放回重取樣</strong>（高權重複製、低權重移除；用<strong>分層重取樣</strong>鼓勵多樣，但減少唯一方程數）;(2) 用<strong>短程 MCMC 前向核 rejuvenation</strong>（獨立修改重複表達式，近似分布於當前目標）。重取樣 + MCMC 移動促多樣與全域探索後驗峰。</li>
+<li>對比 GPSR（確定性擁擠選擇）：主要差別是 SMC 特有步驟（迭代目標分布、重加權、重取樣、MCMC 前向核）與接受機率定義（SMC 用經典隨機遊走 Metropolis 步，GPSR 用「適應度是否改善」的二元接受/拒絕）。提議用標準 GP 交叉/變異（不對稱提議，靠 SMC 內 MCMC 核 rejuvenation 而非嚴格遍歷性）。</li>
+<li>假設：噪聲 iid；模型先驗均勻（可換 Bartlett 等的資訊先驗）。超參：族群 2000、MCMC 核步數 10、目標 ESS 1900（95%）。較大族群利於早期多樣性。</li>
+</ul>
+<h3 id="12-示範">1.2 示範</h3>
+<p>簡單案例（y=sin(x²)+noise，25 點，故意不給 exp 運算子增難度）。圖 1(a) 用 log NML 分布單維視覺化後驗（似然回火 → 早期探索、漸收斂到多峰後驗）；圖 1(b) 用二維直方圖看模型後驗（訓練點間高單峰密度；模型分歧的多峰區＝預測該謹慎 + 加資料最有益處）。</p>
+<h2 id="2-結果">2. 結果</h2>
+<p>12 個最難的 Feynman 資料集（將納入 SRBench 修訂版；各 10000 點、輸入維 3–8、抽訓練子集、加 10% 量級的高斯噪聲、重複 20 次；用 NRMSE，0.1＝與噪聲相當）。對手 3 個 GPSR（<strong>GP-MSE</strong>：MSE+確定性擁擠；<strong>GP-NML</strong>：NML+確定性擁擠；<strong>GP-agg</strong>：MSE+錦標賽更激進）。SMC 自適應故先跑 SMC-SR、GPSR 用相同代數，用正規化計算量指標。</p>
+<ul>
+<li><strong>圖 2</strong>：I-32-17 上 SMC-SR 達比任何 GPSR 更低 NRMSE-train（比較 GP-MSE vs GP-NML 見 NML 正則部分貢獻）;I-36-38 上 GP-agg 更快達低訓練誤差（高選擇壓力 → 快擬合）但 <strong>NRMSE-test 高（過擬合）</strong>，SMC-SR 不過擬合 → 高選擇壓力非 SMC-SR 改善的唯一原因。</li>
+<li><strong>圖 3 複雜度</strong>：SMC-SR 早期探索快速膨脹（似 GP-MSE），但隨 NML 回火、φ→1 正則生效 → 複雜度與參數數趨 GP-NML（先探索-bloat、再聚焦高後驗區降複雜度）。GP-agg 快速膨脹＝盲目增選擇壓力的陷阱。</li>
+<li><strong>圖 4/5 全資料集</strong>：SMC-SR <strong>較不易欠擬合</strong>;<strong>過擬合僅 5/12</strong>（GPSR 幾乎全部過擬合）；最終族群最小 NRMSE-test 最頻繁且最低 → 更易遇高擬合表達式。</li>
+<li><strong>圖 6 模型選擇</strong>：三種實際選法——(i) 最佳訓練誤差（≈MAP，無資訊先驗）、(ii) 驗證集（20% 大小）、(iii) <strong>最終族群眾數（mode，≈MAP 無先驗假設）</strong>。<strong>眾數與驗證皆勝最佳訓練誤差；眾數即使無額外資料也勝驗證</strong>；真值回復率同趨勢。眾數選擇近最優、通常勝 GPSR 最樂觀情況。</li>
+</ul>
+<h2 id="3-討論">3. 討論</h2>
+<p>四大差異：NML、重取樣、機率式選擇、似然回火。<strong>NML 貢獻中等</strong>;<strong>重取樣增選擇壓力但單獨不足</strong>（GP-agg 過擬合）;<strong>機率式選擇 + 似然回火（或與另兩者協同）是主要成功來源</strong>。GPSR 常低效探索、頻繁重訪相同表達式；機率式選擇與似然回火促新奇、放寬探索限制。但 SMC-SR 總唯一表達式數約 GP 的 50% → <strong>純新奇本身無益，只在高後驗區的新奇才有益（targeted novelty）</strong>。SMC-SR 族群更動態、接受進族群的唯一模型更多（適應而非停滯、主動發現高後驗密度模型）。<strong>探索-開發兩階段</strong>（圖 8）：先探索（φ 慢、多唯一模型）後開發（φ 快趨 1）。</p>
+<h2 id="4-結論">4. 結論</h2>
+<p>SMC-SR 增強抗噪、內建模型形式不確定性量化、近似符號表達式貝氏後驗。在含噪 Feynman 上勝 GPSR（更少過擬合、更易找高擬合表達式）、提供預測與方程形式的不確定性量化。成功歸因不只 NML 與重取樣選擇壓力，更在<strong>機率式選擇 + 似然回火的組合</strong>（促有針對性的新奇與探索、高效找高後驗區、避過早收斂與純新奇低效）。未來：探索領域知識先驗的影響；用更準的 NML 計算（內層用 SMC 取代 Laplace）。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2512.10849_Bayesian_SR_SMC.%E6%91%98%E8%A6%81.html"><code>../summarize/2512.10849_Bayesian_SR_SMC.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

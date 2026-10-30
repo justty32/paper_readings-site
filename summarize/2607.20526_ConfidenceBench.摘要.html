@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《ConfidenceBench：大型語言模型的信心校準評估基準》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Matthew ffrench-Constant (Independent)、Daniel Yang (ETH Zurich)、Xinmeng Huang (UPenn)、Sanyam Kapoor (NYU)</p><p>日期：2026-07</p><p>arXiv：2607.20526</p><p><a href="https://arxiv.org/abs/2607.20526" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="confidencebench大型語言模型的信心校準評估基準重點摘要">《ConfidenceBench：大型語言模型的信心校準評估基準》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>ConfidenceBench</strong>：200 題私有選擇題、四類別（空間推理／高精度數學／文字查找／不可知）的<strong>口語化信心校準基準</strong>，以 <strong>Brier score（proper scoring rule）</strong> 為主要指標，評估 15 個前沿 LLM（三輪重複）。核心發現：<strong>準確度最高 ≠ 校準最佳</strong>——Claude Opus 4.6 校準最佳（Brier 0.103）、Gemini 3.1 Pro Preview 準確度最高（82.7%）但校準第三；推理量與模型規模<strong>獨立貢獻</strong>校準品質；五個模型劣於校準隨機基線（0.1875）。人類測試者 Brier 0.105（第三名），校準與準確度是<strong>正交的可靠性維度</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 部署中流暢但錯誤的答案極其昂貴，但既有基準（MMLU、BIG-Bench）只測準確度、不測「模型知不知道自己可能錯」。信心校準（模型表達的機率是否反映真實正確率）是安全部署的前置條件（用於路由、棄權、人類審查），而口語化校準（verbalized confidence）是唯一對 closed/open-source 通用的方法（不需 logits/權重/重複採樣）。既有校準基準多僅測棄權、或混用 ECE（受分箱影響），缺乏用 proper scoring rule 直接比較前沿模型的緊湊基準。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>問題集</strong>：200 題四選一，手寫、私有、未源於任何既有資料集，防訓練污染。四類別隔離不同知識失敗模式：空間推理（多步心智模擬）、高精度數學（取整誤差→似是而非錯誤答案）、文字查找（經典文本具體詞彙檢索，錯誤選項皆貌似合理）、不可知（無法憑既有知識推斷、需接觸真實物件的問題，如某日某街角的報亭顏色）。</li>
+<li><strong>信心誘出</strong>：每題附加 prompt 要求輸出 JSON <code>{answer: A–D, probability: 0–100}</code>（25=隨機猜測基線）。無法解析的回覆與明確拒答者視為 25% 信心並隨機選答案（避免排除拒答造成選擇性偏差）。</li>
+<li><strong>評估指標</strong>：<strong>Brier score</strong> B̄ = (1/n)Σ(pᵢ−yᵢ)²（越低越好，proper scoring rule——誠實回報機率的唯一最小化期望）；<strong>校準間隙 G</strong>（無平方→過度/不足信心呈帶符號量）；ECE（10 等寬分箱）與 smECE（核平滑可靠性圖）為輔助指標。校準隨機基線（均勻猜測 p=0.25）為 0.1875。</li>
+<li><strong>實驗設定</strong>：15 模型（GPT-5 High/Standard/Low/Mini/Nano、Claude Opus 4.6/4.5/4.1、Claude Sonnet 4.6/4.5/4、Gemini 3.1 Pro Preview/Flash-Lite、Gemini 2.5 Pro/Flash），溫度 1.0，三輪獨立跑，共約 9,000 次 API 呼叫。人類基線：一名外部志願者，每題一分鐘、可用網路、相同格式回答。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>Brier ↓</th>
+<th>準確度 ↑</th>
+<th>ECE ↓</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Claude Opus 4.6</td>
+<td><strong>0.103 ± 0.006</strong></td>
+<td>76.0%</td>
+<td>0.069</td>
+</tr>
+<tr>
+<td>Gemini 3.1 Pro Preview</td>
+<td>0.103 ± 0.012</td>
+<td><strong>82.7%</strong></td>
+<td>0.086</td>
+</tr>
+<tr>
+<td>Human Tester</td>
+<td>0.105</td>
+<td>70.5%</td>
+<td><strong>0.053</strong></td>
+</tr>
+<tr>
+<td>GPT-5 Standard</td>
+<td>0.117</td>
+<td>76.6%</td>
+<td>0.067</td>
+</tr>
+<tr>
+<td>GPT-5 High</td>
+<td>0.121</td>
+<td>75.8%</td>
+<td>0.076</td>
+</tr>
+<tr>
+<td>Gemini 3.1 Flash-Lite</td>
+<td>0.367</td>
+<td>55.3%</td>
+<td>0.344</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>準確度≠校準</strong>：Gemini 3.1 Pro 準確度最高但校準排第三；Claude Opus 4.6 校準最佳但準確度非第一。兩者正交。</li>
+<li><strong>推理量×規模獨立貢獻</strong>：GPT-5 家族內推理量越高校準越好（Standard 0.117 &gt; Low 0.141）；同代大模型校準一致優於小模型（Opus &gt; Sonnet、Pro &gt; Flash）。</li>
+<li><strong>新≠好</strong>：Gemini 3.1 Flash-Lite 為全研究最差校準（0.367），劣於 2.5 代多個模型。</li>
+<li><strong>不可知題是主要失校準源</strong>：模型認出自己不懂而降為 25%，但實際猜對率遠高於 1/4，呈不足信心——優於過度信心，但仍是不準確的機率。</li>
+<li><strong>信心分佈</strong>：Claude Opus 4.6 在正確/錯誤回應間呈清晰單調分隔；Gemini 3.1 Flash-Lite 呈雙峰（25% 或 80–100%）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>口語化信心可能部分反映指令遵循/提示框架，而非底層知識狀態的不確定性。</li>
+<li>200 題英語多選、領域與格式有限，不推廣至長文本生成、多輪對話、其他語言/文化。</li>
+<li>私有題集限制個別題目的獨立審計。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>「品質分數」<strong>主題（§3.4 選型）的</strong>校準視角</strong>：Brier score 作為 proper scoring rule 直接獎勵誠實機率報告，是品質分數從「自簽憑證」走向「經過校準驗證的信心出口」的關鍵方法。</li>
+<li>口語化校準是唯一對 closed/open-source 通用的黑箱方法——對任何需要「棄權/路由/人類審查」的代理系統都是必備知識。</li>
+<li>與 <a class="paper-reference" href="2412.12767_BlackBox_LLM_Calibration_Survey.%E6%91%98%E8%A6%81.html">2412.12767</a> 黑箱 LLM 校準流程綜述對讀（Brier vs ECE/AUROC 選型）；與 <a class="paper-reference" href="2207.05221_LMs_Know_What_They_Know.%E6%91%98%E8%A6%81.html">2207.05221</a> LMs (Mostly) Know 並讀（早期口語化校準奠基、本論文是其前沿進化）；與 <a class="paper-reference" href="2506.00245_Pairwise_Semantic_UQ.%E6%91%98%E8%A6%81.html">2506.00245</a> Beyond Semantic Entropy 對照（語意熵 → 品質分數的另一條路徑）。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2607.20526_ConfidenceBench.zh-TW.html"><code>../translate/2607.20526_ConfidenceBench.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

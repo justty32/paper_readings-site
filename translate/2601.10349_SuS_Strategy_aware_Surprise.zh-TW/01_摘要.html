@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2601.10349_SuS_Strategy_aware_Surprise.zh-TW.html">回 2601.10349_SuS_Strategy_aware_Surprise.zh-TW 目錄</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>我們提出 <strong>Strategy-aware Surprise（SuS，策略感知驚奇）</strong>，一個用「行動前後的預測失配」作為探索 novelty 訊號的新內在動機框架。不同於只靠 state 預測誤差的傳統好奇心方法，SuS 引入兩個互補分量：<strong>Strategy Stability（SS，策略穩定）</strong> 衡量行為策略跨時間步的一致性；<strong>Strategy Surprise（SuS，策略驚奇）</strong> 捕捉「相對於當前策略表徵的意外結果」。組合獎勵以 learned 權重係數同時利用兩訊號。我們在 LLM 數學推理任務上評估，準確率與解多樣性都顯著提升。消融確認移除任一分量都導致至少 10% 退化。SuS 相對 baseline 達 <strong>Pass@1 +17.4%、Pass@5 +26.4%</strong>，且全程維持更高策略多樣性。</p>
+<p>關鍵詞：內在動機、強化學習、對比學習、探索。程式碼：github.com/mariklolik/sus</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>稀疏/延遲獎勵下探索是 RL 根本難題。傳統內在動機提供輔助獎勵鼓勵新奇狀態訪問：<strong>count-based</strong> 維持訪問統計但高維難精確匹配；<strong>density 估計</strong> 近似 novelty 但可能只捕表面狀態變化。<strong>prediction-based</strong> 方法強：ICM 用學到特徵空間的前向模型誤差；RND 用隨機初始化目標網路的預測誤差。它們在 Montezuma&#x27;s Revenge 等難探索遊戲成功，但<strong>共同侷限：只看 state-level novelty，不考慮決策背後更廣的行為模式</strong>——狀態觀察層新奇、行為上卻平庸，導致探索無關特徵。</p>
+<p>我們主張：有效探索應考慮**「agent 的策略行為如何因其動作而改變」，而非僅產生不可預測觀察**。SuS 在「策略嵌入」空間算內在獎勵：strategy encoder 把觀察映到「相似行為模式聚在一起」的潛空間，比較動作前後嵌入即可評估是否發生有意義策略位移。兩互補分量：<strong>SS</strong> 衡量連續步行為一致性（鼓勵連貫策略而非亂動）；<strong>SuS</strong> 捕捉相對當前策略的意外結果。二者提供正交探索壓力（SS 單用鼓勵重複、SuS 單用導致亂探），組合產生平衡訊號——獎勵發現真正新策略可能性、同時維持行為連貯。在 LLM 數學推理上 Pass@1 +17.4%、Pass@5 +26.4%，消融證兩分量皆必要。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>RL 中的內在動機</strong>：count-based（Bellemare 2016）、ICM（Pathak 2017，前向模型誤差）、RND（Burda 2018，隨機網路蒸餾）。近期有 diffusion 獎勵塑形、toddler-inspired 獎勵轉移（Park 2025）、uniqueness-aware 創意 LLM 獎勵（Hu 2026）。<strong>SuS 不同處：操作於 strategy-level 表徵而非 state-level，問「行為模式如何變」而非「個別狀態是否新」</strong>。</li>
+<li><strong>對比學習表徵</strong>：SimCLR、MoCo、InfoNCE；RL 中 CURL、CPC。SuS 把對比原則擴展到時間域——對比「動作前後的策略位置」評估是否產生有意義行為位移。</li>
+<li><strong>世界模型與預測</strong>：Dreamer 用學到動態做想像中策略最佳化；其預測誤差天然提供探索 bonus，但有 <strong>noisy TV 問題</strong>（不可預測但任務無關的觀察主導內在獎勵）。SuS 以策略表徵濾掉任務無關轉移——高預測誤差但策略位置不變的轉移得低獎勵。</li>
+<li><strong>行為多樣性與 Quality Diversity</strong>：MAP-Elites 維持多樣高表現解 archive、behavioral descriptor 刻畫多樣性；DIAYN 無獎勵學多樣技能（最大化技能與狀態互資訊）。SuS 的策略嵌入類似 behavioral descriptor，但<strong>線上用於引導探索</strong>而非 archive 選擇，能依當前學習狀態動態調整探索壓力。</li>
+</ul>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="31-問題形式化">3.1 問題形式化</h3>
+<p>增廣獎勵 <code>r = r_ext + α·r_int</code>（α 控內在相對外在的尺度）。挑戰是設計 r_int 鼓勵有意義探索而不扭曲任務目標。</p>
+<h3 id="32-策略嵌入">3.2 策略嵌入</h3>
+<p>strategy encoder <code>E:𝒮→ℝ^d</code> 把觀察映到 d 維策略嵌入——表「會如何行為」而非「觀察到什麼」。用<strong>對比學習</strong>訓練（同軌跡導向相似動作分布的狀態為正對、不同軌跡行為發散為負對）。每個 transition 算 z_pre=E(s_t)、z_post=E(s_{t+1})，其變化大小揭示動作對策略位置的影響。</p>
+<h3 id="33-strategy-stabilityss">3.3 Strategy Stability（SS）</h3>
+<p><code>SS(s_t,a_t,s_{t+1}) = cos(z_pre, z_post)</code>（餘弦相似度）。高 SS＝維持策略連貫；獎勵高 SS 鼓勵發展連貫行為而非亂動。但單用 SS 抑制探索、可能過早收斂。在數學推理上，SS 鼓勵「充分探索一條解法路線再換」，使每個策略模式覆蓋更徹底。</p>
+<h3 id="34-strategy-surprisesus">3.4 Strategy Surprise（SuS）</h3>
+<p><code>SuS(s_t,a_t,s_{t+1}) = ‖ŝ_{t+1}−s_{t+1}‖ ·(1−SS)</code>，ŝ_{t+1}=M(s_t,a_t) 為 world model 預測。SuS 高 ⟺ 兩條件同時：(1) 世界模型沒料到（轉移意外）；(2) 結果是不同策略位置（有意義行為位移）。<strong>乘法組合</strong>確保「同時高 novelty 且策略顯著」才得大獎勵——同策略區內不可預測轉移（環境噪聲）因 (1−SS) 小而低 SuS、可預測的新策略區轉移因預測誤差小而低 SuS。<strong>這就解了 noisy TV 問題</strong>。</p>
+<h3 id="35-組合內在獎勵">3.5 組合內在獎勵</h3>
+<p><code>r_int = λ₁·SS + λ₂·SuS</code>，λ 在訓練中 <strong>meta-learned</strong> 以適應環境特性。早期 SS 助建立連貫策略、後期 SuS 助發現替代解法；meta-learning 權重實現自動適應免手調。</p>
+<p><strong>Algorithm 1</strong>：對每問題用 π_θ 生 K 條軌跡 → 算 z_pre/z_post、SS、SuS、r_int → r=r_ext+α·r_int → 用 <strong>GRPO</strong> 更新策略 θ、用策略預測損失更新 encoder ψ。</p>
+<h3 id="36-實作細節">3.6 實作細節</h3>
+<p>encoder＝三層 MLP（ReLU+layernorm）；LLM 應用用預訓練句嵌入 + 投影層，d=128。world model 類似架構加動作嵌入層，與策略聯合訓練、共享 replay。對比損失用 in-batch negatives + 溫度 + momentum encoder。RL 底層 <strong>GRPO</strong>，intrinsic reward 在算 advantage 前加入，KL 懲罰維持生成品質。</p>
+<h2 id="4-實驗">4. 實驗</h2>
+<p><strong>設定</strong>：<strong>GSM8K</strong>（小學數學文字題、多步推理）；探索挑戰＝獎勵稀疏（僅正確最終答案）、解法策略空間大、不同解法可達同答案。基模 <strong>Qwen2.5-1.5B + LoRA</strong>（rank 8），3 epoch、batch 2、每問題 8 軌跡 GRPO，200 held-out 題用 Pass@1/Pass@5 評估。baselines：標準 GRPO、Perplexity 內在獎勵、SuS（僅 SS）、SuS（僅 SuS）。</p>
+<h3 id="42-主結果table-1">4.2 主結果（Table 1）</h3>
+<p>SuS Pass@1 <strong>14.2%</strong>（baseline 12.1%，相對 +17.4%）、Pass@5 <strong>46.8%</strong>（baseline 37.1%，+26.4%）、熵 1.31（baseline 0.65，+101%）。Pass@5 提升更大 → 產更多樣的正確解。學習曲線顯示 SuS 初期更快、全程更高；baseline 與 perplexity 軌跡相近，<strong>簡單 perplexity 內在獎勵無意義探索增益</strong>。</p>
+<h3 id="43-消融table-2">4.3 消融（Table 2）</h3>
+<p>僅 SS：Pass@1 12.5%（−12.0%）、Pass@5 38.9%（−16.9%）；僅 SuS：Pass@1 13.1%（−7.7%）、Pass@5 41.2%（−12.0%）。證兩分量互補：SS 單用過保守、SuS 單用無焦點，組合協同。</p>
+<h3 id="4448-其他分析">4.4–4.8 其他分析</h3>
+<p><strong>策略多樣性</strong>：SuS 全程維持顯著更高的策略嵌入聚類熵；baseline/perplexity 初期後多樣性下降、過早收斂窄行為。持續多樣性 → 更可能藉多樣解法找到正解（呼應 Pass@5 大提升）。<strong>內在獎勵演化</strong>：隨 world model 變準，內在獎勵下降（理想性質——最終聚焦外在表現）。<strong>敏感度</strong>：λ 在最優值兩倍範圍內穩定；極端比例重現消融結果（平衡比具體值更重要）。<strong>計算開銷</strong>：wall-clock +~15%、記憶體 +~20%，被更快收斂抵消。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>SuS 以「策略空間的前後預測失配」作探索訊號，SS 與 SuS 互補提供平衡探索壓力。關鍵洞見：<strong>有意義探索應看「行為模式如何因動作而變」，而非僅個別狀態是否新奇/不可預測</strong>。GSM8K 上 Pass@1 +17.4%、Pass@5 +26.4%，消融證兩分量必要。策略多樣性分析揭示成功機制：維持高策略嵌入熵防過早收斂——對「同問題多有效解法」的數學推理尤其有價值。未來方向：推廣到影像式 RL、階層策略表徵、探索性質的理論分析、與其他探索方法結合。<strong>從 state-level novelty 走向 behavioral-pattern novelty</strong>，為更複雜探索挑戰開新方向。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

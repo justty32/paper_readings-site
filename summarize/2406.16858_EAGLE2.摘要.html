@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《EAGLE-2：以動態草稿樹加速語言模型推論（Faster Inference of Language Models with Dynamic Draft Trees）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yuhui Li, Fangyun Wei, Chao Zhang, Hongyang Zhang（北京大學／Microsoft Research／Waterloo／Vector Institute）</p><p>日期：2024-06</p><p>arXiv：2406.16858</p><p><a href="https://arxiv.org/abs/2406.16858" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="eagle-2以動態草稿樹加速語言模型推論重點摘要">《EAGLE-2：以動態草稿樹加速語言模型推論》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>EAGLE-2：用草稿模型「自我校準的信心分數」即時逼近草稿 token 的接受率，據此把原本固定形狀的草稿樹改成 context-aware 動態草稿樹（擴展＋重排兩階段），不動原模型、不加訓練、無損地把接受長度與加速比再往上推。</strong> 關鍵前提是作者發現 EAGLE 的草稿模型是 well-calibrated 的：信心分數與真實接受率幾乎落在對角線上（信心&lt;0.05 接受率約 0.04，信心&gt;0.95 接受率約 0.98），因此不必呼叫昂貴的原 LLM 也能估出接受率。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>主流推測式取樣（speculative sampling）如 EAGLE、Medusa、Sequoia 都用<strong>靜態草稿樹</strong>，隱含假設「草稿 token 的接受率只取決於它在樹中的位置」。但作者在 Alpaca／Vicuna 7B 上實測（§3.1）發現：接受率不只 position-dependent，同一位置的接受率變異很大，<strong>高度 context-dependent</strong>。例如問「10+2=」下一 token 幾乎必是「1」，靜態樹卻仍白白加第二候選「3」；而問「10+2」則難預測，該多加候選。靜態結構因此有先天浪費，動態依情境調整才能榨出更多接受 token。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>兩個觀察打底</strong>：(1) 接受率 context-dependent（§3.1）；(2) 草稿模型 well-calibrated，信心分數≈接受率（§3.2）——這是不需查詢原 LLM 就能估接受率的基礎。</li>
+<li><strong>Expansion（擴展）階段</strong>：靠 tree attention 一次前向就能算出整層所有 token 的下一步機率。但每層節點指數成長，故只挑 value 最高的 top-k 節點往下展開。<strong>value V_i ＝從根到該節點路徑上所有 token 信心分數的連乘</strong>（近似 global 接受率，因為一個 token 只有在所有前綴都被接受時才最終被接受）。</li>
+<li><strong>Reranking（重排）階段</strong>：擴展是為了加深樹，但深層節點 value 必然較低，某些沒被展開的淺節點 value 反而更高。故把<strong>全部</strong>草稿 token 依 value 重排，取 top-m；value 相同時優先取較淺節點，確保選出的仍是一棵連通樹。再攤平成一維序列、依樹結構調整 attention mask（每個 token 只能看見祖先），送去驗證。</li>
+<li><strong>兩大工程優點</strong>：開箱即用（不需額外訓練任何預測草稿樹結構的模型）＋可靠（不微調原 LLM、不放寬接受條件，可證明輸出分布與原 LLM 完全一致，屬 lossless 加速）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>3 系列 LLM（Vicuna、LLaMA2-Chat、LLaMA3-Instruct，7B～70B）× 6 任務（MT-bench／HumanEval／GSM8K／Alpaca／CNN-DM／Natural Questions），<strong>加速比 2.5x–5x；相對 EAGLE 快 20%–40%</strong>（摘要主打 3.05x–4.26x 區間）。</li>
+<li>每個 draft-verify 週期平均接受 <strong>4–5.5 個 token</strong>，約為標準推測式取樣與 Medusa 的兩倍；在 MT-bench 上約比 Medusa 快 2x、比 Lookahead 快 2.3x。</li>
+<li>消融（Vicuna 7B, T=0, MT-bench）：w/o both 2.81x → 用 value（而非單一信心）3.21x → 加 reranking → 完整 EAGLE-2 3.62x，證明 value 與重排各有貢獻。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>草稿模型只用 SFT 資料訓練，故在需要世界知識的 QA（Natural Questions）與 summarization（CNN/DM）上接受長度與加速比較低——暗示擴充草稿模型訓練資料仍有空間。</li>
+<li>不改草稿模型結構，故<strong>接受率（草稿模型本身品質）與 EAGLE 相同</strong>，增益全來自樹結構的動態調度；加速比亦與硬體相關。</li>
+<li>信心≈接受率是經驗性強相關而非精確等式（value 用連乘近似 global 接受率）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>對 ai_core <strong>§3.3 成本梯度／級聯路由的「自適應化」<strong>是很乾淨的一課：EAGLE-2 不預先固定「便宜模型花多少算力」，而是</strong>讓便宜模型用自己 well-calibrated 的信心分數，逐 context 決定要不要、往哪個分支多花一點昂貴驗證</strong>——把靜態的成本分配升級成 context-aware 的動態調度，且<strong>不需查詢昂貴節點就能估算升級的期望報酬</strong>（value＝信心連乘＝global 接受率的免費代理）。這正是把「成本梯度」從固定閾值做成自適應的可操作範式。</li>
+<li>可遷移的抽象：<strong>「用便宜元件自我校準的信心當作路由訊號、以連乘沿路徑聚合成 global 分數、再 top-k 擴展＋全域重排」</strong>——這套「先廉價估值、只在高期望值處投入昂貴算力」的骨架，對 ai_core 級聯路由與「拒絕為預設＋憑證准入」的成本側都有啟發（信心分數可視為一種輕量憑證）。</li>
+<li>定位：已入庫 <a class="paper-reference" href="2401.15077_EAGLE.%E6%91%98%E8%A6%81.html">2401.15077</a> EAGLE 的直接續作，歸 <strong>I 類</strong>。適合做 推測式解碼、推論加速、動態計算調度、信心校準路由 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2406.16858_EAGLE2.zh-TW.html"><code>../translate/2406.16858_EAGLE2.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

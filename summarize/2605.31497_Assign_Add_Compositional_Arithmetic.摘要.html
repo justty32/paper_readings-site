@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《指派與相加：組合算術的機制性研究》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Brady Exoo（Yale）、Alberto Bietti（Flatiron Institute）、John Sous（Yale）</p><p>日期：2026-05（arXiv v1）</p><p>arXiv：2605.31497</p><p><a href="https://arxiv.org/abs/2605.31497" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="指派與相加組合算術的機制性研究重點摘要">《指派與相加：組合算術的機制性研究》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>在一個受控玩具設定（<strong>變數指派 + 模組加法</strong>的合成任務）裡機制性地揭示 Transformer 的組合泛化：把訓練資料切成<strong>不相交集合</strong>後，2 層小 Transformer 能泛化到<strong>未見過的「變數×數字」組合</strong>；機制分析顯示<strong>同一個「模組加法」MLP 模組</strong>被共用——無論運算元是直接給定還是經由獨立的變數指派機制間接取得；訓練動力學呈<strong>三階段</strong>（先學模組加法 → 再學變數指派所需結構 → 最後精修以泛化到訓練中沒見的困難序列），並給出梯度動力學的理論框架解釋組合性如何湧現。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 能組合技能解未見過的複雜任務，但<strong>組合究竟如何發生仍不清楚</strong>。本文用機制可解釋性，在可控合成設定下系統研究：訓練一個 Transformer 做組合任務，如何讓其架構內部的機制變得「可組合」、並由此實現 OOD 泛化。刻意取兩個行為迥異、各自研究透徹的機制——<strong>變數綁定</strong>（靠 induction head 做關聯回憶）與<strong>模組加法</strong>（典型有 Fourier 特徵、訓練中常 grokking）——研究它們的組合。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>任務</strong>：序列如 <code>c=1,b=17,a=42,b+19=?</code>，在 N=59 模下對 V=12 個變數做模組加法；序列長 T=16，含隨機 padding 防止靠絕對位置作弊；因果遮罩下把 <code>+</code> 放運算元前以標示加法開始。把所有有效序列 S 分成 S₀/S₁/S₂（加法含 0/1/2 個變數）。</li>
+<li><strong>泛化切分（不相交訓練/測試）</strong>：(1) 移除約 <strong>30%</strong> 的 59² 個加法數字對——若移除 (1,3)，則含 <code>1+3</code>、<code>c=1,c+3</code>、<code>c=3,1+c</code> 的所有序列都拿掉；(2) 限制某些變數固定不出現在加法的特定位置（a、b 不在第一位；g、h 不在最後一位）。訓練集 = 有效位置 ∩ 有效數字對。</li>
+<li><strong>模型</strong>：2 層、單頭 Transformer，d_model=d_head=128、d_mlp=512，GPT-2 式絕對位置編碼，去偏置/正規化、去 layer-1 MLP，TransformerLens 實作，AdamW lr=1e-3、weight decay=2e-2。</li>
+<li><strong>機制分析</strong>：分離出 <strong>OV-MLP 電路</strong>（layer-2 的 output-value 矩陣 + layer-2 MLP）負責<strong>真正的模組加法</strong>，與 <strong>QK 路由</strong>（layer-2 query-key）負責<strong>把 <code>=</code> token 注意力導向正確運算元</strong>；layer-1 中常數 token 當 previous-token head 連到其被指派的變數，layer-2 中 <code>=</code> 直接注意到加法所需常數。</li>
+</ul>
+<h2 id="結果精確匹配準確率">結果（精確匹配準確率）</h2>
+<ul>
+<li><strong>組合泛化</strong>：即使 <code>1+3</code>、<code>c=1,c+3</code>、<code>c=3,1+c</code> 全被移出訓練，模型仍學會預測這些保留情形；在專門由「變數間接給定」案例構成的測試集上達 <strong>99.4%</strong>。</li>
+<li><strong>資料需求</strong>：要泛化到整個 0-變數集，需訓練含至少 <strong>f ≳ 0.25</strong>（約 25%）的加法數字對；要泛化到全部 2-變數序列，需 2-變數序列相對 0-變數序列的頻率 <strong>r ≳ 0.2</strong>（兩變數 priming）。</li>
+<li><strong>三階段訓練動力學</strong>：(1) 先學模組加法（在 0-變數模組加法上達近完美，<strong>而變數指派仍在學</strong>）→ (2) 再學變數指派所需結構 → (3) 精修階段泛化到訓練未見的部分困難序列。</li>
+<li><strong>共享模組（核心機制證據）</strong>：殘差流相似度顯示「同一加法、變數 vs 常數格式」（如 <code>b3+b4=</code> vs <code>+3 4=</code>）的 pre-MLP 殘差向量高度相似；且 pre-MLP 殘差與目標運算元的 OV 投影之和 OV₂(a)+OV₂(b) 高度相似——證明<strong>模組加法被隔離在 QK₂-MLP 電路、且變數/常數共用同一表示與同一加法模組</strong>。</li>
+<li><strong>理論</strong>：給出梯度動力學框架，解釋變數綁定與模組加法電路的組合如何在訓練中湧現。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>純<strong>合成玩具任務</strong>（模組加法 + 變數指派），與真實 LLM 的複雜組合距離尚遠。</li>
+<li>機制分析聚焦<strong>單一訓練 run</strong>（作者預期跨初始化成立但未全面掃描）；模型刻意簡化（去 normalization、去 layer-1 MLP、單頭）。</li>
+<li>結論依賴受控的不相交資料切分；自然語料中此類乾淨切分不存在。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>為「[[組合泛化]]可以是 Transformer <strong>內部機制本身可組合</strong>的自然後果」提供乾淨的機制性證據：<strong>同一加法 MLP 被直接/間接輸入共用</strong>是最值得記的發現。與本批 <a class="paper-reference" href="2603.01968_Intrinsic_Task_Symmetry_Grokking.%E6%91%98%E8%A6%81.html">2603.01968</a>（內在對稱性驅動的三階段 grokking）、<a class="paper-reference" href="2606.18089_SFT_RL_Compositional_Modules.%E6%91%98%E8%A6%81.html">2606.18089</a>（SFT/RL 拆解重組原子模組）形成「訓練動力學如何長出可組合結構」的呼應群。</li>
+<li>把 <strong>induction head（關聯回憶）＋ 模組加法（Fourier 特徵）</strong> 兩個經典機制接在一起做組合研究，且配梯度動力學理論——對想理解技能組合、做 [[機制可解釋性]]、[[訓練動力學]]、grokking 的人是很好的範例。</li>
+<li>實用啟示：<strong>組合泛化有資料量門檻</strong>（f≳0.25、r≳0.2 的 priming），對設計合成課程或診斷 OOD 失敗有參考價值（程式碼：MechCompose）。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2605.31497_Assign_Add_Compositional_Arithmetic.zh-TW.html"><code>../translate/2605.31497_Assign_Add_Compositional_Arithmetic.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

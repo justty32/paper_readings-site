@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_為什麼把「程式合成」與「庫學習」綁在一起讀 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../program_synthesis_library_learning.html">回 program_synthesis_library_learning 目錄</a>　<a href="02_%E5%9B%9B%E6%A2%9D%E6%A0%B8%E5%BF%83%E4%B8%BB%E8%BB%B8.html">下一節 →</a></p>
+</blockquote>
+<h2 id="0-為什麼把程式合成與庫學習綁在一起讀">0. 為什麼把「程式合成」與「庫學習」綁在一起讀</h2>
+<p>程式合成（program synthesis）問的是：<strong>給定規格（I/O 範例、自然語言、邏輯約束），怎麼自動找出一段滿足它的程式？</strong> 庫學習（library learning）問的是：<strong>當你解了一大批題之後，怎麼把反覆出現的片段抽成可重用的抽象，讓下一批題更好解？</strong></p>
+<p>這兩問題表面分屬「搜尋」與「壓縮」兩件事，但 DreamCoder 譜系的核心洞見是——<strong>它們是同一個迴圈的兩個半圈</strong>：</p>
+<ul>
+<li>你能搜到什麼程式，取決於你的**原語庫（primitives）**長什麼樣（庫決定搜尋空間）；</li>
+<li>而哪些抽象值得進庫，又取決於它們<strong>在已解出的程式裡被怎麼用</strong>（搜尋產物決定庫）。</li>
+</ul>
+<p>DreamCoder 把這個互相依賴關係寫成 <strong>wake-sleep 雙階段</strong>：wake 階段用當前庫去搜題、解題；sleep 階段把解出來的程式拿去壓縮、把高頻片段抽成新庫項。兩階段交替，庫越長越好、題越解越多。本批論文裡，<a class="paper-reference" href="../../summarize/2604.26311_DreamProver.%E6%91%98%E8%A6%81.html">2604.26311</a> DreamProver 與 <a class="paper-reference" href="../../summarize/2603.25975_WakeSleep_Schank_Primitives.%E6%91%98%E8%A6%81.html">2603.25975</a> Schank-primitives 是這條 wake-sleep 主幹的直系後代；<a class="paper-reference" href="../../summarize/2605.04622_Library_Learning_EGraph_Jazz.%E6%91%98%E8%A6%81.html">2605.04622</a> 則把同一個「壓縮即發現」原則換成 e-graph 工具實作。</p>
+<p>把這 24 篇放在一起讀，會浮現一條主軸：</p>
+<blockquote>
+<p><strong>可重用抽象的價值，由「壓縮效用」定義（MDL），而非由頻率或表面相似度定義；能不能持續地把抽象抽出來、又不讓庫膨脹失控，取決於三件事——壓縮壓力（發現）、語意去重（防重複）、遺忘機制（防膨脹）。</strong></p>
+</blockquote>
+<p>下面 §1 給範式地圖，§2 講四條核心主軸，§3 給代表作對照表，§4 接回 ai_core 與 AI 設計討論，§5 談研究空白。</p>
+<hr />
+<h2 id="1-範式地圖六個社群一個迴圈">1. 範式地圖：六個社群，一個迴圈</h2>
+<p>程式合成不是單一社群，而是六支各有歷史、近兩年正在合流的脈絡。下圖按「<strong>抽象從哪來、怎麼被驗證</strong>」把它們排在同一張圖上。</p>
+<pre><code class="language-mermaid">graph TD
+    SPEC[&quot;規格：I/O 範例 / 自然語言 / 邏輯約束 / 獎勵&quot;]
+
+    subgraph CLASSIC[&quot;① 經典形式化合成：人給 DSL，機器窮搜 + 剪枝&quot;]
+        FTA[&quot;Presynthesis [[2604.13290]]&lt;br/&gt;FTA + 抽象解釋，離線預算可達性 oracle&quot;]
+        CEGIS[&quot;CEGIS 反例引導&lt;br/&gt;（AutoSpec 的外殼 [[2606.24245]]）&quot;]
+    end
+
+    subgraph LIB[&quot;② 庫學習：壓縮即發現抽象（DreamCoder 譜系）&quot;]
+        WS[&quot;wake-sleep 雙階段&lt;br/&gt;DreamProver [[2604.26311]]&lt;br/&gt;Schank-primitive [[2603.25975]]&quot;]
+        EG[&quot;babble / e-graph&lt;br/&gt;等式飽和 + anti-unification&lt;br/&gt;爵士和聲 [[2605.04622]]、eggp [[2501.17848]]&quot;]
+    end
+
+    subgraph ILP[&quot;③ 歸納邏輯編程（ILP）：學符號規則/邏輯程式&quot;]
+        POKER[&quot;Poker 自監督 ILP [[2507.16405]]&lt;br/&gt;偵測矛盾自造負例 + SONF&quot;]
+        AUTO[&quot;AutoSpec [[2606.24245]]&lt;br/&gt;ILP 當 CEGIS 的謂詞提名器&quot;]
+    end
+
+    subgraph LLMEVO[&quot;④ LLM 演化：LLM 當語意突變運算子（FunSearch 譜系）&quot;]
+        FUNEVO[&quot;FunctionEvolve [[2606.07704]]&lt;br/&gt;DelibEvolve [[2606.04360]]（SR）&quot;]
+        LATTICE[&quot;EvoLattice [[2512.13857]]&lt;br/&gt;DAG 內族群 QD&quot;]
+        ALGO[&quot;AlgoEvolve [[2606.26173]]&lt;br/&gt;bi-level 元演化&quot;]
+        SMC[&quot;SMCEvolve [[2605.15308]]&lt;br/&gt;SMC 統一選親/突變/停止&quot;]
+    end
+
+    subgraph NEURAL[&quot;⑤ 神經引導合成：可微 / 機率枚舉 / 潛在搜尋&quot;]
+        GRID[&quot;GridCoder [[2411.17708]]&lt;br/&gt;VLM 出 DSL token 機率 → 枚舉&quot;]
+        LPN[&quot;LPN [[2411.08706]]&lt;br/&gt;連續潛在程式 + 梯度搜尋&quot;]
+        NLI[&quot;NLI [[2604.18907]]&lt;br/&gt;離散語言 + 可微解釋器&quot;]
+        SYN[&quot;SYNTRA [[2509.17393]]&lt;br/&gt;轉導：LLM 偽標籤淘汰假設&quot;]
+    end
+
+    subgraph AGENT[&quot;⑥ Agent 技能庫：可執行抽象服務於規劃/工具&quot;]
+        TC[&quot;TheoryCoder-2 [[2602.00929]]&lt;br/&gt;PDDL 運算子 + Python grounding&quot;]
+        COCO[&quot;CoCoDA [[2605.08399]]&lt;br/&gt;程式碼原生技能 DAG&quot;]
+        ARCM[&quot;ArcMemo [[2509.04439]]&lt;br/&gt;概念級自然語言記憶&quot;]
+    end
+
+    SPEC --&gt; CLASSIC
+    SPEC --&gt; LIB
+    SPEC --&gt; ILP
+    SPEC --&gt; LLMEVO
+    SPEC --&gt; NEURAL
+    SPEC --&gt; AGENT
+
+    LIB --&gt;|抽象回灌擴大搜尋空間| LLMEVO
+    LIB --&gt;|wake-sleep 思想移植| AGENT
+    CLASSIC -.剪枝/可達性技術.-&gt; NEURAL
+    ILP -.符號規則作可解釋抽象.-&gt; AGENT
+    LLMEVO --&gt;|累積微算子庫| LIB
+    NEURAL --&gt;|搜尋↔學習閉環 SOAR [[2507.14172]]| LLMEVO
+</code></pre>
+<p><strong>讀這張圖的三條線索：</strong></p>
+<ol>
+<li>
+<p><strong>左半（①②③）偏符號、可形式驗證；右半（④⑤⑥）偏神經、靠經驗驗證。</strong> 越往左，抽象越「乾淨」（程式可執行、邏輯可證），但要人給 DSL／背景理論；越往右，越能自動從資料／語言知識長出抽象，但驗證訊號變脆。</p>
+</li>
+<li>
+<p><strong>②庫學習是樞紐。</strong> 它的「壓縮即發現」原則同時往兩邊輻射：往左給①③一個「抽象該不該留」的 MDL 判準，往右給④⑥一個「怎麼累積可重用微算子」的配方。DreamCoder 的 wake-sleep 被 <a class="paper-reference" href="../../summarize/2604.26311_DreamProver.%E6%91%98%E8%A6%81.html">2604.26311</a>（定理證明）、<a class="paper-reference" href="../../summarize/2602.00929_TheoryCoder2_Abstractions.%E6%91%98%E8%A6%81.html">2602.00929</a>（RL 規劃）直接移植。</p>
+</li>
+<li>
+<p><strong>近兩年的合流方向是「把 LLM 接進每一支」。</strong> ④本來就是 LLM-native；⑤的 GridCoder 用 VLM 出 token 機率、SYNTRA 用 LLM 當偽標籤器；⑥的三篇全靠 LLM 合成抽象；連③的 AutoSpec 也把 ILP 嵌進「維護 LLM agent 護欄」的迴圈。<strong>LLM 不取代搜尋，而是當「提議器／突變器／偽標籤器」插進既有合成框架。</strong></p>
+</li>
+</ol>
+<hr />
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_高效且對齊的約束解碼 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2403.06988_DOMINO.zh-TW.html">回 2403.06988_DOMINO.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97%E8%A9%95%E4%BC%B0.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-高效且對齊的約束解碼">3. 高效且對齊的約束解碼</h2>
+<p>DOMINO 是一個快速、最小侵入的約束解碼演算法（圖 3）。</p>
+<h3 id="31-預備知識形式語言">3.1 預備知識（形式語言）</h3>
+<p>形式語言是某字母表 Σ 上有限字串的集合。若能以 regex 描述則為<strong>正規（regular）<strong>語言；若能以 CFG 描述則為</strong>上下文無關</strong>語言。CFG 由產生式規則 <code>A = αBγ</code> 定義，大寫為可遞迴展開的非終端符，小寫希臘字母為屬於語言的終端符。所有正規語言都可用**非確定有限自動機（NFA）**辨識；對任一 regex 皆可建構一個 NFA，逐字元餵入後若且唯若字串匹配該 regex 時停於含至少一個接受狀態的狀態集。圖 3(a) 的範例文法含非終端 E 與終端 int、<code>(</code>、<code>)</code>、<code>+</code>，其中 int 由 regex 定義（允許不含前導零的正整數或一個以上的零）。</p>
+<h3 id="32-字元掃描器character-scanner">3.2 字元掃描器（Character Scanner）</h3>
+<p>如同傳統 parser，DOMINO 把 CFG 辨識拆成 <strong>parser</strong> 與 <strong>scanner（lexer）</strong>：parser 強制語言的高階結構（CFG 規則），scanner 強制低階結構（各終端符的 regex）。核心洞見是——任何 CFG 中的合法程式都是一串終端符的序列。</p>
+<p><strong>引理 3.1</strong>：設 CFG G 的各終端 regex 為 r₁…rₙ，並令 r_EOS=<code>$</code>。則 (i) 其聯集 <code>r = r₁|…|rₙ|r_EOS</code> 匹配 G 的任一終端；(ii) <code>R = r+</code> 匹配語言中所有非空的終端序列；(iii) R 所描述的語言 L_R 包含 G 的所有合法程式（L_G ⊆ L_R）；但 (iv) L_R 也含一些非法程式（L_R ⊄ L_G）。作者為每個終端的 regex 建 NFA，從各終端 NFA 的接受狀態加 ε-轉移到單一接受狀態 q_a，並從起始狀態 q₀ 連到各終端 NFA 起點、再從 q₀ 直接連到 q_a（允許多 token 串接）。這是標準的 regex NFA 聯集構造，但此處<strong>顯式保留各子自動機</strong>以追蹤對應的終端。</p>
+<h3 id="33-詞彙對齊的子終端樹vocabulary-aligned-subterminal-tree">3.3 詞彙對齊的子終端樹（Vocabulary-Aligned Subterminal Tree）</h3>
+<p>用 scanner S 只能保證生成串落在 L_R，未必落在 L_G，故仍需 parser 依當前狀態動態允許/禁止 S 的某些轉移。為此先把 S 從字元層<strong>提升到（子）終端層</strong>：對 S 的每個節點，沿詞彙表中每個 token 的轉移列舉所有可達狀態，追蹤哪些終端 NFA 被部分或完全走過。由於終端未必與 token 詞彙表對齊，作者引入**子終端（subterminal）**概念，對終端 α 區分 S 讀到的是：</p>
+<ul>
+<li><strong>完整終端（Full）</strong>：經過 q₀ 並抵達終端的接受狀態；</li>
+<li><strong>起始子終端（Start）</strong>：從 q₀ 出發抵達一個非接受但合法的狀態；</li>
+<li><strong>結束子終端（End）</strong>：從終端內某狀態出發抵達接受狀態；</li>
+<li><strong>延續子終端（Continuation）</strong>：從終端內某狀態抵達另一個非接受狀態。</li>
+</ul>
+<p>對每個狀態 q、每個 token l，列舉所有可能的子終端序列（通常只有一種，除非文法有歧義，例如 C 風格語言分不清是變數名還是關鍵字），再組織成<strong>前綴樹（prefix tree）T_q</strong>，把對應的詞彙 token 掛在節點上（演算法 2）。這些子終端樹可<strong>離線預先計算</strong>。</p>
+<h3 id="34-parser線上">3.4 Parser（線上）</h3>
+<p>子終端樹可預算，但推理時仍需 parser 禁止非法延續。例如前綴樹允許在 <code>(12</code> 之後接 <code>(</code>，但那在文法中非法，須靠 parser 動態禁止。推理時把已生成序列 o 走過 scanner 與 parser，得到 scanner 狀態 S（一組作用狀態）與 parser 狀態 P（追蹤能匹配 o 的規則）。對每個作用節點取回其子終端樹，用 parser 檢查哪些延續合法。在前綴樹中往下追蹤終端序列的<strong>深度由「前瞻（lookahead）參數 k」決定</strong>。圖 3(e)：讀到 <code>(12</code> 時 parser 知已見規則 <code>(E)</code>（E 由 int 初始化），檢查 int 子終端樹各出邊，發現 <code>EOS</code> 與 <code>(</code> 無法產生合法序列而被排除；<code>k=0</code> 時已含所有數字終端及 <code>+</code>、<code>)</code>，增大 k 至 1、2 可進一步納入 <code>+1</code>、<code>1␣(</code> 等跨越邊界的 token。</p>
+<h3 id="35-domino">3.5 DOMINO</h3>
+<p>DOMINO 以子終端樹高效檢查 V 中的合法延續——這些延續依構造恰好與當前狀態接上，正如骨牌（domino）相接。推理前（離線）先算好字元掃描器 S 與所有 T_q。演算法 1 的 update 被呼叫時推進 scanner/parser 狀態；mask 被呼叫時遍歷對應 T_q 到指定深度、取關聯 token 的聯集作為遮罩。<strong>k=0 已足以保證輸出落在 L_G</strong>；若總是遍歷完整前綴樹（k=∞ 或足夠大），此法即<strong>最小侵入</strong>（所有合法 token 終將被納入遮罩）。由於子終端樹遠小於模型詞彙表，DOMINO 能以遠低於全線上方法的開銷處理富表達力的約束，並可延伸到其他約束形式（如執行 guidance 程式）。</p>
+<p><strong>進一步優化——機會式遮罩（Opportunistic Masking）</strong>：借用 llama.cpp 全線上法的一項優化——先跑 LLM 的 decode 步、拿模型提議的 token 給 parser 檢查；只有當它不合法時才計算其餘遮罩。DOMINO 的做法是先定位與提議 token 相連的節點，再檢查是否存在一條 parser 允許、從根到該節點的路徑。當 LLM 本就自然遵循文法、而 parser 轉移昂貴時特別有效（以執行期旗標啟用）。Token healing 也可比照 guidance 實作（把輸入剝回最後 token 邊界、改文法起點強制前綴），但需為當前問題重新編譯文法、不易在多實例間共享；不過在 DOMINO 這只影響與提示的第一個邊界，其餘邊界都無縫嵌入文法，影響較小。</p>
+<h3 id="36-推測解碼speculative-decoding">3.6 推測解碼（Speculative Decoding）</h3>
+<p>推測取樣（Chen 等人 2023）用小 LLM 提議多個 token、再用大 LLM 單次前向傳遞平行驗證來加速。DOMINO 採類似思路，但<strong>基於 parser 與 scanner 狀態</strong>：作用中的 scanner 狀態大致由最近讀到的子終端 α 給定，β 表示 parser 的某子狀態（如當前套用的規則）。以計數式（count-based）模型學習條件於 (α,β) 的下一 token 預測：</p>
+<pre><code>P(l | α, β) = #{LLM 在狀態 (α,β) 選了 l} / #{到達狀態 (α,β)}
+</code></pre>
+<p>由於結構化語言往往高度可預測、(α,β) 對下一 token 有強指示性，此機制可帶來巨大加速；且因計數建於 parser 狀態 β 上，只會預測語言中合法的 token。實務上一次推測 s 個此類 token（當 P(l|α,β) 夠大時）。這種推測解碼獨立於施加在底層 LLM 上的標準推測解碼，甚至可與之並用。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

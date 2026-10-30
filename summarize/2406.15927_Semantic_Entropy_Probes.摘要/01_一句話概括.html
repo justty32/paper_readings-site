@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2406.15927_Semantic_Entropy_Probes.%E6%91%98%E8%A6%81.html">回 2406.15927_Semantic_Entropy_Probes.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>語意熵探針（Semantic Entropy Probes, SEP）</strong>：在<strong>單次生成</strong>的隱藏狀態上訓練一個<strong>線性邏輯迴歸探針</strong>去逼近 Farquhar et al. (2024) 的語意熵（semantic entropy, SE）——原本要取樣 10 次生成＋跑 NLI 蘊含分群才能算出的不確定性訊號，SEP 只需一次前向傳遞即可估出，把語意不確定性量化的推論成本壓到<strong>近乎為零</strong>，且對<strong>未見任務</strong>的泛化能力優於直接以模型正確性標籤訓練的「準確度探針」。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>語意熵是偵測幻覺的有效訊號（模型「知道」答案時，多次取樣的語意一致；「不知道」時語意會發散），但計算它需要對同一問題取樣 5–10 次生成、再跑一個 NLI 蘊含模型做語意分群，導致<strong>比單純生成貴 5–10 倍</strong>，實務上難以大規模部署。另一路徑是在隱藏狀態上訓練探針，但既有做法多半直接監督式地預測「模型正確與否」，一來需要昂貴的正確性標籤，二來（本文實證）這類探針對訓練分布外的任務<strong>泛化能力差</strong>。本文要解決的是：<strong>能否用便宜很多的方式，逼近語意熵這個訊號，同時保留跨任務的泛化力？</strong></p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>目標訊號（語意熵，SE）</strong>：對輸入 x 取樣 N=10 個生成，用 NLI 模型（短答用 DeBERTa-Large，長答用 GPT-3.5）判斷生成兩兩間是否<strong>雙向蘊含</strong>，貪婪分群成語意等價的簇 (C₁,…,C_K)；再以簇內生成比例估計簇機率 p(C_k|x)，取分類熵 H_SE(x) = −Σ p(C_k|x) log p(C_k|x) 作為語意熵——這是 discrete SE 變體，連黑箱模型（拿不到 token 機率）也適用。</li>
+<li><strong>SEP 訓練</strong>：對每個輸入 x，先用貪婪取樣拿到一次生成、記下某一層 l、某個 token 位置 p 的隱藏狀態 h_p^l(x)；再另外取樣 N=10 次算出 H_SE(x)（僅訓練期需要，推論時不需要）。把 H_SE(x) 用一個「最佳切分」目標（類似回歸樹分裂準則）二值化成高/低兩類，訓練 scikit-learn 的 L2 正則邏輯迴歸線性探針，輸入 h_p^l(x)、輸出「高語意熵」機率。<strong>訓練不需要任何正確性/答案標籤</strong>，只需未標註的輸入問題即可產生監督訊號。</li>
+<li><strong>探針位置（層與 token）</strong>：對所有層 l 都嘗試；token 位置分兩種——**TBG（token-before-generating）**＝輸入最後一個 token（生成前，即單次前向、不生成任何新 token 就能估計不確定性），與 **SLT（second-last-token）**＝回答的倒數第二個 token（EOS 前）。實務上各模型選一組表現最好的相鄰層（如 Llama-2-7B 用第 28–32 層）串接後訓練。</li>
+<li><strong>實驗規模</strong>：短答設定（few-shot 逼模型盡量簡答，~15 字元）用 Llama-2-7B/70B、Mistral-7B、Phi-3-Mini；長答設定（要求「簡短完整的一句話」，~100 字元，token 數約增 6 倍）用 Llama-2-70B、Llama-3-70B。資料集：TriviaQA、SQuAD、BioASQ、NQ Open。短答訓練集 2000 筆、長答 1000 筆隱藏狀態–二值化 SE 配對。</li>
+<li><strong>反事實驗證</strong>：對 TriviaQA 問題人為附加原本會拿掉的上下文，讓任務變簡單（準確率 26%→78%、真值 SE 從 1.84→0.50），SEP 從未見過帶上下文的輸入，但預測的「高 SE 機率」分布也隨之同步下移——證明 SEP 學到的是真實的語意不確定性，而非表面相關性。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>SEP 能準確捕捉語意熵：中後段層的 AUROC 落在 <strong>0.7–0.95</strong>（跨模型跨任務一致），且**生成前（TBG）**也能估出接近 SLT 的效果，代表可以在生成任何 token 之前就先估不確定性。</li>
+<li>長答設定下 SEP 同樣有效，但 AUROC 高峰常出現在<strong>中間層</strong>而非末端層（末端層更專注於預測下一個 token 的語法/用詞，而非整體答案的語意）。</li>
+<li><strong>同分布內</strong>：準確度探針略優於或持平 SEP（Table 1，ΔAUROC×100 約 −2 至 +2.8）；SEP 完全不需正確性標籤卻能打平甚至略勝，是目前所知同分布下最好的無監督幻覺偵測法之一。</li>
+<li><strong>跨任務泛化（leave-one-out）</strong>：SEP 全面且顯著勝過準確度探針（Table 2，ΔAUROC×100：Mistral-7B +10.5、Phi-3 +9.9、Llama-2-7B +7.7、Llama-2-70B 短答 +7.9、長答 +2.2、Llama-3-70B 長答 +6.2）——這是本文的核心賣點：<strong>泛化力才是 SEP 的真正優勢</strong>。</li>
+<li>SEP 仍<strong>追不上</strong>完整語意熵（10 倍算力的取樣法）的偵測效果，存在明確差距；但作者強調這差距要用近乎為零的成本換取，性價比極高。</li>
+<li>消融：探測隱藏狀態優於探測殘差流或 MLP 輸出；「最佳切分」二值化略優於「均分」二值化，但差異不大；BioASQ 因含大量是非題（語意空間小），即使早期層也異常高 AUROC，屬任務格式的偽訊號，非模型「真的」很確定。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>需要模型隱藏狀態＝白箱方法</strong>：套不到只提供文字輸出的封閉 API 節點（如純 API 呼叫的 GPT-4/Claude），只能用在能拿到內部激活的自架/開源模型。</li>
+<li>訓練 SEP 本身仍需先跑一次昂貴的語意熵計算（10 次取樣＋NLI 分群）來產生訓練標籤；省的是<strong>推論期</strong>成本，不是訓練期成本。</li>
+<li>效果仍<strong>低於</strong>完整語意熵這個「金標準」，且哪一層、哪個 token 位置最好因模型而異，需要每個模型各自挑選、非完全即插即用。</li>
+<li>長答的正確性評估本身依賴 GPT-4/GPT-4o 當裁判，方法鏈上仍嵌了一個未被剃除的 LLM 依賴（僅限於論文的評測流程，非 SEP 部署所必需）。</li>
+<li>BioASQ 案例顯示探針可能撿到任務格式（是非題）這類表面線索，而非嚴格意義的「語意不確定性」，過度依賴單一資料集驗證需謹慎。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2602.22647_VectorizedTrie.zh-TW.html">回 2602.22647_VectorizedTrie.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95%E8%AB%96%EF%BC%9ASTATIC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>生成式檢索（generative retrieval）已成為基於 LLM 的推薦系統之強大範式，但其輸出空間無法被限制於業務邏輯所需的合法子集（例如僅推薦新鮮內容或特定類別），而標準自迴歸解碼不原生支援此需求。既有受約束填碼方法使用的前綴樹（trie）在硬體加速器（TPU/GPU）上引發嚴重延遲懲罰。本文提出 <strong>STATIC</strong>（Sparse Transition Matrix-Accelerated Trie Index for Constrained Decoding）——一種專為高吞吐量 LLM 生成式檢索在 TPU/GPU 上設計的高效可擴展受約束填碼技術。透過將前綴樹展平為靜態 CSR 稀疏矩陣，將不規則的樹走訪轉化為完全向量化的稀疏矩陣運算，在硬體加速器上釋放大規模效率增益。在服務數十億用戶的大型影片推薦平台（YouTube）上部署後，STATIC 以極低延遲開銷（每步 +0.033 ms，佔推論時間 0.25%）產生了顯著產品指標影響——比 CPU Trie 快 948 倍、比硬體加速二分搜尋基線快 47–1033 倍。此外，STATIC 在學術基準上顯著改善生成式檢索的冷啟動效能。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>推薦系統長期作為 YouTube 與 Amazon 等大型線上平台的核心發現引擎。該領域正經歷範式轉移：基於嵌入（embedding）的神經檢索模型（透過近鄰搜尋如 ScaNN 推薦候選項）正被<strong>基於 LLM 的生成式檢索</strong>取代。在生成式檢索中，每個項目被表示為一系列離散 token（稱作 Semantic ID，SID），Transformer 被訓練為自迴歸解碼目標項目的 SID token 序列——這既能捕捉更深層語意關係，又免除了外部近鄰索引基礎設施。</p>
+<p>然而，原始設計的生成式檢索模型缺少一項關鍵能力：<strong>對輸出生產空間的控制</strong>以滿足業務邏輯——例如新鮮度約束（「7 天內上傳」）、地域性、產品類別或庫存可得性（「僅限有貨」）。這使訓練單一大模型、部署於多種場景成為可能。</p>
+<p>在傳統推薦中，業務邏輯透過<strong>事後過濾</strong>或<strong>事前限制搜尋空間</strong>實現。但在生成式檢索中，「檢索器」是一個機率性自迴歸模型——若不加干預，LLM 會自信地生成已下架、過時或違規項目的 SID。<strong>依賴事後過濾極度浪費計算</strong>：模型可能花費整個推論預算生成無效項目，白白耗盡推論配額。</p>
+<p>解決方案是<strong>在 LLM 解碼過程中強制執行約束</strong>。標準演算法方案是以前綴樹（trie）實現受約束填碼，每步遮罩無效 token。然而，單純的指標追逐 trie 實現對硬體加速器<strong>根本性敵對</strong>，原因有二：(1) <strong>記憶體延遲</strong>——指標結構導致非連續隨機記憶體存取，無法利用 HBM burst、使硬體預取器失效；(2) <strong>編譯不相容</strong>——TPU 的 XLA 需要靜態計算圖，而 trie 的資料依賴控制流根本無法編譯為靜態圖。作者初步實驗中，CPU-offloaded trie 使推論時間增加 2 倍。</p>
+<p>本文提出 <strong>STATIC</strong>，將受約束填碼從圖走訪問題<strong>重構</strong>為一系列向量化稀疏矩陣運算。核心貢獻：(i) 將前綴樹約束展平為靜態 CSR 矩陣（O(1) 記憶體存取）；(ii) 以動態切片與遮罩算術設計分支無關解碼演算法（完全加速器原生、無主機-設備往返）；(iii) 在 YouTube 上部署（20M 新鮮項目約束集），改善關鍵線上指標；(iv) 延遲在 |C| 與 |V| 大範圍內幾近常數；(v) 以受約束填碼改善 Amazon Reviews 冷啟動效能。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<h3 id="21-生成式檢索與語意索引">2.1 生成式檢索與語意索引</h3>
+<p>生成式檢索將項目語料庫內化至模型參數內，以直接序列生成任務取代嵌入與近鄰搜尋管線。TIGER [27] 使用 RQ-VAE 建立 Semantic ID——語意相似項目共享前綴 token 的階層式離散表示。SEATER、LIGER 等延續此路線；PLUM [8] 與 OneRec [5, 37, 38] 已部署於多個線上推薦平台。關鍵限制是「有效性鴻溝」：不同於開放式自然語言生成，檢索要求生成的字串精確對應有效項目索引——無約束的模型會「幻覺」不存在於庫存中的項目。</p>
+<h3 id="22-受約束填碼在推薦系統中的應用">2.2 受約束填碼在推薦系統中的應用</h3>
+<p>既有工作未充分處理<strong>生產環境中強制有效性約束的延遲成本</strong>。如 DISC-PPV [35] 以展平排序陣列與平行化二分搜尋實作片上有效性檢查（PPV），消除了 CPU-GPU 通訊開銷，但二分搜尋引入 O(log|C|) I/O 複雜度——在超大詞彙（20M 項目）下仍成瓶頸。STATIC 以 O(1) 向量化稀疏矩陣運算取代了 PPV 的對數縮放區塊傳輸。</p>
+<h3 id="23-硬體感知推論與加速">2.3 硬體感知推論與加速</h3>
+<p>自迴歸解碼受記憶體頻寬限制。標準 trie 實作依賴指標追逐，在現代加速器上引發非連續記憶體存取、導致未合併讀取與快取抖動——與加速器擅長的靜態連續記憶體存取（如 FlashAttention 的設計）根本對立。</p>
+<h3 id="24-線性化樹結構">2.4 線性化樹結構</h3>
+<p>將樹結構展平為陣列的構想可追溯至 Double-Array Trie [13]（字串匹配的記憶體效率改善），GraphBLAS [17] 更提出圖演算法可表達為稀疏半環上的線性代數運算。然而<strong>將這些概念應用於 LLM 受約束填碼是新穎的</strong>——本文在古典資料結構與現代 ML 編譯器（XLA/Inductor）之間架起橋梁。</p>
+<blockquote>
+<p><a href="../2602.22647_VectorizedTrie.zh-TW.html">←上一部分</a> ｜ <a href="../2602.22647_VectorizedTrie.zh-TW.html">下一部分 →</a></p>
+</blockquote>
+<h2 id="3-背景">3. 背景</h2>
+<h3 id="31-生成式檢索與-semantic-id">3.1 生成式檢索與 Semantic ID</h3>
+<p>生成式檢索中，模型逐 token 直接預測目標候選項識別碼。核心概念是 Semantic ID（語意 ID）：離散的、基於 token 的識別碼，捕捉項目的語意屬性。TIGER 框架以 RQ-VAE 建立 SID：先將項目的特徵編碼為潛在向量 z，然後跨 L 層迭代量化。每層 d 將殘差 r_d 識別為該層碼書 E_d 中最接近的嵌入 e_{y_d}，索引 y_d 成為 SID 的第 d 個碼字；下層殘差 r_{d+1} = r_d - e_{y_d}。語意相似項目因此共享前綴 token。最終 SID 為 (y_1, ..., y_L)。</p>
+<h3 id="32-自迴歸解碼與束搜尋">3.2 自迴歸解碼與束搜尋</h3>
+<p>推論期間，檢索模型自迴歸解碼 SID 的 token 序列。採用束搜尋（beam search）：每步 t 維護 M 個最可能序列，從當前狀態 S_t（包含 tokens 與累積 log-probability 分數）出發，模型生成 logits L_t，正規化為 log-probability 後選擇下一組候選項，保留累積分數最高的 M 個路徑。</p>
+<h3 id="33-前綴樹與受約束填碼">3.3 前綴樹與受約束填碼</h3>
+<p>為防止模型幻覺出不合法或不符合業務邏輯的 SID，受約束填碼將輸出限制於僅含合法 SID 的<strong>受約束詞彙集 C</strong>。因 SID 為序列結構，C 自然形成前綴樹。每步 t 強制：若將當前 token 附加到前綴後在 trie 中無效，則該路徑被剪除（log-probability 設為 -∞），確保束搜尋僅選取合法序列。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

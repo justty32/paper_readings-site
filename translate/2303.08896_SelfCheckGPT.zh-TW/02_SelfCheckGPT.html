@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_SelfCheckGPT · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2303.08896_SelfCheckGPT.zh-TW.html">回 2303.08896_SelfCheckGPT.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="5-selfcheckgpt">5. SelfCheckGPT</h2>
+<p>SelfCheckGPT 是本文提出的黑箱、零資源幻覺偵測方案，運作方式為比較多份取樣回應並衡量一致性。</p>
+<p><strong>記號</strong>：令 R 為對某使用者查詢生成的 LLM 回應。SelfCheckGPT 用同一查詢再取樣 N 份隨機 LLM 回應 {S¹,S²,…,Sⁿ,…,S^N}，並衡量 R 與這些隨機取樣間的一致性。設計目標是預測第 i 句的幻覺分數 𝒮(i)，𝒮(i)∈[0.0,1.0]：若第 i 句根植於有效資訊，𝒮(i)→0.0；若是幻覺，𝒮(i)→1.0（n-gram 變體例外，因其分數不受此上下界限制）。以下各小節分述五種變體。</p>
+<h3 id="51-selfcheckgpt-with-bertscore">5.1 SelfCheckGPT with BERTScore</h3>
+<p>設 ℬ(·,·) 為兩句間的 BERTScore。此變體計算第 i 句與每份取樣中最相似句子之 BERTScore 的平均值，再以 1 減去該平均值作為分數：</p>
+<p>𝒮_BERT(i) = 1 − (1/N)·Σₙ maxₖ ℬ(rᵢ, sⁿₖ)</p>
+<p>其中 rᵢ 為 R 中第 i 句，sⁿₖ 為第 n 份取樣 Sⁿ 中第 k 句。若某句資訊在多份取樣中都出現過，可推論該資訊是事實；若在任何取樣中都找不到相似句，則很可能是幻覺。本文以 RoBERTa-Large（Liu et al., 2019）作為 BERTScore 的骨幹模型。</p>
+<h3 id="52-selfcheckgpt-with-question-answering">5.2 SelfCheckGPT with Question Answering</h3>
+<p>本文也考慮用自動多選題問答生成（MQAG）框架（Manakul et al., 2023）衡量一致性。MQAG 對主回應生成多選題，讓一個獨立的作答系統在「以其他取樣回應為條件」的情況下作答；若問題針對的是一致的資訊，作答系統應會給出相似答案。MQAG 分兩階段：問題生成 G 與問題作答 A。對句子 rᵢ，先取樣問題 q 與選項 o；再分別以 R、Sⁿ 為條件讓作答系統選出答案 a_R、a_Sⁿ；比較 a_R 是否等於各 a_Sⁿ，得出匹配數 N_m 與不匹配數 N_n，簡單的不一致分數定義為 𝒮_QA(i,q)=N_n/(N_m+N_n)。論文附錄進一步以軟計數（soft-counting）修正該分數以考慮問題的可答性。最終 SelfCheckGPT-QA 分數為對所有生成問題 q 取不一致分數的期望值。</p>
+<h3 id="53-selfcheckgpt-with-n-gram">5.3 SelfCheckGPT with n-gram</h3>
+<p>給定 N 份取樣 {S¹,…,S^N}，可用這些取樣建立一個近似原 LLM 的新語言模型；當 N 足夠大，該語言模型會收斂到生成這些回應的原始 LLM，藉此近似其 token 機率。實務上因時間/成本限制樣本數有限，本文改用取樣（以及主回應 R 本身，作為平滑處理）訓練一個簡易 n-gram 模型，再計算主回應句子在此模型下的平均負對數機率 𝒮ⁿ⁻ᵍʳᵃᵐ_Avg(i)，或如灰箱方法般取最大負對數機率 𝒮ⁿ⁻ᵍʳᵃᵐ_Max(i)。</p>
+<h3 id="54-selfcheckgpt-with-nli">5.4 SelfCheckGPT with NLI</h3>
+<p>自然語言推論（NLI）判斷假設是否可由前提推得，分為蘊含/中立/矛盾三類。NLI 已被用於評估摘要的忠實度（Maynez et al., 2020 用 MNLI 微調的文本蘊含分類器判斷摘要是否與脈絡矛盾）。受此啟發，本文用 NLI「矛盾」分數作為 SelfCheckGPT 分數。使用微調 MNLI 的 DeBERTa-v3-large（He et al., 2023）作為 NLI 模型，輸入為前提（取樣段落 Sⁿ）串接假設（待評估句子 rᵢ），只取「蘊含」與「矛盾」兩類 logits 做正規化，得到 P（矛盾|rᵢ,Sⁿ）（正規化後忽略中立類、機率介於 0～1）。SelfCheckGPT-NLI 分數即為 N 份取樣的矛盾機率平均。</p>
+<h3 id="55-selfcheckgpt-with-prompt">5.5 SelfCheckGPT with Prompt</h3>
+<p>近期研究顯示 LLM 能在零樣本設定下有效評估文件與其摘要之間的資訊一致性（Luo et al., 2023）。因此本文直接詢問 LLM：第 i 句是否被取樣 Sⁿ（作為脈絡）支持，提示格式為：</p>
+<pre><code>Context: {}
+Sentence: {}
+Is the sentence supported by the context above?
+Answer Yes or No:
+</code></pre>
+<p>初步實驗顯示 GPT-3（text-davinci-003）在 98% 的情況下會直接輸出 Yes 或 No，其餘輸出設為 N/A。輸出經 {Yes: 0.0, No: 1.0, N/A: 0.5} 映射為分數 xⁿᵢ，最終不一致分數為 N 份取樣分數的平均 𝒮_Prompt(i)=(1/N)Σₙxⁿᵢ。需注意能力較弱的模型（如 GPT-3 text-curie-001 或 LLaMA）在初步實驗中無法有效執行此一致性評估。</p>
+<h2 id="6-資料與標註">6. 資料與標註</h2>
+<p>由於目前沒有標準的幻覺偵測資料集，本文透過以下步驟建立評估資料：(1) 用 GPT-3 對 WikiBio 資料集（Lebret et al., 2016）中的人物/概念生成合成維基百科文章；(2) 在句子層級人工標註段落的事實性；(3) 評估系統偵測幻覺的能力。</p>
+<p>WikiBio 中每筆輸入包含某概念維基百科文章的首段（連同表格資訊）。本文依段落長度對 WikiBio 測試集排序，從最長的前 20% 中隨機取樣 238 篇文章（避免選到過於冷僻的概念）。以提示「This is a Wikipedia passage about {concept}:」讓 GPT-3（text-davinci-003）生成維基百科式文章，共得 238 篇、1908 句，平均每篇 184.7±36.9 個 token（以 GPT-2 tokenizer 計）。</p>
+<p>依標註指引把每句分為：<strong>大幅不實（Major Inaccurate，非事實，1）</strong>——整句與主題無關、完全是幻覺；<strong>小幅不實（Minor Inaccurate，非事實，0.5）</strong>——句子含部分非事實資訊，但仍與主題相關；<strong>屬實（Accurate，事實，0）</strong>——句中資訊正確。1908 句標註中，761 句（39.9%）大幅不實、631 句（33.1%）小幅不實、516 句（27.0%）屬實。201 句有兩位標註者重複標註，若意見一致則採該標籤，若不一致則採較差標籤（如「小幅不實」與「大幅不實」不一致時採「大幅不實」）。以 Cohen&#x27;s κ（Cohen, 1960）量測的標註者間一致性，在 3 類（屬實/小幅不實/大幅不實）與 2 類（合併小幅與大幅不實）情境下分別為 0.595 與 0.748，屬中等與高度一致。</p>
+<p>段落級分數為段落內所有句子分數的平均，分數分佈在 +1.0（完全幻覺，即回應內容與真實概念完全無關、全由 LLM 捏造）處有明顯高峰。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

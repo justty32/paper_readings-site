@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《從幻覺到結構雪崩：LLM 反思中約束解碼的對齊稅》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Hongxu Zhou（Erasmus Mundus LCT / Saarland University）</p><p>日期：2026-04（Qwen3-8B × HotpotQA × Outlines 約束解碼，單一未微調模型內省反思）</p><p>arXiv：2604.06066</p><p><a href="https://arxiv.org/abs/2604.06066" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="從幻覺到結構雪崩llm-反思中約束解碼的對齊稅重點摘要">《從幻覺到結構雪崩：LLM 反思中約束解碼的對齊稅》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>用 Outlines 有限狀態機約束解碼強制 LLM（Qwen3-8B）在反思階段以嚴格 JSON schema（5 類錯誤型別＋修正規則）輸出結構化反饋，不依賴任何外部訓練或工具。結果：整體準確率從 50% 降到 38%（p≈0.059），96% 的第一輪診斷全是 FORMATTING_MISMATCH，58% 樣本陷入反覆輸出相同格式錯誤的「死亡迴圈」</strong>——這就是<strong>對齊稅（alignment tax）</strong>：解碼層的硬約束把模型的注意力從語意推理擠向語法合規，表面對齊完美但深層語意錯誤全被掩蓋。論文將此命名為<strong>結構雪崩（structure snowballing）</strong>，是幻覺雪崩（hallucination snowballing）在受約束反思中的對偶失效模式。</p>
+<h2 id="核心貢獻">核心貢獻</h2>
+<ol>
+<li><strong>對齊稅的實證</strong>：首次以受控實驗證明，僅靠推論期約束解碼（無訓練）施加結構化反思，非但無法提升自我修正，反而引入可量化的效能懲罰（50%→38%）；token 用量暴增（正確組平均 2,850 vs. 退化組 4,005.5）是認知超載的直接證據。</li>
+<li><strong>結構雪崩的理論化</strong>：自由文本反思的失敗主因是幻覺雪崩（Zhang et al., 2023）——模型為早期錯誤持續編造自洽但虛假的辯護；受約束反思則觸發對偶失效——約束強迫使模型被格式錯誤劫持，產出重複的無效格式修正，陷入死亡迴圈而永遠碰不到深層邏輯錯誤。論文將此命名為 structure snowballing。</li>
+<li><strong>小模型 agent 邏輯的邊界探索</strong>：在 8B 參數級別，嚴格的分類 schema 比起輔助推理，反而成為認知負擔；但當失敗根因確實是表層字串匹配（如&quot;Three&quot; vs &quot;three centuries&quot;），約束解碼反而是極有效的「語法對齊器」——一體兩面。</li>
+</ol>
+<h2 id="對讀者的價值與-ai_core-的接點">對讀者的價值（與 ai_core 的接點）</h2>
+<ul>
+<li>對 ai_core <strong>§5 受約束填碼（約束解碼的代價）</strong>：本篇是「約束有代價」最直接的負面實證。ai_core §5 主張下層以受約束解碼保證輸出格式正確（Outlines FSM 就是這種技術），這是把 LLM 包成可靠函數的基石。但本篇清楚展示：把整份診斷 schema（5 類錯誤＋修正規則）壓在單一 8B 模型的解碼層上，會把模型的認知頻寬從「語意推理」擠向「語法合規」——這是 §5 在實務上必須內化的權衡：約束愈細，對齊稅愈重，尤其在小模型上。此稅的緩解方向：要嘛用更大模型扛（論文建議 70B+），要嘛把診斷粒度降到僅格式欄位受約束、語意內容留自由文本（部分約束），要嘛引入動態降級機制（死迴圈時暫時解除約束）——這些都是 §5 工程化約束解碼時必須考量的設計選擇。</li>
+<li>對 ai_core <strong>§3.4 治理（幻覺→結構雪崩）</strong>：幻覺雪崩是 §3.4 治理的經典標靶（模型自產錯誤並自我辯護），而結構雪崩是同一治理邏輯套上「硬格式憑證」後的副作用——治理層如果只檢查「輸出格式是否合法」而不檢查「診斷內容是否正確」，就會落入本篇的 formatting trap：模型產出完美合規的 JSON，裡面卻永遠是 FORMATTING_MISMATCH。這對 §3.4 的教訓是：憑證准入不能只看語法層（schema validation），必須同時驗證語意層（診斷是否對應真實根因），否則格式憑證本身就是最危險的 false sense of security。</li>
+<li><strong>與庫中論文對讀</strong>：本篇是 <strong>方向三（約束解碼與規格對齊）</strong> 的核心負面結果——與 2307.09702 Outlines（FSM 機制本身）構成正反配對：Outlines 提供「怎麼做」，本篇提供「代價是什麼」；與 2403.01632 SynCode（語法級約束保證正確）互補：SynCode 處理程式碼語法、本篇處理自然語言診斷 schema。與 2305.13971 GCD（文法約束解碼）同屬 §5 技術線，但 GCD 是正面結果（語法約束提升程式碼品質），本篇是負面結果（schema 約束降低反思品質）——對照之下可看出「約束的粒度與任務的語意深度必須匹配」這條設計原則。歸 <strong>I 類</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2604.06066_AlignmentTax.zh-TW.html"><code>../translate/2604.06066_AlignmentTax.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《NeuroLog：用 LLM 事實＋Datalog＋SMT 做可審計的神經符號漏洞挖掘》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Sanjay Rawat（單一作者，附屬未列）</p><p>日期：2026-05，神經符號（主題 B：神經符號推理 / LLM＋符號工具增強）</p><p>arXiv：2606.00669</p><p><a href="https://arxiv.org/abs/2606.00669" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="neurolog用-llm-事實datalogsmt-做可審計的神經符號漏洞挖掘重點摘要">《NeuroLog：用 LLM 事實＋Datalog＋SMT 做可審計的神經符號漏洞挖掘》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>NeuroLog</strong>：一條**免編譯（build-free）**的 C/C++ 漏洞挖掘流水線，把每一層分派給它最擅長的角色——<strong>LLM 逐函式抽取「具型別的資料流事實」→ Soufflé（Datalog）規則網跨函式合成發現 → Z3（SMT）過濾不可行路徑並輸出 SAT 模型 → 第二個 LLM agent 讀 SAT 模型寫出 Python 觸發崩潰輸入 → AddressSanitizer 驗證</strong>；關鍵創新是「LLM 產生的事實庫 + 無建置流水線 + 把 SAT 模型當成可被合成消費的工件（而非是/否判決）」，在 stb/cJSON/libxml2/FFmpeg/curl 上端到端重現 8 個 CVE 級漏洞（含 CVSS-9.8 的 curl SOCKS5 堆溢位 CVE-2023-38545），並在 libarchive HEAD 上挖到 5 個記憶體安全 bug（4 個前所未報）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>C/C++ 漏洞挖掘長期被兩種工具夾擊：(1) 重量級靜態分析器（CodeQL/CPG）跑任一查詢前<strong>必須先能成功編譯</strong>，對單一 header 函式庫（如 stb）整合成本高；(2) 自由形式 LLM 讀原始碼方便但<strong>會捏造細節、在真實碼庫上丟失跨函式資料流</strong>、沒有推導鏈可審計、上下文一長就「工作記憶退化」。NeuroLog 主張：別讓任一工具獨自硬幹，而是各司其職、保留<strong>機械可審計性</strong>（每個發現都有以具體程式事實為葉節點的推導樹）。</p>
+<h2 id="核心方法六階段流水線">核心方法（六階段流水線）</h2>
+<ul>
+<li><strong>Stage 0 可選偵察</strong>：廉價 LLM 讀目標檔＋呼叫者，提出額外種子函式與「bug 類別假設＋對應形式檢查」；只提議不裁決（用語意事實 <code>FieldSemantic(func,field,role)</code>）。</li>
+<li><strong>Stage 1 切片</strong>：Tree-sitter 增量解析，從敏感 sink（malloc 族、memcpy、bitstream reader、libc 字串函式）做後向切片；自適應深度 σ∈{2,4,8}，用「σ-doubling」啟發式（增長率 ≤5% 就停）。</li>
+<li><strong>Stage 2 氣味掃描</strong>：機械底座（tree-sitter 確定性事實 FormalParam/CFGEdge/dominance）＋ LLM 用<strong>固定 12 關係 schema</strong>（Def/Use/Call/ArithOp/Cast/Guard/ActualArg…）逐函式輸出 JSON；schema 約束<strong>禁止發明關係</strong>，不確定就省略——把幻覺轉成「召回遺漏」而非「假陽性」。</li>
+<li><strong>Stage 3 Datalog</strong>：約 30 條 Soufflé 規則分五趟（別名→跨程序汙染→型別安全→記憶體安全→sink），只做 may-flow 過近似，不裁決可行性。</li>
+<li><strong>Stage 4 符號執行</strong>：逐發現用 Z3 判 {feasible/infeasible/unknown}；Phase A 程序內、Phase B 函式摘要＋有界內聯（d=3）、Phase D 跨發現並行（4 worker 1.98–2.55× 加速）；可行者帶 SAT 模型。</li>
+<li><strong>Stage 4b 動態擴展（可選）</strong>：從少量正常輸入種子收集<strong>likely range invariants</strong>收緊 SMT，近零成本；遵守 <strong>tier-don&#x27;t-drop</strong>（只能降階、永不刪除）。</li>
+<li><strong>Stage 5 崩潰合成 + Stage 6 ASan</strong>：第二 LLM agent 把「路徑條件 Pc（檔案格式前綴）＋漏洞條件 Vc」分解，寫 Python 產候選輸入，ASan 為唯一真值裁判。</li>
+</ul>
+<h2 id="結果含數字">結果（含數字）</h2>
+<ul>
+<li><strong>端到端重現 8 個 CVE 級漏洞 + 1 個部分</strong>（stb 2、cJSON 3、curl 4+2 OOB、FFmpeg 1），含 <strong>CVE-2023-38545（curl SOCKS5，CVSS 9.8）</strong>、CVE-2023-45676 等，皆 ASan 確認。</li>
+<li><strong>libarchive HEAD 挖到 5 個記憶體安全 bug（4 個前所未報）</strong>，全數上報、多個修補已合併；cpio use-after-free <strong>7 小時內被官方確認</strong>。</li>
+<li><strong>成本</strong>：stb 抽取 ~37 秒、$0.005；對照「frontier 模型純抽取」55 分鐘、$0.30–0.50（90× 慢、70× 貴）但 bug 相關函式召回相同。</li>
+<li><strong>崩潰合成</strong>：2 次迭代、~5 分鐘合出 102-byte stb_vorbis 崩潰，<strong>全程無 fuzzer</strong>。</li>
+<li><strong>動態不變量</strong>：3 個 Matroska 種子產 245 個不變量，<strong>降階 13.2% 的 FFmpeg 可行集</strong>（含一個合成花了 5 次嘗試的靜態假陽性）。</li>
+<li><strong>規模驗證</strong>：libxml2 2,707 函式、185,839 事實、73 分鐘全流水線；on-demand Datalog 查詢工具讓 host agent 一次調查內發 19 條臨時查詢。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>LLM 的<strong>靜默召回遺漏</strong>（schema 把幻覺轉成省略，但缺的語意事實偵測不到）。</li>
+<li>免編譯的代價：宏展開/前處理條件/多檔建置旗標不可見；經未解函式指標的前向路徑會漏。</li>
+<li>規則網對「不呼叫記憶體 sink 的函式」（憑證範圍洩漏、不完整驗證、陳舊狀態重置）有盲區。</li>
+<li>單一 LLM 供應商（DeepSeek）、最大評測僅 libxml2（2,707 函式），&gt;500K LoC 未試；Phase E2 不變量依賴語料是否走到該路徑。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本主題 B 中**「LLM＝事實抽取器、符號層＝裁決者」這條保守而可審計路線的最佳工程範例**——與 <a class="paper-reference" href="2602.18095_Logitext_NeSy_SMT.%E6%91%98%E8%A6%81.html">2602.18095</a>（Logitext 把 LLM 當 SMT theory）、<a class="paper-reference" href="2604.27960_LLM_ASP_Self_Correction.%E6%91%98%E8%A6%81.html">2604.27960</a>（LLM＋ASP 自我修正）、<a class="paper-reference" href="2507.09751_Sound_Complete_NeSy_LLM.%E6%91%98%E8%A6%81.html">2507.09751</a>（Sound &amp; Complete NeSy LLM）對讀，可見「LLM 做什麼、符號層做什麼」的分工光譜。</li>
+<li>與 <a class="paper-reference" href="2509.06921_NeSy_Cybersecurity.%E6%91%98%E8%A6%81.html">2509.06921</a>（NeSy 資安）、<a class="paper-reference" href="2511.00776_CodeHallucinationSLR.%E6%91%98%E8%A6%81.html">2511.00776</a>（程式碼幻覺 SLR）互補：示範如何用 schema 約束 + 推導樹把「LLM 幻覺」工程化地關進「召回遺漏」而非「假陽性」。</li>
+<li>最值得記：<strong>tier-don&#x27;t-drop（只降階不刪除）+ SAT 模型當工件 + 免編譯逐函式事實抽取</strong>三招；以及那組漂亮數字——$0.005/37s 抽取、7 小時被官方確認的真實 0-day。</li>
+<li>定位：<strong>系統論文（可復現 artifact 已釋出，以 MCP tool 形式由 Claude Code/OpenCode 驅動）</strong>；適合做 LLM＋靜態分析＋SMT 混合管線、安全漏洞自動化、可審計神經符號的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2606.00669_NeuroLog_Datalog_SMT.zh-TW.html"><code>../translate/2606.00669_NeuroLog_Datalog_SMT.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

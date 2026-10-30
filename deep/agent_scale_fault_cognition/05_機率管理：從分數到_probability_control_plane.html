@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>機率管理：從分數到可執行的 probability control plane · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><h1 id="機率管理從分數到可執行的-probability-control-plane">機率管理：從分數到可執行的 probability control plane</h1>
+<p>「agent 有 83% 信心」幾乎沒有治理意義，除非知道它是哪一個隨機變數、怎麼校準、對哪個時間窗有效，以及超過哪個風險門檻會觸發什麼動作。機率管理系統不是收集 confidence score 的 dashboard，而是把 belief update、uncertainty propagation、calibration 與 decision policy 接成控制迴路。</p>
+<h2 id="一先分清六種量">一、先分清六種量</h2>
+<table>
+<thead>
+<tr>
+<th>量</th>
+<th>例子</th>
+<th>可否直接相乘／平均</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>世界狀態信念</td>
+<td>`P(ticket still open</td>
+<td>observations)`</td>
+</tr>
+<tr>
+<td>動作正確機率</td>
+<td>`P(tool arguments correct</td>
+<td>trace)`</td>
+</tr>
+<tr>
+<td>執行／效果機率</td>
+<td>timeout 後 effect committed／not committed</td>
+<td>要查外部 receipt；unknown 不是 0.5</td>
+</tr>
+<tr>
+<td>goal 達成機率</td>
+<td>`P(requirements satisfied</td>
+<td>evidence)`</td>
+</tr>
+<tr>
+<td>agent 內不確定性</td>
+<td>同一模型對語意候選的分布</td>
+<td>不代表多模型共識</td>
+</tr>
+<tr>
+<td>agent 間分歧</td>
+<td>各模型都很確定但答案相反</td>
+<td>不能用個別 confidence 平均消掉</td>
+</tr>
+</tbody>
+</table>
+<p>Agent UQ 綜述把軌跡寫成動作、環境與觀察的動態貝葉斯網路，要求同時估每輪條件不確定性與軌跡級聯合不確定性。它也發現單輪 QA 的 NLL、entropy、口語化信心搬到 τ²-bench 後，AUROC 多落在 0.47–0.69；工具與使用者 observation 並非 agent LLM 的生成分布，而且互動可能消減、不只是累積不確定性。<a class="paper-reference" href="../../summarize/2602.05073_UQAgentsSurvey.%E6%91%98%E8%A6%81.html">2602.05073</a></p>
+<p>所以資料模型應保存 typed probability，而不是裸 float：</p>
+<pre><code class="language-text">ProbabilityEstimate {
+  variable, outcome_space, value_or_distribution,
+  conditioning_evidence[], estimator, model_version,
+  calibration_slice, calibrated_at, valid_until,
+  sample_size, uncertainty_interval, dependency_edges[]
+}
+</code></pre>
+<p>沒有 <code>variable</code> 與 conditioning evidence 的 0.83 應視為無型別資料；沒有 calibration slice 與時間戳的 0.83 不應跨模型、工具版本與分布漂移沿用。</p>
+<h2 id="二probability-plane-的五個服務">二、probability plane 的五個服務</h2>
+<h3 id="1-belief-registry">1. Belief registry</h3>
+<p>保存世界狀態假說與 posterior，而不是覆寫一個「目前真相」。SToM 的最小例子是列出 3–5 個對方意圖，逐輪用 likelihood 做 Bayesian update，再依信念熵決定追問或行動。<a class="paper-reference" href="../../summarize/2510.18476_ProbabilisticIntentModeling.%E6%91%98%E8%A6%81.html">2510.18476</a> 這個方法仍依賴 LLM 估 likelihood，但至少讓 prior、evidence、posterior 與 entropy 可檢查。</p>
+<h3 id="2-estimator-registry">2. Estimator registry</h3>
+<p>不同 boundary 使用不同估計器。自然語言可用 semantic entropy／一致性；function call 的高結構輸出反而是單樣本 G-NLL 搭配 semantic-token filtering 較有效，拒絕 30% 高不確定呼叫可把不同 BFCL slices 的準確率提高約 4–7 個百分點。<a class="paper-reference" href="../../summarize/2604.22985_UQFunctionCalling.%E6%91%98%E8%A6%81.html">2604.22985</a> 不能把一個「通用 confidence API」套到所有節點。</p>
+<p>具身結果同樣不能把可計算分數直接升格為成功機率。Intrinsic Robot Rewarding 以凍結視覺表徵和成功終態的距離產生任務獎勵，卻明說仍需用失敗與 near miss 校準門檻，而且尚未報告這個獎勵帶來的策略改善。 <a class="paper-reference" href="../../summarize/2609.17115_IntrinsicRobotRewarding.%E6%91%98%E8%A6%81.html">2609.17115</a> 它正好限縮「重用內部表徵即可得到 verifier」的主張。（本檔補註，非作者自陳） <a class="paper-reference" href="../../summarize/2609.17115_IntrinsicRobotRewarding.%E6%91%98%E8%A6%81.html">2609.17115</a></p>
+<h3 id="3-calibration-registry">3. Calibration registry</h3>
+<p>raw log-prob、verbalized confidence 與 judge score 都不是 task success probability。校準服務要按 task family、模型、prompt、tool schema 與時間窗保存 reliability curve、Brier／ECE、coverage 與 drift。Conformal Abstention 展示如何在 exchangeability 前提下，以小校準集選門檻，使未棄答樣本的風險帶統計上界；分布偏移後保證就要撤銷。<a class="paper-reference" href="../../summarize/2405.01563_ConformalAbstention.%E6%91%98%E8%A6%81.html">2405.01563</a></p>
+<p>R2S-Eval 把「代理評估也要校準」拆成兩關：先確認 real-to-sim 環境保留真機策略排序，再用人類偏好與 A／B 位置反轉檢查 VLM judge。 <a class="paper-reference" href="../../summarize/2609.03276_R2SEval.%E6%91%98%E8%A6%81.html">2609.03276</a> 這佐證校準不能只盯最後一個分數。（本檔補註，非作者自陳）但它只支持相對策略結論，不表示真實與模擬 rollout 等價，也未消除接近平手時的位置偏差。 <a class="paper-reference" href="../../summarize/2609.03276_R2SEval.%E6%91%98%E8%A6%81.html">2609.03276</a></p>
+<h3 id="4-dependencyfusion-engine">4. Dependency／fusion engine</h3>
+<p>多 agent 的輸出通常共用 prompt、retriever、模型家族與錯誤來源，不能假設獨立後直接相乘。Collaborative Entropy 分開個別模型內的語意熵與模型間 KL divergence；尤其 <code>low intra-agent uncertainty + high inter-agent disagreement</code> 是「大家都自信、但互相矛盾」的危險象限。<a class="paper-reference" href="../../summarize/2603.28360_CoECollaborativeEntropy.%E6%91%98%E8%A6%81.html">2603.28360</a></p>
+<p>Language Model Cascades 提供更上位的表示：把多次 LLM 呼叫、verifier、tool 與控制流寫成字串值隨機變數的機率程式。<a class="paper-reference" href="../../summarize/2207.10342_LM_Cascades.%E6%91%98%E8%A6%81.html">2207.10342</a> 它是很好的語意層，但原文也承認字串空間的 posterior inference 很難；production runtime 仍需限制圖形、近似方法與計算預算。</p>
+<p>Runtime Uncertainty Monitoring 是最接近這個服務形狀的 prototype：把四個 actuarial agents 的 length-normalised token logprob 經 <code>f_cal</code> 映成 task confidence，再沿手工 Bayesian network 傳到 <code>WorkflowOK</code> posterior。<a class="paper-reference" href="../../summarize/2607.25877_RuntimeUncertaintyMonitoring.%E6%91%98%E8%A6%81.html">2607.25877</a> 但原文未交代 <code>f_cal</code> 方法、calibration 分母、Brier／ECE 或 reliability diagram；clean／perturbed mean workflow score 也幾乎重疊。BN 的 DAG、CPT 與 AND gate 是設計假設，不是從 outcome data 學出的 dependency；論文亦未定 threshold、retry／stop／human-review policy。因此它目前證明「圖能傳播輸入分數」，還沒證明 posterior 已校準或真的驅動錯誤偵測。</p>
+<h3 id="5-decision-policy-engine">5. Decision policy engine</h3>
+<p>機率只有轉成 action 才形成管理。每個 policy 應明定 loss、cost 與 authority，而不是全域 <code>confidence &gt; 0.8</code>：</p>
+<pre><code class="language-text">expected_loss(action) = Σ outcome P(outcome | evidence) × loss(outcome)
+
+若 information value &gt; 查證成本       → 追問／讀工具／做測試
+若便宜 agent 勝任且風險受控           → 繼續
+若下游正確率增益 &gt; 升級成本           → 換模型／委派專家
+若多 agent 自信但分歧                 → 找獨立 evidence，不做多數票
+若不可逆 effect 的 tail risk 超界      → 要人類核准或拒絕
+若 estimator 已漂移／缺 provenance     → fail closed 或降權
+</code></pre>
+<p>選擇性分類的正確旋鈕是 risk–coverage：接受較少案例以控制已接受集合的錯誤率。<a class="paper-reference" href="../../summarize/1705.08500_SelectiveClassification.%E6%91%98%E8%A6%81.html">1705.08500</a> Learning to Defer 又提醒，升級不能只看目前模型信心，還要估接手者在這一例的能力與成本。<a class="paper-reference" href="../../summarize/1711.06664_LearningToDefer.%E6%91%98%E8%A6%81.html">1711.06664</a><a class="paper-reference" href="../../summarize/2006.01862_Consistent_Estimators_L2D.%E6%91%98%E8%A6%81.html">2006.01862</a></p>
+<p>安全 sim-to-real 再增加一個介於接受與拒絕之間的動作：依模型誤差證書，把候選策略與已知嚴格可行的基線策略混合，證據越弱就部署得越保守。 <a class="paper-reference" href="../../summarize/2609.01418_ProvablySafeSim2Real.%E6%91%98%E8%A6%81.html">2609.01418</a> 這把憑證從靜態 pass／fail 擴成可控制部署強度的安全門；但保證依賴 tabular CMDP、已知安全餘裕與可分離的動力學失配，尚待實測能否移植到一般 agent action。（本檔補註，非作者自陳） <a class="paper-reference" href="../../summarize/2609.01418_ProvablySafeSim2Real.%E6%91%98%E8%A6%81.html">2609.01418</a></p>
+<p>Update Admission 則提供反例：永不放行的關卡可以讓已接受更新的違規率保持完美，同時完全凍結學習。 <a class="paper-reference" href="../../summarize/2609.10873_UpdateAdmission.%E6%91%98%E8%A6%81.html">2609.10873</a> 因此 risk–coverage 還不夠，控制面必須連同 defer、證據預算與 missed opportunity 一起記錄。（本檔補註，非作者自陳）該結論目前來自合成的一步環境，應視為治理單元測試，不是實體機器人成效。 <a class="paper-reference" href="../../summarize/2609.10873_UpdateAdmission.%E6%91%98%E8%A6%81.html">2609.10873</a></p>
+<h2 id="三機率不能取代確定性狀態">三、機率不能取代確定性狀態</h2>
+<p>下列資料應保持枚舉或證據狀態，不可硬塞成概率：</p>
+<pre><code class="language-text">authorization = valid | invalid | stale | unobservable
+effect         = not_dispatched | committed | failed | outcome_unknown
+verification   = passed | failed | not_run | inconclusive
+</code></pre>
+<p>例如 lost receipt 後的 <code>outcome_unknown</code> 是知識狀態，不是「50% 已扣款」。若有 transaction status API，就取得 observation 更新 belief；若沒有，就等待、補償或人工處理。用模型自評 0.9 覆蓋缺失的 receipt，等同把 epistemic uncertainty 偽裝成事實。</p>
+<p>同理，policy deny 不能因 task success probability 很高而被越過；機率層決定是否需要更多資訊或升級，capability／transaction／goal gate 仍是不可繞過的 deterministic boundary。</p>
+<h2 id="四千萬-agent-的實作方式">四、千萬 agent 的實作方式</h2>
+<p>千萬個 durable agent 不應各自常駐完整 posterior engine。較合理的是：</p>
+<ol>
+<li>每個 dormant agent 只保存少量 typed beliefs、足夠統計量、calibration references 與 dependency pointers。</li>
+<li>event 到達才載入局部 belief subgraph；按 shard 批次更新，避免全域圖推論。</li>
+<li>common estimator／calibrator 做版本化服務，結果以 model、task slice 與 TTL 快取。</li>
+<li>只有高風險、高 value-of-information 或高分歧事件才啟動多取樣、多 agent 或 Bayesian network inference。</li>
+<li>每次 policy action 都留下 <code>probability snapshot + threshold + chosen action + eventual outcome</code>，供線上重校與 counterfactual evaluation。</li>
+</ol>
+<p>容量指標因此不只 agent count，還要報 belief nodes、dependency edges、update rate、calibration cohorts、posterior latency、defer rate、人工佇列與 realized loss。否則「支援機率管理」可能只是每個回答多存一個未校準分數。</p>
+<h2 id="五最重要的研究缺口">五、最重要的研究缺口</h2>
+<ul>
+<li><strong>依賴下的傳播</strong>：共享模型與共享 retrieval 讓多 agent error 高度相關，獨立假設會過度自信。</li>
+<li><strong>non-stationarity</strong>：prompt、policy、tool、使用者與環境更新後，舊 calibrator 何時自動失效。</li>
+<li><strong>rare catastrophic effects</strong>：平均校準良好不代表尾部不可逆損失可接受。</li>
+<li><strong>active information gathering</strong>：系統要估哪一次追問、測試或 tool observation 最能降低決策風險。</li>
+<li><strong>多 agent credit／blame</strong>：終局失敗如何回填到中間 probability estimates，而不把所有節點同樣懲罰。</li>
+<li><strong>可驗證的機率 provenance</strong>：每個 posterior 必須能回到 raw evidence、估計器版本與依賴假設。</li>
+</ul>
+<p>最值得做的系統不是「讓 agent 更有自信」，而是建立一個能回答以下問題的 probability control plane：<strong>我們對哪件事不知道、為何不知道、再取得哪個 observation 最划算，以及在不知道時哪個 action 的期望損失與尾部風險可接受。</strong></p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

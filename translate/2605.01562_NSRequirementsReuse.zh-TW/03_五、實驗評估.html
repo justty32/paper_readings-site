@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_五、實驗評估 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.01562_NSRequirementsReuse.zh-TW.html">回 2605.01562_NSRequirementsReuse.zh-TW 目錄</a>　<a href="02_%E4%B8%89%E3%80%81%E7%A5%9E%E7%B6%93%E7%AC%A6%E8%99%9F%E5%A4%9A%E4%BB%A3%E7%90%86%E7%B3%BB%E7%B5%B1.html">← 上一節</a></p>
+</blockquote>
+<h2 id="五實驗評估">五、實驗評估</h2>
+<p>為評估框架的實際效能，我們在兩個應用家族上進行了自主基準測試。</p>
+<h3 id="a-研究問題">A. 研究問題</h3>
+<p>兩個精煉的研究問題：(1) 多代理系統在<strong>僅使用自然語言願景</strong>的條件下，能在何種程度上自主導航形式化需求晶格（以完成率與約束違規率衡量）？(2) 與不受約束的 LLM 生成相比，確定性符號約束強制器在消除邏輯不一致需求方面有多有效？</p>
+<h3 id="b-基準設定">B. 基準設定</h3>
+<p>我們創建了十個專案願景：eRecordKeeping 家族五個，SmartHome 家族五個，範圍從最小功能配置到全面系統。每個願景均由第一作者手動指定一組嚴格遵循晶格規則的金標準需求 ID。由於可選與多重調適器節點允許合法變異，<strong>精確匹配是過於嚴格的指標</strong>。因此我們主要使用 F1 分數評估準確率，將每個節點的需求選取視為二元分類任務。然而我們強調：<strong>中等 F1 分數是預期的，並不表示效能不佳</strong>，因為可能存在許多合法配置。</p>
+<p>所有實驗在消費級機器（Apple M1 Pro，32 GB RAM）上運行，以 Ollama 提供 llama3.1:8b-instruct-q4_0 模型（temperature = 0）。基準腳本為每個願景執行 LangGraph 循環，記錄所選 ID、LLM 呼叫次數、牆鐘延遲與約束違規。</p>
+<h3 id="c-結果">C. 結果</h3>
+<p>表 I（原文）顯示三組具完整金標準資料的願景。全部成功完成，無超時。F1 分數範圍 0.471 至 0.811，反映與單一金標準的不同重疊程度。在 er_small_biz 案例的整次運行中僅觀察到<strong>一次</strong>約束違規，且 Validator 迴圈當場攔截，因此最終規格零違規。</p>
+<p>其餘七個願景（兩個 eRecordKeeping、五個 SmartHome）也被處理。<strong>所有願景皆達成 100% 完成率</strong>，產出結構有效的輸出，<strong>零約束違規</strong>，確認了系統的穩健性。</p>
+<p>早期設計迭代中，Interpreter 在無 Validator 回饋迴圈的條件下運行。在那些不受控的運行中，LLM 頻繁產出含多重違規的選取：錯誤基數、遺漏必要需求與孤立子節點。例如 SA 常收到兩個被選的子節點，或核心需求完全缺失。引入確定性 Validator 後，<strong>此類錯誤從最終輸出中徹底消失</strong>。系統性消融研究已規劃於未來工作；全文版將包含詳細消融分析。</p>
+<p>十個願景的平均牆鐘延遲為 210 秒，平均每願景 78 次 LLM 呼叫。eRecordKeeping 家族的延遲較高（263 秒）且 LLM 呼叫較多（平均 95 次），相較於 SmartHome（160 秒，平均 60 次），反映較大的晶格尺寸與更複雜的判別式樹。Validator 本身的執行時間可忽略（對數百個選取的純 Python 檢查）。這些數字表明<strong>互動式使用在實務上是可行的</strong>，尤其隨著 LLM 推理持續加速。</p>
+<h3 id="d-意圖衝突現象">D. 意圖衝突現象</h3>
+<p>除了量化結果，一個重複出現的質性模式浮現——我們稱之為<strong>意圖衝突（Intentional Conflict）</strong>：Interpreter 代理（追求 stakeholder 滿意）提議一個 Validator 代理（追求領域遵循）必須拒絕的選取。</p>
+<p>在 er_small_biz 模擬中，stakeholder 願景要求「廉價且輕量」系統。LLM 試圖透過省略必要安全需求來滿足此要求。在不受約束的 LLM 設置中，這將產生一個看似成功但<strong>不合規</strong>的規格。在我們的框架中，Validator 阻止非法省略，使選集 S 保持與 (1) 式中約束謂詞的一致性。晶格因此作為<strong>符號護欄</strong>，防止安全或法規需求因便利而被覆蓋。</p>
+<h3 id="e-其他觀察">E. 其他觀察</h3>
+<p>全文版中的進一步分析揭示：系統達成了 100% 的結構有效性率，子圖導航策略使上下文視窗大小保持常數，實現線性可擴展性。自我修正迴圈的質性追蹤確認了神經符號方法成功橋接了模糊 stakeholder 意圖與剛性領域標準之間的差距。跨 12 領域語料庫的錯誤類型分析顯示，符號 Validator 將最終錯誤率降至 0%，強化了將結構邏輯卸載給符號組件的重要性。</p>
+<h2 id="六結論與未來工作">六、結論與未來工作</h2>
+<p>我們呈現了一個神經符號代理框架，橋接自然語言專案願景與形式化 OOMRAM 需求晶格。透過在 LangGraph 多代理迴圈中嵌入<strong>確定性符號 Validator</strong>，系統實現了完全自主遍歷、100% 完成率，並幾乎消除了幻覺需求——僅 0.2% 約束違規發生，全部在最終化前被修正。中等的 F1 分數反映了合法規格的多元性而非系統失效；每份輸出皆結構健全且遵循所有必要領域規則。我們的工作證明：<strong>將神經機率推理與硬編碼符號邏輯協調，是未來 RE 自動化的一條有希望路徑</strong>。</p>
+<p><strong>未來工作</strong>包括：在更大的 12 晶格語料庫上以多樣化 LLM 進行基準測試、進行受控使用者研究（NASA-TLX、SUS）、與 ALM/PLM 工具鏈整合，以及開發自動選擇適當晶格家族的語意路由器。全文版將提供全面實驗結果與對效度威脅的深入討論。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

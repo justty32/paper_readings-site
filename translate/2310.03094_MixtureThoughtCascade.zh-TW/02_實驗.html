@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2310.03094_MixtureThoughtCascade.zh-TW.html">回 2310.03094_MixtureThoughtCascade.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%8F%AF%E9%87%8D%E7%8F%BE%E6%80%A7%E8%81%B2%E6%98%8E.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-實驗">3. 實驗</h2>
+<h3 id="31-實驗設定">3.1 實驗設定</h3>
+<p>在六個資料集上評估，涵蓋：(1) <strong>數學推理</strong>——GSM8k、ASDIV、TabMWP；(2) <strong>符號推理</strong>（取自 BIG-Bench Hard）——DATE、Navigate；(3) <strong>因果推理</strong>——CREPE。弱模型用 GPT-3.5-turbo（4k），強模型用帶 CoT self-consistency 的 GPT-4（8k）（記為 <strong>GPT-4-CoT-SC</strong>）。示範數 M=8，沿用先前工作的示範例（2D 需要額外示範時，從訓練資料隨機抽樣並手動標註思維表徵）。取樣路徑數：GPT-3.5-turbo 用 <strong>K=20</strong>、GPT-4 用 <strong>K=3</strong>，預設溫度 <strong>0.4</strong>。指標為<strong>任務準確率</strong>與<strong>相對於 GPT-4-CoT-SC 的相對成本</strong>（成本越低、準確率越高越好）。baseline 包含只用弱模型（GPT-3.5-CoT-SC、GPT-3.5-PoT-SC）與只用強模型的不同方式（GPT-4-CoT-Greedy / PoT-Greedy / CoT-SC / PoT-SC）。</p>
+<h3 id="32-主結果">3.2 主結果</h3>
+<p>投票式方法透過把門檻 τ 從 0.4 掃到 1 畫出曲線（門檻越高，越嚴格地信任弱模型答案，越多題被轉給強模型）。主要觀察：</p>
+<p><strong>管線以顯著更低的成本達到相當表現</strong>：平均而言所有級聯變體都有顯著成本效率。四個 <strong>MoT 變體平均達 ~0.929 準確率</strong>，逼近 GPT-4-CoT-SC 的 0.931，卻只需其 <strong>40% 成本</strong>；在 CREPE 上 MoT 甚至反超（<strong>0.885 vs 0.871</strong>），且只花 47% 成本。CoT/PoT 系列也能省本保效，如 CoT-2D-Vote 平均 0.924 準確率、僅 57% 相對成本。</p>
+<p><strong>從多樣 prompt 設定取樣有助決策</strong>：涉及多樣取樣來源的變體（CoT/PoT-2D-Vote、MoT-1D/2D-Vote）比單一來源（CoT/PoT-1D-Vote）更能精確區分易／難題。例如在同樣 0.4 相對成本下，CoT-2D-Vote 平均比 CoT-1D-Vote 高 1.4% 絕對準確率。</p>
+<p><strong>混合思維表徵特別有效</strong>：MoT-1D/2D-Vote 勝過只用單一表徵（CoT 或 PoT 的 1D/2D-Vote），在多數資料集上一致（DATE 例外，因其許多測試題與示範例很相似）。直覺上，不同思維表徵為同一問題帶來更多元的「意見」，猶如一群視角各異的專家協作更有效；亦可視為 LLM 的「集成」——同一模型的變體通常少犯相同錯誤。此外 MoT 下用一組（MoT-1D）或兩組（MoT-2D）示範差別不大，顯示<strong>調整思維表徵比調整示範集更有助於衡量 LLM 的（不）確定性</strong>。</p>
+<p><strong>提高門檻對 MoT 只有邊際效益</strong>：成本升高時 MoT-1D/2D-Vote 曲線趨平，把門檻推到過高並無必要——因為即便簡單題，弱模型仍可能在少數答案上產生幻覺；門檻太高會讓這些幻覺主導決策，使簡單題被誤送強模型、反推高成本。實務上平衡成本與準確率的門檻通常落在 <strong>0.5–0.6</strong>。互檢式（MoT-1D/2D-Verify）因能容忍少量幻覺，也能取得成本與準確率的平衡。</p>
+<h3 id="33-混合思維表徵分析">3.3 混合思維表徵分析</h3>
+<p>為理解 MoT 的效果，分析三個投票式方法。先依「弱模型能否答對（多數決答案 <code>A^w</code> 是否正確）」把題目分為「易」與「難」，再算各自的平均一致性分數（式 2）。<strong>有效的決策者應對易題給高一致性分、對難題給低一致性分，兩者「差距」越大越好</strong>。</p>
+<p>結果（圖 4 上）顯示所有方法在易題的一致性分都高於難題，解釋了其整體有效性。因涉及兩種表徵，MoT-1D-Vote 的一致性分較兩個 CoT 方法低，但<strong>易／難題的一致性分「差距」更大</strong>，在 Navigate 上尤其突出（其表現增益最大）。反之 CoT-1D-Vote 差距最小，區分易／難題能力最弱；用兩組示範（CoT-2D-Vote）可緩解，但仍不如混合思維表徵。</p>
+<p>圖 4（下）的案例說明：當 CoT 答不出某難題時，<strong>換另一組示範（仍是 CoT）常給出相同的錯誤答案</strong>，因而產生虛高的一致性分；而 <strong>PoT 則以很不同的方式出錯、給出不同的錯誤答案</strong>，這正是 MoT-1D-Vote 一致性分較低（更誠實地反映不確定性）的原因。</p>
+<h3 id="34-穩健性評估">3.4 穩健性評估</h3>
+<p>分析結果是否對取樣溫度 T 或樣本數 K 敏感（以 CoT-2D-Vote 與 MoT-1D-Vote 在各類推理任務上測試，圖 5）。溫度從 0.4 升到 0.8：兩法都因答案多樣性增加而有相當或略好的表現，但 MoT-1D-Vote 始終勝過 CoT-2D-Vote。樣本數從 20 增到 40：曲線右移（達同準確率需更高成本），因為更大樣本數只增加成本、無助於偵測易／難題。無論如何 MoT 都穩健勝過 CoT。</p>
+<h3 id="35-與外部字面式評分器的比較">3.5 與外部字面式評分器的比較</h3>
+<p>先前工作以訓練外部評分器（依題目與答案的字面描述打分，如 Chen et al. 2023a、Šakota et al. 2023）實作級聯決策者。在 GSM8k、DATE、CREPE 上對比以下 baseline：</p>
+<ul>
+<li><strong>Finetuned-Q</strong>：微調 RoBERTa-base，依題目描述決定是否路由到強模型；</li>
+<li><strong>Finetuned-QA</strong>：同上但額外輸入弱模型（GPT-3.5-CoT-SC）的多數決答案；</li>
+<li><strong>LLM-Q</strong>：改用 GPT-3.5-turbo 當評分器，依題目描述判斷；</li>
+<li><strong>LLM-QA</strong>：GPT-3.5-turbo 依題目與弱模型多數決答案判斷。</li>
+</ul>
+<p>結果（圖 6）顯示外部評分器都無法達到 GPT-4-CoT-SC 的準確率。例如 GSM8k 上外部評分器最高僅 <strong>0.892</strong>，遠低於 GPT-4-CoT-SC 的 <strong>0.958</strong> 與本法的 <strong>0.951</strong>；同成本下也低於本法。顯示外部評分器在複雜推理任務上不理想——<strong>單憑字面描述判斷題目難度與答案正確性本身就很難</strong>。</p>
+<h3 id="36-額外研究">3.6 額外研究</h3>
+<ul>
+<li><strong>弱模型可以多弱？</strong> 改用 LLAMA2-13B 當弱模型、GPT-4 當強模型：在 DATE 上仍有效，但 GSM8k 與 CREPE 因題目對 LLAMA2-13B 過難、它無法跨多次取樣穩定作答，效果不理想。<strong>弱模型的選擇應視任務難度而定</strong>；當前弱模型若難以勝任，應換更強的弱模型。</li>
+<li><strong>強模型能否受益於弱模型的提示？</strong> 以 MoT-1D-Verify 把弱模型兩個不一致答案 <code>A^w′_1</code>、<code>A^w′_2</code> 當 hints 傳給強模型：只在 DATE 微幅改善，卻嚴重拖累 GSM8k 與 CREPE。<strong>結論：弱模型不確定時給的提示無助於強模型</strong>。</li>
+<li><strong>能否推廣到事實型任務？</strong> 在附錄 J 探討推廣到事實型推理任務。</li>
+</ul>
+<h2 id="4-相關工作">4. 相關工作</h2>
+<p>早期研究以量化、剪枝、解碼方法提升 LLM 成本效率。針對 API 使用，Chen et al.（2023a）提出 LLM 級聯（答案不被接受就依序送給下一個 LLM）；Šakota et al.（2023）則在送出查詢前就決定該呼叫哪個 LLM。這兩者都用<strong>從小模型微調的外部評分器</strong>，需大量訓練資料與額外學習；本文實驗顯示它們在複雜推理任務上省本無效。相較之下，本文基於弱模型答案一致性的方案<strong>免訓練、不綁定特定弱模型</strong>。</p>
+<p><strong>LLM 推理</strong>：CoT（Wei et al. 2022）以「逐步思考」啟動 LLM 內建推理能力；PoT（Chen et al. 2022；Gao et al. 2023）以程式碼為中間步驟並用外部直譯器執行，將推理與數值計算解耦。多數工作獨立看待 CoT 與 PoT，少數探討兩者協同（把程式碼併入 CoT、集成代數與程式碼表徵、或在 CoT/PoT 間自動選擇）。本文同樣聯合使用 CoT 與 PoT，但<strong>首次將此協同用於 LLM 推理的省本</strong>。另有串接多個 LLM 的管線工作，但焦點在提升準確率而非降低成本。</p>
+<p><strong>LLM 的不確定性</strong>：多項並行工作用投票分數評估答案不確定性，但都忽略了「中間步驟的不同表徵」在評估上的潛在應用。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>本文提出一個簡單、高效且普遍適用的經濟型管線，動態決定推理任務該用哪個 LLM 以省 token 成本。基於檢查弱模型答案一致性的方法新穎且有效；發現<strong>以混合思維表徵提示弱模型能引入多樣答案、達到最佳表現</strong>。相較全程使用強模型，本管線約需 <strong>40% 開銷</strong>即達相當結果。</p>
+<h2 id="6-倫理聲明">6. 倫理聲明</h2>
+<p>本研究致力於建構 LLM 時代下解決推理問題的低成本管線，特別能嘉惠財力有限的組織（本地企業、教育機構、非營利組織），促進 NLP 社群的公平與包容；對面臨超大吞吐量的產業巨頭，成本節省亦相當可觀，並透過減少大規模運算的碳足跡貢獻環境永續。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

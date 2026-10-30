@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《SELFDOUBT：以 Hedge-to-Verify Ratio 做推理 LLM 的不確定性量化》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Satwik Pandey (Independent Researcher)、Suresh Raghu (Independent Researcher)、Shashwat Pandey (Zillow Group)</p><p>日期：2026-04</p><p>arXiv：2604.06389</p><p><a href="https://arxiv.org/abs/2604.06389" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="selfdoubt以-hedge-to-verify-ratio-做推理-llm-的不確定性量化重點摘要">《SELFDOUBT：以 Hedge-to-Verify Ratio 做推理 LLM 的不確定性量化》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>SELFDOUBT</strong>：從推理軌跡直接提取行為信號（hedge 詞如&quot;perhaps&quot;/&quot;maybe&quot;，vs verify 詞如&quot;check&quot;/&quot;verify&quot;）的單次推理不確定性框架。核心信號 HVR（Hedge-to-Verify Ratio）= hedge 標記數 / （verify 標記數 + 1），零額外推論成本。<strong>HVR = 0 的軌跡正確率 96.1%</strong>（25.4% 覆蓋率），形成零成本高精度信心閘。完整 SELFDOUBT score（HVR + verbalized confidence 的 z-score 融合）在 AUROC 上顯著擊敗 10 倍成本的語義熵（p=0.001），AURAC 持平。兩階段部署級聯達成 71% 覆蓋率下 89.7% 準確度的選擇性預測。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>推理 LLM 不確定性量化陷入兩難：採樣式方法（語義熵、語義體積、幾何不確定性）需 N 次前向傳播（10–20 倍推論成本），對推理模型尤其昂貴；單次替代方案各有取捨——口語化信心在困難任務失校準、軌跡長度僅在中難度任務有效、探針方法需隱藏狀態、logit 方法需 token 機率而商用推理 API 不揭露。核心挑戰：<strong>商用 API 無 logits/無中間機率、無法多次採樣</strong>——亟需純文字、單次、無訓練的不確定性信號。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>兩階段標記詞典建構</strong>（離線，每模型一次，90 條無標註軌跡）：Stage 1——多 LLM 共識投票生成 hedge/verify 種子詞，經 bge-m3 嵌入迭代語意連貫性過濾，保留 top-10 排名種子；Stage 2——從無標註軌跡提取 1–3-gram，依 cosine 距離對 hedge/verify centroid 的 margin Δ(g) 分類，建構模型特定的 hedge 詞典 H 與 verify 詞典 V。</li>
+<li><strong>HVR（Hedge-to-Verify Ratio）</strong>：HVR(T) = h(T) / (v(T) + 1)，以 word-boundary regex 對 H/V 匹配計數。分母 +1 避免無 verify 標記時除以零。HVR 越大表示不確定性越高。HVR = 0 為零膨脹分佈——無 hedge 標記的軌跡自動落於零。</li>
+<li><strong>Verbalized Confidence</strong>：提示模型輸出&quot;Confidence: [0-100]%&quot;，解析為 V ∈ [0,1]。</li>
+<li><strong>SELFDOUBT Score（§3.4 品質分數）</strong>：s_SD(T) = z_r(-HVR(T)) + z_r(V)，z-score 標準化使兩通道可通約，融合互補失敗模式——HVR 捕捉推理行為中的不確定性、口語化信心捕捉模型自我報告的不確定性。</li>
+<li><strong>部署級聯（§3.3 cheap gate）</strong>：Tier 1（HVR = 0 gate，零成本 regex）→ 直接接受；Tier 2（校準 z-sum，τ=0 自然對稱預設）→ 接受 s ≥ τ 者、其餘推遲。僅需每模型 4 個標量（μ_hvr, σ_hvr, μ_v, σ_v）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>成本</th>
+<th>AUROC ↑</th>
+<th>AURAC ↑</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>SELFDOUBT</strong></td>
+<td>O(1)</td>
+<td><strong>0.7895</strong></td>
+<td><strong>0.8992</strong></td>
+</tr>
+<tr>
+<td>TL+VB</td>
+<td>O(1)</td>
+<td>0.7754</td>
+<td>0.8792</td>
+</tr>
+<tr>
+<td>HVR only</td>
+<td>O(1)</td>
+<td>0.7509</td>
+<td>0.8883</td>
+</tr>
+<tr>
+<td>Verb only</td>
+<td>O(1)</td>
+<td>0.7453</td>
+<td>0.8765</td>
+</tr>
+<tr>
+<td>TL only</td>
+<td>O(1)</td>
+<td>0.6959</td>
+<td>0.8575</td>
+</tr>
+<tr>
+<td>Semantic Entropy</td>
+<td>O(N)</td>
+<td>0.7407</td>
+<td>0.8988</td>
+</tr>
+<tr>
+<td>Semantic Volume</td>
+<td>O(N)</td>
+<td>0.6513</td>
+<td>0.8753</td>
+</tr>
+<tr>
+<td>Geometric UQ</td>
+<td>O(N)</td>
+<td>0.6355</td>
+<td>0.8710</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>HVR = 0 gate</strong>：21 輪合併 96.1% 精確度（1330/1384），經標註雜訊校正後 99.4%（Wilson 95% CI: [98.9%, 99.7%]）。54 件原始不一致經手動審計後僅 8 件為真正模型錯誤（0.58%）。</li>
+<li><strong>vs 語義熵</strong>：SELFDOUBT AUROC 顯著優於 SE（p=0.001），AURAC 無顯著差異（p=0.069），以十分之一推論成本達成同等選擇性預測品質。</li>
+<li><strong>模型規模依賴</strong>：GPT-4B → 120B，SELFDOUBT 呈最清晰的單調趨勢；Gemini 2.5 Flash 為唯一異常值——壓縮思維摘要僅產出 0.9% 零 hedge 軌跡，HVR 近乎常數。</li>
+<li><strong>跨軌跡格式一致性</strong>：原始推理軌跡模式下 SELFDOUBT 顯著擊敗 TL+VB（AUROC p=0.026, AURAC p=0.039）；思維摘要模式下具競爭力但未達顯著。</li>
+<li><strong>部署級聯</strong>：Tier 1 接受 25.2% 查詢（96.3% 精確度）;Tier 1+2（τ=0）達成 70.7% 覆蓋率 89.7% 精確度，較無推遲基線提升 9.2 百分點。校準損失僅 0.48 pp AURAC（oracle → 90-trace calibration）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>HVR = 0 覆蓋率高度依賴模型（Gemini 0.9% → Claude 53.3%），稀疏 trace 模型受益有限。</li>
+<li>HVR 定義於表面形式 hedge/verify 詞彙，對抑制 hedge 語言或非實質性檢查的提示/風格偏移未測試。</li>
+<li>不分解不確定性來源（epistemic vs aleatoric），僅產出單一排序分數。</li>
+<li>僅多選題格式驗證，未測試自由文字生成（開放式 QA、程式碼生成、逐步評分數學）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>「品質分數」主題（§3.4）的直接方法</strong>：SELFDOUBT score 的 z-score 融合設計示範了如何將行為不確定性信號與自我報告信心結合成單一排序分數——無需訓練、無需內部機率、僅需 regex + 算術。</li>
+<li><strong>「cheap gate」主題（§3.3）的示範案例</strong>：HVR = 0 gate 是零成本高精度接受規則——僅需 regex 匹配、無需分數計算——不確定性越低越準確的信號在推理軌跡中具高度通用性。</li>
+<li>與 <a class="paper-reference" href="2412.12767_BlackBox_LLM_Calibration_Survey.%E6%91%98%E8%A6%81.html">2412.12767</a> 黑箱 LLM 校準綜述對讀（Brier/ECE/AUROC 選型）；與 <a class="paper-reference" href="https://arxiv.org/abs/2505.14489">2505.14489</a> 推理模型更善於表達信心並讀（本論文同時驗證並超越了該發現）；與 <a class="paper-reference" href="https://arxiv.org/abs/2510.10409">2510.10409</a> trace length UQ 並讀（TL+VB 為本論文主要 O(1) 對照組）。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2604.06389_SELFDOUBT.zh-TW.html"><code>../translate/2604.06389_SELFDOUBT.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

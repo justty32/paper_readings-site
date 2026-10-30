@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_以能量基底神經網路做符號推理 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2505.20313_Reasoning_in_NeSy.zh-TW.html">回 2505.20313_Reasoning_in_NeSy.zh-TW 目錄</a>　<a href="02_%E8%83%8C%E6%99%AF%EF%BC%9A%E9%82%8F%E8%BC%AF%E8%88%87%E5%8F%97%E9%99%90%E6%B3%A2%E8%8C%B2%E6%9B%BC%E6%A9%9F.html">← 上一節</a>　<a href="04_%E7%94%A8%E6%96%BC_MaxSAT_%E7%9A%84%E9%82%8F%E8%BC%AF%E6%B3%A2%E8%8C%B2%E6%9B%BC%E6%A9%9F.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-以能量基底神經網路做符號推理">3. 以能量基底神經網路做符號推理</h2>
+<p>（本節基於文獻 [52]。）</p>
+<p>多年來 NeSy 多用 if-then 規則（h:-b，有別於古典蘊涵 b→h）。<strong>LBM 用完整命題邏輯，表示力比 if-then 規則更豐富。</strong></p>
+<h3 id="31-相關工作">3.1 相關工作</h3>
+<ul>
+<li><strong>KBANN</strong>：把 if-then 規則編碼進階層多層感知器；早期亦有單隱層遞迴網路支援邏輯程式規則。</li>
+<li><strong>CILP++</strong>：用 ILP 的命題化（propositionalisation）把一階變數當命題原子；[12] 可微 ILP;TensorLog 把隨機邏輯程式映成可微函數。以上皆<strong>監督式</strong>。</li>
+<li>早期亦證明命題邏輯與<strong>對稱網路</strong>（Hopfield）對應，但隨變數數<strong>擴展性差</strong>。<strong>Penalty Logic</strong> 是首個把加權 if-then 規則（非單調）整合進對稱網路者，但需<strong>高階 Hopfield 網路</strong>（難建、難訓）。近期有人把符號知識抽取/編碼進用對比散度訓練的 RBM，但<strong>無健全性證明</strong>。<strong>LBM 像 Penalty Logic 一樣可證等價，但不需高階網路。</strong></li>
+<li>模組溝通式混合：<strong>DeepProbLog</strong>（神經模組嵌進機率邏輯程式）、<strong>LTN</strong>（實值邏輯約束損失函數）——兩者用反向傳播，與本文用對比散度不同。</li>
+<li>SAT 求解：把 MaxSAT 映到（高階）波茲曼機平行求解；NeuroSAT 把 SAT 重定義為軟（可微）任務近似求解。本文初步評估顯示可用到約 100 變數（遠低於符號 SAT solver）。</li>
+<li>學習實驗對比：<strong>Aleph</strong>（最先進 ILP 符號系統）、標準 <strong>RBM</strong>（最接近 LBM 的純神經）、<strong>CILP++</strong>（神經符號）。</li>
+</ul>
+<h3 id="32-rbm-中的知識表示">3.2 RBM 中的知識表示</h3>
+<p>以古典邏輯對照：給定知識 a∧b，若神經元 a、b 輸入為 1，網路應收斂到 a、b≈1 的穩態（因 a∧b 在 a、b 為真時為真）;a∧¬b 則收斂到 a≈1,b≈0。若只給部分輸入（a=1 而 b 未定），網路會收斂到兩個滿足賦值之一。此後把「真值賦值」與「二元輸入向量（神經元激活態）」視為等同。</p>
+<ul>
+<li><strong>定義 1（等價）</strong>：令 c(v) 為 WFF c 在賦值 v 下的真值（真↦1、假↦0）；令 G(v,h) 為能量網路的能量函數。稱 G 等價於 c，若對任意 v 存在函數 ψ 使 c(v)=ψ(min_h G(v,h))。（類似 Penalty Logic：滿足 WFF 的賦值映到能量全域極小；此外不滿足者映到極大。）</li>
+<li><strong>定義 2（SDNF / full DNF）</strong>：**嚴格 DNF（SDNF）**是「對任一賦值至多一個合取子句為真」的 DNF;<strong>full（canonical）DNF</strong>是每個變數（正或負字面）至少在每個合取子句出現一次。並非所有 SDNF 都是 full DNF。</li>
+<li><strong>Lemma 1</strong>：任一 SDNF 可映成能量函數（每合取子句對應一乘積項，僅當該子句為真時才為 1）。</li>
+<li><strong>Theorem 1（核心）</strong>：任一 SDNF 可映成 RBM 能量函數（式 2），使 c(v)=ψ(min_h G(v,h))。對每個合取子句設一隱藏單元 h_j，能量項在 v 滿足該子句時最小（值 −1×信心 c），否則 h_j=0、能量 0。<strong>隱藏單元數隨 disjunct 數線性成長。</strong></li>
+<li>推論：任一 WFF 皆可轉 DNF→full DNF（亦為 SDNF）→ RBM 能量函數。轉 full DNF 可能昂貴；若已是 CNF，可不經 SDNF 直接轉（見 §3.6.1）。</li>
+<li>給出把子句經「變數消去法 + De Morgan」轉成 SDNF 的方法（式 3–5），並以 <strong>if-then 規則 a→b</strong> 為例示範（式 6–8）。</li>
+</ul>
+<h3 id="33-rbm-中的推理">3.3 RBM 中的推理</h3>
+<h4 id="331-推理即取樣">3.3.1 推理即取樣</h4>
+<ul>
+<li><strong>Lemma 2</strong>：對 RBM（能量 G 等價於 WFF c），把部分變數指定真值後，<strong>對其餘變數做 Gibbs 取樣 等價於 搜尋滿足 c 的賦值</strong>。證：Theorem 1 已使賦值按能量偏序（模型↔極小）；最小化能量即最大化可滿足性。Gibbs 取樣依條件分布 p(h|v)、p(v|h)（式 11，皆為負能量梯度的單調函數）逐步逼近滿足賦值。</li>
+</ul>
+<h4 id="332-推理即降低自由能">3.3.2 推理即降低自由能</h4>
+<ul>
+<li>未指定變數不多時可直接算機率（式 12），其中 <strong>自由能（free energy）</strong> 是被信心值 c 縮放的負 softplus（圖 2）：正輸入給負輸出、負輸入給近零輸出。每個自由能項對應 SDNF 一合取子句；<strong>賦值愈可能滿足公式，自由能愈低</strong>。圖 3：55 子句 CNF 的能量/自由能與「已滿足子句數」呈<strong>線性相關</strong>，c 增大時最小能量與自由能收斂。</li>
+</ul>
+<h3 id="34-邏輯波茲曼機lbm">3.4 邏輯波茲曼機（LBM）</h3>
+<p>給定 SDNF，依 Theorem 1 建 RBM：對每個合取子句建一隱藏神經元（SDNF 中的析取由「每 disjunct 一隱藏神經元」實作），權重/偏置由能量函數讀出。<strong>學習</strong>結合資料與邏輯公式知識：公式為空則退化為隨機初始化的標準 RBM。透過負對數似然梯度分析（式 14，非凸）說明：選取<strong>夠大且相等的信心值 c</strong>，可保證「滿足賦值僅激活一個隱藏單元、不滿足則全不激活」，從而找到解。</p>
+<ul>
+<li><strong>例 3（XOR）</strong>：a⊕b 轉 SDNF，依各合取子句加能量項，建出等價 RBM（圖 4），真值表與能量對應見表 1。</li>
+<li><strong>例 4</strong>：a→b 的 SDNF 需 3 隱藏單元（單變數項可併入可見單元偏置實作）。隱藏單元數隨 disjunct 線性成長；最貴的是必要時的 WFF→SDNF 轉換。</li>
+</ul>
+<h3 id="35-實驗結果">3.5 實驗結果</h3>
+<h4 id="351-推理">3.5.1 推理</h4>
+<p>定義一類公式（式 15，2^N×2^M 賦值、2^M 個為解），轉 SDNF（式 16）後用 Gibbs 取樣找模型；自由能 ≤ −c 即接受為解。<strong>準確率 100%</strong>（接受者必滿足，由 Theorem 1 保證）。<strong>覆蓋率（完整性）</strong>：圖 5，所需樣本數<strong>遠小於</strong>可能賦值數——M=20,N=10 約 <strong>750 萬樣本</strong>達 100% 覆蓋，而可能賦值約 <strong>10 億</strong>（比率 ~10⁻²）;M=30,N=10 更低。圖 6：固定 M=20、N 由 3→10，時間隨搜尋空間指數成長但<strong>尺度遠低</strong>（N=10 僅約數百秒級）。</p>
+<h4 id="352-從資料與知識學習">3.5.2 從資料與知識學習</h4>
+<p>在 CILP++ 用過的 7 個 ILP benchmark 上評估，對手為 Aleph（符號）、CILP++（神經符號）、標準 RBM（神經）。LBM 由 BK 子句初始化（每子句一隱藏單元，再加隨機權重隱藏單元；BK 可於學習中被修正），判別式訓練。資料集：<strong>Mutagenesis、KRK、UW-CSE、Alzheimer（amine/acetyl/memory/toxic）</strong>;Mutagenesis/KRK 用 50% 資料建初始 LBM，較大的 UW-CSE/Alzheimer 用 10% 當 BK，其餘做 10-fold（UW-CSE 5-fold）交叉驗證。<strong>結果（表 2）：LBM 在 7 項中 5 項最佳</strong>;BK 可從範例學到時 LBM≈RBM 但訓練更快；唯 <strong>alz-acetyl</strong> Aleph 最佳（該任務重度依賴 BK 正確性）。CILP++ 比 Aleph 快很多且結果相當；LBM 執行時間看來有前景。</p>
+<h3 id="36-lbm-的延伸">3.6 LBM 的延伸</h3>
+<h4 id="361-把-cnf-直接轉-rbm">3.6.1 把 CNF 直接轉 RBM</h4>
+<p>一般轉 SDNF 可能昂貴；知識為 CNF 時，對每個子句套同樣轉換，得「SDNF 的合取」（本身非 SDNF，式 18）。<strong>空間複雜度由 O(2^k) 升到 O(m·2^k)</strong>（m 子句、k 變數），但現代系統＋RBM 高度可平行化即可化解。等價性仍成立（式 19;CNF 滿足 ⟺ 所有 SDNF 滿足）。用信心 c 時，已滿足子句數正比於最小化能量（c 增大時亦正比於自由能）。</p>
+<h4 id="362-把-lbm-當-sat-solver">3.6.2 把 LBM 當 SAT solver</h4>
+<p>SAT 是首個被證 NP-complete 的問題，實務以 CNF 表示。CNF→LBM 後，把離散 SAT 轉成<strong>連續最佳化</strong>：每布林變數以 sigmoid(θ) 表示，最小化（易算且可微的）自由能。圖 7：θ 愈負（對應變數→0）函數趨極小＝滿足賦值；信心 c 對能量地形影響小，但對自由能——<strong>c 小則地形較平滑（利最佳化但縮小局部與全域極小差距）、c 大則邊界更明顯（更難定位全域最佳）</strong>，須權衡。</p>
+<h4 id="363-與其他方法比較">3.6.3 與其他方法比較</h4>
+<p>不像 NeuroSAT/[53] 需用傳統 solver 生成的大資料集訓練，本法<strong>直接把 CNF 轉 LBM，不依賴資料</strong>；比起用稠密/高階波茲曼機者，本法用結構簡單得多的 <strong>RBM</strong>、無需改動網路。LBM 雖<strong>尚不敵頂尖 SAT solver</strong>，但本質是神經網路（利於整合推理與學習）、<strong>不需先知 SAT 結構或 backtracking/unit propagation</strong> 等技巧；當前僅用現成最佳化方法，仍有平行化與進階策略的改進空間。</p>
+<h4 id="364-sat-求解方法與初步結果">3.6.4 SAT 求解方法與初步結果</h4>
+<p>以隨機 SAT 為案例。CNF→RBM 後用三類方法：<strong>Gibbs 取樣</strong>（&lt;40 變數可解；更大常陷局部極小，1000 步自由能不降則判可能不可滿足）;<strong>TensorFlow 梯度</strong>（&gt;20 變數易陷局部極小，調 c 平滑地形幫助有限）;<strong>Scipy 隨機最佳化</strong>（<strong>dual_annealing、differential_evolution 擴展性較好，可解到約 100 變數</strong>）。顯示隨機全域最佳化是用 RBM 解較大 SAT 的可行方向。</p>
+<h4 id="365-在-lbm-中實作-penalty-logic">3.6.5 在 LBM 中實作 Penalty Logic</h4>
+<p><strong>Penalty Logic</strong> 最接近 LBM：第一步建隱藏變數把公式化簡為「至多三變數子公式」的合取，但其能量項可能含隱藏變數間連接，<strong>非 RBM 所允許</strong>，須不斷加隱藏變數轉成二次型（高階 Hopfield/hypergraph，如 XOR 之例對照圖 4）。LBM 則對每個公式套 Theorem 1。對<strong>加權公式</strong> {w_i, c_i}，每個由 c_i 生成的能量項乘 w_i 即得等價 RBM。</p>
+<ul>
+<li><strong>Lemma 3</strong>：給定加權知識庫，存在等價 RBM 使 ψ(min_h G(v,h))=∑（滿足子句之權重）。子句經 SDNF 分解為加權合取子句，被包含（subsumed）/相同者合併權重。</li>
+<li><strong>例 5（Nixon diamond）</strong>：取自原 Penalty Logic 論文的加權知識庫（權重 1000 與 10）;4 個加權子句轉 SDNF 產 8 合取子句，建出 4 輸入 + 7 隱藏神經元的 RBM（圖 8）。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Aeon：長時程 LLM 代理人的高效能神經符號記憶管理（Aeon: High-Performance Neuro-Symbolic Memory Management for Long-Horizon LLM Agents）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Mustafa Arslan（Independent Researcher, Istanbul）</p><p>日期：2026-02-17（v3）</p><p>arXiv：2601.15311</p><p><a href="https://arxiv.org/abs/2601.15311" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="aeon長時程-llm-代理人的高效能神經符號記憶管理重點摘要">《Aeon：長時程 LLM 代理人的高效能神經符號記憶管理》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Aeon</strong> 是一個 <strong>C++23/Python 混合的「認知作業系統」（Cognitive Operating System）</strong>：將 LLM 記憶從被動的向量資料庫查詢問題重新定義為<strong>主動的 OS 資源管理問題</strong>，以 INT8 對稱純量量化（3.1x 空間壓縮、5.6x 數學加速）、解耦 WAL（&lt;1% 插入成本）、Sidecar Blob Arena（解除 440 字元文字上限）、語義旁視緩衝（SLB，85%+ 命中率、sub-5µs）等核心機制，在 Apple M4 Max 上證明記憶管理可以做到<strong>核心級延遲（ns 級 dot product、µs 級樹遍歷）</strong>，同時保有 crash-recoverability 與多租戶隔離。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>Transformer 自注意力 O(N²) 與「Lost in the Middle」現象使得 LLM 在長時程任務上的推理能力隨上下文增長而退化。既有方案（Flat RAG）將記憶視為無結構的向量包（bag of vectors），丟失了互動的<strong>階層結構、時間演化與因果譜系</strong>，導致「Vector Haze」——檢索到語義相似但脈絡無關的事實。需要一個能同時捕捉空間（語義）與時間（因果）結構、且效能足以應對即時互動的記憶系統。</p>
+<h2 id="核心設計core-shell-分離">核心設計：Core-Shell 分離</h2>
+<ul>
+<li><strong>Core（Ring 0，C++23）</strong>：所有高頻低延遲操作——向量相似搜尋、樹遍歷、記憶管理、WAL flush、EBR，直接操作原始記憶體頁並利用 SIMD（ARM NEON SDOT／x86-64 SIMDe）硬體加速。</li>
+<li><strong>Shell（Ring 3，Python）</strong>：高階控制邏輯（LLM 互動、提示工程、圖拓撲管理），透過 nanobind 唯讀共享記憶體頁操作。</li>
+<li><strong>零拷貝約束</strong>：Core 與 Shell 間絕不序列化資料——334 ns 傳輸 10 MB（vs. JSON 318 ms ≈ 10⁶× 慢）。</li>
+</ul>
+<h2 id="核心組件">核心組件</h2>
+<h3 id="1-atlas空間記憶核心">1. Atlas（空間記憶核心）</h3>
+<ul>
+<li>節點定義 N = {id, v, C, meta, sq}，其中 v 為 FP32 或 INT8 嵌入向量、C 為子節點集合、sq 為量化比例因子。</li>
+<li><strong>INT8 對稱純量量化</strong>作為一級儲存格式：每節點從 3,392 B（FP32）壓至 1,088 B（INT8）@ D=768（3.1x）。NEON SDOT 內積 4.70 ns，5.6x 超越 FP32（26.5 ns）。</li>
+<li><strong>動態步幅計算（Dynamic Stride）</strong>：AtlasHeader 儲存 D、M（metadata 大小）、Q（量化型態），執行期計算 node_byte_stride，單一編譯二進位支援任意嵌入模型與精度。</li>
+<li><strong>Greedy SIMD Descent</strong>：O(log_B M) 搜尋，B 為分支因子。</li>
+<li><strong>Double-Buffered Shadow Compaction</strong>：受 Redis BGSAVE 啟發，主執行緒僅凍結 &lt;10 µs，所有 I/O 在背景執行緒進行，零卡頓。</li>
+</ul>
+<h3 id="2-trace情節脈絡圖">2. Trace（情節脈絡圖）</h3>
+<ul>
+<li>結構為 DAG G = (V, E)，V 含異質 TraceEvent 節點（V_user, V_system, V_concept），E 含時序邊（E_next）與參照邊（E_ref）。</li>
+<li><strong>神經符號混合</strong>：節點以神經嵌入表示（可搜尋），邊以符號約束定義因果關係。這正是 ai_core §3.6「神經符號記憶管理 = 固化引擎記憶」的核心對應：神經嵌入提供相似性可檢索性，符號邊提供確定性因果可追溯性——固化引擎所需要的結構化、可審計的記憶正是這種雙重表徵。</li>
+<li><strong>Trace Block Index（TBI）</strong>：將事件分組為 1024 大小的區塊，以增量更新的質心進行兩階段 SIMD 掃描（Phase 1 區塊掃描 O(|V|/B) → Phase 2 事件掃描 O(K·B)），在 10⁵ 事件下仍 sub-50 ms 檢索。</li>
+</ul>
+<h3 id="3-write-ahead-logwal">3. Write-Ahead Log（WAL）</h3>
+<ul>
+<li>三步鎖定協定：(1) 序列化（無鎖）→ (2) 寫入磁碟 fdatasync（僅 wal_mutex_）→ (3) 寫入 RAM delta buffer（僅 delta_mutex_）。</li>
+<li>關鍵洞察：磁碟 I/O 與 RAM 變異永不競爭同一 mutex → &lt;1% 插入延遲開銷（2.23 µs vs 2.24 µs，統計上不可區分）。</li>
+<li>復原時依序重播、CRC32 校驗、丟棄 torn records。</li>
+</ul>
+<h3 id="4-sidecar-blob-arena">4. Sidecar Blob Arena</h3>
+<ul>
+<li>以 BlobRef 間接取代 440 字元文字欄位：64 位元組 text_preview（對齊單一快取線）+ blob_offset/blob_size 指向 mmap 附加型 blob 檔案。</li>
+<li>世代垃圾回收：壓縮時僅複製非墓碑事件參照的 blob 至新世代檔案；舊檔案在所有 EBR reader 推進後刪除。</li>
+</ul>
+<h3 id="5-semantic-lookaside-bufferslb">5. Semantic Lookaside Buffer（SLB）</h3>
+<ul>
+<li>大小 K=64 的環形緩衝，全部置於 L1/L2 快取。</li>
+<li><strong>語義慣性（Semantic Inertia）</strong>：連續對話中 t_i 與 t_{i+1} 高度相關，使 85%+ 查詢命中快取。</li>
+<li>關鍵架構決策——<strong>FP32-Only Cache</strong>：無論 Atlas 使用何種量化格式，插入 SLB 時皆解量化為 FP32，以 3.56 µs 避免每次掃描的解量化開銷。</li>
+<li>多租戶隔離：64 個獨立環形緩衝，依 session_id hash 路由，支援 10 萬+ 併行 session。</li>
+</ul>
+<h3 id="6-epoch-based-reclamationebr">6. Epoch-Based Reclamation（EBR）</h3>
+<ul>
+<li>無鎖讀取路徑，cache-line-padded epoch 計數器消除偽共享。</li>
+<li>16 執行緒敵意競爭下 P99 讀取延遲 750 ns。</li>
+</ul>
+<h2 id="實驗結果apple-m4-max">實驗結果（Apple M4 Max）</h2>
+<table>
+<thead>
+<tr>
+<th>指標</th>
+<th>數值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>INT8 dot product</td>
+<td>4.70 ns（5.6x over FP32）</td>
+</tr>
+<tr>
+<td>樹遍歷（100K, INT8）</td>
+<td>3.09 µs（3.4x over FP32）</td>
+</tr>
+<tr>
+<td>空間壓縮</td>
+<td>3.1x（141 MB vs 440 MB @ 100K）</td>
+</tr>
+<tr>
+<td>WAL 插入開銷</td>
+<td>&lt;1%（統計上不可區分）</td>
+</tr>
+<tr>
+<td>SLB 快取命中延遲</td>
+<td>3.56 µs（64 元素掃描）</td>
+</tr>
+<tr>
+<td>SLB 命中率（Conversational Walk）</td>
+<td>&gt;85%，有效延遲 4.60 µs</td>
+</tr>
+<tr>
+<td>EBR P99（16 執行緒）</td>
+<td>750 ns</td>
+</tr>
+<tr>
+<td>零拷貝傳輸（10 MB）</td>
+<td>334 ns</td>
+</tr>
+<tr>
+<td>Atlas vs Flat Scan @ 1M 節點</td>
+<td>&gt;6,500x 加速（10.5 µs vs 69.8 ms）</td>
+</tr>
+<tr>
+<td>Beam=3 + CSLS（1M 節點）</td>
+<td>30.2 µs P50</td>
+</tr>
+</tbody>
+</table>
+<h2 id="局限與未來方向">局限與未來方向</h2>
+<ul>
+<li>目前僅支援文字嵌入，多模態（音訊、視訊、結構化資料）共置於同一 Atlas 為自然延伸，挑戰在跨模態距離度量與可變維度。</li>
+<li>多租戶生產部署需硬體強制隔離（Intel SGX / ARM CCA）——從 OS 類比的 process isolation 推進到完整的記憶體保護。</li>
+<li>暫未涉及 beam search 或抽樣式解碼（僅 greedy descent）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>定位</strong>：高效能系統論文（C++23 kernel + 完整 benchmark），證明了 LLM 記憶管理可以且應該在核心層級解決——不是讓 LLM 自己管記憶（MemGPT），而是交給一個真正的核心。</li>
+<li><strong>對 ai_core §3.6 固化引擎</strong>：Aeon 的神經符號記憶架構（Atlas 空間索引 + Trace 因果圖）示範了固化引擎的兩個必要維度——語義相似性（神經嵌入）使「相似經驗可被召回」，符號因果鏈（symbolic edges）使「每條記憶的來源與影響可被審計」。沒有後者，固化引擎只是一堆無法問責的向量；Aeon 的 Trace 設計就是固化引擎該有的結構化記憶骨架。</li>
+<li><strong>對 §3.3 成本梯度</strong>：SLB 的語義快取（便宜、高命中率）→ Atlas 樹遍歷（中等、精確）的分層架構是記憶檢索上的成本梯度——不是所有查詢都該走昂貴的全樹遍歷，正如不是所有任務都該呼叫最貴的模型。</li>
+<li><strong>對 §2 貴稀有 vs 便宜高頻</strong>：Core（C++23，ns 級）vs Shell（Python，ms 級）的分離就是「貴稀有智能」與「便宜高頻智能」在系統層的物理實例化。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2601.15311_Aeon.zh-TW.html"><code>../translate/2601.15311_Aeon.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

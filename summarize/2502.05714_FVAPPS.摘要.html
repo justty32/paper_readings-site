@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Proving the Coding Interview：一個形式驗證程式碼生成的基準》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Quinn Dougherty、Ronak Mehta</p><p>日期：2025-02</p><p>arXiv：2502.05714</p><p><a href="https://arxiv.org/abs/2502.05714" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="proving-the-coding-interview一個形式驗證程式碼生成的基準重點摘要">《Proving the Coding Interview：一個形式驗證程式碼生成的基準》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>FVAPPS</strong>（Formally Verified Automated Programming Progress Standards）：將 APPS 競賽程式基準從 Python 單元測試<strong>升級為 Lean 4 形式規格與數學證明</strong>——模型不僅要實作函數，還須完成形式正確性定理證明（以 <code>sorry</code> 填補 Lean 證明空缺），是目前最大的形式驗證程式碼生成基準（4,715 題）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>傳統程式碼生成基準（HumanEval、MBPP、APPS）仰賴<strong>單元測試</strong>判斷正確性，但單元測試不完整、易產生誤報、無法保證邊界案例無誤。FVAPPS 將信任從「黑箱 LLM 輸出通過幾個測試案例」轉移到「確定性 Lean 4 核心型別檢查器」，要求模型生成的程式碼搭配<strong>機器可檢的形式證明</strong>，使正確性不再取決於測試案例的取樣代表性。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>五階段管線</strong>（§3）：
+<ol>
+<li>Stage 1：從 APPS Python 問題預處理與聚合</li>
+<li>Stage 2：以 Pytest/Hypothesis 生成屬性式測試</li>
+<li>Stage 3：翻譯為 Lean 4（函數定義 + 未證明的 <code>sorry</code> 定理），產出 4,715 個「Unguarded」樣本</li>
+<li>Stage 4：加上 <code>#guard</code> 內聯單元斷言，確保函數可解，產出 2,089 個「Guarded」樣本</li>
+<li>Stage 5：以 Lean 的 Plausible 框架進行屬性測試，產出 1,083 個「Guarded and Plausible」最高品質樣本</li>
+</ol>
+</li>
+<li><strong>任務格式</strong>：每個任務給出英文問題敘述 + Lean 4 檔案，包含函數簽名與形式規格定理（以 <code>sorry</code> 佔位）。正確提交需同時包含<strong>實作程式碼</strong>與<strong>證明策略</strong>，並在 Lean 核心中編譯通過、無 <code>sorry</code>。</li>
+<li><strong>評測協定</strong>：以 <code>lake build</code> 編譯回饋進行最多 50 輪迭代的 agentic scaffold loop。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>基準線實驗</strong>（100 題隨機抽樣，406 條定理）：
+<ul>
+<li>Claude 3.5 Sonnet：定義完成 93/100 題，43/100 題至少一條證明，總定理證明率 <strong>30.0%</strong>（121/406）</li>
+<li>Gemini 1.5 Pro：定義完成 71/100 題，23/100 題至少一條證明，總定理證明率 <strong>18.5%</strong>（74/406）</li>
+<li>零樣本/單樣本可解的證明僅佔 ~20%，多數證明需要 agentic scaffold 迭代。</li>
+</ul>
+</li>
+<li><strong>人類基準對比</strong>：專家耗時 <strong>10 小時</strong>處理單一題目（sample 0023 Crooked Election），成功寫出函數定義（含複雜終止證明 <code>termination_by</code>/<code>decreasing_by omega</code>），但<strong>未能證明任何定理</strong>——因遞迴展開導致堆疊溢位。</li>
+<li><strong>關鍵發現</strong>：
+<ol>
+<li><strong>命令式 vs 歸納式證明瓶頸</strong>：LLM 頻繁使用 <code>Id.run do</code> 命令式區塊實作，編譯容易但形式推理極難，導致證明策略臃腫與分歧。未來模型需學習以函數式風格編碼以保留歸納證明的人體工學。</li>
+<li><strong>編譯器回饋不可或缺</strong>：無 agentic feedback loop 的開源模型無法完成單次證明。</li>
+<li><strong>形式驗證重新定義信任</strong>：信任從 LLM 執行移至確定性核心型別檢查器。</li>
+</ol>
+</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>ai_core §3.4 憑證准入的最高形式</strong>：FVAPPS 展示了「程式碼正確性憑證」的終極實例——不是測試通過率、不是人類審查，而是<strong>Lean 4 核心型別檢查器</strong>的機械驗證。這直接對應 ai_core §3.4「憑證必須是可獨立驗證的」原則，Lean kernel 就是一個不可欺騙的驗證器。</li>
+<li><strong>ai_core §5 下層受約束填碼的直接實例</strong>：FVAPPS 的任務格式——給定型別簽名與形式規格，要求填入實作與證明——正是 §5「受約束生成」的落地：型別簽名與定理陳述構成<strong>可機械檢查的規格合約</strong>，LLM 在此合約邊界內生成程式碼，不合約者直接編譯失敗。</li>
+<li><strong>命令式 vs 函數式瓶頸對應固化引擎設計</strong>：論文的關鍵發現（命令式程式碼雖編譯容易但無法形式推理）直接對應 ai_core §3.6 固化引擎的設計取捨——固化後的確定性程式碼必須是<strong>可推理的</strong>（可被靜態分析、可被形式驗證），否則固化只是把 LLM 的不確定性換成另一種不確定性。</li>
+<li>與 <a class="paper-reference" href="2604.16584_LeetProof.%E6%91%98%E8%A6%81.html">2604.16584</a> LeetProof（agentic Lean 驗證器聯合合成）並讀為「形式驗證程式碼生成」的互補路線（FVAPPS 提供基準、LeetProof 提供方法）；與 <a class="paper-reference" href="2605.10712_AutoSOUP.%E6%91%98%E8%A6%81.html">2605.10712</a> AutoSOUP（記憶體安全單元證明生成）對照（AutoSOUP 以 C/嵌入式為域、FVAPPS 以 Lean/函數式為域，兩者共築形式驗證生成的全景）。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2502.05714_FVAPPS.zh-TW.html"><code>../translate/2502.05714_FVAPPS.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

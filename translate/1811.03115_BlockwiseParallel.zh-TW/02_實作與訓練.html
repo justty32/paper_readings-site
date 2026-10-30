@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實作與訓練 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../1811.03115_BlockwiseParallel.zh-TW.html">回 1811.03115_BlockwiseParallel.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="6-實作與訓練">6 實作與訓練</h2>
+<p>實驗實作第 4 節的合併模型。給定為某任務預訓練好的基線 Transformer，我們在 decoder 輸出與最終投影層之間插入<strong>單一 feedforward 層</strong>（隱藏維度 k×d_hidden、輸出維度 k×d_model，與網路其餘部分同維），並在輸入與 k 個輸出之間加殘差連接；再將原詞表投影層一致地套用到 k 個輸出，得到 p_1,…,p_k 的 logits（圖 3）。</p>
+<p><strong>訓練損失</strong>：受記憶體限制，無法用 p_1,…,p_k 的 k 個交叉熵損失之平均當總損失；改為<strong>每個 minibatch 從中均勻隨機抽一個子損失</strong>，得到完整損失的無偏估計。推論時所有 logits 可平行計算，相對基礎模型只增邊際成本。</p>
+<p><strong>圖 3</strong>：對 Transformer 的改動——在原 decoder 輸出層後插入一個帶殘差連接的多輸出 feedforward 層，再對所有輸出套用原詞表投影，即可一次預測未來 k 個位置而非一個。</p>
+<h3 id="61-微調fine-tuning">6.1 微調（Fine Tuning）</h3>
+<p>一個重要問題是預訓練參數是否該為此聯合預測任務微調。<strong>凍結</strong>可保住原模型品質，但未來預測或許較不準；<strong>微調</strong>可能改善模型內部一致性，卻犧牲最終效能。實驗兩者皆試。</p>
+<h3 id="62-知識蒸餾knowledge-distillation">6.2 知識蒸餾（Knowledge Distillation）</h3>
+<p>知識蒸餾（以另一模型的輸出訓練本模型）已被證明能改善多種任務，甚至師生同架構同大小時亦然。我們認為<strong>序列級蒸餾</strong>對分塊平行解碼特別有用：老師模型一致的 mode breaking 使訓練集更可預測（輔助頭更易猜中）。語言任務同時用原始資料與蒸餾資料實驗；蒸餾資料以「同超參數但不同隨機種子的預訓練模型 beam 解碼」產生，beam 超參沿用 Vaswani et al. (2017)。</p>
+<h2 id="7-實驗">7 實驗</h2>
+<p>全部以開源 Tensor2Tensor 實作，程式碼公開。</p>
+<h3 id="71-機器翻譯">7.1 機器翻譯</h3>
+<p>用 WMT 2014 英德資料集。基線為 transformer_base、於 8 張 P100 訓練 100 萬步，貪婪解碼在 newstest2013 開發集得 BLEU 25.56。在其上訓練各種塊大小 k 的合併模型，各再訓 100 萬步（用原始或蒸餾資料）。</p>
+<p><strong>表 1（newstest2013，BLEU / 平均接受塊大小）擇要</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>k</th>
+<th>Regular（原始+凍結）</th>
+<th>Distillation（蒸餾+凍結）</th>
+<th>Fine Tuning（原始+微調）</th>
+<th>Both（蒸餾+微調）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>26.00 / 1.00</td>
+<td>26.41 / 1.00</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>2</td>
+<td>25.81 / 1.51</td>
+<td>26.52 / 1.55</td>
+<td>25.74 / 1.78</td>
+<td>26.58 / 1.88</td>
+</tr>
+<tr>
+<td>4</td>
+<td>25.84 / 1.73</td>
+<td>26.31 / 1.85</td>
+<td>25.05 / 2.69</td>
+<td>26.36 / 3.27</td>
+</tr>
+<tr>
+<td>6</td>
+<td>26.08 / 1.76</td>
+<td>26.26 / 1.90</td>
+<td>24.69 / 2.98</td>
+<td>26.18 / 4.18</td>
+</tr>
+<tr>
+<td>8</td>
+<td>25.82 / 1.76</td>
+<td>26.25 / 1.91</td>
+<td>24.27 / 3.01</td>
+<td>26.11 / 4.69</td>
+</tr>
+<tr>
+<td>10</td>
+<td>25.69 / 1.74</td>
+<td>26.34 / 1.90</td>
+<td>23.51 / 2.87</td>
+<td>25.60 / 4.95</td>
+</tr>
+</tbody>
+</table>
+<p>觀察：Regular 設定下平均塊大小達 1.76（不損品質即可提速）；改用蒸餾資料，同塊大小 BLEU +0.43、平均塊達 1.91（兩指標皆略升）。加入微調後平均塊大幅上升，但大 k 時品質下滑；蒸餾能減輕此退化並讓前向預測更準（呼應前述直覺）。最高平均塊 4.95 者僅比蒸餾初始模型低 0.81 BLEU。BLEU–塊大小之間呈<strong>平滑取捨前緣</strong>，實務者可自選偏品質、偏速度或折衷的設定。</p>
+<p>追加近似解碼：top-2 準則得 k=10：25.04 / 5.67；top-3 得 k=10：24.68 / 5.91——以更多 BLEU 損失換更大塊。反之最小塊大小（5.3 節）BLEU 大跌而塊僅微增，顯示「偶爾只接受一個 token 的彈性」很重要，硬性下界效果較差。</p>
+<h3 id="72-影像超解析">7.2 影像超解析</h3>
+<p>用 CelebA，任務為 8×8→32×32。基線為帶 1D 局部注意力的 Image Transformer（img2img_transformer_b3，訓 100 萬步），各塊大小模型再訓 25 萬步。影像被分解為每像素 RGB 強度序列（raster scan），每 token 為 0–255 整數。推論時要嘛精確相符、要嘛用 5.2 節距離準則 ε=2 近似相符。</p>
+<p><strong>表 2（CelebA，平均接受塊大小）擇要</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>k</th>
+<th>Regular</th>
+<th>Approximate</th>
+<th>Fine Tuning</th>
+<th>Both</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2</td>
+<td>1.07</td>
+<td>1.24</td>
+<td>1.59</td>
+<td>1.96</td>
+</tr>
+<tr>
+<td>4</td>
+<td>1.08</td>
+<td>1.36</td>
+<td>2.11</td>
+<td>3.75</td>
+</tr>
+<tr>
+<td>6</td>
+<td>1.09</td>
+<td>1.38</td>
+<td>2.23</td>
+<td>5.25</td>
+</tr>
+<tr>
+<td>8</td>
+<td>1.09</td>
+<td>1.49</td>
+<td>2.17</td>
+<td>6.36</td>
+</tr>
+<tr>
+<td>10</td>
+<td>1.10</td>
+<td>1.40</td>
+<td>2.04</td>
+<td>6.79</td>
+</tr>
+</tbody>
+</table>
+<p>凍結參數下精確匹配過於嚴苛、幾乎無加速；放寬準則僅小幅改善（平均塊仍 &lt;1.5）。微調在精確匹配下較好（最佳略過 2.2）。近似+微調兩者結合遠優於單獨任一：小塊時平均塊接近上界 k，k=10 時達 <strong>6.79</strong>（近 7x 迭代縮減）。</p>
+<p><strong>人評（表 3）</strong>：Mechanical Turk 上呈示「k=1 凍結」與「k&gt;1 微調」兩版影像，問哪張更像真實相機拍攝。各組偏好率皆接近 50%（50.0%–56.8%），顯示感知品質差異甚微；受試者甚至<strong>略偏好微調模型</strong>，其中「微調+近似、中等塊 k=6」得分最高。作者認為較難的訓練任務與近似準則帶來略多的雜訊與變化，使輸出更自然（相對基線的平滑輸出）。</p>
+<h3 id="73-牆鐘加速">7.3 牆鐘加速</h3>
+<p>除迭代縮減外，另量測實際牆鐘加速（計入平行預測的額外開銷）。<strong>圖 4</strong>：翻譯的牆鐘加速在 k=8、平均塊 4.7 時達峰值 <strong>3.3x</strong>；超解析在 k=6、平均塊 5.3 時達 <strong>4.0x</strong>。兩者塊大小續增時迭代數仍降，但因計算成本升高，牆鐘增速開始回落。</p>
+<p>以最佳翻譯設定（蒸餾+微調）在 newstest2014 測試集評估（<strong>表 4</strong> 與相關工作對比）：本法 k=2 得 28.95 BLEU / 1.72x、k=4 得 28.54 / 2.69x、k=6 得 28.11 / 3.10x、k=8 得 27.88 / 3.31x。相較原版 Transformer beam-4（28.4）僅差約 0.29 BLEU，而牆鐘超過 3x。對照同期方法——非自迴歸 Transformer 僅 17–19 BLEU、迭代精煉 Transformer（Lee et al.）在可比加速下約 20–22 BLEU——<strong>本法品質損失遠小得多</strong>。</p>
+<h3 id="74-範例">7.4 範例</h3>
+<p><strong>翻譯</strong>：以子詞為單位生成（底線標詞界）。例句 6 步生成，各步接受塊大小為 10、5、4、10、2、3 個 token，顯示塊大小隨內容波動、平均遠大於 1。</p>
+<p><strong>超解析</strong>：呈示典型三連圖（左：低解析輸入；中：標準貪婪解碼；右：k=10 微調近似解碼）。如人評所示，平行解碼結果品質與貪婪解碼大致相當。</p>
+<h2 id="8-結論">8 結論</h2>
+<p>我們提出分塊平行解碼，作為改善「架構允許跨輸出位置平行評分」之深度自迴歸模型解碼效能的簡單通用技術。它相對容易加到既有模型上，在機器翻譯與條件式影像生成上以零或極小品質損失顯著提升解碼速度。未來計畫探索本法與正交方法（如基於離散潛變數序列的 Kaiser et al., 2018）的結合。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/1811.03115_BlockwiseParallel.%E6%91%98%E8%A6%81.html"><code>../summarize/1811.03115_BlockwiseParallel.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

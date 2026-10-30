@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《高效訓練語言模型填補中段（Efficient Training of Language Models to Fill in the Middle）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Mohammad Bavarian, Heewoo Jun, Nikolas Tezak, John Schulman, Christine McLeavey, Jerry Tworek, Mark Chen（OpenAI）</p><p>日期：2022-07</p><p>arXiv：2207.14255</p><p><a href="https://arxiv.org/abs/2207.14255" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="高效訓練語言模型填補中段fim重點摘要">《高效訓練語言模型填補中段（FIM）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>FIM（fill-in-the-middle）＝純資料層面的變換</strong>：把文件隨機切成（prefix, middle, suffix）三段、將中段搬到最後重排成（prefix, suffix, middle）再以哨兵 token 串接訓練，即可讓因果解碼器 LM 學會「同時以前綴＋後綴為條件填補中段」——且大規模消融證明這<strong>完全不損原有左到右能力（FIM-for-free 性質）</strong>；反之事後 finetune 補學 FIM 代價極高，故建議未來自迴歸 LM 預訓練時<strong>預設加入 FIM</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>左到右因果 LM 只能以 prefix 為條件生成；encoder / encoder-decoder 模型雖能看後文，但訓練時 infill 區段太短、不敷實用。而**填空（infilling）**在實務中無所不在——寫程式助手要補 docstring、補 import、補寫一半的函數，游標前後都有 context。</li>
+<li>對超大模型而言，加新能力最關鍵的問題是「對既有能力與計算效率的影響」——本文用 8 個規模（50M–6.9B）、程式與自然語言各 16 個模型、各 100B tokens 的掃描來回答。</li>
+</ul>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>資料變換</strong>：以機率 p（FIM rate）把文件切三段搬中段，PSM 格式為 <code>&lt;pre&gt;∘Enc(prefix)∘&lt;suf&gt;∘Enc(suffix)∘&lt;mid&gt;∘Enc(middle)∘&lt;eot&gt;</code>；三段都保留 loss（此點對 FIM-for-free 成立至關重要），推論時 prompt 到 <code>&lt;mid&gt;</code>、採樣到 <code>&lt;eot&gt;</code> 為止。</li>
+<li><strong>SPM 模式</strong>：改為 suffix 在前（利於推論時 prefix 增長不失效 KV cache）；採特殊編碼 <code>&lt;pre&gt;&lt;suf&gt;∘Enc(suffix)∘&lt;mid&gt;∘Enc(prefix)…</code> 使 SPM 成為 PSM 的自然特例、最大化兩格式正向遷移；主線訓練 PSM/SPM 各半。</li>
+<li><strong>context-level FIM</strong>：在打包切塊「之後」才做變換，避免 prefix/suffix 被切出 context 造成有效 FIM rate 下降。</li>
+<li><strong>字元級隨機切段</strong>：中段邊界落在 subtoken 內也能處理，對真實游標場景最穩健。</li>
+<li><strong>新 benchmark</strong>：在 InCoder 的單行/多行填空外，新增 random span infilling（HumanEval 隨機字元跨度，1640 題，已開源）。</li>
+</ul>
+<h2 id="結果具體數字">結果（具體數字）</h2>
+<ul>
+<li><strong>FIM-for-free</strong>：50% FIM rate 下，左到右 test loss 與 HumanEval 等下游基準跟 0% 模型全程重合；FIM rate 高到 90% 仍不傷 AR 能力，100% 才劣化；FIM rate 越高填空 pass rate 越好（但 FIM perplexity 幾乎看不出差異→<strong>必須用採樣評測，光看 loss 會誤導</strong>）。</li>
+<li><strong>格式消融</strong>：SPM 略優於 PSM；joint 50-50 訓練有正遷移（50% FIM 的 joint ≈ 90% FIM 的純 SPM）；純 SPM 在 PSM 評測近乎全滅（0.023 vs 0.62）。context-level 遠勝 document-level（pass rate 顯著提升、loss 只差 0.001 nats）。字元級切段在 random span 上 0.321，輾壓行級 0.015 / token 級 0.102。</li>
+<li><strong>finetune 低效</strong>：16 組超參的 XL finetune 中，只有「FIM rate 0.9＋原預訓練學習率＋50B tokens（＝預訓練一半算力）」才追平從頭訓練的基線——預訓練免費、事後補課極貴（推測與注意力模式 ossification 有關）。</li>
+<li>6.9B FIM90 模型：單行 0.751／多行 0.441／random span 0.551，勝 InCoder 6.7B（0.690/0.386/–）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>FIM 本質比左到右難：模型須規劃銜接、在對的時機生成 <code>&lt;eot&gt;</code>；常見失敗＝不會停、生成冗餘內容、忽略 suffix 自行結尾、鎖死重複——需 prompt 提示與 <strong>EOT-aware best-of-n</strong>（偏好有 <code>&lt;eot&gt;</code> 的樣本）緩解。</li>
+<li>自然語言填空品質遜於程式碼；僅研究單一空格（single-slot）；未探究語法/語義感知的切段（留作未來）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>直接對映 ai_core §5「填空節點」的訓練學基礎</strong>：上層定骨架、下層填洞的「受約束填碼」之所以可行，正因 FIM 讓模型能同時 condition 於前綴與後綴——本篇就是 code-davinci-002 填空能力的源頭研究。要挑下層填洞用的模型，「是否以足夠高的 FIM rate 預訓練」是硬指標（InCoder 式 15% 即次優）。</li>
+<li><strong>FIM-for-free 是「便宜高頻智能」的供給側論證</strong>（§2）：填空能力不需更大模型、不佔額外算力，純資料重排即得——符合 ai_core「逐步剃除昂貴依賴」路線：填洞這種局部、受約束的任務可交給小而便宜的 FIM 模型，貴模型留給骨架生成。</li>
+<li><strong>工程細節可直接搬用</strong>：<code>&lt;pre&gt;/&lt;suf&gt;/&lt;mid&gt;/&lt;eot&gt;</code> prompt 格式與 SPM 的 KV-cache 考量影響填空節點的呼叫成本；<code>&lt;eot&gt;</code> 是否出現＝模型自報「有無成功接上後綴」的<strong>可驗證信號</strong>，EOT-aware best-of-n 正是 ai_core「把 LLM 呼叫包成可靠函數」的原生驗收鉤子（§3.4 拒絕為預設：無 <code>&lt;eot&gt;</code> 即拒收重採）。</li>
+<li>**「perplexity 誤導、採樣評測（單元測試）才見真章」**呼應 ai_core 以執行驗證取代信任模型內在指標的立場；文末「預算-能力取捨」方法論亦可套用於固化引擎（§3.6）評估新增確定性能力的成本。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2207.14255_FIM.zh-TW.html"><code>../translate/2207.14255_FIM.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

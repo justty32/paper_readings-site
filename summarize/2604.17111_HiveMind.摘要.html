@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《HiveMind：以作業系統式排程管理並行 LLM Agent 工作負載》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Justice Owusu Agyemang, Jerry John Kponyo, Obed Kwasi Somuah, Elliot Amponsah, Godfred Manu Addo Boakye, Kwame Opuni-Boachie Obour Agyekum（Sperix Labs / KNUST）</p><p>日期：2026-04，並行 Agent × API resource scheduling × centralized retry</p><p>arXiv：2604.17111</p><p><a href="https://arxiv.org/abs/2604.17111" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="hivemind以作業系統式排程管理並行-llm-agent-工作負載重點摘要">《HiveMind：以作業系統式排程管理並行 LLM Agent 工作負載》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>HiveMind 把共享 LLM API key 視為稀缺的「CPU／I/O」，在所有 agent 前放透明 reverse proxy，以 admission gate、RPM/TPM tracking、AIMD、circuit breaker、token budget、priority/dependency queue 與集中 retry 避免 stampede；mock contention 中將 10–50 個 agent 的 72–100% failure 降到 0–18%，但真正 cloud rate-limit 的 production 驗證尚未做，Ollama/MLX 實驗兩邊都 0% failure。</p>
+<h2 id="為什麼像-os-scheduler">為什麼像 OS Scheduler</h2>
+<ul>
+<li>agent 是長期、stateful process；一次 session 可用 50K–500K tokens，前後 call 有依賴。</li>
+<li>API request slot 類似 CPU time slice，RPM/TPM 與 connection limit 類似 CPU/I/O 容量。</li>
+<li>context window 類似不可交換的記憶體；token budget 類似 process quota/OOM policy。</li>
+<li>uncontrolled concurrency 會造成 thundering herd、starvation、connection reset、502、429 與已消耗 token 浪費。</li>
+</ul>
+<p>動機案例是 11 個 Claude Code agent 共用 Anthropic key：8 成功、2 個 ECONNRESET、1 個 502，失敗率 27%，約浪費 135K tokens。作者認為只要錯開 5 秒即可全部完成，但這是事件後判斷，未提供同日 controlled replay 證明。</p>
+<h2 id="架構與排程元件">架構與排程元件</h2>
+<p>HiveMind 是 <code>localhost:8765</code> 的透明 HTTP proxy，agent 不需改程式，只換 endpoint。</p>
+<ul>
+<li><strong>Admission control</strong>：以 <code>asyncio.Condition</code> 保護 active counter，動態調整 <code>C_max</code>。比 semaphore 多約 50 μs，但能安全 resize。</li>
+<li><strong>Rate tracking</strong>：解析 provider headers 作 reactive throttling；另以 RPM/TPM sliding window 在第一個 response 前 proactive 限流。</li>
+<li><strong>AIMD backpressure</strong>：latency 低於 target 時 concurrency +0.5；過高或遇 429/502/reset 時乘 0.5。新值直接推給 admission controller。</li>
+<li><strong>Circuit breaker</strong>：最近 20 requests error rate ≥50% 時 open，fast-fail 503；10 秒後 half-open 放一個 probe。</li>
+<li><strong>Token budget</strong>：每 agent 85% 警告，100% checkpoint 並停止。</li>
+<li><strong>Priority/DAG</strong>：Critical &gt; High &gt; Normal &gt; Low，同 priority 先短 token job，再 FIFO；dependency 未完成不能排程。</li>
+<li><strong>Centralized retry</strong>：429/502/503/529、reset、RemoteProtocolError 以 exponential backoff+jitter 重試，<code>Retry-After</code> 優先；所有 retry 仍經 admission gate，避免每個 agent 同時重送。</li>
+<li><strong>Streaming</strong>：SSE 不 buffer，slot 持有到 stream 結束，token 從 start/delta event 抽取。</li>
+</ul>
+<h2 id="實驗結果">實驗結果</h2>
+<p>主要評估是 mock Anthropic/OpenAI server，能控制 RPM、concurrency、random 502/reset、latency spike、headers 與 SSE。每個 mock agent 做多次 sequential calls，第一個無法恢復錯誤即視為死亡。</p>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th style="text-align:right">Agents</th>
+<th style="text-align:right">Direct failure</th>
+<th style="text-align:right">HiveMind failure</th>
+<th style="text-align:right">Wasted-token reduction</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>micro-5</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">0%</td>
+<td style="text-align:right">0%</td>
+<td style="text-align:right">—</td>
+</tr>
+<tr>
+<td>micro-10</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">100%</td>
+<td style="text-align:right">10%</td>
+<td style="text-align:right">100%</td>
+</tr>
+<tr>
+<td>micro-20</td>
+<td style="text-align:right">20</td>
+<td style="text-align:right">100%</td>
+<td style="text-align:right">10%</td>
+<td style="text-align:right">94%</td>
+</tr>
+<tr>
+<td>micro-50</td>
+<td style="text-align:right">50</td>
+<td style="text-align:right">100%</td>
+<td style="text-align:right">0%</td>
+<td style="text-align:right">100%</td>
+</tr>
+<tr>
+<td>replay-11</td>
+<td style="text-align:right">11</td>
+<td style="text-align:right">73%</td>
+<td style="text-align:right">18%</td>
+<td style="text-align:right">48%</td>
+</tr>
+<tr>
+<td>stress</td>
+<td style="text-align:right">20</td>
+<td style="text-align:right">100%</td>
+<td style="text-align:right">10%</td>
+<td style="text-align:right">100%</td>
+</tr>
+<tr>
+<td>latency-spike</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">100%</td>
+<td style="text-align:right">0%</td>
+<td style="text-align:right">100%</td>
+</tr>
+</tbody>
+</table>
+<p>HiveMind wall time較長，因它讓請求排隊；direct 看似快，是因 agent 很快死亡。按完成工作量算，managed throughput 較高。</p>
+<p>Ablation 在 replay-11 的一次 11-agent run：full、no admission、no rate limit 都 0% failure；no backpressure 9.1%；no retry 63.6%；admission-only 81.8%。Retry 是此設定下最關鍵元件，但樣本只是一組 11 agent，沒有重複次數或信賴區間。</p>
+<h2 id="real-world-validation">Real-world validation</h2>
+<ul>
+<li>Ollama/Qwen3.5-4B，10 agents × 3 turns：direct 10/10、30.5s；HiveMind 10/10、28.5s。</li>
+<li>MLX/Qwen3.5-4B-4bit：direct 10/10、3.9s；HiveMind 10/10、3.6s。</li>
+<li>兩個 local server 內部會排隊，沒有重現 stampede，因而只能證明 proxy overhead &lt;3 ms/request 與相容性，不能驗證 cloud failure reduction。</li>
+<li>一次早期 MLX run 出現 RemoteProtocolError；加入 retryable list 後後續成功，這同時是實用改進，也是對測試後調整 error taxonomy 的提醒。</li>
+</ul>
+<h2 id="對千萬-agent-管理的啟發">對「千萬 Agent 管理」的啟發</h2>
+<p>HiveMind 處理的不是 agent 認知，而是共享推論資源的系統級排程。核心原則是：所有共享同一 quota 的 worker 必須由同一 admission/rate state 協調；每 agent retry 無法看見全域壓力，反而形成 herd。大規模系統應把 agent identity/state 與少量 active request slots 分離，以 priority、budget、dependency、backpressure 決定誰何時得到推論。</p>
+<p>但單機 proxy 不能管理千萬 agent。需要分散式共享 counters、lease/fencing、跨節點一致 quota、queue partition、fairness、持久 checkpoint 與多 provider routing。論文只說 Redis-backed state 在架構上支援，尚未評估。</p>
+<h2 id="與-verify-before-retry-的邊界">與 verify-before-retry 的邊界</h2>
+<p>HiveMind 的 retry 對象是 LLM inference request，通常希望取得一次 response；2608.02645 處理的則是可能已造成外部副作用的 tool action。前者集中 retry 常能救 transient failure，後者盲目 retry 可能重複付款或寄信。Runtime 必須先分類操作是否 idempotent／side-effecting：推論可排隊重試，高風險工具則先驗證 postcondition 並使用 idempotency key。</p>
+<h2 id="局限與原文矛盾">局限與原文矛盾</h2>
+<ul>
+<li>Cloud contention 的數據全部來自 mock server；真正 Ollama/MLX 兩邊都成功，沒有證明 Anthropic/OpenAI production 上同樣改善。</li>
+<li>Ablation 只有單一 replay-11 結果，<code>no admission</code> 與 <code>no rate limit</code> 被其他元件完全補償，不能據此估一般重要性。</li>
+<li>論文稱「五個 scheduling primitives」，有時列 admission、rate、AIMD、budget、priority，有時架構圖列 admission、rate、AIMD、budget、retry；retry 被實驗稱最重要，元件計數與命名不一致。</li>
+<li>Priority queue、dependency DAG、token budget 沒有獨立評估；主要成功改善其實由 retry 與 mock error model 驅動。</li>
+<li>Proxy 看不到 agent 內部進度，也不管理 filesystem、tool side effects 或兩 agent 寫同一檔案的衝突。</li>
+<li>Token 無 provider tokenizer 時用 4 chars/token，對 CJK 與程式碼會偏差。</li>
+<li>Retry 隱藏所有中間錯誤，但沒有討論 LLM API request 的重複計費、server 端已開始生成卻斷線、不可重播 streaming response 等語意。</li>
+</ul>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2604.17111_HiveMind.zh-TW.html"><code>../translate/2604.17111_HiveMind.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

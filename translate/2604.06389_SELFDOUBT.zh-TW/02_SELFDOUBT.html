@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>SELFDOUBT：以 Hedge-to-Verify Ratio 做推理 LLM 的不確定性量化（3/3） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.06389_SELFDOUBT.zh-TW.html">回 2604.06389_SELFDOUBT.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%B5%90%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-selfdoubt">3. SELFDOUBT</h2>
+<p>推理軌跡不僅暴露模型的最終答案，更暴露模型如何在推理過程表達與解決疑慮。SELFDOUBT 將此行為信號轉化為單次不確定性分數。</p>
+<h3 id="31-資料驅動標記發現">3.1 資料驅動標記發現</h3>
+<p>核心挑戰不在於 HVR 比率本身，而在於定義不同模型中的 hedging 與 verification 詞彙。推理模型不以統一詞彙表達不確定性，固定詞典會錯失模型特定措辭、削弱信號。我們使用兩階段資料驅動管線。</p>
+<p><strong>Stage 1：資料驅動種子生成</strong>。不採人工指定初始 hedge/verify 詞彙，改從模型共識中生成。查詢多個語言模型為兩種行為產生候選單詞清單：與不確定性相關的語言，以及積極檢查或確認答案的語言。每模型查詢五次。僅保留模型內穩定（多數輪次出現）且跨模型穩定（多數模型保留）的詞彙，產生每角色的共識候選集。以 BAAI/bge-m3 嵌入（Chen et al., 2025）運行迭代語意連貫性過濾：嵌入所有候選詞、計算活躍集的 centroid、低於 cosine 相似度閾值 0.7 的離群值被丟棄（保留至少 10 詞）、重算 centroid、最多 6 輪。存活詞彙以 cosine-to-centroid 連貫性排名，選取 top 10 為預設種子集。</p>
+<p><strong>Stage 2：每模型標記擴展</strong>。以 Stage 1 種子詞典為基礎，從無標註推理軌跡擴展為模型特定標記詞典。跨評估資料集採樣 90 條軌跡，從文字提取候選 1–3-gram。為抑制個人化措辭，僅保留至少出現於 9/90 條不同軌跡（10%）的 n-gram。以 bge-m3 嵌入每個候選詞，以其與 verify centroid 和 hedge centroid 的 cosine 距離差 Δ(g) = cos(g, c_verify) − cos(g, c_hedge) 評分。Δ(g) &gt; τ_verify 者進入 verify 詞典，Δ(g) &lt; −τ_hedge 者進入 hedge 詞典，其餘捨棄。結果為每模型的 hedge 詞典 H 與 verify 詞典 V，編譯為 word-boundary regex 模式供推論時軌跡掃描。標記可跨資料集遷移（附錄 G）。</p>
+<h3 id="32-hedge-to-verify-ratio">3.2 Hedge-to-Verify Ratio</h3>
+<p>給定每模型詞典 H 與 V，HVR(T) = h(T) / (v(T) + 1)，其中 h(T) 為軌跡 T 中 hedge 標記出現總次數、v(T) 為 verify 標記出現總次數。分母 +1 確保無 verify 標記時有限值。HVR 方向設計為越大表示不確定性越高，經驗上在全部 21 輪中一致。分佈本質上零膨脹：零 hedge 匹配的軌跡得 HVR = 0。</p>
+<h3 id="33-verbalized-confidence">3.3 Verbalized Confidence</h3>
+<p>除軌跡衍生不確定性外，亦使用直接自我報告信號：口語化信心。每查詢提示模型連同最終答案輸出百分比形式信心，從最終答案區域解析並除以 100 映射為 V ∈ [0,1]，越大表示越高自我報告信心。</p>
+<h3 id="34-selfdoubt-score">3.4 SELFDOUBT Score</h3>
+<p>HVR 與口語化信心捕捉互補的失敗模式——HVR 捕捉審議行為中揭露的不確定性，口語化信心捕捉模型被明確詢問時報告的不確定性。以加法 z-score 融合結合：s_SD(T) = z_r(-HVR(T)) + z_r(V)，其中 z_r(x) = (x − μ_r)/σ_r 在輪次 r 內可用聯集子集上標準化。取負使 HVR 與正確性對齊，標準化使兩通道在模型特定尺度差異下可通約。</p>
+<h2 id="4-實驗設定">4. 實驗設定</h2>
+<p><strong>模型</strong>：七個推理模型跨兩種軌跡類型。四模型產生完整推理軌跡（本地推論）：Qwen3 4B、Qwen3 14B、GPT OSS 20B、GPT OSS 120B。三模型產出壓縮思維摘要（商用 API）：Claude Sonnet 4.6、Grok 4.1 Fast、Gemini 2.5 Flash。思維摘要暴露的是提供者壓縮版內部推理，非完整 token 層級軌跡，使不確定性估計更困難。</p>
+<p><strong>資料集</strong>：GPQA-Diamond（198 題，研究所級科學）、BBH/Big-Bench Hard（300 題分層抽樣，多樣推理）、MMLU-Pro（300 題分層抽樣，10 選項選擇題）。三項基準跨三種難度與題目風格。全部為多選題。共 21 輪評估：7 模型 × 3 資料集。</p>
+<p><strong>基線</strong>：O(1) 基線——口語化信心（Verb）、軌跡長度（TL）、TL+VB。O(N) 基線——語義熵（SE）、語義體積（SV）、幾何不確定性（GEO），均以 N=10 樣本運行，約為單次方法的 10 倍生成成本。</p>
+<p><strong>評估指標</strong>：AUROC（主要）——ROC 曲線下面積，量測正確/錯誤答案分離度；AURAC（次要）——風險覆蓋曲線下面積，量測選擇性預測品質。</p>
+<h2 id="統計檢定配對-wilcoxon-signed-rank-test單側對立假設selfdoubt--基線21-對匹配-modeldataset-輪次"><strong>統計檢定</strong>：配對 Wilcoxon signed-rank test（單側對立假設：SELFDOUBT &gt; 基線），21 對匹配 model×dataset 輪次。</h2>
+<h2 id="title-selfdoubt以-hedge-to-verify-ratio-做推理-llm-的不確定性量化part-33結果至結論-source-httpsarxivorgabs260406389-arxiv_id-260406389-date-2026-04">title: SELFDOUBT：以 Hedge-to-Verify Ratio 做推理 LLM 的不確定性量化（part 3/3：結果至結論）
+source: https://arxiv.org/abs/2604.06389
+arxiv_id: 2604.06389
+date: 2026-04</h2>
+<h1 id="selfdoubt以-hedge-to-verify-ratio-做推理-llm-的不確定性量化33">SELFDOUBT：以 Hedge-to-Verify Ratio 做推理 LLM 的不確定性量化（3/3）</h1>
+<h2 id="5-結果">5. 結果</h2>
+<h3 id="51-零-hedge-區間">5.1 零 Hedge 區間</h3>
+<p>21 輪合併（5455 查詢），HVR = 0 軌跡正確率 96.1%（1330/1384）、覆蓋率 25.4%。此性質在七模型中的六個以 ≥90% 精確度成立；Gemini 為唯一離群值（跨三資料集僅產出 7 條零 hedge 軌跡）。54 件原始不一致的手動錯誤分析揭示僅 8/1384（0.58%）為真正模型錯誤——模型以高信心回答但事實錯誤。其餘 46 件為評分人工因素（30 件：錯誤答案鍵或格式不匹配）或模糊標籤（16 件）。標註雜訊校正後精確度 99.4%（Wilson 95% CI: [98.9%, 99.7%]）。思維摘要模型覆蓋率（35.4%）高於原始軌跡模型（17.7%），反映壓縮軌跡暴露較少 hedge 標記。覆蓋率高度依賴模型（0.9% Gemini 到 53.3% Claude）。</p>
+<h3 id="52-主要比較">5.2 主要比較</h3>
+<p>SELFDOUBT 達到所有方法中最高平均 AUROC（0.7895）與最高平均 AURAC（0.8992）。是唯一在 AURAC 上與 SE 競爭的 O(1) 方法，以十分之一推論成本匹配 SE 的 0.8988。主要優勢非單輪支配，而是跨模型、跨指標、跨軌跡類型的一致性：O(1) 成本下兩項指標的最佳平均，跨軌跡格式間變異最小。</p>
+<h3 id="53-統計顯著性">5.3 統計顯著性</h3>
+<p>SELFDOUBT 在 AUROC 上顯著優於 SE（p=0.001），確認 O(1) 方法可在鑑別力上擊敗 O(N) 黃金標準。AURAC 比較不顯著（p=0.069），表明十分之一成本的同等選擇性預測品質。SELFDOUBT 在兩項指標上顯著優於 Verb-only（p&lt;0.001），確認 HVR 攜帶超出單獨口語化信心的信號。vs TL+VB 雙向皆未達顯著。完整軌跡子群（12 輪）中，SELFDOUBT 顯著擊敗 TL+VB（AUROC p=0.026, AURAC p=0.039）。</p>
+<h3 id="54-selfdoubt-失利處">5.4 SELFDOUBT 失利處</h3>
+<p>兩類失敗模式。其一：當口語化信心偏弱時（尤其 Qwen3 4B），加入 Verb 稀釋 HVR 信號——HVR 單獨優於融合分數。其二：Gemini 壓縮思維摘要產出極稀疏 n-gram 候選（0.9% 覆蓋率），使 HVR 近乎常數，軌跡長度在該模型上具結構性優勢。</p>
+<h2 id="6-部署策略">6. 部署策略</h2>
+<p>兩階段級聯。Stage 1 自動接受零 hedge 語言軌跡（HVR = 0 gate）。Stage 2 對其餘者施加校準 z-score 融合，低於可調閾值者推遲。</p>
+<p><strong>Tier 1（HVR = 0 gate）</strong>：僅當校準集合至少 4 例時啟用（實務上僅排除 Gemini，N0=2）。單獨回答 25.2% 查詢、96.3% 精確度（標註雜訊校正後 99.4%）。</p>
+<p><strong>Tier 2（校準 z-sum）</strong>：s = (−HVR−μ_hvr)/σ_hvr + (V−μ_v)/σ_v，接受 s ≥ τ 者。τ=0 為自然對稱預設——接受融合證據高於校準平均者。依領域風險容忍度平移 τ。</p>
+<p><strong>校準成本</strong>：從 oracle 正規化切換至 90 軌跡校準集，AURAC 損失僅 0.48 百分點（0.8992 → 0.8944）。τ=0 時級聯達 70.7% 覆蓋率、89.7% 精確度。校準 z-sum 是最強 Tier 2 排序器：級聯 AURAC 0.8944、Tier-2 AUROC 0.7572，優於 SE（0.8830/0.7250）。部署僅需每模型標記詞典與四個儲存純量。</p>
+<h2 id="7-局限">7. 局限</h2>
+<ol>
+<li><strong>HVR = 0 覆蓋率依賴模型</strong>：稀疏摘要模型 Tier-1 gate 吞吐效益可忽略。</li>
+<li><strong>風格敏感性</strong>：HVR 定義於表面形式 hedge/verification 標記，對抑制 hedge 語言或非實質性檢查式短語的風格偏移未測試。</li>
+<li><strong>無不確定性分解</strong>：僅產出單一不確定性分數，不區分 epistemic 與 aleatoric 來源。</li>
+<li><strong>僅限多選題</strong>：未測試自由形式生成任務（開放式 QA、程式碼生成、逐步評分數學）。</li>
+</ol>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

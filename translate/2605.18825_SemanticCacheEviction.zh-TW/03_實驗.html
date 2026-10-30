@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.18825_SemanticCacheEviction.zh-TW.html">回 2605.18825_SemanticCacheEviction.zh-TW 目錄</a>　<a href="02_SAECache%EF%BC%9A%E8%AA%9E%E6%84%8F%E6%84%9F%E7%9F%A5%E7%9A%84%E5%89%8D%E7%B6%B4%E9%A9%85%E9%80%90.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<p>本節以 cache 命中率與延遲評估 SAECache 策略的效率。基線為 LRU（vLLM 預設策略）與 LPC。在三組代表性真實資料集上評測：ShareGPT（74% 請求屬多輪會話）、LMSys（33% 多輪）、Chatbot-Arena（僅 12% 多輪）。由於 prefix cache hit 直接減少需 prefill 計算的 token 數量，TTFT 為主要受 cache 驅逐影響的延遲指標（prefill_tokens = prompt_length × (1 - hit_ratio)）。</p>
+<p><strong>vLLM 原型實現</strong>：SAECache 與基線作為 vLLM prefix cache evictor 模組的替代實現，整合於 vLLM v0.8.5（V0 引擎）使用 Qwen2.5-1.5B-Instruct 在 NVIDIA A40 GPU 上。伺服器成功初始化多佇列路由與線上參數學習，並透過標準 OpenAI 相容 API 服務請求。在低到中等併發下，vLLM 的進取記憶體管理使 KV cache 很少滿載。因此後續評測使用中等至高負載下的軌跡驅動請求注入以產生足夠的 cache 壓力。</p>
+<h3 id="41-實證結果">4.1 實證結果</h3>
+<p><strong>Cache 命中率</strong>：SAECache 在全部 12 組（資料集， 注入間隔）設定中達成最高 cache 命中率。相較各設定中的最強基線，SAECache 提升命中率 4.8–5.9 個百分點。改善在跨 6 倍多輪密度範圍內保持穩定，證明語意感知驅逐策略能一致識別高復用區塊，不論工作負載組成如何。</p>
+<p><strong>TTFT 延遲</strong>：在 LMSys 上 SAECache 相較 LRU 減少平均 TTFT 4–8%，相較 LPC 減少達 16%。在 ShareGPT 上，SAECache 在最高壓力（注入間隔 ≤ 0.03s）下與最佳基線持平，較低壓力下保持 5% 內。在 Chatbot-Arena 上，SAECache 雖維持最高命中率，但平均 TTFT 落後最佳基線 12–34%——原因是僅 12% 請求屬多輪會話，來自改善命中率的額外 prefill 節省可能小於多佇列管理與預測器的開銷。此結果與設計假設一致：SAECache 在可復用對話前綴豐富時最有效。</p>
+<p><strong>消融實驗</strong>：從 Fixed-Param Multi-Queue 基線出發，逐步加入各學習組件。Token 類型權重學習貢獻 +23%；對數正態時序學習 +14%；位置衰減學習 +12%；佇列權重學習 +39%（最大貢獻）。四組件疊加在 Fixed-Param 基線上總提升 88%。</p>
+<p><strong>學習到的 token 類型權重</strong>：收斂權重排序 system prompt &gt; user prompt &gt; response ≈ tool output &gt; CoT，與實測復用率排序完全一致。Sys prompt 權重從 2.0 上升至 4.13（+107%），CoT 權重從 0.1 調整至 0.77 但仍最低。SAECache 可從 cache 回饋中發現 token 類型的相對價值，無需手動指定。</p>
+<p><strong>學習到的佇列權重</strong>：在多輪主導工作負載下多輪佇列權重 2.42、結構權重 0.10（約 24:1）。在單輪主導工作負載下多輪權重 0.28、結構權重 2.16（約 1:8）。在均衡工作負載下兩者權重各約 1.0。SAECache 可自動根據工作負載轉移快取優先序。</p>
+<p><strong>對數正態間隔建模</strong>：使用 Qwen-Bailian（chat, N=19,957 間隔）與 CC-Bench-V1.1（agentic, N=15,755 間隔）兩組軌跡。對數正態分佈在兩軌跡上均達最小 K-S 統計量（D ≤ 0.060）與最高 R²（≥ 0.987），遠優於 Gamma（2–4 倍 K-S 距離）與 Exponential（被強烈拒絕）。線上估計雖會低估 σ（EWMA 折扣長尾觀測），但這在 cache 排名決策中無害——因為擬合分佈主要用於按相對最近性排名而非預測精確尾部機率。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>本文展示了 LLM 服務中的 prefix cache 驅逐不應均質對待所有 cached block，即使它們具有相似的最近性與頻率統計。透過工作負載特徵分析，我們發現前綴復用強烈取決於 token 語意、prompt 結構與會話類型，使現有策略對各種異質工作負載不足。基於此，我們提出 SAECache：一個輕量的語意感知與自適應的驅逐策略，透過多佇列設計分離不同的復用機制，並從線上 cache 回饋中學習 token 類型感知的驅逐優先序。評測顯示 SAECache 跨多樣工作負載一致改進 TTFT。未來工作的一個重要方向是將此語意感知驅逐策略擴展到叢集層級，其中請求路由、prefix-cache 局部性與每節點的驅逐決策相互交織。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

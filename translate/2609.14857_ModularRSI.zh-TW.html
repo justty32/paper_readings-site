@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>ModularRSI: Modular and Generalizable Recursive Harness Self-Improvement 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Siwei Wu、Jincheng Ren、Yizhi Li、Haau-Sing Li、Chengran Yang、Yuxuan Zhang、Weicheng Gu、Jian Yang、Riza Batista-Navarro、Chuanyi Zhang、Xianglong Liu、Ming Zhou、Bryan Dai、Chenghua Lin</p><p>日期：2026-09-14（v1，cs.CL）</p><p>arXiv：2609.14857</p><p><a href="https://arxiv.org/abs/2609.14857" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="modularrsi-modular-and-generalizable-recursive-harness-self-improvement">ModularRSI: Modular and Generalizable Recursive Harness Self-Improvement</h1>
+<h2 id="摘要與問題">摘要與問題</h2>
+<p>Harness 的遞迴自我改進面臨三層混淆。資料層面，若直接用評估 benchmark 演化，很難區分可重用改進與針對題目的適配。軌跡層面，單次成功或失敗會把系統性缺陷、任務推理與解法細節纏在一起。機制層面，即使看見反覆出現的弱點，也不容易判斷該修改 monolithic harness 的哪一部分。</p>
+<p>ModularRSI 的解法是把資料、證據與修改範圍一起收窄：使用與下游 benchmark 分離的演化資料，比較同一任務的成功與失敗軌跡，再把反覆證據歸到明確的功能模組。各模組獨立演化，最後才整合。</p>
+<h2 id="方法">方法</h2>
+<p>作者把 Terminus-2 的可演化行為拆成 Agent Loop、Observation Management、Tool Use、Context Management 與 Task Completion Detection 五個模組（作者自報）。基礎設施如 sandbox 初始化、平行執行與 LLM 通訊不在修改範圍。</p>
+<p>每個任務執行多次後，依結果分成全成功、成敗並存與全失敗。成敗並存時，系統比較同一任務的成功及失敗軌跡，找出造成結果分歧的函式層因素。全失敗時，先查 Trajectory Memory 是否留有先前成功軌跡；沒有才做單側失敗診斷。全成功時則檢查多餘動作、重複探索與不必要工具呼叫。分析結果被整理成結構化 finding，含所屬模組、證據、修改理由與建議變更。</p>
+<p>模組修改前，系統合併指向同一函式的相近診斷，再以支持該修改的不同任務數投票排序，降低單題特例的影響。每個函式另保存 Evolution History，避免後續修改重複、互相衝突或破壞先前能力。</p>
+<p>修改需通過三道 gate。Program Check 檢查 AST、import、協定與 discovery contract；Diff Review 排除寫死題目解法或難以泛化的條件；Execution Validation 從當前批次隨機抽兩題實跑，runtime error 或違反執行協定就回滾（作者自報）。各模組獨立完成後，再跑一輪 cross-module integration，消除重複機制、責任衝突與不一致互動。Function Merge 合併冗餘函式，Task-Aware Function Composer 則只啟用當前任務相關的函式。</p>
+<h2 id="演化資料與實驗設計">演化資料與實驗設計</h2>
+<p>作者以外部公開資源建構兩千個可執行、與 benchmark 分離的演化任務，並透過環境完整性、實用性、評估器效度、reference solution、no-op 測試、人工審查與語意相似度篩選（作者自報）。下游評估使用含八十九題的 TerminalBench 2.0，以及含五百題的 SWE-Bench Verified（作者自報）。受計算成本限制，主要演化實驗從 TB 類與 SWE 類資料各取一百二十題，每個模組演化三個 epoch（作者自報）。</p>
+<p>指標同時看平均成功率、三次內至少成功一次的 <code>Pass@3</code>、三次都成功的 <code>Pass^3</code>，以及平均互動步數。演化後的 harness 在碰觸下游 benchmark 前凍結，用來區分機制改進與測試時適配。</p>
+<h2 id="主要結果">主要結果</h2>
+<p>以 DeepSeek-V4-Flash-Preview 為 backbone，TerminalBench 2.0 的準確率由百分之四十七點五七升至五十二點四三，SWE-Bench Verified 由百分之七十三點四升至七十六點四五（作者自報）。跨域仍有改善：TB 類資料演化的 harness 在 SWE-Bench Verified 達百分之七十五點八；SWE 類資料演化者在 TerminalBench 2.0 達百分之四十九點四（作者自報）。凍結 harness 套到 GLM-5.2 與 MiniMax-2.5 時，主要指標也一致改善。</p>
+<p>模組化消融最能說明方法差異。TerminalBench 2.0 上，非模組演化與一次聯合演化的準確率分別降至百分之四十六點四四與四十四點一九，而獨立演化再整合達百分之五十二點四三（作者自報）。五個單模組版本都超過基線，且作用互補：Agent Loop 的單模組準確率最高，Observation Management 則明顯減少互動步數。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>ModularRSI 把粗糙的任務成敗，轉成跨任務支持、可定位到函式與模組的修改訊號。benchmark 分離資料降低直接適配測試題的疑慮，獨立演化與整合則縮小 credit assignment 範圍，實驗顯示改進可跨任務、領域與 foundation model 轉移。</p>
+<p>作者明列兩項限制：研究沒有做能單獨隔離 contrastive trajectory analysis 貢獻的專門消融，只以軌跡統計與案例提供支持；主要實驗因計算成本只用了兩千個策展任務的子集（作者自報）。更大規模資料與更廣方法比較仍待後續工作。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2609.14857_ModularRSI.%E6%91%98%E8%A6%81.html"><code>../summarize/2609.14857_ModularRSI.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

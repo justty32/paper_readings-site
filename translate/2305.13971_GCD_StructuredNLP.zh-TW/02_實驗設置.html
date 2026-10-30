@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗設置 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.13971_GCD_StructuredNLP.zh-TW.html">回 2305.13971_GCD_StructuredNLP.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%B5%90%E8%AB%96%E8%88%87_GCD_%E6%9C%80%E4%BD%B3%E5%AF%A6%E8%B8%90.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-實驗設置">3 實驗設置</h2>
+<p>聚焦三個任務展示效果：cIE 與 ED 是「輸出限於預定實體/關係集」的代表，CP 是「輸出為複雜樹結構」的代表；三者對 few-shot LLM 都具挑戰性。</p>
+<h3 id="31-封閉資訊抽取cie">3.1 封閉資訊抽取（cIE）</h3>
+<p><strong>任務</strong>：給定含實體集 E 與關係集 R 的知識庫（KB），從輸入文本抽出<strong>完整的</strong>事實三元組集合 y_set ⊂ E×R×E。<strong>文法</strong>（圖 1）：三元組序列，各成分前綴特殊標記 [s]/[r]/[o]，如 &quot;[s] Witchita [r] cast member [o] John Smith [s] Witchita [r] instance of [o] film&quot;；實體/關係名限於 Wikidata 的 270 萬實體與 888 關係；context-free，可生成任意數量（含零個）三元組。<strong>資料與指標</strong>：SynthIE-text（GPT-3.5 生成的合成資料集，較 REBEL 更大、更多樣、人評品質更高；10K 驗證＋50K 測試，few-shot 評估僅用測試集）；triplet 級 micro precision/recall/F1。</p>
+<h3 id="32-實體消歧ed">3.2 實體消歧（ED）</h3>
+<p><strong>任務</strong>：辨識輸入文本中被特殊 token 圈出的 mention 所指的 KB 實體；有時輸入附候選實體集。<strong>文法</strong>（圖 2 之 2）：依 GENRE 的輸出結構——先重複 mention，再以方括號附上推斷的實體名，如 &quot;There are two types of electricity: <ent> DC [Direct current] </ent> and AC&quot;；regular 且 input-dependent，強制模型先生成 mention、再從候選集選實體名。對照組用 input-independent grammar（IIG）：候選集只能是全目錄（如 470K 實體），約束較弱。IDG 令模型重複左側上下文，也可能經由條件化引導其生成正確實體名。<strong>資料與指標</strong>：AIDA-CoNLL、MSNBC、ACE2004、AQUAINT、CLUEWEB、WIKI 六資料集之測試集；micro-accuracy。</p>
+<h3 id="33-成分剖析cp">3.3 成分剖析（CP）</h3>
+<p><strong>任務</strong>：把句子剖析成 Penn Treebank 格式的成分剖析樹。<strong>文法</strong>：輸出須為「合法（valid）——但不必正確（correct）」的剖析樹，滿足完整性（每個詞都在樹中）、括號平衡、標籤一致性三約束。文法（圖 2 之 3）按左至右重現輸入詞序列、穿插節點標籤與平衡括號；非終端符 B_{i,j} 以第二下標 j 計數未閉合左括號，保證閉括號數不超過已開括號數。因完整性約束，此文法必須 input-dependent；對照的 IIG 是遞迴生成任意大小樹（葉節點匿名化為 XX）的 context-free 文法，滿足括號平衡與標籤一致但不滿足完整性，節點數可能多於或少於輸入詞數而導致非法樹。<strong>資料與指標</strong>：PTB 測試集中 gold 樹短於 64 token 的句子（LLaMA 對長句無論有無約束都表現差）；PYEVALB 的 bracketing F1，另報合法樹比例（validity）。</p>
+<h3 id="34-llm-與提示">3.4 LLM 與提示</h3>
+<p>骨幹模型：LLaMA-{7B, 13B, 33B} 與 Vicuna-{7B, 13B}，<strong>皆不做下游微調</strong>。提示由「任務指令＋人工挑選的示範例」構成（cIE/ED 4-shot、CP 8-shot；詳見附錄 E、F）。</p>
+<h2 id="4-實驗結果">4 實驗結果</h2>
+<p>無約束的 LLaMA/Vicuna 表現差，文法約束版顯著更好；input-dependent grammar 是效能關鍵。受測模型中 <strong>LLaMA-33B + IDG 在所有任務最佳，在 cIE 與 ED 上甚至匹敵微調模型</strong>。</p>
+<h3 id="41-cie表-1synthie-text4-shotmicro">4.1 cIE（表 1，SynthIE-text，4-shot，micro）</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>Precision</th>
+<th>Recall</th>
+<th>F1</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GenIE T5-base（弱監督，REBEL 上訓練）</td>
+<td>49.6</td>
+<td>26.8</td>
+<td>34.8</td>
+</tr>
+<tr>
+<td>LLaMA-33B 無約束</td>
+<td>14.1</td>
+<td>23.1</td>
+<td>17.5</td>
+</tr>
+<tr>
+<td>LLaMA-7B 約束</td>
+<td>27.9</td>
+<td>20.2</td>
+<td>23.5</td>
+</tr>
+<tr>
+<td><strong>LLaMA-33B 約束</strong></td>
+<td>39.3</td>
+<td>33.2</td>
+<td><strong>36.0</strong></td>
+</tr>
+</tbody>
+</table>
+<p>無約束 LLaMA 即使有示範仍表現差——cIE 要求生成 KB 內的合法實體/關係名，模型雖在預訓練見過 Wikidata 仍會生成 KB 外的名稱（幻覺問題的特例）。約束後大幅改善：<strong>LLaMA-33B 打敗專為 cIE 訓練的 SOTA 自迴歸模型 GenIE T5-base</strong>，且 precision/recall 更均衡（GenIE 精確率高但召回低、漏掉許多實體關係，可能因其記憶了 REBEL 的實體）。在領域專屬訓練資料常稀缺的現實下，此結果凸顯 LLM 免微調做 cIE 的潛力。</p>
+<h3 id="42-ed表-2micro-accuracy-六資料集平均4-shot">4.2 ED（表 2，micro-accuracy 六資料集平均，4-shot）</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>平均</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GENRE（全量，SOTA）</td>
+<td>88.8</td>
+</tr>
+<tr>
+<td>ReFinED</td>
+<td>89.4</td>
+</tr>
+<tr>
+<td>GENRE 僅 AIDA 資料</td>
+<td>80.0</td>
+</tr>
+<tr>
+<td>LLaMA-33B 無約束</td>
+<td>54.1</td>
+</tr>
+<tr>
+<td>LLaMA-33B 約束 IIG</td>
+<td>68.2</td>
+</tr>
+<tr>
+<td><strong>LLaMA-33B 約束 IDG</strong></td>
+<td><strong>80.3</strong></td>
+</tr>
+</tbody>
+</table>
+<p>GCD（IIG 或 IDG）都顯著提升 LLaMA；雖與 SOTA（GENRE 88.8）仍有差距，但<strong>約束版 LLaMA-33B 勝過「只用 AIDA 訓練、未在 Wikipedia 預訓練」的 GENRE</strong>，是低資源場景的好選擇。IDG 全面優於 IIG——前者可利用輸入專屬候選集，後者只能拿整個 KB 當候選；這種彈性是 GCD 在各任務取得好表現的關鍵。</p>
+<h3 id="43-cp表-3ptb8-shot">4.3 CP（表 3，PTB，8-shot）</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>F1</th>
+<th>Validity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>專用方法（如 Zhang et al. 2020）</td>
+<td>95.7</td>
+<td>100.0</td>
+</tr>
+<tr>
+<td>LLaMA-33B 無約束</td>
+<td>42.9</td>
+<td>64.2</td>
+</tr>
+<tr>
+<td>LLaMA-33B 約束 IIG</td>
+<td>47.1</td>
+<td>72.3</td>
+</tr>
+<tr>
+<td><strong>LLaMA-33B 約束 IDG</strong></td>
+<td><strong>54.6</strong></td>
+<td><strong>100.0</strong></td>
+</tr>
+</tbody>
+</table>
+<p>與前兩任務不同，LLM 有無 GCD 在 CP 上都遠遜專用方法——CP 需要<strong>句法</strong>理解，而前兩任務只需語義理解；錯誤檢視發現 LLM 輸出看似合理但句法常錯。GCD 版仍顯著勝過無約束版；且 <strong>IDG 保證輸出必為合法剖析樹（validity 100%）</strong>，IIG 則否。GCD 大幅改善 LLM 的 CP 表現但仍不及監督方法（95+）；不排除底層 LLM 更強後結果更好。</p>
+<h3 id="44-延遲表-4">4.4 延遲（表 4）</h3>
+<p>純解碼 vs GCD 開銷（ms/token）：LLaMA-7B/33B/65B 前向各 54/87/136（A100 GPU）；GCD 開銷 cIE 69、ED 1、CP 4（<strong>皆在消費級 CPU 上</strong>）。ED/CP 的開銷可忽略；cIE（270 萬實體的大文法）開銷與純解碼相當或更低。</p>
+<h2 id="5-gcd-中的似然錯位likelihood-misalignment">5 GCD 中的似然錯位（likelihood misalignment）</h2>
+<p>在 cIE 與 CP 上，無論模型大小，<strong>top 生成一致是空字串</strong>（僅含 EOS token &quot;$&quot;），第二名之後才是非空輸出——與 Stahlberg &amp; Byrne (2019) 觀察到 NMT 最可能輸出常是空字串相似。假說：文法與 LM 之間的似然錯位。以 cIE 為例：第一個 token 只能是 &quot;[&quot; 或 &quot;$&quot;；beam ≥ 2 時兩者都入 beam，&quot;$&quot; 即成似然 q 的完整生成，而以 &quot;[&quot; 起頭的生成隨長度推進似然可能跌破 q。LLaMA 為極大化人類語言似然而訓練，文法強加的結構對未微調模型可能「不自然」，極端時正解似然低於空字串。<strong>簡單修法</strong>：懲罰短字串——調長度正規化參數 α（長度調整分數 S/m^α）；表 5 顯示 α ≥ 2.5 即消除空字串問題（LLaMA-13B）。另外指令微調模型可緩解：Vicuna-13B 有 46% 的情況 top 生成非空（LLaMA-13B 為 0%；Vicuna-7B 仍全空）。</p>
+<h2 id="6-相關工作">6 相關工作</h2>
+<p><strong>自迴歸結構化預測</strong>：用自迴歸生成模型做結構化預測漸成主流（Vinyals et al. 2015 以 LSTM 做依存剖析；De Cao et al. 2021 以自迴歸 LM 做實體連結/消歧/文件檢索）。<strong>約束解碼</strong>：詞彙約束解碼（Hokamp &amp; Liu 2017 等）、基於約束剪枝 beam search（Anderson et al. 2017）、PICARD 以增量剖析生成近似合法 SQL（Scholak et al. 2021）、GENRE 的 trie 約束、GenIE 的 trie＋狀態約束、Earley 剖析器約束至 DSL（Wang et al. 2023）。<strong>文法約束解碼</strong>：下推自動機約束框架（Deutsch et al. 2019，表達力等價 CFG）、文法驅動代碼生成（Yin &amp; Neubig 2017）、以文法約束＋GPT-3 解語意剖析（Shin et al. 2021）、BenchCLAMP 工具包（Roy et al. 2022）、歧義輸入下的文法約束剖析（Stengel-Eskin et al. 2023）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

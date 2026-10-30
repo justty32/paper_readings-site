@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Provably Safe Sim-to-Real Transfer 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Tingting Ni、Maryam Kamgarpour</p><p>日期：2026-09-01（v1，cs.LG）</p><p>arXiv：2609.01418</p><p><a href="https://arxiv.org/abs/2609.01418" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="provably-safe-sim-to-real-transfer-重點摘要">Provably Safe Sim-to-Real Transfer 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>這篇論文把安全 sim-to-real 寫成 reward-free safe RL：演算法逐步辨識模擬器與真實系統不一致的轉移，只在尚未可信的區域學真實動態，並把探索策略和已知嚴格可行的基線策略混合，使每次真實互動都滿足安全約束，最後可為任意 reward 規劃近似最優且可行的策略。</p>
+<h2 id="問題與假設">問題與假設</h2>
+<p>直接把模擬策略搬到真實系統，可能因轉移動態失配而同時失去效能與安全。若每換一個 reward 都重新收真實資料，又浪費昂貴互動。作者因此使用 constrained MDP，要求資料收集期間部署的每個策略都可行；資料收完後，對任意 reward 都不再接觸真實系統，仍能算出近似最優的可行策略。</p>
+<p>理論依賴兩個關鍵假設。其一是已知一個在真實系統中具嚴格安全餘裕的基線策略，讓探索策略可以借用它的安全緩衝。其二是 simulator 與 reality 的每個轉移，要嘛相同，要嘛其 total variation 距離至少有可分離間隙。後者讓演算法能以有限樣本把可靠的模擬區域排除出待學集合。</p>
+<h2 id="方法架構">方法架構</h2>
+<ul>
+<li><strong>從最大嫌疑集合開始</strong>：估計 mismatch region 一開始涵蓋整個時間—狀態—動作空間。真實轉移的信賴界足夠窄，且與模擬轉移足夠接近時，對應項目才被判為非失配並移出集合。</li>
+<li><strong>組合 hybrid model</strong>：可能失配的項目使用真實資料估出的轉移；已認證為非失配的項目直接重用 simulator。演算法因此不用在真實世界重學已可信的動態。</li>
+<li><strong>以不確定性驅動探索</strong>：作者建立可計算的 bonus value，作為任意 policy 與 utility 下價值估計誤差的上界，再用標準 CMDP 求出最值得探索的經驗可行策略。</li>
+<li><strong>用基線策略補安全缺口</strong>：候選探索策略只在 hybrid model 中可行，仍可能在真實系統違約。演算法依誤差證書決定混合權重，把候選策略與嚴格可行基線策略混合，使基線的安全餘裕抵銷最壞可能違約。證書降到停止門檻後，才輸出對新 reward 的規劃策略。</li>
+</ul>
+<h2 id="理論保證">理論保證</h2>
+<p>在上述假設成立時，主定理以高機率保證兩件事：每次真實探索部署都可行；對任意 reward，輸出策略在真實 CMDP 中可行且達到指定的近似最優誤差。樣本複雜度分成兩筆成本：在真正 mismatch region 學真實動態，以及把其餘項目認證為非失配。前者隨失配區域大小線性成長，後者取決於非失配區域與 separation gap；模擬器越準，真實互動越集中在少數不可信之處。</p>
+<h2 id="主要實驗與數字">主要實驗與數字</h2>
+<p>作者在 <code>5×5</code> gridworld、horizon <code>H=12</code> 的 safety-critical windy-wall 設定，比較本文方法、完全在線的 reward-free safe RL，以及不施加安全限制的 sim-to-real RL（作者自報）。本文方法使用 <code>77,958±1,334</code> 個真實樣本，planning accuracy 為 <code>0.000±0.000</code>，unsafe iterations 為 <code>0.0%</code>（作者自報）。</p>
+<p>reward-free safe RL 也達到 <code>0.000±0.000</code> planning accuracy 與 <code>0.0%</code> unsafe iterations，但用了 <code>296,910±1,484</code> 個真實樣本；不受限 sim-to-real RL 只用 <code>39,342±140</code> 個樣本，卻有 <code>68.5%</code> 的學習 iteration 違反 constraint（作者自報）。這個小型實驗呈現理論設計的取捨：本文方法保住與安全基線相同的零違約紀錄，同時大幅少於完全在線安全方法的真實樣本，但仍要為安全付出高於不受限方法的互動成本。</p>
+<h2 id="結論">結論</h2>
+<p>論文的核心不是假設 simulator 足夠真，而是逐項決定哪些知識可沿用、哪些必須付真實樣本重學。安全證書同時控制模型何時已足以停止探索，以及候選策略必須混入多少安全基線；這把「少用真實資料」與「探索本身不可出事」放進同一套可證明機制。</p>
+<h2 id="局限">局限</h2>
+<p>作者明確把目前結果限制在 tabular CMDP。連續狀態或線性 CMDP、較一般且不滿足 separation 的 simulator bias，仍是未來工作。理論也要求已知嚴格可行基線與安全餘裕，並依賴 mismatch separation 參數；作者的附加實驗顯示，高估該參數可能錯刪真正失配項目並破壞輸出可行性。更緊的誤差證書可能再改善樣本複雜度，但會導向目前缺乏高效解法的非凸最佳化。</p>
+<h2 id="對讀者的價值ai_core-接點">對讀者的價值／ai_core 接點</h2>
+<p>這篇替 ai_core 的「憑證准入」補上一個動態版本：不是一次判定某來源可信，而是維護待懷疑集合，隨證據累積才把局部知識升格為可重用。當候選行為的風險仍不確定時，也不是二選一地全盤拒絕或直接部署，而是用已知安全基線稀釋風險。對任何要把模擬、模型推論或舊經驗搬到真實執行的系統，這種局部認證、保守混合與停止證書的分工，比籠統的「sim-to-real gap」更可操作。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2609.01418_ProvablySafeSim2Real.zh-TW.html"><code>../translate/2609.01418_ProvablySafeSim2Real.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

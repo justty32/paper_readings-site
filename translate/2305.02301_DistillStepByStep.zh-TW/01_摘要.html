@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.02301_DistillStepByStep.zh-TW.html">回 2305.02301_DistillStepByStep.zh-TW 目錄</a>　<a href="02_Distilling_step-by-step.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>部署大型語言模型（LLM）很困難，因為它們在實務應用中記憶體效率差且計算密集。作為對策，研究者透過兩種方式訓練較小的任務專用模型：用人工標籤 finetune，或用 LLM 生成的標籤做蒸餾（distillation）。然而不論 finetuning 或蒸餾，要達到與 LLM 相當的表現都需要大量訓練資料。我們提出 <strong>Distilling step-by-step（逐步蒸餾）</strong>，一個新機制，它 (a) 訓練出<strong>勝過 LLM 的更小模型</strong>，且 (b) 做到這點所需的訓練資料<strong>遠少於</strong> finetuning 或蒸餾。我們的方法在<strong>多任務框架</strong>下，把 LLM 的<strong>理據（rationale）抽取出來當作額外的監督訊號</strong>去訓練小模型。我們在 4 個 NLP benchmark 上得到三項發現：第一，相較 finetuning 與蒸餾，本機制用少得多的有標／無標訓練樣本即達到更好表現。第二，相較 few-shot prompted 的 LLM，我們用小得多的模型尺寸即達到更好表現。第三，我們同時降低了勝過 LLM 所需的模型尺寸與資料量——我們 finetune 的 <strong>770M T5 模型</strong>，只用某 benchmark <strong>80% 的可用資料</strong>就勝過 few-shot prompted 的 <strong>540B PaLM 模型</strong>，而對同一個 T5 模型做標準 finetuning，即使用滿 100% 資料也難以匹敵。（原始碼：github.com/google-research/distilling-step-by-step）</p>
+<h2 id="圖-1範式對比">圖 1（範式對比）</h2>
+<p>LLM 有強大的 zero/few-shot 表現但難以實地服務；傳統訓練小型任務專用模型則需大量訓練資料。本文提出的 Distilling step-by-step 從 LLM 抽出理據當作<strong>有資訊量的任務知識</strong>注入小模型訓練，<strong>同時</strong>降低了部署模型尺寸與訓練所需資料量。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>儘管 LLM（GPT-3、PaLM、LaMDA、Chinchilla 等）有驚人的 few-shot 能力，其龐大尺寸使實地部署極其困難：服務單一個 175B 模型至少需 350GB GPU 記憶體與專用基礎設施；而今日 SOTA 已逾 500B 參數，需求更甚。對多數產品團隊、尤其低延遲應用而言，這種計算需求遠超負擔。</p>
+<p>為繞過大模型的部署難題，實務上常改部署較小的專用模型，訓練方式不外兩種範式：</p>
+<ul>
+<li><strong>Finetuning（微調）</strong>：用下游人工標註資料更新一個預訓練小模型（如 BERT、T5）。</li>
+<li><strong>Distillation（蒸餾）</strong>：用一個較大的 LLM 生成的標籤來訓練同樣的小模型。</li>
+</ul>
+<p>兩者都以「代價」換取小尺寸：finetuning 需昂貴的人工標籤；蒸餾需大量、往往難以取得的無標註資料。</p>
+<p>本文提出 <strong>Distilling step-by-step</strong>，一個用更少訓練資料訓練小模型的簡單新機制。<strong>核心是轉換視角：不再把 LLM 看成「產雜訊標籤的來源」，而是看成「會推理的 agent」</strong>——LLM 能生成解釋其預測標籤的自然語言理據。例如問「Jesse 的房間長 11 呎、寬 15 呎，已有 16 平方呎地毯，還需多少地毯鋪滿地板？」，用 CoT 可引出中間理據「面積＝長×寬。Jesse 的房間是 11×15 平方呎」，把輸入更好地連到最終答案「(11×15)−16」。這些理據含有相關任務知識（如「面積＝長×寬」），本來需要大量資料小模型才學得到。我們遂把抽出的理據當作<strong>更豐富的額外資訊</strong>，透過<strong>多任務訓練</strong>（同時做標籤預測與理據預測）來訓練小模型。</p>
+<p>Distilling step-by-step 讓我們學到的小型任務專用模型，用<strong>少 500× 以上的參數</strong>即勝過 LLM，且所需訓練樣本遠少於傳統 finetuning/蒸餾。三項實證結論：第一，比 finetuning 與蒸餾平均少用 &gt;50%（最多 &gt;85%）訓練樣本即更好。第二，模型尺寸最多小 <strong>2000×</strong> 仍勝過 LLM，大幅降低部署計算成本。第三，同時降低模型尺寸與資料量：用 <strong>770M T5</strong> 勝過 <strong>540B</strong> LLM，且只用某有標資料集 80% 的資料（既有 finetuning 需 100%）；只有無標資料時，小模型也能與 LLM 打平或更好——我們用僅 <strong>11B T5</strong> 就勝過 540B PaLM。當小模型仍輸 LLM 時，Distilling step-by-step 也能比標準蒸餾更有效地利用額外無標資料去追平。</p>
+<h2 id="2-相關工作">2 相關工作</h2>
+<p>本文透過利用今日 LLM 的湧現推理能力，把 LLM 的任務專用知識蒸餾進更小的專家模型。</p>
+<ul>
+<li><strong>大模型的知識蒸餾</strong>：蒸餾長期用於把大老師模型的知識轉移到可負擔的小學生模型，也支援從有限標註學習（老師常用來產生帶雜訊偽標籤的訓練集）。其常見限制是<strong>依賴大量無標註資料</strong>才能造出有用的雜訊訓練集；先前用資料增強來緩解，本文則提出另一路：<strong>不只蒸餾標籤、也蒸餾老師的理據</strong>，以降低對大量無標資料的飢渴。</li>
+<li><strong>用人類理據學習</strong>：用人類理據有悠久歷史（可正則化模型行為、當額外輸入引導預測、提升表現、當作 gold 標準讓模型更可解釋）。但<strong>人類理據昂貴</strong>。</li>
+<li><strong>用 LLM 生成的理據學習</strong>：LLM 能生成高品質推理步驟；這些步驟被用來增強 prompt 以提升 LLM 自身 few/zero-shot 表現，也被當作額外 finetuning 資料讓 LLM「自我改進」（如 STaR、Huang et al.）。但無論怎麼改進 LLM，其龐大尺寸都限制了測試期的可用性。相對地，本文把生成的理據當作<strong>有資訊量的監督</strong>去訓練小型任務專用模型——可在不付出大量計算/記憶體成本下部署。數個同期工作也提出類似點子（用抽出的理據當監督），其中 <strong>PINTO</strong> 仍<strong>依賴 LLM 在測試期生成理據</strong>，故未真正解決部署難題；相較 Ho et al. 與 Magister et al.，本文更進一步做了細緻研究：改變訓練資料量、探索下游模型尺寸、並在<strong>全無標資料集</strong>上驗證有效性。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

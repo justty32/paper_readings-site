@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>General agents need world models 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jonathan Richens、David Abel、Alexis Bellot、Tom Everitt（Google DeepMind）</p><p>日期：2025-06-02（v1，cs.AI；現行 arXiv 標題已改為 &quot;General agents contain world models&quot;，本檔沿用 v1 全文標題）</p><p>arXiv：2506.01622</p><p><a href="https://arxiv.org/abs/2506.01622" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="general-agents-need-world-models">General agents need world models</h1>
+<h2 id="摘要與第-1-節問題">摘要與第 1 節：問題</h2>
+<p>世界模型是彈性目標導向行為的必要成分，還是 model-free learning 就足夠？作者給出形式化答案：任何能泛化到多步驟目標任務的 agent，必然已學到一個對環境的預測模型，這模型可直接從其 policy 萃取出來，agent 表現越好、能達成的目標越複雜，重建出的模型精度要求就越高。</p>
+<p>擁有世界模型有助於規劃、預測安全關鍵行為、降低樣本複雜度，但學準確模型極難。Brooks 的經典立場「世界是自己最好的模型」主張 model-free agent 靠 action-perception 迴路就能產生一切智能行為；近年 Gato、AlphaStar、RT-2 等強泛化的 model-free agent 部分印證此立場，但也有證據顯示它們學到了隱含世界模型甚至隱含規劃演算法。核心問題：通往通用智能有沒有 model-free 捷徑？</p>
+<h2 id="第-2-節setup">第 2 節：Setup</h2>
+<p><strong>環境</strong>：controlled Markov process（cMP）——無指定 reward 與 discount 的 MDP，由 (S, A, T) 給出，假設有限維、irreducible（任何狀態可經有限動作序列到達其他狀態）、stationary，至少兩個動作（Assumption 1）。</p>
+<p><strong>目標</strong>：用線性時序邏輯（LTL）定義，一個 goal 是 (g, ◇)，g 是目標狀態集，◇ 限定 Now、Next（○，下一步）、Eventually（◇，未來某時刻）。多個 goal 依序組成 sequential goal（深度＝子目標數），取析取（OR）組成 composite goal，如維修機器人可以「依序完成固定動作修好機器，或找到工程師通知」。</p>
+<p><strong>Agent</strong>：goal-conditioned policy π(history, goal)→action，假設全觀測、決定性。<strong>optimal agent</strong>（Def. 4）對每個目標都以最優機率達成，放寬成 <strong>bounded goal-conditioned agent</strong>（Def. 5）：由失敗率 δ（相對最優 agent 成功機率下界）與最大目標深度 D 刻畫，此界只在深度 ≤D 上保證，不附加理性公理假設。</p>
+<p><strong>世界模型</strong>：定義為對 transition function 的近似，附帶有界誤差 ε，聚焦可用於規劃的預測式模型。</p>
+<h2 id="第-3-節主要結果">第 3 節：主要結果</h2>
+<p><strong>Theorem 1</strong>：環境滿足 Assumption 1，agent 對所有深度 ≤D 的 composite goal 滿足失敗率上界 δ（Def. 5）。則 π 完全決定一個對 transition function 的近似模型，誤差隨 δ 增大而變大、隨 D 增大而下降（確切縮放公式屬排版數學式，原文 HTML 轉純文字時遺失，本檔不臆測具體指數）。</p>
+<p>證明構造一族「二選一」composite goal：agent 先取某動作，再嘗試某狀態轉移在 D 次試驗中最多發生 k 次，或最少發生 k 次。最優 agent 達成前者的機率由累積二項分布給出，後者是其補集，交叉點對應二項分布中位數。當 k 從 1 掃到 D，最優 agent 會在中位數處切換選擇，這切換點在 π 中可觀察——查詢 π 在不同 k 下選哪一邊，就能定位轉移機率相對中位數的位置，再以 Berry-Esseen 定理、單邊 Chebyshev 不等式推出誤差界。演算法只需查詢 π，不需激活值或架構資訊，對所有滿足 Def. 5、Assumption 1 的 agent 與環境通用。</p>
+<p>模型精度隨 δ→0、D 增大而提升，任意 δ 只要 D 夠大就能重建任意精確的世界模型；誤差界也隨轉移機率本身縮放，故次優或有限視野 agent 只需學會較稀疏的模型，要達成更高成功率或更長視野才需要更高解析度模型。</p>
+<p><strong>Theorem 2</strong>：myopic goal 是深度 1、目標狀態須在第一步行動後立即達成的目標集合。若 agent 只對這類目標最優（深度 &gt;1 目標只滿足平凡界 δ=1），則從 policy 推出的 T 界限是平凡的。反證：所有動作轉移機率相同時，任何動作選擇都相容於任意 T，myopic policy 因此不攜帶 T 的任何部分資訊。</p>
+<h2 id="第-31-節實驗作者自報">第 3.1 節：實驗（作者自報）</h2>
+<p>環境是隨機生成的 cMP，20 states、5 actions，轉移函數稀疏（每個 state-action 至多 5 個非零轉移）。agent 為 model-based，內部模型從隨機 policy 採樣的長度 N 軌跡學得，N 取 {500,…,10000}，每個 N 訓練 10 個種子；用簡化版還原演算法（Algorithm 2，只吃 policy）掃過最大目標深度 D ∈ {10,…,600}，記錄平均 regret 與模型誤差。</p>
+<p>Table 1（mean±std，95% CI 取自 10 次重訓練）：N=500、D=10 平均誤差 0.171±0.007，同 N 下誤差隨 D 增而降，D=600 為 0.155±0.008；固定 D 增加 N 同樣單調降誤差，N=10000 時誤差從 D=10 的 0.066±0.005 降到 D=200 起壓在 0.031±0.002 不再明顯改善，自報縮放與 Theorem 1 最壞情況界一致（縮放公式未在純文字版留存，本檔不逐字引）。作者也讓 agent 對部分子目標 worst-case regret 達到最大（違反 Def. 5 逐目標界），但長視野目標平均 regret 較低時，Algorithm 2 仍能低誤差還原 T，顯示對局部違反假設有穩健性。</p>
+<h2 id="第-4-節討論摘要">第 4 節：討論（摘要）</h2>
+<p><strong>無 model-free 捷徑／emergent capabilities</strong>：沒有辦法訓練出泛化到長視野任務、卻不學世界模型的 agent，模型精度直接限制能力上限，削弱 model-free 路線動機，支持顯式 model-based 架構，也支持「隱含世界模型是 foundation model 湧現能力成因」——為最小化訓練任務 regret，agent 被迫學到隱含世界模型，支撐對未訓練過任務的泛化。</p>
+<p><strong>安全性／強 AI 限制／局限</strong>：許多安全提案需要準確的預測模型才能驗證計畫安全；本文保證只要 agent 滿足非平凡 regret bound，就能萃取出保真度隨能力提升的世界模型。但學真實世界模型的難度也意味著訓練廣泛泛化的 agent 至少和學準確模型一樣難，regret-bounded agent 因此被限制在「可解」領域。證明僅涵蓋全觀測環境，只證明模型存在性，不涉及如何被使用。</p>
+<h2 id="第-56-節相關工作與結論摘要">第 5、6 節：相關工作與結論（摘要）</h2>
+<p>本文與 inverse RL（環境+policy→goal）、planning（環境+goal→policy）互補，填補「goal+policy→環境」第三方向。與 mechanistic interpretability 相比，還原映射只需 policy（比激活值弱，權重私有時仍適用）且無監督。對照 Richens &amp; Everitt (2024) 的因果世界模型結果，domain generalization 需要更多環境知識，多於 task generalization。</p>
+<p>結論：能泛化到夠廣範圍簡單目標任務的 agent，必然學到準確的環境模型，policy 本身包含模擬環境所需的全部資訊，學習世界模型是通用 agent 的必要條件。未來方向包括延伸目標類別、找出最小充分任務集、開發更可擴展的萃取演算法並改善安全性與可解釋性。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2506.01622_GeneralAgentsWorldModels.%E6%91%98%E8%A6%81.html"><code>../summarize/2506.01622_GeneralAgentsWorldModels.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

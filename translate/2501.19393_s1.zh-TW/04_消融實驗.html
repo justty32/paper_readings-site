@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>04_消融實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2501.19393_s1.zh-TW.html">回 2501.19393_s1.zh-TW 目錄</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-消融實驗">4. 消融實驗</h2>
+<h3 id="41-資料規模消融">4.1 資料規模消融</h3>
+<p>作者從 59K 候選池中依不同策略選取子集進行消融：</p>
+<ul>
+<li>
+<p><strong>隨機抽樣</strong>：從 59K 完全隨機選取不同規模子集（1K / 5K / 10K / 59K）。AIME24 表現——1K 隨機：~46%；5K 隨機：~48%；10K 隨機：~49%；59K 全量：~50%。結果顯示在 ~10K 後增益飽和，59K 與 10K 之間差異極小。這暗示「更多資料」在推理 SFT 中的邊際效用遞減。</p>
+</li>
+<li>
+<p><strong>三維度篩選（s1K）</strong>：1K 精心篩選的樣本在 AIME24 上達 50.0%，與 59K 隨機（~50%）持平、優於 1K 隨機（~46%）。此為關鍵發現——精選（依難度/多樣性/品質三維度）的 1,000 條軌跡，等價於無差別收集的 59,000 條。</p>
+</li>
+<li>
+<p><strong>各篩選維度的貢獻</strong>（在 1K 固定規模下消融）：</p>
+<ul>
+<li>僅難度篩選：AIME24 ~48%</li>
+<li>僅品質篩選（保留自我修正軌跡）：AIME24 ~49%（品質篩選單獨即接近最優）</li>
+<li>僅多樣性篩選：AIME24 ~44%（多樣性單獨效果較弱——AIME 本身涵蓋多個數學子領域，多樣性在更窄的測試集上才有明顯影響）</li>
+<li>完整三維度（s1K）：AIME24 50%</li>
+<li>品質 + 難度：AIME24 ~50%（接近三維度——難度與品質已捕捉大部分增益，多樣性為安全冗餘）</li>
+</ul>
+</li>
+</ul>
+<h3 id="42-教師模型消融">4.2 教師模型消融</h3>
+<p>比較不同教師對 s1K 訓練效果的影響：</p>
+<ul>
+<li><strong>僅 Gemini 1.5 Pro</strong> 生成 s1K → AIME24 ~48%</li>
+<li><strong>僅 Claude 3.5 Sonnet</strong> 生成 s1K → AIME24 ~49%</li>
+<li><strong>混合（Gemini + Claude）</strong> → AIME24 50%</li>
+</ul>
+<p>混合教師略優於單一——推測兩種模型的軌跡風格略有不同，互補覆蓋了更廣的推理策略空間。差異不大（&lt;2pp），暗示教師選擇非瓶頸——核心驅動力是**篩選準則（品質/難度）**而非教師本身。</p>
+<h3 id="43-推論控制策略消融">4.3 推論控制策略消融</h3>
+<p>對比三種控制「思考長度」的策略（§2.2）：</p>
+<ul>
+<li><strong>條件式長度提示</strong>：「請用 300–800 token 思考」→ AIME24 約 48%。模型的 token 產出長度不完全遵循提示、部分案例犧牲答案品質。</li>
+<li><strong>訓練資料過濾（僅保留長軌跡）</strong>：僅使用 &gt;800 token 的推理軌跡訓練 → AIME24 約 47%，但 MATH500 表現下降（約 79% vs s1K 的 81.6%）——因 MATH500 的簡單問題被過度「深度思考」化、偶爾導致過度複雜化錯誤。</li>
+<li><strong>Budget Forcing</strong>：50% → 56.7%（AIME24），且不影響其他基準的遵循能力。結論：推論時控制優於訓練時干預。</li>
+</ul>
+<h3 id="44-wait-token-敏感性">4.4 <code>Wait</code> token 敏感性</h3>
+<p>將 <code>Wait</code> 替換為語意近似詞（如 <code>Let's double-check</code>、<code>Stop and verify</code>、<code>Are you sure?</code>）後，推理增益下降約 2–4pp——<code>Wait</code> 的簡潔（單一高頻 token）使其對分佈的干擾最小化，比長字串更有效地觸發模型的「重新思考」行為。對未經指令微調的基礎模型（Qwen2.5-32B 的 base 版本），<code>Wait</code> 追加的效果顯著減弱（增益 &lt;1pp）——Budget Forcing 需要模型已具備遵循指令/格式（如 <code>&lt;thought&gt;</code> 與 <code>&lt;/thought&gt;</code> 的結構化輸出）的能力作為前提。因此 Budget Forcing 的有效性與指令微調+推理格式化訓練共變。</p>
+<h2 id="5-討論">5. 討論</h2>
+<h3 id="51-s1-為什麼有效">5.1 s1 為什麼有效</h3>
+<p>作者歸納三個互補機制：</p>
+<ol>
+<li>
+<p><strong>資料品質作為推理壓縮</strong>：高品質推理軌跡（含自我修正、回溯驗證、約束測試）是推理策略的「壓縮表示」——1,000 條此類軌跡已編碼了足夠多樣的推理模式，模型在 SFT 中內化了「如何進行系統性推理」而非「如何回答特定問題」。這解釋了為何 1K 樣本足以近似 59K 隨機樣本的效果——59K 中的大部分軌跡可能缺乏自我修正或驗證步驟，對教導「如何推理」貢獻有限。</p>
+</li>
+<li>
+<p><strong><code>Wait</code> 作為注意力重設</strong>：<code>Wait</code> 的追加使模型的分佈從「確定性收斂（即將提交答案）」轉為「重新審視（檢查是否還有問題）」。在注意力層面，<code>Wait</code> 作為一個「中斷」信號——它改變了後續 token 的注意力權重分佈，使模型關注先前步驟中的潛在錯誤而非直接產出答案。</p>
+</li>
+<li>
+<p><strong>格式結構化作為推論基礎設施</strong>：<code>&lt;thought&gt;</code>/<code>&lt;/thought&gt;</code> 的結構化格式使模型能分離「思考」與「答案」兩個模式。這使得 Budget Forcing 能夠僅操作思考模式的邊界而不影響答案的產生品質——若思考與答案混合在同一文字流中（如未格式化的 CoT），控制就會更困難。</p>
+</li>
+</ol>
+<h3 id="52-局限與風險">5.2 局限與風險</h3>
+<ul>
+<li><strong>s1K 教師依賴</strong>：s1K 的品質受限於教師模型的能力上限——教師犯錯的模式可能在學生模型中複製。</li>
+<li><strong><code>Wait</code> 的語言與模型敏感性</strong>：<code>Wait</code>（英文）在非英文基礎模型上效果未知，僅在經指令微調+推理格式化的模型上有效（§4.4）。</li>
+<li><strong>非推理領域泛化</strong>：評估限於數學/程式碼/科學推理——未測試常識推理、開放式寫作、倫理推理等領域。</li>
+<li><strong>計算成本</strong>：每次 <code>Wait</code> 觸發約 50–150 額外 token，以 AIME24 的 6–8 次追加估計，每查詢約 300–1200 額外 token，對比 32B 模型的基礎推論成本算顯著但可控。</li>
+<li><strong>截斷風險</strong>：<code>&lt;/thought&gt;</code> 注入可能在模型未完成關鍵推理步驟時截斷——約 15% 案例導致品質下降（§3.3）。當前無自動化機制判斷「何時可以安全截斷」。</li>
+<li><strong>與 RL 的未決問題</strong>：s1 證明 SFT + Budget Forcing 可達競爭力效能，但未與完整 RL 訓練管線做受控對比，無法確定 SFT-only 是否在所有場景下均足夠。</li>
+</ul>
+<h3 id="53-後續方向">5.3 後續方向</h3>
+<ul>
+<li><strong>動態預算分配</strong>：依問題難度自適應調整 Budget Forcing 上限——簡單題不浪費 token、困難題投入更多。</li>
+<li><strong>多模態擴展</strong>：Budget Forcing 是否適用於視覺推理（如幾何圖形理解、圖表分析）？</li>
+<li><strong><code>Wait</code> 的跨語言、跨令牌化器泛化</strong>：非英文等價詞（如中文「等等」「慢著」「等一下」）是否同樣有效？</li>
+<li><strong>Budget Forcing 與其他 TTS 策略的組合</strong>：與多數投票（majority voting）、best-of-N sampling、獎勵模型重排序等結合的潛力。</li>
+</ul>
+<h2 id="6-結論">6. 結論</h2>
+<p>我們展示了測試時推論擴展可以透過極簡方案實現——1,000 條高品質推理軌跡（s1K）的監督微調加上簡單的 Budget Forcing 推論控制。s1-32B（以 s1K 微調 Qwen2.5-32B-Instruct）在四項推理基準上全面超越 OpenAI o1-preview，訓練僅需單節點 8×H100 GPU 上 30 分鐘。核心洞見是兩層次的：<strong>資料層</strong>——少而精的推理軌跡比多而雜的資料更有效；<strong>推論層</strong>——透過 <code>Wait</code> 與 <code>&lt;/thought&gt;</code> 的字串層級操作即可靈活控制測試時運算分配，無需 RL、無需偏好獎勵模型、無需複雜的搜尋策略。我們希望此工作降低測試時擴展的進入門檻，使更多研究者能夠基於開放權重模型建構與實驗推理系統。程式碼與資料公開於 https://github.com/simplescaling/s1。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

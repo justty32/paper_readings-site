@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2505.07859_Product_of_Experts_ARC.zh-TW.html">回 2505.07859_Product_of_Experts_ARC.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>ARC-AGI 對 LLM 是大挑戰，暴露其抽象推理侷限。本文在<strong>訓練、生成、評分</strong>全程運用任務專屬資料增強，並用<strong>深度優先搜尋（DFS）<strong>生成多樣的高機率候選解。更進一步，<strong>把 LLM 不僅當生成器、也當評分器</strong>，用其輸出機率選最有望解。方法在公開 ARC-AGI 評估集達 <strong>71.6%（286.5/400）</strong>，為公開方法中 SOTA。雖有並行閉源工作報更高分，本法以</strong>透明、可重現、極低推論成本</strong>（每任務僅約 2 美分，於易取得硬體）著稱（假設 4090 GPU 每小時 36 美分）。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 能力廣泛，但抽象推理仍難評估。ARC-AGI（Chollet 2019）對人易、對機難。單純放大模型不全解問題；LLaMA-3.2-3B、NeMo-Minitron-8B 等顯示中等規模也可有顯著能力。越來越多證據指出 LLM 的不足<strong>源自實作細節或次優資料表示而非根本推理缺陷</strong>（Allen-Zhu &amp; Li：模型常知錯卻無法改正、細微資料建模選擇會阻礙微調）→ 模型多半有解 ARC 的潛在能力，真正挑戰是<strong>創造能可靠表達這些能力的條件</strong>。</p>
+<p>本法針對 ARC：開源模型 SOTA <strong>71.6%</strong>，超越平均人類 60.2%（LeGris et al.）。核心：對 LLM 預測跑 <strong>DFS</strong> 生成多樣高機率解，再把同一 LLM 當<strong>專家乘積</strong>選最佳候選——此雙角色讓我們以增強似然估計排序候選，放大模型潛在推理。成本約 0.02 美元/任務（對比 o3 的 17 美元）。模型與訓練/推論程式碼開源於 GitHub。</p>
+<blockquote>
+<p>表 1（公開評估準確度）：o1-preview 21%、Greenblatt 42%、Berman 58.5%、<strong>o3 82.8%（閉源）</strong>、平均人類 60.2%、TTT 53.5%、BARC 56.75%、TTT+BARC 62.8%、<strong>本法 71.6%（開源）</strong>。</p>
+</blockquote>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>原始 ARC 資料集</strong>：900 任務（400 訓練、400 公開評估、100 私有）；格 1×1 到 30×30、10 色；兩次猜測內產生正確輸出即算解。平均人類解 60.2%、至少一人解出達 97.8%。</li>
+<li><strong>競賽驅動進展</strong>：2024 前多用 DSL 程式搜尋（Wind 2020 的 Top-3）。2024 Kaggle 首次由 LLM 主導，**測試時訓練（TTT）**流行——把每題幾個範例當小資料集微調後再答，Akyürek et al. 顯示 TTT 使表現翻倍多。</li>
+<li><strong>值得一提</strong>：Li et al. 分<strong>歸納</strong>（推出函數再套用，常用 Python/DSL）與<strong>轉導</strong>（用 tokenized 描述直接生成解）兩途，主張二者解不同類問題、集成可增。並用歸納網生成 ARC-Heavy。本文<strong>只額外用 RE-ARC</strong>（Hodel 2024：為公開訓練集每任務實作生成器，可產任意量訓練資料但不引入新題）——刻意避開可能洩題降難度的其他資料集。本法的增強不止傳統資料增強，而是貫穿訓練（初始 + TTT）、推論、選擇全程。o3 雖最高但閉源、不可重現、每題算力極大；TTT+BARC 是首個公開超越平均人類者。</li>
+</ul>
+<h2 id="3-記號與設定">3. 記號與設定</h2>
+<p>採<strong>貝氏視角</strong>：每謎題視為某底層解分布的部分觀測。任務 π＝{若干 （輸入，輸出） 範例 + 單一測試輸入}；存在真實解分布 p(σ|π)（多數題尖峰於唯一解，但保留多解一般性——ARC 偶有資訊不足致歧義，常導致資料集更新）。後驗 ∝ 先驗 p(σ)（解的結構先驗）× 似然（σ 解釋觀測範例的程度）；目標選後驗最大解。但無法直接取得真分布 → 訓練模型 q_θ 逼近。</p>
+<p>定義<strong>問題變換族（增強）T</strong>：每個 t∈T 同時變換問題與其解且保解分布。對 ARC：旋轉、鏡射、範例順序洗牌、顏色置換。<strong>增強編碼了所有有效解應成立的不變性，構成部分先驗</strong>。</p>
+<h2 id="4-方法">4. 方法</h2>
+<p>訓練 LLM 逼近 p(σ|π)。給任務與候選解，tokenize 後用 LLM 算各 token 機率，聚合解 token 機率即得「以 π 為前綴採樣 σ 的機率函數」。</p>
+<ul>
+<li><strong>(1) 增強</strong>：用增強的訓練資料提升穩健性、塑造學到的先驗（不改正確解）。訓練後 LLM 給出 q_θ(σ|π)。多項式採樣昂貴且不保證覆蓋高機率解；窮舉不切實際 → 改用<strong>閾值搜尋</strong>取高機率候選集，再跨增強聚合精煉其機率。</li>
+<li><strong>(2) 候選生成（DFS）</strong>：對測試問題 π，在所有有效增強下用 <strong>DFS 探索解空間</strong>，剪掉累積機率低於閾值 T 的部分路徑；多增強產同一解（up to augmentation）則合併。藉快取中間計算可快速找出所有高於 T 的解——保證不漏高機率解、不考慮低機率解。</li>
+<li><strong>(3) PoE 候選排序</strong>：單一增強下最高機率解不一定對（部分因自回歸架構：預測下一 token 只能看已生成 token，最佳決策有時需後面才有的資訊；Sudoku 例中模型須先內部解完整題才能定第一格，易自信卻錯，且錯了無法回頭、級聯出高信心錯誤）。緩解法：把每個候選<strong>在每個增強下再算似然</strong>（非生成、直接評估 token log-likelihood），取<strong>跨增強機率乘積</strong>為總分；此乘積對離群敏感，會濾掉換個視角就不可能的解 → 平均勝過隨機選單一增強。最終選乘積分數最高者。此「DFS 單增強剪枝生成 + 事後多增強評分」兩步，系統探索高機率解再修正排序，補償 LLM 跨表示不一致。</li>
+</ul>
+<h3 id="41-專家乘積增強理論">4.1 專家乘積增強（理論）</h3>
+<p>以 KL 散度分析集成分布相對真分布。各有效增強誘導對真增強分布的 LLM 近似；因 LLM 跨增強可能不一致（真分布不會），用<strong>幾何平均集成</strong>（log-linear pooling）合併、Z 為歸一常數。</p>
+<blockquote>
+<p><strong>定理 4.1（log-pooled 增強的誤差界，Hinton 1999/2002）</strong>：設各單增強預測對真值的 KL ≤ ε。幾何平均集成 q̄ 對真值的 KL ＝<strong>各單增強 KL 的平均 − log Z</strong>（記 C = −log Z ≥ 0），等號當所有增強一致。直覺：增強彼此越不一致，C 越大，集成相對任一隨機單增強越好。自回歸 LLM 跨視角天然不一致，正好受惠。</p>
+</blockquote>
+<p><strong>實務含意</strong>：當不同增強抓到不同錯誤時 PoE 最有效；只要真解在任一增強下不被賦零機率，它就可存活——不一致剪掉貌似合理但錯的候選，正確的則跨視角累積強度，比靠單一表示更可靠。</p>
+<blockquote>
+<p>表 2（兩次猜測準確度，加各組件）：Llama-3.2-3B：Baseline 14.9% → +TTT 40.9% → +16×Aug 52.9% → +PoE 59.5% → +DFS 61.4%;NeMo-Minitron-8B：18.3% → 44.5% → 62.5% → 67.6% → <strong>71.6%</strong>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

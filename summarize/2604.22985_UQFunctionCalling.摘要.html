@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Uncertainty Quantification for LLM Function-Calling · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Ye, Aichberger, Kirchhof, Williamson, Zappella, Gal, Blaas+, Goliński+ (Oxford &amp; Apple)</p><p>日期：2026-04-24</p><p>arXiv：2604.22985</p><p><a href="https://arxiv.org/abs/2604.22985" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="uncertainty-quantification-for-llm-function-calling--摘要">Uncertainty Quantification for LLM Function-Calling — 摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>首個針對 LLM function-calling 場景的不確定性量化（UQ）基準評測：發現簡單的單樣本方法（G-NLL）在多數任務上不輸甚至優於多樣本語意熵（Semantic Entropy），並提出基於 AST 分群與語意關鍵 token 的 FC 特化改進，使 UQ 作為意圖→工具執行的可靠性閘門更精準。</p>
+<h2 id="核心貢獻">核心貢獻</h2>
+<ol>
+<li>
+<p><strong>首個 FC-UQ 基準</strong>：基於 BFCL 資料集，涵蓋 Simple / Multiple / Parallel / Parallel-Multiple / Irrelevance 五種任務與八個 LLM，以 AUROC 評估 UQ 方法區分正確/錯誤 function call 的能力。</p>
+</li>
+<li>
+<p><strong>多樣本不贏單樣本</strong>：在 FC 場景中 Semantic Entropy ／ DSE 等需要多次採樣的方法，相較於 G-NLL（greedy 解碼的 token 負 log 機率之和）並無明顯優勢（甚至略差），與自然語言 QA 結論相反。原因是 FC 輸出 token 機率極高（平均 0.97 vs NL 的 0.71），語意簇數量少（3.4 vs 6.4），多樣本無法提供額外鑑別力。</p>
+</li>
+<li>
+<p><strong>FC 特化的 UQ 改進</strong>：</p>
+<ul>
+<li>多樣本：以 AST 比對取代 exact string matching 做聚類（SE_AST / DSE_AST），效能小幅提升但仍不超越單樣本。</li>
+<li>單樣本：定義語意關鍵 token（Semantically Meaningful Tokens, SMT）——排除語法強制 token（如 <code>=[&quot;</code>），僅保留決定函數選擇、參數選擇、參數值、呼叫數量的 token，使 G-NLL_SMT / MAX_SMT / AVG_SMT 校準度與 AUROC 均有提升。</li>
+</ul>
+</li>
+<li>
+<p><strong>校準分析</strong>：MAX 校準最佳；G-NLL 傾向 underconfident（token 機率連乘）；SMT 同時改善校準（smECE 從 0.147 → 0.091）。</p>
+</li>
+</ol>
+<h2 id="對讀者的價值與-ai_core-的接點">對讀者的價值（與 ai_core 的接點）</h2>
+<h3 id="ai_core-34-憑證層function-calling-uq-即意圖工具的可靠性閘門">ai_core §3.4 憑證層：function-calling UQ 即意圖→工具的可靠性閘門</h3>
+<p>本論文直接提供 ai_core §3.4「憑證管理」所需的<strong>決定性閘門機制</strong>：當 agent 產生 function call 時，UQ 分數回答「這個呼叫正確的機率有多高」。實務上可在執行前設定閾值——若 G-NLL_SMT 不確定性過高則拒絕執行或轉交人類。論文 Table 3/risk-coverage 曲線顯示：拒絕 30% 最高不確定性的呼叫後，Simple 準確率從 &lt;92% 提升至 96%，Parallel-Multiple 從 79% 升至 86%。這正是 §3.4 中「憑證與權限核發前必須驗證意圖可靠性」的量化實作。</p>
+<h3 id="ai_core-5-工具層工具呼叫的確定性把關">ai_core §5 工具層：工具呼叫的確定性把關</h3>
+<p>本論文證實 FC 輸出的特殊性（高 token 機率、低語意多樣性）使簡單的 logit-based 方法已足夠有效，不需昂貴的多樣本推論。這與 ai_core §5 的設計方向一致——工具呼叫模組應內建輕量 UQ，在每次函數執行前做低延遲的把關，避免 irreversible actions（金流、資料刪除）。論文提出的 SMT 萃取演算法（基於輸出格式的輕量規則）可直接嵌入 §5 的工具代理層。</p>
+<h3 id="關鍵數字">關鍵數字</h3>
+<table>
+<thead>
+<tr>
+<th>指標</th>
+<th>數值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>最佳單樣本方法</td>
+<td>G-NLL_SMT（All Combined AUROC 0.78）</td>
+</tr>
+<tr>
+<td>FC token 平均機率</td>
+<td>0.97（vs NL QA 0.71）</td>
+</tr>
+<tr>
+<td>拒絕 30% 呼叫後準確率提升</td>
+<td>+4–7%（依 task）</td>
+</tr>
+<tr>
+<td>SMT 對 G-NLL 校準改善</td>
+<td>smECE 0.147 → 0.091</td>
+</tr>
+</tbody>
+</table>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

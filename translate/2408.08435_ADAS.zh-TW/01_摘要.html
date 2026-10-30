@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2408.08435_ADAS.zh-TW.html">回 2408.08435_ADAS.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>研究者正投入大量心力開發強力的通用 agent，其中基礎模型（Foundation Models, FMs）被當作智能體系統（agentic system）裡的模組（如 Chain-of-Thought、Self-Reflection、Toolformer）。然而機器學習史告訴我們：手工設計的解終將被學習出來的解取代。本文描述一個正在成形的新研究領域——<strong>智能體系統的自動化設計（ADAS）</strong>，其目標是自動創造出強力的 agent 設計，包括發明新的建構模組（building blocks）以及以新方式組合它們。我們進一步展示 ADAS 中一條尚未被探索、卻很有前景的路線：<strong>用程式碼定義 agent，並由一個「元智能體（meta agent）」以程式碼自動發明出愈來愈好的 agent</strong>。由於多數程式語言是圖靈完備的，此法理論上能學到任何可能的 agent 系統：新的 prompt、工具使用、workflow 及其組合。我們提出一個簡單卻有效的演算法 <strong>Meta Agent Search（元智能體搜尋）<strong>來示範此想法：一個 meta agent 基於一個持續成長的「發現檔案庫（archive）」反覆撰寫有趣的新 agent。跨編碼、科學、數學等多領域的大量實驗顯示：本演算法能漸進發明出設計新穎、且大幅勝過 SOTA 手工 agent 的 agent；更重要的是，我們一致觀察到一個驚人結果——Meta Agent Search 發明的 agent 即使</strong>跨領域、跨模型遷移</strong>仍保持優越表現，展現其穩健性與通用性。程式碼開源於 github.com/ShengranHu/ADAS。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>GPT、Claude 等基礎模型正快速被採用為需要靈活推理與規劃的通用 agent。可靠地解決問題往往需要一個由多個組件構成的<strong>複合式智能體系統</strong>，而非單一的模型查詢；為解決真實任務，agent 常需存取搜尋引擎、程式執行、資料庫查詢等外部工具。於是社群提出了許多有效的建構模組：CoT 式規劃推理、記憶結構、工具使用、自我反思等。但<strong>開發這些模組並把它們組合成複雜系統，需要大量針對特定領域的人工調校</strong>。</p>
+<p>機器學習史揭示一再重演的主題：手工製品隨著算力與資料增加，終將被<strong>學習出來、更有效率的解</strong>取代（如電腦視覺中手工的 HOG 特徵被 CNN 學到的特徵取代）。AutoML 與 **AI-Generating Algorithms（AI-GAs）**也已證明學習出的 AI 系統優於手工系統：當前最佳 CNN 來自神經架構搜尋（NAS）而非手工；LLM 對齊中學習出的損失函式勝過 DPO 等手工者；The AI Scientist 展示自動化研究管線……因此本文提出新研究問題：<strong>我們能否把 agent 系統的設計本身自動化？</strong></p>
+<p>我們稱此新領域為 <strong>ADAS</strong>，目標是自動發明新建構模組並設計強力 agent。作者主張 ADAS 可能是通往強力 agent 的<strong>最快路徑</strong>。少數既有工作可算 ADAS，但多數只聚焦<strong>設計 prompt</strong>（Yang et al.、Fernando et al.），大幅限制了發明靈活設計模式的能力。本文展示一條未被探索的路線：<strong>把整個 agent 系統定義在程式碼裡，由一個 meta agent 以程式碼寫出愈來愈好的 agent</strong>。由於 Python 等語言圖靈完備，在程式空間中搜尋理論上能發現任何可能的 agent 系統（含 prompt、工具使用、workflow 等所有組件）；又因近期 FM 擅長寫程式，可直接用 FM 當 meta agent。</p>
+<p>我們據此提出 <strong>Meta Agent Search</strong>，是 ADAS 中最早能在程式空間做完整設計的演算法之一。核心概念：指示 meta agent 反覆創造「有趣的新 agent」、評估、加入 archive，並用 archive 幫助後續迭代創造更有趣的新 agent（借用開放式演化中「人類對有趣性的認知」）。實驗在三方面驗證：(1) 高難度的 ARC 邏輯謎題（測通用智能）；(2) 閱讀理解／數學／科學／多任務四個熱門 benchmark；(3) 發明的 agent 對留出（held-out）領域與模型的遷移能力。結果顯示發明的 agent 大幅勝過 SOTA 手工 baseline——DROP 閱讀理解 F1 增 13.6/100、MGSM 數學準確率增 14.4%；遷移後在 GSM8K、GSM-Hard 分別增 25.9%、13.2%。且不僅能遷移到相似領域，連從數學遷到閱讀理解這類<strong>不相似領域</strong>也表現強勁。</p>
+<h2 id="2-智能體系統的自動化設計adas">2. 智能體系統的自動化設計（ADAS）</h2>
+<p>社群對「agent」的定義尚無共識。本文所謂 agent，指<strong>以基礎模型為模組、透過規劃、用工具、進行多輪迭代處理來解決任務</strong>的智能體系統。類比 AI-GAs 與 AutoML（如 NAS），我們把 ADAS 表述為一個最佳化過程，並辨識出 ADAS 演算法的三個關鍵組件（圖 2）：</p>
+<ul>
+<li><strong>搜尋空間（Search Space）</strong>：決定哪些 agent 系統能被表示、進而被發現。例如 PromptBreeder 只突變文字 prompt，其 workflow 等其他組件固定不變，故無法表示不同 workflow 的 agent。既有工作也探索過圖結構、前饋網路等搜尋空間。</li>
+<li><strong>搜尋演算法（Search Algorithm）</strong>：定義如何探索搜尋空間。因空間通常極大甚至無界，須權衡 exploration-exploitation；理想上既能快速找到高效能 agent，又能避免困在局部最優。既有作法包括強化學習（GPT-Swarm）或用 FM 迭代生成新解（PromptBreeder）。</li>
+<li><strong>評估函式（Evaluation Function）</strong>：依應用可考慮不同目標（效能、成本、延遲、安全）。最常見的簡單作法是算驗證集上的準確率。</li>
+</ul>
+<p><strong>用程式碼當搜尋空間的優勢</strong>：雖然許多搜尋空間設計都可行，但有一條未被探索卻很有前景的路線——把整個 agent 系統定義在程式碼裡，由 meta agent 以程式碼寫出更好的 agent。在程式空間搜尋理論上能發現任何建構模組（prompt、工具使用、workflow）及其任意組合。此法還帶來：(1) <strong>更好的可解釋性</strong>——程式碼可讀，利於除錯並增進 AI 安全；(2) 相較網路或圖，更容易<strong>站在既有人類成果之上</strong>（如在 LangChain 等開源框架內搜尋、沿用 RAG、搜尋引擎工具等既有模組）；(3) 因 FM 擅長寫程式，程式碼搜尋空間能借力 FM 的既有專長，而自訂空間（如圖）因缺此先驗可能效率低很多。作者因此主張：ADAS 應更多研究「以程式語言作為搜尋空間」的路線。</p>
+<h2 id="3-我們的演算法meta-agent-search">3. 我們的演算法：Meta Agent Search</h2>
+<p>Meta Agent Search 是示範「以程式碼定義並搜尋 agent」的簡單而有效演算法。核心想法：採用 FM 當 meta agent，基於一個持續成長的 archive <strong>反覆撰寫有趣的新 agent</strong>。雖然理論上一切都可由 meta agent 從零寫起，但實務上不給任何基本函式（如 FM 查詢 API 或既有工具）並不高效。因此本文為 meta agent 定義一個<strong>極簡框架（100 行程式碼以內）</strong>，提供查詢 FM、格式化 prompt 等必要函式；如此 meta agent 只需寫出一個 <strong><code>forward</code> 函式</strong>來定義新 agent（仿 FunSearch 的作法）——該函式吃進任務資訊、輸出 agent 對任務的回應。</p>
+<p>演算法流程（圖 1）：</p>
+<ol>
+<li>archive（選擇性）以 Chain-of-Thought、Self-Refine 等 baseline agent 初始化；</li>
+<li>meta agent 以 archive 為條件，先產出「新 agent 想法的高階描述」再實作成程式碼；接著由 meta agent 做<strong>兩步自我反思（self-reflection）以確保新穎</strong>；</li>
+<li>用目標領域的驗證資料評估新 agent；若評估中出錯，meta agent 做一次自我反思修正設計，必要時<strong>最多重複 5 次</strong>；</li>
+<li>最後把 agent 連同其評估指標加入 archive，並以更新後的 archive 繼續，直到達到最大迭代數。</li>
+</ol>
+<p>如同利用「人類對有趣性認知」的開放式演化演算法，我們鼓勵 meta agent 基於成長中的 archive 探索**有趣（新穎或有價值）**的新 agent。這裡以效能（成功率或 F1）作為 meta agent 要最大化的指標。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

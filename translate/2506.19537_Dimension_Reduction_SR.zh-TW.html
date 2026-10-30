@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>符號迴歸的降維（Dimension Reduction for Symbolic Regression） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Paul Kahlmeyer, Markus Fischer, Joachim Giesen（Friedrich Schiller University Jena）</p><p>日期：2025-06</p><p>arXiv：2506.19537</p><p><a href="https://arxiv.org/abs/2506.19537" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="符號迴歸的降維">符號迴歸的降維</h1>
+<p>Paul Kahlmeyer、Markus Fischer、Joachim Giesen（耶拿弗里德里希·席勒大學）</p>
+<h2 id="摘要">摘要</h2>
+<p>SR 問題的解是由輸入變數與有限函數符號集的運算子構成的表達式。評估 SR 演算法的一個量度是其「從有限樣本回復公式（至符號等價）」的能力。不意外地，公式越複雜（變數與運算子越多）回復越難。自然出現的符號公式中，變數常<strong>只以固定組合</strong>出現。SR 可利用此——用一個新變數替換該組合、有效減少變數數。但<strong>找有效替換有挑戰性</strong>。本文藉「搜尋小替換的表達式空間 + 測有效性」解決；有效性檢定化約為<strong>函數相依性檢定</strong>。所得迭代降維程序可搭配任何 SR 方法。我們證明它可靠辨識有效替換、並顯著提升不同類型 SOTA SR 演算法的表現。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>迴歸：給 n 個觀測（d 維輸入 x、輸出 y），找泛化良好的函數 f。SR 多一目標——找<strong>可解釋的 f</strong>（取自輸入變數與有限函數符號集構成的符號表達式空間）。</p>
+<p><strong>Washburn 方程</strong>（液體滲入毛細孔的滲透長度 L 為時間 t、黏度 η、表面張力 γ、孔半徑 r、接觸角 ϕ 的函數）是 880 條 Wikipedia 公式之一。其右式由 5 變數 + 函數符號（·、/、√、cos、const）構成，表達式樹 13 節點（複雜度量度）。</p>
+<p><strong>圖 1</strong>：SOTA SR（UDFS 搜尋表達式 DAG、DSR 強化學習、Transformer seq2seq、PySR 遺傳程式設計）<strong>回復率隨公式複雜度增加而下降</strong>;<strong>沒有一個能從觀測資料回復 Washburn 公式</strong>。</p>
+<p><strong>降維</strong>：把 r、ϕ 給定的幾何設置用一變數 g(r,ϕ)=r·cos(ϕ) 表示 → 簡化後表達式樹從 12 降到 9 → <strong>UDFS 就能回復 Washburn 公式</strong>。但只給觀測時有效替換不明顯、找它本身是個任務。</p>
+<p><strong>AIFeynman（Udrescu 2020）先驅</strong>提出有效替換的判據，但<strong>只支援有限替換 g(xi,xj)∈{差 xi−xj、和 xi+xj、積 xi·xj、商 xi/xj}</strong>（如測 xi−xj：比較 f(…,xi,xj,…) 與 f(…,xi+a,xj+a,…)，差很小則有效；其餘三種類似）。</p>
+<p><strong>本文推廣到更一般替換</strong>：用 Kahlmeyer 2024 框架<strong>枚舉到某複雜度的表達式 DAG</strong>（每個 DAG ＝候選替換）；用 Chatterjee 2021 及 Azadkia-Chatterjee、Deb-Ghosal-Sen 的工作<strong>從樣本認證函數相依</strong>檢驗替換有效性。迴歸的根本假設是輸入↔輸出存在函數相依；若 g 有效，則把每個資料點的 x_I 替換為 g(x_I) 後，觀測<strong>仍應表現函數相依</strong>。此替換尋找可搭<strong>任何 SR 演算法</strong>，把既定 benchmark 公式變數數<strong>降約 50%</strong>、顯著提升多種概念迥異的 SOTA SR 的回復表現。</p>
+<h2 id="2-替換">2. 替換</h2>
+<p><strong>input 替換</strong>：給 f:R^d→R、索引集 I⊆[d]（|I|&gt;1）、函數 g:R^|I|→R^k（k&lt;|I|）；若存在 f_g 使 <strong>f(x)=f_g(g(x_I), x_\I)</strong> 對所有 x 成立，則 g 是 input 替換。迴歸中可把「x→y 的迴歸問題」換成「(g(x_I), x_\I)→y 的迴歸問題」;f 可由 g 與 f_g 符號重建。AIFeynman 的 4 種替換是雙變數 input 替換的特例（g(xi,xj)=xi op xj，op∈{+,−,·,/}）。
+<strong>out-input 替換</strong>：也涉及輸出變數 y（如 h(x3,y)=y−x3）。</p>
+<h2 id="3-函數相依性量度">3. 函數相依性量度</h2>
+<p>回顧 Chatterjee 2021 等近期從樣本認證函數相依的進展（用以驗證替換有效性）。</p>
+<h2 id="4-方法">4. 方法</h2>
+<p>用 Kahlmeyer 2024 框架枚舉小表達式 DAG + 相依量度找有效替換，<strong>迭代降維</strong>（beam search）。每步把找到的有效替換套用、轉到新座標，SR 在降維後問題上跑、再轉回原座標。</p>
+<h2 id="5-實驗">5. 實驗</h2>
+<p>資料集：Wikipedia 同名方程（880 條）+ Feynman SR 資料集。評估三維度（La Cava 框架）：<strong>recovery</strong>（嚴格，f−f̂ 可符號化約為常數或 f̂ 是真公式 → 回復；極嚴）、<strong>Jaccard index</strong>（軟版回復，比真假公式的子表達式集合）、<strong>model fit</strong>、<strong>模型複雜度</strong>（SymPy 節點數）。測試集用 20% 樣本。</p>
+<ul>
+<li><strong>結果（Table 7/8）</strong>：對 UDFS、DSR、Transformer、PySR（+二次多項式迴歸），base vs base+beam search。<strong>兩資料集所有 base 模型在 recovery 與 Jaccard 都顯著提升</strong>；除 transformer 外模型擬合也提升；複雜度略增（唯多項式迴歸降 20+ 節點）。</li>
+<li><strong>即使無法回復的問題（Table 9/10）</strong>：加 beam search 後 <strong>Jaccard 也提升</strong>（表達式含更多真公式的部分）。</li>
+</ul>
+<h2 id="6-結論">6. 結論</h2>
+<p>變數常以固定組合出現的洞見可經「枚舉小 DAG 替換 + 函數相依性檢定」利用，得通用、可搭任何 SR 的迭代降維前處理，顯著提升 SOTA SR 的回復表現。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2506.19537_Dimension_Reduction_SR.%E6%91%98%E8%A6%81.html"><code>../summarize/2506.19537_Dimension_Reduction_SR.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

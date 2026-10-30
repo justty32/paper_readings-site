@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2306.05301_ToolAlpaca.zh-TW.html">回 2306.05301_ToolAlpaca.zh-TW 目錄</a>　<a href="02_%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>讓大型語言模型有效運用真實世界工具，是實現具身智能（embodied intelligence）的關鍵。既有的工具學習做法，要嘛主要依賴 GPT-4 這類極大型語言模型，以 zero-shot 方式取得通用化的工具使用能力；要嘛用監督式學習在小模型上訓練有限範圍的工具。然而，小型語言模型能否在<strong>不做工具特定訓練</strong>的情況下也取得通用化工具使用能力，仍不明朗。為回答此問題，本文提出 <strong>ToolAlpaca</strong>，一個以最小人工介入、自動生成多樣化工具使用語料並在小型語言模型上學習通用化工具使用能力的新框架。具體而言，ToolAlpaca 先透過建構一個<strong>多代理模擬環境</strong>，自動建立高度多樣化的工具使用語料——該語料含有來自 400 多個真實世界工具 API、橫跨 50 個不同類別的 3,938 筆工具使用實例。接著，用這份語料微調小型語言模型，得到 ToolAlpaca-7B 與 ToolAlpaca-13B 兩個模型。最後，我們評估這些模型在<strong>未見過</strong>的工具上、不做特定訓練即能使用工具的能力。實驗結果顯示，ToolAlpaca 取得的通用化工具使用能力，可與 GPT-3.5 這類極大型語言模型相媲美，證明了讓小型語言模型學習通用化工具使用能力是可行的。程式碼與資料開源於 github.com/tangqiaoyu/ToolAlpaca。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>具身智能——有意義地與環境互動的能力——是先進認知系統的核心特質，也是人工智慧的重要進展。創造與使用工具的能力，擴展了人類與環境互動的物理能力，也強化了認知功能；這項演化里程碑不僅拓寬了人類的行動範圍，也帶來了解決問題能力與創新思維上的變革。把工具使用能力融入人工智慧系統，對推動通用智能系統的發展意義重大。</p>
+<p>近期在為 GPT-4（OpenAI 2023）等大型語言模型（LLM）加上工具使用能力方面的進展，已在此領域取得長足進步：這些模型能透過整合的外掛（plugins）有效運用外部工具，藉此拓展自身的通用性、提升輸出的精確度與品質。可惜的是，由於<strong>尚不清楚現有大型語言模型是如何取得這種通用工具使用能力</strong>，目前的小型語言模型仍不具備這種能力。因此，大量研究致力於微調小型語言模型以取得工具使用能力（Komeili, Shuster, and Weston 2022; Parisi, Zhao, and Fiedel 2022; Schick et al. 2023），但侷限於有限範圍的工具，缺乏泛化到未見工具的能力。大模型的通用工具使用能力與小模型較受限能力之間的這種落差，帶出一個有趣的問題：<strong>這些小型語言模型能否學會泛化自己的工具使用能力，從而與更廣泛的工具互動？</strong></p>
+<p>本文探討小型語言模型學習通用化工具使用能力是否可行。直觀而言，先前研究已證明，透過在多樣化指令資料集上微調，可以為小型語言模型賦予通用化的指令遵循能力（Taori et al. 2023; Zhou et al. 2023）。因此，一個有前景的策略，是在包含高度多樣化工具使用實例的語料上微調語言模型，以賦予其通用化的工具使用能力。可惜這樣一份多樣化語料目前並不存在，原因有幾項關鍵因素：首先，缺乏一套能涵蓋語言模型各種工具使用情境的可用工具 API，讓組建多樣化工具集合面臨相當大的挑戰。其次，真實世界的工具使用實例常涉及語言模型、使用者與工具間<strong>複雜、精細且多輪</strong>的互動，這大幅提高了在大規模上人工建構涵蓋廣泛工具的實例的難度與人力負擔。這些因素顯著限制了高效建構多樣化工具使用語料以訓練語言模型的努力。</p>
+<p>為此，我們提出名為 <strong>ToolAlpaca</strong> 的框架，其設計目的是為大型語言模型自動建立多樣且結構良好的工具集，並為通用化工具學習生成多輪、複雜的工具使用實例。ToolAlpaca 的整體結構如圖 1 所示。具體而言，為確保工具集的多樣性與完整性，ToolAlpaca 利用 LLM 的文字生成能力來建構一套完整的工具集：ToolAlpaca 從網路上蒐集大量潛在有價值工具的簡短介紹——值得注意的是，<strong>這些工具的 API 不需要真的能用，也不需要本來就有可供 LLM 直接使用的結構化文件</strong>。在此基礎上，ToolAlpaca 運用 LLM 的生成能力，以相關工具的簡短介紹為輸入，提示模型為每個工具產出詳盡、結構化的文件。透過這個方法，ToolAlpaca 蒐集了橫跨 50 個類別、400 多個工具的說明文件，每個工具都以統一標準的文件格式表示。</p>
+<p>隨後，為取得涉及上述工具的工具使用實例，我們設計了一個模擬環境，用以擬真語言模型、使用者與工具之間的多步互動。具體而言，我們利用 LLM 去模擬模型、使用者與工具 API 之間的互動，讓不同種類的代理都由 LLM 扮演。透過這種方式，我們的模擬環境能在<strong>無需任何人工介入</strong>的情況下，生成大量的工具使用實例。因此，我們建構出一份包含 3,938 筆實例的完整工具使用資料集，有效展示了 400 多種不同工具的實際應用。</p>
+<p>為驗證我們的語料能否賦予小型語言模型通用化工具使用能力，我們在代表性的小型語言模型 Vicuna（Chiang et al. 2023）上訓練 ToolAlpaca 模型，並在各種未見過的工具上評估其表現。透過以 GPT-4 進行機器評測，我們發現 ToolAlpaca 能有效駕馭大量未見過的工具，範圍從真實世界 API 到多模態工具皆然，且展現出與 GPT-3.5 相當的競爭力表現。此外，我們也探究多樣性的影響，觀察到即使實例數相同，訓練於更多樣工具集上的模型表現更佳。這凸顯了多樣性是 ToolAlpaca 能以 3000 個模擬案例泛化工具學習的關鍵因素。</p>
+<p><strong>貢獻總結</strong>：</p>
+<ul>
+<li>就我們所知，本文是首篇驗證「讓小型語言模型具備如超大型語言模型般的通用化工具使用能力」可行性的工作。</li>
+<li>本文提出 ToolAlpaca，一個自動生成工具使用語料、並強化小型語言模型通用化工具使用能力的簡單框架。</li>
+<li>我們建構了一份涵蓋 400 多個工具、50 個不同類別、含 3.9k 筆工具使用實例的多樣化語料，為小型語言模型取得通用化工具使用能力打下扎實基礎。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

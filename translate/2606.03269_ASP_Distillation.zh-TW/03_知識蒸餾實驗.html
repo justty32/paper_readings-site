@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>從 LLM 蒸餾答案集程式設計規則用於神經符號視覺問答（Distilling Answer-Set Programming Rules from LLMs for Neurosymbolic Visual Question Answering）（續 3） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.03269_ASP_Distillation.zh-TW.html">回 2606.03269_ASP_Distillation.zh-TW 目錄</a>　<a href="02_%E7%9F%A5%E8%AD%98%E8%92%B8%E9%A4%BE%E6%96%B9%E6%B3%95.html">← 上一節</a>　<a href="04_%E7%B5%90%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-知識蒸餾實驗">4 知識蒸餾實驗</h2>
+<h3 id="41-評估平台與模型選擇">4.1 評估平台與模型選擇</h3>
+<p>評估平台為 Intel Core i7-12700K + 32GB RAM + RTX 3080 Ti（12GB）。ASP 求解器使用 clingo 5.8.0。所有實驗重複 5 次，溫度設為 0（理論上確定性）。</p>
+<p>嘗試過小型可自託管模型（GPT4ALL wizardlm-13b、Zephyr 7b）但表現極差，最終選用五個大型 API 模型：GPT-4o（閉源付費，約 1.8T 參數）、DeepSeek-V2（236B，開源）、Mistral Large（約 123B，開放權重）、LLaMA 3 70B-Instruct（開源）、Gemini-3 Pro（約 1T，具「高推理模式」——內嵌 preprompt 使模型在回答前「思考」）。</p>
+<h3 id="42-實例與理論擴展模擬">4.2 實例與理論擴展模擬</h3>
+<p><strong>蒸餾與測試套件</strong>：GQA 約 35k/10k、CLEVR 35k/15k、CLEGRV 2k/1k。每次蒸餾嘗試僅使用 N=10 個抽樣範例（實際使用量更少，因 LLM 產生的一般性規則已覆蓋後續範例）。</p>
+<p><strong>理論擴展模擬</strong>：從「完美」理論 T 中刪除涉及選定謂詞 P 的所有規則作為起點。每列報告 LLM 蒸餾後在測試套件上的平均準確度及其標準差。</p>
+<h3 id="43-主要結果表-13">4.3 主要結果（表 1–3）</h3>
+<p><strong>GQA</strong>（12 個謂詞）：GPT-4o 平均 98.8%、DeepSeek 98.8%、Mistral 98.9%、LLaMA3 90.3%（select 僅 32.2% 為明顯弱項）、Gemini-3 99.9%。</p>
+<p><strong>CLEVR</strong>（10 個謂詞）：GPT-4o 99.4%、DeepSeek 98.0%、Mistral 98.7%、LLaMA3 94.1%、Gemini-3 100.0%。Mistral 在 unique 謂詞上未能產出規則，LLaMA3 在三個謂詞上未能產出。</p>
+<p><strong>CLEGRV</strong>（13 個謂詞）：GPT-4o 85.6%、DeepSeek 87.0%、Mistral 84.3%、LLaMA3 85.3%、Gemini-3 <strong>97.5%</strong>。CLEGRV 明顯更難——其謂詞（如 cycle、shortest path）需要遞迴與聚合，而 GQA/CLEVR 無遞迴規則。Gemini-3 是唯一在 CLEGRV 複雜圖形謂詞上持續達到接近完美準確度的模型，歸因於其「高推理模式」允許探索多條推理路徑並使用「驗證迴圈」。</p>
+<h3 id="44-範例使用量與-token-消耗表-45">4.4 範例使用量與 Token 消耗（表 4–5）</h3>
+<p><strong>範例使用極少</strong>：每蒸餾嘗試平均僅用 1–4 個範例即收斂（設上限 10 個）。LLM 通常產生覆蓋該問題類型代表性邏輯的一般性規則後即達「不動點」。Gemini-3 最高效，CLEGRV 平均僅需 1.73 範例。</p>
+<p><strong>Token 消耗</strong>（表 5）：與範例使用量趨勢一致——DeepSeek 與 Gemini-3 因較高精確度減少失敗的蒸餾嘗試與重試次數，消耗較少 token。LLaMA3 消耗最高（GQA 輸入平均 33,565 token、輸出 2,587），且變異數極大。</p>
+<h3 id="45-消融實驗表-6">4.5 消融實驗（表 6）</h3>
+<p>移除三個主要蒸餾策略：(i) No Mending（關閉語法+語意修補）、(ii) No CoT（關閉兩種思維鏈）、(iii) No Multiprompt（關閉多重提示）。</p>
+<p><strong>三種效能原型</strong>：</p>
+<ul>
+<li><strong>過載型</strong>（Mistral-Large、LLaMA3-70b）：複雜策略（CoT、multi-prompting）的計算/上下文負擔常超過收益，關閉時反而改善（LLaMA3 在 CLEVR 關閉 mending 後改善 5–10%）。</li>
+<li><strong>平衡型</strong>（GPT-4o、DeepSeek）：有效利用策略橋接推理差距，全開時增益明顯（GQA/CLEGRV 上關閉任何策略導致高達 10% 的下降）。</li>
+<li><strong>飽和型</strong>（Gemini-3）：基線能力已足夠高，使部分策略成為冗餘。即使在無 mending 模式下仍維持 93% 以上的平均準確度。</li>
+</ul>
+<h3 id="46-組成新-asp-謂詞表-7">4.6 組成新 ASP 謂詞（表 7）</h3>
+<p>在 GQA 上測試 LLM 能否從既有謂詞組合成全新謂詞。新增四個謂詞：</p>
+<ul>
+<li><strong>in_between</strong>：三元空間關係（物體 X 在 A 的右邊且在 B 的左邊）。</li>
+<li><strong>connected</strong>：合成關係鏈檢查間接連接。</li>
+<li><strong>isolated</strong>：從場景圖中移除所有關係後檢查物體是否孤立。</li>
+<li><strong>count_class</strong>：計算給定類別的物體數量（計數非原始 GQA 的原始功能）。</li>
+</ul>
+<p>結果：GPT-4o 對所有新謂詞達到 97–100% 準確度。DeepSeek 在 in_between 上超越 GPT-4o（99.23% vs 97.39%）但在 connected 上略為落後。Gemini-3 再次整體最佳（多數完美）。LLaMA3 對 count_class 完全無法產出規則。</p>
+<h3 id="47-研究問題評估r1r4">4.7 研究問題評估（R1–R4）</h3>
+<ul>
+<li><strong>(R1)</strong> 能否擴展 ASP 理論：能。GQA/CLEVR 上表現強勁，CLEGRV 雖有下降但關鍵原始操作仍被捕捉，證明跨領域規則蒸餾的可行性。</li>
+<li><strong>(R2)</strong> 哪些 LLM 合適：僅大規模模型（GPT-4o、DeepSeek、Gemini-3）持續成功。規模與指令遵循能力對穩健規則蒸餾至關重要。</li>
+<li><strong>(R3)</strong> 提示策略貢獻：對頂級模型實質改善效能，但對較弱模型反而可能妨礙。策略效能高度關聯模型的內在推理能力。</li>
+<li><strong>(R4)</strong> 組成新謂詞：GPT-4o、DeepSeek 與 Gemini-3 能使用基礎理論的原始功能組成新 ASP 謂詞，包括遞迴與聚合規則。</li>
+</ul>
+<hr />
+<h2 id="part-44-parent_file-260603269_asp_distillationzh-twmd">part: 4/4
+parent_file: 2606.03269_ASP_Distillation.zh-TW.md</h2>
+<h1 id="從-llm-蒸餾答案集程式設計規則用於神經符號視覺問答distilling-answer-set-programming-rules-from-llms-for-neurosymbolic-visual-question-answering續-3">從 LLM 蒸餾答案集程式設計規則用於神經符號視覺問答（Distilling Answer-Set Programming Rules from LLMs for Neurosymbolic Visual Question Answering）（續 3）</h1>
+<h2 id="5-修剪蒸餾規則5">5 修剪蒸餾規則（§5）</h2>
+<p>許多 LLM 產出的邏輯程式包含冗餘規則——移除後不影響答案的規則。冗餘增加複雜度、使分析與除錯更困難，且在規則回傳神經架構的情境下，緊湊性對可解釋性與計算效率至關重要。</p>
+<p><strong>冗餘消除啟發式（Alg. 2）</strong>：greedy backward elimination——按規則產生順序逐一測試，若從規則集中移除某規則後在修剪樣本上的表現與原有相同，則標記為冗餘並丟棄。因為後產生之規則因迴歸測試而傾向更一般化，演算法從先產生的規則開始嘗試消除。</p>
+<p><strong>修剪結果</strong>：</p>
+<ul>
+<li>GPT-4o 一致產出更廣泛的規則集，常導致高修剪數（如 CLEVR unique 平均 8.8 條被修剪），反映其進行透徹但有時冗餘的解決方案探索。</li>
+<li>Mistral 與 LLaMA3 產出較緊湊的輸出，部分謂詞接近零修剪。</li>
+<li>Gemini-3 修剪率最低，常產出零冗餘規則——其「高推理模式」能精確定位 VQA 原始功能所需的確切邏輯。</li>
+<li><strong>低修剪＋高準確度＋少量範例</strong>表示 LLM 產出一般性且有用的規則；<strong>高修剪＋大量範例</strong>表示探索性行為（逐步精煉）；<strong>高修剪＋少量範例</strong>可能表示模型產生多餘規則。</li>
+<li>GQA/CLEVR 整體修剪率最高（較簡單的組合式謂詞鼓勵 LLM 產生多樣化候選規則）；CLEGRV 修剪率持續較低，非因較高效能而是其複雜性使規則合成本身更難。</li>
+</ul>
+<h2 id="6-相關工作">6 相關工作</h2>
+<h3 id="61-asp-與-llm">6.1 ASP 與 LLM</h3>
+<p>近期研究探索 LLM 在 ASP 語境中的應用：Ishay et al.（2023）發現 LLM 推理能力淺層但可作為高效語義解析器將輸入轉換為 ASP 表示；Bauer et al.（2024）在圖形 VQA 中使用 LLM 將問題解析為 ASP 事實；STAR 框架（Rajasekharan et al. 2023）結合 LLM 與 ASP 用於定性推理/數學推理/目標導向對話；LLASP（Coppolillo et al. 2024）微調 LLM 專門用於 ASP。<strong>本工作的不同</strong>：我們不關注語義解析，而是更具挑戰性的知識蒸餾——產生捕捉特定領域知識的健全邏輯規則。</p>
+<h3 id="62-統計關聯學習srl">6.2 統計關聯學習（SRL）</h3>
+<p>ILP 系統（如 ILASP、FastLAS）需要模式宣告定義允許規則的語法形式以限制搜尋空間——假設對解的形式有直覺。蒸餾方法不要求此前提：我們僅誘出 LLM 中已存在的知識，提示中說明所需規則的資訊是非正式的、以自然語言表達。當提示 LLM 時，規則是「依指令而一般性」——最優性不被強制但可能隱式發生。</p>
+<h3 id="63-模組化神經符號-vqa">6.3 模組化神經符號 VQA</h3>
+<p>多個 VQA 系統採用模組化架構結合子符號與符號元件：Yi et al.（2018）從影像提取場景圖並執行程式；可微分一階邏輯（Amizadeh et al. 2020）與 ASP（Eiter et al. 2022）推進此範式；ViperGPT、CodeVQA、PnP-VQA 將 VLM 作為元件使用；語義損失（Xu et al. 2018）用於改進涉及推理模組的神經網路學習。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

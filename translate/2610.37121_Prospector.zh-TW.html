@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Prospector: learning a compact graph traversal policy for scientific reasoning 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Haiqian Yang、Markus J. Buehler</p><p>日期：2026-10-27（v1，cs.AI）</p><p>arXiv：2610.37121</p><p><a href="https://arxiv.org/pdf/2610.37121v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="prospector學習精簡圖譜走訪策略以支援科學推理">Prospector：學習精簡圖譜走訪策略以支援科學推理</h1>
+<h2 id="摘要與第-1-節研究問題">摘要與第 1 節：研究問題</h2>
+<p>專業工程知識可能分散於文獻，也可能受私有資料限制。常見的 LLM 加知識圖譜方法先選出一個子圖，再將它交給模型回答；但在推理前選取證據，可能漏掉問題沒有直接提到的中間節點。Prospector 訓練小型語言模型逐步呼叫圖譜工具，根據已取得的結果決定下一步，最後附上所引用的圖譜邊。（<a href="https://arxiv.org/pdf/2610.37121v1#page=1">PDF 第 1–3 頁，摘要與 §1</a>）</p>
+<h2 id="第-2-節相關研究">第 2 節：相關研究</h2>
+<p>作者對照預先檢索圖譜、以凍結模型在推理中逐步查詢圖譜、在圖譜上訓練走訪策略，以及回答的引用與證據評估。本文目標是從文獻抽取的自由文字關係圖中學習可轉移的走訪，而非把整張圖放進模型脈絡。（<a href="https://arxiv.org/pdf/2610.37121v1#page=3">第 3 頁，§2</a>）</p>
+<h2 id="第-3132-節走訪與主要結果">第 3.1–3.2 節：走訪與主要結果</h2>
+<p>代理以三個工具操作圖譜：<code>find</code> 依名稱找節點但不回傳邊；<code>expand</code> 列出某節點相鄰邊；<code>connect</code> 尋找兩節點之間的短路徑。每輪一次工具呼叫，每題最多 20 次；答案附帶引用的邊。半導體主測試含 195 個保留題目。（<a href="https://arxiv.org/pdf/2610.37121v1#page=4">第 4–5 頁，§3.1–3.2</a>、<a href="https://arxiv.org/pdf/2610.37121v1#page=11">第 11 頁，§6.3</a>）</p>
+<p>作者自報，使用相同圖譜與工具時，Prospector-4B 單次貪婪輸出成功率為 <code>0.839±0.015</code>；gpt-6-astra 為 0.877、claude-opus-5.5 為 0.846。無圖的八個通用模型為 0.154～0.226；事先檢索子圖優於無圖，但在此設計下低於這些模型自行走訪。這是對本研究保留題目和指定檢索策略的比較。（<a href="https://arxiv.org/pdf/2610.37121v1#page=4">第 4–5 頁，圖 2</a>）</p>
+<h2 id="第-33-節訓練與候選選擇">第 3.3 節：訓練與候選選擇</h2>
+<p>作者先用教師示範做監督微調，接著以 GRPO 訓練完整 episode，從成功軌跡做拒絕取樣微調，再針對決定最終答案的狀態做決策層級 GRPO。訓練使用低秩 adapter，基底權重固定；決策階段以策略自身的軌跡前綴生成續寫，並重新建立狀態以減少策略更新後資料陳舊。（<a href="https://arxiv.org/pdf/2610.37121v1#page=7">第 7 頁，§3.3</a>、<a href="https://arxiv.org/pdf/2610.37121v1#page=12">第 12 頁，§6.5</a>）</p>
+<p>作者報告，半導體題集上單次貪婪成功率從初次監督微調的 <code>0.711±0.012</code> 增至決策訓練後的 <code>0.839±0.015</code>。若每題抽樣 32 個 episode，195 題中 192 題的候選池至少含一個正確且通過 grounding 的答案；訓練的 verifier 選擇後成功率為 0.913，同一候選池多數決為 0.856。32 次取樣與 verifier 的成本不能與單次輸出直接等同。（<a href="https://arxiv.org/pdf/2610.37121v1#page=7">第 7 頁，§3.3</a>）</p>
+<h2 id="第-34-節跨圖譜測試">第 3.4 節：跨圖譜測試</h2>
+<p>模型只在半導體圖譜訓練，權重凍結後轉用三個其他領域的圖譜。作者自報在 20 次工具呼叫預算下的成功率如下，Prospector 的 <code>±</code> 跨三次執行：（<a href="https://arxiv.org/pdf/2610.37121v1#page=7">第 7 頁，表 1</a>）</p>
+<table>
+<thead>
+<tr>
+<th>圖譜</th>
+<th style="text-align:right">Prospector-4B＋工具</th>
+<th style="text-align:right">gpt-6-astra＋工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>仿生材料</td>
+<td style="text-align:right">0.803±0.017</td>
+<td style="text-align:right">0.857</td>
+</tr>
+<tr>
+<td>PFAS</td>
+<td style="text-align:right">0.766±0.022</td>
+<td style="text-align:right">0.846</td>
+</tr>
+<tr>
+<td>材料性質</td>
+<td style="text-align:right">0.809±0.011</td>
+<td style="text-align:right">0.865</td>
+</tr>
+</tbody>
+</table>
+<p>這些圖譜都從相關文獻經生成式抽取管線建立；零樣本表示未在這三張目標圖上訓練，不代表已驗證對任意知識表示或真實專家工作流的泛化。（<a href="https://arxiv.org/pdf/2610.37121v1#page=10">第 10 頁，§6.1</a>）</p>
+<h2 id="第-3536-節成本與內部狀態">第 3.5–3.6 節：成本與內部狀態</h2>
+<p>作者以一次只執行一個 episode 測速，報 H200 上 Prospector-4B 每分鐘回答 10.7 題，MacBook M4 Pro 離線為 1.2 題。另以租用 GH200 的每小時價格及併發執行估算單次輸出每千題 0.57 美元，託管模型按供應商 token 價格估算；測速與成本採不同併發設定，亦未將訓練和圖譜建置成本算入該單次服務價格。（<a href="https://arxiv.org/pdf/2610.37121v1#page=8">第 8 頁，圖 5 與 §3.5</a>）</p>
+<p>作者在輸出下一輪前讀取隱狀態，將下一步分成跟隨新觀測、回到舊節點、回答；在半導體圖上擬合的線性讀取器也用於仿生材料圖。對隱狀態加入特定方向可改變所測走訪行為與提前回答比例；這是對該策略與實驗設定的干預觀察，不能直接證明模型具有一般性的推理意圖。（<a href="https://arxiv.org/pdf/2610.37121v1#page=8">第 8–9 頁，§3.6</a>）</p>
+<h2 id="第-46-節資料評分與限制">第 4–6 節：資料、評分與限制</h2>
+<p>作者先從圖上抽取自迴避路徑，再由教師模型將路徑寫成問題，答案集合由整張圖上相同關係序列的終點計算。半導體有 195 個保留題，三個轉移圖分別有 210、228、223 題；3,971 個訓練題與評估題不共用 gold path。（<a href="https://arxiv.org/pdf/2610.37121v1#page=11">第 11 頁，§6.2</a>）</p>
+<p>本文成功率有兩個條件：答案屬於題目的答案集合，且引用邊都曾被該 episode 的工具回傳、答案出現在所引用邊中。這個 gate 核對引用邊與軌跡的對應，未檢查引用邊是否連成完整路徑，也不等於獨立核對原始文獻、證明抽取關係正確或證明開放式科學假說。作者也指出開放式假說還需評估新穎性、機制合理性與實驗成本。（<a href="https://arxiv.org/pdf/2610.37121v1#page=10">第 10–11 頁，§4、§6.3</a>）</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2610.37121_Prospector.%E6%91%98%E8%A6%81.html">Prospector 摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

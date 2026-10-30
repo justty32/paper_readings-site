@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《可平行化的神經圖靈機（P-NTM）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Gabriel Faria（USP）、Arnaldo Candido Junior（UNESP）；程式碼 github.com/gbrlfaria/pntm</p><p>日期：2026-02，記憶體增強神經網路／神經圖靈機</p><p>arXiv：2602.18508</p><p><a href="https://arxiv.org/abs/2602.18508" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="可平行化的神經圖靈機p-ntm重點摘要">《可平行化的神經圖靈機（P-NTM）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>P-NTM</strong>：把神經圖靈機（NTM）那條<strong>天生序列、難以平行</strong>的記憶體操作鏈，重設計成可用<strong>平行掃描（parallel scan）<strong>計算的版本——靠「控制訊號只依賴當前輸入（去掉遞迴控制器狀態）＋ FFT 圓周卷積定址 ＋ 對數空間掃描寫入」三招，在所有測試任務上</strong>與標準 NTM 同樣達 100% 並泛化到 3× 訓練長度</strong>，同時取得 <strong>3.6×–18.5× 訓練加速</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>NTM 表達力強（記憶體增強運算），但<strong>記憶體操作本質序列化、難平行</strong>，導致可擴展性差、訓練效率遠不及 Transformer 與狀態空間模型。P-NTM 要在<strong>保住 NTM 表達力</strong>的前提下讓它能平行訓練。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>簡化控制機制</strong>：移除遞迴控制器狀態依賴；位移與記憶體更新<strong>只依當前輸入</strong>算出（不讀先前隱狀態）→ 消除阻擋平行化的時間依賴。</li>
+<li><strong>FFT 卷積定址</strong>：定址權重以圓周卷積的平行掃描演化，aₜ ≈ IFFT(exp(ϕ̃ₜ))（ϕ̃ₜ 由對數變換 FFT 核的累積和得到），把序列深度由 O(T) 降為 <strong>O(log T)</strong>。</li>
+<li><strong>對數空間掃描寫入</strong>：記憶體更新為一階遞迴 vₜ = αₜvₜ₋₁ + βₜ，以對數空間平行掃描保數值穩定。</li>
+<li><strong>不互相干擾的寫入</strong>：各寫頭寫到記憶體 cell 的不同維度，再用可學投影跨頭混合，降低更新爭用。</li>
+<li><strong>計算模型</strong>：狀態資訊<strong>編在輸出序列本身</strong>（自迴歸消耗）而非持久隱向量 → 把狀態管理分散到時間軸（理論上對應「自迴歸 CoT 可表示有限自動機計算」）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>長度泛化</strong>：6 個任務（Parity、Cycle Navigation、Reverse/Duplicate String、Modular Arithmetic、Binary Addition）訓練長度 1–40、測試 41–120，<strong>P-NTM 與 NTM 皆 100% 完美泛化</strong>；達到完美泛化的執行比例 <strong>P-NTM 55% vs NTM 35%</strong>。</li>
+<li><strong>基線對比</strong>（完美泛化分數）：LSTM 0.04–0.14、Transformer 0.21–0.65，<strong>NTM 與 P-NTM 全為 1.00</strong>。</li>
+<li><strong>訓練加速</strong>：相對標準 NTM <strong>3.6×–18.5×</strong>（序列 8→65,536 token，A100；序列越長加速越大）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>依賴中間監督</strong>：當中間輸出缺失／稀疏／有噪時可能難以可靠學習與追蹤離散狀態（標準 NTM 可內部維持狀態而不需顯式推理步）。</li>
+<li><strong>推論仍序列</strong>：自迴歸生成時每步計算成本為主導瓶頸，抵銷平行優勢。</li>
+<li><strong>記憶體擴展</strong>：平行化需與序列長度成線性的記憶體；超長序列需分塊執行。</li>
+<li><strong>穩定性變異</strong>：失敗時 P-NTM 平均準確率 0.93、NTM 0.97（P-NTM 失敗變異較大）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 <strong>F 類</strong>的「<strong>神經圖靈機現代化</strong>」代表——把 2014 年的 NTM 用今日「平行掃描／SSM」思維重做，與 <a class="paper-reference" href="2605.08150_Turing_Complete_NN_Library.%E6%91%98%E8%A6%81.html">2605.08150</a>（把圖靈機精確編譯成權重、含可平行的 Transformer 建構 WCM21）形成有趣對照：一個是<strong>可訓練的近似</strong>，一個是<strong>精確建構</strong>。</li>
+<li>最值得記：<strong>三招平行化</strong>（控制訊號只依當前輸入、FFT 圓周卷積定址、對數空間掃描寫入）；<strong>O(log T) 平行深度</strong>；以及「<strong>狀態編在輸出序列而非隱向量</strong>」這個與 chain-of-thought／自迴歸有限自動機相通的觀點。</li>
+<li>與 <a class="paper-reference" href="2509.22284_PD_SSM_State_Tracking.%E6%91%98%E8%A6%81.html">2509.22284</a>（PD-SSM 用結構稀疏轉移矩陣讓狀態空間模型模擬 FSA）共享「讓現代序列模型獲得<strong>真狀態追蹤</strong>能力」的母題，但路線不同：PD-SSM 改轉移矩陣結構，P-NTM 改外部記憶體定址。</li>
+<li>定位：<strong>架構＋實證論文</strong>（含開源），適合做記憶體增強模型、長度泛化、演算法學習、平行序列計算的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2602.18508_P_NTM.zh-TW.html"><code>../translate/2602.18508_P_NTM.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

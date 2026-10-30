@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2303.17491_RCI.%E6%91%98%E8%A6%81.html">回 2303.17491_RCI.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>RCI（Recursive Criticism and Improvement，遞迴批評與改進）</strong>：不微調、不用任務專屬獎勵函數，只用「<strong>先產出 → 提示 LLM 找出自己輸出的問題 → 依批評重寫</strong>」這個兩步 prompting 迴圈，並把它套用在<strong>任務接地／狀態接地／agent 接地</strong>三個推理階段上；在 <strong>MiniWoB++ 的 55 個任務</strong>上超越監督式與強化式學習基線（較 WebN-T5-3B 高 <strong>41%</strong>、較無字典型輸入動作的 CC-Net 高 <strong>6%</strong>、較 SL SotA 高 <strong>37 個百分點</strong>、較 RL SotA 高 <strong>27 個百分點</strong>），且每個任務只需<strong>平均不到 2～3 條示範</strong>——比 WebN-T5-3B 少 <strong>120 倍</strong>、比 CC-Net 少 <strong>11,000 倍</strong>樣本。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>要做「能用自然語言指令操作電腦」的通用 agent，過去最好的方法（CC-Net 等）是從頭訓練網路：靠大量專家示範做監督式學習、或靠人工設計的獎勵訊號做強化學習。CC-Net 用了 <strong>240 萬條專家示範（相當於 6,300 小時、77 位受試者、104 個任務）</strong>，平均每任務 23,076 條。這對「新任務」完全不切實際——每個新任務都得重新收資料、重寫獎勵。另一方面，直接讓 LLM 產生鍵盤滑鼠動作又表現不佳，卡在三個接地（grounding）問題上：動作是否<strong>切題</strong>（task grounding）、在<strong>當前狀態下是否可行</strong>（state grounding）、是否<strong>符合 agent 可執行的格式</strong>（agent grounding）。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>RCI prompting 本體</strong>：兩步。先零樣本產生輸出，再用「Review your previous answer and find problems with your answer」要 LLM 自我批評，最後用「Based on the problems you found, improve your answer」重寫。迴圈可持續到滿足條件（環境回饋、達到最大迭代數、或啟發式）。</li>
+<li><strong>顯式 vs 隱式 RCI</strong>：<strong>顯式 RCI</strong> 把批評文字明確採樣出來、放進改寫 prompt；<strong>隱式 RCI</strong> 不採樣批評，直接在新脈絡條件下更新前一版輸出。</li>
+<li><strong>MiniWoB++ 環境</strong>：網頁模擬環境，狀態空間<strong>只有 HTML 原始碼</strong>（無截圖），動作空間是鍵盤打字（含 Backspace／Enter 等特殊鍵）與滑鼠移動點擊，全部以正規表示式定義的自然語言指令表達（如 <code>clickxpath //*[@id=&quot;subbtn&quot;]</code>、<code>type ...</code>）。與 CC-Net 的「字典式打字動作」不同，本文是<strong>完全生成式</strong>地預測要輸入的文字。</li>
+<li><strong>三段接地迴圈（動作採樣拆成三個推理步驟）</strong>：
+<ol>
+<li><strong>任務接地</strong>：先讓 LLM 針對高階任務產生<strong>逐步計畫</strong>，再以計畫為條件採樣動作。計畫兼作記憶模組（讓 agent 知道自己走到哪一步），並對計畫跑<strong>一次顯式 RCI</strong> 來提高成功率——作者觀察多數 MiniWoB++ 任務跑一輪就夠。</li>
+<li><strong>狀態接地</strong>：以<strong>隱式 RCI</strong> 提示 LLM 考慮當前 HTML 狀態，把抽象概念（如「Bob 寄來的信」）連結到具體元素（信件標題的 XPath）。作者觀察重複超過一次不會提升成功率，故<strong>只跑一次</strong>。</li>
+<li><strong>agent 接地</strong>：再用<strong>隱式 RCI</strong>，條件於狀態、任務、任務接地動作與狀態接地動作，確保輸出格式可被 agent 執行；<strong>重複執行直到動作可執行，最大迴圈數設 3 時表現最佳</strong>。</li>
+</ol>
+</li>
+<li><strong>推理任務上的 RCI</strong>：以 gpt-3.5-turbo 在 8 個算術／常識推理基準上評測，最大迴圈數 2，並以正確標籤作為停止訊號（＝外部回饋）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>推理（表 1，Zero-Shot → Zero-Shot+RCI）</strong>：GSM8K 77.95→85.43、MultiArith 94.48→97.64、AddSub 88.58→89.76、SVAMP 80.70→84.65、SingleEq 86.61→94.49、AQuA 60.23→67.32、CommonSenseQA 64.56→68.11、StrategyQA 48.81→61.81。<strong>八個基準全面提升</strong>，連不需多步推理的 SingleEq／AddSub 也有增益（CoT 在這類題上通常無效）。</li>
+<li><strong>與 CoT 的綜效（表 2）</strong>：Zero-Shot+RCI 在 5 個算術任務中有 4 個勝過 Zero-Shot CoT 與 Few-Shot CoT；而 <strong>CoT+RCI 組合最強</strong>（Few-Shot CoT+RCI：GSM8K 84.25、MultiArith 99.21、AddSub 90.55、SVAMP 87.40、SingleEq 93.70）。</li>
+<li><strong>MiniWoB++（55 個任務）</strong>：較 WebN-T5-3B（12,000 條示範微調 T5）高 <strong>41%</strong>；較 <strong>CC-Net（去除字典式打字動作）高 6%</strong>；較 <strong>SL SotA 高 37 個百分點</strong>、較 <strong>RL SotA 高 27 個百分點</strong>；相對「SL+RL 合併 SotA」也<strong>些微領先（不到 1 個百分點）</strong>。唯一整體勝過本方法的是完整版 CC-Net，但它用字典式打字動作，不可直接比較。</li>
+<li><strong>樣本效率</strong>：本方法只把 <strong>2～3 條示範放進 prompt 做 in-context learning、完全不更新參數</strong>，所需樣本較 WebN-T5-3B 少 <strong>120 倍</strong>、較 CC-Net 少 <strong>11,000 倍</strong>。</li>
+<li><strong>接地消融（圖 5）</strong>：拿掉任一種接地，成功率都明顯下降，且三者貢獻<strong>幾乎相等</strong>、彼此互補。狀態接地對「初始狀態資訊不足」的任務（如 terminal）最關鍵；任務接地對長程規劃任務（如 click-checkboxes-large）增益最大；拿掉 agent 接地後，<strong>連簡單任務的成功率都掉 60%</strong>。</li>
+<li><strong>模型消融</strong>：GPT-3（davinci）、InstructGPT-3（text-davinci-002）、InstructGPT-3+RLHF（gpt-3.5-turbo）比較顯示，<strong>未經指令微調的模型幾乎無法完成任務</strong>。</li>
+<li><strong>無外部回饋時的反例</strong>：在推理任務上若拿掉「用正確標籤決定何時停止」這個外部回饋，RCI 容易產生<strong>偽陰性批評（false negative critics）</strong>，一半基準只回到零樣本水準、另一半甚至更差（附錄表 17）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>主要只在 InstructGPT-3+RLHF（gpt-3.5-turbo、gpt-4）上驗證，<strong>RCI 對其他模型的泛化性未探索</strong>。</li>
+<li><strong>長 HTML 難以處理</strong>：受限於脈絡長度，book-flight、choose-date、click-pie 等任務因 HTML 過長而被排除；剪枝 HTML 本身也不容易。</li>
+<li>動作空間僅限點擊與打字，缺拖曳、複製貼上等，限制了網頁操作能力。</li>
+<li><strong>只顧短期決策</strong>：需要前瞻的任務（guess-number、search-engine、use-spinner 長程規劃；tic-tac-toe、use-autocomplete 多步推理）表現差；依賴視覺渲染的任務（count-shape）也弱，顯示<strong>單一 HTML 模態不足</strong>。</li>
+<li><strong>RCI 比只採樣一次的方法貴</strong>（多次 LLM 呼叫）；作者也承認在部分電腦任務上仍不如任務專屬的 SL+RL。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

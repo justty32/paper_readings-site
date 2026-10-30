@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Do Vision-Language-Action Models Mean What They Say? On the Role of Faithfulness in Embodied Reasoning 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Matthew Foutter、Matteo Cercola、Lena Wild、Yunshan Wang、Michelle Li、Daniele Gammelli、Marco Pavone</p><p>日期：2026-07-06（v1，cs.RO）</p><p>arXiv：2607.04681</p><p><a href="https://arxiv.org/abs/2607.04681" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="do-vision-language-action-models-mean-what-they-say">Do Vision-Language-Action Models Mean What They Say?</h1>
+<h2 id="摘要與第-1-節問題有用的推理不等於忠實的推理">摘要與第 1 節：問題——有用的推理不等於忠實的推理</h2>
+<p>具身 Chain-of-Thought 能讓 Vision-Language-Action（VLA）模型看似更會規劃，也更容易被人理解；但一段說得通的文字，未必真的參與了產生動作的計算。作者區分兩條軸線：功能性推理是 reasoning 是否改善下游任務；忠實性推理則是 reasoning trace 是否反映政策實際的決策過程。前者成立時，後者仍可能不成立，例如模型用未接地的理由包裝一個早已由其他捷徑決定的動作。</p>
+<p>現行做法大多以軌跡誤差或 reasoning—action 對齊來訓練。作者認為對齊是必要但不足的條件：動作可與最後一句理由表面一致，中間的場景描述卻可能不符合觀測，或理由、meta-action 與軌跡彼此矛盾。這種鬆散耦合在罕見、資料稀少的長尾場景尤其危險，例如前方障礙消失的反事實情境，真正忠實的政策應同時改變理由與操控行為。</p>
+<h2 id="第-3-至-5-節定義與方法以逐邊一致性近似忠實性">第 3 至 5 節：定義與方法——以逐邊一致性近似忠實性</h2>
+<p>政策先由觀測產生結構化 trace，再產生 waypoint 軌跡。作者的實作把 trace 分成三段：場景描述、移動理由、離散 meta-action。最強的行為忠實性假設是一條一階 Markov 鏈：每一步只依前一步摘要上游資訊，最終動作必須經由 trace 產生，而不是與 trace 平行產生。</p>
+<p>真正的機制忠實性要求介入某一段 trace 後，後續推理與動作都隨之改變；這需要直接干預模型，通常無法實際最佳化。論文因而採取必要但不充分的行為代理：檢查觀測到場景、場景到理由、理由到 meta-action、meta-action 到 waypoint，以及理由到 waypoint 共五條關係是否語意一致。最後一條跨越中間節點，專門堵住「理由和 meta-action 看似連續，實際軌跡卻不實現理由」的合理化漏洞。</p>
+<p>Pinocchio 是學習式 critic。它接收每一條關係並輸出 CONSISTENT 或 INCONSISTENT，將各邊一致性的對數機率加到負 ADE 的強化學習目標，提供每個 rollout 多個密集回饋，而非只有終局分數。critic 在政策更新時固定不動；若 critic 校準錯誤，獎勵也會把政策導向錯的「一致性」，這是方法自身的重要風險。</p>
+<h2 id="第-4-節初步觀察軌跡變好理由未必變好">第 4 節：初步觀察——軌跡變好，理由未必變好</h2>
+<p>作者先在人類評估中比較 Alpamayo 的 SFT 與 RL checkpoint，使用公開驗證切分的兩百個樣本，這是作者自報。標註者判斷兩種回答是否實質不同、是否貼合場景，再依橫向與縱向 ADE 比較誰的軌跡較好。結果沒有得到穩定耦合：RL 有時在理由未改變、理由同樣未接地，甚至 SFT 理由較佳時，仍降低軌跡誤差。這支持作者的診斷：僅靠軌跡目標，政策可能繞過文字推理。</p>
+<h2 id="第-6-節critic-驗證後訓練與主要實驗">第 6 節：critic 驗證、後訓練與主要實驗</h2>
+<p>為建立訓練資料，作者混合帶 reasoning 的專家示範、SFT rollout、機械式 edge swap 與對抗式不一致 trace，再由 Gemini 3.1 Pro 依相機畫面、鳥瞰軌跡與速度圖標記五條關係。四位獨立標註者標記一百條完整 trace；Gemini 與人類多數的邊別一致率為百分之八十七至九十五，Cohen’s κ 為 0.385 至 0.720，均為作者自報。這不是完美標註，但作者據此認為足以量產邊級資料。</p>
+<p>Pinocchio 以 Qwen3-VL-4B-Instruct 微調，留出兩百五十筆標註驗證。整體 balanced accuracy 為 0.87，五條邊依序為 0.81、0.78、0.94、0.88、0.90，皆為作者自報。較弱的視覺接地邊也預告了後面獎勵的限制。</p>
+<p>後訓練採約十萬個專家駕駛情境，並比較軌跡 ADE、VLM-Judge、ADE-Reason、ADE-Swap 等目標。留出的德國資料上，作者方法整體一致性為 61.4，ADE 為 4.324；VLM-Judge 的一致性為 57.5、ADE 為 4.282；純 ADE 的一致性為 43.4、ADE 為 4.169，均為作者自報。換言之，faithfulness 目標明顯提高一致性，但以小幅軌跡誤差代價交換。原文摘要將提升概括為比既有 alignment 與 trajectory-error 後訓練基線分別高百分之四與百分之十八，均為作者自報。</p>
+<p>作者再以六十六個德國場景合成道路火災、逆向車與跌落單車等危害，檢查理由與 waypoint 是否都能對反事實危害作出恰當變化。其方法的整體因果對齊率為 7.6，Alpamayo-1.5-10B 為 4.6，並宣稱前者是後者的 1.6 倍，皆為作者自報。絕對分數仍低，論文將此結果視為方向性魯棒性訊號，不把它當成駕駛能力的完整衡量。</p>
+<h2 id="第-7-節結論與局限">第 7 節：結論與局限</h2>
+<p>作者的核心貢獻是把「理由是否看來合理」推進為可逐段檢查的 observation—reasoning—action 一致性，並用 Pinocchio 將其變成 RL 的密集獎勵。實驗顯示，追求軌跡品質不會自動讓 reasoning 更忠實；直接訓練一致性可在維持競爭性駕駛表現下，改善長尾危害的反應。</p>
+<p>不過，逐邊語意一致只是機制忠實性的必要條件，完全一致的 trace 仍可能是事後合理化。Pinocchio 直接繼承 Gemini 判斷的偏差，尤其場景到理由的第二條邊最難可靠標註。最後，所有駕駛評估都是 open-loop，沒有涵蓋閉環下累積誤差與反應行為；作者將閉環模擬驗證列為下一步。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2607.04681_VLAFaithfulness.%E6%91%98%E8%A6%81.html">../summarize/2607.04681_VLAFaithfulness.摘要.md</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

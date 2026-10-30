@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《ToolkenGPT：用工具嵌入為凍結語言模型接上海量工具（Augmenting Frozen Language Models with Massive Tools via Tool Embeddings）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Shibo Hao, Tianyang Liu, Zhen Wang, Zhiting Hu（UC San Diego；Zhen Wang 亦屬 MBZUAI）</p><p>日期：2023-05</p><p>arXiv：2305.11554</p><p><a href="https://arxiv.org/abs/2305.11554" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="toolkengpt用工具嵌入為凍結語言模型接上海量工具重點摘要">《ToolkenGPT：用工具嵌入為凍結語言模型接上海量工具》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>ToolkenGPT：把每個工具當成一個新 token（&quot;toolken&quot;）、只為它學一個 embedding 掛進 LLM 的輸出頭（LM head），讓「呼叫工具」變得和「生成一個字」一模一樣</strong>——LLM 主體完全凍結、不做微調，卻能即插即用地擴充任意數量的工具，兼得 fine-tuning（可吃大量示範資料）與 in-context learning（免訓練 LLM、可換新工具）兩派之長而避其短。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>既有兩條工具學習路線各有硬傷：（1）<strong>微調 LLM</strong>（如 Toolformer 微調 GPT-J 學 5 種工具）成本高、且難泛化到新出現／更新的工具；（2）<strong>in-context learning</strong>（ReAct、LangChain、ChatGPT Plugin）受 context 長度限制，只能塞少量 few-shot 示範，工具一多（數十上百個）就塞不下、選錯工具，連 GPT-4 面對陌生工具也會失手。作者要一個「凍結模型＋可吃海量示範＋可即插即用海量工具」三者兼得的方案。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>工具即 token</strong>：每個工具 τ 對應一個 toolken embedding 向量，全部工具組成矩陣 W_τ，<strong>直接拼接（concatenate）到原本的詞嵌入矩陣 W_ν 之後</strong>。下一 token 的機率改成 softmax([W_ν; W_τ]·h)，候選 token 涵蓋「一般字詞 ∪ 工具」，加新工具只要把 W_τ 加一列即可。</li>
+<li><strong>雙模式推理</strong>：預設「reasoning mode」照常生成文字；一旦預測出某個 toolken，就切到「tool mode」——暫停生成、把已生成內容接上「該工具專屬」的少量示範（語法 <code>[tool](arguments)</code>），讓 in-context learning 只負責「填參數」這件易事；填完執行工具、把回傳值注入文字，切回 reasoning mode 繼續。</li>
+<li><strong>只學 toolken embedding</strong>：凍結全部 LLM 參數，唯一可訓練的就是 W_τ；<strong>梯度不流經 LLM 主體</strong>，訓練時 GPU 記憶體幾乎等同一次推理。訓練資料是「字詞序列 s」與「混入 toolken 的平行序列 s&#x27;」的配對，工具回傳值位置以 <code>[N/A]</code> 標記、不計入 loss（式 2）。</li>
+<li><strong>資料來源兩種</strong>：既有資料集的 ground-truth 工具呼叫（如數學計算軌跡、KB 支撐事實）做監督學習；或用工具文件＋少量示範讓 LLM <strong>自行合成</strong>示範（近似 self-instruct，把 LLM 內部知識蒸餾進 toolken embedding）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>數值推理</strong>（LLaMA-33B）：GSM8K-XL（4 工具）ToolkenGPT 0.33，勝 ReAct 0.32、CoT 0.18、0-shot ChatGPT 0.17；FuncQA（13 工具）one-hop 0.73（ReAct 0.57）、multi-hop 0.15（ReAct 0.06）——工具一多，ReAct 因塞不下示範而明顯落後。僅用 one-hop 合成資料訓練即能泛化到 multi-hop。</li>
+<li><strong>知識庫問答 KAMEL</strong>（LLaMA-13B，最多 234 個關係當工具）：ToolkenGPT(sup) 大幅領先；in-context learning 超過 30 個工具就因 context 上限而效能崩跌。即便只用合成資料的 ToolkenGPT(syn) 也勝過所有 baseline。監督資料每工具 40 例、30 工具測試集達 0.95。</li>
+<li><strong>具身規劃 VirtualHome</strong>（LLaMA-13B，58 個動作/物件 toolken）：Grounding 1.00、Executable 0.82、Success 0.68，全面勝過 In-context Learning（0.20）、+Translation（0.24）、+Grounded Decoding（0.38）。能學到「桌子不可坐」這類環境規則。</li>
+<li><strong>效率對比 LoRA 微調</strong>（LLaMA-7B，FuncQA）：LoRA 需 8×A100(80G)、40 分鐘；ToolkenGPT 只需 1×RTX3090(24G)、2 分鐘，效能相近（one-hop 0.55 vs 0.62）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>監督訓練需與測試同分佈的 ground-truth 工具呼叫資料；合成資料因分佈落差表現略遜監督資料（Table 6）。</li>
+<li>論文明言目標不在刷 SOTA，而在驗證「工具可用時的工具學習能力」；multi-hop 絕對準確率仍低（0.15）。</li>
+<li>目前僅從「示範資料」學 toolken，尚未利用工具描述、輸入輸出紀錄等更豐富的經驗形式（列為未來工作）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>直接呼應 ai_core <strong>§5「意圖→工具」的輕量執行機制</strong>：ToolkenGPT 把「選哪個工具」變成 LM head 上一次 softmax 決策，<strong>凍結模型＋每工具一個 embedding</strong> 就是一種極輕量、免重訓整模型的「意圖分派器」實作——這正是把 LLM 呼叫收斂成可靠函數呼叫時，最需要的「便宜、可增量擴充的路由層」。</li>
+<li>對 ai_core「<strong>工具庫可增量擴充、不必重訓</strong>」的訴求給出具體工程答案：新增能力＝在 W_τ 加一列並用少量示範微調該 embedding，其他工具的 embedding 因參數解耦而不受影響（真正的 plug-and-play）。這與「貴稀有智能 vs 便宜高頻智能」的分工吻合——用一次性的廉價 embedding 訓練，換來高頻推理時的確定性工具分派。</li>
+<li>也給「固化引擎」（§3.6）一個思路參照：把 LLM 反覆處理的某類意圖，結晶成一個 toolken＋其背後的確定性函數，等於把「該不該調用某能力」的判斷從 prompt 工程下沉成一個學到的向量，逐步剃除對長 prompt／in-context 示範的依賴。歸 <strong>I 類</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2305.11554_ToolkenGPT.zh-TW.html"><code>../translate/2305.11554_ToolkenGPT.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

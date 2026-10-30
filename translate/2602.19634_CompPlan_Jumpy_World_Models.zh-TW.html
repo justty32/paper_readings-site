@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>用 Jumpy 世界模型做組合式規劃（Compositional Planning with Jumpy World Models） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jesse Farebrother、Matteo Pirotta、Andrea Tirinzoni、Marc G. Bellemare、Alessandro Lazaric、Ahmed Touati（FAIR at Meta／Mila／McGill）</p><p>日期：2026-02</p><p>arXiv：2602.19634</p><p><a href="https://arxiv.org/abs/2602.19634" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="用-jumpy-世界模型做組合式規劃">用 Jumpy 世界模型做組合式規劃</h1>
+<h2 id="摘要">摘要</h2>
+<p>用時間抽象規劃是智能決策的核心。我們不在原始動作上推理，而研究「把預訓策略當成時間延展的動作來組合」的 agent，使其能解任何單一策略都解不了的複雜任務。但組合式規劃一直難以實現：長視界預測的複利誤差，使得估計「依序執行策略所誘導的訪問分布」很困難。受 Thakoor 等（2022）的幾何策略組合框架啟發，我們學「多步動力學的預測模型」——所謂 <strong>jumpy 世界模型</strong>——以 off-policy 方式捕捉預訓策略在多個時間尺度上誘導的狀態占用。建在 Temporal Difference Flows（td-flow）上，我們以一個新的<strong>一致性目標</strong>對齊跨尺度預測，提升長視界準確度。再示範如何組合這些生成式預測，估計「以不同時間尺度執行任意策略序列」的價值。實證上，組合式規劃在挑戰性操作與導航任務上對各種 base policy 顯著提升 zero-shot 表現，長視界任務平均相對一步動作規劃提升約 <strong>200%</strong>。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>foundation policy 能 zero-shot 處理許多任務，但面對需「跨長序列決策」的複雜長視界問題常失敗——單策略規劃視界不足，須<strong>組合策略</strong>。階層式 RL（options 框架）靠訓練任務專屬高階策略達成組合性（手工或自動任務分解）。本文走根本不同路：不學任務專屬階層，而在<strong>參數化策略上直接組合式規劃</strong>，無須任務專屬訓練。透過學「jumpy 多步動力學模型」，規劃時靈活組合既有策略。</p>
+<p>操作上：學一個<strong>策略 z 與視界（折扣 γ）雙條件</strong>的 jumpy 世界模型，捕捉所有參數化策略在「連續幾何衰減視界」上的未來狀態分布。為此先以新一致性目標推廣 td-flow（強制跨尺度預測一致，改善長視界）；再開發「執行任意策略序列、各帶可變時間尺度」的價值估計子；最後展示如何規劃，長視界任務相對一步世界模型動作層級規劃提升 200%。</p>
+<h2 id="2-預備td-flow--ghm">2. 預備（td-flow / GHM）</h2>
+<p>Geometric Horizon Model（GHM）把 jumpy 世界模型實作成「後繼測度（successor measure，未來狀態占用分布）的生成模型」。td-flow（Farebrother 等 2025）以流匹配學參數化向量場 v_t：第一項是針對一步轉移核 P 的條件流匹配，第二項是針對 bootstrap 後繼測度的邊際流匹配，依 Bellman 混合權重 (1−γ, γ) 聯合優化，收斂時回復後繼測度。</p>
+<h2 id="3-透過幾何策略組合規劃">3. 透過幾何策略組合規劃</h2>
+<p>設 agent 有一組預訓策略 {π_z}（z 可為目標條件策略的 state，或更一般的潛在變數）。目標：學「策略行為的預測模型」以對任意下游任務規劃，無須再線上互動或微調。</p>
+<ul>
+<li><strong>3.1 評估 Geometric Switching Policy（GSP）</strong>：GSP 以幾何分布時長在 π_{z1}→π_{z2}→…→π_{zn} 間切換（每步以 1−α_i 續用、α_i 切換，末策略吸收 α_n=0）。定義「有效折扣」β_k:=γ(1−α_k)（撐過一步要求「episode 不中止且不切換」）。<strong>定理（GSP 後繼測度分解）</strong>：GSP 的後繼測度 = n 個成分的混合分布，第 k 成分權重 w_k 反映「(i) 撐過前 k−1 段未中止、(ii) 仍在 π_{zk} 而非已切到更後者」；每成分是 Chapman–Kolmogorov 式 kernel 組合，但把單步動力學換成 jumpy 動力學 m_β^π。<strong>Lemma 1</strong>：從 (s,a) 序列式 rollout（依序跳 S_1^+、S_2^+…），加權和 <code>Q̂=(1−γ)^{-1}Σ_k w_k r(S_k^+)</code> 是 Q_γ^ν 的<strong>無偏單樣本估計</strong>；推廣 Thakoor 2022（固定切換機率）與 Janner 2020（固定策略），允許策略與切換機率皆變，更接近 options 框架。</li>
+<li><strong>3.2 跨多尺度學 GHM（td-hc 一致性）</strong>：把 td-flow 向量場同時條件於 z 與 γ 得統一模型；但跨多視界泛化難（視界越長變異越大、訓練不穩）。提出 td-flow 的推廣：利用兩折扣 β≤γ 的後繼測度間 Bellman 式關係，用短視界 bootstrap 長視界，強制跨視界一致（td-hc）。</li>
+<li><strong>3.3 目標條件提議</strong>：本文聚焦目標條件策略（𝖹=𝖲，z=subgoal）；難點在「不搜整個狀態空間就提出好候選 subgoal」。</li>
+</ul>
+<h2 id="4-實驗">4. 實驗</h2>
+<p>核心假設：在多樣參數化策略集上學 jumpy 世界模型能達成有效且高效的組合式規劃。</p>
+<ul>
+<li><strong>4.1 設定</strong>：OGBench（離線目標條件 RL 的長視界操作與運動任務）；聚焦 antmaze 導航（medium/large/giant）與 multi-cube 機械臂操作（用標準 navigate / play 離線資料集）。<strong>5 種 base policy</strong>：GC-TD3、GC-1S（1-step RL）、CRL（Contrastive RL）、GC-BC、HFBC（Hierarchical Flow BC）。</li>
+<li><strong>GHM 訓練</strong>：對 antmaze 25%、cube 12.5% 的 mini-batch 套用視界一致性目標（β≠γ）；另對 10% batch 訓無條件模型（z=∅）。評估時依域客製提議分布：antmaze（狀態距離遠、有物理屏障）用 goal-conditioned GHM 採 256 subgoal 序列；cube（短 pick-and-place、多可行路徑）用 unconditional GHM 採 1024 序列。</li>
+<li><strong>4.2 結果（Table 1）</strong>：組合式規劃<strong>一致勝 zero-shot</strong>，長視界任務增益尤大（antmaze-giant、cube-{3,4} 最極端 10%→90%）。CompPlan 改善 HFBC（antmaze-giant、cube-4 顯著）。CRL 在 antmaze 強、cube 弱（其 Q≈φ(s,a)^⊤ψ(g) 的因式分解善捕空間位置、不善物件特徵），但加規劃後連 cube 都拿到非平凡成功率。其他策略 zero-shot 在中長視界弱（cube &lt;10–15%）。<strong>洞見：zero-shot 指標幾乎預測不了可組合性</strong>——某策略的效用只有被編排組合時才顯現。</li>
+<li><strong>對比其他規劃／階層法</strong>：相對 GPI（policy 選擇）約 <strong>89%</strong> 提升、相對 ActionPlan（動作層級）約 <strong>201%</strong> 提升（長視界域、跨策略平均）→ 證明組合策略序列勝過「只選一個策略」與「動作層級規劃」。對比訓練期學階層的 HIQL 與 SHARSA（OGBench 現 SOTA）：CompPlan（用 HFBC base，類似 SHARSA）一致勝出，cube-4 達 <strong>67%</strong> vs SHARSA 9%、HIQL 0%，且<strong>無須任務專屬訓練</strong>——顯示測試時組合可超越學到的階層。</li>
+<li><strong>一致性消融（Table 3，γ=0.995，EMD↓）</strong>：td-hc 系統性改善長視界準確度；antmaze（迷宮對可達性有硬約束）效果尤顯，antmaze-giant + GC-1S 的 EMD 降 <strong>28%</strong>，定性上更少樣本穿牆（此失敗模式會隨長視界複利）。</li>
+</ul>
+<h2 id="5-結論">5. 結論</h2>
+<p>把預訓策略當時間抽象動作組合，用 jumpy 世界模型（GHM）在占用分布上跳著規劃；以跨視界一致性治長視界複利誤差；以組合後繼測度的混合分解做無偏 Q 估計。實證上組合式規劃一致勝個別策略、階層法與動作層級規劃，長視界增益尤大，且無須任務專屬訓練，是任務專屬階層法的有力替代。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

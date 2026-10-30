@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_合成系統 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2510.10216_TyFlow.zh-TW.html">回 2510.10216_TyFlow.zh-TW 目錄</a>　<a href="02_%E7%B6%9C%E8%A6%BD.html">← 上一節</a>　<a href="04_%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-合成系統">4. 合成系統</h2>
+<h3 id="41-合成推導樹的建構">4.1 合成推導樹的建構</h3>
+<p>合成規則的套用、合成推導樹的定義、與其**演算法化建構（Alg. 1）**在此給出。LM 的預測以上下文感知方式進行，條件於：（1）描述期望程式行為的自然語言；（2）當前合成推導樹（透過同構同時編碼進行中的合成過程與型別推導過程）；（3）合成目標 P(t̄)（含已合成的程式片段與當前 typing context）。</p>
+<h3 id="42-查詢解析">4.2 查詢解析</h3>
+<p>查詢解析可經由兩條途徑：（4.2.1）<strong>用 LM 解析</strong>——LM 依上下文輸出代表合成規則或變數賦值的 token；（4.2.2）<strong>經型別推導樹翻譯解析</strong>——把既有程式的型別推導樹逐節翻成合成推導樹，用於製備訓練資料。</p>
+<h3 id="43-型別推導樹與合成推導樹的同構">4.3 型別推導樹與合成推導樹的同構</h3>
+<p>由於每條合成規則都由某型別規則翻譯而來、每個合成子目標都對應型別規則的一個前提，可在兩種推導樹間建立同構。形式上，型別推導樹 T₁ 與合成推導樹 T₂ <strong>同構</strong>（記 T₁≅T₂），若存在雙射 φ:V₁→V₂ 保持根節點、子節點順序、以及（由 Lemma 4.2）標籤與註記的對應。4.2.2 的翻譯程序對任一型別推導樹可構造出同構的合成推導樹（Lemma 4.3）；反之，遍歷合成推導樹、把每個標為 <code>P(t̄) ↝ θ</code> 的節點對應到型別判斷式 <code>P(θ(t̄))</code> 並註記適當型別規則，也能構造出同構的型別推導樹（Lemma 4.4）。</p>
+<h3 id="44-健全性與完備性">4.4 健全性與完備性</h3>
+<p>基於上述同構，TyFlow 保證 well-typed 程式<strong>總能</strong>從合成推導樹中抽出，而非仰賴「不參照型別推導的直接合成」。</p>
+<ul>
+<li><strong>定理 4.5（健全性 Soundness）</strong>：若合成推導樹 T 的根節點標為 <code>well-typed(p) ↝ θ</code>，由 Lemma 4.4 存在同構的型別推導樹 T′，其根為 <code>well-typed(pᶜ)</code>，其中 pᶜ=θ(p) 即從 T 抽出的程式；依 well-typed 程式定義，pᶜ 必為 well-typed。（<strong>任何合成出的程式都保證型別正確</strong>）</li>
+<li><strong>定理 4.6（完備性 Completeness）</strong>：對任一 well-typed 程式 pᶜ，存在其型別推導樹 T₁；由 Lemma 4.3 存在同構的合成推導樹 T₂，其根標為 <code>well-typed(p) ↝ θ</code> 且 θ(p)=pᶜ，故 T₂ 抽出的程式正是 pᶜ。（<strong>表達力無損：任何 well-typed 程式都合成得出來</strong>）</li>
+</ul>
+<h2 id="5-語言模型設計">5. 語言模型設計</h2>
+<h3 id="51-模型架構">5.1 模型架構</h3>
+<p>為契合型別導引合成系統並最大化 token 使用效率，採用 <strong>encoder-decoder 架構（圖 11）</strong>。自然語言規格在合成過程中固定不變，適合一次性編碼；合成目標提供<strong>動態 typing context</strong>、每步演變故需重新編碼；合成決策序列則每步追加新 token，因自回歸特性餵入 transformer decoder，使 LM 能利用完整決策歷史預測下一 token。<strong>推論流程</strong>：encoder 先編碼 NL 規格得固定編碼；每步（1）從（不完整的）合成推導樹抽出當前合成目標，（2）encoder 編碼該目標提供動態 typing context，（3）decoder 結合兩個編碼與先前決策序列生成下一個決策 token，（4）新 token 追加進序列並依 Alg. 1 增量更新合成推導樹，（5）更新後的樹產出下一輪的新目標、或在完成時產出一個完整且 well-typed 的程式。<strong>增量建構的高效 token 複用</strong>：Alg. 1 的建構遵循序列化順序，每步只追加不修改既有序列，此自回歸性使 transformer 的 <strong>KV cache</strong> 可複用、免去每步對整條序列重算 attention，大幅降低開銷。</p>
+<h3 id="52-lm-程式合成的進階技巧">5.2 LM 程式合成的進階技巧</h3>
+<p>在每個節點的順序動作（選規則、取賦值、套規則）上實作對應「潛在失敗」的剪枝：<strong>語法剪枝（grammar pruning）</strong>——token 一生成即觸發，確保合成推導樹的結構有效與語法正確性（如目標期待規則卻給出項、述詞不符、或項生成時建構子/常數與預期項型別不符）；<strong>型別剪枝（type pruning）</strong>——在套合成規則時做前提檢查，單一化或約束檢查失敗即立刻終止該搜尋，避免探索終將型別錯誤的路徑。語法剪枝、型別剪枝與動態 typing context 構成<strong>分層增強框架</strong>（語法剪枝是型別剪枝的前提；三者全省則模型退化為直接把 NL 映到決策序列、無任何正確性保證的標準 encoder-decoder）。搭配 <strong>beam search</strong> 維持 top-k 分支：某分支需剪枝時終止其序列並丟棄 KV cache，其餘分支從各自快取狀態續生，系統<strong>無需回溯</strong>即高效趨向解。</p>
+<h2 id="6-評估">6. 評估</h2>
+<p>四個研究問題：RQ1 與既有生成方法比較；RQ2 各元件貢獻；RQ3 與拒絕採樣（rejection sampling）比較；RQ4 與「型別與程式分離生成」的變體比較。</p>
+<h3 id="61-實驗設置">6.1 實驗設置</h3>
+<p><strong>Benchmark</strong>：選兩個性質迥異的語言。<strong>SuFu</strong>——一個為抽取資料結構操作而設、有客製型別系統的 DSL，程式碼資源有限，代表低資源情境；從其 GitHub 蒐集 290 個含測試的程式、人工補上 NL 描述與相關歸納定義/庫函數，8/2 切分訓練/測試。<strong>Java</strong>——具複雜型別系統的命令式語言，在實作成本與表達力間權衡，實作了保留核心語法但<strong>省略 lambda 等進階特性</strong>的子集；採 MBJP 資料集（MBPP 的 Java 版）中 608 個任務，9/1 切分。<strong>模型</strong>：基於 CodeT5（encoder-decoder）實作，受算力限制採 <strong>220M</strong> 變體，稱 TyFlow-220M。<strong>指標</strong>：Pass@k（k=1,10）、<strong>FSP（First Success Position，首個功能正確候選的平均排名，越低越好）</strong>、<strong>CER（Compilation Error Rate，編譯失敗候選比例）</strong>。<strong>實作細節</strong>：微調至收斂取最佳 checkpoint；因 CodeT5 已對 Java 有預訓練表示、而 TyFlow 引入大量新表示，故用 OpenCoder 的監督微調資料做 <strong>cold-start 微調</strong>以熟悉新表示。硬體為 8×RTX 4090。</p>
+<h3 id="62-實驗結果">6.2 實驗結果</h3>
+<p><strong>RQ1（表 2，主結果）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>語言</th>
+<th>模型</th>
+<th>pass@1↑</th>
+<th>pass@10↑</th>
+<th>FSP↓</th>
+<th>CER↓</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SuFu</td>
+<td>CodeT5-220M</td>
+<td>24.14%</td>
+<td>32.76%</td>
+<td>7.03</td>
+<td>83.10%</td>
+</tr>
+<tr>
+<td>SuFu</td>
+<td><strong>TyFlow-220M</strong></td>
+<td><strong>37.93%</strong></td>
+<td><strong>53.45%</strong></td>
+<td><strong>5.03</strong></td>
+<td><strong>0.00%</strong></td>
+</tr>
+<tr>
+<td>Java</td>
+<td>CodeT5-220M</td>
+<td>10.45%</td>
+<td>20.90%</td>
+<td>8.19</td>
+<td>38.51%</td>
+</tr>
+<tr>
+<td>Java</td>
+<td><strong>TyFlow-220M</strong></td>
+<td><strong>11.94%</strong></td>
+<td><strong>28.36%</strong></td>
+<td><strong>7.94</strong></td>
+<td><strong>3.52%</strong></td>
+</tr>
+</tbody>
+</table>
+<p>TyFlow 一致提升準確率，在型別系統複雜、資料稀缺的 SuFu 上增益尤大。SuFu 的編譯錯誤全由型別錯誤造成，故 TyFlow 能<strong>完全消除</strong>（CER 0%）；Java 殘留的 3.52% CER 源於 unreachable code 等靜態分析（非型別錯誤），但仍從 38.51% 大幅降低。</p>
+<p><strong>RQ2（表 3，SuFu 消融）</strong>：自「無檢查」base 起逐一加元件——<strong>語法剪枝</strong>：pass@1 +3.45%、CER −2.13%；<strong>型別剪枝</strong>：CER 直接歸零、pass@1 +13.79%、pass@10 +8.62%（型別正確性對合成至關重要）；<strong>動態 typing context</strong>：pass@10 再推到 +17.24%、FSP −1.75（印證上下文局部性的重要）。</p>
+<p><strong>RQ3（表 4，vs 拒絕採樣）</strong>：拒絕採樣反覆查詢 LM、丟棄無法編譯的候選直到湊足解或耗盡資源。結果它只帶來微小提升（Java 上 pass@1/@10 幾乎與 baseline 相同），因作為事後過濾無法提升底模生成品質——受約束解碼同屬過濾式亦有相同侷限。TyFlow 因在訓練時就顯式納入型別規則與 typing context，讓模型<strong>學會並運用</strong>型別約束，故 pass@1/@10 一致更高（印證型別顯性）。</p>
+<p><strong>RQ4（表 5，vs 分離式生成）</strong>：對比三變體——Type-First（先生成型別規則序列作為顯式型別推理、再生成碼）、Code-First（先生成碼、再輸出型別規則序列作為型別正確性證明）、TyFlow。兩個分離式變體 pass@10 僅 36-40%（SuFu）/22-27%（Java），且仍有高 CER（SuFu 56%、Java 31-37%）；TyFlow 達 53.45%/28.36% 且 CER 為 0/3.52%。此外 TyFlow 在 token 用量上也更省——SuFu 減 45%（410 vs 752）、Java 減 48%（129 vs 247）。驗證<strong>推導鄰近性</strong>範式免除了「分離的型別推理與程式生成階段之間顯式協調」的需要，同時帶來更高正確性與更高效率。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

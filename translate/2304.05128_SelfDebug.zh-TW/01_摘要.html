@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2304.05128_SelfDebug.zh-TW.html">回 2304.05128_SelfDebug.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>LLM 在程式碼生成上表現亮眼，但複雜程式任務難以一次生成正確解。本文提出 <strong>Self-Debugging（自我除錯）</strong>：透過 few-shot 示範教 LLM 為自己預測的程式除錯。特別地，Self-Debugging 能教模型執行 <strong>rubber duck debugging（小黃鴨除錯法）</strong>——<strong>不需任何人類對程式正確性的回饋或錯誤說明</strong>，模型透過檢視執行結果、用自然語言解釋自己生成的程式，就能找出錯誤。Self-Debugging 在多個程式碼生成 benchmark 上達 SOTA：Spider（text-to-SQL）、TransCoder（C++→Python 翻譯）、MBPP（text-to-Python）。在<strong>沒有單元測試</strong>可驗證正確性的 Spider 上，帶程式碼解釋的 Self-Debugging 一致提升基線 2–3%，最難題提升 9%；在<strong>有單元測試</strong>的 TransCoder 與 MBPP 上提升基線最多 12%。同時，藉由回饋訊息與重用失敗預測，Self-Debugging 顯著改善樣本效率，可匹敵或超越取樣 10 倍以上候選程式的基線模型。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>程式碼生成應用廣泛（自然語言合成程式、programming by examples、程式翻譯），LLM 帶來大幅躍進，但許多任務一次生成正確碼仍困難。既有一路工作靠重排序（reranking）從數十個樣本中挑最佳者。直覺上，人類程式設計師初版程式也不保證正確，但不會整段丟棄，而是檢視程式與執行結果後修改。先前深度學習程式修復（code repair）方法有效但<strong>需要額外訓練修復模型</strong>；而近期研究顯示，缺乏外部回饋（單元測試或人類指示）時，LLM 尚無能力自行修正程式碼（Chen et al., 2023a）。</p>
+<p>本文提出 <strong>Self-Debugging</strong>：以 few-shot 提示教 LLM 為自己預測的程式除錯，<strong>不需任何額外模型訓練</strong>。它指示模型執行程式碼，再基於程式與執行結果生成回饋訊息。與利用人類回饋（回饋內容明說錯在哪、怎麼修）的先前工作不同，Self-Debugging 教模型<strong>自己檢視執行結果並解釋程式碼</strong>來找出實作錯誤——類似人類的 rubber duck debugging：對著小黃鴨逐行用自然語言解釋程式碼，不需專家指導即可大幅提升除錯效率（Hunt &amp; Thomas, 2000）。</p>
+<p>評估涵蓋 code-davinci-002（Codex）、gpt-3.5-turbo、gpt-4 與開源 StarCoder。Self-Debugging 在 text-to-SQL、程式翻譯、text-to-Python 三類任務均達 SOTA；Spider 上帶解釋一致 +2–3%、最難 SQL +9%；TransCoder 與 MBPP 上單元測試＋解釋最多 +12%，且單靠程式碼解釋（不除錯）也讓翻譯一致 +2–3%。Self-Debugging 亦提升樣本效率，可匹敵取樣 10 倍以上的基線。</p>
+<h2 id="2-程式碼生成的提示技術背景">2. 程式碼生成的提示技術（背景）</h2>
+<p><strong>Few-shot prompting</strong>：以多組（問題， SQL）等輸入-輸出示範前綴提示，使模型循格式生成；可選擇性加上任務指示。</p>
+<p><strong>基於執行的程式碼選擇（execution-based code selection）</strong>：取樣多個程式後，用執行結果選最終預測。本文採「執行結果多數決」：在無執行錯誤的候選中，選執行結果最常見者，再對其施以 Self-Debugging。若問題描述含單元測試 {(i_k, o_k)}，先過濾未通過測試的程式再做多數決。</p>
+<h2 id="3-self-debugging-框架">3. Self-Debugging 框架</h2>
+<p>利用預訓練 LLM、不做微調。一輪（turn）Self-Debugging 含三步：</p>
+<ul>
+<li><strong>Generation（生成）</strong>：給定問題描述，模型預測候選程式。</li>
+<li><strong>Explanation（解釋）</strong>：提示模型以語義上有用的方式處理預測——如用自然語言解釋程式，或對某輸入產生執行軌跡。</li>
+<li><strong>Feedback（回饋）</strong>：生成關於程式正確性的回饋訊息——可由模型自己判斷，亦可由單元測試外部生成。</li>
+</ul>
+<p>回饋訊息表明預測正確、或達最大除錯輪數時終止。實務上一輪不一定包含全部三步。可自動取得/生成的回饋類型：</p>
+<ul>
+<li><strong>Simple feedback（簡單回饋）</strong>：只說對錯、無細節的一句話（省略解釋步），如「上面的 SQL 預測是錯的，請修正。」</li>
+<li><strong>Unit test feedback（UT，單元測試回饋）</strong>：問題描述含單元測試時，除了用執行判對錯，還把<strong>執行結果放進回饋訊息</strong>，提供更豐富的除錯資訊（如失敗的 assert 與實際輸出）。實驗顯示凡有單元測試可用，納入一致提升表現。</li>
+<li><strong>Code explanation feedback（Expl，程式碼解釋回饋）</strong>：先前工作尚未證明模型自生回饋對程式碼生成有效；但 LLM 已被證明能以文字與程式格式描述自己的解。受此啟發，本文<strong>不教模型預測錯誤訊息，而是教它解釋生成的程式碼</strong>——即 rubber duck debugging：藉由描述程式實作並與問題描述比對，即可在無額外指導下找出 bug。實證上，<strong>當單元測試不可用時 LLM 尤其受益於此</strong>。</li>
+<li><strong>Execution trace feedback（Trace，執行軌跡回饋）</strong>：人類也常靠模擬執行流程理解程式語義。有單元測試時，可指示 LLM <strong>逐行解釋中間執行步驟</strong>。注意軌跡與逐行解釋皆由<strong>模型生成</strong>而非真實執行，故不需存取中間執行狀態，資訊需求與純解釋回饋相同。</li>
+</ul>
+<h2 id="4-應用場景">4. 應用場景</h2>
+<p>三個代表性領域：text-to-SQL（<strong>完全無單元測試</strong>，須靠解釋自行判對錯）、程式翻譯（<strong>單元測試齊全</strong>）、text-to-Python（<strong>只給部分測試</strong>，通過可見測試仍須自行推斷正確性）。</p>
+<h3 id="41-text-to-sql-生成spider">4.1 Text-to-SQL 生成（Spider）</h3>
+<p>給定問題與資料庫資訊生成 SQL，於 Spider 開發集評估。無單元測試，模型判斷 SQL 正確性更難——第 5 節將顯示僅有簡單回饋不足以準確預測 SQL 正確性。除錯流程三步（圖 3）：(1) <strong>問題解釋</strong>：提示模型總結問題並推斷回傳型別（對應 SQL 應回傳的欄位數）；(2) <strong>程式碼解釋</strong>：執行 SQL、把回傳表格加入模型輸入（超過 2 列只取前 2 列），生成含各子句細節、回傳欄數、整句 SQL 高階語義的解釋；(3) <strong>自我除錯</strong>：模型比對「推斷出的 SQL 解釋」與「問題描述」，預測目前 SQL 是否正確，錯則修。圖 3 範例中模型把 <code>OR</code>（一欄兩狀態擇一）逐輪修成互斥 <code>AND</code>（回傳空表）再修成正確的 <code>INTERSECT</code>。</p>
+<h3 id="42-程式翻譯transcoder">4.2 程式翻譯（TransCoder）</h3>
+<p>C++→Python，560 題、每題 10 個單元測試，問題描述含 C++ 程式與全部測試。因測試齊全，<strong>只對未全數通過測試的預測</strong>施以 Self-Debugging，模型無須自行預測回饋。圖 5 展示四種提示格式（Simple／UT／UT+Expl／UT+Trace）；UT 回饋列出失敗的 assert 與實際結果（如 <code>n / i</code> 在 Python 回傳浮點數導致 1.8 而非 1），Trace 則逐步模擬執行找出癥結。</p>
+<h3 id="43-text-to-python-生成mbpp">4.3 Text-to-Python 生成（MBPP）</h3>
+<p>MBPP 測試集 500 題、每題 3 個單元測試；依先前工作只把<strong>第 1 個測試放入提示</strong>、其餘 2 個隱藏供評測。與程式翻譯不同：即使通過可見測試，模型仍須自行推斷程式正確性。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

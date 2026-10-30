@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>04_Discussion討論 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2510.17376_AdapTrack.zh-TW.html">回 2510.17376_AdapTrack.zh-TW 目錄</a>　<a href="03_Evaluation%E8%A9%95%E4%BC%B0.html">← 上一節</a></p>
+</blockquote>
+<h2 id="7-discussion討論">7. Discussion（討論）</h2>
+<h3 id="71-穩健性分析">7.1 穩健性分析</h3>
+<p><strong>溫度</strong>：在 0.1–0.9 各溫度下（使用 TFv1 上的 CodeLlama Python 7B、TFv1Real 上的 Qwen2.5 Coder 7B），AdapTrack 在所有 EM@k 上皆持續優於約束與無約束解碼；溫度越高，各方法表現皆提升（因高溫鼓勵更廣探索，EM@k 只要 k 次嘗試中有一次命中即算成功，但 EM@1 因貪婪解碼結果固定不受影響）。</p>
+<p><strong>模型規模</strong>：以 Qwen2.5 Coder 系列（0.5B–32B）測試，各規模下 AdapTrack 皆優於兩基線。TFv1 上表現隨模型變大而飽和甚至略降（可能因該資料集過於簡單，規模差異影響有限），TFv1Real 上則隨模型增大持續提升（顯示更大模型對 API 補全理解更好）。</p>
+<h3 id="72-adaptrack-的效率與可擴展性">7.2 AdapTrack 的效率與可擴展性</h3>
+<p><strong>平行更新</strong>：Q 與 N 的更新（演算法 2 第 10–19 步）可在 GPU 上平行化，而非逐 token 序列進行；論文給出對應的公式（式：Q[s] ← Q[s] − P_LM(x′|s)(1−q)），且拒絕取樣與後續重取樣也可融合為一次取樣，減少分支計算。</p>
+<p><strong>LM 呼叫次數</strong>：AdapTrack 平均比約束解碼多呼叫語言模型約 20%（TFv1 v1 情境）到 60%（TFv1 v2 情境），考量到 AdapTrack 的 EM@1 常可媲美約束解碼的 EM@5，此開銷在論文看來是合理的（詳見 Table 5 之各模型平均/最小/最大呼叫次數）。若可犧牲理論完備性，可設定回溯機率下限（低於門檻不回溯）或回溯距離上限。實驗顯示（Figure 7，限制回溯距離為 1/2/4/8）：性能隨允許的回溯距離增加而提升，但超過一定閾值後停止增長——TFv1（v1 情境）約 2–4 步、TFv1（v2 情境）約 4–8 步、TFv1Real 約 2 步即可拿到大部分效益，顯示短程回溯已足夠。</p>
+<h3 id="73-效度威脅">7.3 效度威脅</h3>
+<p><strong>資料集選擇</strong>：此問題是否只出現在已棄用 API 或 API 補全場景？RQ1 中要求模型在「未棄用」的 TensorFlow v1 情境生成 v1 API 仍可由 AdapTrack 顯著改善，RQ3 通用程式碼生成基準也證實此扭曲問題廣泛存在。</p>
+<p><strong>模型選擇</strong>：此問題是否源於模型能力不足？作者用多個模型與多種規模驗證，AdapTrack 皆展現一致改善；並強調這是約束解碼的內生問題——只要採用約束解碼，該問題就會在某種程度上持續存在。</p>
+<h2 id="8-related-work相關工作">8. Related work（相關工作）</h2>
+<p><strong>API 感知的程式碼生成</strong>：CERT 用 sketcher 預測 API 用法草圖再生成；Toolcoder 引入 API 搜尋工具；Wang et al. 首次評估 LLM 補全中已棄用 API 的使用情形；VersiCode 聚焦版本特定的程式碼補全與遷移；CodeUpdateArena 構造合成 API 更新評測。</p>
+<p><strong>程式碼生成中的約束解碼</strong>：Picard、Synchromesh 引入增量剖析器在生成每步剔除不可行 token；後續文法約束器聚焦約束計算的加速；Monitor-guided decoding、Repilot 透過與 IDE 靜態分析工具（如語言伺服器）通訊，將約束解碼用於通用程式語言的 API 生成；Mündler et al. 把型別系統引入約束解碼，保證生成程式型別安全（即 RQ3 採用的約束器）。</p>
+<p><strong>修正貪婪約束解碼</strong>：GeDi 另訓練一個模型估計各前綴的預期合法性，但額外訓練開銷大；ASAp（Park et al. 2024）取樣多條序列並用先前樣本的合法性資訊引導後續取樣，可視為 AdapTrack 不做回溯的變體；Gen-C 用約束電路（constraint circuits）建模約束並在句子鄰域內以偽似然重取樣，但約束電路僅適用於正規表達式，不適合程式碼生成。</p>
+<p><strong>非線性程式碼生成技術</strong>：PG-TD 用蒙地卡羅樹搜尋並執行公開測試案例評估生成品質；Rocode 在每個陳述式生成後用靜態分析與公開測試偵測錯誤，回滾到出錯或高不確定性的陳述式。但這些方法並非針對分布扭曲問題設計，因此生成結果仍是扭曲的分布，而 AdapTrack 專門針對此問題並提供可證明無扭曲的結果；這些方法常用公開測試案例過濾錯誤程式，AdapTrack 雖也可能加入類似機制，但論文聚焦的重點是分布扭曲問題本身。</p>
+<h2 id="9-conclusion-and-future-work結論與未來工作">9. Conclusion and future work（結論與未來工作）</h2>
+<p>本文提出新解碼方法 AdapTrack，透過導入「依失效機率質量自適應調整」的回溯機制，修正約束解碼中的分布扭曲問題。作者構建合成 TFv1 與真實世界 TFv1Real 資料集驗證其有效性；通用程式碼生成基準上的實驗驗證其可推廣性；並提供理論證明其確實遵循模型的輸出意圖，輔以 DSL 問題實驗驗證。未來工作將探索此現象在更多 API 上的表現，以及如何協助模型更好地對齊約束本身。</p>
+<p>致謝：本研究獲中國國家重點研發計畫（2023YFB4503801）、國家自然科學基金（62192733、62192730、62192731）、湖北省重大項目（2023BAA024）支持。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2510.17376_AdapTrack.%E6%91%98%E8%A6%81.html"><code>../summarize/2510.17376_AdapTrack.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>快速符號迴歸基準測試（Fast Symbolic Regression Benchmarking） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：DFG 資助（程式碼 viktmar/FastSRB）</p><p>日期：2025-08</p><p>arXiv：2508.14481</p><p><a href="https://arxiv.org/abs/2508.14481" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="快速符號迴歸基準測試">快速符號迴歸基準測試</h1>
+<p>（DFG 德國研究基金會資助，SPP 2331「化工中的機器學習」）</p>
+<h2 id="摘要">摘要</h2>
+<p>SR 從資料發掘數學模型。已有多個 benchmark 比較 SR 演算法表現。但既有 <strong>ground-truth 回復</strong> benchmark <strong>過度強調回復「唯一那個公式形式」或只靠電腦代數系統（如 SymPy）判定成功</strong>；且既有 benchmark <strong>在發現後仍繼續搜尋</strong>。我們改進這些問題：引入<strong>人工策劃的可接受表達式清單</strong>與<strong>提早終止的回呼機制</strong>。以 Yoshitomo 等提的 <strong>SRSD</strong> benchmark 問題為起點，測試 <strong>SymbolicRegression.jl</strong> 與 <strong>TiSR</strong> 兩套件。新方法把 SymbolicRegression.jl 回復率從 Yoshitomo 等報告的 <strong>26.7% 提升到 44.7%</strong>，且<strong>計算花費少 41.2%</strong>。TiSR 回復率 <strong>69.4%</strong>，且省 <strong>63% 時間</strong>。</p>
+<p><strong>關鍵詞</strong>：符號迴歸、benchmark、超參調校。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>SR 不假設預設模型、發掘擬合資料的數學式——既找表達式<strong>結構</strong>也找<strong>參數</strong>。但 SR <strong>NP-hard、計算昂貴</strong>。優化目標平衡兩者：高擬合品質 + 最小化表達式複雜度（運算子/運算元數）。</p>
+<p>真實 benchmark 對公平比較與超參調校關鍵。SR benchmark 兩類：<strong>ground-truth 回復</strong>（用已知公式資料集測能否回復）、<strong>真實世界</strong>（無已知公式，測能否發掘新穎可解釋式）。</p>
+<p><strong>要求精確回復公式既不符 SR 優化目標、也不反映真實用例</strong>。函數等價且簡潔的等價形式應算找到。許多公式有（潛在無限多）相同/相似複雜度的函數等價形式。例：SRSD II.38.14 的數個函數等價形式運算子/運算元數相同 → 複雜度無別、SR 無理由偏好某一個。</p>
+<p>La Cava 等引入新「符號解」定義以偵測函數等價式：把目標與候選都用 <strong>SymPy 簡化</strong>，若其差或比化約為常數則視為等價（接受任意常數，非只 0/1）。此法偵測「至多差常數偏移/乘子」的能力<strong>受 SymPy 限制</strong>。對第一個例子有用，但對某些 SRSD 案例（如 I.34.1、II.11.3）<strong>失敗</strong>。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>（既有 SR benchmark：SRBench、EmpiricalBench、SRSD 等。）</p>
+<h2 id="3-方法">3. 方法</h2>
+<p>處理 ground-truth 回復 benchmark 的兩挑戰：接受函數等價式、降高時間花費。提出<strong>為每個公式定義可接受形式清單</strong> + <strong>提早終止回呼機制</strong>。</p>
+<ul>
+<li><strong>回呼機制</strong>：搜尋中<strong>週期性（約 15 秒間隔）<strong>呼叫。處理有望候選（如 hall of fame 中的）並與可接受清單比對。因處理候選有計算成本，須先滿足準則：<strong>測試資料最大相對誤差 &lt; 1e-6%</strong>；接著用 <strong>SymPy 簡化</strong> + 常數</strong>四捨五入到 5 位有效數字</strong>；若處理後的式匹配清單中某式則<strong>以成功終止搜尋</strong>。</li>
+<li>若不匹配則<strong>另行記錄而不終止</strong>。後處理時檢查這些記錄的式找新函數等價式 → <strong>回溯接受、加進清單供未來使用</strong>（重用如 EmpiricalBench 的人工檢查 → <strong>benchmark 效率隨使用增長</strong>）。</li>
+<li>（也可用前述鬆弛的符號解定義比對清單，但試驗顯示這對即時監控太貴；只用「簡化 + 參數捨入」的開銷可接受。）</li>
+<li><strong>公平性</strong>：只要可接受表達式的規則不變，即使清單變更也保公平。參考式＝SymPy 簡化的原式；接受條件＝<strong>代數等價 + 運算子/運算元數 ≤ 參考式的 1.2 倍</strong>（用二元運算子）。</li>
+</ul>
+<h2 id="4-實驗">4. 實驗</h2>
+<p>測 SRSD benchmark 問題、兩套件 SymbolicRegression.jl 與 TiSR。</p>
+<ul>
+<li><strong>SymbolicRegression.jl</strong>：回復率 <strong>26.7% → 44.7%</strong>（同一組問題）；提早終止省 <strong>41.2%</strong> 計算。</li>
+<li><strong>TiSR</strong>：回復率 <strong>69.4%</strong>；提早終止省 <strong>63%</strong> 計算。</li>
+</ul>
+<h2 id="5-結論">5. 結論</h2>
+<p>提出更貼合真實 SR 用例、提升 benchmark 效率的新 ground-truth 回復方法：放寬回復要求以接受滿足準則的函數等價形式；引入持續擴充的可接受形式清單；即時監控提早終止（發現已知可接受形式即停）。在 SRSD 上把 SymbolicRegression.jl 回復率 26.7%→44.7%、省 41.2% 計算；TiSR 回復率 69.4%、省 63% 計算。提供 Julia 套件 <strong>FastSRB</strong>（github.com/viktmar/FastSRB）。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2508.14481_Fast_SR_Benchmarking.%E6%91%98%E8%A6%81.html"><code>../summarize/2508.14481_Fast_SR_Benchmarking.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

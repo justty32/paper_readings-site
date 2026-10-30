@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2110.07178_Symbolic_Knowledge_Distillation.%E6%91%98%E8%A6%81.html">回 2110.07178_Symbolic_Knowledge_Distillation.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Symbolic Knowledge Distillation（符號知識蒸餾）</strong>：把知識蒸餾從「用大模型的機率分佈教小模型」改成「用大模型（GPT-3）以少樣本提示<strong>產出符號形式（自然語言文字）的常識知識圖譜</strong>」，再訓練一個 <strong>critic（RoBERTa 二元分類器）過濾</strong>掉品質不佳的生成，最後拿過濾後語料訓練一個小 100 倍的常識模型（COMET^DISTIL）；結果是機器產出的知識圖譜（ATOMIC^10x）在<strong>規模、準確率、多樣性</strong>三項全面超越人工建置的 ATOMIC2020，訓出的學生模型也在人工評測上勝過產生訓練資料的教師模型 GPT-3。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>常識知識圖譜（如 ATOMIC、ConceptNet）過去的建置方式是「人類→語料→機器」：人工撰寫大量常識三元組去訓練常識模型，成本高、覆蓋率受限（ATOMIC2020 僅 60 萬筆，花費估計約 4 萬美元）。以往嘗試讓機器自動產生知識圖譜的做法，品質普遍明顯低於人工資料。本文要證明「機器→語料→機器」路徑也能產出<strong>規模更大、品質更高、更多樣</strong>的常識知識，翻轉「機器生成必然較差」的既有認知。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>符號化知識蒸餾框架</strong>：傳統知識蒸餾是讓學生模型的機率分佈 P_s 逼近教師分佈 P_t（H(P_t,P_s) 最小化交叉熵）；GPT-3 這類模型無法取得完整輸出分佈，作者改用<strong>取樣式</strong>詮釋——從 P_t 取樣文字 y 當監督訊號。取樣的好處是可以<strong>選擇性</strong>萃取知識：只要教師分佈以 prompt 導向常識領域即可，不必蒸餾全部知識。
+<ul>
+<li><strong>鬆散教師（loose teacher）P_t^L</strong>：GPT-3 以少樣本模板 + nucleus sampling 生成 ATOMIC 事件與 7 種因果常識關係（xIntent、xNeed、xWant、xEffect、xReact、xAttr、HinderedBy）的推論，不做正確性把關。共產生 16.5 萬個事件 × 7 關係、去重後得 646 萬筆三元組（ATOMIC^10x），花費約 6,000 美元（每筆約 0.001 美元，僅為人工的 1/60）。</li>
+<li><strong>關鍵一步——critic 過濾</strong>：用 Product of Experts 把鬆散教師與一個二元判準函數 A(x) 相乘，定義<strong>批判性教師（critical teacher）</strong> P_t ∝ P_t^L(x|p)·A(x)。A(x) 由一個在 1 萬筆人工標註（8k/1k/1k 訓練/驗證/測試）上、以 MNLI 預訓練再微調的 <strong>RoBERTa-Large 二元分類器</strong>實作，判斷「事件＋推論」三元組是否人類可接受；消融顯示它不只濾掉單句「用詞彆扭」，還能抓「事件與推論邏輯不搭」這種需要交互建模的錯誤（Average Precision 從純隨機 79.3、單看事件/推論各自 81.9/86.2、無交互的 EMAP 集成 87.1，提升到完整模型 94.0）。過濾可調節「規模 vs. 準確率」的權衡：丟棄 20% 低分樣本即把接受率從 78.5% 拉到 88.4%（已超越人工 ATOMIC2020 的 86.8%），最嚴格過濾到剩 38% 規模時達 96.4% 接受率，仍比 ATOMIC2020 大 4 倍。</li>
+<li><strong>蒸餾成小模型</strong>：用（可選擇性經過 critic 過濾的）ATOMIC^10x 語料微調 GPT2-XL（1.5B 參數，約為 GPT-3 175B 的 1/116）一個 epoch，得到 COMET^DISTIL；並設兩個過濾強度版本 +critic_low（91.5% 準確率語料）、+critic_high（96.4% 準確率語料）。</li>
+</ul>
+</li>
+<li><strong>「學生勝過老師」成立的條件</strong>：在同一套知識庫補全（KB completion）人工評測下比較——GPT2-XL 零樣本 45.1% 接受、GPT-3（鬆散教師，同一代生成法）73.3%、人工訓練的 COMET2020 81.5%、<strong>COMET^DISTIL（未加 critic）78.4%</strong>——即便完全沒用 critic 過濾訓練語料，COMET^DISTIL 也已勝過產生其訓練資料的 GPT-3 本身；加上 critic_high 語料後達到 87.5%，同時超越 GPT-3（+14 點）與人工訓練的 COMET2020（+6 點）。作者推測原因是 GPT-3 的錯誤在「詞彙化模板＋GPT-2 微調」過程中被部分過濾掉，加上 COMET^DISTIL 只需專精單一常識領域而非 GPT-3 的通用領域。批判性教師（GPT-3+critic）本身因可能對某輸入拒絕所有候選、無法保證每題都有輸出，故不用於此逐題比較，只用於產生更乾淨的訓練語料。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>ATOMIC^10x</strong>：646 萬筆三元組（ATOMIC2020 的約 10 倍），成本約 6,000 美元 vs. 人工估計 4 萬美元；獨立詞彙量 520 萬 vs. 150 萬；經 GPT2-XL 分別微調估計的資訊熵是 ATOMIC2020 的 4 倍；软唯一（soft-unique，BLEU2&lt;0.5）樣本 438 萬筆 vs. 人工的 56 萬筆。</li>
+<li><strong>人工評測準確率</strong>：ATOMIC2020 86.8% 接受 vs. 未過濾 ATOMIC^10x 78.5%；critic 過濾後可達 88.4%（丟 20%）至 96.4%（僅存 38%）。GPT-J、T5-11B 當替代教師僅約 72% 接受率，明顯低於 GPT-3 的 78.5%。</li>
+<li><strong>critic 過濾不損害多樣性，反而提升比例</strong>：全量 ATOMIC^10x 的软唯一子集占 68%，最嚴格過濾後升到 80%。</li>
+<li><strong>COMET^DISTIL 於 KB 補全人工評測</strong>：未加 critic 已達 78.4%（超越教師 GPT-3 的 73.3%），加 critic_high 達 87.5%（超越人工訓練的 COMET2020 的 81.5%、以及 GPT-3 的 73.3%），且模型只有 GPT-3 的約 1/100 大小。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>僅驗證 7 種因果常識關係（ATOMIC 子集），是否能推廣到物理常識、時間常識等其他知識類型仍待未來研究；論文方法本身不特定於這些關係，但未做實證。</li>
+<li>critical teacher（GPT-3+critic）可能對部分輸入拒絕所有候選、無輸出保證，故論文評測中不直接拿它逐題比較，實務上僅用於產生訓練語料。</li>
+<li>critic 訓練仍需約 1 萬筆人工標註（雖遠少於全量人工建圖），且依賴 GPT-3 這類強生成模型本身的常識能力上限；換用較弱的 GPT-J/T5-11B 生成品質即明顯下降。</li>
+<li>論文未做除人工評測外的下游任務驗證（如常識問答遷移），評測規模為每輪 1,000～3,000 筆人工標註。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

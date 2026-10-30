@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2212.10561_Parsel.zh-TW.html">回 2212.10561_Parsel.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>儘管大型語言模型（LLM）近來在推理上有所成功，卻仍難以應付像產生複雜程式這類<strong>階層式多步推理</strong>任務。對這類任務，人類常從高階演算法設計著手，再逐步實作各部分。我們提出 <strong>Parsel</strong>，一個以程式 LLM 自動實作並驗證複雜演算法的框架：以 Parsel 自動把演算法任務分解成<strong>階層式自然語言函數描述</strong>，再<strong>用測試在可能的函數實作組合中搜尋</strong>。Parsel 適用於各種需階層推理的領域，包含程式合成與機器人規劃。實驗上：在 APPS 資料集，LLM 用 Parsel 解出更多競賽級題目，pass rate 較先前直接取樣 AlphaCode、Codex 的結果高逾 <strong>75%</strong>，且常用更小的樣本預算；配自動生成測試，Parsel 把 HumanEval 的 SOTA <strong>pass@1 由 67% 提升到 85%</strong>；LLM 用 Parsel 產生的機器人規劃被判定為準確的機率是直接生成的<strong>兩倍以上</strong>。程式碼開源於 github.com/ezelikman/parsel。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>對程式語言模型（如對人一樣），<strong>每個新 token 都是一次弄壞程式的機會</strong>。Chen et al. 以一個簡單合成實驗指出：要求生成一連串簡單字串轉換的程式時，Codex 的表現隨步驟數急遽下滑——而一個能實作幾個基本積木的人，理應能把這些積木組合到任意長度。</p>
+<p>與其他 token 產生器不同，人類程式員（大致）學會了把複雜任務拆成能<strong>獨立運作（模組化）<strong>又能</strong>協同運作（組合性）<strong>的部分；當某函數被寫壞時，可獨立於程式其餘部分重寫它。相對地，我們卻天真地期待程式語言模型一次生出整段都正確的 token 序列。受此啟發，我們研究如何借助語言模型來</strong>分解問題並組裝其組合式解答</strong>。</p>
+<p><strong>Parsel 概觀</strong>（圖 1）：人或 LLM 寫出任務分解（以 Parsel 表示），將其切成強連通分量（SCC），再由 Parsel synthesizer 用一個程式 LLM 與一個約束求解器去實作並組合每個 SCC。當所有函數都有約束且無遞迴時，每個函數各自就是一個 SCC。</p>
+<p>三步驟：1) 語言模型把自然語言任務分解成自然語言函數描述，產生 Parsel program；2) 對每個函數描述，語言模型生成多份模組化實作；3) Parsel synthesizer 以測試（如 input-output 範例等約束）檢驗實作的最小組合群，逐步組裝出程式。生成並實作 Parsel 恰呼應人類推理的一種模式——把抽象計畫不斷分解到可自動求解為止——這種組合結構也讓語言模型受益。我們證明 LLM 只需 few-shot 提示即可生成 Parsel，並在 APPS 競賽級題目上勝過 AlphaCode 與兩版 Codex；用 GPT-4 甚至可零樣本生成 Parsel，並在 HumanEval 上顯著勝過 GPT-4 單獨作答。</p>
+<h2 id="2-方法">2 方法</h2>
+<p>Parsel 需平衡兩項挑戰：一方面，函數實作必須<strong>模組化</strong>以充分利用組合性——藉要求指定（或生成）函數簽名與描述，確保函數能在不知具體實作下互相呼叫；另一方面，必須避免<strong>組合爆炸</strong>——藉把依賴圖分解成<strong>強連通分量（SCC）</strong>，讓複雜度只隨最大 SCC 的大小指數成長，而非隨函數總數。</p>
+<h3 id="21-指定-parsel-程式">2.1 指定 Parsel 程式</h3>
+<p>為形式化地表達高階演算法設計，作者設計了一個簡單的中介語言，同樣叫 Parsel，力求對程式員、程式 LLM 與學生都易於使用。在 Parsel 中，每行是以下三者之一，並遵守作用域規則：</p>
+<ul>
+<li><strong>描述（description）</strong>：以自然語言說明某函數做什麼，前面可選擇性附上函數名與參數（未附則自動推斷）。</li>
+<li><strong>參考（reference）</strong>：告訴語言模型某函數應呼叫他處描述的另一函數。</li>
+<li><strong>約束（constraint）</strong>：驗證函數是否正確實作（如 input-output 範例；未提供時可用語言模型自動生成）。</li>
+</ul>
+<p>例（圖 2）：<code>task_plan(): return a list of strings ...</code> 是描述；<code>recursion_rule</code> 中對 <code>collatz_recursion</code> 的呼叫是參考；<code>19 -&gt; [19, 58, ...]</code> 是約束。論文示範了把 Parsel 編成 VirtualHome 程序與 Python 的兩個例子（如 Collatz 遞迴、把物件放到某處的動作計畫），左側 Parsel 以顏色標示約束與參考、其餘為定義，右側為合成出的完整程式。</p>
+<h3 id="22-生成-parsel-程式">2.2 生成 Parsel 程式</h3>
+<p>用語言模型把任意自然語言任務描述當作 few-shot 翻譯任務生成 Parsel（GPT-4 可零樣本）。先讓模型「think step-by-step」零樣本地用自然語言寫出初步計畫（受 Kojima et al. 啟發），再提示模型把計畫翻成 Parsel。某些領域（尤其機器人規劃）不需此中間步驟（其會增加成本），可直接把任務描述翻成 Parsel 解。</p>
+<h3 id="23-實作-parsel-程式">2.3 實作 Parsel 程式</h3>
+<p>核心技術挑戰是如何<strong>模組化地</strong>實作以充分利用分解優勢。Parsel synthesizer 的高階作法：先用語言模型對每個函數依其描述生成一組候選實作，再在函數實作的最小組合集合中搜尋，找出滿足所給約束者。</p>
+<p><strong>2.3.1 實作函數</strong>：實作某函數時，先彙整它（可能為零個）子函數的描述與簽名組成 LLM 提示（Python 中，做成「彷彿子函數已被 import、以其描述為註解」的提示）；這讓<strong>替換子函數實作變得容易</strong>。接著以描述文字為 docstring、以函數名與參數為簽名去查詢程式 LLM。</p>
+<p><strong>2.3.2 搜尋函數組合</strong>：</p>
+<ul>
+<li><strong>循序情形（sequential）</strong>：當所有函數都有約束（如單元測試）且無遞迴依賴時，呼叫圖有明確拓撲序。Parsel 以 root 起的**後序遍歷（post-order）**逐一實作——先實作葉函數並找出通過約束者，再其父，直到全部完成。</li>
+<li><strong>遞迴（recursion）</strong>：容許互遞迴（f 依賴 g、g 又呼叫 f）時需<strong>聯合實作</strong>。天真枚舉不可行：k 個函數、每函數 n 份實作，可能的程式數為 O(n^k)，隨函數數指數成長。受 Cocke and Kennedy 啟發，作者參照函數呼叫圖、辨識其 SCC，對每個 SCC 考慮所有可能的實作集合直到一組滿足所有約束——如對構成一個 SCC 的 f、g、h，從 I(f)×I(g)×I(h)（各函數的 LLM 生成實作）中不放回地均勻隨機取樣評估。</li>
+<li><strong>無約束函數</strong>：對無約束的函數，把呼叫圖改成「測試依賴圖」，從無測試的子函數加一條邊指向其父——即無約束函數<strong>依賴其父來對其實作施加約束</strong>。這也允許自動引入新子函數而不必為其生成約束。另可支援<strong>自動生成測試</strong>：提示語言模型生成測試，並依 <strong>CodeT 分數</strong>選最佳實作（因部分生成測試可能有誤）。實務上：內層函數用前者（依賴法），頂層函數無測試時用後者（生成測試法）。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

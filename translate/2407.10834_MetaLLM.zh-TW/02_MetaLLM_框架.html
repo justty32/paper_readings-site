@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_MetaLLM_框架 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2407.10834_MetaLLM.zh-TW.html">回 2407.10834_MetaLLM.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-metallm-框架">3. MetaLLM 框架</h2>
+<p><strong>圖 1（服務流程）要旨</strong>：MetaLLM <strong>包在既有 LLM 供應商之外</strong>，檢視每個 query，然後把它路由到「能給出準確回應且最便宜」的 LLM。例如藍色 query 雖然 LLM 1 與 LLM 2 都能答對，MetaLLM 會選較便宜的 LLM 1；綠色 query 雖 LLM 2、3 都能答對，也路由到較便宜的 LLM 2。整個過程<strong>輕量、且無需存取 LLM 內部</strong>即可完成。</p>
+<h3 id="31-前置定義">3.1 前置定義</h3>
+<ul>
+<li><strong>零樣本分類</strong>：給定輸入句 x，構造 prompt 問語言模型 M 要標籤；若 M(x) 等於真值 y 即為正確。</li>
+<li><strong>LLM API</strong>：使用者可存取 K 個共 k 個不同 LLM API，每個 Mᵢ 有各自能力與成本 cᵢ。零樣本分類下，以 aᵢ(x)∈{0,1} 表示 Mᵢ 在樣本 x 上是否答對（Mᵢ(x)=y 則為 1）。通常成本較高者能力較好，但<strong>一般而言，較貴的模型並非對所有 query 都是最佳選擇</strong>，這正是選模問題的困難所在。</li>
+<li><strong>問題形式化</strong>：目標是學一個路由函數 f: 𝒳→K，把 query x 分派給合適的 LLM 以低成本取得好回應。給定能給好回應的子集 K′⊆K，MetaLLM 目標是回傳其中最便宜者 <code>argmin_{l∈K′} c_l</code>。實務上，給定預算 b，使用者要在花費不超過 b 的前提下最大化 N 個 query 的表現（<strong>式 1</strong>：<code>argmax_f Σ a_{f(xᵢ)}(xᵢ)  s.t. Σ c_{f(xᵢ)} ≤ b</code>）。</li>
+</ul>
+<h3 id="32-路由目標的最優解">3.2 路由目標的最優解</h3>
+<p>令 S∈{0,1}^{N×k} 表示路由函數對 N 個 query 的選擇，A∈ℝ^{N×k} 表示第 j 個 API 在各樣本上的表現。式 1 可改寫為在成本約束下最大化 <code>Σᵢ Σⱼ A_{i,j} S_{i,j}</code>（<strong>式 2</strong>）。不去解離散最佳化，而是把 S 鬆弛到實數並要求每列和為 1，取其對偶問題（<strong>式 3</strong>，Boyd &amp; Vandenberghe 2004）。Chen et al. (2022) 對模型級聯研究過類似形式並建議解對偶。在有精確準確率矩陣 A 的理想情況下，可解式 2 得到最優 S 並據以選 API。</p>
+<h3 id="33-metallm-的提出核心">3.3 MetaLLM 的提出（核心）</h3>
+<p>部署應用時，我們<strong>無法在把測試樣本送進某 LLM 之前就知道它在該樣本上的準確率</strong>。先前工作（FrugalML 等）訓練一個模型去預測各 API 的表現，並級聯多個模型、反覆查詢直到回應有高信心；這在 query 量大時<strong>極其昂貴</strong>。</p>
+<p>本文從不同角度切入：<strong>不訓練準確率預測器，而是把問題重構為多臂拍霸機</strong>。對每個 query，把一個 LLM 定義為一支「arm」，pull 後得到一個同時表達「該 LLM 表現與成本」的 reward。此構建的好處有二：(1) 讓建模者專注於設計 reward 以捕捉應用需求，使框架更具通用性；(2) 可直接借用多臂拍霸機成熟的理論基礎與實務解法。</p>
+<ul>
+<li><strong>Reward 函數</strong>：Chen et al. (2022) 證明，若成本縮放 p∈ℝ 是式 3 的解，則路由函數 <code>f(x)=argmaxᵢ aᵢ(x)−p·cᵢ</code> 為式 1 的最優解——直覺上偏好「高表現、低成本」的 LLM。據此提出訓練拍霸機用的 reward（<strong>式 4</strong>）：<code>r(x,i)=aᵢ(x)−p·cᵢ</code>。</li>
+<li><strong>多臂拍霸機</strong>：假設使用者有 n 個 query 的訓練集並能取得各 LLM 在其上的訓練表現。為每支 arm j 初始化 reward 模型 Qⱼ(x;θ)，使其逼近真實 reward <code>aⱼ(xᵢ)−p·cⱼ</code>。仿 Li et al. (2010) 採<strong>線性 reward 模型</strong> <code>Qⱼ(x;θⱼ)=xᵀθⱼ</code>，並以 <strong>ridge regression 閉式解</strong>初始化 θⱼ⁰=(Aⱼ⁰)⁻¹bⱼ⁰（Aⱼ⁰=XᵀX+λI，bⱼ⁰=Xᵀyⱼ，yⱼ,ᵢ=aⱼ(xᵢ)−p·cⱼ）。</li>
+<li><strong>選 arm 與更新（LinUCB）</strong>：對新 query x_t，用 <strong>UCB 策略</strong>選 arm：<code>j=argmax_{j′} x_tᵀθ_{j′} + α·√(x_tᵀ A_{j′}⁻¹ x_t)</code>（α&gt;0，第二項為探索加成）。選定後線上更新該 arm：<code>A_j ← A_j + x_t x_tᵀ</code>、<code>b_j ← b_j + r(x_t,j)·x_t</code>、<code>θ_j ← A_j⁻¹ b_j</code>（<strong>演算法 1</strong>）。整個路由僅涉及嵌入向量的線性運算，<strong>不需呼叫任何 LLM</strong>。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

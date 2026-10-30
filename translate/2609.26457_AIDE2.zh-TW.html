@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Recursive self-improvement of AI research agents 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Dhruv Srikanth、Bingchen Zhao、Dixing Xu、Yuxiang Wu、Zhengyao Jiang</p><p>日期：2026-09-22（v1，cs.AI）</p><p>arXiv：2609.26457</p><p><a href="https://arxiv.org/html/2609.26457v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="recursive-self-improvement-of-ai-research-agents">Recursive self-improvement of AI research agents</h1>
+<h2 id="摘要與第-1-節研究問題">摘要與第 1 節：研究問題</h2>
+<p>研究代理能改進訓練、推論或程式，但產生這些成果的研究程序本身仍須由人改進。本文讓代理修改自身的 harness（包住模型、控制搜尋、脈絡與驗證的程式），並用 AI 研發任務評估改寫後的代理。每次被接受的改寫成為下一次修改的對象，作者稱此為遞迴自我改進。模型權重並非本文的改寫目標。（<a href="https://arxiv.org/html/2609.26457v1#S1">§1</a>）</p>
+<h2 id="第-2-節雙層最佳化與-aide2">第 2 節：雙層最佳化與 AIDE²</h2>
+<p>內層代理 <code>a</code> 從任務原有程式出發，根據可見訊號 <code>r_pub</code> 反覆提出候選解；每個任務有固定美元預算 <code>b_t</code>，涵蓋模型 token 與執行解的成本。代理自行選出解 <code>x̂_t</code>。評分時，用代理不可見的保留資料計算私有分數，跨 <code>T</code> 個任務取平均：</p>
+<p><code>g(a) = (1/T) Σ_t r_priv_t(x̂_t)</code>。</p>
+<p>實際上各任務獨立執行多次再平均。外層代理讀取先前的候選代理與分數，改寫目前最佳代理；外層固定保留迄今 <code>g</code> 最高者。公開訊號和私有評分分離，使內層無法直接最佳化外層選擇準則；同任務預算一致，讓比較聚焦於固定成本下的搜尋能力。（<a href="https://arxiv.org/html/2609.26457v1#S2.SS1">§2.1</a>）</p>
+<p>初始 AIDE₀ 去除原版 AIDE 的機器學習專用機制，保留候選程式樹搜尋：draft 探索新想法、debug 修錯、improve 精修，原始策略貪婪地擴展最高分候選。外層由人類研發兩年的生產代理 AIDE_human 驅動，也用作強基線。選擇基準涵蓋機器學習工程、啟發式演算法工程與 harness 工程。選擇過程中，兩層模型各自固定：外層使用 Claude Opus 4.7，內層評估使用 Gemini 3 Flash；作者自報後者在這些預算下與測試過的較貴模型相當或略佳。（<a href="https://arxiv.org/html/2609.26457v1#S2.SS2">§2.2</a>）</p>
+<h2 id="第-3133-節實驗與泛化">第 3.1～3.3 節：實驗與泛化</h2>
+<p>作者自報，主要自主執行歷時 8 天，100 個節點含初始代理與 99 個改寫提案；第 2、6、28、39、47、63、85 步共接受 7 次，最佳私有分數從 0.703 升至 0.778，AIDE_human 為 0.749。另兩次完整執行分別接受 2、4 次改寫。這些分數參與候選選擇，因此不能單獨證明對選擇基準以外任務的泛化。（<a href="https://arxiv.org/html/2609.26457v1#S3.SS2">§3.1～3.2，圖 2</a>）</p>
+<p>作者另以四個未參與選擇的基準比較 AIDE₀、AIDE₄₇、AIDE₈₅ 與 AIDE_human。ALE-Bench、MLE-Bench、FML-Bench 的任務族與選擇基準同分布但任務不重疊；以 WeatherBench 2 為基礎的物理天氣預報最佳化屬分布外。每個基準內各代理使用相同限制。作者自報表 1 的平均值如下，± 為基準平均的一個標準誤：</p>
+<table>
+<thead>
+<tr>
+<th>代理</th>
+<th style="text-align:right">ALE 私有競賽表現</th>
+<th style="text-align:right">MLE 私有百分位</th>
+<th style="text-align:right">Weather 技能增益</th>
+<th style="text-align:right">FML 正規化測試改善</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AIDE₀</td>
+<td style="text-align:right">1536 ± 33</td>
+<td style="text-align:right">0.678 ± 0.006</td>
+<td style="text-align:right">0.262 ± 0.205</td>
+<td style="text-align:right">15.0 ± 0.9%</td>
+</tr>
+<tr>
+<td>AIDE₄₇</td>
+<td style="text-align:right">1713 ± 26</td>
+<td style="text-align:right">0.730 ± 0.005</td>
+<td style="text-align:right">0.798 ± 0.003</td>
+<td style="text-align:right">19.7 ± 1.2%</td>
+</tr>
+<tr>
+<td>AIDE₈₅</td>
+<td style="text-align:right">1790 ± 9</td>
+<td style="text-align:right">0.722 ± 0.011</td>
+<td style="text-align:right">0.793 ± 0.005</td>
+<td style="text-align:right">19.9 ± 1.1%</td>
+</tr>
+<tr>
+<td>AIDE_human</td>
+<td style="text-align:right">1511 ± 35</td>
+<td style="text-align:right">0.708 ± 0.007</td>
+<td style="text-align:right">0.404 ± 0.193</td>
+<td style="text-align:right">19.6 ± 1.0%</td>
+</tr>
+</tbody>
+</table>
+<p>兩個演化檢查點均高於初始代理，但後期並非每項都更高。Weather 數字是相對未修改起始核心的預報技能增益，並非排行榜絕對分數。ALE／MLE 分別使用 lite 的 10／22 任務，每任務 10／3 個種子；FML 為 18 任務各 3 種子，Weather 為 1 任務 3 種子。作者自報部分 AIDE₀ 執行因模型 context window 限制提前結束，以當時最佳候選計分。（<a href="https://arxiv.org/html/2609.26457v1#S3.SS3">§3.3</a>、<a href="https://arxiv.org/html/2609.26457v1#A1">附錄 A，表 1～2</a>）</p>
+<h2 id="第-34-節獎勵投機">第 3.4 節：獎勵投機</h2>
+<p>作者在未參與選擇的 GPU kernel 工程任務，測量孤立基準的加速是否能帶進 GPT-2、ViT 或 CNN 訓練。對 38 組 kernel／訓練脈絡，各跑 3 個種子並取平均：孤立加速超過 1.02 倍，但訓練中保留的加速不到一半或執行崩潰，就計為獎勵投機。作者自報 AIDE₀、AIDE₄₇、AIDE₈₅ 分別為 55%、39%、32%，AIDE_human 為 39%；末者與 AIDE₈₅ 差 7 個百分點。選擇分數未直接衡量這項行為，實驗也未指出是哪次改寫造成變化。（<a href="https://arxiv.org/html/2609.26457v1#S3.SS4">§3.4，圖 4</a>、<a href="https://arxiv.org/html/2609.26457v1#A1">附錄 A</a>）</p>
+<h2 id="第-35-節aide85-的機制">第 3.5 節：AIDE₈₅ 的機制</h2>
+<p>搜尋策略以五種固定 draft 策略為 bandit 臂，節點繼承父節點標籤。每步用 UCB1 選策略，另有 30% 的步驟依各臂最佳分數的 softmax 抽樣；再擴展該臂最高分節點。每五步將全域最佳節點以另一策略分叉，兼顧既有成果與探索。（<a href="https://arxiv.org/html/2609.26457v1#S3.SS5">§3.5，圖 5</a>）</p>
+<p>脈絡管理改用有界摘要，供 draft／improve 讀取根節點與近期候選；當候選錯誤率至少 15% 時，加入最多三個去重後的近期錯誤特徵。作者自報，執行末期相對 AIDE₀ 的每次呼叫提示字元數，任務層級中位數縮減在 MLE 為 7 倍、Weather 超過 40 倍、ALE 與 FML 約 50 倍。（<a href="https://arxiv.org/html/2609.26457v1#S3.SS5">§3.5</a>、<a href="https://arxiv.org/html/2609.26457v1#A5">附錄 E，圖 10</a>）</p>
+<p>穩健性措施提醒生成程式時偏好可泛化解，並對少於 40 字元的近空程式重新提示；另有一條候選分數懲罰規則，但因保留候選排序，作者重播保留任務時從未改變選擇。代理還修補一個評分腳本：原本任一測例失敗會使全部測例評分崩潰，修補後不再如此。（<a href="https://arxiv.org/html/2609.26457v1#S3.SS5">§3.5</a>）</p>
+<h2 id="第-36-節點火測試">第 3.6 節：點火測試</h2>
+<p>作者提出：若已改進代理能比原外層代理更有效驅動改進，才應將它升到外層。兩組各跑 3 個獨立種子、50 步，均從內層 AIDE₄₇ 起步；實驗組外層用 AIDE₄₇，對照用 AIDE_human。作者自報兩組終點平均私有分數為 0.780 與 0.782。實驗組較早到達最終分數區域，但種子太少、變異大，不能判定其樣本效率更好，也不能宣稱任一組更強；測試只顯示相較對照沒有明顯退化。（<a href="https://arxiv.org/html/2609.26457v1#S3.SS6">§3.6，圖 7</a>）</p>
+<h2 id="第-45-節與附錄定位結論及限制">第 4～5 節與附錄：定位、結論及限制</h2>
+<p>作者將此研究置於代理搜尋、harness 最佳化、自指改進與後設學習脈絡中；其目標是以固定預算下的 AI 研發表現，直接選擇研究代理的 harness 程式。（<a href="https://arxiv.org/html/2609.26457v1#S4">§4</a>）</p>
+<p>作者指出雙層噪聲會累積：內層搜尋軌跡和候選評估均會變動，誤接受可能使後續搜尋偏離；更多外層種子及外部評估成本高。演化出的代理也複雜、難以解釋，哪些元件真正有效尚不清楚，部署時還須處理產品與基礎設施相容性。（<a href="https://arxiv.org/html/2609.26457v1#S5">§5</a>）</p>
+<p>附錄 C 在較高的每次 20 美元預算下測試三種模型，作者報告 AIDE₈₅ 相對 AIDE₀ 的收益跨模型出現；但 MLE 上較小，最強模型 fable 5 的兩者分數相距不到一個標準誤。附錄 D 報告被拒提案：其中約四分之一的公開訊號高於當時最佳代理，私有評分卻未勝出；部分差距小於執行變異。（<a href="https://arxiv.org/html/2609.26457v1#A3">附錄 C～D</a>）</p>
+<p><strong>本檔補註，非作者自陳</strong>：有限次選擇基準改善及不確定的點火測試，不能證明改進可無限持續或必然加速。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2609.26457_AIDE2.%E6%91%98%E8%A6%81.html">AIDE² 摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

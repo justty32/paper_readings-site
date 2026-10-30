@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2312.06585_ReST_EM.%E6%91%98%E8%A6%81.html">回 2312.06585_ReST_EM.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>ReST^EM</strong>：把強化學習的 <strong>EM（期望最大化）框架</strong>用於 LLM 自我訓練——<strong>E-step</strong> 用當前模型抽樣大量候選解、以<strong>二元純量回饋</strong>（答案核對 / 單元測試通過）過濾出正確樣本；<strong>M-step</strong> 一律回頭對<strong>原始預訓練基座模型</strong>（而非上一輪微調後的模型）做監督微調，藉此抑制任務過擬合與偏離基座；在 MATH、APPS 兩個高難度基準上，用 PaLM 2（S/S*/L 三種規模）跑此迴圈，<strong>模型自產、過濾後的資料全面優於同量級人工資料微調</strong>，且增益隨模型規模變大而變大，但迭代超過 2–3 輪、訓練問題集偏小時（尤其 APPS）會出現過擬合與效能倒退。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>用人工資料做監督微調（SFT）的效果，長期受限於高品質人工資料的數量與多樣性；對數學競賽題、程式撰寫這類複雜問題解決任務，蒐集人工解答尤其昂貴、需要專業知識。模型自產的合成資料是可規模化的替代方案，但前提是能確保品質。本文選定「有純量回饋可用」的任務（答案可核對對錯的數學題、有測試案例的程式題），探討：僅靠<strong>外部、確定性的二元回饋</strong>過濾模型自產資料，是否足以取代甚至超越人工資料。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>EM for RL 的理論基礎</strong>：定義二元最優性變數 O，p(O=1|x,y) ∝ f(r(x,y))；直接最大化 log p(O=1|x) 難以處理（對所有 y 求和不可行），改為最大化其 ELBO（含變分分布 q），E-step 求 q 的最優解（等於用當前策略生成、依高回報概似加權）、M-step 對 θ 最大化 reward-weighted log-likelihood；交替迭代保證 ELBO 單調不減。與<strong>標準線上 RL</strong>（如 policy gradient，需邊更新邊重新取樣）相比，EM-based RL 把「資料收集」與「策略最佳化」解耦，讓大規模模型的自我訓練在計算上可行。</li>
+<li><strong>ReST^EM 演算法</strong>（Gulcehre et al. 2023 ReST 的簡化版）：
+<ul>
+<li><strong>Generate（E-step）</strong>：從當前策略 pθ 對訓練集問題抽樣多個輸出（MATH 每題 32 個、APPS 每題 64 個，top-K=40、溫度 0.7，few-shot prompt 條件化），用二元回饋函式 r(x,y) 標註。<strong>不像原版 ReST</strong>混入人工資料——因人工資料未必最優或易得。</li>
+<li><strong>Improve（M-step）</strong>：用該輪資料集<strong>永遠對原始預訓練模型</strong>（而非上一輪微調後的模型）做微調，最小化 reward-weighted 負對數概似；目的是<strong>降低任務特定過擬合、減少與基座模型的漂移</strong>。與 Gulcehre et al. 另一差異：二元回饋下，其多重閾值 τ 的多次 improve step 退化為單一 improve step。</li>
+<li>每題正確解上限 10 個（避免簡單題主導資料集、失衡與過擬合）。</li>
+</ul>
+</li>
+<li><strong>與既有方法的 EM 統一觀點（§4）</strong>：文中把 Expert Iteration（ExIT，用 MCTS 取代溫度取樣）、<strong>STaR</strong>（貪婪解碼 + rationalization 給正解當提示反推理據）、RFT（單輪 E/M-step）、IML（小批次、易偏離基座、計算成本高）、RWR、RAFT 都歸為此 EM 框架的特例。作者明言：初步實驗中，STaR 式 rationalization 會顯著增加「答案對但推理錯」的偽陽性，因此本文不採用。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<p>（以下數字均為原文正文明確給出，避免摘取圖表座標估讀）</p>
+<ul>
+<li><strong>MATH（多輪迭代持續有益）</strong>：PaLM 2-S 與 PaLM 2-L 上，多輪 ReST^EM 持續提升 MATH 測試準確率與 GSM8K 遷移表現；MATH 測試準確率提升量：PaLM 2-S <strong>+5.94 個百分點</strong>、PaLM 2-L <strong>+6.34 個百分點</strong>——模型越大增益越大（且大模型起點更高、進步理論上更難）。</li>
+<li><strong>APPS（多輪反而過擬合）</strong>：主要增益來自第一輪，第二輪起在 APPS 測試集與遷移的 HumanEval 上皆出現效能倒退；作者歸因於 APPS 訓練集僅約 MATH 的三分之一大，更容易過擬合。</li>
+<li><strong>模型自產資料全面優於人工資料 SFT</strong>，PaLM 2-L 上差距尤大；此趨勢與 Yuan et al.（RFT）在 GSM8K 上觀察到「模型越大、自產資料增益越小」相反——本文觀察是<strong>模型規模越大，ReST^EM 增益越大</strong>。</li>
+<li><strong>Pass@K 與多數決</strong>：微調後模型在所有 K 值上 pass@K 均優於基座，K=1 時差距通常最大；MATH 用 64 樣本多數投票，PaLM 2-L + ReST^EM 達 <strong>48.82%</strong>，基座模型僅 <strong>44.02%</strong>。</li>
+<li><strong>消融——多輪 vs 單輪 3 倍資料</strong>：MATH 上，單輪用 3 倍 E-step 抽樣量的資料微調，pass@1 僅 <strong>40.3%</strong>，低於二輪的 <strong>41%</strong> 與三輪的 <strong>41.9%</strong>——多次迭代優於一次性收集更大資料集。</li>
+<li><strong>消融——資料集大小</strong>：僅用 1000 題 MATH 問題即可取得顯著增益，方法對輸入題目數相當節省；但 4000 題效果略遜於 2000 題，顯示微調過程存在變異性。</li>
+<li><strong>消融——公平比較（apples-to-apples）</strong>：篩出「至少有一個模型答對」的約 5K 題 MATH 子集，SFT(5K) 用人工解（每題一份）、ReST*(5K) 用模型解（每題隨機取一份）——ReST*(5K) 仍優於 SFT(5K)，證明優勢不只來自「模型解更多份」；再疊加多輪迭代與更大抽樣量的完整版 ReST 又優於 ReST*(5K)。</li>
+<li><strong>遷移與一般能力</strong>：Big-Bench Hard（23 題子集）上未見明顯退化；MATH 微調模型以 CoT prompting 顯著優於基座，APPS 微調模型也略有提升；直接 prompting 下三者相近。2023 年匈牙利高中數學畢業會考（1-shot，比照既有評測協定人工評分）上，PaLM 2-L + ReST^EM（於 MATH 訓練）表現超越除 GPT-4 外所有比較模型。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<p>原文 Discussion 明確列出：</p>
+<ol>
+<li>需要中等規模的問題／提示訓練集——雖不需人工解答，但每個新任務仍需人工蒐集足量問題。</li>
+<li>需要一個可自動計算（人工設計或學到）的獎勵函式；許多任務未必存在這種乾淨的二元／可驗證回饋。</li>
+<li>pass@1 大幅提升，但未必能完全追上同模型在足夠大 K 下的 pass@K 表現上限。</li>
+<li>實證觀察到的過擬合／飽和：迭代輪數過多、訓練問題集偏小（尤其 APPS）時，測試集表現會不升反降，需要在驗證集上監控何時停止。</li>
+</ol>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

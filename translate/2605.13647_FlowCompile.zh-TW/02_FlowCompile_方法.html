@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_FlowCompile_方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.13647_FlowCompile.zh-TW.html">回 2605.13647_FlowCompile.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-flowcompile-方法">3 FlowCompile 方法</h2>
+<h3 id="31-問題定義與概述">3.1 問題定義與概述</h3>
+<p>結構化 LLM 工作流表示為 W = (A, G)，其中 A 是子代理集合，G 是工作流執行圖。工作流設計空間記為 C，一個工作流配置 c ∈ C 實例化可執行選擇，包括子代理模型指派、推理預算，以及可選的結構決策（如分支或精煉階段的執行）。推理預算是分配給單次子代理呼叫的最大生成推理 token 數。在標記驗證集 Dval 上執行 c 產生工作流層級效能向量 y(c) = (Acc(c), Lat(c))，分別表示任務準確性和端到端延遲。</p>
+<p>工作流編譯的目標是：給定 W、Dval 和 C，識別一組跨越工作流準確性–延遲權衡空間的高品質可復用配置。由於組合設計空間（V 個子代理、M 個模型選擇、B 個推理預算選項單獨就有 (MB)^V 種配置），窮舉評估不可行。FlowCompile 通過三階段編譯器式管線解決此挑戰：子代理 profiling、工作流層級估計、設計空間探索。</p>
+<h3 id="32-子代理資料誘導與-profiling">3.2 子代理資料誘導與 Profiling</h3>
+<p>FlowCompile 首先為每個子代理建構元件級成本模型。由於 Dval 的監督僅對最終工作流輸出可用，FlowCompile 從工作流軌跡中誘導子代理層級資料集。它使用高容量參考模型（如 GPT-5）在 Dval 上執行工作流，記錄每個子代理呼叫的中間輸入和輸出，並應用 LLM-as-judge 篩選器保留執行良好且有助於正確最終答案的呼叫。對每個子代理 a ∈ A，保留的範例形成誘導資料集 Da，用作 profiling 的偽 ground truth。</p>
+<p>對每個子代理 a，定義離散配置空間 Qa = Ma × Ra（模型選擇 × 推理預算）。對每個配置 q = (m, r) ∈ Qa，FlowCompile 在 Da 上評估子代理 a 並記錄經驗準確性和延遲：φa(q) = (p̂a(q), ℓ̂a(q))。所有 profile 的集合 {φa(q)} 形成編譯器使用的元件級成本模型，可在設計空間探索中跨工作流配置復用。</p>
+<h3 id="33-工作流層級效能代理">3.3 工作流層級效能代理</h3>
+<p>給定子代理 profiles，FlowCompile 以工作流層級代理估計工作流效能。直接獲取每個配置的真實效能 y(c) 需要完整工作流執行且在規模上不可行。FlowCompile 從可復用的子代理 profiles 估計 ŷ(c)。</p>
+<p>代理要求（形式化）：FlowCompile 不要求精確預測絕對效能值，而是依賴代理保留準確性–延遲空間中配置的相對排序和支配結構——(1) 前沿一致性：在真實效能下非支配的配置在代理估計下很可能保持非支配；(2) 局部排序保留：對權衡前沿附近的配置，代理近似保留相對效能排序。</p>
+<p>準確性代理：FlowCompile 根據工作流控制流語義組合子代理準確性 profile 值 p̂a：順序組合 p̂seq = ∏ p̂ai（邏輯順序）；析取並行 p̂or = 1 − ∏(1 − p̂ai)（任一分支正確即可）；合取並行 p̂and = ∏ p̂ai（所有分支需正確）；條件組合 p̂cond = p̂a1 + (1 − p̂a1) p̂a2。有界迴圈通過展開為對應的條件工作流階段序列來處理。</p>
+<p>延遲代理：在邊緣部署模型下（LLM 呼叫排隊順序執行），無條件階段求和，條件分支按執行機率加權（如 a2 僅在 a1 失敗時執行，則 Lat_cond = ℓ̂a1 + (1 − p̂a1)ℓ̂a2）。其他執行模型（如並行執行的關鍵路徑延遲）可替換 Clat 而無需重新 profiling 子代理。</p>
+<h3 id="34-設計空間探索與部署">3.4 設計空間探索與部署</h3>
+<p><strong>權衡集建構</strong>：FlowCompile 以兩步驟執行輕量編譯期探索。首先進行子代理層級剪枝：若配置 q1 被 q2 支配（p̂a(q2) ≥ p̂a(q1) 且 ℓ̂a(q2) ≤ ℓ̂a(q1)，至少一個嚴格不等式），則移除 q1。在單調工作流層級代理下，此剪枝保留非支配工作流配置同時減少搜尋空間。然後枚舉剩餘配置，計算 ŷ(c) 並應用非支配排序獲得代理估計的權衡集 F̂。</p>
+<p><strong>使用已編譯集合</strong>：部署不再需要搜尋完整的組合設計空間，而是化簡為在已編譯配置中進行輕量選擇。三種使用場景：(1) 延遲約束部署——選擇滿足延遲預算的最準確配置；(2) 基於偏好的部署——選擇在給定準確性–延遲偏好下最大化預期效用的配置；(3) 基於路由的適應——使用 F̂ 作為緊湊候選池進行逐查詢路由。</p>
+<h2 id="編譯成本flowcompile-無模型訓練成本主要成本是子代理-profiling對固定-profiling-集隨-σqa-而非完整工作流設計空間-c-縮放剩餘的工作流層級估計和權衡集建構是基於快取-profiles-的輕量數值步驟可在-cpu-上快速完成部署時從已編譯配置集中選擇不重新執行編譯過程實務上每個-benchmark-約需-1-小時32-h100-gpu總批次大小-256而窮舉評估-hotpotqa-全配置空間需約-173333-小時"><strong>編譯成本</strong>：FlowCompile 無模型訓練成本。主要成本是子代理 profiling，對固定 profiling 集，隨 Σ|Qa| 而非完整工作流設計空間 |C| 縮放。剩餘的工作流層級估計和權衡集建構是基於快取 profiles 的輕量數值步驟，可在 CPU 上快速完成。部署時從已編譯配置集中選擇，不重新執行編譯過程。實務上每個 benchmark 約需 1 小時（32 H100 GPU，總批次大小 256），而窮舉評估 HotpotQA 全配置空間需約 173,333 小時。</h2>
+<h2 id="part-34-parent_file-260513647_flowcompilezh-twmd">part: 3/4
+parent_file: 2605.13647_FlowCompile.zh-TW.md</h2>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

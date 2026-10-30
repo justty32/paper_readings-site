@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>AutoDesign: Meta-Harness Optimization for Long-Horizon Agentic Design 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yaxin Luo、Haobin Jiang、Jialv Zou 等 14 人</p><p>日期：2026-08-13（v1，cs.CV／cs.AI／cs.CL）</p><p>arXiv：2608.13560</p><p><a href="https://arxiv.org/abs/2608.13560" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="autodesign-meta-harness-optimization-for-long-horizon-agentic-design">AutoDesign: Meta-Harness Optimization for Long-Horizon Agentic Design</h1>
+<h2 id="摘要與第-1-節問題">摘要與第 1 節：問題</h2>
+<p>把多模態來源轉成結構化媒體輸出（海報、投影片、網頁、影片）本質上是以 model-harness 系統為核心的長程 agentic 過程。理想的 harness 應對齊人類設計偏好，並透過經驗探索累積可重用經驗以驅動遞迴自我改進，但既有做法仍是靜態的：個別回饋只被當成瞬時訊號來修正單次輸出，而非沉澱成生產系統的持久能力。</p>
+<p>作者提出 AutoDesign，把「人類對齊的設計生成」框為 meta-harness 優化問題：agentic 系統遞迴優化的對象是 design harness 本身而非單一產物，優化依據是接地於人類偏好的評測。系統含兩層巢狀迴圈：內層 design harness 把來源轉成可編輯輸出並在 critic 回饋下反覆修訂；外層 meta-harness 跨任務優化 design harness，細節見第 3 節。累積接受的更新構成 DesignHarness：一個能自主讀取來源、在 critic 回饋下反覆修訂、產出視覺一致產物的可執行系統。作者以學術論文轉會議海報這個任務實例化並評測。</p>
+<h2 id="第-2-節meta-harness-形式化">第 2 節：Meta-Harness 形式化</h2>
+<p>Design harness H 定義為圍繞固定模型、把多模態輸入與 context 轉成產物的系統，透過執行軌跡（中間動作、狀態、修訂序列）產生輸出。為了系統性優化與可歸因，design harness 拆成五個功能元件：Context and Memory（來源管理、prompt、skill、可重用資產、持久狀態）、Tools and Specifications（工具與版面/字體/溯源規格）、Execution Runtime（撰寫、渲染、驗證、匯出的工作區）、Orchestration（任務路由、嘗試預算、迴圈控制、候選選擇、fallback）、Evaluation and Feedback（規則式驗證、模型式批評、局部化修訂回饋）。這只定義高階抽象，具體實作由 meta-harness 迭代改進。</p>
+<p>Meta-harness 是作用在 design harness 上的系統：給定使用者規格與可選初始 harness，迭代改進得到優化後的 harness，優化目標是產出的預期產物品質；底層模型參數始終不變，優化作用在圍繞模型的系統。</p>
+<h2 id="第-3-節meta-harness-學習迴圈">第 3 節：Meta-Harness 學習迴圈</h2>
+<p><strong>內層迴圈</strong>：design harness 用兩個抽象模組初始化——designer 生成/修訂產物，critic 評估當前狀態並給下一輪修訂回饋，第一步僅由 (x,c) 產生初稿。外層優化時 meta-harness 可精修這兩個模組及其互動，包括 prompt、工具、回饋機制與迴圈控制策略。</p>
+<p><strong>外層迴圈</strong>分四階段：(1) Rollout——當前 harness 在訓練任務集上執行得到軌跡集合；(2) Evaluation——優化前先讓 evaluator coding agent 讀入人類依七個品質維度（Faithfulness、Coverage、Density、Visual Evidence、Layout、Readability、Aesthetics）標註的參照產物，實作出評測器 R_meta（規則式檢查＋VLM 判斷），建成後在自主優化期間固定，用來為每個生成產物打分；(3) Update proposal——optimizer P（依序扮演 planner 與 code editor 的 coding agent）讀入當前 harness、軌跡、分數、持久優化紀錄產生候選更新：planner 分析軌跡分數、派子代理檢查、彙整成反覆失敗模式的結構化證據、擬定更新計畫；code editor 把計畫實作成候選 harness。<strong>每輪限定只能修改五元件中的恰好一個</strong>，讓增益或退步可歸因到單一連貫介入。(4) Acceptance gate——候選須同時在訓練集進步、開發集不退步才被接受晉升；開發集分數只用於守門，從不提供給 optimizer 構造提案，防止 harness 過擬合訓練任務。每輪結束後 checkpoint、分數、選定元件、決定都附加進優化紀錄；系統每次迭代只維護單一 active harness，不做變體樹搜尋。</p>
+<p>作者也支援可選 human-in-the-loop：人可在迭代中給 planner 自然語言方向性指引（防止 optimizer 過早收斂停滯），也可在視覺檢查發現 R_meta 未捕捉到的系統性偏誤時介入修正 evaluator；否則 R_meta 保持不動：meta-harness 沒有外部訊號可自行察覺 evaluator 偏誤。</p>
+<h2 id="第-4-節與第-5-節designharness-與-posterbench-評測">第 4 節與第 5 節：DesignHarness 與 PosterBench 評測</h2>
+<p>演化出的 DesignHarness 支援學術海報、投影片、影片、網頁等多種輸出媒介，最終架構含四階段：來源讀取、迭代式生成與修訂、規則式驗證器與 VLM critic 回饋、finalization。</p>
+<p>PosterBench 含 100 篇論文的 Main Track（AI/ML、生醫健康、氣候地球、經濟政策、物理天文五學門）與供受控消融的 10 篇 mini 子集。七維 rubric 加權合成後再與版面損壞、呈現可行性等嚴重度上限取最小值得單篇最終分數；優化期的 R_meta 與最終比較用的凍結 PosterBench 評測器互不修改。</p>
+<p><strong>Main Track 結果</strong>：AutoDesign（DesignHarness＋Claude Code＋Claude 4.8）78.32 分最高，同組態下勝過 Claude Design 的 70.87（+7.45）、OpenDesign 的 69.45（+8.87）。無 design harness 的純 coding agent（Claude Code＋Claude 4.8）只有 70.01，人工打造的 workflow 系統分數落在 44.61～56.71。</p>
+<p><strong>Harness attachment 消融</strong>（固定模型與 coding agent，比較加裝前後）：七組配置增益 5.01～19.56 分，Claude Code/DeepSeek V4 Pro 從 34.73→54.29 增益最大（+19.56）。MLLM 額外受益於「上一輪渲染預覽作為下一輪修復視覺 context」這個純文字 LLM 沒有的訊號。</p>
+<p><strong>成本—表現權衡</strong>：Pareto 前沿從 LongCat-2.0（55.13 分、每張海報約 $0.27）經 Doubao Seed 2.1 Pro（71.83 分、$2.75）、Claude 4.8（74.56 分、$7.63）到 GPT-5.5（81.46 分、$10.02）；Doubao 以 GPT-5.5 二成七的成本拿到其 88% 的分數。</p>
+<p><strong>人類評測</strong>：11 位志願審稿人對四系統做系統盲測配對比較，共 936 次判斷（933 次排序＋3 次跳過），擬合 Bradley–Terry 模型，AutoDesign 點估計最高 64.0%（95% 區間 55.2–77.8%），對 Claude Code／OpenDesign／Claude Design 勝率分別 61.3%／63.1%／67.6%。PosterBench 分數與人類偏好正相關但不完美（r=0.34）；分數差距越大人類與 benchmark 判斷一致率越高，0–3 分差距時 51.9%，≥20 分差距升至 74.4%。</p>
+<p><strong>全自動長程迴圈</strong>：作者以自身論文為例，40 分鐘內完成來源讀取、迭代生成修訂、critic 回饋整合與 finalization，共 253 次工具呼叫、11 輪編輯、成本低於 $3；7 天演化 trace 共呼叫 224 個子代理、記錄至少 123 次遞迴迭代、累積 54 次被接受的 harness 更新。</p>
+<h2 id="第-6-節未來方向與侷限">第 6 節：未來方向與侷限</h2>
+<p>作者明講：PosterBench 目前只正式評測論文轉海報，投影片、網頁、會議影片輸出仍是 pilot，未經正式評測器驗證。Meta-harness 層面仍有開放問題：更好的元件選擇策略應依失敗歸因、不確定性、預期改進來選下一個待更新元件（目前由 agent 憑分析選擇，非原則性）；若要讓 evaluator 本身也自適應演化，必須用凍結參照任務、對抗探針與定期人審維持錨定，否則優化可能 reward-hack 一個會移動的目標。outer loop 目前只維護單一 active harness，不做樹搜尋。</p>
+<h2 id="第-8-節結論">第 8 節：結論</h2>
+<p>AutoDesign 把反覆出現的設計失敗轉化為對「未來會持續生成產物的系統」的改進：一次改一個 DesignHarness 元件、模型權重不變，讓論文轉海報成為持續累積設計偏好的學習過程。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2608.13560_AutoDesign.%E6%91%98%E8%A6%81.html"><code>../summarize/2608.13560_AutoDesign.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

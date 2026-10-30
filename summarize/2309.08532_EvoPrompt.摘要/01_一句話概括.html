@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2309.08532_EvoPrompt.%E6%91%98%E8%A6%81.html">回 2309.08532_EvoPrompt.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>EvoPrompt：讓 LLM 當演化算子（負責交配/突變、維持自然語言的連貫與可讀性），演化算法（GA、DE 兩種變體）當搜尋框架</strong>——全程不需梯度、不需模型參數，只靠黑箱 API 存取，就能從一個初始 prompt 族群迭代演化出更優的離散 prompt；在 31 個資料集上一致優於人工 prompt 與既有自動化方法，BBH 上最高勝過基準達 25%。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>Prompt 品質嚴重影響 LLM 表現，但撰寫好 prompt 高度仰賴人力與經驗、缺乏系統性指引。既有自動化離散 prompt 方法多走兩個極端：一是「窮舉候選＋挑最佳」偏重探索（如 APE），容易優柔寡斷、浪費算力；二是「基於錯誤案例編輯現有 prompt」偏重利用（如 APO/ProTeGi 的文本梯度法），容易陷入局部最優且多限於有標準答案的任務。傳統演化算法在探索與利用間有良好平衡，但其算子（突變/交配）通常獨立編輯序列中的元素，忽略 token 間的關聯——這對必須保持連貫可讀的自然語言 prompt 是硬傷。EvoPrompt 要解決的正是「如何讓演化算子在離散、需保持語言流暢的 prompt 空間上運作」。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>框架三步驟（Algorithm 1）</strong>：初始族群（人工 prompt ＋ LLM 生成的變體，共 N 個）→ 演化（每輪從族群選父代 prompt，用 LLM 依演化算子指令生成新 prompt）→ 更新（在 development set 上評分，依演化算法規則決定去留），迭代 T 輪，回傳族群中分數最高者。</li>
+<li><strong>GA 版本</strong>：以<strong>輪盤法（roulette wheel selection）<strong>依 development set 分數為機率選兩個父代 prompt；LLM 依指令先做</strong>交配（crossover，合併兩父代的字句）</strong>、再做<strong>突變（mutation，對子代做隨機改寫）</strong>；更新規則＝新舊 2N 個 prompt 合併後取分數前 N 名（elitist top-N）。</li>
+<li><strong>DE 版本</strong>：模仿標準差分演化 y = a + F(b − c) 的結構，設計三步驟並轉譯成 LLM 指令：(1) 找出兩個隨機 prompt 的<strong>差異部分</strong>（對應 b − c）；(2) LLM 只對差異部分做突變（對應 F(b − c)），刻意保留兩者共同部分（假設共同部分對表現有正向貢獻）；(3) 把突變後的差異部分與<strong>當前族群最佳 prompt</strong>（對應向量 a，DE 的一種變體用當前最佳代替隨機向量）結合；(4) 讓結果與當前基礎 prompt 交配，產出候選。更新規則＝逐一以族群中每個 prompt 為基礎生成候選，分數較高者留下（steady-state、逐一淘汰）。</li>
+<li><strong>無梯度、黑箱可用</strong>：全程不存取 LLM 的參數或機率輸出，只需能呼叫、能評分即可，天生相容閉源 API（GPT-3.5）與開源模型（Alpaca-7b）。</li>
+<li><strong>成本結構（附錄 C.3）</strong>：評估開銷＝ N × |D| × T（族群大小 × development set 大小 × 迭代輪數）；加上生成候選的 N × T 次呼叫，總 API 請求數＝ N × T × (1 + |D|)，與 APE 同量級。實驗預設 N=10、T=10（BBH 為 T=10、|D|=50，3-shot）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>語言理解（7 個資料集，Alpaca-7b）</strong>：EvoPrompt(GA) 平均 76.25、EvoPrompt(DE) 平均 77.05，均大幅優於人工指令 MI（71.07）、Natural Instructions（68.21）、APE（73.80）、APO（僅部分資料集，70.55）；在 Subj（主觀性分類）上 DE 比 GA 高出約 5 個百分點。</li>
+<li><strong>語言生成</strong>：SAMSum 摘要（ROUGE-1/2/L）與 ASSET 簡化（SARI）上，EvoPrompt 在 Alpaca-7b 與 GPT-3.5 皆穩定優於人工 prompt 與 APE；DE 在摘要任務上明顯優於 GA，在簡化任務上兩者相近。</li>
+<li><strong>BBH（23 個高難度推理任務，GPT-3.5）</strong>：22/22 任務優於基準 prompt「Let&#x27;s think step by step.」；<strong>DE 平均 +3.5%，最高 +25%</strong>；<strong>GA 平均 +2.5%，最高 +15%</strong>；DE 在 6 個任務上贏 GA 超過 2%。</li>
+<li><strong>成本分析（Table 13）</strong>：在相同迭代數下，GA/DE 僅以些微 token 開銷即顯著勝過 APE；GA 收斂速度與 APE 相近，DE 略慢但天花板更高。</li>
+<li><strong>消融</strong>：GA 用輪盤法選擇優於錦標賽/隨機；DE「只突變差異部分」＋「以當前最佳為 Prompt 3」均對結果有明顯正貢獻；初始族群用隨機挑選即可逼近用最佳表現 prompt 初始化的效果，但初始 prompt 品質差時 DE 較 GA 更能跳脫局部最優。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>演化算子與 EA 框架皆固定為經典、教科書式的 GA/DE，尚未探索更先進的自適應變體（如自適應控制參數的 DE 變種）。</li>
+<li>評估成本與族群大小 × 迭代輪數 × development set 大小成正比，對大型 development set 或大量迭代仍是真金白銀的 API 呼叫開銷。</li>
+<li>BBH 上所有任務共用同一組初始族群、未注入任務專屬先驗知識，作者指出加入任務專屬 prompt 可能再提升表現。</li>
+<li>僅驗證 GA、DE 兩種 EA；作者在附錄提出把粒子群優化（PSO）、蟻群演算法（ACO）、MAP-Elites 等其他經典演算法接上 LLM 是未來方向，本文尚未實作。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

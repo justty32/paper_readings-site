@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2211.16605_Stitch.zh-TW.html">回 2211.16605_Stitch.zh-TW 目錄</a>　<a href="02_%E8%AA%9E%E6%96%99%E5%BA%AB%E5%BC%95%E5%B0%8E%E7%9A%84%E8%87%AA%E9%A0%82%E5%90%91%E4%B8%8B%E6%90%9C%E5%B0%8B.html">← 上一節</a></p>
+</blockquote>
+<h2 id="6-實驗">6. 實驗</h2>
+<p>實驗參數：cost_app = cost_λ = 1，cost_$i = cost_α = cost_t = 100；沿用 DreamCoder 的防過擬合規則（剪掉只在單一任務有用的抽象）。機器為雙 AMD EPYC 7302（64 CPU、256GB RAM），但作者筆電（ThinkPad X1 Carbon）即可以幾乎相同的耗時重現 §6.2。</p>
+<h3 id="61-迭代自舉庫學習vs-dreamcoder">6.1 迭代自舉庫學習（vs DreamCoder）</h3>
+<p>用 Ellis et al. 2021 公開 trace，在其五個領域（Lists 108 任務、Text 128、LOGO 80、Towers 56、Physics 60）重現每次庫學習，Stitch 逐輪匹配 DreamCoder 停止準則所學的抽象數量以求公平，並採 DreamCoder 的 best-of-task 壓縮指標（Eq.18）。<strong>庫品質</strong>：logo/towers/text/physics 四領域 Stitch 全面相當或明顯更優；list 領域多半仍較優、偶爾落敗（因原生 Stitch 學不了此領域有用的高階抽象，§6.5 補救）。<strong>資源效率</strong>：DreamCoder 給 8 CPU、Stitch 限單執行緒，Stitch 仍以<strong>數十毫秒</strong>完成抽象發現——<strong>快 3-4 個數量級、記憶體省逾 2 個數量級</strong>。</p>
+<h3 id="62-大規模語料庫學習">6.2 大規模語料庫學習</h3>
+<p>資料集取自 Wong et al. 2022 的八個子領域（技術製圖：nuts &amp; bolts / vehicles / gadgets / furniture；積木建造：bridges / cities / castles / houses），各 250 支程式、平均長度 76–189 符號、平均深度 15–128。80/20 訓練/測試隨機切分 50 次，學 ≤10 個抽象、最大 arity 3。<strong>結果（表 2 擇要）</strong>：測試集壓縮率 nuts &amp; bolts <strong>11.57x</strong>（0.24s、11MB）、houses 8.85x（15.5s、241MB）、castles 2.55x（77s、684MB）；四個領域個位數秒、數十 MB 完成。<strong>DreamCoder 連最簡單的 nuts &amp; bolts 都學不出任何抽象</strong>（256GB RAM＋數小時、含大幅子抽樣的嘗試皆失敗）——Stitch 是第一個擴展到此難度設定的庫學習工具。</p>
+<h3 id="63-對提早終止的穩健性">6.3 對提早終止的穩健性</h3>
+<p>量測搜尋過程中「目前最佳抽象」的訓練集壓縮率 vs 已展開節點數（單抽象、arity ≤3）。<strong>結果</strong>：除 nuts &amp; bolts 外所有子領域都在總搜尋量的極小部分內收斂到最終最優——3/8 領域在 1% 內、除一個外皆在 10% 內。這使 early stopping 成為在資料豐富場景加速庫學習的實用手段。</p>
+<h3 id="64-消融研究">6.4 消融研究</h3>
+<p>四種消融：no-arg-capture、no-upper-bound、no-redundant-args、no-opt（全關）。單輪抽象學習、arity 3、限 50GB 位址空間與 90 分鐘。<strong>結果（表 3）</strong>：關 argument capture → 六個領域中五個爆 RAM（其餘探索空間膨脹 16714x／30x／27x）；關上界剪枝 → 探索空間膨脹 12–208x；關冗餘參數消除影響較小（最多 ~2x，bridges）；<strong>全關 → 所有領域皆無法在預算內完成</strong>。證實語料引導剪枝是 top-down 抽象合成可行性的關鍵。</p>
+<h3 id="65-學習高階函數庫">6.5 學習高階函數庫</h3>
+<p>把 Stitch 疊在 DreamCoder 單步 β-inversion 的 version space 之上（§5 形式化），並以 DreamCoder 的貝氏目標（先驗 P(L)×似然 ∏P(p|L)）對彈出優先佇列的完整抽象<strong>機率重排序</strong>；為便於整合，以 Python 重實作原型 <strong>pyStitch</strong>。<strong>結果（表 4）</strong>：DreamCoder 需開到最貴的 4 步改寫（<strong>228,048 秒 ≈ 2.5 天</strong>）才學全 map/fold/unfold/filter/zip_with 五個高階函數；pyStitch+VS 學到 4/5，<strong>pyStitch+Bayes+VS 學全 5 個、僅 3,042 秒——不到 2% 計算量</strong>。結論：在演繹改寫系統上執行 Stitch 可縮小表達力差距、同時保住性能優勢。</p>
+<h2 id="7-相關工作">7. 相關工作</h2>
+<ul>
+<li><strong>演繹重構與庫學習</strong>：多數先前工作走 bottom-up（子樹記憶化、反統一 anti-unification、改寫規則重構），面臨語料規模/深度的記憶體與搜尋時間挑戰；version space 只能緩解。MCMC 類方法擴展性較好但不處理綁定子、只找語法片段而非良構函數。</li>
+<li><strong>引導式 top-down 程式合成</strong>：型別約束、洞行為過/欠近似、機率啟發引導等技術多用於「按規格合成整支程式」；Stitch 的成本函數則直接利用部分列舉的候選函數與既有訓練語料的關係，不需從輸入/輸出樣例估計。</li>
+<li><strong>λ 感知統一</strong>：LambdaUnify 較 Huet/Miller/Dowek 的一般 β 等價統一更受限但更快（純語法驅動；不會為造高階引數而引入 λ；高階引數交由 §5 的演繹組合處理）；洞的 &amp;i 處理與 Miller 1992 的 Skolem 化/λ-lifting 有相似性但更輕量。</li>
+<li><strong>網路模體（network motifs）</strong>：逐邊生長模體時「頻率只降不升」的上界，與本文「抽象生長→匹配子集」的洞見同源；本文效用函數（壓縮型）比其頻率型更複雜。</li>
+<li><strong>與 babble 對比（並行工作，同屆 POPL）</strong>：babble 走表達力路線（e-graph 上的等式理論＋反統一＋beam search 聯合抽庫），Stitch 走效率路線（平行 anytime branch-and-bound）。效率：babble 比 DreamCoder 快 10-100x，Stitch 快 1,000-10,000x 且 anytime；表達力：babble 可學語義等價模組化庫，Stitch 僅在 pyStitch 原型初步探索非語法等價；聯合學習：babble 一次學多個抽象（近似），Stitch 一次一個（每個有最優保證）。兩者互補、具結合潛力。</li>
+</ul>
+<h2 id="8-結論與未來工作">8. 結論與未來工作</h2>
+<p>CTS 直接合成抽象而非經一串改寫暴露之，性能關鍵在引導性效用函數對抽象空間的高效搜尋與剪枝。Stitch 開源（Python 套件＋Rust crate），五組實驗顯示：與最先進演繹演算法相比記憶體省 2 個數量級、時間省 3-4 個數量級；可擴展到先前不可行的更大更深語料；anytime 特性支持以提早終止在複雜領域取得高品質庫。未決方向：把 CTS 推廣到更一般的演繹改寫系統（如 egg 的 e-graph；難點在 version space/e-graph 上「等式改寫壓縮 vs 抽象學習壓縮」的權衡使上界難以緊化——pyStitch 原型僅支援單一改寫規則且用無最優保證的近似效用）；Stitch 的加速使抽象學習可作為<strong>可高頻呼叫的廉價子程序</strong>開啟新應用；CTS 也可望推廣到程式樹以外的資料結構（dataflow DAG、分子等一般圖結構）；以及跨越「λ 演算語料 vs 真實碼庫」的規模差距。</p>
+<p>原始碼：github.com/mlb2251/stitch；重現工件：github.com/mlb2251/stitch-artifact（Zenodo 7151663）。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2211.16605_Stitch.%E6%91%98%E8%A6%81.html"><code>../summarize/2211.16605_Stitch.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

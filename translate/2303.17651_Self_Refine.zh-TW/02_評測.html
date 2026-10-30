@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_評測 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2303.17651_Self_Refine.zh-TW.html">回 2303.17651_Self_Refine.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-評測">3. 評測</h2>
+<p>在 7 項任務上評測：對話回應生成（Mehri and Eskenazi 2020）、程式最佳化（Madaan et al. 2023）、程式可讀性改善（Puri et al. 2021）、數學推理（Cobbe et al. 2021，GSM8K）、情感反轉（Zhang et al. 2015），以及兩項新提出的任務：**Acronym Generation（縮寫生成）**與 <strong>Constrained Generation（受限生成，把 Lin et al. 2020 的 CommonGen 加難為 20–30 個關鍵詞約束，而非原本的 3–5 個）</strong>。</p>
+<h3 id="31-self-refine-的實作">3.1 Self-Refine 的實作</h3>
+<p>feedback-refine 迭代持續到達成期望品質或任務專屬條件，<strong>最多 4 輪</strong>。為了讓不同模型間評測一致，即使是 ChatGPT、GPT-4 這類指令跟隨良好的模型，feedback 與 refine 也都以 few-shot prompt 實作。</p>
+<p><strong>基礎 LLM</strong>：目標是驗證 Self-Refine 能否改善任何強基礎模型，因此比較對象就是<strong>同一個基礎模型但不做 feedback-refine 迭代</strong>。三個主要模型為 GPT-3.5（text-davinci-003）、ChatGPT（gpt-3.5-turbo）、GPT-4；程式任務另加 Codex（code-davinci-002）。所有任務上，GPT-3.5 或 GPT-4 本身即為前 SOTA。有既有工作的 prompt 就沿用（如程式最佳化與數學推理），否則自建。所有設定使用 temperature 0.7。</p>
+<h3 id="32-指標">3.2 指標</h3>
+<p>三類指標：</p>
+<ul>
+<li><strong>任務專屬指標</strong>：數學推理用解題率 %、程式最佳化用被最佳化程式比例 %、受限生成用覆蓋率 %。</li>
+<li><strong>Human-pref（人類偏好）</strong>：對話回應生成、程式可讀性改善、情感反轉、縮寫生成沒有自動指標，故對輸出子集做<strong>盲測 A/B 人工評比</strong>。</li>
+<li><strong>GPT-4-pref</strong>：另以 GPT-4 作為人類偏好的代理，與人類偏好相關度為情感反轉 82%、縮寫生成 68%、對話回應生成 71%。程式可讀性則提示 GPT-4 計算「變數命名適當」的比例。</li>
+</ul>
+<h3 id="33-結果">3.3 結果</h3>
+<p><strong>表 1（Base → +Self-Refine，括號為絕對增益）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>任務</th>
+<th>GPT-3.5</th>
+<th>ChatGPT</th>
+<th>GPT-4</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>情感反轉</td>
+<td>8.8 → 30.4（+21.6）</td>
+<td>11.4 → 43.2（+31.8）</td>
+<td>3.8 → 36.2（+32.4）</td>
+</tr>
+<tr>
+<td>對話回應</td>
+<td>36.4 → 63.6（+27.2）</td>
+<td>40.1 → 59.9（+19.8）</td>
+<td>25.4 → 74.6（+49.2）</td>
+</tr>
+<tr>
+<td>程式最佳化</td>
+<td>14.8 → 23.0（+8.2）</td>
+<td>23.9 → 27.5（+3.6）</td>
+<td>27.3 → 36.0（+8.7）</td>
+</tr>
+<tr>
+<td>程式可讀性</td>
+<td>37.4 → 51.3（+13.9）</td>
+<td>27.7 → 63.1（+35.4）</td>
+<td>27.4 → 56.2（+28.8）</td>
+</tr>
+<tr>
+<td>數學推理</td>
+<td>64.1 → 64.1（0）</td>
+<td>74.8 → 75.0（+0.2）</td>
+<td>92.9 → 93.1（+0.2）</td>
+</tr>
+<tr>
+<td>縮寫生成</td>
+<td>41.6 → 56.4（+14.8）</td>
+<td>27.2 → 37.2（+10.0）</td>
+<td>30.4 → 56.0（+25.6）</td>
+</tr>
+<tr>
+<td>受限生成</td>
+<td>28.0 → 37.0（+9.0）</td>
+<td>44.0 → 67.0（+23.0）</td>
+<td>15.0 → 45.0（+30.0）</td>
+</tr>
+</tbody>
+</table>
+<p>Self-Refine 在所有模型規模上<strong>一致地</strong>優於基礎模型，也優於各任務的前 SOTA。例如 GPT-4 在程式最佳化上從 27.3% 提升到 36.0%（+8.7）。Codex 在程式任務上有類似趨勢。</p>
+<p>增益最高的任務之一是<strong>受限生成</strong>（要求生成一個包含最多 30 個給定概念的句子）：第一次嘗試漏掉概念的機會很多，Self-Refine 讓模型有機會後續補救；且此任務的合理輸出空間極大，迭代有助於探索。</p>
+<p><strong>偏好型任務</strong>增益尤其顯著，例如對話回應生成上 GPT-4 的偏好分數從 25.4% 提升到 74.6%（+49.2）。</p>
+<p><strong>數學推理增益微薄</strong>，可追溯到模型<strong>無法準確判斷是否存在錯誤</strong>：數學錯誤往往細微、僅限單行或單一運算，而一條看起來一致的推理鏈就足以騙過 LLM 認為「everything looks good」——<strong>ChatGPT 對 94% 的實例回饋都是這句話</strong>。在 §H.1 中我們顯示：若由<strong>外部來源</strong>判定當前答案是否錯誤，數學推理的增益會大得多（5%+）。</p>
+<p><strong>增益跨模型規模一致</strong>：GPT-4+Self-Refine 通常優於 GPT-3.5+Self-Refine 與 ChatGPT+Self-Refine，即使在 GPT-4 基礎分數原本較低的任務上亦然。我們因此認為 Self-Refine 讓更強的模型<strong>釋放其完整潛力</strong>，即使該潛力在標準單次生成中沒有表現出來。</p>
+<h2 id="4-分析">4. 分析</h2>
+<p><strong>回饋品質的影響（表 2）</strong>：比較三種設定——Self-Refine 的具體可執行回饋、泛泛回饋、無回饋（模型仍可迭代修改，但不明確給回饋）。以程式最佳化為例，可執行回饋像「避免在 for 迴圈中重複計算」，泛泛回饋則像「提升程式效率」。</p>
+<table>
+<thead>
+<tr>
+<th>任務</th>
+<th>Self-Refine 回饋</th>
+<th>泛泛回饋</th>
+<th>無回饋</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>程式最佳化</td>
+<td>27.5</td>
+<td>26.0</td>
+<td>24.8</td>
+</tr>
+<tr>
+<td>情感反轉</td>
+<td>43.2</td>
+<td>31.2</td>
+<td>0</td>
+</tr>
+<tr>
+<td>縮寫生成</td>
+<td>56.4</td>
+<td>54.0</td>
+<td>48.0</td>
+</tr>
+</tbody>
+</table>
+<p>程式最佳化從 27.5 微降到 26.0 再到 24.8；情感反轉的落差更劇烈（43.2 → 31.2），<strong>無回饋時任務直接失效</strong>。可見泛泛回饋仍有些許幫助，但最佳結果來自有針對性、有建設性的回饋。</p>
+<p><strong>多輪迭代有多重要（圖 4）</strong>：平均而言輸出品質隨迭代次數提升。程式最佳化從 y₀ 的 22.0 依序到 27.0、27.9，三輪後（y₃）為 28.8；情感反轉 33.9 → 34.9 → 36.1 → 36.8；受限生成 29.0 → 40.3 → 46.7 → 49.7。同時可見<strong>收益遞減</strong>：多數增益集中在最初幾輪。</p>
+<p>品質也未必單調遞增：在縮寫生成這類<strong>多面向回饋</strong>任務中，一個面向改善可能伴隨另一個面向退步（附錄表 10 顯示同一縮寫在四輪迭代中的總分為 11、17、12、17）。為此 Self-Refine 讓回饋輸出各品質面向的<strong>明確數值分數</strong>，最後依所有迭代中的最高分挑選輸出。</p>
+<p><strong>圖 5 要旨</strong>：基線模型對一段用六層巢狀迴圈窮舉硬幣組合的慢速程式幾乎沒有改進（只改了讀取輸入的邏輯）；Self-Refine 先產生診斷性回饋「這段程式慢是因為用六層巢狀迴圈枚舉所有硬幣組合」，並建議更有效率的做法，接著據此改寫成動態規劃解法，大幅降低時間複雜度。</p>
+<p><strong>只是多生成幾個輸出就夠了嗎？</strong>：與 ChatGPT 生成 k 個樣本（無回饋、無精煉）比較，做 1 vs. k 的評比——也就是檢驗 Self-Refine 能否勝過<strong>全部</strong> k 個初始輸出。結果顯示即使在這個更困難的設定下，人類仍偏好 Self-Refine 的輸出。這說明「依回饋精煉」的價值不能被「多抽幾次樣本」取代。</p>
+<p><strong>弱模型可行嗎？</strong>：以 Vicuna-13B 實例化 Self-Refine，它能產生初始輸出，但<strong>在精煉流程上明顯吃力</strong>：無法穩定產出所需格式的回饋；即使給它 Oracle 或硬編碼回饋，也常不遵守精煉 prompt，而是重複同樣輸出或幻覺出一段對話。我們推測 Vicuna-13B 因為是在對話上訓練的，對測試時的 few-shot 任務泛化不如指令式模型。</p>
+<p><strong>質性分析</strong>：人工分析 70 個樣本（35 成功、35 失敗），涵蓋程式最佳化與數學推理。回饋大多是可執行的，能指出原生成的問題並建議修正方式。當 Self-Refine 失敗時，<strong>問題多半出在回饋而非精煉</strong>：33% 的失敗是回饋沒有正確指出錯誤位置，61% 是回饋建議了不恰當的修法，<strong>只有 6% 是精煉者未能正確實作好的回饋</strong>。成功案例中，61% 是精煉者被準確有用的回饋引導做出精準修正；有趣的是還有 33% 是<strong>回饋部分錯誤但精煉者仍改對了</strong>，顯示對次佳回饋具有一定韌性。</p>
+<p><strong>超越基準任務</strong>：我們也探索了真實應用——網站生成：使用者給出高階目標，Self-Refine 從粗糙的初始設計出發，迭代精煉 HTML、CSS 與 JS，在可用性與美感上逐步演進，顯示此法在真實、複雜且具創造性任務上的潛力。</p>
+<p><strong>附錄 H.1：使用 Oracle 回饋</strong>：仿 Welleck et al. (2022)，用正確性資訊引導精煉——只有當前答案錯誤時才進入 refine 階段。此調整明顯提升數學推理表現：GPT-3.5 從 64.06 到 68.9（+4.8）、ChatGPT 從 74.8 到 76.2（+1.4）、GPT-4 從 92.9 到 93.8（+0.7）。這顯示<strong>外部訊號</strong>在特定任務上優化模型表現的潛力。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《REST：基於檢索的推測解碼（Retrieval-Based Speculative Decoding）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zhenyu He, Zexuan Zhong, Tianle Cai, Jason D. Lee, Di He（北京大學 / 普林斯頓大學，NAACL 2024）</p><p>日期：2023-11</p><p>arXiv：2311.08252</p><p><a href="https://arxiv.org/abs/2311.08252" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="rest基於檢索的推測解碼retrieval-based-speculative-decoding重點摘要">《REST：基於檢索的推測解碼（Retrieval-Based Speculative Decoding）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>REST（Retrieval-Based Speculative Decoding）</strong>：把推測解碼（speculative decoding）裡負責生草稿的<strong>小型 draft 模型，整個換成一個非參數的檢索資料庫</strong>——用當前上下文的後綴去庫裡做精確匹配，撈出「常見延續」當草稿 token，交給大模型單次前向驗證；<strong>免訓練、即插即用、可掛任何 LLM</strong>，在 7B/13B 模型上對程式碼與文字生成取得 <strong>1.62×～2.36× 的加速</strong>，且輸出與標準自回歸解碼逐字相同（無損）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>推測解碼靠一個「小而準」的 draft 模型先生草稿、大模型一次前向驗證多個 token 來省下反覆載入十億級參數的成本；但<strong>取得高品質 draft 模型本身很難</strong>：要同時兼顧夠小（低開銷）、夠準（貼近大模型輸出）、且<strong>詞表與架構要與大模型相容</strong>，往往得為每個新模型專門挑選甚至訓練 draft 模型。</li>
+<li>REST 的核心觀察：<strong>文字生成常包含共通的片語與模式</strong>——這些「常見延續」既然反覆出現，不如直接從語料庫檢索復用，而不必用一個參數模型去記憶／預測它們。</li>
+</ul>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>資料庫（datastore）</strong>：<code>D = {(c_i, t_i)}</code>，<code>c_i</code> 為上下文、<code>t_i</code> 為其後續延續；由文字／程式碼語料在每個位置切出「前綴上下文 + 對應延續」建成。</li>
+<li><strong>檢索（近零成本、免向量模型）</strong>：以當前上下文 <code>s</code> 的<strong>最長後綴</strong>做<strong>精確匹配</strong>（exact match）——從上限 <code>n_max=16</code> 開始貪婪遞減，找到就回傳匹配到的一批延續候選；用 <strong>suffix array</strong>（Manber &amp; Myers 1993）實現高效精確匹配。刻意不用 dense retriever（會增推論開銷），檢索開銷 &lt;6%，實測每 token &lt;1ms，近乎可忽略。</li>
+<li><strong>草稿構造（Trie 選詞）</strong>：檢索到的延續候選集 <code>S</code> 可能很大，無法全丟給 LLM。作法是把 <code>S</code> 全部插進 <strong>Trie</strong>，每個節點權重＝該前綴在候選中的<strong>出現頻率</strong>，選出權重最高的 <strong>top c=64</strong> 個高頻前綴當草稿 token（實驗證明比隨機抽樣更好）。</li>
+<li><strong>驗證（tree attention）</strong>：多條草稿常共享前綴，若當獨立序列各算會重複計算；REST 用 BFS 把子樹壓成一條<strong>偽序列</strong>、配合精心設計的 <strong>tree attention mask</strong>，讓共享前綴只算一次。</li>
+<li><strong>接受策略（比原版更簡單）</strong>：把草稿餵給 LLM，在每個位置從 LLM 分布採樣，<strong>從頭起凡與草稿一致者全接受，第一個不一致之後全拒絕</strong>——因此 REST 產生的序列與標準自回歸生成<strong>完全相同（無損）</strong>。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>加速（表 1，單卡 A6000、batch=1）</strong>：程式碼域 HumanEval 上 CodeLlama 7B/13B 達 <strong>2.12×～2.36×</strong>；一般域 MT-Bench 上 Vicuna 7B/13B 達 <strong>1.62×～1.77×</strong>。多數情形勝過以小 LM 為 draft 的推測解碼基線。</li>
+<li><strong>資料庫（datastore）</strong>：程式碼用 The Stack 的 270 萬筆 Python（27GB）；對話用 UltraChat 約 77.4 萬則（12GB）。</li>
+<li><strong>越大越快（表 2）</strong>：資料庫由 0.9GB→27GB，Mean Generated Length（M=生成長度/前向步數，即加速上界）由 1.96→2.65，加速由 1.83×→2.36×——顯示放大庫仍有進一步加速潛力。</li>
+<li>greedy 採樣加速優於 nucleus（隨機性拖累）；<code>n_max</code> 只要 ≥6 加速就穩定，不需精調。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>效果<strong>直接受資料庫的準確度與完整度左右</strong>；作者建議「用 LLM 自己生成的內容建庫」以更貼合模型輸出。</li>
+<li><strong>缺乏 in-context 能力</strong>：如程式碼裡個人化的變數名這種依賴當前上下文的內容，純檢索難以命中。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>ai_core §3.3 接點（把便宜端推到極致的另一條路）</strong>：FrugalGPT／級聯是「便宜模型先做、驗證沒過才升級到貴模型」；REST 更激進——<strong>連 draft 都不用模型，直接從資料庫撈匹配延續</strong>，近零成本、免訓練，是「成本梯度」最便宜端的一種極限形態（用<strong>確定性的檢索</strong>取代一次參數化推論）。</li>
+<li><strong>呼應「固化引擎」（§3.6）</strong>：REST 的精神就是「<strong>把反覆出現的常見延續存進庫、直接復用</strong>」——與 ai_core 想把「LLM 反覆處理的案例結晶成確定性資產」同構；差別在 REST 結晶的是 token 級延續、且用大模型逐位驗證保證無損，可視為<strong>固化 + 廉價猜測 + 便宜驗證</strong>在解碼層的一個乾淨範例。</li>
+<li><strong>可直接借用的形狀</strong>：<strong>精確匹配（suffix array）+ 頻率加權（Trie）選候選 + 大模型單次驗證接受</strong>——把「檢索猜測」與「權威驗證」解耦，猜錯零成本、猜對大幅省算；對「先查快取／規則猜、猜不中才動用貴智能」的可靠函數設計是很好的縮影。</li>
+<li><strong>庫內對照</strong>：可與 <a class="paper-reference" href="2305.05176_FrugalGPT.%E6%91%98%E8%A6%81.html">2305.05176</a> FrugalGPT 並讀——同屬 I 類成本控制，FrugalGPT 在「請求層」用 scorer+閾值級聯選模型，REST 在「token 層」用檢索取代 draft 模型；一個換模型、一個換 draft 來源。</li>
+<li>定位：<strong>系統方法論文 + 實證</strong>（NAACL 2024，開源 github.com/FasterDecoding/REST）。適合做 <strong>推理加速、推測解碼、檢索復用、無損解碼優化</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2311.08252_REST.zh-TW.html"><code>../translate/2311.08252_REST.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

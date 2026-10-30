@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>LLM 函數呼叫的不確定性量化（Part 3：方法特化、結論與限制） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.22985_UQFunctionCalling.zh-TW.html">回 2604.22985_UQFunctionCalling.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="3-函數呼叫中-uq-效能的基準評測">3. 函數呼叫中 UQ 效能的基準評測</h2>
+<p>我們基於 BFCL 建立基準，包含多個任務，每個任務有獨立資料集用於評估。除比較不同 UQ 方法外，基於 BFCL 開發 UQ 基準還允許同時評估模型準確度和模型 UQ。</p>
+<p>我們使用選擇性預測（selective prediction）設定：先以 AST 比對判定回應是否正確，再將 UQ 分數作為二元分類器分數，以 AUROC 衡量 UQ 效能。AUROC 為 0.5 表示隨機，1.0 表示完美區分。我們在 8 個 LLM 上評測：Qwen2.5-{0.5,3,7}B, Qwen3-4B, Ministral-8B, gemma-2-9b, gemma-3-{4,12}b。排除貪婪解碼 AST 錯誤的請求（平均 3.4%）。</p>
+<h3 id="31-個別任務上的-uq-方法表現">3.1 個別任務上的 UQ 方法表現</h3>
+<p>使用 BFCL 的四個 Python 任務：Simple（400 請求，僅一個函數）、Multiple（200 請求，多個函數選正確的）、Parallel（200 請求，並行呼叫多個函數）、Parallel-Multiple（200 請求，多個函數中選取並並行呼叫）。</p>
+<p>結果（Table 1）：G-NLL 整體表現最佳，AUROC ~0.7-0.8，與其在自然語言 QA 任務上的表現相當。多樣本方法（SE_EXM, DSE_EXM, PE）並未優於單樣本方法。</p>
+<h3 id="32-更真實的多模態任務分佈中的-uq-表現">3.2 更真實的多模態任務分佈中的 UQ 表現</h3>
+<p>AUROC 衡量排序效能，非線性指標——在混合多個任務分佈時，可能獲得更低的 AUROC。因此我們將個別任務資料集合併評測：Simple+Multiple（變動函數數量 A）、Simple+Parallel（變動呼叫數量 B）、Multiple+Parallel-Multiple（同時變動 A 與 B）、All Combined（同時變動兩個軸）。結果與個別任務相似：G-NLL 仍最佳，多樣本不贏單樣本。</p>
+<h3 id="33-uq-方法能否識別無法解決的請求">3.3 UQ 方法能否識別無法解決的請求？</h3>
+<p>BFCL 的 Irrelevance 任務：提供不相關的函數，模型應拒絕輸出任何函數呼叫。將 Irrelevance 與其他資料集合併評測。結果：單樣本方法（G-NLL, AVG）略優於多樣本方法。</p>
+<h3 id="34-uq-方法在-fc-中是否校準">3.4 UQ 方法在 FC 中是否校準？</h3>
+<p>除 AUROC 外，UQ 分數的校準度（正確預測正確機率）在決策情境中很重要。使用 smoothECE 評估 MAX, AVG, G-NLL, Ptrue。結果：AVG 校準最差（過度自信），G-NLL 與 Ptrue 偏 underconfident（token 機率連乘導致序列機率偏小），MAX 校準最佳。SMT 改進後，G-NLL 的 smECE 從 0.147 降至 0.091（All Combined）。</p>
+<h2 id="在選擇性預測場景中auroc區分能力比-ece機率校準更關鍵高-auroc-但校準差的方法可透過後處理校準如-platt-scaling改善">在選擇性預測場景中，AUROC（區分能力）比 ECE（機率校準）更關鍵。高 AUROC 但校準差的方法可透過後處理校準（如 Platt scaling）改善。</h2>
+<h2 id="arxiv-260422985-parent-260422985_uqfunctioncallingzh-twmd">arxiv: &quot;2604.22985&quot;
+parent: &quot;2604.22985_UQFunctionCalling.zh-TW.md&quot;</h2>
+<h1 id="llm-函數呼叫的不確定性量化part-3方法特化結論與限制">LLM 函數呼叫的不確定性量化（Part 3：方法特化、結論與限制）</h1>
+<h2 id="4-將-uq-方法適配至函數呼叫場景">4. 將 UQ 方法適配至函數呼叫場景</h2>
+<p>第 3 節結果表明，更複雜的多樣本 UQ 方法表現不及簡單的單樣本方法，這與自然語言生成任務的觀察形成對比。我們探討兩個假說：是否能透過針對 FC 輸出的特定結構調整既有 UQ 方法來提升效能。</p>
+<h3 id="41-適配多樣本-uq-方法">4.1 適配多樣本 UQ 方法</h3>
+<p>我們假設基於精確字串比對（EXM）的聚類可能過於嚴格，因為它未考慮函數參數的排列不變性。因此改用 AST 比對聚類（SE_AST / DSE_AST）：兩個輸出若 AST 匹配則歸入同一簇，有效地將函數參數視為排列不變的字典。</p>
+<p>結果（Table 2）：AST 聚類在 10 項任務中的 8 項優於 EXM，但增益仍不足以建立對單樣本方法的優勢。多樣本方法需要比例於樣本數 J 的更高吞吐量（在設備端場景尤為顯著）。溫度（T=1.5）與樣本數（J=30）的調整可縮小與 G-NLL 的差距，但在多數任務上仍無法超越。</p>
+<h3 id="42-fc-與自然語言任務中的-token-機率模式">4.2 FC 與自然語言任務中的 Token 機率模式</h3>
+<p>為理解為何 SE/DSE 無法超越單樣本方法，我們以 Qwen2.5-7B 在 Parallel-Multiple 任務中的一個錯誤回應為例。該錯誤是在最後一個函數呼叫末尾添加了意外參數 <code>year=1882</code>。從此例中歸納出兩個普遍模式：</p>
+<ol>
+<li>LLM 對多數 token 賦予高機率（≈1.0），僅在少數 token（&lt;5）上表現出極低的不確定性，包括與錯誤相關的 token。</li>
+<li>即使 LLM 對某些 token 略有猶疑（機率&lt;1），第二可能 token 要麼是語意等價的（<code>=[&quot;</code> vs <code>=['</code>），要麼機率顯著更低。</li>
+</ol>
+<p><strong>結果</strong>：多樣本方法計算所取樣的序列全部與貪婪解碼結果語意相同，僅在語法等價 token 上有差異。因此只形成單一語意簇，導致 SE 偏低，即使回應是錯誤的。</p>
+<p>相比之下，同一 LLM 在 Natural Questions（NQ）資料集的自然語言錯誤回答中，上述兩種模式都不成立。在 FC 場景中，可用函數在上下文中提供且有效輸出空間受限，個別 token 的機率高於自然語言場景。在 8 個 LLM 中，All Combined 的平均 token 機率為 0.97，而 NQ 僅 0.71。同樣，BFCL 上形成的平均語意簇數和對應的 SE 估計顯著低於 NQ（3.4 vs 6.4）。</p>
+<p>相反，單樣本方法（如 G-NLL）直接依賴序列機率，對少數 LLM 賦予低機率的 token 的變化更敏感。但圖 2 也凸顯了單樣本方法的限制：語意上不重要的 token（如 <code>=[&quot;</code>）的低機率可能扭曲分數。</p>
+<h3 id="43-適配單樣本-uq-方法語意關鍵-tokensmt">4.3 適配單樣本 UQ 方法：語意關鍵 Token（SMT）</h3>
+<p><strong>定義</strong>：在 FC 情境中，語意上有意義的 token（Semantically Meaningful Tokens）是那些對應於 LLM 必須在可能導致正確或錯誤輸出的 token 之間做決策的位置。以圖 2 回應為例，包括：</p>
+<ol>
+<li>決定是否呼叫函數或拒絕任務的 token（首 token <code>[</code>）</li>
+<li>決定呼叫哪個函數的 token（<code>history</code>, <code>get</code>）</li>
+<li>決定使用哪個參數的 token（<code>country</code>, <code>start</code>, <code>end</code>, ..., <code>year</code>）</li>
+<li>決定參數值的 token（<code>1</code>, <code>8</code>, <code>0</code>, <code>0</code>, ..., <code>War</code>, <code>Economy</code>, ..., <code>1882</code>）</li>
+<li>決定呼叫函數數量的 token（<code>]</code>, <code>,)</code>, <code>)]</code>）</li>
+<li>決定每個呼叫中參數數量的 token</li>
+</ol>
+<p>剩餘 token 主要是語法上形成正確 FC 輸出所必需的（如 <code>=</code>、函數名的後續字元如 <code>cul</code>, <code>pt</code>, <code>ure</code>）。</p>
+<p><strong>實作</strong>：採用簡單的規則式方法，計算高效且易於實作。gemma 和 Qwen 共享 Python list 風格的 FC 輸出格式，Ministral 輸出 JSON 格式。我們為兩種格式分別實作 token 提取演算法。提取邏輯源於 AST 解析所用輸出模式的形式語法。</p>
+<p>我們也展示了將 SMT 提取適配到新格式的簡易性：用 10 個範例提示 GPT-5.2，生成 Ministral JSON 格式的對應演算法，所選 token 與我們手寫演算法幾乎相同，平均 AUROC 差異僅 0.001。</p>
+<p><strong>結果</strong>（Table 3）：G-NLL_SMT 在 4 項個別任務中的 3 項以及所有任務組合上優於 G-NLL（雖增益小但一致）。MAX_SMT 和 AVG_SMT 同樣獲得改善。SMT 也改善了幾乎所有任務上 G-NLL 和 MAX 的校準度（例如 All Combined 上 G-NLL smECE 從 0.147 降至 0.091，MAX 從 0.075 降至 0.053）。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>我們提出了首個針對 LLM 函數呼叫（FC）場景中 UQ 方法的基準。我們表明在 FC 場景中，簡單的基於 logit 的 UQ 方法大多優於更複雜的多樣本方法。我們進一步表明 FC 場景的特殊性可被用來改善既有 UQ 方法。具體而言，我們透過使用抽象語法樹來適配多樣本 UQ 方法的語意蘊涵方法；對單樣本 UQ 方法，我們僅在計算 UQ 分數時使用我們透過分析 FC 輸出而定義的語意上有意義的 token。兩種適配均在相較其通用對應方法上改善了效能。</p>
+<h2 id="6-限制">6. 限制</h2>
+<p>本研究有兩個主要限制。首先，將我們的分析與 BFCL 排行榜頂尖的前沿模型進行比較會很有意思。然而，這些模型通常不透過其 API 揭露 token 機率，而那些開放源碼的模型在我們的硬體上計算上不可行。此外，我們相信對較小型和中型模型的發現仍然非常相關，特別是在需要依賴此類較小型模型的設備端函數呼叫情境中。其次，將此分析擴展到更具挑戰性的函數呼叫設定（如多輪或代理場景）也會很有意思。我們將此分析留待未來研究。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

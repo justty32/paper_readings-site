@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.11738_CRITIC.zh-TW.html">回 2305.11738_CRITIC.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>LLM 有時展現不一致與問題行為：幻覺（hallucinating facts）、生成有缺陷的程式碼、產出冒犯與有毒內容。與模型不同，人類通常會利用<strong>外部工具</strong>交叉查核並精修自己的初稿——例如用搜尋引擎查證事實、用程式直譯器除錯。受此啟發，我們提出 <strong>CRITIC</strong> 框架，讓本質上是「黑箱」的 LLM 以類似人類使用工具的方式<strong>驗證（validate）並逐步修正（amend）自己的輸出</strong>：從初始輸出開始，CRITIC 與適當工具互動以評估文本的特定面向，再依驗證過程獲得的回饋修訂輸出。在自由形式問答、數學程式合成與毒性降低上的完整評估顯示 CRITIC 一致提升 LLM 表現。同時，本研究凸顯<strong>外部回饋對 LLM 持續自我改進的關鍵重要性</strong>。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 偶爾出現幻覺、錯誤程式碼、有毒內容等不良行為，妨礙信任與實際應用。傳統緩解手段依賴額外訓練（行為複製、強化學習、自我訓練），受限於大規模人工標註或資料建構的成本。為此我們提出 <strong>Self-Correcting with Tool-Interactive Critiquing（CRITIC）</strong>：一個統一框架，讓黑箱 LLM 透過與外部工具的類人互動來驗證並矯正自身輸出。CRITIC 與搜尋引擎、程式直譯器等工具互動，驗證初始輸出的目標面向，再依驗證所得批判（critiques）修正輸出；此「<strong>驗證後修正（verify-then-correct）</strong>」流程可反覆迭代以持續改進。相較依賴昂貴標註或任務特定訓練的方法，CRITIC 只用<strong>上下文學習（in-context learning）＋工具互動</strong>，僅需 text-to-text 工具 API 與少樣本示範，實用且易取用。</p>
+<p>我們在 ChatGPT、Text-Davinci-003 與開源 LLaMA-2（7B/13B/70B）上，跨三類任務評估：自由形式問答、數學程式合成、毒性降低。CRITIC 一致超越先前技術且無需額外資料或訓練：在 ChatGPT 上，三個 QA 任務平均 F1 提升 7.7，三個數學推理任務絕對提升 7.0%，毒性機率降低 79.2%。有趣的是，結果凸顯<strong>所有受測 LLM 在驗證自己的結果上都不可靠</strong>：只靠自我修正而無外部回饋，改進有限、甚至可能劣化表現。</p>
+<p>三項貢獻：(1) 提出整合多工具、多任務的統一 CRITIC 框架與一系列新 prompt，讓凍結的 LLM 能透過工具互動驗證並迭代自我修正；(2) 跨任務、跨基座 LLM 的完整實驗證明顯著增益；(3) 凸顯 LLM 自我驗證與自我修正的不足，強調<strong>外部工具互動回饋是 LLM 持續自我改進的關鍵</strong>。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>真實性評估（Truthfulness Evaluation）</strong>：既有幻覺偵測工作多針對任務特定微調模型、聚焦對給定來源的忠實度（faithfulness）；開放式生成的真實性評估較少研究，尤其是僅能經 API 存取的 LLM。本文以黑箱 LLM 與外部工具互動來驗證自身輸出填補此缺口，並受新聞業事實查核（fact-checking）啟發。</li>
+<li><strong>自然語言回饋（NL Feedback）</strong>：回饋有兩種形式——標量訊號（用於 RL 與 generate-then-rank）與自然語言回饋（用於 prompted LLM 文本編輯或訓練修正器）。來源包括人類示範/評估、既有語料（wiki edits）、自動建構資料、外部指標或知識、以及 LLM 自身。然而 <strong>LLM 的內在自我回饋相較人類回饋效能有限且任務特定</strong>，LLM 在真實性與推理正確性的驗證上表現掙扎。本文藉外部工具賦能，充分發揮 LLM 的評估能力。</li>
+<li><strong>工具增強語言模型（Tool-Augmented LMs）</strong>：檢索器/搜尋引擎增強生成、計算器強化數學推理、直譯器執行生成程式、定理證明器、自動多工具（Toolformer）等。教學方式有預訓練、微調、上下文學習三種；CRITIC 採上下文學習，避免任務特定訓練，更簡單通用。</li>
+</ul>
+<h2 id="3-critic以工具互動式批判修正">3. CRITIC：以工具互動式批判修正</h2>
+<p>總覽：給定任一輸入，LLM 先憑參數化知識生成初始輸出，再透過 text-to-text API 與適當外部工具互動（可能多輪）以驗證輸出；驗證步驟產生的批判與初始輸出串接，作為回饋讓 LLM 修正輸出。「驗證 ⇒ 修正 ⇒ 驗證」循環可迭代直到滿足停止條件。</p>
+<p><strong>演算法 1（CRITIC）</strong>：輸入 x、prompt ℘、模型 M、外部工具集 T、迭代數 n。(1) 初始化：ŷ₀ ∼ P_M(·|℘⊕x)；(2) 迴圈 i=0..n−1：與 T 互動驗證 ŷᵢ 得批判 cᵢ ∼ P_M(·|℘⊕x⊕ŷᵢ, T)；<strong>若 cᵢ 指出 ŷᵢ 正確則提前回傳</strong>（停止準則）；否則修正 ŷᵢ₊₁ ∼ P_M(·|℘⊕x⊕ŷᵢ⊕cᵢ)；(3) 回傳 ŷₙ。</p>
+<h3 id="31-llm-的上下文學習">3.1 LLM 的上下文學習</h3>
+<p>CRITIC 利用 LLM 的思維鏈（chain-of-thought）推理與少樣本上下文學習等湧現能力：把 k 個輸入-輸出示範串成 prompt，推論時附上測試輸入，讓模型接續生成。</p>
+<h3 id="32-與外部工具互動">3.2 與外部工具互動</h3>
+<p>先把搜尋引擎、程式直譯器、各式 API 等外部工具建構成 <strong>text-to-text 函數</strong>，再於上下文示範中把 LLM 生成與工具使用<strong>交錯編排</strong>。如圖 2：搜尋引擎的輸入是 LLM 生成的查詢、回傳解析後的搜尋結果；直譯器的輸入是程式、回傳執行資訊與最終結果。此自由格式容許類人的 verify-then-correct 軌跡，prompt 建構直覺簡潔，且具強可解釋性與可信度。</p>
+<h3 id="33-工具互動式驗證">3.3 工具互動式驗證</h3>
+<p>給定模型 M 與輸入 x，先以 ŷ₀ ∼ P_M(·|℘⊕x) 生成初始答案。針對先前輸出 ŷᵢ，LLM 與外部工具互動以批判之並產生批判 cᵢ；若過程涉及 API 呼叫，<strong>直接把 API 回傳結果串接在模型生成的查詢之後</strong>構成 cᵢ。任務特定批判可詳述我們想評估的輸出屬性，如<strong>真實性（truthfulness）、可行性（feasibility）、安全性（safety）</strong>。工具可依任務指定、啟發式選擇或自動選擇（可用上下文學習實作自動選擇）；本實作中為便於評估而預先指定各任務工具，例如 QA 任務用 Google，讓 LLM 以交錯方式分析並與 Google 互動來驗證輸出真實性。</p>
+<h3 id="34-依批判修正">3.4 依批判修正</h3>
+<p>LLM 以輸入 x、先前輸出 ŷᵢ、驗證批判 cᵢ 為條件生成改良答案：ŷᵢ₊₁ ∼ P_M(·|℘⊕x⊕ŷᵢ⊕cᵢ)。批判在修正過程中至關重要：<strong>指認錯誤、提供可行動的建議、或經工具互動提供可信的依據（groundings）</strong>，引導新生成避免重蹈覆轍。仿照人類反覆修訂草稿的過程，verify-then-correct 可迭代至滿足停止準則——驗證批判滿意、達到最大迭代數 n、或收到環境回饋。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

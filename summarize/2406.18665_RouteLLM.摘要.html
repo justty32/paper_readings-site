@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《RouteLLM：以偏好資料學習路由 LLM（Learning to Route LLMs with Preference Data）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Isaac Ong, Amjad Almahairi, Vincent Wu, Wei-Lin Chiang, Tianhao Wu, Joseph E. Gonzalez, M Waleed Kadous, Ion Stoica（UC Berkeley／Anyscale／Canva；ICLR 2025）</p><p>日期：2024-06</p><p>arXiv：2406.18665</p><p><a href="https://arxiv.org/abs/2406.18665" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="routellm以偏好資料學習路由-llm重點摘要">《RouteLLM：以偏好資料學習路由 LLM》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>RouteLLM</strong>：用<strong>人類偏好資料</strong>訓練一個 <strong>router（路由器）</strong>，在推論時對每個查詢<strong>當下就決定</strong>要送給「強而貴的模型」（如 GPT-4）還是「弱而便宜的模型」（如 Mixtral-8x7B）——把簡單查詢丟給弱模型、複雜查詢留給強模型；核心是學一個「強模型會贏的機率」預測模型 <span class="math inline">\(P_θ(\text{win}_s|q)\)</span> 搭配一個成本閾值 <span class="math inline">\(α\)</span>，並以<strong>資料增強</strong>（golden-label 與 LLM-judge 標註）補足偏好訊號稀疏，公開 benchmark 上可在<strong>幾乎不損品質下把成本降到 2 倍以上（MT Bench 最高 3.66×）</strong>，且<strong>換一組沒訓練過的強／弱模型也不需重訓</strong>仍能保持效果。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 部署面臨「品質 vs 成本」的兩難：全部丟給最強模型品質好但<strong>極貴</strong>（原文舉例 Claude-3 Haiku vs Opus 每百萬輸出 token 為 $1.25 vs $75，差 50 倍以上），全丟給小模型省錢但複雜查詢答不好。理想的 LLM router 須滿足三點：(1) 每個查詢<strong>只呼叫單一 LLM</strong>（相對多模型集成／級聯法降低延遲與成本）；(2) 能<strong>泛化到域外查詢</strong>、不必為每個領域各訓一個 router；(3) 能<strong>跨多種 LLM 而不需重訓</strong>，適應快速演變的模型版圖。既有法各有缺（見下「與相關工作差異」）。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>問題形式化（§3.1）</strong>：聚焦「強模型 <span class="math inline">\(M_{strong}\)</span> / 弱模型 <span class="math inline">\(M_{weak}\)</span>」的二元路由。給定偏好資料 <span class="math inline">\(D_{pref}=\{(q, l_{s,w})\}\)</span>（<span class="math inline">\(l_{s,w}\in\{\text{win}_s, \text{tie}, \text{win}_w\}\)</span>），學一個 win prediction model <span class="math inline">\(P_θ(\text{win}_s|q)\)</span>（最大化偏好資料似然），再用成本閾值 <span class="math inline">\(α\in[0,1]\)</span> 把機率轉成決策：<span class="math inline">\(P(\text{win}_s|q)&lt;α\)</span> 走弱模型、<span class="math inline">\(\geq α\)</span> 走強模型。<strong><span class="math inline">\(α\)</span> 越高越偏省錢（多用弱模型），越低越偏品質（多用強模型）</strong>。</li>
+<li><strong>偏好資料（§4.1）</strong>：主資料是 Chatbot Arena 的 <strong>80k 對戰</strong>（人類對兩個匿名模型回覆投票），只保留「誰贏」不保留回覆內容；因標籤稀疏（任兩模型間比較 &lt;0.1%），把模型依 Arena 排行分成 <strong>10 個 tier</strong>，取前兩 tier 為強、第三 tier 為弱。</li>
+<li><strong>資料增強（§4.1.1）</strong>：兩種——<strong>golden-labeled（<span class="math inline">\(D_{gold}\)</span>）</strong>：用 MMLU validation split 約 1500 題、以標準答案比對強弱模型回覆得標籤；<strong>LLM-judge-labeled（<span class="math inline">\(D_{judge}\)</span>）</strong>：用 GPT-4 當裁判對 Nectar 資料集的查詢做成對比較，收得約 <strong>120K 樣本、總花費約 $700</strong>。</li>
+<li><strong>四種 router 方法（§4.2）</strong>：
+<ol>
+<li><strong>Similarity-weighted (SW) ranking</strong>：以查詢的文字嵌入餘弦相似度加權，解 Bradley-Terry 模型；<strong>無需訓練，推論時即時求解</strong>。</li>
+<li><strong>Matrix factorization（矩陣分解）</strong>：借鏡推薦系統，學一個雙線性的隱藏評分函式 <span class="math inline">\(δ(M,q)\)</span>，用 sigmoid 建模勝率；在 8GB GPU 上訓約 10 epoch。</li>
+<li><strong>BERT classifier</strong>：以 BERT-base 對查詢取上下文嵌入，接 logistic 頭輸出勝率；全參數微調。</li>
+<li><strong>Causal LLM classifier</strong>：以 Llama 3 8B、指令跟隨範式，把比較標籤當額外 token、以 next-token 預測方式輸出勝率。</li>
+</ol>
+</li>
+<li><strong>評估指標（§3.2）</strong>：PGR（performance gap recovered，router 相對強弱模型差距補回多少）、<strong>APGR</strong>（不同成本約束下 PGR 的平均／曲線下面積）、<strong>CPT(x%)</strong>（達到 x% PGR 所需的最少強模型呼叫比例）。基準是「在成本約束下隨機路由」的 random router。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>成本節省（§5.4, 表 6）</strong>：以 GPT-4 為強模、Mixtral-8x7B 為弱模，最佳 router 相對 GPT-4 的成本節省比為 <strong>MT Bench 3.66×（維持 95% GPT-4 品質）、MMLU 1.41×（92%）、GSM8K 1.49×（87%）</strong>；成本估算 GPT-4 約 $24.7／百萬 token、Mixtral 約 $0.24／百萬 token。</li>
+<li><strong>資料增強關鍵</strong>：只用 Arena 資料時 router 在 MMLU、GSM8K 幾近隨機（多為域外）；加 <span class="math inline">\(D_{gold}\)</span>（不到總資料 2%）即讓 MMLU 各 router 約比隨機少用 20% GPT-4 呼叫；加 <span class="math inline">\(D_{judge}\)</span> 讓 MT Bench 相對隨機省成本最高達 75%（表 1）。</li>
+<li><strong>跨模型泛化（§5.2, 表 4）</strong>：同一批（Arena+<span class="math inline">\(D_{judge}\)</span> 訓的）router <strong>不重訓</strong>，直接換成 Claude 3 Opus/Sonnet 與 Llama 3.1 70B/8B 兩組新配對，仍顯著優於隨機、達 CPT(80%) 約只需隨機一半的 GPT-4 呼叫。</li>
+<li><strong>路由開銷小（§5.5, 表 7）</strong>：最貴的 SW ranking 相對 GPT-4 生成成本額外開銷不超過 0.4%；GPU-based router（矩陣分解／分類器）吞吐更高。</li>
+<li>相對商用 router（Unify AI、Martian）在同等效能下最高可少用 40% GPT-4 呼叫（附錄 E）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>真實應用的查詢分布可能與 benchmark 差很大——作者的回應是「收集少量域內資料做資料增強」即可。</li>
+<li>本文只做<strong>二元（兩模型）路由</strong>，多模型 N-way 路由留作未來。</li>
+<li><strong>沒有單一最佳 router</strong>：同一資料訓出的不同 router 在同 benchmark 上表現差異可能很大且無明確解釋；選哪個 router 應綜合延遲、成本與查詢類型來定。</li>
+<li>router 是「查詢當下就決定」，因此<strong>無法在事後根據弱模型實際答得好不好來補救</strong>（這正是與 cascade 法的取捨，見下）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>這是 ai_core「per-request 成本梯度」的「學習式路由」版本</strong>。ai_core 北極星 §3.3 主張「洞的大小＝f（模型能力）」、對每個 request 走成本梯度「先笨模型、沒過再升級聰明模型」；RouteLLM 正是把「該用多聰明的模型」這個決策<strong>用偏好資料學成一個 router</strong>，在強／弱模型間分流以在品質保證下降成本——恰好對應成本梯度的<strong>學習式路由</strong>實現。</li>
+<li><strong>與 cascade 式的 <a class="paper-reference" href="2305.05176_FrugalGPT.%E6%91%98%E8%A6%81.html">2305.05176</a> FrugalGPT 互為對照，差別在「決定的時機」</strong>：
+<ul>
+<li><strong>FrugalGPT＝級聯（cascade）</strong>：先跑弱模型，用一個便宜 scorer 評分，<strong>答得不夠可靠才升級</strong>到更貴的模型——是「事後補救、可能多次呼叫」。</li>
+<li><strong>RouteLLM＝路由（router）</strong>：在<strong>查詢一進來的當下</strong>就用 router 預測「強模型會不會贏」直接決定去向，<strong>每個查詢只呼叫單一 LLM</strong>——省延遲，但賭在預測準不準、無事後補救。</li>
+<li>兩者恰好對應 ai_core 成本梯度的兩種落地：cascade 是「先跑再視分數升級」（對應 §3.3 的漸進升級），router 是「進門即分流」（對應 §3.2 確定性前濾網先分流的<strong>學習式</strong>升級版）。（此處僅引用 <a class="paper-reference" href="2305.05176_FrugalGPT.%E6%91%98%E8%A6%81.html">2305.05176</a> 的路線定位，未杜撰其細節。）</li>
+</ul>
+</li>
+<li>最值得記：<strong>「用人類偏好資料學一個 win-prediction + 成本閾值 α 的 router」</strong>、<strong>四種 router（SW ranking／矩陣分解／BERT／Causal LLM）</strong>、<strong>資料增強（golden-label + LLM-judge）補稀疏訊號</strong>、以及<strong>換強弱模型不需重訓仍泛化</strong>。定位：<strong>方法＋系統論文，且開源訓練／服務／評估框架</strong>，適合做 LLM 成本優化、路由、成本梯度分流的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2406.18665_RouteLLM.zh-TW.html"><code>../translate/2406.18665_RouteLLM.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

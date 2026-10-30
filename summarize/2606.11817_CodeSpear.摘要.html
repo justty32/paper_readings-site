@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《CodeSpear：語法約束解碼如何越獄 LLM 使其生成惡意程式碼》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yitong Zhang（Tsinghua University）、Shiteng Lu（UESTC, intern at Tsinghua）、Jia Li（Tsinghua University, corresponding author）</p><p>日期：2026-06（v1）</p><p>arXiv：2606.11817</p><p><a href="https://arxiv.org/abs/2606.11817" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="codespear語法約束解碼如何越獄-llm-使其生成惡意程式碼重點摘要">《CodeSpear：語法約束解碼如何越獄 LLM 使其生成惡意程式碼》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Grammar-Constrained Decoding（GCD）本為提升程式碼生成可靠性而設計</strong>——約束 LLM 只產出語法合法的程式碼——但這個中性的可靠性機制本身即為攻擊面：當 LLM 收到惡意請求時，套用標準 code grammar 會<strong>壓制自然語言拒絕回應</strong>（因自然語言不在合法輸出空間內），迫使模型在從未受過安全對齊訓練的 code modality 中繼續生成，導致其產出惡意程式碼（CodeSpear 攻擊）。為此提出 <strong>CodeShield</strong>：在 code modality 中訓練模型生成<strong>蜜罐程式碼</strong>——語意無害且結構多樣的程式碼——使安全行為不被固定語法模式綁定，難以透過收緊 grammar 移除。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>現有 LLM 安全對齊幾乎完全立足於自然語言模態：教模型「I cannot assist with that」之類的拒絕語句，隱含假設推論時自然語言永遠可用。但 GCD 破壞此假設——一旦 code grammar 生效，R_refuse ∩ L(G) 即為空集合，模型學到的拒絕行為完全無從表達。這個漏洞嚴重且實務上廣泛：GCD 已被 vLLM、SGLang 等主流框架內建支援，OpenAI 與 Fireworks AI 等商業 API 也暴露 GCD 介面。更關鍵的是，CodeSpear 不需對抗性 grammar（普通 Python/C++/Java 語法即可）、不需梯度優化或 prompt 工程、攻擊成本近乎零（僅呼叫現有 GCD 介面）。</p>
+<h2 id="核心方法">核心方法</h2>
+<h3 id="codespear攻擊">CodeSpear（攻擊）</h3>
+<p>原則極簡：給定惡意 prompt p 與普通 code grammar G，以標準 GCD 介面取樣。GCD 將合法輸出空間從 V* 限制為 L(G)，自然語言拒絕因無效而被排除，模型被迫在 code modality 中繼續生成，產出可能實現惡意請求的語法合法程式碼。算法僅六行：初始化前綴 → 每步計算合法 token 集合 → 取樣 → 附加 → 遇 EOS 停止。無需對抗性 grammar、梯度優化、或 prompt 工程。</p>
+<h3 id="codeshield防禦">CodeShield（防禦）</h3>
+<p>核心洞察：在 code modality 中的安全行為需滿足兩條件：<strong>語意無害</strong>（不實現惡意請求）且<strong>結構多樣</strong>（不固定於單一語法模式，使攻擊者無法透過收緊 grammar 移除）。解法是訓練模型產生<strong>蜜罐程式碼</strong>——從通用語料庫 OpenCodeInstruct 隨機取樣的無害程式碼片段，語意與惡意請求無關且結構多樣。</p>
+<p>具體以 DPO 實作，建構三層偏好階層：</p>
+<ol>
+<li>y_refuse ≻ y_honeypot（自然語言可用時，拒絕仍最優先）</li>
+<li>y_honeypot ≻ y_harmful（GCD 生效時，寧產蜜罐程式碼也不產惡意碼）</li>
+</ol>
+<p>偏好資料建構：</p>
+<ul>
+<li>y_refuse：取自既有安全對齊資料</li>
+<li>y_harmful：以 GCD 查詢目標模型收集</li>
+<li>y_honeypot：從 OpenCodeInstruct 抽取 K 個無關片段</li>
+</ul>
+<p>以 2,000 筆惡意 prompt 訓練（744 筆種子經 DeepSeek-V4-Pro 擴增）。</p>
+<h2 id="結果">結果</h2>
+<p><strong>RQ1 本地部署 LLM（5 模型 × 2 benchmark）</strong>：CodeSpear 平均 ASR 從 54.92%→81.82%（+26.90pp）、MR 從 36.61%→54.58%（+17.98pp），顯著超越所有基線（含 PAIR、CodeJailbreaker、APT）。通用越獄攻擊對惡意程式碼生成效果不佳——僅 CodeSpear 與專為程式碼設計的 CodeJailbreaker 在 ASR/MR 皆正向增益。</p>
+<p><strong>RQ2 API 商業模型（5 模型含 GPT-5/MiniMax-M2.7）</strong>：CodeSpear 仍有效，平均 ASR 從 22.00%→67.39%（+45.39pp）、MR 從 11.04%→36.62%（+25.59pp）。GPT-5 與 GPT-5-mini 傾向在 GCD 下生成 <code>pass</code> 作為拒絕，但收緊 grammar 禁止 <code>pass</code> 後 ASR 進一步升高（55.49%→70.30%），證明固定語法模式的安全行為本質脆弱。</p>
+<p><strong>RQ3 CodeShield 防禦（3 模型）</strong>：在 GCD 下，CodeShield 將平均 ASR 從 83.11%→5.57%、MR 從 54.12%→2.78%（Qwen2.5-Coder-7B）。無 GCD 時亦進一步強化安全。Safe-DPO（僅對齊自然語言拒絕、無蜜罐碼）在無 GCD 時接近 CodeShield，但 GCD 生效後幾無作用（ASR 77.39% vs CodeShield 5.57%），證實 code-modality 對齊的必要性。</p>
+<p><strong>RQ4 良效保留</strong>：CodeShield 對 HumanEval/MBPP pass@k 影響輕微（Qwen2.5-Coder-7B MBPP pass@3：78.00%→77.00%），部分模型甚至上升（因安全訓練中混入通用程式碼任務）。</p>
+<p><strong>RQ5 敏感度分析</strong>：CodeSpear 在 Python/C++/Java 三種 grammar 皆有效；CodeShield 隨蜜罐碼數量 K 增加安全提升而良效持平。</p>
+<p><strong>自適應攻擊</strong>：攻擊者知曉蜜罐機制並以 LLM 代理迭代收緊 grammar（最多 10 輪），CodeShield 仍穩健——ASR/MR 上升極微，歸因於蜜罐碼結構多樣性使攻擊者無法在不排除惡意碼所需結構的前提下壓制安全行為。</p>
+<h2 id="局限">局限</h2>
+<ul>
+<li>GCD 實作細節（不同推理引擎/API）可能影響絕對攻擊成功率。</li>
+<li>評測涵蓋 RMCBench（10 類惡意場景）+ MalwareBench（6 類），但無法窮盡所有惡意碼生成場景。</li>
+<li>僅以 DPO 驗證 code-modality 對齊，未探索其他對齊演算法（RLHF 等）的可能性。</li>
+<li>蜜罐碼來源（OpenCodeInstruct）的品質與覆蓋率影響對齊效果。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>直接命中 ai_core §3.4 治理憑證的核心兩難</strong>：CodeSpear 展示了當輸出空間被外部約束（grammar）重塑後，原本的「安全憑證」（自然語言拒絕）瞬間失效——這正是 §3.4 討論的「憑證只在特定輸出空間有效」的具體攻擊案例。CodeShield 的回應方式是<strong>在 code modality 中重新建立安全偏好階層</strong>（y_honeypot ≻ y_harmful），這對應於 §3.4 的「憑證必須依輸出空間條件化」原則。</li>
+<li><strong>§5「約束對齊的安全維度」的直接實證</strong>：此工作證明約束器（grammar）不僅影響功能正確性（2606.21619 的 97% 倒退），更創造全新的安全攻擊面。CodeShield 的「蜜罐碼 ≡ 結構多樣的無害輸出」思路，實質上是<strong>在約束空間內重新定義&quot;安全輸出&quot;的邊界</strong>——不是消極拒絕，而是積極產出無害替代品，這與 §5 討論的「約束器與安全對齊的交互作用」直接對接。</li>
+<li><strong>§3.4 的 modality 隔離風險</strong>：安全對齊局限於 NL modality 而 GCD 切換至 code modality，本質上是<strong>治理憑證的模態轉移失效</strong>。這與 ai_core 討論的「工具呼叫從文字規劃轉至 API 呼叫時的憑證斷裂」同構：模態邊界就是憑證失效邊界。CodeShield 的解法（在目標模態中直接對齊）是通用原則：<strong>每個模態獨立需要安全憑證</strong>。</li>
+<li><strong>蜜罐碼概念的治理隱喻</strong>：蜜罐碼「語意無害＋結構多樣」的雙條件，對應於 ai_core 治理架構中「安全輸出」的形式化定義：不僅要否定惡意意圖（無害），還需確保無法被低成本繞過（多樣）。這為 §3.4 的「可繞過性評估」提供了具體的度量思路。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2606.11817_CodeSpear.zh-TW.html"><code>../translate/2606.11817_CodeSpear.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

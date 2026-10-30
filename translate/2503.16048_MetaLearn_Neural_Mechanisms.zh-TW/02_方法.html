@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2503.16048_MetaLearn_Neural_Mechanisms.zh-TW.html">回 2503.16048_MetaLearn_Neural_Mechanisms.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-方法">4. 方法</h2>
+<p>依兩種原則各造一類 meta-learning 資料集。模型皆為 <strong>2 層 1024 維 LSTM</strong>（沿用 M&amp;G）。</p>
+<h3 id="41-以資訊複雜的資料集測簡約偏置">4.1 以資訊複雜的資料集測簡約偏置</h3>
+<p>造 <strong>5000 種形式語言</strong>（Minimalist Grammar 形式化，屬 Y&amp;P 式簡單語言），依**模型描述長度 MDL（0–100 均勻分佈）**組織（MDL＝編碼底層文法所有特徵所需位元數）。假設：若簡約驅動泛化，偏好複雜的貝葉斯模型應更差（如由資料學 aⁿ 而非死記，因死記比泛化規則更複雜）。故若 meta-trained 模型真的習得先驗，偏複雜先驗應遠差於偏簡約先驗。<strong>取樣</strong>：對 5000 文法的 MDL 取 softmax，以溫度調控簡約/複雜偏好，藉此操控訓練中見到簡單/複雜語言的頻率。（註：複雜度右無界，「偏複雜」實為偏「中等」複雜。）</p>
+<h3 id="42-機制複雜的資料集">4.2 機制複雜的資料集</h3>
+<p>比資訊複雜資料集<strong>更受限</strong>：<strong>每個 meta-learning 方案只用單一語言</strong>（依機制複雜度選定）。若 MAML 真在蒸餾先驗，單語言 meta-learning 應災難性（先驗全部機率質量壓在該語言）；反之若 MAML 帶來機制習得，<strong>只要單語言能激勵相關機制，即可作為有用的 meta-learning 資料</strong>。共構 <strong>9 種</strong>形式語言（圖 1b），依 <strong>Chomsky 階層</strong>取 3 個 regular、3 個 context-free、3 個 context-sensitive，並分「族（family）」（Growing：aⁿ/aⁿbⁿ/aⁿbⁿcⁿ；Copy：kleene/wwᴿ/ww；Dyck：()ⁿ/dyck/cross-dependency dyck）。字串有自然「長度」（≈生成步數）。<strong>meta-training</strong>：長度由 1–10 均勻取樣，內迴圈測試串長 11–20（助長度泛化且確保不重疊）；且<strong>每個內迴圈隨機指派符號到不同詞彙索引</strong>（[Start]/[Stop]/[Pad] 除外）——使每批像同一語言的不同任務，凸顯這是「meta-train」而非「對單語言 pretrain」。</p>
+<h3 id="43-meta-training-之後的訓練">4.3 meta-training 之後的訓練</h3>
+<p>所有模型用相同資料訓練；目標語言用圖 1b 的語言（而非 Y&amp;P 的 56 種）以便更精確評估。沿用 M&amp;G 方案：先 SGD 若干 epoch、再 Adam 若干 epoch。各語言均勻取樣長度再取樣字串。</p>
+<h3 id="44-評估">4.4 評估</h3>
+<ul>
+<li><strong>Yang &amp; Piantadosi 的 F1</strong>：取模型與目標語言各最可能的 25 串算修正 F1（precision＝模型 top-25 中屬目標語言的比例；recall＝目標語言 top-25 中模型也採樣到的比例）。<strong>缺點</strong>：對長度不敏感、無法判斷是否泛化（夠長的串不會進 top-25），且預設了字串的機率排序（對許多文法不自然）。</li>
+<li><strong>本文新指標「continuations（續接）」</strong>：逐 token 看模型對「目前字串」是否給出形式語言中<strong>有效的下一 token</strong>（如 Dyck 中 <code>(){()</code> 後合法續接見 Table 2）。評估語料：每目標語言、每長度 1–40 各採 10 串，含每 token 的所有可能續接。<strong>precision</strong>＝模型選到有效 token 的機率（但退化模型如永遠輸出「(」也可有完美 precision，故不足）；**「better-than」（recall 類比）**＝有效續接機率高於所有無效續接總和的比例；<strong>F1</strong>＝兩者調和平均（對每個續接定義，而非整個語言）。</li>
+</ul>
+<h2 id="5-結果">5. 結果</h2>
+<p>整體：<strong>meta-train 於 context-free / context-sensitive 語言者，優於 meta-train 於 regular 語言者</strong>（圖 2）。與貝葉斯直覺相反，偏簡約 meta-training <strong>未優於</strong>偏複雜 meta-training，也未優於<strong>單一</strong> CF/CS 語言的 meta-training——儘管資訊複雜資料集有 <strong>5000 種</strong>語言、機制複雜資料集只有<strong>單一</strong>語言。顯示在此情境<strong>更多樣的資料未必帶來更強的模型</strong>。</p>
+<h3 id="51-簡約偏置無法預測表現">5.1 簡約偏置無法預測表現</h3>
+<p>偏簡約 vs 偏複雜的 meta-learning 模型<strong>無實質差異</strong>（圖 2）；兩者皆遠勝未 meta-train 者，但簡單/複雜資料之間無顯著差別——<strong>直接牴觸簡約觀預測</strong>（Table 1 的 1a/1b）。</p>
+<h3 id="52-機制複雜度能預測表現">5.2 機制複雜度能預測表現</h3>
+<p>不同機制複雜度的模型有清楚分化：<strong>regular 語言者差於 CF/CS 語言者</strong>，且 regular 模型<strong>不穩定地優於未 meta-train 者</strong>（圖 2、3）。圖 3：<strong>meta-train 於 Chomsky 階層較高的語言，有助於學習階層較低的語言，反之不然</strong>（呼應預測 2a，因每升一階需更強表達力的機制）。<strong>單語言成功</strong>印證 2a：若 meta-learning 灌入有用機制，則單個夠複雜的語言（如 aⁿbⁿ）即足。作者推測 LSTM 學到的是<strong>計數器</strong>機制（前人已證，且足以處理 aⁿbⁿ）；測試<strong>不能習得計數器的 GRU</strong>——對同樣資料的 meta-training <strong>毫無增益</strong>（圖 4），印證預測 2b（架構若無相應機制就無法受益）。</p>
+<h2 id="6-討論">6. 討論</h2>
+<p>結果顯示 meta-trained 模型<strong>不直接模仿其 meta-training 資料集的統計性質</strong>：無論在資訊上簡單或複雜的資料集上 meta-train，後續任務表現相當——這質疑「成功源於習得簡約偏置」的說法，並暗示 <strong>MAML 並未賦予網路特定先驗</strong>。反之，在機制複雜語言上 meta-train 對「鼓勵習得有用神經機制」似乎至關重要：儘管是單語言資料集，CF/CS 模型仍勝過用 5000 種語言訓練的簡約偏置模型——推測因 CF/CS 語言提供了比資訊複雜語言（可能很複雜卻仍是 regular 甚至有限語言）更豐富的計算基礎。</p>
+<p><strong>未區分 CF 與 CS</strong>：可能因 Chomsky 階層相對不精確（如 aⁿbⁿ 只需追蹤堆疊上的數量，而非具體項目與順序）。<strong>copy 語言</strong>需完整記錄每個符號於堆疊上，模型即使學會 aⁿbⁿ 仍學不會 copy——對應已知 LSTM 能用計數器追蹤基數、卻難學完整堆疊（Delétang 等 2023）。故 <strong>Chomsky 階層未必是刻畫「對某架構最有用的認知原語」的最佳方式</strong>；GRU 因無法習得計數機制而完全無 meta-learning 增益。</p>
+<p><strong>未來</strong>：探索比 Chomsky 階層更貼合「架構可學機制」的理論階層（如針對 Transformer 表達力定義「電路複雜度階層」）；meta-learning 之外，前人發現對形式語言/其他結構（如音樂）的 <strong>pre-training</strong> 也能助益後續自然語言學習，可能同理；給定對各架構可學機制的更佳理解，meta-learning 可用來把模型初始化到「有用泛化更易取得」的參數空間（如讓 Transformer 預先學會運用位置編碼）；<strong>RASP</strong>（Weiss 等 2021）等定義架構內可能電路的工作，可作為「該 meta-learn 哪些機制」的基礎。</p>
+<p><strong>局限</strong>：領域狹窄（形式語言，未及自然語言等更複雜領域）；雖主張神經機制可解釋結果、且 LSTM（非 GRU）的計數器有前人證據，但<strong>未直接檢視隱藏層</strong>以證計數器存在；未來可探 LSTM/GRU 之外的架構（Transformer、Stack-RNN 等），並發展以特定架構與其可得機制定義的計算階層。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2503.16048_MetaLearn_Neural_Mechanisms.%E6%91%98%E8%A6%81.html"><code>../summarize/2503.16048_MetaLearn_Neural_Mechanisms.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

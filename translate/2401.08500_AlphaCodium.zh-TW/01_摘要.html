@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2401.08500_AlphaCodium.zh-TW.html">回 2401.08500_AlphaCodium.zh-TW 目錄</a>　<a href="02_%E6%8F%90%E5%87%BA%E7%9A%84_Flow.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>程式碼生成問題與一般自然語言問題不同——它要求精確匹配目標語言的語法、辨識 happy path 與 edge case、留意問題規格中大量的小細節，並處理其他程式碼特有的議題與需求。因此，許多在自然語言生成上成功的最佳化與技巧，用在程式碼任務上未必有效。本文提出一種 LLM 生成程式碼的新方法，稱為 <strong>AlphaCodium</strong>——一條<strong>測試驅動、多階段、程式碼導向的迭代 flow（流程）</strong>，能提升 LLM 在程式碼問題上的表現。我們在具挑戰性的程式碼生成資料集 <strong>CodeContests</strong>（含 Codeforces 等競技程式平台的題目）上測試 AlphaCodium，該 flow 持續且顯著地改善結果。例如在 validation 集上，GPT-4 的準確率（pass@5）從「單一精心設計的 direct prompt」的 19% 提升到 AlphaCodium flow 的 44%。我們相信本工作習得的許多原則與最佳實踐可廣泛適用於一般程式碼生成任務。完整實作見 https://github.com/Codium-ai/AlphaCodium 。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>在稀疏獎勵訊號下，程式碼生成任務需要在巨大且結構化的程式空間中搜尋。同一問題的正確解可以長得截然不同，而判斷一段部分或錯誤的解是否有用非常困難——單一字元的改動就可能完全改變程式行為。由於程式碼生成的獨特性質，那些為自然語言任務最佳化的常見 prompting 技巧，用在程式碼生成上可能沒那麼有效。</p>
+<p>近期大型 transformer 語言模型已能生成解決簡單程式任務的碼，但真實世界的程式問題往往不同——更細膩，且常由一段冗長的自然語言任務描述（即 spec）定義，其中含有解答碼必須處理的多重細節與規則。</p>
+<p><strong>CodeContests</strong> 資料集（curated 自 Codeforces 等競技程式平台）的出現，讓我們得以在更具挑戰性、通常含冗長題目描述的程式問題上評估模型與 flow。它的<strong>私有測試集</strong>每題有超過 200 個未見測試，能全面評估生成的碼並把偽陽性率壓到最低。</p>
+<p>處理 CodeContests 的主要前作是 DeepMind 的 <strong>AlphaCode</strong>：它用一個專為競技程式微調的網路，生成極大量候選解（多達 100 萬），再處理、叢集，從中挑約 10 個提交。結果雖亮眼，但需為程式任務專門微調、且暴力式的沉重算力負擔，使其對多數真實使用不切實際。<strong>CodeChain</strong> 則透過「以代表性子模組為基礎的自修訂鏈（chain of self-revisions）」這一新穎推論框架來改善程式生成。</p>
+<p>本文提出 <strong>AlphaCodium</strong>：一條程式碼導向的 flow，圍繞一個迭代過程——<strong>反覆對生成的碼執行並根據輸入輸出測試修復它</strong>。兩個關鍵元素：(a) 生成額外資料（如問題反思與測試推理）以輔助迭代；(b) 用<strong>額外的 AI 生成測試</strong>擴充公開測試。flow 分兩大階段：<strong>預處理階段</strong>（用自然語言推理問題）與<strong>迭代程式碼生成階段</strong>（對公開與 AI 生成測試生成、執行、修復碼）。</p>
+<p>設計 AlphaCodium 的一個關鍵觀察是：<strong>生成有用的額外測試，比生成正確的解答碼容易</strong>。加測試主要靠理解問題、一點洞見、以及基本的 brute-force 或邏輯推理，不必真正「解出」問題。</p>
+<p>AlphaCodium 也用到若干程式碼導向的設計概念、技巧與最佳實踐：(1) YAML 結構化輸出；(2) bullet point 分析以鼓勵語意推理；(3) 生成模組化碼；(4) soft decisions 加雙重驗證；(5) 鼓勵探索、推遲直接決策；(6) test anchors（測試錨點）。</p>
+<p>相較於精心設計的單一 prompt，AlphaCodium 在 CodeContests 上持續且顯著地提升 LLM 表現，對開源（DeepSeek）與閉源（GPT）模型皆然。GPT-4 在 validation 集上 pass@5 從 19% 提升到 44%。AlphaCodium 也勝過前作，且算力預算小得多——例如以<strong>少四個數量級的 LLM 呼叫</strong>取得優於 AlphaCode 的結果。我們也主張，採用像 CodeContests 這類更難更複雜的 benchmark，比今日常見的 HumanEval 這類簡化 benchmark，更能讓社群妥善評估 LLM。</p>
+<h2 id="2-codecontests-資料集">2. CodeContests 資料集</h2>
+<p>CodeContests 是 Google DeepMind 提出的挑戰性資料集，題目 curated 自 Codeforces 等競技平台。資料集含約 10K 可訓練 LLM 的程式題，另有 validation 與 test 集。本工作<strong>不訓練專用模型</strong>，而是開發一條可套用於任何已支援程式任務之預訓練 LLM（如 GPT 或 DeepSeek）的 flow；故忽略 train 集，聚焦 validation（107 題）與 test（165 題）。每題含描述與公開測試（模型可見），目標是生成對任何合法輸入都給出正確輸出的碼；一個模型與參賽者都看不到的私有測試集用於評估提交。</p>
+<p>CodeContests 適合評估程式生成的原因：</p>
+<ol>
+<li>
+<p>不同於許多其他競技程式資料集，它用<strong>全面的私有測試集</strong>（每題約 200 個私有輸入輸出測試）避免偽陽性。</p>
+</li>
+<li>
+<p>LLM 通常不擅長留意小細節，因為它們傾向把題目描述轉成訓練時常見的某種「平均」描述；而真實程式問題常含對正確解至關重要的細微之處。CodeContests 的題目描述<strong>刻意設計得複雜且冗長</strong>、帶小細節與微妙處，這模擬了真實世界常見的複雜多因素問題——這與 HumanEval 這類題目較易、表述簡潔的資料集形成對比。</p>
+</li>
+</ol>
+<p>圖 2(b) 展示模型對某題的自省（self-reflection）：妥善的自我反思讓問題更清晰、更連貫，凸顯「問題理解」作為 flow 一環對高機率生成正確解的重要性。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.26294_Red_Queen_Godel_Machine.zh-TW.html">回 2606.26294_Red_Queen_Godel_Machine.zh-TW 目錄</a>　<a href="02_%E5%B1%95%E6%9C%9B.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>自我改進智能體在 agentic 程式 benchmark 上已是 SOTA，並近期擴展到通用領域。但它們的搜尋方法都假設<strong>靜止的評估準則</strong>——固定的驗證器、benchmark 或標註資料集，在 agent 改進時仍然有效。這忽略了演化的核心特徵：物種不是對靜止環境最佳化，而是隨環境一起改變。我們要把同樣的原則帶進遞迴自我改進，<strong>讓評估成為改進迴圈的一部分</strong>，向演化中的評估者、對抗目標、可能超越靜止 benchmark 的動態效用敞開搜尋。</p>
+<p>我們提出<strong>紅皇后哥德爾機（RQGM）</strong>，一個在非靜止效用下做遞迴自我改進的演化框架。關鍵是<strong>受控效用演化</strong>：搜尋按世代（epoch）組織，世代內評估準則固定，效用只能在世代邊界更新——於是自我改進保證在每個世代內成立，而目標卻能跨世代演化。此機制由「協演化效用本身」實作：用<strong>會隨任務 agent 一起改進的學習型評估者</strong>來引導它們。本預印本提供初步實證。即使在可驗證的程式任務上，RQGM 也靠加入互補的「agent 當審查者」程式碼審查訊號，超越前 SOTA 的測試通過率；由於審查者只查詢一次（標準程式 agent 需多輪評估），這訊號更便宜，RQGM 用 <strong>1.35×–1.72× 更少 token</strong>。在科學論文寫作與審稿、奧林匹亞級證明寫作與評分上，RQGM 也勝過先前自我改進 agent：協演化作者達 <strong>1.78×–1.86× 更高接受率</strong>，協演化評分者達 <strong>9% 更高真值準確率</strong>。因為 RQGM 能跨世代修改搜尋目標，它還能規範化搜尋本身：論文審稿中最強基線審稿者以高達人類 <strong>1.91×</strong> 的比率過度接受 AI 論文，我們用一個對抗目標修正之，發現對 AI 與人類同等嚴格的審稿者。</p>
+<p><strong>關鍵詞</strong>：自我改進智能體、學習型評估、多智能體系統、自動科學發現、受控效用演化、協同演化搜尋。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>自我改進智能體要把程式與推理上的局部改進轉成遞迴迴圈：每個更強的 agent 都能產出更好的自身變體。Darwin 哥德爾機與 Huxley 哥德爾機近期靠「編輯自身程式碼、保留能提升外部效用訊號的變體」，在 agentic 程式任務上創下開源 SOTA;HyperAgents 又把自我改進擴展到任意領域。</p>
+<p>問題在於：這些方法仍依賴<strong>迴圈外固定的靜止評估</strong>。這不像生物演化——每個物種都在適應同樣在演化的競爭者。靜止評估在三種情況下卡關：(1) 目標任務沒有直接 benchmark（論文/證明寫作沒有，但審稿/評分有）;(2) 評估慢或訊號弱；(3) 靜止 benchmark 隨 agent 變強而飽和或被 reward hacking 攻破。要把自我改進推向開放式（如科學研究與寫作），就得解決這些。</p>
+<p>我們因此提出 RQGM，把評估當成搜尋的一部分，透過<strong>協演化的學習型評估者</strong>（與它引導的 agent 一起改進）來定義搜尋效用。這種評估者能在沒有 benchmark 時提供搜尋訊號、補上 benchmark 抓不到的準則（如程式可維護性）、或提供更便宜的評估代理。</p>
+<p><strong>核心機制——受控效用演化</strong>：把搜尋切成演化世代。世代內凍結一個評估者對所有任務 agent 評分（提供靜止效用訊號），效用只能在世代邊界改變。並行協演化挑戰者評估者，在與任務 agent 共享的 codebase 內、用保留真值資料集評分。世代邊界上，挑戰者只有在真值上統計顯著勝過現任時才取代之；接著 RQGM 做<strong>選擇性抹除</strong>——只丟棄依賴被換掉評估者的效用紀錄。因為每個世代都是固定準則的搜尋問題，前人的自我改進保證直接適用，而搜尋目標卻可跨世代演化（如提拔更強評估者、或加上對抗樣本正則化）。</p>
+<p><strong>貢獻</strong>：</p>
+<ol>
+<li><strong>非靜止效用下的遞迴自我改進</strong>——把效用訊號當成搜尋的一部分，讓搜尋目標能演化，向學習型非靜止效用敞開。</li>
+<li><strong>受控效用演化</strong>——讓非靜止效用與前人保證相容：固定評估者的世代、目標只在邊界改變；挑戰者只有在真值上提高 ε-best-belief 分數時才被提拔。</li>
+<li><strong>協演化學習型評估者與搜尋介入的實際好處</strong>——便宜的程式審查訊號即使在有驗證器時也提升搜尋效率；在沒有直接 benchmark 時驅動生成器搜尋；用對抗目標去偏過度寬鬆的評估者。</li>
+</ol>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<ul>
+<li><strong>自我改進 AI</strong>：哥德爾機是理論構造——只要能證明某改動有益就自我修改；meta-learning 則直接最佳化學習動態。近期系統把哥德爾機「實證化」，用「對觀測效用的 archive 搜尋」取代難解的證明搜尋：DGM 按 benchmark 效用排序自改程式 agent;HGM 用「整個後代分支」的效用評一個節點而非其自身；HyperAgents 給每個 archive 節點配一對 meta-agent/task-agent，把自改推出程式之外。共同點是<strong>整個 run 期間把固定評估準則held在迴圈外</strong>，於是易受 reward hacking 與 model-judge 偏誤（位置、冗長、自我偏好）所害。RQGM 改為<strong>協演化評估者</strong>，擴展到根本沒有 benchmark 的領域。</li>
+<li><strong>LLM-as-a-Judge 與自動科學發現</strong>：我們的學習型評估者建於 LLM 當裁判之上，但自動發現 pipeline 也把評估held固定；我們讓裁判隨搜尋一起改進。</li>
+<li><strong>多智能體協同演化</strong>：對著移動目標協演化是經典想法（fitness sharing、自改策略、self-play）；近期 LLM-agent 方法多半仍把評估固定。RQGM 自動協演化評估者，目標即為學習型效用本身。</li>
+<li><strong>開放式（Open-Endedness）</strong>：開放式搜尋要持續產生新穎產物（常用 quality-diversity archive），日益由基礎模型驅動，追求「封閉的自我參照迴圈」這個長久目標。這些方法仍對靜止目標評估；協演化目標正是 RQGM 補上的缺片。</li>
+</ul>
+<h2 id="3-rqgm協演化智能體與其評估者">3. RQGM：協演化智能體與其評估者</h2>
+<p>建於前人搜尋法之上，RQGM 做四項修改：(i) 每個 archive 節點是<strong>多智能體工作區</strong>而非單一 agent;(ii) 評估者本身是<strong>學習型 agentic 流程</strong>;(iii) 驅動搜尋的效用函數可在指定的演化世代改變；(iv) 評估者可在這些點被替換。</p>
+<ul>
+<li><strong>3.1 搜尋方法</strong>：沿用 DGM/HGM/HyperAgents 的 archive 搜尋骨架。</li>
+<li><strong>3.2–3.3 多智能體形式化</strong>：節點＝生成者（generator）+ 評估者（evaluator）兩個 slot，各有角色，由 best-belief 引導；任務與真值資料填入各 slot。</li>
+<li><strong>3.4 受控效用演化</strong>：世代內凍結評估者→固定準則；邊界處依 ε-best-belief 下界決定是否替換。</li>
+<li><strong>3.5 協演化機制 + 選擇性抹除</strong>：替換後只丟棄依賴舊評估者的紀錄。</li>
+<li>Algorithm 1 給出完整流程，App. F 提供理論（每世代自我改進保證）。</li>
+</ul>
+<h2 id="45-實證">4–5. 實證</h2>
+<p>依 HyperAgents 的三領域設定：程式、論文寫作與審稿、證明寫作與評分。</p>
+<ul>
+<li><strong>程式（Polyglot，可驗證）</strong>（Fig. 1）：加入一個演化出的便宜程式審查者，RQGM 以 1.35×–1.72× 更少搜尋 token 超越前 SOTA HGM-H；保留 pass rate 71.7% vs 69.9%。每次評估者替換（圖中皇冠虛線）時效用因選擇性抹除而下掉，再在新評估者下重爬（陰影帶標出世代）。協演化的另一優勢：共享的擴展能<strong>同時改善多個效用</strong>。</li>
+<li><strong>論文寫作/審稿</strong>：協演化作者把論文接受率從前 SOTA 的 21.8% 拉到 40.5%；協演化評分者以低 3× 搜尋成本超越靜止基線。評估者跨世代變強時，會對任務 agent 施加<strong>類課程（curriculum-like）效果</strong>，每次轉換都重排 archive。</li>
+<li><strong>去偏（5.4）</strong>：最強基線審稿者相對人類過度接受 AI 論文；RQGM 用演化世代先收集被凍結評估者接受的 AI 樣本，後續世代當對抗樣本回放，產出對機器與人類同等嚴格的審稿者。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

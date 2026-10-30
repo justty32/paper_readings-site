@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Chameleon：以大型語言模型實現即插即用的組合式推理（Chameleon: Plug-and-Play Compositional Reasoning with Large Language Models）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Pan Lu, Baolin Peng, Hao Cheng, Michel Galley, Kai-Wei Chang, Ying Nian Wu, Song-Chun Zhu, Jianfeng Gao（University of California, Los Angeles / Microsoft Research, Redmond）</p><p>日期：2023-04（NeurIPS 2023）</p><p>arXiv：2304.09842</p><p><a href="https://arxiv.org/abs/2304.09842" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="chameleon以大型語言模型實現即插即用的組合式推理重點摘要">《Chameleon：以大型語言模型實現即插即用的組合式推理》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Chameleon</strong>：用一個 LLM 規劃器（planner），依查詢與工具庫描述<strong>一次性</strong>推理出一串異質工具（LLM、現成視覺模型、網頁搜尋、Python 函式、規則式模組）的<strong>自然語言式執行順序（NL-like program）</strong>，模組即插即用、全程免訓練；在 ScienceQA 達 86.54% 準確率（較前最佳少樣本結果 +11.37%），在 TabMWP 達 98.78%（+17.0%，超越人類 8.56%）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 有固有限制：無法存取最新資訊（網頁或特定任務知識庫）、無法使用外部工具、無法做精確的數學與邏輯推理。既有的工具增強型 LLM（Toolformer、WebGPT、Visual ChatGPT、ViperGPT、VisProg、HuggingGPT 等）要嘛工具數量少，要嘛依賴特定領域工具或程式，難以泛化到新領域查詢（論文 Table 1 逐項比較 12 個系統的工具規模、技能維度與是否支援組合/規劃/即插即用）。核心訴求：讓 LLM 能自動組合異質工具、以自然語言而非特定領域語言（DSL）表達計畫，降低理解與除錯門檻。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>模組庫 M</strong>：知識檢索、Bing 搜尋、查詢生成器、圖像字幕、文字偵測、表格列/欄查找、表格文字化、Python 程式生成器/驗證器/執行器、（CoT）解答生成器、規則式答案生成器等逾 10 種異質工具，各自免訓練、即插即用。</li>
+<li><strong>規劃器 P</strong>：一個 LLM，在少樣本設定下，讀入指令 I、模組庫描述 M、約束 G（如模組並行/先後關係）與示範 D，<strong>一次性</strong>生成長度 T 的計畫 p=⟨M¹,…,M^T⟩，即一串以字串匹配綁定的模組名稱（natural-language-like program），而非領域專屬程式碼。</li>
+<li><strong>依序執行</strong>：第 t 步 y^t = M^t(x^{t-1}; c^{t-1})；再由<strong>針對每個模組手工設計</strong>的 update_input／update_cache 函式，把該步輸出更新進下一模組的查詢 x^t 與快取 c^t（如圖像語意、檢索到的知識、生成的程式）；最後一個模組的輸出即為最終回應。</li>
+<li>兩個任務域各自把搜尋空間限制在相關工具子集，並訂出約束（如 TabMWP 需以 Answer Generator 結尾、Program Generator 須在 Verifier/Executor 之前）；不合規計畫則退回等同 CoT／PoT 基線的固定序列。</li>
+<li><strong>與 ReAct 的關鍵差異</strong>：Chameleon 是「先一次規劃整條管線、再依序執行」（plan-then-execute，論文附錄也承認<strong>無 re-planning 機制</strong>），而非 ReAct 式的「邊觀察環境回饋、邊逐步決定下一動作」（interleaved reasoning-acting）。CoT、PoT 都可視為 Chameleon 的特例（分別是「Solution Generator+Answer Generator」與「Program Generator+Executor+Answer Generator」的固定計畫）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>ScienceQA</strong>：Chameleon(GPT-4) 86.54% 整體準確率，優於 GPT-4 CoT 83.99%（+2.55%）、優於 GPT-3 CoT 少樣本基準（+11.37%，創新 SOTA）；Chameleon(ChatGPT) 79.93%，優於 ChatGPT CoT 78.31%（+1.62%）。</li>
+<li><strong>TabMWP</strong>：Chameleon(GPT-4) 98.78%，優於 GPT-4 PoT 96.93%、優於已發表最佳模型 Codex PoT-SC 81.8%（+17.0%）、超越人類表現 90.22%（+8.56%）；Chameleon(ChatGPT) 93.28%，優於 ChatGPT CoT（+11.25%）與 ChatGPT PoT（+3.79%）。</li>
+<li><strong>消融（關閉關鍵模組）</strong>：Knowledge Retrieval 在兩任務均關鍵（ScienceQA −7.8%、TabMWP −2.2%）；ScienceQA 的 Text Detector −8.4%、Bing Search −7.4%、Image Captioner −6.0%；TabMWP 的 Program Generator −7.4%。</li>
+<li><strong>規劃行為對比</strong>：GPT-4 規劃器較 ChatGPT 更一致理性——生成的獨特程式種類更少（ScienceQA 11 vs 14、TabMWP 19 vs 28）、能依工具描述推斷隱含限制（如同時呼叫 Query Generator 與 Bing Search，ChatGPT 不具備此推理）。錯誤分析顯示 Chameleon 大幅降低 ChatGPT 基線的圖像理解錯誤（32→10/19）與知識理解錯誤（37→6/3）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>僅在 ScienceQA、TabMWP 兩個基準驗證，尚未展示對更廣泛任務／領域的泛化性。</li>
+<li>計畫<strong>一次性生成、執行過程無 re-planning 機制</strong>——規劃器品質直接決定整體效能上限，規劃錯了無法中途修正。</li>
+<li>假設模組庫的完整描述能放進 LLM 的脈絡窗，隨任務複雜度與模組庫擴大，可能碰到脈絡長度限制與運算成本上升。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>對 ai_core <strong>§1「系統＝多數確定性節點＋少數 LLM 的計算圖」</strong>：Chameleon 幾乎是這句話的字面實作——LLM 只出現在 planner（決定模組順序）與少數語意型模組（Knowledge Retrieval、Solution Generator）裡，Row/Column Lookup、Program Verifier/Executor、Answer Generator 等多數節點是規則或程式碼；Table 5 的消融實驗直接把「拿掉某個確定性/工具節點會掉多少分」量化出來，正合 ai_core §3.3「成本梯度」想要的「每個節點的價值可測量」。</li>
+<li>定位在<strong>主題 3 的編排端</strong>：LLM 的職責被縮小到「決定用哪些確定性模組、以什麼順序」，實際計算全部外包給規則、Python 與專用模型；與已入庫者對照——**ReAct（2210.03629）**是邊做邊決定的互動式路線，**AutoGen（2308.08155）**是多代理對話式編排，**AFlow（2410.10762）**是用 MCTS 在程式碼表示的工作流圖上自動搜索，**DSPy（2310.03714）**把 LM 呼叫編譯成可優化 pipeline，**Toolformer（2302.04761）**是單模型自監督學會呼叫少數工具；HuggingGPT（同批「任務規劃＋模型選派」路線，尚未入庫，暫不連結）與 Chameleon 最相近，但 Chameleon 的工具異質性與任務無關性更高。</li>
+<li><strong>先規劃整條管線</strong>的好處：每個節點的職責在執行前就固定下來，確定性節點佔比（如 Table 7 的平均程式長度、Table 5 的模組重要性）因此可事後量測、可針對特定模組單獨優化或替換，這對 ai_core「逐步剃除 LLM 依賴」的路線比 ReAct 這類邊做邊決定的互動式 agent 更友善——你可以先固定計畫、再把計畫中愈來愈多步驟換成純規則。但代價正是論文自己承認的：<strong>規劃錯了無法中途修正</strong>，一步錯步步錯，這也是 ai_core 在把「規劃」本身also剃除成確定性邏輯前必須面對的風險。</li>
+<li>歸類：<strong>I 類</strong>（框架/範式類：LLM-as-planner 的組合式工具編排範式，非單一可直接複用的元件）。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2304.09842_Chameleon.zh-TW.html"><code>../translate/2304.09842_Chameleon.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

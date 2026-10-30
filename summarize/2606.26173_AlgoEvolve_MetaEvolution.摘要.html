@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《AlgoEvolve：LLM 驅動的演算法交易程式元演化》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Dhruv Sharma, Gautam Shroff（IIIT Delhi）</p><p>日期：2026-06，演化程式合成（LLM 作語意突變運算子、bi-level 元演化）</p><p>arXiv：2606.26173</p><p><a href="https://arxiv.org/abs/2606.26173" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="algoevolve重點摘要">《AlgoEvolve》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>把 FunSearch/AlphaEvolve「LLM 作語意突變運算子」的演化程式合成範式，從靜態程式碼基準推進到<strong>噪聲大、非平穩、高度不連續的演算法交易</strong>領域，並加上一層<strong>元演化外迴圈</strong>：內迴圈用 LLM（帶 Chain-of-Thought、注入上代 Top-2 最佳/最差策略碼當對比訊號）反覆突變可執行 Python 交易策略、以 walk-forward 協定評估；外迴圈把「指導內迴圈搜尋的提示詞」當成可學的**提示基因組（prompt genome）**來演化，自主發現更好的搜尋啟發式（平衡探索/利用、減少「零交易」停滯陷阱）。系統展現湧現的「regime 自適應」策略邏輯（自主放棄人給的趨勢跟隨先驗、轉向多因子評分與價量啟發式）。6 個元世代後，菁英提示基因組達年化 Sharpe 5.60（族群均值 1.21，風險調整搜尋效率提升 363%），日均報酬 0.31%（3× 提升）、最大回撤僅 1.59%（參數化 RF/LSTM 基線回撤達 7.27%）；種子啟發式則 -15.65% 慘賠。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>演算法交易策略的「績效（盈虧）」是參數的<strong>非可微、高度不連續函數</strong>（門檻、權重），且市場<strong>訊噪比極低、非平穩</strong>——傳統深度學習/RL 依賴黑箱參數優化、缺監管所需透明度、易過擬合歷史噪聲、regime 突變時嚴重退化。LLM 雖被當「agentic 控制器」，但多被當成<strong>一次性生成器或靜態預測器</strong>評估。作者主張改用 LLM 作<strong>語意突變運算子</strong>做迭代程式精煉；且既有 LLM 演化多用靜態指令/非結構化回饋，搜尋啟發式本身不隨非平穩市場演化。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>策略表示（內 agent）</strong>：策略 = 可執行 Python 程式 <code>f∈F</code>（F＝系統執行約束下所有合法 Python 程式空間），由 5 分鐘 OHLCV bar 特徵 <code>x_t</code> 映射到離散交易訊號元組（短/長兩 horizon 各 {0..4}）。優化發生在<strong>離散、非可微的程式空間</strong> F（非神經網路的權重空間）。</li>
+<li><strong>非平穩目標（walk-forward）</strong>：生命週期分 K 個時間 epoch，每 epoch k 用歷史窗 D_train^(k) 產策略 f_k、部署於未見 D_test^(k)；複合適應度 <code>S = α·Return + (1−α)·Consistency</code>（Consistency＝策略勝過市場中位數的資產比例，α=0.7 偏重跨資產穩健、避免「零曝險」平凡最優）。</li>
+<li><strong>內迴圈（語意演化）</strong>：N 個世代，每代以 LLM 突變運算子 <code>M(f_best, L, P)</code> 合成候選；注入上代 <strong>Top-2 最佳 + Top-2 最差策略碼 + 適應度</strong>當對比訊號（最差者助 LLM 剪掉無效邏輯分支、防邏輯崩潰）；強制 <strong>CoT</strong>——須先輸出 <code>&lt;reasoning&gt;</code> 區塊（假設驅動，如「上策略過度交易，我加波動率濾波」）再輸出 <code>&lt;code&gt;</code>，使突變是 hypothesis-driven 而非隨機 bit-flip。</li>
+<li><strong>元演化外迴圈</strong>：把 Evolver Prompt P 當可學超參數，演化「提示基因組」找 <code>P* = argmax 期望內迴圈績效</code>。異質 LLM：外迴圈用 Gemini Pro（高延遲推理、長上下文做提示優化），內迴圈用 Gemini Flash（高吞吐快速策略生成）——Flash 生成器跨所有消融固定，故增益歸於「演化出的指令品質」而非模型層級。</li>
+</ul>
+<h2 id="結果table-16-mg-縱貫評估">結果（Table 1，6 MG 縱貫評估）</h2>
+<ul>
+<li><strong>菁英提示基因組</strong>：年化 Sharpe <strong>5.60</strong>（族群均值 ≈1.21，6 元世代風險調整搜尋效率 <strong>+363%</strong>）；日均報酬 0.31%（<strong>3×</strong> 提升）、最大回撤 <strong>1.59%</strong>。</li>
+<li><strong>基線對比</strong>：種子啟發式 <strong>-15.65%</strong> 慘賠；單層 Standard Evol 高穩定（MDD 0.42%）但 alpha 微弱（0.10% 均值）、缺「垂直性」抓不到高 alpha 事件；參數化 RF/LSTM 高變異衰退、最大回撤達 7.27%。</li>
+<li><strong>質性三階段元演化</strong>：Era 1（MG1-2）「精煉範式」發現 Confluence Filter、Hierarchical VWAP Filter（累積 +1.79%）；Era 2（MG3-4）市場 regime 轉變致冠軍虧 -1.59%，Meta-LLM 執行「策略多樣性注入」自主偵測啟發式失敗並結構轉向、復原捕捉 2.53% alpha；Era 3（MG5-6）抵達複雜度天花板，穩健性濾波把錯誤候選隔離（賦 −∞ 適應度），冠軍世系仍無效碼、捕 +2.50% alpha——示範安全的持續發現。</li>
+<li>內迴圈基線單獨跑會陷入「零交易停滯」（連 8 代終端報酬 0.0%、靠 Threshold Fragility 隨機調參而非結構創新），證實需元演化層突變搜尋指令本身。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>結果是<strong>比較性、選擇性</strong>的（菁英提示經演化壓力選出；族群均值 Sharpe ≈1.21 才反映平均可部署績效），非平均部署績效。</li>
+<li>僅 Gemini Pro/Flash、特定資產與時段；MG6 已現複雜度飽和/語法邊界（部分族群產無效碼）。</li>
+<li>高 Sharpe（5.60）可能受 walk-forward 設定與選擇偏誤影響，未經實盤/交易成本完整壓力測試。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 G 類中**「LLM 作語意突變運算子 + bi-level 元演化」推進到噪聲非平穩領域的代表**——把 FunSearch/AlphaEvolve 的「演化離散程式」與 PromptBreeder/OPRO 的「演化提示」合成一個分層架構，核心賣點是「設計時用 LLM 合成可執行符號策略、部署時零推論延遲、本質可解釋」（對比 runtime 查詢 LLM 的 agentic 交易）。</li>
+<li>最值得記：<strong>「外迴圈演化 prompt genome 以自主發現搜尋啟發式、修復 LLM 演化的『零交易/局部最優』失效模式」</strong> 這個元演化分工；以及「CoT + Top-2 最佳/最差對比訊號」讓 LLM 突變是假設驅動而非隨機。</li>
+<li>與 <a class="paper-reference" href="2606.07704_FunctionEvolve.%E6%91%98%E8%A6%81.html">2606.07704</a> FunctionEvolve、<a class="paper-reference" href="2605.15308_SMCEvolve_SMC_Program_Evolution.%E6%91%98%E8%A6%81.html">2605.15308</a> SMCEvolve、<a class="paper-reference" href="https://arxiv.org/abs/2606.23408">2606.23408</a> LLMsDreamDiscreteAlgorithms、<a class="paper-reference" href="2505.22954_DarwinGodelMachine.%E6%91%98%E8%A6%81.html">2505.22954</a> DarwinGodelMachine 等「LLM 演化程式/自我改進」工作互補；對研究 <strong>FunSearch/AlphaEvolve 系演化合成、prompt 優化、量化交易策略發現</strong> 的人很有參考價值。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2606.26173_AlgoEvolve_MetaEvolution.zh-TW.html"><code>../translate/2606.26173_AlgoEvolve_MetaEvolution.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

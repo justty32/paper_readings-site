@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《DreamProver：以 Wake-Sleep 定理證明智能體演化可遷移引理庫》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Youyuan Zhang, Jialiang Sun 等（含 Zhaoyu Li, Xujie Si）</p><p>日期：2026-04，程式歸納／庫學習（library learning）</p><p>arXiv：2604.26311</p><p><a href="https://arxiv.org/abs/2604.26311" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="dreamprover重點摘要">《DreamProver》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>DreamProver</strong> 把 DreamCoder 式的 <strong>wake-sleep 庫學習</strong>搬到<strong>形式化定理證明</strong>：在 <strong>wake 階段</strong>用 LLM 嘗試證明訓練集定理（直接證或遞迴分解出中間定理），蒐集「可學習」的經驗；在 <strong>sleep 階段</strong>把這些中間定理<strong>語意分群（句子嵌入 + K-Means + elbow）→ 抽象出更一般的候選引理 → 用結構相似度驗證 → 去重（樹編輯距離）→ 形式驗證 → LRU 遺忘</strong>，維護一個 <strong>&lt;100 條</strong> 緊湊可重用的引理庫。學出的引理<strong>高度可遷移</strong>：跨多個數學域（不等式/數論/組合/幾何/機器學習理論）一致提升證明數、產出更短結構化證明、token 成本更低，並在 mathlib 未涵蓋的<strong>冷門域（平面幾何、ML 理論）達 SOTA</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 定理證明缺乏<strong>累積、可重用的知識</strong>：先前庫學習法（如 LEGO-Prover）產出的引理<strong>幾乎不被重用</strong>（前人研究指出重用率極低）；證明也常冗長、token 成本高，且在 LLM 訓練資料稀少的冷門數學域表現差。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>Wake 階段（中間定理發現）</strong>：以當前引理庫嘗試證訓練集定理。
+<ul>
+<li><strong>可學習定理識別</strong>：在固定計算預算（證明次數 + 錯誤修正次數上限）內，若 LLM 能用庫中引理直證某定理，則該定理「可學習」，暗示一條建於既有引理之上的更進階引理，收集進 sleep。</li>
+<li><strong>中間定理發現</strong>：難直證者，靠<strong>遞迴定理分解</strong>——LLM 先生成形式 proof sketch、再從 <code>sorry</code> 標記的未證子目標抽出中間定理；以「sketch + 中間定理能否重組證出原定理」驗證有效性，並用 LLM 做自然語言 sketch 檢查過濾錯誤分解。</li>
+</ul>
+</li>
+<li><strong>Sleep 階段（引理演化 + 庫學習）</strong>：
+<ul>
+<li><strong>引理抽象</strong>（cluster-based）：LLM 為每個中間定理標自然語言描述（子域/難度/可用定理）→ 句子 transformer 嵌入 → K-Means 分群（elbow 定群數）→ 每群餵 LLM 生候選引理 → 把候選與群內定理轉<strong>一階邏輯表達式樹</strong>算結構相似度，超閾值才保留。</li>
+<li><strong>庫更新三步</strong>：(1) <strong>遺忘</strong>——LRU 追蹤各引理跨 wake 的使用頻率，滿容量時移除最少用者（經驗上維持 &lt;100 條）；(2) <strong>儲存新引理</strong>——用樹編輯距離去重；(3) <strong>形式驗證</strong>每條新引理（通常是乾淨簡潔的知名定理，小取樣預算即可證）。</li>
+</ul>
+</li>
+<li><strong>推論</strong>：輕量框架——先帶庫直接 prompt 證；失敗則退回 sketch-and-prove（生 sketch + 逐子目標證，全程用庫），用更少 token 證未見測試題。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>RQ1（充分表徵域）</strong>：跨不等式/數論/組合，對比專有推理模型（pass@32 一次性生成）、開源 prover（DeepSeek-Prover-V2、Goedel-Prover-V2）、agentic 系統（Hilbert，分解深度 2；DreamProver 僅限單層分解），證明數一致領先（DreamProver 多個域達 ~48%/79%/75% 等最高列）。</li>
+<li><strong>RQ2</strong>：產出更精簡、結構化的證明，<strong>token 成本更低</strong>。</li>
+<li><strong>RQ3（引理有效性）</strong>：與「引理幾乎不被重用」的 LEGO-Prover 形成對比——DreamProver 平均<strong>大比例訓練集引理在測試集被重用</strong>並貢獻大比例成功證明，證實可遷移。</li>
+<li><strong>RQ3 消融</strong>：移除迭代式 wake-sleep 精煉，解題數 <strong>104→76</strong>；再移除語意分群（庫過大難檢索）<strong>76→53</strong>（甚至低於無庫 vanilla），證實「<strong>緊湊、抽象、可重用</strong>的庫勝過從龐大低階庫檢索」。</li>
+<li><strong>RQ4（冷門域泛化）</strong>：在 mathlib 未涵蓋的**平面幾何（LeanGeo-Bench）與機器學習理論（FormalML）**上，跨所有資料集與骨幹 LLM 達 SOTA，相對專有 LLM 基線有顯著相對提升。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>引理庫<strong>本質上是領域特定的</strong>（須為各域分別演化）。</li>
+<li>仰賴 LLM 做分解、抽象、描述標註與驗證，受其能力與 prompt 設計影響。</li>
+<li>容量上限（&lt;100）是經驗折衷；分解限單層在更難問題上的可擴展性待驗證。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 G 類**「庫學習 / DreamCoder 譜系」的最新代表**——把「wake-sleep 抽象 + 遺忘 + 重用」這套程式歸納經典機制，落到 Lean 形式證明這個高難度符號域，並<strong>直面前人庫學習引理不被重用的痛點</strong>。</li>
+<li>最值得記：<strong>「語意分群 → 抽象引理 → 結構相似度/樹編輯距離驗證去重 → LRU 遺忘維持 &lt;100 條」</strong> 的庫維護配方；以及「<strong>緊湊抽象庫 &gt; 龐大低階庫</strong>」這個被消融數字（104→76→53）強力支持的結論。</li>
+<li>與 <a class="paper-reference" href="2602.00929_TheoryCoder2_Abstractions.%E6%91%98%E8%A6%81.html">2602.00929</a>（TheoryCoder-2 學 PDDL 抽象）、<a class="paper-reference" href="2512.13857_EvoLattice.%E6%91%98%E8%A6%81.html">2512.13857</a>（EvoLattice 累積微算子）同屬「累積可重用抽象」主題，但 DreamProver 場景是<strong>形式數學</strong>；與 <a class="paper-reference" href="2506.23408_LLMsDreamDiscreteAlgorithms.%E6%91%98%E8%A6%81.html">2506.23408</a>（LLM 夢見離散演算法）呼應「LLM 當發現引擎」。</li>
+<li>適合做 <strong>LLM 定理證明、庫學習/抽象重用、neuro-symbolic 數學推理、wake-sleep/DreamCoder 類方法</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2604.26311_DreamProver.zh-TW.html"><code>../translate/2604.26311_DreamProver.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_測試時適應專章 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../ARC_AGI_landscape.html">回 ARC_AGI_landscape 目錄</a>　<a href="02_%E5%90%84%E7%AF%84%E5%BC%8F%E4%BB%A3%E8%A1%A8%E4%BD%9C%E5%B0%8D%E7%85%A7%E8%A1%A8.html">← 上一節</a>　<a href="04_ARC_Prize_2024_2025%EF%BC%9A%E4%BD%9C%E7%82%BA%E6%A1%86%E6%9E%B6%E7%9A%84%E7%AB%B6%E8%B3%BD%E9%80%B2%E5%B1%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-測試時適應專章">4. 測試時適應專章</h2>
+<p>ARC 的本質是「面對全新任務」，所以**測試時適應（test-time adaptation）**幾乎是所有高分系統的共同心臟。但「適應」可以動到四個完全不同的對象。理清這四條路線，是理解整片版圖的關鍵。</p>
+<pre><code class="language-mermaid">graph TD
+    Q[&quot;測試時拿到新任務的示範對&lt;br/&gt;該怎麼適應？&quot;]
+
+    Q --&gt; A[&quot;①權重微調&lt;br/&gt;改模型參數&quot;]
+    Q --&gt; B[&quot;②外部記憶&lt;br/&gt;不動權重，累積概念&quot;]
+    Q --&gt; C[&quot;③潛在狀態忠實度&lt;br/&gt;錨定中間表示&quot;]
+    Q --&gt; D[&quot;④壓縮 / MDL&lt;br/&gt;把謎題壓進權重&quot;]
+
+    A --&gt; A1[&quot;LoRA TTT [[2411.07279]]&lt;br/&gt;留一法 ICL + 範例增強&quot;]
+    A --&gt; A2[&quot;LongT5+TTT [[2603.06590]]&lt;br/&gt;逐題 LoRA r=8&quot;]
+    A --&gt; A3[&quot;TEMPO [[2604.19295]]&lt;br/&gt;RL 式 EM：E 步校準 critic&quot;]
+
+    B --&gt; B1[&quot;ArcMemo [[2509.04439]]&lt;br/&gt;概念級記憶 + 選擇性檢索&quot;]
+
+    C --&gt; C1[&quot;ReLAT [[2606.06252]]&lt;br/&gt;Q→Z→Q 重建損失&quot;]
+    C --&gt; C2[&quot;LPN [[2411.08706]]&lt;br/&gt;潛在 z 梯度上升搜尋&quot;]
+
+    D --&gt; D1[&quot;CompressARC [[2512.06104]]&lt;br/&gt;單樣本過擬合等變網路&quot;]
+
+    WARN[&quot;⚠ 測試時技術非萬靈丹&lt;br/&gt;小模型 + 單一序列化 + 弱正則&lt;br/&gt;→ 把 21.7% 打成 0%&lt;br/&gt;[[2605.01154]]&quot;]
+    A1 -.反例.-&gt; WARN
+</code></pre>
+<h3 id="41-四路線對照">4.1 四路線對照</h3>
+<table>
+<thead>
+<tr>
+<th>路線</th>
+<th>適應對象</th>
+<th>代表作</th>
+<th>適應訊號</th>
+<th>關鍵機制</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>①權重微調</strong></td>
+<td>模型參數（LoRA/全量）</td>
+<td>TTT <a class="paper-reference" href="../../summarize/2411.07279_Test_Time_Training.%E6%91%98%E8%A6%81.html">2411.07279</a>、LongT5 <a class="paper-reference" href="../../summarize/2603.06590_ARC_AGI2_TTT_LongT5.%E6%91%98%E8%A6%81.html">2603.06590</a>、TEMPO <a class="paper-reference" href="../../summarize/2604.19295_TEMPO_TestTime_EM.%E6%91%98%E8%A6%81.html">2604.19295</a></td>
+<td>範例導出損失 / RL 可驗證獎勵</td>
+<td>逐題訓 LoRA；TEMPO 加 EM 的 E 步校準 critic</td>
+</tr>
+<tr>
+<td><strong>②外部記憶</strong></td>
+<td>prompt 中注入的概念庫</td>
+<td>ArcMemo <a class="paper-reference" href="../../summarize/2509.04439_ArcMemo_Concept_Memory.%E6%91%98%E8%A6%81.html">2509.04439</a></td>
+<td>概念與查詢的相關性匹配</td>
+<td>概念級抽象 + 選擇性檢索；持續更新＝自我提升</td>
+</tr>
+<tr>
+<td><strong>③潛在狀態忠實度</strong></td>
+<td>中間潛在表示 / 潛在程式 z</td>
+<td>ReLAT <a class="paper-reference" href="../../summarize/2606.06252_ReLAT_Latent_Reconstruction.%E6%91%98%E8%A6%81.html">2606.06252</a>、LPN <a class="paper-reference" href="../../summarize/2411.08706_LPN_Latent_Program_Search.%E6%91%98%E8%A6%81.html">2411.08706</a></td>
+<td>重建損失 / 範例似然</td>
+<td>ReLAT 用 Q→Z→Q 自監督；LPN 用潛在梯度上升</td>
+</tr>
+<tr>
+<td><strong>④壓縮 / MDL</strong></td>
+<td>整個謎題壓進的權重</td>
+<td>CompressARC <a class="paper-reference" href="../../summarize/2512.06104_CompressARC.%E6%91%98%E8%A6%81.html">2512.06104</a></td>
+<td>描述長度（位元數）</td>
+<td>對單一謎題過擬合等變網路，精算權重位元長度</td>
+</tr>
+</tbody>
+</table>
+<h3 id="42-四路線深掘">4.2 四路線深掘</h3>
+<p><strong>①權重微調——主流但有天花板。</strong> TTT <a class="paper-reference" href="../../summarize/2411.07279_Test_Time_Training.%E6%91%98%E8%A6%81.html">2411.07279</a> 是 ARC 史上單招最大躍進（18.3%→47.1%），成敗關鍵在資料生成（留一法 ICL 任務遠勝 Direct I/O）與「對示範輸出也取損失」。LongT5 <a class="paper-reference" href="../../summarize/2603.06590_ARC_AGI2_TTT_LongT5.%E6%91%98%E8%A6%81.html">2603.06590</a> 給出最完整的工程實戰範本與<strong>增量歸因表</strong>（llama 1B 3.75% → 27.08%，每招貢獻幾個百分點全列出）。</p>
+<p>但 TEMPO <a class="paper-reference" href="../../summarize/2604.19295_TEMPO_TestTime_EM.%E6%91%98%E8%A6%81.html">2604.19295</a> 揭穿了一個更深的機制：<strong>自獎勵式 TTT 一開始有效、很快停滯且多樣性崩塌</strong>，根因是它「只做了 EM 的 M 步、漏掉 E 步」——自生獎勵隨策略演化而漂移。TEMPO 的修法是週期性在有標註資料上重新校準 critic（E 步），把獎勵錨定回外部監督，使 OLMO3-7B 的 AIME 從 33.0%→51.1% 且不犧牲多樣性。這對所有 ARC 式 TTT 都是警示：<strong>額外測試時計算能否換成增益，取決於訊號有沒有被外部錨定。</strong></p>
+<p><strong>②外部記憶——不動權重的另一條路。</strong> ArcMemo <a class="paper-reference" href="../../summarize/2509.04439_ArcMemo_Concept_Memory.%E6%91%98%E8%A6%81.html">2509.04439</a> 主張存「概念級（模組+抽象）」而非「實例級（整題查詢/回答對）」記憶，因為前者才可跨題重用、可組合。它是唯一「在所有推理算力規模下都勝過無記憶基線」的記憶設計，且<strong>評測時動態更新記憶比固定記憶更好</strong>——前一輪的記憶更新讓後一輪解出新題，形成一種不靠梯度的自我提升。</p>
+<p><strong>③潛在狀態忠實度——錨定中間表示。</strong> 這條路有兩種味道：</p>
+<ul>
+<li>LPN <a class="paper-reference" href="../../summarize/2411.08706_LPN_Latent_Program_Search.%E6%91%98%E8%A6%81.html">2411.08706</a> 把潛在程式 z 當搜尋對象，測試時對 z 做梯度上升找最能解釋範例的 z*——適應的是「找對程式」。</li>
+<li>ReLAT <a class="paper-reference" href="../../summarize/2606.06252_ReLAT_Latent_Reconstruction.%E6%91%98%E8%A6%81.html">2606.06252</a> 處理的是潛在推理的「開環」風險：中間狀態不可檢視、無人知道它是否還保有原問題約束。它的優雅原則是「<strong>若潛在狀態忠實代表問題，就應能從它重建出原問題</strong>」，於是構造可微的 Q→Z→Q 循環，以重建損失做自監督 TTT，把 Qwen3-8B 的 AIME 從 56.7%→73.3%。重建是「必要非充分的結構錨」——適應的是「沒走丟」而非「找對答案」。</li>
+</ul>
+<p><strong>④壓縮 / MDL——最激進的極簡路線。</strong> CompressARC <a class="paper-reference" href="../../summarize/2512.06104_CompressARC.%E6%91%98%E8%A6%81.html">2512.06104</a> 把「測試時適應」推到極致：<strong>全部學習只發生在一個樣本（待解謎題本身，移除答案）上</strong>，不碰任何訓練集，把謎題過擬合進一個 76K 參數等變網路的權重，再精算權重位元長度當「程式長度」最小化，由奧坎剃刀逼出正確解填空。損失各項類比 VAE 的 KL／重建項。這條路呼應 Chollet 的「智能＝最小資料下習得新技能」到了字面意義。</p>
+<h3 id="43-反例測試時技術不是萬靈丹">4.3 反例：測試時技術不是萬靈丹</h3>
+<p><a class="paper-reference" href="../../summarize/2605.01154_MultiPerspective_ARC_AGI2.%E6%91%98%E8%A6%81.html">2605.01154</a> 是一份珍貴的「誠實失敗報告」：一支六人學生團隊在 ARC-2 上，用 20M 的 TinyLM 達評測 21.7%，但<strong>套上 TTT 與 PoE 後成績不升反降到接近 0%</strong>。原因清晰：(1) TTT 在小模型 + 極少範例下會災難性過擬合到範例的特異性；(2) PoE 失效是自找的——模型只在 row-major 一種序列化上訓練，其他「視角」對它根本無效。</p>
+<blockquote>
+<p>教訓：<strong>測試時技術的收益高度依賴底層模型品質與超參</strong>。多視角必須在訓練階段就被模型內化（多序列化混訓），事後才套 PoE 是空的；小模型的測試時微調要靠強正則才不會把少數範例死背。這與 <a class="paper-reference" href="../../summarize/2603.06590_ARC_AGI2_TTT_LongT5.%E6%91%98%E8%A6%81.html">2603.06590</a>（同樣 TTT+多視角卻達 27%）正面對撞，凸顯「同一套配方在不同規模/正則下會整組失效」。</p>
+</blockquote>
+<hr />
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

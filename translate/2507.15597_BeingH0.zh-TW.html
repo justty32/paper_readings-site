@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Being-H0: Vision-Language-Action Pretraining from Large-Scale Human Videos 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Hao Luo、Yicheng Feng、Wanpeng Zhang、Sipeng Zheng、Ye Wang、Haoqi Yuan、Jiazheng Liu、Chaoyi Xu、Qin Jin、Zongqing Lu</p><p>日期：2025-07-21（v1）</p><p>arXiv：2507.15597</p><p><a href="https://arxiv.org/abs/2507.15597" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="being-h0-vision-language-action-pretraining-from-large-scale-human-videos">Being-H0: Vision-Language-Action Pretraining from Large-Scale Human Videos</h1>
+<h2 id="摘要與第-1-節問題">摘要與第 1 節：問題</h2>
+<p>靈巧手 VLA 受限於遙操作資料昂貴、種類少，模擬資料又有 sim-to-real gap。Being-H0 的出發點是把人手當作「foundation manipulator」：網路影片含有大量真實物件、場景與細緻手指協調，若能把人手運動明確建模成 action language，就可能先學通用靈巧性，再以少量 robot data 遷移到不同機構。</p>
+<p>難點不只是影片夠不夠多。不同資料源的相機、座標與標註不一致；手指運動量化後容易失去精度；視覺、語言與 motion token 要能共同推理；人手和機器手的自由度及運動學也不相同。作者將解法統稱 Physical Instruction Tuning，包含人類影片預訓練、physical space alignment，以及機器人任務 post-training。</p>
+<h2 id="第-34-節模型與-physical-instruction-tuning">第 3、4 節：模型與 Physical Instruction Tuning</h2>
+<p>Being-H0 以 InternVL3 為 backbone，把 RGB、文字與手部動作都轉成同一個自回歸 token sequence。連續手勢先用 MANO 表示，再由 motion tokenizer 轉成離散碼，以 <code>&lt;MOT&gt;</code> 與 <code>&lt;/MOT&gt;</code> 標出 motion blocks。共享 attention 讓模型同時學習從畫面判斷操作策略、把語言指令落到手指運動，以及由 motion 反向描述動作。</p>
+<p>精確量化採 part-level Grouped Residual Quantization。模型將 wrist 的全域旋轉與平移、finger 的關節與形狀分開編碼；各 channel group 再經多層 residual codebooks 逐步逼近。這項分解給 token 較明確的部位語意，也避免腕部大範圍運動掩蓋細小手指變化。訓練另用 vocabulary-level logit masking 集中更新 motion codes，並濾除過易或極端不穩定的 token losses。</p>
+<p>Physical space alignment 處理跨資料源相機差異。Weak-perspective projection alignment 把影像映射到共同相機空間；view-invariant balancing 則同步改變深度、平面旋轉與影像，使 motion 與視覺投影保持一致。這不是一般隨機裁切，因為只改影像會破壞手部三維姿態與像素位置的對應。</p>
+<p>Post-training 用簡單的 MLP projection 與 learnable action queries，把已學到的人手 motion prior 接到下游機器人 action chunks。這個設計刻意簡單，用來檢驗明確的人手預訓練本身是否能遷移，而不是把提升混入複雜的控制轉換器。</p>
+<h2 id="第-5-節unihand-資料管線">第 5 節：UniHand 資料管線</h2>
+<p>UniHand 整合 motion capture、VR 記錄與 RGB-only pseudo annotations。各來源先標準化成 MANO；缺少三維姿態時，由現成模型估計，再修正左右手跳變、短缺口與時間不連續。影片分成短片段，模型產生高階任務說明與逐秒細節，涵蓋接觸狀態、物件屬性、手部部位及相對相機的運動軌跡。</p>
+<p>訓練資料包含三類 instruction tasks：由視覺與指令產生 motion、把 motion 翻成手物互動描述，以及依先前 motion 與當前場景預測後續 motion。作者自報，完整 UniHand 聚合 11 個來源、超過 440K 條 task trajectories、130 million frames 與 1100 小時影片，產生超過 165 million 個 motion-instruction pairs；實際預訓練因算力限制採平衡抽樣的 2.5 million instances。</p>
+<h2 id="第-6-節主要實驗數字均為作者自報">第 6 節：主要實驗（數字均為作者自報）</h2>
+<p>作者先評估 motion block 是否有效、手勢生成與翻譯、長序列生成及 tokenizer 消融，再做真實靈巧手 post-training。作者自報，自由格式解碼時，Being-H0-8B 與 Being-H0-14B 的有效 motion block 比例分別為 99.8％ 與 100.0％；較大的模型也在 motion-language retrieval 與空間誤差上普遍較佳。長序列仍會因自回歸誤差累積而漂移，需以 soft-formatted decoding 將輸出錨定在合理鄰域。</p>
+<p>消融顯示 part-level tokenization、六維旋轉特徵、contextual motion prediction 與 view balancing 都有作用。作者自報，資料規模增加到 2.5 million samples 前，整體表現持續改善；但最大規模下部分精細姿態指標略降，而語意匹配仍提升，反映多樣性可能讓模型偏向功能合理，而非逐姿勢複製。</p>
+<p>真實任務涵蓋玩具取放、關工具箱、蓋杯蓋、倒水與展開衣物，每個條件隨機化物件初始位置。作者自報，Being-H0 在七個測試欄位的成功率依序為 0.75、0.65、0.60、0.85、0.60、1.00、0.75，整體高於未做 Physical Instruction Tuning 的同架構 InternVL3。資料效率比較中，作者自報，玩具取放只用 25％ 下游示範即可接近 baseline 使用 100％ 資料的表現；這支持 human-motion pretraining 能減少昂貴遙操作資料。</p>
+<h2 id="第-7-節結論與局限">第 7 節：結論與局限</h2>
+<p>Being-H0 的主要貢獻是把人類影片從輔助視覺表徵，提升為明確的 motion prediction pretraining。標準化三維手勢、精細 tokenization 與跨模態 next-token prediction 共同建立可移植的 hand-motion prior，真實機器人結果則提供初步正面證據。</p>
+<p>作者把深度與觸覺、工具使用、多物件長程任務，以及結合模擬與強化學習列為後續方向；長程 motion 仍需 ground-truth 鄰域式約束。（本檔補註，非作者自陳）post-training 仍依賴簡單投影，人手到不同機器手的運動學與力控制尚未真正解決；RGB 影片缺少深度、摩擦與觸覺，pseudo labels 也可能帶入系統性誤差；現有結果不應外推為已解決通用靈巧操作。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2507.15597_BeingH0.%E6%91%98%E8%A6%81.html"><code>../summarize/2507.15597_BeingH0.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

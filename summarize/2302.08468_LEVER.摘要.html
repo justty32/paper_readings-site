@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《LEVER：學習用執行結果驗證語言到程式碼生成（Learning to Verify Language-to-Code Generation with Execution）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Ansong Ni, Srini Iyer, Dragomir Radev, Ves Stoyanov, Wen-tau Yih, Sida I. Wang, Xi Victoria Lin（Yale / Meta AI）</p><p>日期：2023-02（ICML 2023）</p><p>arXiv：2302.08468</p><p><a href="https://arxiv.org/abs/2302.08468" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="lever學習用執行結果驗證語言到程式碼生成重點摘要">《LEVER：學習用執行結果驗證語言到程式碼生成》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>LEVER（learning to verify）</strong>：不改動大型程式碼模型（code LLM）參數，改為<strong>訓練一個小型驗證器（verifier）</strong>，依「自然語言輸入＋候選程式＋其執行結果（execution result）」判斷程式是否正確，再把<strong>驗證機率乘上生成機率</strong>、並對「執行結果相同的程式做邊際化（marginalize）」得到重排分數——在 text-to-SQL／table QA／數學推理／基礎 Python 四類基準上，用 code-davinci-002 較「執行錯誤剪枝」基線再提升 4.6%～10.9%，且在四個資料集上全部刷新當時 SOTA。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>Code LLM 在少樣本（few-shot）設定下<strong>精度仍不足</strong>，但抽夠多樣本時常包含正確程式，故「重排候選」有很大潛力。既有做法多靠<strong>測試案例過濾</strong>或<strong>執行一致性／錯誤剪枝</strong>這類啟發式（heuristic）：測試案例在許多真實應用中難以取得；啟發式又無法捕捉執行結果裡「資料型別、值域、變數屬性」等能強力指示程式正確與否的語義特徵。先前 Cobbe et al.(2021)/Shen et al.(2021) 已證明「訓練式驗證器」對<strong>自然語言解</strong>（如數學題）有效，本文要回答：同樣手法能否搬到<strong>程式解</strong>，並善用「執行」這個接地訊號。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>三步驟管線</strong>（以 text-to-SQL 為例）：1) Generation—由 code LLM 溫度取樣 k 個程式、去重成 n 個候選；2) Execution—用執行器得到每個候選的執行結果；3) Verification—用學到的驗證器輸出「該程式正確」的機率。</li>
+<li><strong>驗證器</strong>：二元分類模型 <code>P_θ(v|x, ŷ, E(ŷ))</code>，輸入是「問題描述 x ＋候選程式 ŷ ＋執行結果 E(ŷ)」的簡單串接；用 T5 或 RoBERTa 實作，<strong>規模僅約生成器的 0.5%</strong>。</li>
+<li><strong>重排分數</strong>：先取聯合機率 <code>P_R = P_LM(ŷ|x)·P_θ(v=1|…)</code>（生成機率 × 驗證機率），再<strong>對執行結果相同的候選求和（execution result aggregation）</strong>，鬆綁對程式表面形式的依賴，輸出「執行到最可能結果」的程式。</li>
+<li><strong>訓練</strong>：對訓練集每個輸入取樣、去重，以「執行結果是否等於標準答案」自動打二元標籤（弱監督時只需標準結果 z*、不需標準程式 y*）；損失為 NLL、並<strong>按候選數正規化</strong>避免候選多的例子主導學習。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>四資料集（code-davinci-002）皆刷新 SOTA</strong>：Spider dev 81.9（前 SOTA RASAT 80.5）；WikiTQ test 65.8；GSM8k test 84.5（前最佳 DiVeRSe 83.2）；MBPP test 68.9。</li>
+<li>相對 greedy 提升 6.6%（Spider）～17.3%（WikiTQ）；對較弱的 InCoder／CodeGen，Spider 最高提升約 30%。</li>
+<li><strong>消融</strong>：拿掉執行結果，四基準一致下降（WikiTQ −6.6%、MBPP −5.6% 最明顯），證明執行結果對驗證至關重要；執行結果聚合對 Python 有效、對 SQL 僅微幅（甚至可能因錯誤結果累積機率而反效果）；<strong>弱監督</strong>設定下效果幾乎不損（最多降 1.1%），顯示「執行結果比程式本身更具驗證資訊」。</li>
+<li><strong>校準（calibration）</strong>：驗證器在低分位更會挑出明顯錯誤、生成器在頂端更準，兩者機率相乘互補、四基準皆最佳。少資料時，僅數百例即可學好驗證器（500 例的 T5-base 驗證器勝過微調 T5-3B 生成器約 7%）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>依賴「至少一組輸入＋足夠執行脈絡（如資料庫）」才能執行，某些應用無此條件；且<strong>不能總是假設模型生成的程式可安全執行</strong>。</li>
+<li>主要用 pass@1 評估，對一般程式任務（如 MBPP），pass@k／n@k 可能給出不同觀點。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>直接對應 ai_core <strong>§3.4 治理＝拒絕為預設＋憑證准入</strong>：LEVER 把「執行結果」當成<strong>接地（grounding）憑證</strong>餵給一個訓練式把關者，只放行通過驗證的候選——正是「用可觀測訊號給 LLM 產物發准入證」的具體實作，且<strong>驗證器與生成器分離、僅 0.5% 規模</strong>，示範了「便宜高頻的確定性把關」如何為「貴稀有的生成」兜底（§2 資產工廠 vs 資產消費者）。</li>
+<li>與已入庫對照物形成三角：<strong>CodeT</strong>（用執行一致性／生成測試做無訓練把關）走啟發式路線；<strong>GSM8k verifier（Cobbe 2021）<strong>是訓練式但驗證「自然語言解」；LEVER＝</strong>訓練式 × 驗證程式 × 執行接地</strong>，並以「乘上生成機率＋對相同執行結果邊際化」勝過單純的拒絕取樣。對 ai_core 的啟發：把關器不必大、可用小模型吃「確定性節點（執行器）」的輸出來裁決——貼合「系統＝多數確定性節點＋少數 LLM」的符號神經網路計算圖觀（§1），歸 <strong>I 類</strong>。</li>
+<li>適合做 <strong>程式碼助手上層生成、受約束填碼、執行驗證重排、LLM 產物准入把關</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2302.08468_LEVER.zh-TW.html"><code>../translate/2302.08468_LEVER.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

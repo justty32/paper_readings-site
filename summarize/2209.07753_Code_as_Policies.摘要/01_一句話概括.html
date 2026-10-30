@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2209.07753_Code_as_Policies.%E6%91%98%E8%A6%81.html">回 2209.07753_Code_as_Policies.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Code as Policies（CaP）</strong>：不讓 LLM 輸出自然語言計畫再另外對應到預先訓練好的技能，而是<strong>直接把 LLM 的輸出當成可執行的機器人策略程式（LMP，language model program）</strong>——用少樣本提示把「感知 API＋控制原語 API」組合成含迴圈、條件、第三方函式庫（NumPy、Shapely）呼叫的 Python 程式碼；核心技巧是<strong>階層式程式碼生成（hierarchical code-gen）</strong>：遇到尚未定義的函式就遞迴呼叫另一個 LMP 把它寫出來，此法同時把 HumanEval pass@1 推進到 39.8%（當時 SOTA），並在多種真實機器人平台上示範零額外訓練的語言驅動控制。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>既有「LLM 驅動機器人」的做法（SayCan、Inner Monologue、Socratic Models 等）把 LLM 侷限在<strong>規劃層</strong>：LLM 只挑選、排序一組<strong>事先訓練好的固定技能</strong>（value function 加權的 skill affordance），無法直接介入感知—動作回饋迴路。這導致：(i) 難以表達「看到橘子才後退」這類跨感知—動作耦合的反應式行為；(ii) 無法把「快一點」「用力推」這種模糊描述轉成具體數值（行為常識）；(iii) 無法做「往左移一點點」這種精確空間幾何推理。每新增一種技能或反饋模式都得重新收資料、訓練——資料負擔只是從語言接地轉移到了技能習得。本文問：LLM 除了排計畫，還能不能直接參與策略本身？</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>語言模型程式（LMP）</strong>：任何由 LLM 生成、直接在系統上執行的程式，泛指本文的 policy code。輸入指令以註解形式（<code># ...</code>）給出，LLM 自回歸生成對應 Python 程式碼，經 AST 安全檢查（禁 import、禁 <code>__</code> 開頭變數、禁 <code>exec</code>/<code>eval</code>）後用 Python <code>exec</code> 在受限的 globals（提供的 API）／locals（新變數與函式）作用域中執行。</li>
+<li><strong>Prompt 兩要素</strong>：<strong>Hints</strong>（import 陳述句，告知可用哪些感知/控制 API 及型別提示）＋<strong>Examples</strong>（指令→程式碼的少樣本示範對）。感知與控制 API（如 <code>get_pos</code>、<code>detect_object</code>、<code>put_first_on_second</code>、<code>robot.set_velocity</code>）是<strong>人工預先撰寫並命名良好</strong>的第一方函式庫，LLM 靠函式命名慣例推斷語意並組合呼叫——這些 API 正是把 LMP「接地」到真實機器人系統的介面：感知/控制演算法一旦升級，LMP 策略的能力也隨之提升，不需重新訓練或改 prompt。</li>
+<li><strong>三層生成能力</strong>：(1) 純 Python 運算與第三方庫（NumPy 做座標運算、Shapely 做形狀分析）支撐空間幾何推理；(2) 呼叫第一方 API 組成含 if/else、for/while 的控制流，構成反應式策略（如「當偵測到 X 就後退」的閉迴圈）；(3) <strong>LMP 可組合（composition）</strong>——一個 LMP 的輸出可呼叫另一個專職的 LMP（如 <code>parse_obj</code> 把語言描述解析成物件名稱），把大 prompt 拆成多個小 prompt，兼顧脈絡長度限制與功能準確度。</li>
+<li><strong>階層式程式碼生成（核心貢獻）</strong>：對生成程式碼解析 AST，找出作用域中<strong>尚未定義的函式</strong>，呼叫另一個「函式生成專用」的 LMP 遞迴把它寫出來並加入 scope，此過程對新生成函式的函式體以深度優先重複進行。效果是 prompt 工程師只需給「程式邏輯的粗略草圖」，不必窮舉所有實作細節；生成的程式碼也更符合良好抽象、易讀易複用。函式一旦生成即可<strong>累積進函式庫供後續 LMP 呼叫</strong>，形成隨使用自我擴充的動態程式碼庫。</li>
+<li><strong>執行安全機制</strong>：exec 前的靜態檢查（禁 import／<code>exec</code>/<code>eval</code>／<code>__</code> 變數）是本文對「LLM 生成程式碼可否直接跑在真機上」給出的最基本護欄，但作者也在限制中承認這仍假設所有指令都是可行的，且無法事先判斷回應是否正確。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>HumanEval（Codex davinci，pass@1）</strong>：Flat 34.9% → Hierarchical <strong>39.8%</strong>（當時 SOTA），Greedy 45.7%→53.0%，P@10 75.1%→80.6%，P@100 90.9%→95.7%。</li>
+<li><strong>RoboCodeGen（本文新提的 37 題機器人主題函式生成 benchmark）</strong>：四款 OpenAI 模型（GPT-3 6.7B/175B、Codex cushman/davinci）上 Hierarchical 全面優於 Flat（如 Codex davinci 81%→95%），且符合 scaling law——模型越大、階層式生成的增益越明顯（cushman 上幾乎無增益，暗示需先達到一定程式碼生成能力門檻）。</li>
+<li><strong>模擬桌面操作（對比 CLIPort 監督式模仿學習與純自然語言 LLM 規劃器基線）</strong>：CaP 在「已見指令/已見屬性」長程任務上 97.2%（優於 CLIPort 78.8%、NL Planner 86.4%）；在「未見屬性/未見指令」的長程任務上 80.0%（CLIPort 崩到 0%、NL Planner 64.0%）；在需要精確空間幾何推理、且未見屬性的任務上 CaP 62–73%，而 CLIPort ≈0%、NL Planner 因無法做精確數值推理而完全不適用（N/A）。</li>
+<li><strong>真機示範（無定量指標，只做能力展示）</strong>：UR5e 手臂畫圖（用生成的 2D 路徑點）、UR5e 桌面抓放（含歷史指代「undo that」、幾何/空間描述如「最小的」「最右邊的」）、Everyday Robots 移動操作機器人在真實廚房中的導航＋抓取，並支援跨語言/emoji 指令與跨具身（cross-embodied）計畫。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>CaP 只在「感知輸出的可描述範圍」與「已提供的控制原語」內起作用：目前視覺語言模型無法描述「這條軌跡是否顛簸」或「更接近 C 形」之類的性質；prompt 中能塞入的具名可調參數也有限（過多會使 prompt 過度飽和）。</li>
+<li>無法處理<strong>明顯更長、更複雜、或抽象層級與給定 Examples 不同</strong>的指令——例如「用積木蓋一棟房子」，因為 prompt 中沒有蓋複雜 3D 結構的示範，階層式生成也救不了完全陌生的抽象層級跳躍。</li>
+<li><strong>假設所有指令都可行</strong>，且無法事先（a priori）判斷生成的程式碼/回應是否正確——沒有內建的自我驗證或測試迴圈。</li>
+<li>跨具身能力（同一計畫依不同機器人 API 產生不同實作）在現有 LLM 上仍<strong>脆弱</strong>，可能需要更大、在領域專用程式碼上訓練過的模型。</li>
+<li>感知與控制 API 的<strong>命名與功能都是人工預先設計</strong>的：LLM 只負責「組合」這些既有原語，不會自己發明新的感知/控制能力——這正是下段要展開的天花板。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

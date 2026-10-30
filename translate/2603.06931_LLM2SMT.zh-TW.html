@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>LLM2SMT：用零人類手寫程式碼造出一個 SMT 求解器（Building an SMT Solver with Zero Human-Written Code） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Mikoláš Janota、Mirek Olšák（附屬未列）</p><p>日期：2026-03</p><p>arXiv：2603.06931</p><p><a href="https://arxiv.org/abs/2603.06931" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="llm2smt用零人類手寫程式碼造出一個-smt-求解器">LLM2SMT：用零人類手寫程式碼造出一個 SMT 求解器</h1>
+<h2 id="引言動機">引言／動機</h2>
+<p>「LLM 能否推理、能否寫軟體」被廣泛辯論，但「<strong>LLM 能否寫出『本身會推理』的軟體</strong>」幾無探討。核心問題：LLM 是否對邏輯原理有足夠理解，能在零人類手寫程式碼下造出可靠的 SMT 求解器。</p>
+<h2 id="用-llm-編碼-agent-的開發流程">用 LLM 編碼 agent 的開發流程</h2>
+<p>全部實作由 Anthropic Claude Code agent（Sonnet 4.6）生成。專案從一句引用 Nieuwenhuis–Oliveras 同餘閉包演算法的最小描述起步。方法論要點：</p>
+<ul>
+<li>開發者透過 <code>維護說明</code> 加永久指令（要求求解器跑要設 timeout）。</li>
+<li>agent 在拿到失敗測例時<strong>自主修 bug</strong>。</li>
+<li>LLM 自己生成 fuzzing 與 delta-debugging 工具，比人工除錯省 token。</li>
+<li>用 git 歷史追蹤＋回歸測試支援迭代改進。</li>
+<li><strong>具體範例</strong>最能引導 agent 修正。</li>
+</ul>
+<p>初期開發暴露重大缺口：求解器一開始缺布林連接詞處理、且自寫一個 SAT 求解器而非如預期整合 CaDiCaL（透過 IPASIR-UP）。</p>
+<h2 id="qf_uf-的-dpllt-架構">QF_UF 的 DPLL(T) 架構</h2>
+<p>求解器採 lazy SMT，遵循 DPLL(T) 框架。理論原子變成布林變數交給標準 SAT。CaDiCaL SAT 求解器透過 IPASIR-UP 介面運作，產候選賦值並由理論專屬檢查驗證。QF_UF（無量詞等式＋未解釋函式）處理 Nelson–Oppen 閉包基礎的等式推理。</p>
+<h2 id="同餘閉包實作">同餘閉包實作</h2>
+<p>Nieuwenhuis–Oliveras 演算法做同餘閉包以偵測不一致的項等式。實作含公式 hash-consing 提效，並處理 SMT2 中布林的雙重性質（既當命題又當項）——這一開始導致假 UNSAT。</p>
+<h2 id="lean-證明輸出">Lean 證明輸出</h2>
+<p>不建低階證明，而依賴 Lean 自動化：<code>grind</code> tactic 驗理論引理、<code>bv_decide</code> 處理命題片段。SMT 型別與常數變成 Lean 公理、理論引理變成獨立定理。證明架構須簡化——初期所有假設都當成單一定理內的 hypothesis，在上千假設的問題上導致 Lean 解析失敗。agent 在證明生成上掙扎最久，尤其搞不清「理論引理 vs 最終證明」的區別；人工提供正確 Lean 證明範例至關重要，作者最終須給出 equational diamond 證明結構的具體指引。</p>
+<h2 id="遭遇的關鍵挑戰">遭遇的關鍵挑戰</h2>
+<ol>
+<li><strong>Jagged Intelligence</strong>：agent 擅長複雜推理卻在瑣事翻車——一開始不把 <code>t=t</code> 化簡為 true。</li>
+<li><strong>布林處理</strong>：SMT2 把公式與項混為一談，須明確修正 prompt。</li>
+<li><strong>證明生成</strong>：最難的部分；agent 懂證明結構卻難以忠實編碼計算資訊。</li>
+<li><strong>資源管理</strong>：無 timeout 的程序會默默累積。</li>
+</ol>
+<p>作者指出：「agent 在給定標準工具（fuzzing、delta-debugging）時能有效除錯自己的程式碼。」</p>
+<h2 id="smt-lib-基準評估">SMT-LIB 基準評估</h2>
+<p>用 QF_UF 非增量基準、180 秒 timeout、並行：</p>
+<table>
+<thead>
+<tr>
+<th>求解器</th>
+<th>求解實例數</th>
+<th>獲勝數</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>z3</td>
+<td>7,500</td>
+<td>7,491</td>
+</tr>
+<tr>
+<td>cvc5</td>
+<td>7,494</td>
+<td>7,308</td>
+</tr>
+<tr>
+<td>llm2smt</td>
+<td>7,468</td>
+<td>6,486</td>
+</tr>
+<tr>
+<td>llm2smt-no-prepro</td>
+<td>7,355</td>
+<td>6,150</td>
+</tr>
+</tbody>
+</table>
+<p>有趣的是，<strong>關閉理論傳播反而更好</strong>（7,478 vs 7,468），顯示傳播在這批基準上帶來開銷卻無補償。</p>
+<p>證明認證嘗試：285 認證成功、2,244 因 <code>grind</code> 限制失敗、1,314 timeout、240 超 Lean heartbeat、86 stack overflow。<strong>未發現任何錯誤證明</strong>。</p>
+<h2 id="相關工作">相關工作</h2>
+<p>橫跨 SMT 求解器開發（CaDiCaL、z3、cvc5）、形式驗證框架（Lean）、演算法基礎（同餘閉包、DPLL(T)、Nelson–Oppen），並引用 LLM 引導的形式化與證明生成；本工作代表「推理關於推理」能力的新穎探查。</p>
+<h2 id="局限與結論">局限與結論</h2>
+<p>作者以有保留的肯定作結：在適當鷹架下（fuzzing、delta-debugging、明確資源上限、謹慎輸入規格），LLM agent 能產出有競爭力的求解器，在單一理論上逼近成熟求解器。然而<strong>完整證明認證仍超出當前能力</strong>，雖然 agent 確實理解求解器邏輯與除錯方法論。未來工作：擴展到更多理論、引入 human-in-the-loop 程式碼審查。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2603.06931_LLM2SMT.%E6%91%98%E8%A6%81.html"><code>../summarize/2603.06931_LLM2SMT.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

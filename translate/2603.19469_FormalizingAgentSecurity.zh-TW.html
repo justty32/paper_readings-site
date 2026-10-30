@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>形式化 LLM Agent 安全的框架（A Framework for Formalizing LLM Agent Security） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Vincent Siu, Jingxuan He, Kyle Montgomery, Zhun Wang, Neil Gong, Chenguang Wang, Dawn Song</p><p>日期：2026-03</p><p>arXiv：2603.19469</p><p><a href="https://arxiv.org/abs/2603.19469" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="形式化-llm-agent-安全的框架">形式化 LLM Agent 安全的框架</h1>
+<h2 id="摘要與-1-引言">摘要與 1. 引言</h2>
+<p>相同的 <code>delete file</code> 可是合法清理，也可是資料破壞；差別在誰下令、服務什麼 objective、資訊是否越權流動。Content-only detector 必然在 utility 與 security 間拉扯。本文用 contextual security 統一攻防：task alignment、action alignment、source authorization、data isolation 四個 properties 必須同時成立。</p>
+<h2 id="23-agent-模型與威脅">2–3. Agent 模型與威脅</h2>
+<p>Agent 每步從 user prompt、trajectory、memory 取樣 action，環境 transition 後回 observation。Input 可來自使用者、工具、檔案、API、memory 或 agent；source 分 authenticated／unauthenticated，permission graph 描述來源間可允許的資訊流。</p>
+<p>Execution context 另包含 environment state。威脅者能透過 inputs、tools 或 memory 影響 agent；安全判斷隨 trajectory 與 state 改變，不能只掃一次 prompt。</p>
+<h2 id="4-形式化">4. 形式化</h2>
+<h3 id="41-contextual-security">4.1 Contextual security</h3>
+<p>Action 是否安全取決於完整 context。一次 violation 會污染後續 trajectory，因此 properties 應持續檢查。</p>
+<h3 id="42-五個-oracle">4.2 五個 oracle</h3>
+<p>三個 objective oracles 分別抽取 user prompt 的允許目標、判斷 trajectory 是否服務目標、判斷個別 action 是否服務目標。Instruction attribution 找出哪些 inputs 實際造成 action；source attribution 追這些 inputs 的來源。</p>
+<p>這些是 cryptographic ideal functionality 式的規格，不宣稱可完美實作。Attention、influence method、LLM judge、embedding 與 IFC 只是 approximation。</p>
+<h3 id="43-四個-properties">4.3 四個 properties</h3>
+<p>Task alignment 要求 objective 安全且 trajectory 不 drift。Action alignment 檢查每個 action 的必要性，能抓到整體目標未變但 capability 被濫用。</p>
+<p>Source authorization 追造成 action 的 instruction 是否來自 authenticated source。Data isolation 則對送往 tool destination 的每個 argument，檢查其 source-to-destination edge 是否獲准。</p>
+<p>四者聯合，才能處理 delegated external content：使用者明確要求照 recipe 時，外部烹調步驟可以合法影響 action；外部網頁命令寄出機密資料則同時違反 source／action 條件。</p>
+<h2 id="5-安全-violation-taxonomy">5. 安全 violation taxonomy</h2>
+<p>Indirect prompt injection 不只是「data 裡有 prompt」，而是 unauthenticated input 成為 action instruction，且 action 不服務授權 objective。Direct injection 由 authenticated user 要求推翻 system objective，主要是 task alignment。Jailbreak 是 objective 本身越界；task drift 是 agent 自行擴大目標；capability misuse 是單步不必要；cross-context leakage 違反 data isolation。Confused deputy、malicious tool 與 memory poisoning則跨多個 properties 與時間步。</p>
+<h2 id="6-現有防禦">6. 現有防禦</h2>
+<p>Prompt hierarchy／delimiter 改善 objective／source 表示，training 嘗試學 instruction boundary，policy 與 formal constraints 做 action checks，privilege separation／sandbox 刪除 permission edges。它們通常只覆蓋一兩個 oracle。</p>
+<p>Input detector 缺 causal instruction attribution；output／tool filter 缺 provenance；sandbox 只能限制 privilege 外部，無法判同一 privilege 內的 authorized use。引用 AgentDojo 結果顯示 PI detector／tool filter 的 targeted ASR reduction 86%／88%，但 PI detector 令 benign utility 69.0% 降到 41.5%，說明不精確 oracle 的誤報成本。</p>
+<h2 id="7-開放問題">7. 開放問題</h2>
+<p>需要可部署的 attribution 與 objective judges、跨 action compositional security、dynamic environment、TOCTOU、跨 session memory lineage，以及帶 authenticated sources、allowed objectives、permission flows 的 realistic benchmark。Reasoning trace 只能當 claim，需另行驗證。</p>
+<h2 id="8-討論與限制">8. 討論與限制</h2>
+<p>Instruction 的 operational definition 要先解 causal attribution，且把連續 influence 二值化。框架限於同步單 agent／單 user，未涵蓋 delegated multi-agent authority；不處理 availability。Oracle approximation 在 adversarial input 下可能失效。</p>
+<p>四 properties 從 87 篇攻擊歸納，不是 completeness theorem。它也未完整形式化環境 state 累積造成的 compositional violations。</p>
+<h2 id="9-結論">9. 結論</h2>
+<p>本文貢獻是把隱含授權需求明文化，而非交付新的 defense。它沒有新實驗、dataset 或 software。實務系統要把理想 oracle 降成可標定信心、可附 evidence、可在不確定時要求人類授權的 checks。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

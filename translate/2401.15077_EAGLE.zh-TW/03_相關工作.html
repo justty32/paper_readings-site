@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_相關工作 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2401.15077_EAGLE.zh-TW.html">回 2401.15077_EAGLE.zh-TW 目錄</a>　<a href="02_EAGLE.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-相關工作">5. 相關工作</h2>
+<p>加速語言模型的研究涵蓋蒸餾、量化、剪枝與新架構設計（如 Mamba），皆在降低單次前向延遲。與本文同路線的是推測取樣類框架：早期工作（Stern et al., 2018 Blockwise Parallel Decoding; Sun et al., 2021）加速 greedy 解碼，推測取樣（Leviathan et al., 2023; Chen et al., 2023a）將其推廣到 non-greedy 並<strong>可證明地維持原輸出分佈</strong>。維持分佈不變使加速更困難，許多研究以<strong>有損加速</strong>換取速度：DistillSpec 用 lenience 函數修改接受機率、BiLD 以距離閾值放寬接受、Medusa 用硬閾值與熵相關閾值截斷。<strong>EAGLE 不採用任何鬆弛，維持 LLM 輸出分佈完全不變</strong>。</p>
+<p>各推測取樣方法的差異主要在 drafting 階段：傳統法用低參數版 target LLM 當草稿模型；Self-Speculative Decoding 起草時跳過部分層；SpecInfer 用一組小模型平行起草；Cascade Speculative Drafting 與 Staged Speculative Decoding 級聯不同開銷的草稿模型；Online Speculative Decoding 在查詢分佈上訓練草稿模型；Medusa 等方法不用獨立小 LLM、改用 target LLM 的特徵或權重起草；REST 用檢索起草；LLMA 針對輸入輸出重疊的任務（如語法修正）直接從輸入檢索草稿。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>EAGLE 在<strong>更具規律性的（倒數第二層）特徵層級</strong>自回歸地執行 drafting，並藉由<strong>納入提前一個時間步的 token</strong> 消解預測下一特徵時的取樣不確定性。EAGLE 保證保持 LLM 輸出分佈不變，同時顯著提升生成速度：MT-bench 上比原生自回歸解碼快 <strong>2.1x–3.8x</strong>、比 Lookahead 快 1.7x–2.1x、比 Medusa 快 1.5x–1.6x。</p>
+<h2 id="附錄-a實作細節擇要">附錄 A：實作細節（擇要）</h2>
+<p><strong>A.1 樹結構</strong>：greedy 下取機率最高的 top-k token 當子節點、non-greedy 下取樣 k 個（如根節點 k=4）。樹狀或鏈狀草稿都是 draft 模型跑 5 次前向；驗證階段 target LLM 一次前向得所有 token 機率。樹形基於直覺設計（高機率分支應更深更寬）而未嚴格最佳化，所有實驗共用同一樹形；最佳樹形可能依情境而異（如 bs 大、算力少時宜用小樹），調校樹形有進一步提升空間。</p>
+<p><strong>A.2 多輪推測取樣（Multi-Round Speculative Sampling）</strong>：樹狀草稿在同一位置有 k 個候選 token，需修改取樣演算法——對每個候選遞迴呼叫推測取樣：被拒後不立即從調整分佈取樣，而是以調整後分佈為新目標繼續驗證下一候選；k 個全被拒才直接從最終調整分佈取樣（演算法 1），仍保證輸出 x ~ p。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2401.15077_EAGLE.%E6%91%98%E8%A6%81.html"><code>../summarize/2401.15077_EAGLE.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

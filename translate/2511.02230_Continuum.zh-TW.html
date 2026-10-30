@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Continuum：以 KV Cache TTL 高效且穩健地排程多輪 LLM Agent（Continuum: Efficient and Robust Multi-Turn LLM Agent Scheduling with KV Cache Time-to-Live） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Hanchen Li, Runyuan He, Qiuyang Mang, Qizheng Zhang, Huanzhi Mao, Xiaokun Chen, Hangrui Zhou, Alvin Cheung, Joseph Gonzalez, Ion Stoica</p><p>日期：2025-11</p><p>arXiv：2511.02230</p><p><a href="https://arxiv.org/abs/2511.02230" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="continuum以-kv-cache-ttl-高效且穩健地排程多輪-llm-agent">Continuum：以 KV Cache TTL 高效且穩健地排程多輪 LLM Agent</h1>
+<h2 id="摘要與-1-引言">摘要與 1. 引言</h2>
+<p>Inference engine 通常在一輪 decoding 完成後把 KV cache 視為可丟棄；agent 卻會短暫呼叫工具後立刻回來。Eviction 不只帶來 prefill／reload，也使回來的 request 排在已占 GPU 的工作後面。Continuum 選擇性 pin cache，依成本效益決定 TTL，過期自動回收，並用 program-level FCFS 保留多輪連續性。</p>
+<h2 id="23-背景與-workload">2–3. 背景與 workload</h2>
+<p>Static DAG scheduler 不適合 runtime 才展開的 ReAct。Autellix 等 program scheduler 沒把 tool gap 納入 cache；InferCept 雖能 preserve／swap，主要比較 immediate reload 與 occupation cost，漏掉每輪重排隊。</p>
+<p>100 個 SWE-Bench traces 平均 10.9 turns、每 program 70,126 tokens；BFCL 平均 6.3 turns、93,256 tokens。工具時間變異很大，最慢 10% <code>fetch_url</code>／<code>cd</code> 占 delay 52.5%／94.1%。因此永遠 pin 與立即 evict 都不穩健。</p>
+<h2 id="4-排程演算法">4. 排程演算法</h2>
+<p>對每個 tool call，系統估 cache 被 evict 後的 recompute／reload 與回來後 queueing delay，作為 retention benefit；GPU memory 被占用而延遲其他工作的量是 cost。歷史 tool-call CDF 估不同 TTL 下回來的機率。TTL 只給 benefit 高於 cost 的 request，超時後可立即釋放。</p>
+<p>Program-level FCFS 以整個 agent program 的 arrival time 排優先序，使較早開始的多輪工作不會在每次工具回來時重新落到隊尾。Cold start 以 profile 與保守 threshold 處理。</p>
+<h2 id="5-系統">5. 系統</h2>
+<p>Tool-call handler 從模型輸出辨認 function 與 arguments，啟動外部工具並通知 scheduler。Scheduler 維護 pinned-program TTL map；完成 program、TTL 到期或 memory pressure 時釋放。每組 hardware/model 離線 profile CPU bandwidth 與 prefill-context curve，少於十分鐘。</p>
+<h2 id="6-評估">6. 評估</h2>
+<p>模型為 Llama-3.1 8B／70B、Gemma-3 12B；硬體含 A100、H100、B200。Workload 為 SWE-Bench、BFCL、OpenHands，基線為 vLLM、LMCache、Autellix、InferCept、SGLang、Dynamo。</p>
+<p>Trace replay 的 delay 改善 1.12–3.66×、throughput 1.10–3.22×。Llama-8B 相對 vLLM 的平均 response time 最高減半；turn 越多，baseline 越惡化，Continuum 相對穩定。P90／P95、CPU／SSD offload、batch 與 chunk size 變化下也維持優勢。</p>
+<p>500 個 real SWE-bench Verified agents 在內部 H100 testbed 上，同 pass rate 的 delay 最高改善 8.18×。OpenHands rollout 每分鐘 steps 為 144.9，高於 vLLM 93.4 與 ThunderAgent 114.8。額外排程成本只有單位毫秒。</p>
+<h2 id="78-相關工作結論">7–8. 相關工作、結論</h2>
+<p>Continuum 的新意不是新的 attention kernel，而是將 tool gap、跨 turn queueing 與 bounded retention 合成 agent-aware scheduler。它能疊在 CPU／SSD offload 與 distributed inference 上。</p>
+<h2 id="限制">限制</h2>
+<p>TTL 預測依賴歷史 tool latency 與 workload 穩定；突然分布漂移會造成 suboptimal pinning。論文 headline 的「over 8x average JCT」比正文證據更強：一般實驗為 1.12–3.66×，8.18×是特定內部場景的最高 delay 改善，且沒有同樣清楚的 8.18× throughput 表格支持。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

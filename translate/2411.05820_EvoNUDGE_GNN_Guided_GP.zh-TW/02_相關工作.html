@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_相關工作 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2411.05820_EvoNUDGE_GNN_Guided_GP.zh-TW.html">回 2411.05820_EvoNUDGE_GNN_Guided_GP.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-相關工作">4. 相關工作</h2>
+<p>最鮮明的兩個特徵：(i) 演化前先得到的<strong>解的庫</strong>、(ii) 合成過程中引入<strong>神經網路</strong>。就庫而言，NUDGE 類似維護代碼片段庫（archives）的方法（Rosca &amp; Ballard 1996、Haynes 1997、run transferable libraries 等），但這些多在演化過程中填庫且為「通用」庫；NUDGE 用的是<strong>演化前預計算、且以問題為條件、為其調校</strong>的庫（過去罕見，如 semantic backpropagation）。就神經網路而言，與 neural program synthesis 相關：最早如 DeepCoder（把輸入-輸出範例映到指令機率分布、再參數化搜尋策略，配合搜尋得 2x–907x 加速），後被混入 GP；DeepCoder 概念上類似 NUDGE（假設可從範例直接得到有用資訊、用網路 prime 後續搜尋），但它只在<strong>單一指令層級</strong>導引，NUDGE 提供<strong>完整子程式</strong>，且用更複雜的 GNN。據作者所知，這是<strong>首個用圖表示 + GNN 輔助 GP</strong> 的研究。更廣脈絡上，純神經生成式 SR（直接吐符號 token，如 Biggio 2021、Kamienny 2022）效能亮眼，但有 LLM 式限制：無法保證語法正確、缺透明、難外推（傾向在訓練樣本間內插）；NUDGE 強制按文法漸進建式，故<strong>語法正確 by construction</strong>。本工作屬<strong>神經符號</strong>範疇。</p>
+<h2 id="5-實驗">5. 實驗</h2>
+<p>目標：確認 NUDGE 的導引是否讓 EvoNUDGE 更有效率地解 SR。</p>
+<h3 id="51-sr-問題樣本">5.1 SR 問題樣本</h3>
+<p>採樣含 1–6 個輸入變數、常數 {0,1,2,3,π}、二元運算子與函數集的表達式；對每式採樣資料點（自變數均勻取自區間）。允許高度 ≤6，得 <strong>1032 題</strong>，隨機分成<strong>訓練 522／測試 510</strong>。</p>
+<h3 id="52-gnn-訓練">5.2 GNN 訓練</h3>
+<p>依 §3.2 程序在訓練集上監督訓練，以驗證集（60 題）loss 停滯為停止條件；Adam。在 NVIDIA DGX（8 GPU）約 <strong>24 小時</strong>。強調這是<strong>一次性</strong>過程——訓練好的同一個 GNN 用於後續所有實驗。</p>
+<h3 id="53-對比方法配置">5.3 對比方法配置</h3>
+<p>共同藍圖：世代式 GP（初始化、變異、搜尋運算子）。EvoNUDGE 與 GP 幾乎相同，只差初始化與變異運算子。所有配置族群 1000、演化 50 代；MSE 適應度、錦標賽選擇（size 7）、單點交叉（機率 0.8，否則複製）、兩子代各以 0.2 機率變異、超過高度 13 的後代丟棄換回父代；輸出為全程最低 MSE 解。EvoNUDGE 先查 NUDGE 得庫（做 <em>q</em> 次擴展、每輪擴展 saliency 最高的若干節點）。因 <em>q</em> 決定庫中子樹高度（強烈影響表現），對 <em>q</em>=2,4,6 各做實驗並設對應 GP 控制組以求公平。比較配置含：<em>I</em>（僅 library 初始化）、<em>M</em>（僅 library 變異，機率 0.2）、<em>IM</em>（兩者兼用）等；主基線 GP，也試純 NUDGE。實作基於 <strong>DEAP</strong>。</p>
+<h3 id="54-結果">5.4 結果</h3>
+<p>在 510 測試題上（成功＝測試 MSE 低於閾值）：<strong>EvoNUDGE 對所有 <em>t</em> 系統性勝過 GP</strong>，且增益隨 <em>t</em> 增大、某些配置達約 <strong>10 個百分點</strong>；只靠 informed 變異（<em>M</em>、<em>IM</em>）明顯優於混用 informed + uninformed 變異；整體 <em>M</em> 最佳。</p>
+<p>但差異不全來自問題特定導引，也有「庫的問題無關分布不同於基線運算子分布」帶來的 <strong>method bias</strong>。為區分，引入 <strong>EvoRnd</strong> 控制組：解問題 P 時查詢 NUDGE 用的卻是別題 P&#x27; 的庫（隨機置換 510 個庫、依 arity 分組後組內置換）。結果 EvoRnd 平均優於對應 GP（證 method bias 本身有正貢獻；推測來自：訓練/測試同分布、庫不含語意重複），但 EvoRnd 整體<strong>明顯差於 EvoNUDGE</strong> → NUDGE 確實傳遞了<strong>問題特定知識</strong>。</p>
+<p><strong>純神經 NUDGE</strong> 成功率遠差（多數測試題需高度 &gt; <em>q</em> 的樹）；即使讓它跑遠久於其他配置（60 秒），也僅提升約 1 個百分點——因擴展越大查詢 GNN 越貴、導引越不準、成功率停滯。<strong>EvoNUDGE 總時間不到 GP 兩倍</strong>。</p>
+<h3 id="55-其他基準">5.5 其他基準</h3>
+<p>在 <strong>AI Feynman</strong> 套件（移除用到本指令集沒有的函數之 3 題，剩 97 題）上，各配置成功率整體較低（屬獨立分布所致），但配置間關係大致不變，最佳 EvoNUDGE 仍領先 GP 近 <strong>10 個百分點</strong>。</p>
+<h2 id="6-討論與結論">6. 討論與結論</h2>
+<p>演化算法可被一個<strong>基於 GNN 的神經符號系統</strong>從問題實例汲取的知識有效且輕易地導引；EvoNUDGE 混合系統性勝過其兩個組件，展現協同。NUDGE 對 SR 領域有深刻洞察（能追蹤符號式執行、檢視其對資料的作用、把資訊關聯到以因變數表示的搜尋目標）。本文的混合方式對演化流程介入極小（只重定義運算子的子樹來源），利於與純演化配置直接對比，但這只觸及可能性的表面——例如目前<strong>忽略 saliency 數值</strong>（可帶更細緻的「子表達式有多有用」資訊）；另一選項是用<strong>強化學習</strong>把 GNN 與 GP 一起訓練（GNN 選庫＝動作、GP 結果＝獎勵），因目前 EvoNUDGE 的 GNN 訓練對演化算法的具體需求是 agnostic 的。NUDGE 也可推廣到 SR 以外、乃至程式合成以外、凡部分/完整候選解可表示為圖的領域。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2411.05820_EvoNUDGE_GNN_Guided_GP.%E6%91%98%E8%A6%81.html"><code>../summarize/2411.05820_EvoNUDGE_GNN_Guided_GP.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

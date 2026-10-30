@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_貝葉斯推論、物理與程式合成的潛力 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2506.08756_BayesianInversePhysics.zh-TW.html">回 2506.08756_BayesianInversePhysics.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="3-貝葉斯推論物理與程式合成的潛力">3. 貝葉斯推論、物理與程式合成的潛力</h2>
+<h3 id="31-用於感知與動作的可微分物理">3.1 用於感知與動作的可微分物理</h3>
+<p>電腦圖學已研究在算力與物理真實間平衡的物理渲染近似。近期<strong>可微分物理圖學引擎</strong>可從多視角重建物體；可用可微分物理函數<strong>以梯度下降優化其輸入</strong>找目標狀態 → 一大類最優控制（軌跡優化、MPC）。新發展的可微分流體彈性接觸模型可增強接觸不變方法；可微分物理模擬器讓機器人能用高層描述學會用工具。已有大量可微分物理模擬器（MuJoCo、Brax 等），並與神經網路結合以提供更準動力學或縮小 sim-to-real 落差。</p>
+<p>除最優控制外，<strong>RL</strong> 是第二條有望的控制範式；與最優控制不同，RL 不假設已知動力學、從互動經驗學決策。**model-based RL（MBRL）**最能受惠於可微分物理引擎——以環境模型規劃可顯著提升 RL 樣本效率（代價是更高算力）；用算力高效且物理可靠的可微分動力學模型可緩解此取捨；有可微分模擬器的 MBRL 還能算策略誘導的一階梯度（FO-MBRL）。</p>
+<p>多數可微分渲染與機器人模擬模型<strong>不需額外訓練資料或黑箱</strong>即可做動態高層任務或重建新場景；現有物理描述夠準夠快，可在合理時間內被優化以解任務。但缺資料的代價是「模型對系統與環境的表示須保持貼近」——環境仍須預先定義。要處理動態環境與物理變化，需要能<strong>估計自身不確定性</strong>並<strong>擴展模型描述</strong>的模型。</p>
+<h3 id="32-用於不確定性感知決策的貝葉斯推論">3.2 用於不確定性感知決策的貝葉斯推論</h3>
+<p>理解物理世界不只要解逆問題，還要量化不確定性 → 貝葉斯推論是整合先驗知識、用資料精煉模型、確保穩健不確定性感知預測的強力框架。物理模擬（影像渲染器、機器人模擬器）用模型參數描述動力學：<strong>正問題</strong>= 給定參數預測量測（如由網格頂點與光源渲染影像）；<strong>逆問題</strong>= 給定量測預測參數（由影像反推頂點與光參數）。逆問題常有多參數對應同一觀測，需用物理描述或額外資訊約束。貝葉斯工作流用 Bayes 定理編碼不確定性與知識；算所有解很貴，故可只算最可能單解（<strong>MAP 最大後驗估計</strong>）。</p>
+<p>自動微分一個常被忽略的應用是<strong>機率程式設計</strong>：物理模擬導數的可得性，使可用需要目標分布梯度的高效推論算法如 <strong>HMC</strong>；也可用近似/變分推論（<strong>VI</strong>）最小化 KL 散度；Laplace 近似需算 Hessian；最大熵原理可表述為梯度下降建先驗。自動微分引擎在 GPU 上的普及帶動大規模貝葉斯推論框架（tensorflow-probability、gen、numpyro、blackjax）。導數不只用於黑箱點估計，也用於算物理接地模型的不確定性。<strong>貝葉斯推論雖算力複雜，但靠先驗與已知模型，所需樣本與參數遠少於 DL</strong>；與物理、DL 整合提供不確定性感知且能持續學習的平衡取捨（圖 1 右）。</p>
+<h3 id="33-整合深度學習與程式合成以建模世界">3.3 整合深度學習與程式合成以建模世界</h3>
+<p>多數機率程式設計框架聚焦靜態機率圖模型，但「像人一樣學習與思考的機器」須能<strong>學習並擴展其世界模型</strong>。持續 DL 策略用重播或部分增量調整最後輸出層對抗災難性遺忘，但把顯式知識編入神經網路並使其演化仍是神經符號 AI 開放難題。可行選項是用<strong>程式與程式合成</strong>：SOTA 程式合成靠 <strong>DSL + 程式庫 + 搜尋策略</strong>自動生成功能程式；DSL 提供結構化表示讓系統高效探索層級式程式樹，但暴力搜尋不可行 → <strong>DL 可管理樹搜尋</strong>（評分、排序、剪枝）以提效。</p>
+<p>機率程式設計可用 **RJMCMC（可逆跳躍 MCMC）**平衡程式複雜度與準確度——在不同參數維度間跳躍做自適應模型選擇，<strong>天然偏好更簡單高效的模型</strong>；動態探索複雜與簡單解，能彈性合成滿足功能規格又最小化不必要複雜度的程式。程式合成 +（深度）RL 也提供多條研究路徑（RL 微調程式合成、用程式合成引導 RL、用程式合成改進策略）。</p>
+<h2 id="4-未來研究路線圖圖-2">4. 未來研究路線圖（圖 2）</h2>
+<p>提出的神經符號路線圖優先「物理接地且不確定性感知」的推理以達可靠真實互動。此框架中 <strong>DL 與基礎模型不是主工具，而是物理模型的補充</strong>——用於學殘差成分、找資料驅動先驗、或初始化優化問題。整合對終身學習系統至關重要（程式合成可持續擴展機器人初始知識）。短期路線圖整合物理、貝葉斯、程式合成：</p>
+<ul>
+<li><strong>DSL 與原語</strong>：定義通用於多種機器人任務、含貝葉斯推論與可微分物理模擬器的 DSL 與可重用可擴展原語（借鏡 Pyro、JAX）。</li>
+<li><strong>可微分物理</strong>：整合多種物理模擬器（剛體 MuJoCo、流體彈性接觸模型、可微分渲染器）；物理一致性可<strong>剪枝程式合成的不可行解</strong>。</li>
+<li><strong>貝葉斯推論</strong>：在 DSL 內實作機率模型、用 VI 處理算力複雜度。</li>
+<li><strong>深度學習整合</strong>：naive 程式合成是大離散空間搜尋、缺可微連續搜尋空間無法直接用梯度優化 → <strong>神經搜尋 + LLM</strong> 提供出路。</li>
+<li><strong>程式合成做持續程式庫學習</strong>：迭代精煉並合成符號程式庫、更新知識 → 保留舊知識且天生可適應；RJMCMC 開啟<strong>貝葉斯程式合成</strong>。</li>
+</ul>
+<p><strong>挑戰</strong>：貝葉斯逆物理需大量模擬與高維抽樣 → 推論算力昂貴、難即時用於機器人決策 → 需高效近似/平行化/代理模型。建貝葉斯模型需謹慎選先驗與似然，限制了模型構建的自動化（未來可自動化先驗選擇並保物理一致）。瞄準長期真實部署需更多新型 benchmark 與實機測試。最後，符號程式合成、神經網路、可微分物理三者的無縫整合本身是巨大挑戰（須確保離散符號表示與連續機器人動作的相容）。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>神經網路近期進展吸引大量私人投資，推動通用函數逼近器；龐大私有資料與算力恐養成「越來越大的資料集與黑箱模型」的研究文化，耗電如核電廠——然而人腦僅約 20 瓦運作。更有原則的做法是<strong>先把我們已知的物理近似編入模型</strong>，作為「受程式合成與機率程式設計啟發的模型建構算法」的基礎，達成更高效可解釋的學習。當前基礎模型在通用機器人上受限，但其專長技能對封閉環境的明確任務仍有價值。我們主張探索能改善泛化、透明、安全，同時降低資料與算力需求的替代方案。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2506.08756_BayesianInversePhysics.%E6%91%98%E8%A6%81.html"><code>../summarize/2506.08756_BayesianInversePhysics.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

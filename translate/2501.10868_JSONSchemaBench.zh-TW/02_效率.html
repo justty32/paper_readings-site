@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_效率 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2501.10868_JSONSchemaBench.zh-TW.html">回 2501.10868_JSONSchemaBench.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E8%A6%86%E8%93%8B%E7%8E%87.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-效率">4. 效率</h2>
+<p>受約束解碼的樸素實作會為標準 LM 推論增加開銷：每步的遮罩計算，以及可選的一次性文法編譯。但多種最佳化可大幅降低開銷：遮罩計算可與 LM 前向傳播平行、文法編譯可與 prefill 計算並行；文法快取、基於約束的推測解碼（speculative decoding）也能進一步降低開銷。</p>
+<p><strong>指標</strong>拆為三項：</p>
+<ul>
+<li><strong>GCT（Grammar Compilation Time，文法編譯時間）</strong>：花在文法編譯上的時間（若適用）。</li>
+<li><strong>TTFT（Time to First Token，首 token 時間）</strong>：從開始生成到產出第一個 token 的時間。</li>
+<li><strong>TPOT（Time per Output Token，每輸出 token 時間）</strong>：第一個 token 之後平均每 token 的生成時間。</li>
+</ul>
+<h3 id="41-設定">4.1 設定</h3>
+<p>效率取決於模型大小與 tokenizer 詞彙量。以 <strong>Llama-3.1-8B-Instruct</strong> 搭 <strong>Llamacpp</strong> 推論引擎作為 Outlines、Guidance、Llamacpp 的後端；因 XGrammar 不支援 Llamacpp 後端，另補一組以 Hugging Face Transformers 為推論引擎的 XGrammar（與 Guidance）實驗。硬體為單張 NVIDIA A100-80GB + AMD EPYC 7543（12 核），batch size = 1。</p>
+<p><strong>消除覆蓋率偏差（關鍵）</strong>：效率指標只對「引擎能處理的實例」有意義。不同引擎覆蓋率不同，低覆蓋率引擎往往只處理較簡單、較短的 schema，這些自然編譯與生成得更快。若在各自能覆蓋的實例上平均，會偏袒低覆蓋率引擎。為求公平，<strong>只在所有引擎都覆蓋的實例交集上</strong>計算效率指標。</p>
+<h3 id="結果table-2table-3取樣中位數">結果（Table 2、Table 3，取樣中位數）</h3>
+<p>以 LlamaCpp 為推論引擎（Table 2，摘 GlaiveAI 一列）：LM only 的 TTFT 0.10 s、TPOT 15.40 ms；<strong>Guidance</strong> GCT 0.00、TTFT 0.24、TPOT <strong>6.37 ms</strong>（最快）；Llamacpp GCT 0.05、TPOT 29.98；<strong>Outlines</strong> GCT <strong>3.48 s</strong>、TTFT 3.65、TPOT 30.33（明顯偏慢）。</p>
+<ul>
+<li><strong>文法編譯時間</strong>：Guidance 與 Llamacpp 在生成過程中<strong>動態計算</strong>約束，編譯時間極小；XGrammar 有非平凡的編譯步驟，但靠與 prompt prefill 並行大幅緩解其影響；Outlines 把 JSON schema 轉成正則約束，編譯時間顯著偏高（Table 2 中 GCT 隨難度升到 3–8 秒）。</li>
+<li><strong>每 token 時間</strong>：Outlines 與 Llamacpp 的吞吐明顯低於 LM-only，而 <strong>Guidance 反而比 LM-only 還高效</strong>（靠 guidance acceleration 跳過某些生成步）。以 HF Transformers 後端比較（Table 3），Guidance 的 TPOT（約 36–44 ms）顯著優於 XGrammar（約 65–67 ms）。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

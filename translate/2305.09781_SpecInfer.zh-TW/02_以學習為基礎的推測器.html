@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_以學習為基礎的推測器 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.09781_SpecInfer.zh-TW.html">回 2305.09781_SpecInfer.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%B3%BB%E7%B5%B1%E8%A8%AD%E8%A8%88%E8%88%87%E5%AF%A6%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-以學習為基礎的推測器">3. 以學習為基礎的推測器</h2>
+<p><strong>動機（表 1）</strong>：既有序列式推測只讓 SSM 產生單一序列由 LLM 驗證，但單一序列的對齊成功機率會隨期望對齊長度<strong>指數衰減</strong>，且每步只有一個候選 token。若鼓勵每步有更多樣的候選，「LLM 解出的 token 落在候選池中」的機率就能大幅提升。表 1（以 LLaMA-68M 的 top-k token 驗證 LLaMA-7B）顯示：相比只用 top-1，用 top-5 可把成功率由 70% 提到 89%（貪婪解碼）、由 57% 提到 97%（隨機解碼）。</p>
+<p><strong>定義 3.1（Token Tree）</strong>：token tree N 是一棵樹，每個節點 u 標註一個 token tᵤ，pᵤ 為其父節點；節點 u 對應的序列 Sᵤ 由父節點序列與 {tᵤ} 串接而成。</p>
+<p><strong>Expansion-based（擴張式）建樹</strong>：在單一 SSM 的一個解碼步驟內導出多個 token。動機觀察：當 SSM 與 LLM 不對齊（top-1 不同）時，LLM 選的 token 通常仍落在 SSM 的 top-k（k 很小）內。直接每步取 top-k 會令序列數指數增長，故採用<strong>靜態擴張配置</strong>——以整數向量 ⟨k₁, k₂, …, kₘ⟩ 表示（m 為最大推測步數，kᵢ 為第 i 步每個 token 要擴張的分支數）。例如 ⟨2,2,1⟩ 產生四條序列。實驗顯示即使簡單的靜態策略也能得到高準確的推測結果；動態擴張留作未來工作。</p>
+<p><strong>Merge-based（合併式）建樹</strong>：結合<strong>多個 SSM</strong> 共同預測 LLM 輸出。SpecInfer 用<strong>非監督式</strong>方法、借助 <strong>adaptive boosting</strong> 對一組 SSM 做 boost-tune：把文字語料（評測用 OpenWebText）轉為 prompt 樣本、用 LLM 為每個 prompt 生成序列；先把第一個 SSM 微調到極致並標記「SSM 與 LLM 生成相同後續 token」的樣本，再濾除這些已對齊樣本、用剩餘樣本微調下一個 SSM，逐一重複，得到一組<strong>多樣化</strong>、其聚合輸出與 LLM 高度重疊的 SSM。所有 SSM 推論延遲相同，以<strong>資料平行</strong>分散於多 GPU 平行執行，故用多個 SSM 既不增延遲也不增每卡記憶體。多個 SSM 各輸出一棵樹，再由 <strong>token tree merge</strong>（定義 3.2）聚合成單一樹（合併樹涵蓋所有原始序列）。除 boosting 外，voting/bagging/stacking 等其他 ensemble 法留待未來探索。</p>
+<h2 id="4-token-tree-驗證器">4. Token Tree 驗證器</h2>
+<p>驗證器吃進推測器產生的 token tree，對 LLM 輸出驗證其正確性。核心想法：對 LLM 參數只做<strong>單一 pass</strong>，同時驗證樹中所有序列，藉此機會性地一次解出多個 token。關鍵挑戰是如何高效計算樹中所有序列的注意力分數，為此提出 <strong>tree attention（樹狀注意力）</strong>，把注意力機制由序列推廣到樹；並開發<strong>樹狀平行解碼</strong>平行解出樹中所有 token。</p>
+<h3 id="41-tree-attention">4.1 Tree Attention</h3>
+<p>標準 Transformer 的自注意力對序列計算 Q/K/V 與 softmax，並施加<strong>因果遮罩（causal mask）</strong>：計算第 j 個 token 時，所有後續 token 的注意力分數設為 −∞（保證 softmax 輸出為 0），以維持因果性。</p>
+<p><strong>定義 4.1（Tree Attention）</strong>：對 token tree N 中任一節點 u，其 tree attention 定義為對其代表序列 Sᵤ 做原始序列注意力的輸出，即 TreeAttention(u) = Attention(Sᵤ)。由於每條序列都被合併樹的某節點涵蓋，對整棵樹做 tree attention 即可一次取得所有序列的注意力輸出。</p>
+<h3 id="42-樹狀平行解碼">4.2 樹狀平行解碼</h3>
+<p><strong>KV 快取衝突問題</strong>：序列注意力可快取每個 token 的 K/V 重用，因因果關係保證其不變。但樹中不同序列可能在同一位置有<strong>衝突</strong>的 KV（如序列 (t₂,t₃,t₄,t₅) 與 (t₂,t₃,t₈,t₉) 在第三、四個位置的 K/V 不同）。若對每條序列各用一份 KV 快取（序列式解碼），則共享前綴會重複運算、且每序列各啟一個 kernel 帶來啟動開銷。SpecInfer 提出兩項技術：</p>
+<ul>
+<li><strong>深度優先搜尋（DFS）更新 KV 快取</strong>：不為各序列各存 KV，而是以 DFS 走訪 token tree（如 t₂, t₃, …, t₉），全樹<strong>共用同一份 KV 快取</strong>，在計算新 token 的注意力時維持其所有前置 token 的正確 K/V。</li>
+<li><strong>拓樸感知因果遮罩（topology-aware causal mask）</strong>：為把全樹注意力融進<strong>單一 kernel</strong>，SpecInfer 依樹的拓樸（而非序列拓樸）在快取中存放所有 token 的 K/V。單一 kernel 會使某些不在同一序列的 token 對彼此產生注意力（違反因果，如 t₇ 用到不在其序列的 t₅），故依樹拓樸更新因果遮罩加以修正。此法算出的注意力輸出與逐步解碼<strong>完全相同</strong>，但 kernel 啟動次數遠少於序列式解碼。</li>
+</ul>
+<h3 id="43-token-驗證">4.3 Token 驗證</h3>
+<p>以樹狀平行解碼算出 tree attention、為每個節點 u 產出一個 token O(u) 後，驗證器對照 LLM 檢查推測 token 的正確性，支援貪婪與隨機兩種取樣。</p>
+<p><strong>貪婪解碼</strong>：從樹根出發，逐節點檢查。對節點 u，若它有子節點 v 的 token 等於 LLM 對 u 的輸出（t_v = O(u)），則此步推測成功、移往 v 繼續；若無子節點命中 LLM 輸出，則把 O(u) 加為已驗證節點並終止。所有已驗證節點附加到生成序列 V。此法可機會性地一次解出多個 token，同時保持與逐步解碼相同的生成結果。</p>
+<p><strong>隨機解碼與 multi-step speculative sampling（MSS）</strong>：為保持隨機解碼的分佈，提出 MSS 演算法（Alg. 2 之 VerifyStochastic）。對每個非葉節點 u，隨機從其子節點集合 H 逐一取候選 x_s，抽 r∼U(0,1)，若 r ≤ P(x_s|u,Θ_LLM)/P(x_s|u,Θ_SSM_s) 則 x_s 通過驗證、附加並下移；否則把 LLM 的殘差分佈正規化為 norm(max(0, P(x|u,Θ_LLM) − P(x|u,Θ_SSM_s)))、將 x_s 從 H 移除，再試下一候選。若所有子節點皆失敗，則直接從 LLM 分佈取樣下一個 token。</p>
+<p><strong>定理 4.2</strong>：MSS 取樣 token 的分佈與逐步解碼的分佈<strong>完全相等</strong>（可證明地保持生成品質）。<strong>定理 4.3</strong>：MSS 的拒絕機率<strong>一致地低於</strong>「naive sampling（NS，直接從 LLM 取樣後檢查是否為子節點）」。有別於既有序列式的單步推測取樣，MSS 對 token 樹的所有分支做<strong>多步</strong>驗證以最大化成功率；且不僅適用多 SSM 的 merge 法，也支援單一 SSM 的 expansion 法與 top-k 取樣。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

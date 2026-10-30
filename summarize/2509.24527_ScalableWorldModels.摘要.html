@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Training Agents Inside of Scalable World Models 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Danijar Hafner、Wilson Yan、Timothy Lillicrap</p><p>日期：2025-09-29（v1，cs.AI）</p><p>arXiv：2509.24527</p><p><a href="https://arxiv.org/abs/2509.24527" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="training-agents-inside-of-scalable-world-models-重點摘要">Training Agents Inside of Scalable World Models 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>Dreamer 4 把可即時互動的 video world model、task-conditioned policy 與離線 imagination RL 放進同一套 scalable transformer，使 agent 不接觸 Minecraft 環境也能從固定資料學會長程操作，並首次在純離線設定取得鑽石。</p>
+<h2 id="問題">問題</h2>
+<p>既有 Dreamer 類模型能在狹窄環境內快速學控制，卻不易擬合複雜視覺分佈；大型 controllable video model 雖能生成多樣場景，對物件互動與遊戲機制仍不夠精準，推論成本也常高到不適合大量 imagination training。本文要同時解決三件事：世界模型必須準確預測低階 action 的後果、單一 GPU 能即時 rollout，policy 還能完全在固定離線資料與模型想像中改善。</p>
+<p>Minecraft diamond challenge 把問題推到長程極端。玩家從空 inventory 與隨機世界起步，要從 raw pixel 操作滑鼠鍵盤，串起採集、合成與工具升級。熟練人類平均需要二十分鐘、約二萬四千個 action 才取得鑽石（作者自報）。</p>
+<h2 id="方法架構">方法架構</h2>
+<p>Dreamer 4 分三階段。第一階段先訓練 causal tokenizer，再預訓練 action-conditioned dynamics。tokenizer 用時間因果 attention 把影片壓成 continuous representation，並以 masked autoencoding 強化空間一致性；dynamics 在 action 與 representation 交錯序列上做 shortcut forcing。</p>
+<p>shortcut forcing 把 diffusion forcing 與可變 step size 的 shortcut model 合起來，讓每個生成 frame 只需少量 forward pass。作者改用 clean representation 的 x-prediction，而非容易在逐幀 rollout 累積高頻誤差的 v-prediction；實作用四次 forward pass 生成一幀（作者自報）。transformer 再以空間與時間 axial attention、較稀疏的 temporal layer，以及 GQA 降低運算與 KV cache 成本。</p>
+<p>第二階段把 task token 插入 dynamics transformer，以 multi-token prediction 同時學 policy 與 reward。第三階段從離線資料的 context 啟動想像 rollout，由凍結的 world model 產生 representation、policy 取 action、reward 與 value head 標註回報；只更新 policy 與 value head。policy 使用只看 advantage 正負號的 PMPO，再以凍結 behavior policy 作 prior，避免離線 RL 遠離合理 action 分佈。</p>
+<h2 id="作者報告的結果">作者報告的結果</h2>
+<p>主要模型共二十億參數，其中 tokenizer 四億、dynamics 十六億，訓練使用 256 到 1024 顆 TPU-v5p（作者自報）。Minecraft 實驗使用 VPT contractor dataset 的 2541 小時、360p、每秒二十幀 gameplay，評估則在一千個六十分鐘 episode 上統計 milestone 成功率（作者自報）。對照的 VPT offline agent 使用二十七萬小時合成標註 YouTube 影片，因此 Dreamer 4 的 action data 約少一百倍（作者自報）。</p>
+<p>VPT finetuned agent 取得 stick 的成功率為 53％；Gemma 3 VLA 取得 iron pickaxe 的成功率為 11％（作者自報）。Dreamer 4 在 stone pickaxe 以前的 milestone 都超過 90％，iron pickaxe 為 29％，最終在 0.7％ episode 取得 diamond（作者自報）。作者並報告 imagination RL 相較 behavior cloning，任務越難時成功率與到達速度改善越明顯。</p>
+<p>human interaction 評估讓真人從同一張起始影像直接操作 world model，涵蓋挖坑、築牆、砍樹、放置與搭乘船、使用 crafting bench 與 furnace 等任務。作者質化展示 Dreamer 4 能維持手持物與建造結果，且在放置指定方塊形狀的案例成功，Oasis 與 Lucid-v1 則出現畫面退化或幻覺。raw 沒有保留這一節後續的量化表格，因此此處不延伸成數值比較。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>本文的核心結論是，足夠快且精確的生成式世界模型可以成為離線 RL 的訓練環境，而不只是影片預測器。world model representation 也比從零訓練或通用 VLM representation 更適合 behavior cloning；imagination training 則能超越資料中直接示範的行為。</p>
+<p>可由 raw 直接確認的限制有三項。主要成功證據集中在 Minecraft 與單一固定資料來源，對真實機器人仍是動機而非驗證；diamond 成功率仍低，長程任務遠未解決；human interaction 部分主要是人工操作的質化案例，且 raw 轉檔在比較表處中斷，無法核對論文後段的量化、action-data scaling 與完整 ablation。這些缺失沒有用外部資料補齊。</p>
+<h2 id="對讀者的價值ai_core-接點">對讀者的價值／ai_core 接點</h2>
+<p>Dreamer 4 對 ai_core 的價值在於把「學世界」與「在世界裡學行為」串成可分階段驗收的管線。先確保 representation 與 dynamics 能 rollout，再接 policy 與 reward，最後才在想像中更新決策元件；每階段凍結哪些參數、由哪個 head 提供訊號，都有清楚邊界。這比端到端一起訓練更容易追查失敗究竟來自模擬、評分還是策略。</p>
+<p>另一個接點是離線安全。behavior prior 不是裝飾，而是防止 policy 利用 world model 未覆蓋區域的契約；同理，ai_core 若讓 agent 在模擬、快取或代理評分器內自我改進，也需要限制它離開已驗證資料分佈的幅度。想像環境越便宜，越容易大量產生看似有效的軌跡，分佈邊界反而更重要。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2509.24527_ScalableWorldModels.zh-TW.html"><code>../translate/2509.24527_ScalableWorldModels.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

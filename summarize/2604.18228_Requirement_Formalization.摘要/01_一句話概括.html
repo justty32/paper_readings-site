@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.18228_Requirement_Formalization.%E6%91%98%E8%A6%81.html">回 2604.18228_Requirement_Formalization.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p>提出一條<strong>三階段代理式（agentic）LLM 管線</strong>——先把非結構化自然語言規格拆成<strong>結構化原子需求</strong>，再由 LLM 依目標形式模型的語意邊界<strong>分類哪些需求可形式驗證</strong>（過濾不可驗證者），最後把可驗證需求翻成目標形式語言（UPPAAL SMC 查詢）——並用「LLM 判官＋編譯器」三層方式評估，在三個機器人情境上取得抽取 81.8%、可驗證性分類 88.7%（recall 94.2%）、形式翻譯（含語意等價寬鬆計分）77.8% 的表現。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>安全關鍵系統（如需與人近距離互動的服務機器人）早期規格通常只以自然語言撰寫，難以直接導出可供模型檢驗（model checking）的形式屬性。既有 LLM 生成形式產物的工作多半只顧<strong>語法正確</strong>（能否通過文法/編譯檢查），卻不保證生成屬性與原始非形式需求<strong>語意一致</strong>——即模型驗證的到底是不是使用者真正關心的那件事。本文要解決的正是這道「語意對齊」缺口：如何從自由文字中，自動萃取出「既語法合法、又語意忠實於原規格」的可驗證形式屬性。</p>
+<h2 id="核心方法">核心方法</h2>
+<p>管線分三個各由單一 LLM 擔綱的階段（皆用 <code>gemini-3.1-pro-preview</code>，temperature=0.1，輸出強制 JSON schema）：</p>
+<ul>
+<li><strong>Stage 1：需求抽取（Requirements Extraction）</strong>——LLM 讀取非結構化規格，抽出一組<strong>原子（atomic）自然語言需求</strong>，每條配識別碼，統一用「The system must…」「The robot shall…」等標準需求句式，輸出成 JSON 結構化清單。採 2-shot 提示：對每個情境，用另外兩個情境人工撰寫的 ground truth 需求當範例。</li>
+<li><strong>Stage 2：可驗證性分類（Verifiability Classification，本文核心判準）</strong>——LLM 扮演「精通形式方法與統計模型檢驗（SMC）的系統工程師」，逐條判斷該需求是否落在<strong>目標形式模型的語意邊界內</strong>。系統提示明確列出模型假設（例如系統無記憶性 memoryless、不偵測物理損壞、靜態機台視為資源無限且零處理延遲），並要求依結構化規則過濾掉：指涉<strong>不可觀測變數</strong>、<strong>定性設計意圖</strong>、或<strong>模型外部現象</strong>的需求。輸出為每條需求「Yes/No」＋簡短理由的 JSON。之所以獨立成一階段而不與抽取合併，是要讓 Stage 1 的 LLM 能不受目標模型限制、盡量完整地列需求，避免因預先考慮形式模型侷限而漏抽。</li>
+<li><strong>Stage 3：形式翻譯（Formal Translation）</strong>——把 Stage 2 判定可驗證的需求，依系統提示中提供的<strong>緊湊 BNF 文法</strong>（UPPAAL SMC 查詢語言）與「LIrAs DSL 文法↔UPPAAL 模型」的明確映射規則，翻成可直接在生成的隨機混合自動機（Stochastic Hybrid Automaton, SHA）模型上做模型檢驗的查詢（形如 <code>P[&lt;=τ](&lt;&gt; ap)</code>，對應 MITL 的 ◆≤τ 運算子）。</li>
+</ul>
+<p><strong>評估法（三段獨立評測、以 GT 為準，避免誤差跨階段串接）</strong>：</p>
+<ul>
+<li>RQ1 用 LLM-as-judge 對生成需求與 GT 需求做多對多語意比對，分 Match／Partial／NoMatch 三類並給信心分數與理由；</li>
+<li>RQ2 直接比對 LLM 的 Yes/No 標籤與人工 GT 可驗證性標籤（confusion matrix）；</li>
+<li>RQ3 採三層驗證：先用 <code>verifyta</code> 編譯器做<strong>語法檢查</strong>，再做<strong>精確字串比對</strong>，最後對「編譯成功但字串不同」的查詢用 <strong>LLM 判官</strong>做語意等價評估（容許邏輯交換律、蘊涵改寫、空間對稱性、SMC 時間界的微小差異；但嚴禁把 reachability 與 safety invariant 混淆）。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<p>資料集：3 個機器人／機電系統情境（Coffee_Delivery、User_Guided_Transport、Factory_Pipeline），人工建構 GT 共 71 條需求，其中 52 條可驗證、對應 72 條 SMC 查詢。</p>
+<ul>
+<li><strong>RQ1 需求抽取</strong>：精確語意匹配 43.6%、部分匹配 38.2%、無匹配 18.2%（合計匹配+部分匹配 81.8%）；對 GT 的 recall 僅 60.6%（71 條中有 28 條未被任何生成需求覆蓋）。兩類常見失誤：⑴ 遺漏嚴格邏輯邊界與形式前提（防止無窮迴圈的條件、任務完成保證、失效偵測機制），SC2 尤其嚴重，漏掉電量、疲勞等狀態轉移與物理限制；⑵ 依常識<strong>幻覺出規格未寫的合理限制</strong>（如 SC1 中臆測「員工」角色、SC2 中臆測安全跟車距離），且抽象層級抓不穩（SC3 把高層搬運操作過度拆成細瑣操作步驟，拉高部分匹配比例）。</li>
+<li><strong>RQ2 可驗證性分類</strong>：整體準確率 88.7%（各情境 84.2%–92.3%），63/71 條分類正確；precision 90.7%、<strong>recall 94.2%</strong>（TP=49、FN=3、FP=5、TN=14）。高 recall 代表極少誤刪真正可驗證的需求；5 個 false positive（誤判為可驗證）被作者認為會在下游語法/語意檢查中被攔下。</li>
+<li><strong>RQ3 形式翻譯</strong>：72 條查詢中 69 條（95.8%）通過 UPPAAL 語法編譯；僅 25 條（34.7%）與 GT 逐字相符；LLM 判官另外認可 31 條為語意等價，<strong>寬鬆整體準確率升至 77.8%</strong>（SC1 73.3%、SC2 56.5%、SC3 94.1%，SC3 因大量「查詢編排器完成狀態」取代「直接查座標」等等價改寫，語意判定後準確率由 20.6% 大幅躍升）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>三階段各自獨立評測</strong>（以 GT 為各階段輸入），刻意避免誤差跨階段累積——因此論文<strong>未報告端到端整條管線串接執行</strong>的真實表現，實務上 Stage 1 的低 recall（60.6%）會直接限縮下游可用的需求集合。</li>
+<li>需求抽取階段仍有明顯<strong>幻覺</strong>（編入規格未寫的常識性限制）與<strong>抽象層級不穩</strong>的問題，尚未解決。</li>
+<li>管線內<strong>沒有跨階段的回饋/精修迴圈</strong>——每階段是一次性前向生成，論文在未來工作中明確列出「建立精修迴圈以降低誤差傳播」尚待完成（相較於已有工作示範迭代修復的價值，這是本文目前明顯缺的一塊）。</li>
+<li>僅用單一模型（<code>gemini-3.1-pro-preview</code>）、單次執行、3 個情境、單一領域（HRI／機電系統）與單一目標形式化框架（UPPAAL SMC via LIrAs DSL），樣本量小（71 條需求），尚未做跨模型/多次重複的穩健性驗證。</li>
+<li>Stage 3 的語法保證來自「提示中給 BNF 文法＋事後編譯器把關」，而非生成時的硬約束，故仍有 4.2% 查詢編譯失敗。</li>
+<li>論文本身為 AIPV 2026 workshop 的非正式出版（non-archival）先導性工作。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2308.04623_StagedSpeculative.zh-TW.html">回 2308.04623_StagedSpeculative.zh-TW 目錄</a>　<a href="02_%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）近期進展展現其多樣能力。我們提出一個新演算法——<strong>分階段推測解碼（staged speculative decoding）</strong>，用於加速<strong>小批次、裝置端（on-device）<strong>情境的 LLM 推論。我們藉由改進既有推測解碼（speculative decoding）來對付小批次推論的</strong>低算術強度（arithmetic intensity）<strong>問題：第一，把推測批次</strong>重構為一棵樹（tree）</strong>，以降低生成成本並提高每批次的期望 token 數；第二，<strong>再加一個推測解碼階段</strong>。兩者合起來，用 762M 參數的 GPT-2-L 模型把單批次解碼延遲降低 <strong>3.16x</strong>，同時<strong>完美保留輸出品質</strong>。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 近年高速成長，能力涵蓋高品質文本生成、複雜推理、決策與問題求解。但這些進展伴隨系統層級的挑戰：模型越強、運算需求越大，推論常需大量雲端資源，對許多需要低延遲、或重視資料隱私的應用而言是難以承受的門檻。</p>
+<p>本文以<strong>加速本地（小批次）推論</strong>回應此挑戰——這類推論因<strong>算術強度低</strong>而算力利用極差。我們認為此問題關鍵有三：<strong>延遲（latency）</strong>——優化本地推論延遲能改善即時互動；<strong>個人化（personalization）</strong>——本地推論讓模型能為個別使用者在地客製；<strong>隱私（privacy）</strong>——資料無須離開使用者裝置。更哲學地說，能在本地高效運行 LLM 的方法，能賦權運算資源有限的個人，<strong>促進 AI 民主化</strong>。</p>
+<p>本文建立在 Leviathan et al.（2022）與 Chen et al.（2023）的推測解碼之上：以一個<strong>快但不準的草稿模型（draft model）<strong>預先猜測 oracle 模型的輸出並批次送去驗證，在</strong>完美保留模型分佈</strong>的前提下改善序列解碼效能。但這類方法一開始擴展良好、增益卻很快飽和——因為草稿模型連續猜對多個 token 的機率呈<strong>指數級遞減</strong>。我們從兩個關鍵面向改進：</p>
+<ol>
+<li>把推測批次<strong>重構為「可能 token 序列的樹」</strong>，以更快組出更大、更高品質的推測批次。</li>
+<li><strong>對草稿模型本身也做推測解碼</strong>，進一步提升效能。</li>
+</ol>
+<p>我們發現這些技術在確定性與採樣式解碼上都顯著提升推測解碼效能。</p>
+<h2 id="2-背景">2. 背景</h2>
+<h3 id="21-自回歸-llm-推論">2.1 自回歸 LLM 推論</h3>
+<p>decoder-only LLM 的自回歸生成分兩階段。第一階段 prompt 過模型、產生 KV cache 與第一個輸出 logits，因整段 prompt 可平行處理故通常很快。第二階段是<strong>解碼（decoding）</strong>：從 logits 選出一個 token 餵回模型、產生下一個 token 的 logits，反覆直到生成足夠 token。因解碼<strong>必須循序</strong>進行、每產一個 token 就要把整個模型權重串流過計算單元一次，小批次下此階段<strong>算術強度極低</strong>，通常是自回歸生成中最昂貴的部分。</p>
+<h3 id="22-gpu-優化">2.2 GPU 優化</h3>
+<p>現代 LLM 推論多在 GPU 上進行（工作負載以大型矩陣乘法為主、高度平行）。優化小批次推論的關鍵挑戰是<strong>極低的算術強度</strong>：16-bit、batch size 1 時解碼的算術強度為 1。以 GPT-2-L（762M）的參考 PyTorch 實作為例，推論約需 1.4 GFLOP，但一台靜置的 NVIDIA RTX 4090 僅達 150 tokens/秒，算力利用率僅 <strong>0.13%</strong>。此糟糕表現主要源於 GPU roofline——在低算術強度區受<strong>記憶體頻寬</strong>支配（圖 1）。因此提升效能的唯一途徑是<strong>提高推論的算術強度</strong>。</p>
+<h3 id="23-推測解碼">2.3 推測解碼</h3>
+<p>推測解碼的基本想法：用較小、較快的草稿模型<strong>預先解碼數個 token</strong>，再把它們當成單一批次餵給 oracle 模型。若草稿猜對（大模型同意），一個批次就能解碼數個 token，省下每 token 的可觀記憶體頻寬與時間；若大模型拒絕草稿的預測，該批次其餘部分作廢、演算法自然退回逐 token 解碼。推測解碼可搭配<strong>拒絕採樣（rejection sampling）<strong>方案以從原始分佈取樣。此法只在「頻寬為瓶頸」的小批次情境有用——它</strong>用算力換頻寬</strong>。</p>
+<p>推測解碼吸引人之處有二：其一，<strong>完全不降低模型品質</strong>；其二，其增益與其他方法（如量化、flash attention）<strong>大致正交</strong>，因為它的收益來自把序列執行轉為平行執行。</p>
+<h2 id="3-方法">3. 方法</h2>
+<p>我們對推測解碼做兩項改進：<strong>樹狀批次</strong>與<strong>額外階段</strong>。兩者結合即「<strong>分階段推測解碼</strong>」。</p>
+<h3 id="31-樹狀批次tree-structured-batches">3.1 樹狀批次（Tree-structured batches）</h3>
+<p>現行推測法為批次預測<strong>單一序列</strong>，但對大批次或低草稿對齊度擴展不佳——兩模型在長連續序列上一致的機率指數級偏低，故推測解碼隨算術強度擴大而報酬急遽遞減。</p>
+<p>我們的作法是<strong>動態建構一棵「可能序列的樹」</strong>，帶來三個好處：</p>
+<ul>
+<li><strong>每批次期望真 token 數更多</strong>：把算力從超長序列尾端重分配到前段，納入模型第二、第三可能的 token。</li>
+<li><strong>葉節點更多、批次「免費」取得更多</strong>：標準推測解碼中「跑草稿模型組批次」成本不可忽略；但在樹中草稿模型<strong>只在內部節點執行</strong>，樹越寬葉節點越多。</li>
+<li><strong>對小模型可跨樹平行化</strong>：進一步降低草稿成本；極限下只需執行「等於樹深度」次數。這很重要，因草稿模型也是小型 transformer、在小批次下同樣記憶體綁定。</li>
+</ul>
+<p><strong>實作要點</strong>：把解碼時的 self-attention 拆成「對 KV cache 的 cross-attention」與「批次內 self-attention」；再依樹結構控制<strong>位置編碼</strong>與<strong>因果遮罩</strong>來建構樹狀批次；整個批次的新 KV cache 須另存，token 取樣後再把適當切片附加回主 KV cache。</p>
+<h3 id="32-分階段推測staged-speculation">3.2 分階段推測（Staged Speculation）</h3>
+<p>現行推測法用單一較小模型（通常是較小 LLM）當草稿。此設定下草稿模型大小是重要超參數：越大越對齊 oracle 但越貴、越小批次品質越低但便宜；實務上<strong>草稿約比 oracle 小 15–20x</strong> 似乎最佳。</p>
+<p>然而在樸素推測解碼下，組大批次會<strong>反轉成本結構</strong>——花在草稿模型上的時間反而多於 oracle。因此應加速草稿模型的序列生成，而推測解碼本身正是天然解法。於是我們<strong>對草稿模型也加上推測解碼</strong>。整體「分階段推測解碼」即由 <strong>oracle、draft、draft2</strong> 三個模型搭配樹狀批次構成。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.06614_SkillOS.zh-TW.html">回 2605.06614_SkillOS.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-設定">4.1 設定</h3>
+<p><strong>資料集</strong>：(1) ALFWorld——文字式家務互動環境，6 類任務（Pick、Look、Clean、Heat、Cool、Pick2），3,553 訓練／140 測試；(2) WebShop——模擬電商環境，1.18M 產品／10,587 訓練指令／500 測試；(3) DeepMath-103k——約 103K 高難度數學題（AoPS Level 5–9），取 33K 子集標註分組後得 20K 組訓練實例，測試於 AIME24（30 題）、AIME25（30 題）、GPQA-Diamond（198 題）。</p>
+<p><strong>基線</strong>：三類共五個——(i) No Memory（無記憶下限）；(ii) ReasoningBank（蒸餾可重用推理洞察，固定啟發式記憶策展）；(iii) MemP（程序記憶＋手設計規則管理策略）；(iv) SkillOS-base（同架構但策展器無 RL 訓練，僅靠 prompt）；(v) SkillOS-gemini（Gemini-2.5-Pro 直當策展器，無 RL）。</p>
+<p><strong>評測維度</strong>：有效性（SR / Accuracy）＋效率（執行步驟數 / token 數）。每配置 3 次獨立隨機種子，報告平均值與標準差。</p>
+<h3 id="42-主要結果">4.2 主要結果</h3>
+<p><strong>ALFWorld</strong>（表 1，三種 executor）：SkillOS 在所有子類上一致超越所有基線。Qwen3-8B executor：Avg. SR 從 ReasoningBank 的 55.7 → 61.2，Steps 從 20.1 → 18.9。RL 訓練收益疊加 executor 容量：Gemini-2.5-Pro 上 SkillOS vs SkillOS-base 差距 +9.5（66.4 → 80.2），Qwen3-8B 上差距 +7.9（53.1 → 61.2）。8B RL 策展器甚至超越 SkillOS-gemini（Gemini-2.5-Pro 策展）。</p>
+<p><strong>WebShop 與推理任務</strong>（表 2）：WebShop 上 Score 從 No Memory 的 33.3 → 40.6（Qwen3-8B），推理 Avg. Acc 從 69.6 → 73.8。Gemini-2.5-Pro executor 上更達 Score 56.0、推理 Avg. Acc 88.6——策展器與 executor 能力可疊加。</p>
+<p><strong>代理 vs 推理任務差異</strong>：代理任務增益大於推理任務。推測原因：代理任務自然暴露程序規律（動作排序、探索策略、恢復行為），可反覆組合與精煉；推理任務的可重用知識更抽象（分解啟發法、約束形式化、驗證模式），而非直接可重用的動作程序。</p>
+<h3 id="43-skillos-的泛化">4.3 SkillOS 的泛化</h3>
+<p><strong>跨 executor 泛化</strong>：8B 策展器對未見 executor（Qwen3-32B、Gemini-2.5-Pro、Gemini-3.1-Flash-Lite）均一致提升效能。重點：Gemini-2.5-Pro 直當策展器（SkillOS-gemini）反而不如 RL-trained 8B 策展器，尤其配對小 executor 時更明顯——證明了<strong>策展器-executor 錯位問題</strong>：前沿模型的強推理能力不等於有效技能策展；frontier-generated 技能可能與 executor 能力或使用模式錯位。SkillOS 透過 RL 學到 executor 接地的策展行為，產生更匹配下游代理的技能。</p>
+<p><strong>跨任務域泛化</strong>（圖 3）：策展器在大多數訓練-測試域組合上帶來效能提升。推理任務訓練的策展器特別容易泛化到代理任務（分解、驗證、自適應規劃等高階策略跨域有用）；WebShop/ALFWorld 訓練的技能較綁定環境特定知識，跨域轉移較弱。</p>
+<h2 id="5-分析">5. 分析</h2>
+<p><strong>消融實驗</strong>（ALFWorld，Qwen3-8B 策展器＋executor）：(1) 移除內容品質獎勵 <span class="math inline">\(r_{\text{cnt}}\)</span> → Avg. SR 從 61.2 → 58.6，步驟 18.9 → 20.1；(2) 移除精簡度獎勵 <span class="math inline">\(r_{\text{comp}}\)</span> → SR 60.0，步驟 19.3；(3) 使用隨機任務序列（無分組）→ SR 57.3，步驟 20.6——最大退化，凸顯分組任務流訓練的關鍵性。</p>
+<p><strong>策展器操作行為演化</strong>（圖 4）：訓練初期 insert 壓倒性主導（&gt;80%），指示策展器只會盲目添加新技能。隨訓練進展，update 逐漸上升而 insert 穩定下降——策展器從純擴張轉向精煉既有技能。delete 始終佔比小（~5–8%）但略有成長趨勢，反映精簡度獎勵的效果；主導的適應形式是修訂與整合既有技能，而非純刪除。</p>
+<p><strong>技能演化動力學</strong>（圖 5）：</p>
+<ul>
+<li>
+<p>(a) <strong>Markdown 結構演化</strong>：早期策展器傾向添加通用段落（# Advanced Guidance、# Tips、# Enhancement），使技能更冗長而不提升實用價值；後期轉向更具操作性的結構——# Failure &amp; Error Handling、# Special Considerations、# Retry Logic、# Alternative Approaches。RL 逐步將策展器從表面豐富化引導至執行導向的技能精煉。</p>
+</li>
+<li>
+<p>(b) <strong>元策略技能湧現</strong>：早期 SkillRepo 以窄任務特定技能為主（Task-object specific、Task-location specific 主導）；後期 SkillRepo 包含更多樣化的元策略技能——Failure recovery、Optimization &amp; efficiency、Systematic search、Meta strategy、Guidance/tip/recommendation 等類別顯著上升。策展器不只是累積技能，而是逐步擴展 SkillRepo 的策略空間，從孤立的任務局部程序轉向可組合的跨任務控制知識。</p>
+</li>
+</ul>
+<p><strong>技能使用歸因</strong>（圖 6，ALFWorld）：SkillOS 在 100% 評測例中呼叫了技能（SkillOS-base 88.6%）、使用技能的成功率更高（87.9% vs 72.9%）、SkillRepo 技能覆蓋率更高（61.2% vs 53.6%）、但每例平均使用技能數更少（1.95 vs 2.24）——效能增益來自更精準的技能選擇，而非更多技能上下文。</p>
+<p><strong>案例研究</strong>（圖 17–19）：</p>
+<ul>
+<li>代理任務中，策展器蒸餾出失敗恢復的元策略（exhaustive search → confirm unavailability → identify substitute → proceed）並引用既有技能，展示組合策展能力。</li>
+<li>推理任務中，策展器捕捉分支推理行為（inner-radius–circumradius–semiperimeter relations → 多條解路徑，每條配公式、應用與前提約束）。</li>
+<li>與基線對比：SkillOS-base 僅輸出通用高階配方（partition into disjoint sets），SkillOS 則提供具體計數框架（約束形式化、方程式設置、完整工作範例）。</li>
+<li>執行案例：無記憶基線在 &quot;look at CD under desklamp&quot; 任務中進行無效搜尋耗盡步驟；SkillOS 檢索到的技能引導代理先拾取 CD 再移動至燈源檢查——直接提升任務成功率。</li>
+</ul>
+<h2 id="6-結論">6. 結論</h2>
+<p>SkillOS 提出了一種 RL 訓練方案，用於學習自我進化代理的技能策展。透過將技能策展器與代理執行器解耦，SkillOS 實現了模組化技能策展而無需重新訓練底層 executor。分組任務流與 executor 接地獎勵使得策展決策以其對未來任務的下游影響被最佳化。跨多樣基準與 LLM backbone 的實驗顯示 SkillOS 一致提升效能與效率。進一步分析證明經過訓練的技能策展可超越前沿模型的 zero-shot 策展能力，並跨設定泛化——凸顯模組化、訓練驅動的技能策展作為代理從經驗中自我進化的實用路徑。</p>
+<h2 id="7-致謝">7. 致謝</h2>
+<p>感謝 Zilin Xiao、I-Hung Hsu、Zexue He 及 Google Cloud AI Research 成員的寶貴回饋。Siru 受 NSF Award No. 2019897 支持（Molecule Maker Lab Institute）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

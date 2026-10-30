@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>RoboMonkey: Scaling Test-Time Sampling and Verification for Vision-Language-Action Models 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jacky Kwok、Christopher Agia、Rohan Sinha、Matt Foutter、Shulu Li、Ion Stoica、Azalia Mirhoseini、Marco Pavone</p><p>日期：2025-06-21（v1，cs.RO）</p><p>arXiv：2506.17811</p><p><a href="https://arxiv.org/abs/2506.17811" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="robomonkey-scaling-test-time-sampling-and-verification-for-vision-language-action-models-重點摘要">RoboMonkey: Scaling Test-Time Sampling and Verification for Vision-Language-Action Models 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>RoboMonkey 把 VLA 的單次動作生成改成「多提案、再驗證」：先從基礎策略取少量樣本，擬合高斯提案分布並用多數決定夾爪狀態，再由合成偏好資料訓練的視覺語言驗證器挑出較好的動作，以額外推論算力換取精準度與分布外穩健性。</p>
+<h2 id="問題與方法">問題與方法</h2>
+<ul>
+<li><strong>問題</strong>：通用 VLA 在陌生物體、指令或場景中容易抓偏、碰撞，或無法推進任務。既有工作多把算力花在預訓練與後訓練，部署時通常只產一個 action chunk，沒有利用重複採樣所帶來的候選多樣性。</li>
+<li><strong>推論期 scaling law</strong>：作者先用 oracle verifier 檢查候選數增加時的最佳可達動作誤差，並比較隨機採樣、直接從 policy 重複採樣，以及由少量 policy 樣本擬合高斯後再擾動。三種方法的誤差都隨候選數下降，其中高斯擾動接近直接 policy 採樣，成本較低；其關係可由 exponentiated power law 近似。</li>
+<li><strong>合成偏好資料</strong>：對示範資料中的狀態，先讓參考 VLA 產生候選動作，再聚類成代表性動作。任兩個候選都與專家動作計算 RMSE，離專家較近者成為偏好配對的贏家，不需人工逐對標註。</li>
+<li><strong>動作驗證器</strong>：VLM reward model 以 Bradley–Terry 式偏好損失學習候選排序，並加入偏好距離的 margin，使明顯好壞的動作不只排序正確，分數差也反映差距。</li>
+<li><strong>部署流程</strong>：基礎 VLA 先產少量動作；連續的平移與旋轉分量用高斯分布擬合，離散夾爪狀態以多數決決定；再從提案分布快速抽樣，由驗證器評分並執行最高分動作。生成器不用重新訓練，驗證器可隨新機器與新任務微調。</li>
+</ul>
+<h2 id="主要實驗與結果">主要實驗與結果</h2>
+<p>在 oracle verifier 分析中，OpenVLA 採樣 <code>10,000</code> 個動作時的 RMSE 下降 59.3%（作者自報）。這項結果說明候選空間確實藏有比 greedy decoding 更接近專家動作的解，但它只代表驗證器理想無誤時的上限，不能直接等同閉迴路成功率。</p>
+<p>閉迴路測試涵蓋模擬與真實機器。RoboMonkey 在 SIMPLER 的平均成功率為 46.3%，比 OpenVLA 高 7.8 個百分點；真實分布外任務平均成功率為 60%，相較 OpenVLA 的 35% 與 V-GPS 的 30%（作者自報）。論文因此將整體改善概括為分布外任務絕對提升 25 個百分點、分布內任務約提升 8 個百分點（作者自報）。</p>
+<p>系統面上，經 SGLang serving 與高斯擾動最佳化後，取樣並驗證 16 個候選約需 650 ms，約為 1.5 Hz，延遲比 naive policy sampling 低 41.3%（作者自報）。合成偏好資料擴大時，SIMPLER 平均成功率由 37.5% 升到 46.3%；移到 LIBERO-Long 並同時微調 VLA 與驗證器後，平均成功率由 49.8% 升到 56.5%，比只微調 VLA 高 6.7 個百分點（作者自報）。</p>
+<h2 id="局限">局限</h2>
+<p>RoboMonkey 需要多次動作取樣與另一個 VLM 驗證器，推論延遲、顯示記憶體與服務複雜度都高於單次生成，因此不適合高頻控制。作者只在兩類機械臂上評估，合成比較資料的規模受訓練成本限制；跨 embodiment、動態任務與更大資料混合仍未驗證。（本檔補註，非作者自陳）作者的 Discussion and Limitations 只列 Computational Overhead、Scaling Synthetic Datasets 與 Evaluation Scope 三項，未討論合成標籤本身的代理目標問題；但「離專家動作較近」代理的是模仿相似度而非任務價值，可能偏好局部模仿而非長期結果。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>這篇替 ai_core 的成本梯度提供一個很清楚的部署模式：平常走單次、低成本策略；只有在不確定或高風險狀態，才增加候選數並啟用昂貴驗證器。算力不是平均灑在所有請求，而是變成可調的 test-time budget。這比永遠換上更大的生成模型更容易治理，因為候選數、驗證延遲與觸發條件都能被記錄和限制。</p>
+<p>它也說明生成與驗證應是兩種不同能力。ai_core 若要把模糊意圖固化成可執行程式，不必要求同一模型同時提出方案又證明方案；可以先產多個候選，再用依照可驗證距離或偏好資料訓練的獨立評分器篩選。不過 RoboMonkey 的 RMSE 標籤也提醒我們，驗證器只會守住它被教過的代理目標。若代理目標沒有涵蓋安全、長期效用與不可逆副作用，更多採樣只會更有效率地找到「最像示範」的動作，而不一定是最合宜的動作。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2506.17811_RoboMonkey.zh-TW.html"><code>../translate/2506.17811_RoboMonkey.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

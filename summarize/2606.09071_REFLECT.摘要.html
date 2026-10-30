@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《REFLECT：以干預支撐的錯誤歸因定位 LLM Agent 軌跡中的靜默失敗》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Xiaofeng Lin, Yunxi Wang, Tung Sum Thomas Kwok, Daniel Guo, Sahil Arun Nale, Charles Fleming, Guang Cheng（UCLA / Cisco / U. Mississippi）</p><p>日期：2026-06</p><p>arXiv：2606.09071</p><p><a href="https://arxiv.org/abs/2606.09071" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="reflect以干預支撐的錯誤歸因定位-llm-agent-軌跡中的靜默失敗重點摘要">《REFLECT：以干預支撐的錯誤歸因定位 LLM Agent 軌跡中的靜默失敗》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>REFLECT（Reflective Fault Localization Engine for Agent Correction）</strong>：先用 auditor LLM 診斷出一個候選錯誤步，再以<strong>診斷特異的修補計畫</strong>在該步附近做<strong>受控重播</strong>（保留原始前綴、不獨立重試），若重播結果從錯誤翻轉為正確，就把這個<strong>驗證過的反事實證據</strong>回饋去精煉最終歸因——由此閉合了「修正→歸因」的迴路；在四個跨域定位基準上，所有共用 auditor 的方法中達到最高的定位準確率，結構化 tool-use trace 上的增益最大。ICML 2026 Workshop FAGEN。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM agent 能完成長軌跡的複雜任務，但出錯後<strong>定位哪一步是錯誤根源</strong>的能力遠落後於任務完成力——尤其靜默失敗（silent failure）日益成為主導模式：軌跡正常完成、無 runtime exception、輸出格式正確，只有語義是錯的。現有解法有三種缺口：(1) 分類器/LLM 法官預測可疑步但無執行驗證（幻覺式歸因）；(2) 重試/回溯法修正答案但不識別原始軌跡的哪一步是決定性的（修正≠歸因）；(3) 約束與異常檢測器標記可疑步但不測試修正後結果是否真的翻轉。共同病根：歸因假說被提出，但從未被測試。</p>
+<h2 id="核心方法三階段閉環">核心方法：三階段閉環</h2>
+<p>REFLECT 定位一條已完成、未崩潰軌跡中<strong>最早的決定性錯誤步</strong>，分三階段（均在推論期執行，非預訓練分類器）：</p>
+<p><strong>Stage 1 — 診斷（Diagnosis）</strong>：auditor LLM 審計整條軌跡，給出候選錯誤步 ı̂₀、信心分數、錯誤類型與建議修正。</p>
+<p><strong>Stage 2 — 目標化重播（Targeted Replay）</strong>：這是滿足 R1–R3 的核心。對診斷出的錯誤步做誤分類（11 類），產生結構化修補計畫 π = {根本原因， 修正指令， 禁止動作， 預期下一工具}。在候選步附近 K=3 的鄰域內選多個回溯點，從原始前綴處注入修補計畫後重新執行 agent。每個重播都經**忠實度閘（faithfulness gate）**檢查第一步是否跟隨計畫——若 agent 忽略計畫而碰巧成功，該成功不構成該錯誤步的歸因證據（R3 的操作化）。</p>
+<p><strong>Stage 3 — 驗證回溯歸因與對比解釋精煉（Verified Rollback Attribution &amp; Contrastive Explanation Refinement）</strong>：這是概念創新所在。若重播產出正確答案：(a) 引發結果翻轉的回溯點被採納為歸因步索引（機械決定，非 LLM 判斷）；(b) 比較原始與修正後的續寫軌跡，精煉錯誤解釋（錯誤類型、根因、自由文字推理）。若修正失敗，則從最佳候選軌跡重新定位，進入下一輪診斷。最終輸出歸因記錄：(ı̂_final, ∆ı̂_final)。</p>
+<p>此法滿足四項忠實歸因要求（表 1 比較所有 baseline）：</p>
+<ul>
+<li><strong>R1 執行接地</strong>：歸因以重播執行結果為依據，非純敘事。</li>
+<li><strong>R2 前綴保留重播</strong>：證據來自同一軌跡的受控續寫，非獨立重試。</li>
+<li><strong>R3 目標化干預</strong>：重播受診斷特異的修補計畫約束，非裸重抽樣。</li>
+<li><strong>R4 推論期計算</strong>：歸因在測試軌跡上即時計算，非預訓練分類器。</li>
+</ul>
+<p>這與 <strong>ai_core §3.4（錯誤歸因＝憑證診斷）</strong> 的核心論點直接對齊：歸因必須附帶可驗證的「憑證」——REFLECT 的干預回饋迴路正是把修正結果轉化為歸因憑證的機制（outcome flip = 憑證），而非信任無驗證的 LLM 自我解釋。</p>
+<h2 id="實驗">實驗</h2>
+<p>四個基準：<strong>WTQ</strong>（表格 QA，自建 137 條軌跡＋119 條人工標註）、<strong>GAIA</strong>（多跳推理，TRAIL 提供）、<strong>BBM</strong>（連鎖思考驗證，邊界壓力測試）、<strong>SWE-bench</strong>（軟體工程）。全部使用 gpt-5.2 作 auditor 與 agent，溫度 0.0。主實驗假定有預期答案（開發期除錯場景）。</p>
+<h3 id="rq1定位準確率表-3">RQ1：定位準確率（表 3）</h3>
+<p>REFLECT 在全部四個基準上達到同 auditor 方法中最高的 EM：WTQ 76.3%、GAIA 39.0%、BBM 34.5%、SWE-bench 70.0%。最大增益在結構化 tool-use 軌跡（WTQ、SWE-bench），因干預信號最強。換用 Claude Opus 4.6 作 auditor 亦無法在 tool-use 基準上彌平差距（WTQ 70.8%、SWE-bench 19.4%），但 Opus 在 BBM 上超越 REFLECT（60.1% vs. 34.5%），符合 BBM 作為純推理軌跡的邊界壓力測試定位。</p>
+<h3 id="rq2修正是否耦合於理解表-4">RQ2：修正是否耦合於理解？（表 4）</h3>
+<p>這是 R1+R2 共同運作的簽名。REFLECT 的修正-解釋耦合間隙 ∆ 為 +0.25～+0.29（成功修正時的解釋相似度減去失敗時），而 ICS（∆ ≤ +0.03）和 Reflexion（∆ ≤ +0.05）幾乎為零——它們雖有不低的修正率，但修正成功並不伴隨更好的解釋。</p>
+<h3 id="rq3干預信號是否忠實表-5">RQ3：干預信號是否忠實？（表 5）</h3>
+<p>正確修補提示比無提示高 +42.0pp 修正準確率，比安慰劑高 +32.0pp。干預在錯誤步上的效果急劇下降（46.2%），確認是定位目標、非干預行為本身驅動修正。附錄 L 顯示 agent 遵循高品質計畫時修正率達 88%（+13pp）。</p>
+<h3 id="rq4無預知答案時表-3-末行">RQ4：無預知答案時（表 3 末行）</h3>
+<p>Proxy 變體用計畫錨定驗證器（plan-anchored verifier）取代 oracle，在 WTQ 62.2%、SWE-bench 66.1% 仍超越多數 oracle-aided baseline；GAIA 33.3%。驗證器 AUROC：SWE-bench 0.97、GAIA 0.84、WTQ 0.68、BBM 0.56（純 CoT 軌跡缺乏工具結構可利用）。</p>
+<h3 id="消融表-7wtq">消融（表 7，WTQ）</h3>
+<p>Diagnostician 對修正貢獻最大（∆Corr: +27.8pp）；Multi-rollback 驅動定位（∆EM: +2.2pp）；Hard gate 保衛干預特異性（R3）；Post-correction re-localization 提供 +10.6pp EM 增益（65.7% → 76.3%）——這是 REFLECT 區別於 correction-only 方法的關鍵組件。</p>
+<h2 id="貢獻">貢獻</h2>
+<ol>
+<li>識別忠實錯誤歸因的四項要求（R1–R4）。</li>
+<li>提出 REFLECT：首個將干預結果回饋到步級重定位的閉環方法。</li>
+<li>在四個基準上實證，結構化 tool-use trace 增益最大，純 CoT 推理軌跡增益較小（干預信號較弱）。</li>
+</ol>
+<h2 id="局限">局限</h2>
+<ul>
+<li>評估限於相對結構化的靜默失敗設置，延伸至非結構化領域仍是挑戰。</li>
+<li>主實驗依賴 oracle 答案；proxy 驗證器較弱。</li>
+<li>需重新執行 agent，在工具呼叫有不可逆副作用或執行環境不再可用時不可行。</li>
+<li>定位單一最早決定性錯誤步；多錯誤/分散式失敗需多點歸因。</li>
+</ul>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

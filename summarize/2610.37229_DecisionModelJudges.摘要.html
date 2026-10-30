@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Decision Models as Judges for Hallucination Detection 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Haozheng Liu、Zhaoqian Xue、Zhongyin Wang、Junting Mu、Zihui Ma、Shuya Feng、Lingyao Li</p><p>日期：2026-10-27（v1，cs.CL）</p><p>arXiv：2610.37229</p><p><a href="https://arxiv.org/html/2610.37229v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="decision-models-as-judges-for-hallucination-detection-重點摘要">Decision Models as Judges for Hallucination Detection 重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>只輸出類別與機率的 decision model，能以較低 API 成本偵測部分事實及上下文幻覺；讓強模型把低信心項目交給其他決策模型，可再改善這些類型，但邏輯與指令錯誤仍較難，輸出的高機率也不等於判斷可靠。</p>
+<h2 id="評估的是什麼">評估的是什麼</h2>
+<p>作者把六個資料集轉成五種獨立二元任務：事實矛盾（FC）、事實捏造（FF）、上下文不一致（CI）、邏輯不一致（LI）與指令不一致（II）。<span class="math inline">\(H\)</span> 表示有該種錯誤，<span class="math inline">\(N\)</span> 只表示沒有目標錯誤，不能解讀為整份回答完全正確。每種任務沿用來源評估單位與類別比例，不重新平衡；評審看完整回答／文件／推理鏈及可用指令，CI 另給來源上下文，不給真實標籤、標註跨度或修正答案。（<a href="https://arxiv.org/html/2610.37229v1#S3.SS1">§3.1–3.2</a>）</p>
+<table>
+<thead>
+<tr>
+<th>任務</th>
+<th>來源</th>
+<th style="text-align:right">評估實例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FC</td>
+<td>FAVABench、HADTest</td>
+<td style="text-align:right">1,621</td>
+</tr>
+<tr>
+<td>FF</td>
+<td>FAVABench、HADTest</td>
+<td style="text-align:right">1,616</td>
+</tr>
+<tr>
+<td>CI</td>
+<td>RAGTruth</td>
+<td style="text-align:right">2,675</td>
+</tr>
+<tr>
+<td>LI</td>
+<td>ContraDoc、ROSCOE</td>
+<td style="text-align:right">1,646</td>
+</tr>
+<tr>
+<td>II</td>
+<td>IF-RewardBench 的作者英文篩選子集</td>
+<td style="text-align:right">2,294</td>
+</tr>
+</tbody>
+</table>
+<p>合計 <strong>9,852 是按類型計算的評估實例，不是互不重複的回答</strong>。FAVABench 的 268 筆及 HADTest 的 1,124 筆在 FC／FF 重用；共有 8,460 個不同的「資料集、來源紀錄 ID」組合，仍不等於跨資料集文字去重。FAVABench 的 factual negatives 須不含六種事實錯誤標籤；只含另一事實類型的回答排除。ROSCOE 的標籤兼含不連貫推理，範圍比嚴格矛盾寬；IF-RewardBench 的英文篩選是排除指定漢字區段字元的啟發式，不是官方語言切分。（<a href="https://arxiv.org/html/2610.37229v1#S2">表 1</a>、<a href="https://arxiv.org/html/2610.37229v1#A1.SS2">附錄 A.2–A.3</a>）</p>
+<h2 id="模型與衡量方式">模型與衡量方式</h2>
+<p>五個決策模型為 jev、d1、clef、pplx 與 gpt-6-luna，對照生成式評審 gpt-6-sol。作者記錄 jev 1.13.0、pplx-decider-v1.1-27b；clef 與 pplx 為 27B，其餘參數量未報。d1 不應套用另一公開權重版本的參數量；若紀錄只有未版控別名，也不能宣稱特定 checkpoint。所有模型透過託管 API 評估，pplx 的 OpenRouter 是介面，不是模型供應商。（<a href="https://arxiv.org/html/2610.37229v1#A2">附錄 B，表 5</a>）</p>
+<p>各模型接收同一類型準則並回傳 <span class="math inline">\(P(H),P(N)\)</span>；較高機率決定標籤，完全平手保留模型本身的回答。決策模型的機率由介面提供，sol 則在結構化回答中自報機率、無解釋，兩者信心取得方式並不相同。類別不均衡，因此主要比較 balanced accuracy（BAcc，兩類召回率平均）與 macro-F1，差異用同項目的配對 bootstrap。（<a href="https://arxiv.org/html/2610.37229v1#S3.SS2">§3.2</a>）</p>
+<h2 id="作者自報單模型結果">作者自報單模型結果</h2>
+<table>
+<thead>
+<tr>
+<th>類型</th>
+<th>最佳決策模型 BAcc</th>
+<th style="text-align:right">sol BAcc</th>
+<th>讀法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FC</td>
+<td>pplx 78.93%</td>
+<td style="text-align:right">81.61%</td>
+<td>差 2.68 個百分點</td>
+</tr>
+<tr>
+<td>FF</td>
+<td>luna 82.72%</td>
+<td style="text-align:right">82.05%</td>
+<td>點估計較高，不能據此一概斷言優越</td>
+</tr>
+<tr>
+<td>CI</td>
+<td>pplx 82.66%</td>
+<td style="text-align:right">82.65%</td>
+<td>整體分數接近，錯誤型態不同</td>
+</tr>
+<tr>
+<td>LI</td>
+<td>pplx 73.28%</td>
+<td style="text-align:right">77.14%</td>
+<td>跨推理步驟的矛盾仍有差距</td>
+</tr>
+<tr>
+<td>II</td>
+<td>pplx 71.08%</td>
+<td style="text-align:right">78.88%</td>
+<td>五類中與生成式評審差距最大</td>
+</tr>
+</tbody>
+</table>
+<p>表內為作者自報的類型彙總結果。（<a href="https://arxiv.org/html/2610.37229v1#S4.SS1">§4.1，表 2</a>）在 CI，pplx 的誤報率／漏報率為 3.2%／31.5%，sol 為 28.8%／5.9%；BAcc 相近不代表適合相同的錯誤代價。資料來源也會改變比較：pplx 的 FF 減 FC 差值在 FAVABench 為 −1.4 個百分點，在 HADTest 為 +17.9，不能全歸因於「捏造比矛盾容易」。（<a href="https://arxiv.org/html/2610.37229v1#S4.SS1">§4.1</a>）</p>
+<p>所有 9,852 類型實例的估計 API 總成本，pplx 為 USD 0.2092、jev 0.5409、d1 0.4084、clef 2.5894、luna 1.0393，sol 為 30.7962。這按作者評估當時牌價及紀錄 token 數計算，決策模型只計輸入，sol 計輸入與輸出；不是目前報價，也不是每千項成本。表 2 按類型的平均回應時間約 0.22–0.62 秒，sol 約 1.6–2.6 秒，為 API 端到端時間。（<a href="https://arxiv.org/html/2610.37229v1#S3.SS2">§3.2</a>、<a href="https://arxiv.org/html/2610.37229v1#A2">附錄 B，表 6</a>）</p>
+<h2 id="信心有用但不能當正確性證書">信心有用，但不能當正確性證書</h2>
+<p>信心為 <span class="math inline">\(c=\max(p,1-p)\)</span>。作者把「<span class="math inline">\(P(H)\)</span> 能否區分正負樣本」的偵測 AUROC，與「<span class="math inline">\(c\)</span> 能否區分判斷對錯」的 conf-AUROC 分開；後者不是同一指標。校準以十個等寬信心區間的 ECE、邏輯校準斜率及過度自信差距衡量。（<a href="https://arxiv.org/html/2610.37229v1#S3.SS3">§3.3</a>）</p>
+<p>jev、pplx、clef、d1 的平均信心高於準確率 0.04–0.12，ECE 為 0.083–0.136；luna 與 sol 的 ECE 為 0.187、0.157。決策模型的平均 conf-AUROC 僅 0.67–0.73。luna 有 47% 的錯誤發生在 <span class="math inline">\(c\geq0.9\)</span>，sol 為 69%；這是「所有錯誤中高信心錯誤的占比」，不是高信心決策的錯誤率。luna 高信心決策本身的準確率為 77%。（<a href="https://arxiv.org/html/2610.37229v1#S4.SS2">§4.2</a>）</p>
+<h2 id="串接設計與選型偏差">串接設計與選型偏差</h2>
+<p>三種集成方式對每類固定使用 BAcc 最高的三個決策模型：多數決全呼叫；仲裁先問兩個模型，只在不一致時問第三個，故判決與多數決相同；信心串接依 <strong>BAcc 由高到低</strong>，只將各階段最低信心的目標比例送下一站，並非按價格由低到高。<span class="math inline">\(r_2\)</span> 是「已到第二階段者」的轉交比例，不是全部項目的比例。（<a href="https://arxiv.org/html/2610.37229v1#S3.SS4">§3.4</a>）</p>
+<table>
+<thead>
+<tr>
+<th>類型</th>
+<th>成員順序</th>
+<th style="text-align:right">同資料選出的峰值 BAcc</th>
+<th style="text-align:right">五折交叉擬合 BAcc</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FC</td>
+<td>pplx → luna → jev</td>
+<td style="text-align:right">82.21%</td>
+<td style="text-align:right">81.69%</td>
+</tr>
+<tr>
+<td>FF</td>
+<td>luna → jev → pplx</td>
+<td style="text-align:right">84.61%</td>
+<td style="text-align:right">84.39%</td>
+</tr>
+<tr>
+<td>CI</td>
+<td>pplx → jev → d1</td>
+<td style="text-align:right">84.61%</td>
+<td style="text-align:right">84.24%</td>
+</tr>
+<tr>
+<td>LI</td>
+<td>pplx → jev → luna</td>
+<td style="text-align:right">73.28%</td>
+<td style="text-align:right">73.28%</td>
+</tr>
+<tr>
+<td>II</td>
+<td>pplx → clef → d1</td>
+<td style="text-align:right">71.80%</td>
+<td style="text-align:right">71.44%</td>
+</tr>
+</tbody>
+</table>
+<p>來源：<a href="https://arxiv.org/html/2610.37229v1#A6.SS1">附錄 F.1，表 10、12</a>。峰值在同批項目掃描 36 組 <span class="math inline">\((r_1,r_2)\)</span> 後選最高值，屬事後樂觀估計。交叉擬合用五個種子、各五個標籤分層折，在四折選轉交率與信心閾值，測剩下一折；<strong>成員選擇與排序仍依全樣本 BAcc</strong>，不是整條選型流程的獨立外測。</p>
+<p>FC／FF／CI 交叉擬合相對最強單模仍改善 2.76／1.67／1.58 個百分點，配對區間均排除零；但相對 sol 的差異區間全部包含零。峰值 FF／CI 對 sol 的顯著優勢，不能沿用為交叉擬合後的顯著結論。三類交叉擬合成本為 sol 的 1.25%／3.33%／1.30%，平均每項呼叫 1.30／1.31／1.23 次；成本與延遲由已記錄 API 預測離線重播估算。（<a href="https://arxiv.org/html/2610.37229v1#A6.SS1">附錄 F.1，表 10–11</a>）</p>
+<p>LI 最佳配置不轉交，等於 pplx；II 的交叉擬合改善僅 0.36 個百分點、區間含零。更多轉交不一定更好，低信心項目也可能是所有成員共同不擅長的部分。（<a href="https://arxiv.org/html/2610.37229v1#S4.SS3">§4.3</a>）</p>
+<h2 id="作者明示限制">作者明示限制</h2>
+<p>類型與來源部分混雜，CI、II 各只有一個來源；原標註轉二元標籤可能不完全一致。每任務只測一套提示，未測提示敏感度；決策模型機率與 sol 自報信心不完全可比。串接是固定模型配置的離線重播與來源內交叉擬合，成員排序仍看全樣本，尚未證明未見領域或實際部署的同等收益。（<a href="https://arxiv.org/html/2610.37229v1#Sx1">Limitations</a>）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.37229_DecisionModelJudges.zh-TW.html">Decision Models as Judges 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

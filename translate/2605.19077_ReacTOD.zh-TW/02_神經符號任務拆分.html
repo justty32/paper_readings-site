@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_神經符號任務拆分 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.19077_ReacTOD.zh-TW.html">回 2605.19077_ReacTOD.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="32-神經符號任務拆分">3.2 神經符號任務拆分</h2>
+<p>依循 FnCTOD（Li et al., 2024）的實證發現——將 NLU 分解為獨立函數呼叫可提升 LLM 準確率，我們將意圖分類（IC）與槽解析（SR）功能性地分離為獨立的生成呼叫（見圖 2）。此拆分限制 LLM 每步推理的搜尋空間，使參數高效模型能達到與 monolithic frontier 模型相當的推理效能。</p>
+<h3 id="321-綱目驅動意圖分類ic">3.2.1 綱目驅動意圖分類（IC）</h3>
+<p>IC 模組將使用者語句 u_t 映射至目標意圖 i_t ∈ I，其中 I 代表企業系統的動態本體。為實現零-shot 泛化，我們在推理時將領域綱目納入 LLM 上下文視窗：i_t ∼ π_IC(· | u_t, B_{t-1}, a_{t-1})。為確保確定性的領域外（OOD）路由，I 強制納入非交易類別（如 <code>fallback</code>）。<strong>短路效率邏輯</strong>：若 IC 預測非交易意圖，系統執行程式化短路，完全跳過 SR 模組，避免對對話確認語進行昂貴的實體提取。</p>
+<h3 id="322-槽解析sr">3.2.2 槽解析（SR）</h3>
+<p>以交易意圖 i_t 為條件，SR 模組提取相關實體集 E_t。對每個提取的 slot，模型產出元組 e = ⟨v_raw, v_norm⟩：v_raw 為對話中的表面形式，v_norm 為符合系統規範的正規化形式（例如將 &quot;tmrw&quot; 映射至 ISO-8601 日期）。為保持生成任務聚焦，僅與活躍意圖 i_t 相關的 slot 定義被注入 prompt，排除其他領域的綱目。為處理隱式接受（使用者確認系統提案而不重述實體，例如系統問「希爾頓酒店如何？」使用者回「好的」），先前的系統語句 a_{t-1} 被納入 SR 上下文視窗，使模型能將提取接地在系統先前回合。</p>
+<h2 id="33-有界代理控制流">3.3 有界代理控制流</h2>
+<p>代理在單一有界 ReAct 迴圈內運作，最大迭代次數 Kmax。系統提示指示代理遵循預定工具呼叫順序：先呼叫 τIC 分類使用者意圖，再呼叫 τSR 提取並解析預測意圖的 slot。此順序由提示指令而非程式化約束強制執行，但確定性驗證器（§3.4）提供硬保證：τSR 無法成功終止迴圈，除非提取的 slot 通過預測意圖的所有驗證檢查。這創造了一個有效控制流：代理自我組織為 IC 優先、SR 其次的模式，驗證器作為結構性強制機制。</p>
+<p>代理可重新呼叫 τIC（若提取的 slot 與預測意圖不一致）、重新呼叫 τSR（根據驗證回饋修正 slot 值），或呼叫 τH 檢索對話歷史進行共指解析。若達到 Kmax 仍未通過驗證，系統強制降級返回 fallback 回應。</p>
+<h2 id="34-確定性驗證與自我修正">3.4 確定性驗證與自我修正</h2>
+<p>架構的核心設計原則：<strong>LLM 提議動作，但從不直接修改系統狀態</strong>。我們引入確定性驗證器 V，一個確定性守門人，評估任何提議的工具呼叫 a_k 與當前狀態 s_k：</p>
+<p>V(a_k, s_k) → (True, ∅) 若安全；(False, ε_feedback) 若違反</p>
+<p>驗證器透過<strong>確定性符號檢查</strong>運作，以避免 LLM-as-judge 框架常見的無限迴歸問題。</p>
+<p><strong>符號驗證器</strong>：執行計算成本低廉的 O(1) 演算法檢查，分為三類：(1) <strong>動作合規</strong>——拒絕對未定義工具的呼叫、強制 τIC 先於 τSR 的前提順序、抑制重複工具呼叫。(2) <strong>綱目一致</strong>——根據領域本體驗證意圖名與 slot 名、強制值約束（日期/時間/數字的正規表示式比對與列舉成員檢查）。(3) <strong>共指一致</strong>——標記泛用參照（如 &quot;restaurant&quot;）指出未解析實體，要求檢索歷史。檢查失敗時，驗證器生成<strong>結構化錯誤訊息</strong>描述違規，注入代理上下文，促使模型在下一迭代自我修正。例如對語句 &quot;I need to be there on time for my reservation&quot;，若模型為 slot <code>taxi-arriveby</code> 提取非時間值，驗證器拒絕輸出並回饋如 &quot;invalid format for slot taxi-arriveby: expected HH:MM&quot;，引導模型重新檢查語句提取正確的時間參照。為防止無限迴圈，系統強制 Kmax 上限，屆時強制降級返回 fallback。</p>
+<p><strong>遞延狀態更新</strong>：信念狀態 B_t 是一個持久的多領域表，支援跨領域非線性上下文切換。關鍵是 B_t 在代理推理迭代期間<strong>從不變異</strong>——所有更新推遲至驗證器確認提取的 slot 通過所有檢查之後。此隔離確保自我修正嘗試的已拒絕中間輸出無法污染持久狀態，為後續回合保持一致對話視圖。更新遵循嚴格的 <strong>upsert-only</strong> 協定：新 slot-value 對插入，既有 slot 在使用者修正時被覆寫（例如「算了，改成 3 人」），但值永不被刪除（顯式移除使用指定的 null 值）。此單調累積確保跨領域狀態在對話切換領域時得以保留。</p>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-評估資料集">4.1 評估資料集</h3>
+<p><strong>MultiWOZ 2.1</strong>：Budzianowski et al.（2018）/ Eric et al.（2020），包含跨越五個領域的 1000 對話測試集（含跨領域共指）。使用 2.1 版以與先前工作可比。</p>
+<p><strong>Schema-Guided Dialogue（SGD）</strong>：Rastogi et al.（2020），橫跨 16 個領域的 26 個服務，綱目驅動設計（每個服務定義自身意圖、必要/可選/結果 slot）貼近真實 API 驅動系統。測試集 4,201 對話。</p>
+<h3 id="42-指標">4.2 指標</h3>
+<p>**JGA（聯合目標準確率）**為主要指標。MultiWOZ：整體 JGA（所有活躍領域同時完全匹配）與按領域 JGA。SGD：按服務平均 JGA。非類別 slot 值以模糊 token-sort 匹配比較。</p>
+<h3 id="43-實驗設置">4.3 實驗設置</h3>
+<p><strong>模型配置</strong>：主要評估小於 32B 參數的開源 LLM：Qwen3-8B、Qwen3-32B、gpt-oss-20B、Gemma3-12B；另含 Claude-Opus-4.6 作為高容量參考。所有模型溫度 0.0、統一 Kmax=6。Qwen3 與 Gemma3-12B 關閉思考模式（文字 ReAct 提示）；gpt-oss-20B 使用原生思考（低 effort）；Claude-Opus-4.6 交織自由形式推理與原生工具呼叫。Qwen3-32B 與 Claude-Opus-4.6 透過 Amazon Bedrock 提供服務；其餘模型本地以 vLLM 部署於 A100 GPU。</p>
+<p><strong>綱目配置</strong>：MultiWOZ——從 2.2 版取綱目資訊（2.1 缺正式意圖/ slot 元資料），合併各領域內意圖為單一意圖，為驗證器標註 slot 類型（類別/時間/數字/自由文字）。SGD——從官方測試綱目定義程式化推導，保留每服務獨立意圖，為 slot 標註角色（必要/過濾）。</p>
+<h3 id="44-baseline">4.4 Baseline</h3>
+<p>比較 SERI-DST（動態檢索對話範例）、FnCTOD（先前零-shot SOTA——將領域邏輯視為可執行函數並約束 LLM 產出結構化 JSON 參數）、DistDST（需離線微調的蒸餾法，供參考）。為公平比較，以相同 backbone LLM（Qwen3-32B、gpt-oss-20B）重評 FnCTOD，隔離架構設計的貢獻。SGD 另與 SRP（Safa &amp; Şahin, 2025；使用 gold domain label 與按領域隔離對話）比較；我們以 Claude-Opus-4.6 重現 SRP（原始論文以 GPT-4-Turbo 報告 88.70%，無法重現），去除 SRP prompt 錯誤從系統語句中提取的僅結果 slot 預測後得 45.20% JGA——主要錯誤是幻覺資訊屬性（car_name、venue、price）。</p>
+<blockquote>
+<p><a href="../2605.19077_ReacTOD.zh-TW.html">上一部分 ←</a></p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

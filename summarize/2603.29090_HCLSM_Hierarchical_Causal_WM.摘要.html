@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《HCLSM：物件中心世界建模的分層因果潛在狀態機》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jaber Jaber、Osama Jaber（RightNow AI）</p><p>日期：2026-03，世界模型／物件中心 + 分層動力學 + 因果結構</p><p>arXiv：2603.29090</p><p><a href="https://arxiv.org/abs/2603.29090" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="hclsm物件中心世界建模的分層因果潛在狀態機重點摘要">《HCLSM：物件中心世界建模的分層因果潛在狀態機》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>HCLSM</strong>：從影片預測未來狀態的世界模型多用<strong>扁平 latent</strong>——把物件糾纏、忽略因果、把時間動力學壓成單一尺度；HCLSM 主張「世界模型應鏡映世界的結構」，把三件事同時放進一個可微架構：<strong>物件中心分解</strong>（slot attention + spatial broadcast decoder）、<strong>分層時間動力學</strong>（三級引擎：selective SSM 管連續物理、sparse transformer 管離散事件、compressed transformer 管抽象目標）、<strong>因果結構學習</strong>（GNN 互動 + NOTEARS DAG）；關鍵訓練洞見是**「結構必須先於預測」**——用兩階段協定先學「東西是什麼」（重建）再學「東西做什麼」（動力學），否則預測損失會逼模型塌縮成扁平分散碼；在 PushT 機器人操作上以 68M 參數達 0.008 MSE 次態預測 + 浮現的空間分解，並附 38× 加速的自製 Triton SSM kernel 與開源全碼。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>人不把世界知覺為像素流，而是看見物件、追蹤運動、注意異常、推理因果。V-JEPA 等從編碼器表徵預測未來 latent，但這些 latent 是<strong>非結構化向量</strong>，把所有物件、所有時間尺度、所有因果關係糾纏進單一預測目標——對影片理解夠用，卻給不了規劃與反事實推理所需的結構化知識。問題有三維：(1) <strong>物件</strong>——場景含半獨立演化的離散實體，扁平 latent 無法把杯子的位置與桌面分開；(2) <strong>時間</strong>——物理動力學多尺度並行（毫秒軌跡、離散碰撞、分鐘級策略），需不同計算機制；(3) <strong>因果</strong>——夾爪推杯子而非反之，無顯式因果結構就答不了「若夾爪推得更用力會怎樣」。現有系統沒有一個在單一可微架構裡統一「物件分解 + 分層時間動力學 + 因果推理」（見論文 Table 1：V-JEPA2/DreamerV3/SlotFormer/DINOSAUR/Slot-SSM 各缺至少一項）。</p>
+<h2 id="核心方法五層架構">核心方法（五層架構）</h2>
+<ul>
+<li><strong>Layer 1 感知</strong>：ViT 編碼器把影格轉成 patch embedding + 時間位置編碼。</li>
+<li><strong>Layer 2 物件分解</strong>：帶<strong>動態生滅</strong>的 Slot Attention（存在頭預測 p_alive，殘差注意力能量超閾值就「誕生」休眠 slot）;<strong>Spatial Broadcast Decoder（SBD）</strong>——每個 slot 廣播到 14×14 網格 + (x,y) 座標、解碼成特徵 + alpha mask，alpha 對 alive slot 做 softmax 形成<strong>像素級競爭</strong>；重建目標<strong>不是像素而是凍結 ViT patch 特徵</strong>（DINOSAUR 式，給語義訊號）；再加 GNN relation graph（邊權直接編碼物件互動結構）。</li>
+<li><strong>Layer 3 分層動力學</strong>：L0 = 每物件一條 <strong>selective SSM（Mamba 式）</strong> 管連續物理（共享參數 + 全域 SSM 條件）;L1 = <strong>sparse event transformer</strong>，事件偵測器（多尺度幀差 + 因果膨脹卷積）只在偵到事件邊界的 K≪T 個時步觸發，成本 O(K·N²) 而非 O(T·N²);L2 = <strong>goal compression transformer</strong>，summary query 把事件序列壓成抽象目標 token、可條件於語言/目標供規劃；三級經 hierarchy manager 以可學門控合成。</li>
+<li><strong>Layer 4 因果結構</strong>：學一個鄰接矩陣 W，Gumbel-softmax 二元採樣 + L1 稀疏 + <strong>NOTEARS DAG 約束</strong>（augmented Lagrangian）；當前版以 GNN 邊權為主因果訊號、顯式 DAG 為正則路徑。</li>
+<li><strong>兩階段訓練（核心）</strong>：若所有損失從 step 0 同開，JEPA 預測損失會壓過 SBD（分散碼比物件專屬碼更易預測），slot 永不特化。故 <strong>Stage 1（前 40%）只開 SBD 重建 + 輕量多樣性正則</strong>（預測損失只監看不回傳梯度），逼每個 slot 競爭空間所有權；**Stage 2（後 60%）**才加全 JEPA 預測（SBD 降為正則）。靈感是視覺皮層「先認物、後預測運動」。</li>
+</ul>
+<h2 id="結果pushtopen-x-embodiment68m-參數50k-步h100">結果（PushT，Open X-Embodiment，68M 參數，50K 步，H100）</h2>
+<ul>
+<li><strong>次態預測 MSE 0.008</strong>（two-stage）；對照 no-SBD 版預測損失更低（0.002）但那是 32 slot 分散編碼整場景（更易預測卻無物件結構）;two-stage 的 SBD 重建損失達 0.008、多樣性損失更低（0.132 vs 0.154），佐證 slot 學到重建特定空間區域。</li>
+<li><strong>浮現空間分解</strong>：不同 slot 認領 PushT 場景不同空間區域（雖不乾淨——32 slot 對 3 物件過多，每物件被拆到約 10 slot）;no-SBD 版則 slot 注意力均勻、無空間結構。</li>
+<li><strong>事件偵測</strong>：每 16 幀偵到 2–3 個事件（對應夾爪與 T-block 接觸等顯著狀態變化）。</li>
+<li><strong>工程</strong>：自製 Triton SSM scan kernel 對 PyTorch sequential 達 <strong>38–39× 加速</strong>（把 per-object 時間預測從主瓶頸降到前向 5%）；全系統 8,478 行、51 模組、171 單元測試，開源。</li>
+</ul>
+<h2 id="局限作者坦白">局限（作者坦白）</h2>
+<ul>
+<li><strong>slot 數</strong>：32 slot 全程存活，存在頭學不會殺死未用 slot;3 物件場景用 32 slot、每物件拆約 10 slot；降到 8 會訓練不穩（NaN）。</li>
+<li><strong>因果發現</strong>：顯式因果鄰接矩陣<strong>學不到邊</strong>（稀疏正則下全塌成 0），與動力學聯訓在 bf16 下 NaN；只能靠 GNN 邊權當隱式互動，且未驗證是否對應 ground-truth 因果。</li>
+<li><strong>規模</strong>：只訓 Small（68M）於單一資料集（PushT，206 episode）;Base（262M）/Large（3B）在 batch≥4 有 NaN、多卡 FSDP 因 NCCL 不相容失敗。</li>
+<li><strong>seed 敏感</strong>：約 40–60% 訓練 run 在前 1000 步因 bf16 梯度溢位發散成 NaN。</li>
+<li>規劃（CEM/MPPI）已實作但<strong>未評估</strong>；非重建、多物件、閉環控制留待未來。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 D 類**「結構化世界模型」<strong>裡</strong>最「全都要」的工程整合範本**：把 <a class="paper-reference" href="2606.14418_COMET_Object_Centric_MCTS.%E6%91%98%E8%A6%81.html">2606.14418</a> COMET 的物件中心、<a class="paper-reference" href="2606.16489_BRICKS_WM_Modular_World_Model.%E6%91%98%E8%A6%81.html">2606.16489</a> BRICKS-WM 的模組分解精神，再疊上<strong>分層時間（SSM+事件+目標）與顯式因果（NOTEARS）</strong>，並罕見地<strong>坦白報告失敗</strong>（因果矩陣學不到邊、bf16 NaN、slot 不收斂），對想複現的人極有參考價值。</li>
+<li>最值得記：<strong>「結構必須先於預測」這個訓練洞見</strong>（兩階段先重建後動力學，否則塌縮成扁平碼）—— 與 <a class="paper-reference" href="2606.16489_BRICKS_WM_Modular_World_Model.%E6%91%98%E8%A6%81.html">2606.16489</a> BRICKS-WM 的 β_I information bottleneck 同屬「強制模組解耦的旋鈕/協定」家族；以及 <strong>「三尺度時間：連續用 SSM、離散事件用 sparse transformer、抽象目標用 compressed transformer」</strong> 的分工。</li>
+<li>工程面：自製 Triton SSM kernel 38× 加速、bf16 數值穩定 4 招（x*x 代 x**2、A_log 初始化、activation clamp、關 GradScaler）、GPU 原生 Sinkhorn 取代 CPU Hungarian——對做 SSM/slot 系統的人是現成踩坑表。</li>
+<li>定位：架構 + 單資料集概念驗證 + 開源（github.com/rightnow-ai/hclsm），適合做物件中心世界模型、分層動力學、因果世界建模、且願讀「warts and all」誠實報告的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2603.29090_HCLSM_Hierarchical_Causal_WM.zh-TW.html"><code>../translate/2603.29090_HCLSM_Hierarchical_Causal_WM.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

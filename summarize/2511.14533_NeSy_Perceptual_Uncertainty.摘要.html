@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《感知不確定性下推理的神經符號框架：連結連續知覺與離散符號規劃》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：（IEEE 格式論文，作者見原文）</p><p>日期：2025-11，機器人操作 NeSy</p><p>arXiv：2511.14533</p><p><a href="https://arxiv.org/abs/2511.14533" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="感知不確定性下推理的神經符號框架重點摘要">《感知不確定性下推理的神經符號框架》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>一個<strong>把不確定性從感知顯式傳播到規劃</strong>的 NeSy 框架：<strong>Transformer 感知前端 + GNN 關係推理</strong> 從視覺觀察抽出<strong>帶校準信心分數的機率符號狀態</strong>，再交給一個<strong>不確定性感知的符號規劃器</strong>——信心低時<strong>主動做資訊蒐集動作</strong>（look_closer / push_obstacle）。以<strong>桌面機器人操作</strong>為具體應用，符號預測 F1=0.68、操作成功率平均 90.7%，比最強 POMDP 基線高 10–14 分且規劃只需 10–15 ms（POMDP 需 100+ ms）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<ul>
+<li>連續感知訊號 ↔ 離散符號推理的橋接，在不確定下尤難。傳統法要嘛假設<strong>完美感知</strong>（不切實際）、要嘛純感知層運作（缺可解釋與泛化）。</li>
+<li>既有 NeSy（NS-CL、Neural-Symbolic VQA）<strong>假設確定性符號狀態</strong>（感知＝觀察到謂詞的二元映射）→ 無法量化/傳播不確定性、不會在不確定時主動蒐集資訊。</li>
+<li><strong>POMDP</strong> 雖原則性處理不確定，但 (1) 直接在高維觀察空間（RGB）推理 → 信念狀態指數複雜、100+ ms;(2) <strong>缺符號抽象</strong>——對原始像素推理而非語意關係（On/LeftOf/Clear）→ 無可解釋計畫、難注入領域知識。</li>
+<li><strong>三大不確定來源</strong>：感測噪聲、模型偏差、部分可觀察性。</li>
+</ul>
+<h2 id="方法">方法</h2>
+<ul>
+<li><strong>神經符號翻譯器</strong>（連續觀察 → 機率符號狀態）：
+<ul>
+<li><strong>ResNet-18 骨幹</strong>抽視覺特徵 + 可學物件查詢 + <strong>8 頭多頭自注意力</strong>（動態處理 3–10 個物件）+ 物件偵測頭（bbox + objectness）。</li>
+<li><strong>GNN 關係推理</strong>：場景當全連接圖，<strong>18 維邊特徵</strong>（2D 空間/bbox/尺寸比/3D 位姿等幾何描述子）做訊息傳遞，輸出每個有序物件對的關係機率。</li>
+<li><strong>混合 Transformer-GNN</strong>：Transformer 給全域脈絡與自適應物件選擇、GNN 經訊息傳遞施加幾何約束 → 在接觸密集關係（On: F1=0.52）上勝純 Transformer/GNN。</li>
+</ul>
+</li>
+<li><strong>自適應、關係專屬閾值</strong>：On=0.5、LeftOf/CloseTo/Clear=0.3（不同關係預測特性不同）→ <strong>比固定閾值提升 143%（F1 0.68 vs 0.28）</strong>。</li>
+<li><strong>不確定性感知符號規劃器</strong>：PDDL 領域 + <strong>A*</strong> 搜尋（只用信心 &gt;τ 的謂詞）；信心低於校準閾值時<strong>自動觸發資訊蒐集動作</strong>，依場景複雜度提升成功率 4.7–10.0%。</li>
+<li><strong>閉迴路執行</strong>：感知→機率符號→自適應閾值+空間驗證→規劃；不確定則 re-observe/probe 更新觀察迴圈。</li>
+</ul>
+<h2 id="理論貢獻">理論貢獻</h2>
+<ol>
+<li><strong>校準-收斂連結（Theorem 3）</strong>：規劃收斂保證<strong>顯式依賴校準品質 ECE</strong>——校準差（高 ECE）會使收斂界失效，需更多資訊蒐集步。首次量化「感知品質 ↔ 規劃保證」。</li>
+<li><strong>相依感知不確定性建模（MRF）</strong>：用馬可夫隨機場建謂詞相依（互斥、蘊含、相關），比獨立假設給<strong>更緊的界</strong>（操作場景關係強耦合時更準）。</li>
+<li><strong>最優閾值選擇（Theorem 6）</strong>：推導平衡成功率與規劃效率的<strong>最優規劃信心閾值解析式</strong>（非 ad-hoc 調參）。</li>
+</ol>
+<ul>
+<li>另含 Theorem 1（獨立情況不確定性傳播，乘積律基線）、Theorem 4（A* 最優性）、Theorem 5（時間複雜度）。</li>
+</ul>
+<h2 id="實驗">實驗</h2>
+<ul>
+<li><strong>資料</strong>：10,047 個 PyBullet + YCB 物件合成場景（3–10 物件，RGB 224×224，關係 On/LeftOf/CloseTo/Touching/Clear）。</li>
+<li><strong>符號預測</strong>：整體 <strong>F1=0.68</strong>。</li>
+<li><strong>操作任務</strong>（各 50 trials）：Simple Stack 94% / Deep Stack 90% / Clear+Stack 88% = <strong>平均 90.7%</strong>，比最強 POMDP 基線（DESPOT/POMCP）高 <strong>10–14 分</strong>，規劃 <strong>10–15 ms（POMDP 100+ ms）</strong>。</li>
+<li><strong>理論驗證</strong>：不確定性下降符合預測律；收斂界緊（理論 17% 內）；最優閾值與實測吻合 → 理論可預測而非抽象。</li>
+<li>消融：自適應閾值、資訊蒐集、各組件貢獻皆正向。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>模擬-現實落差</strong>（sim-to-real）；資訊蒐集動作在模擬中簡化（真機需考慮感測器擺位、動作安全/可逆、即時性）；假設 Theorem 3 的不確定下降率 r 為常數（真實可能隨進度/狀態/動作型變化）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批中<strong>最偏機器人/具身應用</strong>的 NeSy，與 <a class="paper-reference" href="2511.14533_NeSy_Perceptual_Uncertainty.%E6%91%98%E8%A6%81.html">2511.14533</a> 同主題的「連續感知→離散符號」橋接，獨特在<strong>把不確定性提升到符號層、用校準連結到規劃收斂保證</strong>。</li>
+<li>與 <a class="paper-reference" href="2510.14538_Reasoning_Shortcuts.%E6%91%98%E8%A6%81.html">2510.14538</a>（RS）哲學呼應：那篇講「概念接地會悄悄出錯」，這篇講「<strong>承認感知不確定、量化它、信心不夠就去多看一眼</strong>」——是面對接地不可靠的<strong>工程對策</strong>（主動資訊蒐集）。</li>
+<li>與 <a class="paper-reference" href="2502.03274_Probabilistic_NeSy_Robustness_Verification.%E6%91%98%E8%A6%81.html">2502.03274</a>（機率 NeSy 驗證）互補：都關心 NeSy 的可靠性，一個給形式驗證、一個給執行時不確定性處理 + 收斂保證。</li>
+<li>最值得記：<strong>校準品質（ECE）→ 規劃收斂界</strong> 的量化連結、<strong>關係專屬自適應閾值</strong>（單一閾值差很多）、<strong>用符號抽象壓低 POMDP 的維度詛咒</strong>。</li>
+<li>適合做<strong>具身 AI / 機器人操作 / 主動感知 / 不確定下符號規劃</strong>的人；定位是完整系統 + 理論 + 模擬實驗（尚未真機）。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2511.14533_NeSy_Perceptual_Uncertainty.zh-TW.html"><code>../translate/2511.14533_NeSy_Perceptual_Uncertainty.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_背景 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2307.09254_Selective_Generation.zh-TW.html">回 2307.09254_Selective_Generation.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%8D%8A%E7%9B%A3%E7%9D%A3%E5%AD%B8%E7%BF%92%E5%AF%A6%E7%8F%BE%E5%8F%AF%E6%8E%A7%E9%81%B8%E6%93%87%E6%80%A7%E7%94%9F%E6%88%90.html">下一節 →</a></p>
+</blockquote>
+<h2 id="2-背景">2. 背景</h2>
+<p>聚焦於開放式問答任務。設 x 為問題、y 為答案的 token 序列，(x,y) 皆取自詞元空間 W 的序列空間 W*。</p>
+<h3 id="21-語言生成">2.1 語言生成</h3>
+<p>GLM 以貪婪解碼（greedy decoding，一種決定性生成過程）依序從 next-token 分布取 arg max 生成 token，直到出現終止符。生成器 G:X→Y 回傳生成答案 ŷ=G(x)，其條件機率 f_M(x,ŷ) 定義為各 token 條件機率的連乘，常被當作不確定性量測。</p>
+<h3 id="22-選擇性預測">2.2 選擇性預測</h3>
+<p>選擇性預測在預測不確定時回傳「不知道（IDK）」以拒絕作答。分類中的選擇性分類器 Ŝ 由分類器 ŷ 與選擇函數 ŝ 組成：若 ŝ(x)=1 則回傳 G(x)，否則回傳 IDK。選擇函數常用以最大概似為信心率函數的單門檻指示函數 ŝ(x)=1(f(x,ŷ)≥τ)。在 i.i.d. 假設下，Geifman &amp; El-Yaniv 提出證書化門檻學習演算法，以 PAC 保證控制相對 EM 指標的 FDR：R_EM(Ŝ)≔P{ŷ(x)≠y | Ŝ(x)≠IDK}。由於 EM 只在生成答案與真答案「完全一致」才算對，不適合可能有多個有效序列的語言生成問題，會學出過度保守、近乎空洞（vacuous）的選擇函數——本文的實驗也證實了這一點。因此本文改用文字蘊涵評估生成序列的正確性，緩解指標不對齊問題。</p>
+<h3 id="23-文字蘊涵">2.3 文字蘊涵</h3>
+<p>自然語言推論（NLI，又稱文字蘊涵識別）預測一個序列是否蘊涵另一個序列。給定前提 p 與假設 h，成對序列被分為三類：h 在 p 為真時也為真則為「蘊涵」；h 為假則為「矛盾」；否則為「中立」。本文定義蘊涵評分函數 f_E(G(x),y)≔1−p_E（矛盾 | p=G(x), h=y），用來估計並偽標籤 G(x) 的正確性，其中 p_E（矛盾|·） 是 G(x) 與 y 矛盾的機率。用偽標籤雖能充分運用無標籤資料，但控制誤標率仍是挑戰。</p>
+<h3 id="24-保形預測">2.4 保形預測</h3>
+<p>保形預測在資料生成過程的最小假設下，輸出對模型不確定性給出模型無關正確性保證的預測集。本文採用的 PAC 保形預測，透過 PAC 學習理論的視角，結合容忍區間（tolerance region）與訓練條件式歸納保形預測的詮釋。考慮以純量 τ 參數化的保形集合 C(x)≔{y∈Y | f(x,y)≥τ}；PAC 保形集合學習演算法 A_Binom 輸出參數 τ̂，使誤覆蓋率（更一般地：任何相對 τ 單調的指示損失風險）R_01(Ĉ) 滿足 P{R_01(Ĉ)≤ε}≥1−δ——即無論校準資料如何抽取，都以信心 δ 把風險控制到期望水準 ε。演算法本質是在滿足二項尾界 U_Binom(k_τ;n,δ)≤ε 的約束下，取能使 τ 最大（因而集合最小、資訊量最大）的門檻；若無可行解，回傳空洞集合（τ̂=0）。本文借用此演算法控制偽標籤（半監督學習中用來標記未標註樣本）的誤標率。</p>
+<h3 id="25-校準">2.5 校準</h3>
+<p>分類中的校準，是把分類器對最大概似的回應（信心）調整到「信心值＝實際正確機率」。本文把校準與選擇性生成連結：給定語言評分函數 f_M 完美校準的定義，本文提供一個「選擇生成器能在任意期望風險水準下控制相對文字蘊涵關係的 FDR」的充分條件。</p>
+<h2 id="3-問題選擇性生成">3. 問題：選擇性生成</h2>
+<p>設 (x,y)~D′ i.i.d.，給定生成器 G:X→Y，考慮選擇性生成器 Ŝ:X→Y∪{IDK}：若選擇函數 ŝ(x,G(x))∈{0,1} 判定不確定，則不回傳 G(x) 而回傳 IDK。目標是學一個廣義偽發現率——相對某關係 R 的 FDR：</p>
+<p>R_R(Ŝ) ≔ P{(G(x),y)∉R | Ŝ(x)≠IDK}</p>
+<p>機率取自 (x,y,e,v)，其中 e≔1((G(x),y)∈R) 是因 R 未知而需額外標註的標籤，v∈{0,1} 是 e 的可見性旗標（供半監督學習使用），且 (x,y,e,v)~D≔D′·V，V≔Bernoulli(p_v)，即標籤是否被觀測到（可見）與 (x,y,e) 的生成過程獨立、以未知機率 p_v 出現。</p>
+<p>本文設計學習演算法 A，輸出選擇性生成器 Ŝ，使其在校準集 Z~D^n 上以機率至少 1−δ 滿足 P{R_R(A(Z))≤ε}≥1−δ——此即 PAC 保證。在所有滿足 PAC 保證的選擇性生成器中，選擇棄權比例最低（選擇效率最高）者。主要挑戰是：對任意 ε、δ 都找到樣本與選擇雙重效率的 PAC 演算法，並為結構化標籤（如問答）設計合適的關係 R。當無法對任意 ε 都給出 PAC 演算法時，本文改用較寬鬆的「可控（controllable）」概念——演算法給出超過 ε 的最小可達風險，而非嚴格滿足 ε。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

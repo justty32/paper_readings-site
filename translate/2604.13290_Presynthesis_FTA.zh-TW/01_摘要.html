@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.13290_Presynthesis_FTA.zh-TW.html">回 2604.13290_Presynthesis_FTA.zh-TW 目錄</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>抽象語意已證明對加速搜尋式程式合成至關重要，它能健全地成片剪掉錯誤程式（無須枚舉）。人們會期望抽象語意越細，合成越快。遺憾的是，據我們所知目前並非如此。原因是：隨抽象粒度增加——雖枚舉的程式變少——剪枝卻變得更昂貴。這對整體合成效能施加根本限制，正是本文要解決的。</p>
+<p>我們的關鍵想法是引入<strong>離線 presynthesis 階段</strong>，含兩步。給定帶抽象語意的 DSL，第一步「語意建模」為一個輸入空間建有限樹自動機（FTA）A——使對任何程式 P、任何考慮的輸入 I，A 都有一條對應 P 在 I 上抽象執行的 run。第二步為 A 建一個 oracle O。此 O 讓合成時能<strong>快速剪枝</strong>：高效找出恰好那些在抽象語意下滿足給定 I/O 範例的 DSL 程式。</p>
+<p>我們把此 presynthesis 式合成範式實作成框架 <strong>Foresighter</strong>，並在其上開發 SQL、字串轉換、矩陣操作三個實例化，皆顯著勝過各域既有工作。</p>
+<p>關鍵字：程式合成、自動機理論、抽象解釋。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>本文關注長久的「從範例做語法引導程式合成」問題，即 <strong>programming-by-example（PBE）</strong>：給定 CFG 定義語法的 DSL 與一組 I/O 範例 E，找一個 DSL 程式 P 使 P 依 DSL 語意滿足 E。這有挑戰性且應用廣（FlashFill 等）。常用方法是在文法上搜尋滿足程式，但因程式空間巨大而計算上難解。</p>
+<p><strong>SOTA</strong>：許多 SOTA 合成器用某種抽象語意剪枝搜尋空間——推理一組程式的行為以證其與規格不一致而成片剪掉。例如 top-down 合成枚舉程式 sketch（帶洞的不完整程式），若 sketch 抽象行為與範例不一致即剪掉、省去枚舉其所有補全；又如 representation-based 合成先依 DSL 抽象語意為 I/O 範例建類圖結構（節點關聯程式在輸入上的抽象輸出、邊由抽象語意建、路徑代表程式），合成即在「一致路徑」中搜尋，不相關節點對應的程式被剪掉。</p>
+<p><strong>更細抽象 ⇒ 更快合成？</strong> 我們問此重要問題：肯定答案意味可用抽象粒度當作持續擴展合成的維度。遺憾據我們所知目前不行。開發精確抽象語意本身已很難，而正交挑戰是<strong>剪枝不總便宜</strong>：更細抽象雖能剪更多程式，剪枝成本也增，可抵消甚至壓過收益。例如 top-down 中用更細抽象評估 sketch 常更貴卻仍可能剪不掉；representation-based 中更細抽象產生更大的圖、含更多不相關節點——此「圖膨脹」本質上是因為建圖時無法健全預測哪部分相關，直到圖完全建好。</p>
+<p><strong>我們的工作：presynthesis 式合成</strong>。我們提出可擴展的剪枝技術。關鍵是引入離線 presynthesis 階段：給帶抽象語意的 DSL，預計算可存磁碟的資訊；解一串合成任務時先載入再用以快速剪枝。這是範式轉移——從幾乎全「純線上」的既有工作，轉為能利用離線資源換更好線上效能。</p>
+<ul>
+<li><strong>關鍵想法 1（用 FTA 做離線抽象語意建模）</strong>：對「未來感興趣的輸入空間」建有限樹自動機 A，使對該空間任一輸入、任一程式 P，A 都有一條 run ρ 從輸入抽象開始、終於標記 P 抽象輸出的狀態。</li>
+<li><strong>關鍵想法 2（用離線 oracle 快速剪枝）</strong>：合成 = 找 A 中與範例 e=e_in↦e_out 一致的 run ρ（始於與 e_in 一致的狀態、終於匹配 e_out 的狀態）。這可視為圖搜尋；挑戰是 A 很大。我們離線先建「可達性 oracle」O，合成時用 O 抽出 slice <code>A_e</code>（A 的子 FTA，代表所有在抽象語意下滿足 e 的程式）——slicing 即剪枝，但靠 O 大幅減少建 <code>A_e</code> 時的圖膨脹故非常快。最後對 <code>A_e</code> 做標準搜尋找具體語意下滿足所有範例的程式。</li>
+</ul>
+<p><strong>合成即服務</strong>：載入離線產物需更多記憶體，故設想部署成服務（規格送到合成伺服器、合成程式送回），使用者無須那麼多記憶體（除非本地部署）。</p>
+<h2 id="23-fta-式合成與-presynthesis-框架精要">2–3. FTA 式合成與 presynthesis 框架（精要）</h2>
+<p>既有 FTA 式合成（用抽象語意）的問題：更細抽象 A₂ 雖剪枝力更強、搜尋更快，但 A₂ 有更多「無用」狀態與轉移——此 <strong>FTA 膨脹</strong>源於無法健全「預測未來」（當前狀態是否會通向未來 final 狀態）。本文的兩階段（離線語意建模建 A、離線建 oracle O；線上 slice + search）正是化解。</p>
+<h2 id="4-foresighter-實作">4. Foresighter 實作</h2>
+<p>整個框架實作為 Foresighter。給範例集 E，合成器（給 A、O、E）找滿足程式；找到子 FTA 後嘗試具體化，失敗則繼續、逾時回 null。</p>
+<ul>
+<li><strong>4.2 ForesighterSQL</strong>（聚焦域）：DSL 為 SQL 表達子集（Project/Filter/IJoin 等）；抽象域追蹤 NumCols、NumRows、SubsetOf、ColType 等，並給對應抽象轉移子；抽象輸入空間考慮至多 3 輸入變數各至多 15 欄（NumCols 中 k 從 1 到 15）。優化：「正準欄序」讓欄集 J 表為區間，使 presynthesis 更快而不失完備。</li>
+<li><strong>4.3 ForesighterString</strong>（字串轉換）、<strong>4.4 ForesighterMatrix</strong>（矩陣操作）：示範框架通用性。</li>
+</ul>
+<h2 id="5-評估">5. 評估</h2>
+<p>5 個研究問題（RQ1-4 聚焦 SQL，RQ5 評通用性於字串與矩陣）。</p>
+<ul>
+<li>
+<p><strong>SQL 基準</strong>：收集 Cubes 全部 3,866 題（據知含文獻中所有範例式 SQL 合成基準），各題擴增至 17 範例，最終 3,817 題（49 題因 ground-truth 查詢在某輸入上不可執行而排除）。字串：108 個 SyGuS；矩陣：39 個（皆同 Blaze 基準）。SQLite 3.46 評 SQL。</p>
+</li>
+<li>
+<p><strong>RQ1（ForesighterSQL 結果）</strong>：timeout 10 分鐘。解出 <strong>2,604 題</strong>，中位 <strong>0.01 秒</strong>、82% 在 5 秒內、平均 22.0 秒；Slice 恆 &lt;0.5 秒（&gt;90% slice &lt;1,000 狀態 &lt;3,000 轉移），Search 較長但 82% 在 5 秒內。未解 1,213 題主因 DSL 表達力（共 653 題：HAVING 149、scalar subquery 98、INTERSECT 97、EXCEPT 66、複雜 LIMIT 60），其餘為運算子非確定性（ORDER BY LIMIT 遇 tie）與抽象輸入空間覆蓋。</p>
+</li>
+<li>
+<p><strong>RQ2（vs SOTA）</strong>：對比所有 SOTA 專用 SQL 合成器與 BlazeSQL（Blaze 抽象精煉框架）。600 秒 timeout 下 ForesighterSQL <strong>一致解出更多題</strong>，比最佳基線 <strong>Cubes 多解 15%</strong>（Foresighter 用標準線上搜尋、Cubes 是 SQL 專用且用候選聚合函數等額外提示，我們不需）；共同解出題上 <strong>中位 90× / 幾何平均 51× 加速</strong>。Cubes 能解 235 題 Foresighter 不能（87 題涉不支援特徵，其餘具體化 timeout，顯示改進空間）。比 PatSQL <strong>多解 33%</strong>；BlazeSQL 雖用抽象語意卻解最少（單題達 391K 精煉步、平均 8K 步）。</p>
+</li>
+<li>
+<p><strong>RQ3（消融）</strong>：去 presynthesis（NoPresyn）線上建 slice 慢達 247 秒；只建離線 A 不用 oracle（NoOracle）反更慢——遍歷大 A（含所有輸入的狀態）算 <code>A_{e1}</code> 比從頭建還貴。<strong>結論：只建離線 A 遠不夠，須用 oracle 善用 A</strong>。較粗抽象版解 2,478 題（95%）但 FTA 小 3.4×、oracle 小 7.1×。</p>
+</li>
+<li>
+<p><strong>RQ4（Scaling）</strong>：假說「在足夠算力下，更細抽象 → 更快合成」。考慮 ForesighterSQL-4 解出的題（k 從 1 到 4），所有時間正規化到 NoPresyn-0 總時間。ForesighterSQL-4 正規化總時間 <strong>0.16</strong>（即 NoPresyn-0 的 16%，幾何平均 <strong>6.3× 加速</strong>）——presynthesis 兌現了「細抽象更快」的承諾。</p>
+</li>
+<li>
+<p><strong>RQ5</strong>：ForesighterString（108 SyGuS 字串）與 ForesighterMatrix（39 矩陣）實務有效（對比 Blaze）。</p>
+</li>
+</ul>
+<h2 id="6-相關工作與結論精要">6. 相關工作與結論（精要）</h2>
+<p>既有合成幾乎全純線上；本文以離線 presynthesis（預計算/預處理 + oracle）做範式轉移，把昂貴的圖建構與可達性分析移到離線、線上只做快速 slicing，從而首次讓「抽象粒度」成為可持續擴展合成的維度。Foresighter 三實例化（SQL/字串/矩陣）皆顯著勝過各域 SOTA。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2604.13290_Presynthesis_FTA.%E6%91%98%E8%A6%81.html"><code>../summarize/2604.13290_Presynthesis_FTA.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

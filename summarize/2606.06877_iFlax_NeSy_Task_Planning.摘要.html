@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《複雜邏輯約束下長程任務規劃的神經符號學習（iFlax）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Qiwei Du、Zitong Zhan、Shaoshu Su、Bowen Li、Yi Du、Zhipeng Zhao、Taimeng Fu、Sebastian Scherer、Jiaoyang Li、Chen Wang</p><p>日期：2026-06，神經符號任務規劃／機器人（I 類）</p><p>arXiv：2606.06877</p><p><a href="https://arxiv.org/abs/2606.06877" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="複雜邏輯約束下長程任務規劃的神經符號學習iflax重點摘要">《複雜邏輯約束下長程任務規劃的神經符號學習（iFlax）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>針對「機器人長程任務規劃」中<strong>用神經網路預測物件重要性、剪掉無關物件以加速符號規劃</strong>的既有做法（PLOI、Flax）所患的<strong>訓練-測試不匹配（exposure bias）</strong>——它們用「全搜尋空間」離線監督訓分數器、部署時卻在「自己預測剪過的空間」規劃——本文 <strong>iFlax</strong> 把它重構成<strong>模仿學習式雙層最佳化</strong>（上層學分數器、下層在剪枝空間解符號規劃並回饋自適應偽監督），並用 **3R 策略（Repair/Restart/Rollback 並行恢復）**穩住早期不穩的下層搜尋，在三個基準上達 SOTA（失敗率降 <strong>80.04%</strong>、規劃時間降 <strong>57.14%</strong>），且在四足移動操作機上模擬與真機部署成功。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>長程複雜任務規劃（含物件 affordance、空間關係、序列動作依賴）的搜尋空間<strong>組合爆炸</strong>：物件越多動作空間越大、長依賴拉長，連 SOTA 符號規劃器（如 LAMA）都變慢。近期神經符號法（<strong>PLOI、Flax</strong>）學「物件重要性分數」剪掉不太可能出現在最終計畫的物件來加速（如 15×15 MazeNamo 約 60 步任務，Flax 把規劃時間從 &gt;100 秒降到 ~24 秒）。但<strong>核心病灶＝訓練-測試不匹配</strong>：分數器用符號規劃器在<strong>全搜尋空間</strong>離線生成的固定監督訓練，測試時卻在<strong>分數器自身（不完美）預測剪出的空間</strong>規劃——這就是 exposure bias，導致漏掉關鍵物件或保留無關物件、子問題不可解或過大，效能退化。</p>
+<h2 id="核心方法iflax">核心方法（iFlax）</h2>
+<ul>
+<li><strong>重構為雙層最佳化（BLO）/ 模仿學習（imperative learning, IL）</strong>：把符號規劃器<strong>拉進訓練迴圈</strong>。
+<ul>
+<li><strong>上層</strong>：神經分數器 f_θ 把任務（PDDL 問題轉成的關係圖 𝒙）映射到物件重要性分數。</li>
+<li><strong>下層</strong>：符號規劃器在「分數剪枝的搜尋空間」解規劃，返回可行計畫 π*。</li>
+<li><strong>回饋</strong>：把 π* 中<strong>出現的物件</strong>轉成二元偽標籤遮罩 𝒎（出現=1），用<strong>二元交叉熵</strong>更新分數器。規劃器從「離線標註工具」變成「線上老師」——分數器在<strong>它測試時會遇到的、由自身預測動態剪出的搜尋空間</strong>裡受訓，直接對症 exposure bias。</li>
+</ul>
+</li>
+<li><strong>分數引導的迭代擴展</strong>：在時間預算 T₁ 內，從只含目標 G 涉及物件的簡化任務 τ_{O₀} 起步，依分數器預測<strong>逐步擴大</strong>活躍物件集解剪枝符號任務。</li>
+<li><strong>3R 穩定策略（核心創新，並行恢復）</strong>：早期分數器預測不可靠時，下層常因誤剪而找不到可行計畫、回饋不穩。3R 讓規劃器從各種早期失敗中恢復、提供可靠回饋——
+<ul>
+<li><strong>Repair</strong>：修補局部遺漏（補回缺失物件）。</li>
+<li><strong>Restart</strong>：從鬆弛提示（relaxed hints）重建活躍物件集。</li>
+<li><strong>Rollback</strong>：退回更小的活躍物件集做保守的重新擴展。
+（對比：Flax 只有單一鬆弛計畫式 repair，常不足以穩住訓練。）下層維護記憶狀態 𝝂（關係圖、分數、暫定計畫、耗時、當前分數閾值 q、已評估狀態數、物件子集），時間預算分擴展期 T₁ 與恢復期 T₂。</li>
+</ul>
+</li>
+</ul>
+<h2 id="關鍵結果">關鍵結果</h2>
+<ul>
+<li><strong>三基準（MazeNamo、SokoMindPlus、LogisticsPlus）</strong> 在大物件集、長程、複雜邏輯約束下達 SOTA。</li>
+<li><strong>MazeNamo 上相較前 SOTA Flax：失敗率降 80.04%、規劃時間降 57.14%</strong>。</li>
+<li><strong>真機部署</strong>：自建四足移動操作機，在模擬與真實世界完成長程 MazeNamo 執行，證明神經符號任務規劃的可部署性。</li>
+<li>消融驗證：雙層最佳化克服 exposure bias；3R 恢復策略帶來訓練穩定性；分數引導迭代擴展 + 3R 各有貢獻。</li>
+</ul>
+<h2 id="局限性質與作者自陳">局限（性質與作者自陳）</h2>
+<ul>
+<li>假設<strong>符號模型（PDDL 域）已知</strong>，學的是「讓規劃更快的引導（物件剪枝）」，非從零學域。</li>
+<li>下層為離散符號規劃器、搜尋空間隨上層預測而變，雙層最佳化的梯度/回饋本質困難（靠偽監督 + 3R 穩定而非精確梯度）。</li>
+<li>時間預算須切分 T₁/T₂ 等超參；早期訓練仍需 3R 兜底，方法複雜度較單純離線監督高。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 <strong>I 類（神經符號／機器人規劃）</strong> 的「效率/可擴展性」代表：直擊「神經剪枝加速符號規劃」這條線的根本缺陷（<strong>用神經預測剪枝必然帶來 exposure bias</strong>），用<strong>雙層最佳化把規劃器拉進訓練迴圈</strong>的思路有普適性——與 [[2602.19260_NeSy_vs_VLA_Manipulation]]（符號規劃對長程操作的可靠性優勢）形成「為何要符號規劃 + 如何讓它更快」的互補。</li>
+<li>最值得記：<strong>「全空間離線監督 vs 剪枝空間部署」的 train-test mismatch</strong> 這個診斷；解法<strong>＝把符號規劃器當線上老師的雙層最佳化（imperative learning）+ 偽標籤 BCE</strong>；以及 <strong>3R（Repair/Restart/Rollback）</strong> 穩定早期不可靠剪枝搜尋的工程招式。</li>
+<li>與 [[2604.16871_GRAIL_Concept_Grounding_NeSyRL]]（學概念接地）、[[2410.22077_NeSy_Landscape_Architectures]]（複合式間接監督家族）並讀，可見「神經學一塊、符號做嚴謹推理」在規劃/控制上的多種落地形態。適合做 TAMP、符號規劃加速、predict-then-optimize 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2606.06877_iFlax_NeSy_Task_Planning.zh-TW.html"><code>../translate/2606.06877_iFlax_NeSy_Task_Planning.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法論 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.02504_NeuroProlog.zh-TW.html">回 2603.02504_NeuroProlog.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-方法論">3. 方法論</h2>
+<p>NeuroProlog 包含三個核心組件：(1) 統一訓練語料庫，(2) 多任務雞尾酒訓練目標，(3) 執行引導解碼管線。</p>
+<h3 id="31-資料集建構">3.1 資料集建構</h3>
+<p><strong>數學知識庫（KB）</strong>：200 條精心建構的條目，將基礎數學概念形式化為可執行 Prolog 述詞。每條遵循標準化格式：[KNOWLEDGE] 指令 + 自然語言描述（含語意解釋與範例）+ 可執行 Prolog 程式（含模組導入 library(clpq)、CLP(Q) 約束、型別安全述詞定義、輔助述詞、標準化 solve/1 介面）。領域涵蓋 15+：基礎統計（22）、比率與比例（17）、百分比（17）、數論（11）、命題邏輯（9）、布林運算（7）、幾何（12）、線性方程式（6）、序列與級數（3）、混合主題（96）。關鍵設計：每條 Prolog 述詞包含自然語言註釋解釋數學語意，使 KB 有別於傳統程式碼資料集。</p>
+<p><strong>解題資料集（SOLVE）</strong>：310 條基於 KB 的解題範例 + 7476 條 GSM8K-Prolog，每條遵循 [SOLVE] 格式。不同於 KB 的宣告式知識，SOLVE 展示如何將數學概念應用於具體問題實例，並重用 KB 中的述詞模式（如 factorial/2、combination_count/3），創造出宣告式知識為基礎、解題在其上建構的組合結構。問題型別包括：Find/Calculate（134）、Word Problems（115）、Verification/Proof（5）、Equation Solving（3）等。</p>
+<p><strong>品質保證</strong>：三階段驗證——SWI-Prolog 語法解析確保語法正確、solve/1 執行測試（5 秒內終止 + 確定性輸出 + 正確格式）、博士級研究人員進行領域專家語意審查。</p>
+<h3 id="32-多任務雞尾酒訓練">3.2 多任務雞尾酒訓練</h3>
+<p>將神經符號數學推理形式化為加權多任務目標：<code>L_cocktail = λ_kb * L_KB + λ_solve * L_SOLVE</code>，每個任務損失均為標準因果語言模型損失（對生成的 Prolog 程式碼取負對數似然）。驗證答案僅在評估時透過執行驗證使用，不參與訓練損失計算。任務權重滿足 λ_kb + λ_solve = 1。</p>
+<p><strong>訓練協議</strong>：LoRA 微調（無量化），注入注意層的低秩適配器並凍結預訓練權重。KB 與 SOLVE 以任務型別前綴（[KNOWLEDGE]/[SOLVE]）格式化，實現任務條件生成。權重係數依課程排程策略選擇。</p>
+<p><strong>超參數</strong>：3 epoch、cosine LR + 8% warmup、梯度裁剪 1.0、bf16。LoRA rank 與學習率按模型尺度調整：Qwen-32B（rank=32, lr=5e-5）、GPT-OSS-20B（rank=48, lr=7e-5）、Qwen3-8B（rank=48, lr=6e-5）、Llama-3B（rank=32, lr=8e-5）。有效批次 32–64，實驗在 A100/H200 GPU 上執行。</p>
+<p><strong>雞尾酒效應假設</strong>：三種遷移機制——(1) 組合重用（KB→SOLVE）：KB 述詞（如 factorial/2）成為 SOLVE 程式的可重用建構塊，實現組合泛化；(2) 上下文接地（SOLVE→KB）：解題提供使用模式強化抽象公式語意；(3) 統一型別系統：Prolog 語法與 CLP(Q) 約束的聯合訓練誘導共享的型別安全表徵。</p>
+<p><strong>實證驗證</strong>：雞尾酒 FT 在 3/4 模型上優於單任務 Prolog FT（GPT-OSS +2.22%、Qwen-32B +0.38%、Llama-3B +5.24%）。關鍵發現：Qwen-32B 的錯誤從不可修 TYPE_ERROR（87.2%, 12% 可修）轉為可修 DOMAIN_ERROR（55.6%, 96% 可修），證明模型學到統一型別安全表徵。例外為 Qwen3-8B（−2.28%），微調改善表面語法卻引入語意錯誤，提示型別理解需要 &gt;8B 參數。</p>
+<h3 id="33-執行引導解碼與錯誤反饋">3.3 執行引導解碼與錯誤反饋</h3>
+<p><strong>管線架構</strong>：四階段流程——(1) LLM 生成初始 Prolog 程式 P0，(2) SWI-Prolog 執行器 σ 執行 P0，(3) 三種可能結果：成功且答案正確→終止、成功但答案錯誤 a&#x27;≠a*→歸類 LOGICAL_ERROR、報錯含診斷訊息 e→依分類法歸類，(4) 生成針對性修復提示 P_e（含原問題、失敗程式、錯誤型別、修復指令），模型產出修正程式 P_{i+1}，重複最多 k=3 次。</p>
+<p><strong>設計選擇</strong>：貪婪解碼（T=0）確保可重複性；相同權重 f_θ 用於生成與修復（展示零樣本除錯）；首次成功即提前終止以最小化成本；提供錯誤型別特定的修復提示而非通用重試訊息。</p>
+<p><strong>五類錯誤分類法</strong>：</p>
+<ol>
+<li><strong>語法錯誤</strong>（解析器失敗）：SYNTAX_OPERATOR_EXPECTED（X Y 缺運算子）、SYNTAX_UNEXPECTED_EOF（未閉合括號）、SYNTAX_UNEXPECTED_TOKEN（非法字元）</li>
+<li><strong>型別錯誤</strong>（語意不匹配）：TYPE_NOT_EVALUABLE（對原子做算術如 X is foo+3）、TYPE_NUMBER_EXPECTED（非數值在數值上下文）、TYPE_CALLABLE_EXPECTED（述詞格式錯誤）</li>
+<li><strong>域錯誤</strong>（執行期違規）：DOMAIN_DIVIDE_BY_ZERO、DOMAIN_NEGATIVE_SQRT、DOMAIN_FACTORIAL_NEGATIVE——修復建議加入 guard 條件（Denom == 0）</li>
+<li><strong>實例化錯誤</strong>（未綁定變數）：INSTANTIATION_ERROR——變數在綁定前使用，修復建議述詞重排序</li>
+<li><strong>邏輯錯誤</strong>（語意不正確）：WRONG_ANSWER——σ(P)=a&#x27;≠a*，修復提示重新考慮約束</li>
+</ol>
+<p><strong>反饋迴圈動力學</strong>：有別於先前自修正方法的三個特點：(1) 確定性反饋——二元執行結果消除啟發式驗證器的偽陽性；(2) 結構化診斷——精確錯誤型別實現針對性修復而非盲目重新生成；(3) 零樣本除錯——相同權重展示內化語意，無需除錯專屬訓練。Qwen-32B Cocktail 達 92.7% 修正率（k=3）。</p>
+<h2 id="評估指標準確度最終答案正確k3可執行率至少生成一個有效程式首次成功率修正率初始失敗中最終成功修復的比例--初始失敗最終成功--初始失敗--100平均迭代次數"><strong>評估指標</strong>：準確度（最終答案正確，k=3）、可執行率（至少生成一個有效程式）、首次成功率、修正率（初始失敗中最終成功修復的比例 = #初始失敗最終成功 / #初始失敗 × 100%）、平均迭代次數。</h2>
+<h2 id="title-neuroprolog第-4-節至結論-source-260302504_neuroprologzh-twmd">title: NeuroProlog（第 4 節至結論）
+source: ../2603.02504_NeuroProlog.zh-TW.md</h2>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_方法Methods · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2601.16286_SemanticALLI.zh-TW.html">回 2601.16286_SemanticALLI.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81Abstract.html">← 上一節</a>　<a href="03_%E8%A8%8E%E8%AB%96Discussion.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-方法methods">3. 方法（Methods）</h2>
+<p>單體式快取假設應用是從自然語言 prompt 到最終回應的函數。此抽象很方便，對輕量聊天通常足夠。但儀表板生成並不輕量——一個「答案」通常是零件的組裝：一個解析分析規格、一組圖表、以及跨請求可獨立重複利用的程式碼工件。</p>
+<p>SemanticALLI 因此將快取視為推論期系統問題。關鍵舉措是<strong>識別工作流內的穩定檢查點</strong>——系統已提交到可解釋結構的位置——並快取智能體系統的中間步驟，而不僅是其終端輸出。</p>
+<h3 id="31-兩階段分解與可快取工件">3.1 兩階段分解與可快取工件</h3>
+<p>分解位置刻意粗糙：足夠細粒度以暴露重複利用，但不至於細到快取管理本身成為瓶頸。</p>
+<h4 id="311-第一階段解析意圖解析air">3.1.1 第一階段：解析意圖解析（AIR）</h4>
+<p>AIR 作為語意正規化層。給定使用者 prompt q 和 context schema S，它產出一個正規化的解析意圖定義 I，指定要計算什麼——指標、維度、過濾器、時間粒度、圖表原語，以及（適用時）儀表板佈局。I 被設計為對改述和風格漂移穩定：</p>
+<p>f_AIR(q, S) → I</p>
+<p>SemanticALLI 在意圖層級快取此映射，即快取 (q, S) → I。目標不是「凍結語言」，而是及早吸收語言變異，使下游合成可在緊湊、結構化物件上操作。</p>
+<p>一個小而重要的細節：AIR 必須保持實體感知。在企業分析中，兩個請求可能在語意上相鄰但操作上不相容。&quot;CPC&quot;和&quot;CPM&quot;可能同處嵌入空間的同一鄰域；快取不得將該鄰域視為等價。我們的檢索設計反映了此約束。</p>
+<h4 id="312-第二階段視覺化合成vs">3.1.2 第二階段：視覺化合成（VS）</h4>
+<p>VS 以解析意圖 I 為輸入，透過 LLM 代理生成可執行的視覺化指令 C——例如圖表程式碼或儀表板組裝指令：</p>
+<p>f_VS(I) → C</p>
+<p>此處查詢鍵是結構化意圖本身（或其確定性序列化），而非原始 prompt。此差異不僅是簿記。它實現了即使 prompt 共享零詞彙重疊的跨查詢重複利用。一旦兩個請求收斂到同一意圖，VS 即可重複利用先前的合成而無需重新推導實作層。</p>
+<h3 id="32-混合檢索引擎">3.2 混合檢索引擎</h3>
+<p>AIR 與 VS 快取都需要快速、對實體保守、且對改述穩健的檢索。無單一訊號能可靠同時滿足三項要求。因此我們使用混合引擎，其：(i) 偏好精確比對，(ii) 適當時退回語意鄰域，(iii) 以詞彙證據收斂語意漂移。</p>
+<h4 id="tier-0精確雜湊快取">Tier 0：精確雜湊快取</h4>
+<p>對任何輸入字串（AIR 以原始 prompt；VS 以序列化意圖），計算 k = SHA-256(input)，執行 O(1) 查表。此層毫不掩飾地嚴格；它存在是為了廉價收割明顯重複。</p>
+<h4 id="tier-1稠密語意索引">Tier 1：稠密語意索引</h4>
+<p>精確比對是例外而非規則，因此也維護語意索引。輸入以 OpenAI text-embedding-3-large 嵌入 3072 維稠密向量空間，使用 HNSW 圖進行近似最近鄰搜尋，搭配餘弦相似度。稠密檢索提供召回，但也製造了高基數業務空間中「接近但錯誤」的經典失敗模式。這就是為何不無批判地接受稠密鄰居。</p>
+<h4 id="tier-2詞彙證據與重排">Tier 2：詞彙證據與重排</h4>
+<p>為保留對關鍵實體（指標與維度）的精度，將稠密檢索與詞彙評分（BM25）及重排配對。實務上，可要求候選共享強制詞項，並對省略它們的向量鄰居降級，即使嵌入接近亦然。</p>
+<p>完整檢索系統的接受政策為階段特定但概念簡單：系統僅在最佳候選通過相似度閾值 τ（稠密訊號），且滿足領域誘發的詞彙約束（schema 與 metric token）時才回傳快取工件。當條件不滿足時，重新生成工件，並選擇性地依配置的准入政策將其納入快取。</p>
+<p><strong>實例</strong>：prompt「Show DDA Revenue by channel」與「Show GA4 Revenue by channel」的餘弦相似度 ≈ 0.96，卻引用不同的歸因模型（不相容的指標定義）。單靠稠密檢索會將這些視為快取命中。詞彙層在 schema token 上評分，偵測到 metric mismatch（dda_revenue vs. ga4_revenue）並正確拒絕候選。</p>
+<h2 id="4-結果results">4. 結果（Results）</h2>
+<p>評估基於 1,000 筆數位媒體行銷工作量衍生的生產 prompt，涵蓋多元媒體管道（付費搜尋、社群展示、程序化影片）與 KPI。為確保反映真實重複利用，以時間排序使用者請求，分割為種子集（N=500）與後續挑戰集（N=500）。時間分割保留自然分佈漂移，確保挑戰集測試對未來查詢的泛化。</p>
+<h3 id="41-實驗設置">4.1 實驗設置</h3>
+<p><strong>單體式基線（prompt→output）</strong>：在 τ=0.90 評估完整輸出快取（精確＋語意比對）。
+<strong>管線感知評估（AIR/VS）</strong>：在 τ=0.90 對 500 筆結構化意圖挑戰集評估 SemanticALLI。</p>
+<h3 id="42-單體式快取">4.2 單體式快取</h3>
+<p>τ=0.90 時，單體式快取命中率 38.7%（全為語意命中、零精確命中）、61.3% 完全錯失。語意比對貢獻了大多數命中；但超過 60% 的 prompt 仍完全錯失，單體式快取沒有任何部分重複利用機制。</p>
+<h3 id="43-semanticalli-的階段級重複利用">4.3 SemanticALLI 的階段級重複利用</h3>
+<p>AIR 故意設計為「困難」層：必須將開放式語言映射到正規分析規格。VS 則操作在結構化意圖上，因此即使上游語言新穎，仍遇到重複的子結構（圖表模板、標準編碼、重複出現的佈局原語）。</p>
+<p>不對稱性正是重點。在 τ=0.90：</p>
+<ul>
+<li>AIR 重複利用稀少（38.7%）——在意圖解析中，兩個「相似」prompt 可能在單一業務關鍵實體上分歧（例如 client A 與 client B 對相同意圖使用不同的指標命名慣例）。</li>
+<li>VS 重複利用普遍（83.10%）——4,841 次調用中 4,023 次精確命中。即使用戶探索大量不同請求，系統反覆實例化一小組視覺化與佈局原語。</li>
+<li>VS 精確命中在推論期尺度上幾乎免費（平均 2.94 ms；中位 2.66 ms；p95 5.29 ms），因此每次 VS 命中對應於避開的 LLM 呼叫與有意義的鐘面時間縮減。</li>
+</ul>
+<h3 id="44-token-核算">4.4 Token 核算</h3>
+<p>AIR 每次調用仍昂貴（3,925.71 token），反映其語意瓶頸角色。VS 是快取直接轉化為操作節省之處：LLM-backed VS 平均每次 5,524.78 token，計入快取命中後降至 933.54 token/調用。整體每使用者提示 token 從 59,906（無快取對照）降至 12,964（78.4% 降幅）。</p>
+<h3 id="45-端到端延遲的閾值敏感度">4.5 端到端延遲的閾值敏感度</h3>
+<p>在同一組 500 筆 prompt 上，將 τ 從 0.90 降至 0.85 顯著降低端到端完成時間：20-agent 系統平均運行時間從 57.3 s 降至 31.5 s，中位從 57.0 s 降至 25.1 s（p95: 87.5 s 降至 61.5 s）。</p>
+<p>此取捨在意料之中。較低閾值更寬容因而增加重複利用，但也提高在實體敏感領域過度積極比對的風險。適當操作點取決於應用對近似 vs. 嚴格正確性的容忍度；在企業分析中，通常以實體級保真度為約束條件。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

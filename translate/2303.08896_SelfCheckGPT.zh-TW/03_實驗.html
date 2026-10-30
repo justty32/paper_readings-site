@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2303.08896_SelfCheckGPT.zh-TW.html">回 2303.08896_SelfCheckGPT.zh-TW 目錄</a>　<a href="02_SelfCheckGPT.html">← 上一節</a></p>
+</blockquote>
+<h2 id="7-實驗">7. 實驗</h2>
+<p>用於生成資料集段落的 LLM 是當時的 SOTA 系統 GPT-3（text-davinci-003）。主回應以 temperature=0.0 標準 beam search 解碼取得；隨機取樣則以 temperature=1.0 生成 N=20 份。代理 LLM 方法採用開源表現最佳者之一的 LLaMA（Touvron et al., 2023）。SelfCheckGPT-Prompt 同時考慮 GPT-3（生成段落的同一模型）與新發布的 ChatGPT（gpt-3.5-turbo）作評判者。</p>
+<h3 id="71-句子級幻覺偵測">7.1 句子級幻覺偵測</h3>
+<p>表 2（節錄）：以 AUC-PR（句子級：NonFact 非事實／NonFact* 非全幻覺段落中的大幅不實句／Factual 事實）與 Pearson/Spearman 相關係數（段落級，對照人工評分）衡量：</p>
+<ul>
+<li><strong>隨機基線</strong>：NonFact 72.96、NonFact* 29.72、Factual 27.04。</li>
+<li><strong>GPT-3 自身機率（灰箱）</strong>：Avg(-log p) NonFact 83.21、Factual 53.97，Pearson 57.04；Max(-log p) NonFact 87.51 為灰箱最佳。</li>
+<li><strong>LLaMA-30B 代理 LLM（黑箱）</strong>：全面明顯劣於 GPT-3 自身機率，Max(-log p) 的 Pearson 甚至為負值（-22.83）。</li>
+<li><strong>SelfCheckGPT（黑箱）</strong>：BERTScore NonFact 81.96、QA 84.26、Unigram(max) 85.63、<strong>NLI 92.50</strong>（Pearson 74.14）、<strong>Prompt 93.42</strong>（Pearson 78.32，全表最高）。</li>
+</ul>
+<p>觀察要點：(1) LLM 自身機率確實與事實性相關，是合理的基線，但 top-5 熵不如負對數機率有效；(2) 代理 LLM 表現明顯較差——不同 LLM 生成風格不同，即使常見 token 在別的模型上機率也可能偏低，換用 GPT-NeoX、OPT-30B 等代理甚至逼近隨機基線；(3) SelfCheckGPT 全面超越灰箱方法，其中 Prompt 表現最好，NLI/QA/BERTScore 等變體在多數設定下也優於灰箱；Unigram(max) 雖計算量最低，效果卻不俗——本質上是抓「N=20 份取樣中極少出現（甚至只出現一次）的 token」當幻覺訊號。</p>
+<h3 id="72-段落級事實性排序">7.2 段落級事實性排序</h3>
+<p>段落級分數＝句子級分數在段落內取平均。結果（表 2、圖 6）顯示所有 SelfCheckGPT 方法與人工評分的相關性都遠優於灰箱機率/熵方法，Prompt 表現最佳（Pearson 78.32），代理 LLM 方法相關性再度明顯偏低。</p>
+<h3 id="73-消融研究">7.3 消融研究</h3>
+<p><strong>外部知識（取代 SelfCheck 自我取樣）</strong>：改用 WikiBio 該概念的首段真實文字作為比較對象（此時不再是零資源）。結果顯示 BERTScore/QA 用自我取樣即可取得與用參考文字相當甚至更好的表現；n-gram 換成參考文字後表現大幅下滑（單一參考段落不足以訓練 n-gram 模型）；相對地，NLI/Prompt 若能拿到外部檢索資訊則可再進一步提升（如 NLI Pearson 由 74.14 升至 78.84，Prompt 由 78.32 升至 85.90）。但作者強調，實務上不可能對每個 LLM 生成場景都準備外部資料庫。</p>
+<p><strong>取樣數量的影響</strong>：效能隨取樣數增加而平滑上升，但邊際效益遞減；n-gram 變體需要最多樣本數才能達到效能平原。</p>
+<p><strong>SelfCheckGPT-Prompt 的評判 LLM 選擇</strong>：以縮減樣本數（N=4）測試不同評判 LLM。GPT-3 生成的文本，用 GPT-3 自評（N=4）Pearson 73.11，用 ChatGPT 評（N=4）Pearson 76.47，優於自評；即使只用 4 份樣本，效果已優於 Unigram(max)（N=20，64.71）。用 ChatGPT 評、N=20 時達到全篇最佳（78.32）。顯示 GPT-3 具備一定的自我查核能力，換用能力更強或不同的評判模型（ChatGPT）能再提升效果。</p>
+<h2 id="8-結論">8. 結論</h2>
+<p>本文是首篇針對一般 LLM 回應探討幻覺偵測任務的工作。我們提出 SelfCheckGPT，一個零資源方法，適用於任何黑箱 LLM 且不需外部資源，並證明其有效性。SelfCheckGPT 在句子與段落層級上皆超越多種灰箱與黑箱基線偵測方法，並釋出一份含句子級事實性標籤的 GPT-3 幻覺偵測標註資料集。</p>
+<h2 id="局限">局限</h2>
+<p>本研究的 238 篇 GPT-3 生成文本主要是 WikiBio 資料集中關於個人的段落。要進一步了解 LLM 幻覺的性質，未來研究可擴及地點、物件等更廣泛的概念類別。此外，本研究只在句子層級考慮事實性，但單一句子可能同時混雜事實與非事實資訊——後續 Min et al.（2023）的工作透過把句子拆解為原子事實（atomic facts）做更細粒度的事實性評估。最後，效果最令人信服的 SelfCheckGPT-Prompt 計算量相當大，可能導致不切實際的計算成本，這點留待未來研究改進其效率。</p>
+<h2 id="倫理聲明">倫理聲明</h2>
+<p>由於本工作處理 LLM 幻覺問題，作者指出：若幻覺內容未被偵測出來，可能導致錯誤資訊的散播。</p>
+<h2 id="致謝">致謝</h2>
+<p>本工作由劍橋大學出版與評估部（Cambridge University Press &amp; Assessment, CUP&amp;A，劍橋大學校監、校長暨學者評議會下屬部門）與 Cambridge Commonwealth, European &amp; International Trust 資助。感謝匿名審稿人的寶貴意見。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2303.08896_SelfCheckGPT.%E6%91%98%E8%A6%81.html"><code>../summarize/2303.08896_SelfCheckGPT.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

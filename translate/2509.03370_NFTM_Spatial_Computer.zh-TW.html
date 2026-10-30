@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Neural Field Turing Machine：可微分的空間計算機》逐節精要翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Akash Malhotra, Nacéra Seghouani（LISN，法國）</p><p>日期：2025-08</p><p>arXiv：2509.03370</p><p><a href="https://arxiv.org/abs/2509.03370" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="neural-field-turing-machine可微分的空間計算機逐節精要翻譯">Neural Field Turing Machine：可微分的空間計算機（逐節精要翻譯）</h1>
+<blockquote>
+<p>精要式翻譯：保留論文論證骨幹與關鍵數字，非逐字直譯。原文 GitHub：https://github.com/akashjorss/NFTM</p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>我們提出 <strong>NFTM（Neural Field Turing Machine）</strong>，一個在連續空間場內統一<strong>符號計算、物理模擬、感知推論</strong>的可微分架構。NFTM 結合<strong>神經控制器、連續記憶場、可移動讀寫頭</strong>；每步控制器讀取局部 patch、用學到的規則算更新並寫回，同時更新頭位置。靠固定半徑鄰域達成 <strong>O(N) 線性擴展</strong>，同時保有<strong>有界誤差下的圖靈完備性</strong>。展示三實例：CA 模擬（Rule 110）、物理 PDE 求解（2D 熱方程）、迭代影像精修（CIFAR-10 修補）。各實例學到的局部規則組合成全域動力學，長 horizon rollout 穩定且能外推。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>電腦視覺、機器人、物理裡最難的問題常涉及對<strong>空間連續場</strong>的推理；世界呈現的不是 token 序列而是隨時間演化的多維場。現有架構不匹配：Transformer 把空間視為離散 token 且注意力 O(N²)；擴散模型靠隨機噪聲而非可控規則；PINN／神經算子近似 PDE 但不通用；NCA 展示局部可微更新潛力，卻無顯式控制器、被困在固定網格。NFTM 把計算<strong>直接嵌入連續場</strong>，提供可微讀寫：與 Transformer 不同它隨格點數 N 線性擴展；與 NCA 不同它有顯式控制器與圖靈完備性；與擴散不同它推論時確定性；與 PINN 不同它通用。認知科學指出人類靠「跑內部模擬」預測（直覺物理、心智旋轉）——NFTM 呼應此範式。
+<strong>貢獻</strong>：(1) 形式定義 NFTM 並證明有界誤差圖靈完備；(2) 跨符號／物理／感知三域示範；(3) 證明 NFTM 涵蓋 NCA 為特例，並作為 PINN 與迭代感知精修的替代。</p>
+<h2 id="2-相關工作">2 相關工作</h2>
+<ul>
+<li><strong>隱式神經表示／神經場</strong>：SIREN、Fourier features、NeRF 系列學「座標→值」靜態映射；NFTM 改以迭代更新＋控制器運作。</li>
+<li><strong>NCA</strong>：局部可微規則可生成複雜湧現圖樣，但只在離散網格固定鄰域；NFTM 以 <code>Δh_t=0、A_t</code> 固定 涵蓋 NCA 為特例，再加讀寫頭與控制器邏輯，獲局部性＋圖靈完備表達力。</li>
+<li><strong>神經圖靈機（NTM）／DNC</strong>：用可微記憶做複製、排序等演算法任務，但記憶是離散矩陣＋軟注意定址，不適合空間連續域；NFTM 把記憶嵌入<strong>連續場</strong>。</li>
+<li><strong>PINN／神經算子</strong>：PINN 把 PDE 殘差放進損失；DeepONet、FNO 學函數空間映射；NFTM 用 forward-Euler 式局部更新，像經典數值解但端到端可微。</li>
+<li><strong>GNN</strong>：訊息傳遞於局部鄰域；NFTM 由離散圖推廣到連續空間場，讀寫頭可移動查詢空間區域。</li>
+<li><strong>Transformer</strong>：全域注意、適當條件下圖靈完備，但 O(N²) 且缺局部偏置。</li>
+<li><strong>擴散模型</strong>：迭代去噪、靠隨機噪聲與分數匹配；NFTM 用確定性控制器學局部轉移規則，擴散式精修成為特例。</li>
+<li><strong>類比計算模型</strong>：GPAC、Blum–Shub–Smale 模型是手工設計的連續機器；NFTM 改由梯度下降從資料學得。</li>
+</ul>
+<h2 id="3-定義與通用性">3 定義與通用性</h2>
+<p>NFTM 維護時間 <code>t</code> 的空間場 <code>f_t</code>，讀寫頭 <code>h_t</code> 指定位置，更新在以 <code>h_t</code> 為中心的局部支撐區算。最簡情形是半徑 <code>r</code> 的球 <code>S(h_t)={x:‖x−h_t‖≤r}</code>，更一般可用任意局部核 <code>K(x,h_t)</code>（盒、各向異性 stencil、射線錐）。控制器 <code>C(f_t[S(h_t)]) ↦ (A_t(x,y), Δh_t)</code>，<code>A_t</code> 為空間注意力場，<code>Δh_t</code> 為潛態更新。
+<strong>更新方程</strong>：<code>f_{t+1}(x)=g(∫A_t(x,y)f_t(y)dy)</code>、<code>h_{t+1}=h_t+Δh_t</code>。
+<strong>表 1</strong>：NFTM vs NTM/NCA/PINN——記憶（空間場 vs 離散槽 vs 網格 vs MLP）、存取（局部頭 vs 全域注意 vs 固定局部 vs PDE 殘差）、每步成本（NFTM/NCA O(N)，NTM O(N²)）。
+<strong>命題 1（圖靈完備）</strong>：把連續態二值化、半徑固定 <code>r=1</code>，控制器複製 Rule 110 局部規則；Rule 110 圖靈完備（Cook 2004）→ NFTM 在有界誤差下圖靈完備。</p>
+<h2 id="4-方法">4 方法</h2>
+<p>三實例（複雜度遞增）：</p>
+<ul>
+<li><strong>4.1 CA</strong>：控制器 MLP 學真值表，頭數＝格數，<code>f_{t+1}(i)=C(read_neighborhood(f_t,i))</code>，用 <strong>STE 二值化</strong>（前向取整、反向梯度直通）保可微 → 等價 NCA，成功學 Rule 110 與 Game of Life（皆圖靈完備）。</li>
+<li><strong>4.2 PDE 求解</strong>：(i)<strong>異方差損失</strong> <code>L_NLL</code> 用高斯似然回復空間變化 <code>α(x,y)</code>，<code>σ²</code> 建模 aleatoric 不確定性，位置編碼 <code>[u,x,y]</code> 打破平移等變以恢復空間變化係數；(ii)<strong>兩階段訓練</strong>——A 相 teacher forcing 學局部算子 <code>δ=α∇²u</code>，B 相 rollout 訓練緩解曝光偏差；(iii)<strong>頭式架構</strong> 用 5 點 stencil 收集鄰居，類比有限差分。實驗：MAE&lt;0.02、50+ 步 PSNR&gt;30 dB。</li>
+<li><strong>4.3 影像修補</strong>：影像即場，控制器（小卷積堆疊）輸出修正 <code>ΔI_t</code>、門控 <code>g∈[0,1]</code>，同方差高斯損失＋TV-L1 先驗＋收縮懲罰；<strong>守衛式更新</strong>：若提案增加能量則拒絕並縮小步長 β，保單調改善；rollout 深度課程學習。</li>
+<li><strong>4.4 小結</strong>：CA 中發現符號真值表、PDE 中學物理一致算子、修補中作量測一致求解器；線性於場大小與 horizon。</li>
+</ul>
+<h2 id="5-結果">5 結果</h2>
+<ul>
+<li><strong>5.1 CA</strong>：簡單 MLP 控制器精確學 Rule 110，<strong>100 步完全匹配真值</strong>並外推超訓練 horizon（學到局部規則非記憶軌跡）。</li>
+<li><strong>5.2 熱方程（全域 α）</strong>：精確回復 α；α=0.05 學成 0.067（誤差 0.018），α=0.10/0.15/0.20 誤差 ≤0.001，多數情形 <strong>MAE&lt;0.01</strong>。</li>
+<li><strong>5.3 熱方程（空間變化 α(x,y)）</strong>：中央方形區 α=0.15、其餘 0.05，三次 3×3 平均池化平滑；NFTM 重建空間剖面，<strong>平均 PSNR 40.89 dB</strong>，步進誤差穩定在 0.03–0.04。</li>
+<li><strong>5.4 影像修補（CIFAR-10）</strong>：訓練 20 步守衛回溯、評估 30 步無守衛；PSNR 從 step1 的 15.2 dB <strong>單調升至 step30 的 24.5 dB</strong>，且超訓練 horizon 持續精修。</li>
+<li><strong>5.5 討論</strong>：實驗為示範非競賽 benchmark；強調 NFTM 作為「可微分空間計算機」跨符號／物理／感知的統一本質，系統性對比留作未來。</li>
+</ul>
+<h2 id="6-討論與結論">6 討論與結論</h2>
+<p>支撐區 <code>S(h_t)</code> 可配置（小 patch O(N) ↔ 全場 O(N²)），可多頭多尺度。局部更新範式合乎物理（連長程力也經時空局部傳播）；可微性開啟以可逆網路、幾何深度學習＋Noether 定理 強制守恆律的途徑（平移等變→動量守恆、旋轉等變→角動量守恆）。複雜度線性於 N、T，與 CNN／有限差分解相當；真正權衡在常數因子（控制器較貴但更靈活）。NFTM 能「rollout 超訓練 horizon 換準確度」，類比 adaptive computation time——機器人可在難環境「想更久」。未來：3D 場、自適應時間步、物理約束、與生成模型混合、大規模評估（氣候、材料、機器人）。
+<strong>總結</strong>：NFTM 統一符號／物理／感知計算，證明有界誤差圖靈完備，跨 CA／PDE／修補展示通用性，邁向「可微分空間計算機」。</p>
+<h2 id="附錄-a-複雜度分析">附錄 A 複雜度分析</h2>
+<p>每步三操作（讀局部鄰域、套控制器、寫回）。固定鄰域 <code>k</code>：讀寫 O(kN)、控制器 O(NP)，總時間 <strong>O(N·T·(k+P))</strong>，線性於 N、T。記憶 O(N)（前向）至 O(N·T)（存全軌跡反傳）；截斷反傳降至 O(N·w)。局部注意變體 O(N·r²·T)，小 r（1–3）高效且 GPU 可並行。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

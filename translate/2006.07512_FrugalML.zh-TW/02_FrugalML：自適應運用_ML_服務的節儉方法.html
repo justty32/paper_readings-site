@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_FrugalML：自適應運用_ML_服務的節儉方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2006.07512_FrugalML.zh-TW.html">回 2006.07512_FrugalML.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-frugalml自適應運用-ml-服務的節儉方法">3. FrugalML：自適應運用 ML 服務的節儉方法</h2>
+<p><strong>圖 2</strong>（策略示意）：FrugalML 先選並呼叫一個<strong>基服務（base service）</strong>；若其品質分數小於「其預測標籤對應的閾值」，FrugalML 就選一個**加值服務（add-on service）**呼叫並回傳其預測；否則直接回傳基服務的預測。</p>
+<p>我們把圖 1(c) 的方案推廣到 K 個 ML 服務、L 個標籤類別。以三元組 <strong>s ≜ (p⁽¹⁾, Q, P⁽²⁾)</strong> 表示一個 FrugalML 產生的呼叫策略。給定輸入 x：</p>
+<ul>
+<li>FrugalML 先呼叫基服務 A⁽¹⁾ₛ，它以機率 <strong>p⁽¹⁾ᵢ</strong> 為第 i 個服務，回傳品質分數 qᵢ(x) 與標籤 yᵢ(x)。</li>
+<li>令 Dₛ 為「品質分數是否小於閾值 <strong>Q_{i, yᵢ(x)}</strong>」的指示。若 Dₛ=1，FrugalML 就以機率 <strong>P⁽²⁾_{i, yᵢ(x), j}</strong> 呼叫第 j 個加值服務 A⁽²⁾ₛ，並以其標籤 yⱼ(x) 作為最終預測 ŷˢ(x)；</li>
+<li>否則直接回傳基服務標籤 ŷˢ(x) = yᵢ(x)。</li>
+</ul>
+<p>注意策略是<strong>自適應</strong>的：加值 API 的選擇可取決於基模型的預測標籤與品質分數。可能策略集合 S 由三部分參數化（p⁽¹⁾ 為 K 維機率向量、Q 為 K×L 閾值矩陣落在 [0,1]、P⁽²⁾ 為 K×L×K 的路由張量且對最後一維為機率分佈）。</p>
+<p><strong>Definition 1（最優策略）</strong>：給定預算 b，最優 FrugalML 策略為</p>
+<blockquote>
+<p>s* ≜ argmax_{s∈S} E[rˢ(x)]　s.t.　E[η⁽ˢ⁾(x, c)] ≤ b，</p>
+</blockquote>
+<p>其中 rˢ(x) ≜ 𝟙[ŷˢ(x)=y(x)] 為 reward，η⁽ˢ⁾(x,c) 為策略 s 在 x 上的總成本（= 該 x 上所有被呼叫服務的成本之和；若呼叫服務 1 與 2，則為 c₁+c₂）。</p>
+<p><strong>Remark 1</strong>：此定義可推廣——例如把 0-1 loss 換成負平方損失以處理回歸任務；此處取具體形式僅為示範。</p>
+<h3 id="31-最優策略中的稀疏結構">3.1 最優策略中的稀疏結構</h3>
+<p><strong>Lemma 1</strong>：若問題 3.1 可行，則存在一個最優解 s* 使得 <strong>‖p⁽¹⁾*‖ ≤ 2</strong>。換言之，最優策略的基服務<strong>至多只從市場中 2 個服務</strong>（而非全部 K 個）隨機挑選。</p>
+<p><strong>直覺（經 Lemma 2 展開）</strong>：用全期望公式展開 E[rˢ(x)] 與 E[ηˢ(x)]，兩者都對 Pr[A⁽¹⁾ₛ=i]（即 p⁽¹⁾ᵢ）<strong>線性</strong>。故固定 Q 與 P⁽²⁾ 後，問題 3.1 對 p⁽¹⁾ 是一個<strong>線性規劃</strong>。其可行域的角點必為 2-稀疏（除了成本約束 E[ηˢ]≤b 與 𝟏ᵀp⁽¹⁾≤1 外，其餘約束 p⁽¹⁾≽0 都在逼出稀疏）；線性規劃的最優解落在角點，故 p⁽¹⁾ 必 2-稀疏。</p>
+<p>此稀疏性讓問題 3.1 等價於一個<strong>主問題（master problem，式 3.2）</strong>：</p>
+<blockquote>
+<p>max_{(i₁,i₂,p₁,p₂,b₁,b₂)} p₁·g_{i₁}(b₁/p₁) + p₂·g_{i₂}(b₂/p₂)　s.t.　b₁+b₂ ≤ b</p>
+</blockquote>
+<p>其中 g_i(b′) 為**子問題（式 3.3）**的最優值：固定基服務為 i、預算為 b′ 時，對 Q、P⁽²⁾ 最大化期望 reward。主問題決定「哪兩個服務可當基服務（i₁,i₂）、各多常被呼叫（p₁,p₂）、各分配多少預算（b₁,b₂）」；子問題則在固定基服務與預算下最大化期望 reward。</p>
+<h3 id="32-實用演算法">3.2 實用演算法</h3>
+<p>**演算法 1（FrugalML 策略訓練）**輸入 K、M、成本 c、預算 b 與訓練資料 {y(xᵢ), {qₖ(xᵢ), yₖ(xᵢ)}}，輸出策略三元組 ŝ = (p̂⁽¹⁾, Q̂, P̂⁽²⁾)，三步：</p>
+<ol>
+<li><strong>估條件準確率</strong>：從訓練資料估 E[rᵢ(x) | Dₛ, A⁽¹⁾ₛ]（第 1 行）。</li>
+<li><strong>解主問題</strong>：對每個 i∈[K] 與 M+1 個預算格點 b′ₘ，解子問題 3.3 得最優值 gᵢ(b′ₘ)（第 2 行），再以<strong>線性內插</strong>建構分段線性的 gᵢ(·)（第 3 行，並令 gᵢ(b′)=0 當 b′≤cᵢ）；給定分段線性 gᵢ(·)，主問題 3.2 可經枚舉幾個線性規劃求解（第 4 行）得 i₁*,i₂*,p₁*,p₂*,b₁*,b₂*。</li>
+<li><strong>還原原始域策略</strong>：對兩個基服務 i₁*、i₂* 分別解子問題 3.3 得各自的 Q、P⁽²⁾（第 5 行），再適當對齊組合成最終 ŝ（第 6 行）。</li>
+</ol>
+<p><strong>Theorem 3（效能分析）</strong>：設 E[rᵢ(x)|Dₛ,A⁽¹⁾ₛ] 對 Q 的每個元素為 Lipschitz 連續（常數 γ）。給定 N 個 i.i.d. 樣本，演算法 1 的計算成本為 <strong>O(NMK² + K³M³L + Mᴸ K²)</strong>；且以機率 1−ε，產出的策略 ŝ 滿足</p>
+<blockquote>
+<p>E[r^ŝ(x)] − E[r^{s*}(x)] ≥ −O(√((log ε + log M + log K + log L)/N) + γ/M)，且 E[η⁽ŝ⁾(x,c)] ≤ b。</p>
+</blockquote>
+<p>參數 <strong>M</strong> 用來權衡計算成本與 ŝ 的準確率下降。實務上當 K、L 約十、N 逾數千時，<strong>M=10</strong> 即兼顧準確率與低計算成本；Mᴸ 項係數很小（實驗中 L=31、M=40 也僅需幾秒）。標籤數極大時可把標籤聚成幾個「超類（supclass）」，或用近似演算法把 O(Mᴸ) 降到 O(M²)。此外略改 ŝ 即可滿足<strong>嚴格</strong>預算約束：預算允許時用 ŝ 選 API，否則切到最便宜的 API。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

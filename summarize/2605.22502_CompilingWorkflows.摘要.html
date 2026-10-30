@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《把代理工作流編譯進 LLM 權重：近前沿品質、成本省兩個數量級》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Simon Dennis, Rivaan Patil, Kevin Shabahang, Hao Guo（i14, University of Melbourne）</p><p>日期：2026-05-21</p><p>arXiv：2605.22502</p><p><a href="https://arxiv.org/abs/2605.22502" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="把代理工作流編譯進-llm-權重近前沿品質成本省兩個數量級重點摘要">《把代理工作流編譯進 LLM 權重：近前沿品質、成本省兩個數量級》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>把 agent workflow（流程圖）透過合成對話全參數微調「編譯」進 3B–8B 小模型權重裡，部署時<strong>無需任何外部編排器</strong>——使用者直接對 LLM 說話，模型靠自己內化的程序完成對話。品質達前沿模型 in-context 的 87–98%，成本低 <strong>128–462 倍</strong>（自託管 per-token 降價 × 無程序嵌入 prompt 的常數開銷），且重新編譯只需 30–50 分鐘（CI/CD 等級）。</p>
+<h2 id="核心貢獻">核心貢獻</h2>
+<ol>
+<li><strong>建立「編譯 vs. 編排」的對照實驗框架</strong>：同一 3B 模型（Qwen 2.5）在同一個程序上，編譯到權重內 vs. 外部 LangGraph 編排——編譯版在五項品質指標中四項顯著勝出（p&lt;0.001），證明<strong>編譯本身的結構性優勢</strong>（無路由失敗、永續跨輪全域推理、自然對話節奏）。</li>
+<li><strong>三個領域驗證規模化</strong>：旅行訂票（14 節點）、Zoom 技術支援（14 節點，含產品領域知識）、保險理賠（55 節點、6 決策樞紐、2,381 條無環路徑）——編譯在最大程序上仍維持 92–98% 品質，且<strong>成本優勢隨程序複雜度而擴大</strong>（travel 128× → insurance 462×）。</li>
+<li><strong>打破第三道壁壘「靈活性」</strong>：重新編譯週期僅 30–50 分鐘（8×H200 + 平行化 API 調用）或單張 A100 約 3 小時——<strong>是部署週期，不是一次典範轉移</strong>。</li>
+<li><strong>量化失敗模式的結構性根源</strong>：LangGraph 編排器在 travel 失敗率 24%（vs. 編譯版 5.5%），insurance 17%（vs. 9%）——因為編排器的節點級生成缺乏全域對話意識，而編譯模型<strong>從訓練資料學會了整體程序的流暢節奏</strong>。</li>
+</ol>
+<h2 id="對讀者的價值與-ai_core-的接點">對讀者的價值（與 ai_core 的接點）</h2>
+<ul>
+<li>
+<p><strong>§3.6 固化引擎的極致實例</strong>：這篇論文把「agent workflow→LLM weights」的編譯，精確地打了 ai_core 固化引擎最野心勃勃的場景——不但固化單次推理決策，而是把<strong>整張多步程序圖（55 節點、6 個決策樞紐）結晶成小模型權重</strong>。ai_core 的固化引擎目前談的是「把 LLM 反覆處理的案例結晶成確定性程式碼／抽象庫」；這篇告訴我們：如果目標是部署一個專用對話 agent，連抽象庫都不必——直接全參數微調把程序「燒」進權重，zero routing overhead，而且 30 分鐘就能重新燒。對應 ai_core 的「何時該固化／避免庫爆炸」決策：<strong>對固定程序的高頻對話任務，全參數編譯比維護一套符號抽象庫更輕量</strong>。</p>
+</li>
+<li>
+<p><strong>§3.3 成本梯度的兩個數量級實證</strong>：本文的成本優勢來自兩層疊加：(1) 自託管 8B 模型 vs. Claude API 的 per-token 差（∼65×）；(2) 編譯後 prompt 常數大小，免去每輪嵌入程序的 token 開銷（2–7×）。<strong>兩者相乘給出 128–462× 的總成本優勢</strong>，而且程序愈複雜優勢愈大——這正是 ai_core §3.3 成本梯度架構的終極形態：便宜層不但是更小/更快的模型，還是不需要外部程序的「已內化模型」；昂貴層（frontier model）只在程序變更、需要生成新訓練資料時出現一次。</p>
+</li>
+<li>
+<p><strong>方法論的雙重可遷移性</strong>：(1) 合成資料生成管線（流程圖取樣路徑 → Claude 逐輪生成對話 → 全參數微調）是任何領域的程序對話 agent 通用配方；(2) 雙法官（Claude + GPT-4.1）穩健性檢查模式是 ai_core 自身評估機制的參考。</p>
+</li>
+<li>
+<p>定位：<strong>I（方向二：agent 架構 / 部署效率）</strong>。實證研究，非純理論。核心訊息：當你要部署一個固定程序的高頻對話 agent，<strong>不要放一個外部編排器——把程序訓練進一個小模型，然後讓使用者直接跟它對話</strong>。</p>
+</li>
+</ul>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

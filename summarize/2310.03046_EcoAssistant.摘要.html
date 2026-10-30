@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《EcoAssistant：更便宜且更準確地使用 LLM 助手（EcoAssistant: Using LLM Assistant More Affordably and Accurately）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jieyu Zhang, Ranjay Krishna, Ahmed H. Awadallah, Chi Wang（University of Washington / Microsoft Research）</p><p>日期：2023-10</p><p>arXiv：2310.03046</p><p><a href="https://arxiv.org/abs/2310.03046" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="ecoassistant更便宜且更準確地使用-llm-助手重點摘要">《EcoAssistant：更便宜且更準確地使用 LLM 助手》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>EcoAssistant</strong>：為「程式碼驅動問答（code-driven question answering）」設計的純線上系統，把 LLM 助手與程式碼執行器（code executor）配成雙代理對話迭代改碼，再疊上兩招——<strong>assistant hierarchy（助手層級，便宜模型先試、失敗才 back-off 到貴模型）</strong> 降成本、<strong>solution demonstration（成功解示範，把過去成功的 query-code 對存進向量庫、新查詢時檢索最相似者當 in-context 示範）</strong> 提準確率；兩招共享同一 query-code 資料庫而產生<strong>綜效</strong>（貴模型 GPT-4 產出的解會回頭指導便宜的 GPT-3.5，使便宜模型解得更多、進一步降低對貴模型的依賴），最終<strong>以不到 GPT-4 一半的成本、把成功率超出 GPT-4 約 10 個百分點</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>使用者常問需要外部知識的查詢（天氣、股價、地點），LLM 得<strong>產生程式碼呼叫外部 API</strong> 才能回答（作者稱之為 code-driven question answering）。兩大痛點：(1) LLM 很少一次寫對程式碼，需<strong>依執行結果迭代除錯</strong>；(2) 大量查詢用付費 LLM 服務<strong>非常昂貴</strong>（ChatGPT 2023 年 7 月約 80M 查詢，其中 23% ≈ 4M 為知識查詢）。既有做法多用單次生成、或只針對單輪文字生成降本（FrugalGPT），未針對「多代理對話 + 程式碼迭代」場景兼顧成本與表現。</p>
+<h2 id="核心方法三組件建於-autogen-之上無需離線訓練資料整理">核心方法（三組件，建於 AutoGen 之上，無需離線訓練/資料整理）</h2>
+<ul>
+<li><strong>自動化雙代理對話</strong>：LLM 當 AssistantAgent 提出程式碼，UserProxyAgent 當 code executor 自動抽取並執行、把輸出或失敗 trace 回傳給 LLM 迭代改碼；助手在回應末尾附 <code>TERMINATE</code> 或達上限（本文每段對話最多 5 輪、超出 context window）即結束，全程無需使用者手動複製貼上。</li>
+<li><strong>Assistant hierarchy（助手層級 / back-off）</strong>：對每個查詢先用最具成本效益的 LLM 開始對話，該助手失敗才重啟並改用下一個更貴的 LLM。因 LLM 定價異質（GPT-3.5-turbo 比 GPT-4 便宜一個數量級），可大幅減少貴模型使用量。實驗用 AssistantHier-G（GPT-3.5-turbo + GPT-4）與 AssistantHier-L（LLAMA-2-13B-chat + GPT-3.5-turbo + GPT-4）。</li>
+<li><strong>Solution demonstration（成功解示範 / 固化雛形）</strong>：查詢經回饋判定成功後，把 query 與最終程式碼存進向量庫（Chroma，multi-qa-mpnet 嵌入 + cosine 相似度）；新查詢進來時檢索最相似的 query-code 對，附進初始 prompt 當示範，讓助手更少迭代就寫出正確高效的程式碼。</li>
+<li><strong>綜效關鍵</strong>：層級中的所有助手<strong>共用同一 query-code 庫</strong>，故強模型的解會成為弱模型後續查詢的隱式指導——不需額外設計。</li>
+</ul>
+<h2 id="結果gpt-4-當評審--人工評估">結果（GPT-4 當評審 + 人工評估）</h2>
+<ul>
+<li>個別資料集（Places/Weather/Stock，各 100 題，取自 ToolBench）：solution demonstration 幾乎<strong>讓 vanilla GPT-3.5-turbo 成功率翻倍</strong>（Stock 更 3 倍）；assistant hierarchy 相較 vanilla GPT-4 省成本約 10%–50%。</li>
+<li><strong>EcoAssistant（AssistantHier-G/L + SolDemo）在所有資料集達最高成功率</strong>，較最佳 GPT-4 變體高約 10 個百分點，且較單用層級再省約 30%–50% 成本。</li>
+<li>人工評估 Mixed-100：EcoAssistant 成功率 <strong>80% / 成本 5.90</strong>，vs GPT-4 <strong>59% / 13.77</strong>——成功率高 10+ 點、成本不到一半；且 GPT-4 的 avg model calls 從 2.51 降到 1.25（對貴模型依賴減半）。</li>
+<li>對混合資料集三種不同查詢順序穩健（大致 order-agnostic）；無人回饋的自主版（改用 GPT-4 evaluator）仍勝 GPT-4 10+ 點、省本 &gt;50%，但成功率較有人回饋版低約 8 點，且執行時間大幅縮短。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>依賴<strong>預先定義的靜態層級</strong>，未必對所有查詢最優，缺乏自適應選擇；query-code 庫在百萬級查詢時可能成瓶頸（需剪枝機制）。</li>
+<li>對高度專精/冷門查詢較弱；多輪迭代對話帶來延遲；長對話 context 受 token 上限限制。</li>
+<li>成功與否的判定倚賴使用者/GPT-4 回饋（自主版的 GPT-4 evaluator recall 100% 但 precision 僅 66%–84%，偶爾誤判而不升級到 GPT-4）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>歸 I 類</strong>，短名 <code>EcoAssistant</code>。對 ai_core 有兩個直接接點：
+<ol>
+<li><strong>§3.3 成本梯度／級聯路由</strong>：assistant hierarchy 是「便宜高頻智能先試、失敗才升級到貴稀有智能」的乾淨實作——與 <a class="paper-reference" href="2305.05176_FrugalGPT.%E6%91%98%E8%A6%81.html">2305.05176</a> FrugalGPT 的 cascade 互補，差別在此處以<strong>多輪對話 + 程式碼執行的自動成敗訊號</strong>當 back-off 判據（成功/失敗由 code executor 與回饋界定），而非另訓一個評分函式；正對應「拒絕為預設、憑成敗准入」的成本梯度直覺。</li>
+<li><strong>§3.6 固化引擎（雛形）</strong>：solution demonstration 把 LLM 反覆處理的案例<strong>沉澱成可複用的成功示範</strong>（query-code 對入庫、檢索複用），是「固化」最輕量的一步——尚未結晶成確定性程式碼/抽象庫，但已展示「成功解沉澱→降低未來 LLM 依賴」的雛形。最值得 ai_core 借鏡的是那個<strong>綜效</strong>：貴模型固化出的解讓便宜模型解得更多，等同讓「資產工廠」產出的資產（成功程式碼）被「資產消費者」複用，系統整體對貴智能的邊際依賴隨使用遞減——正是「逐步剃除對 LLM 依賴」的具體機制。</li>
+</ol>
+</li>
+<li>定位：系統/實證論文（建於 AutoGen，開源 github.com/JieyuZ2/EcoAssistant），純線上、無需訓練，適合做<strong>成本感知代理、級聯/back-off 路由、檢索式成功解複用、程式碼助手</strong>的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2310.03046_EcoAssistant.zh-TW.html"><code>../translate/2310.03046_EcoAssistant.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

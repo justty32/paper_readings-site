@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_階層記憶方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><p>← <a href="../2606.11680_HORMA.zh-TW.html">回母檔</a>｜<a href="03_%E5%AF%A6%E9%A9%97%E8%88%87%E7%B5%90%E8%AB%96.html">下一節</a></p>
+<h2 id="4-horma">4. HORMA</h2>
+<h3 id="41-記憶增強的-agent-policy">4.1 記憶增強的 agent policy</h3>
+<p>HORMA 引入外部記憶狀態 <code>F_t</code>，以 memory-augmented MDP 表示。Workspace 由 structured files 與 directories 組成，隨互動由 transition operator 更新：</p>
+<p><code>F_(t+1) = T_F(F_t, a_t, o_t)</code></p>
+<p>Manager <code>M_m</code> 負責實現這個 transition。Retriever <code>M_r</code> 從 workspace 選出 <code>C_t ⊆ F_t</code>，再交給主 agent：</p>
+<p><code>π(a_t | o_t, F_t, q) = M_r(C_t | F_t, q) · M_θ(a_t | o_t, C_t, q)</code></p>
+<p>長對話也用同一分解：不再把全部 user/assistant turns 交給模型，而是先由外部記憶取回小型、相關 context。</p>
+<h3 id="42-有根據的階層-workspace">4.2 有根據的階層 workspace</h3>
+<p>每一次互動或對話 turn 都先封存到 timestamped directory。Manager 再依任務相關性，合成 entity logs、event summaries、state trackers 等 notes。每份 note 同時保存時間 metadata 與底層 raw trajectory reference。</p>
+<p>這個設計的重點是 provenance 與 recoverability：快速路徑讀摘要，需要細節時才展開原始軌跡。Manager 和 retriever 都只透過 Bash／file operations 操作共享 workspace，記憶改動因而可見、可稽核。</p>
+<h3 id="43-以技能演化管理記憶">4.3 以技能演化管理記憶</h3>
+<p>Manager 起初只有 domain-agnostic principles，例如 entity tracking、event abstraction、relation grouping。作者不以 long-horizon RL 直接訓練它，而是比較 raw history <code>H</code> 與 managed history <code>H'</code>：</p>
+<ul>
+<li><code>D_exo</code>：<code>H</code> 成功但 <code>H'</code> 失敗，指出 construction 遺漏重要資訊。</li>
+<li><code>D_end</code>：<code>H'</code> 成功但 <code>H</code> 失敗，指出結構化記憶成功濾掉噪音或減少 hallucination／lost-in-the-middle。</li>
+</ul>
+<p>LLM 逐案比較兩條軌跡產生 feedback，再把多個 feedback 彙整為新 memory-management skills，加入下一輪 prompt。作者將其視為 textual gradient descent。技能庫逐輪增長，模型參數不變。</p>
+<h3 id="44-以強化學習導航檢索">4.4 以強化學習導航檢索</h3>
+<p>Retriever 不用 flat nearest-neighbor search，而是利用 directory hierarchy、時間順序與 provenance。它可執行 <code>ls</code>、<code>grep</code>、<code>cd</code>、<code>cat</code>，另有兩個終端動作：<code>select</code> 把選定內容加入 <code>C_t</code>，<code>done</code> 在證據足夠時停止。</p>
+<p>Retriever 以 GRPO 訓練。Evidence-grounded reward 是 retrieved context <code>C_t</code> 與 ground-truth evidence <code>E</code> 的 Jaccard overlap：</p>
+<p><code>J(C_t, E) = |C_t ∩ E| / |C_t ∪ E|</code></p>
+<p>它同時獎勵 coverage 與 precision，因此 agent 會學到階層探索、command failure recovery，以及停止拿取冗餘 context。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

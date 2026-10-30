@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Agent Behavioral Contracts II 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Varun Pratap Bhardwaj、Garima Singh、Arun Pratap Bhardwaj</p><p>日期：2026-08-13（v1，cs.AI）</p><p>arXiv：2608.12895</p><p><a href="https://arxiv.org/abs/2608.12895" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="agent-behavioral-contracts-ii-重點摘要">Agent Behavioral Contracts II 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>多 agent pipeline 常用「各元件可靠度相乘」證明整體可靠度，這一步依賴 conditional-independence 假設（v1 ABC 框架的 C5），本文首次實測這個假設：兩個同模型 agent 在其中任一失敗的任務裡，有 90.0% 同時失敗（作者稱 log OR=6.66），且錯誤方向剛好對操作者不利——冗餘設計正是在元件共用模型時被高估可靠度。</p>
+<h2 id="核心發現作者自報preregistered">核心發現（作者自報，preregistered）</h2>
+<p>18,000 個 two-agent-handoff 任務的驗證性實驗（另有 30,820 個任務的更大 campaign 內兩個拓撲當次要複現）：兩個 mistral-small-24b 實例在其中一個失敗的任務裡，90.0% 同時失敗（log OR=6.66，95% CI [6.38, 7.00]，φ=0.916）。換成不同模型會顯著降低這個關聯（六個對比全部顯著）；已經換了模型後再換供應商則沒有顯著差異——這是作者原本註冊的三層假說中失敗複現的一支，如實報告為 null。一組組成從不改變的內部控制對照，15/15 對比皆為 null，支持結果不是全域混淆造成。</p>
+<h2 id="為什麼顯而易見的修法都不管用">為什麼「顯而易見的修法」都不管用</h2>
+<ul>
+<li>完全丟掉獨立性假設 → Fréchet–Hoeffding 界，經常是零：m 個元件平均可靠度低於 1−1/m 時下界必為 0（作者例子：4 個元件、p=0.75，下界恰為 0）。</li>
+<li>擬合一個 copula 相依模型 → 作者證明（Theorem 4.2）bootstrap 下界會隨樣本數 n→∞ 而失去對真實可靠度的覆蓋，因為識別誤差是 O(1)、bootstrap 修正量卻以 O(n^-1/2) 縮小——資料越多，這種證書錯得越離譜，且沒有任何可見徵兆。</li>
+</ul>
+<h2 id="本文的替代方案">本文的替代方案</h2>
+<p>一個不假設任何相依結構的有限樣本證書：對測得的 co-execution moment 取 Bonferroni–Clopper–Pearson 信賴區間盒，再對 2^m 個聯合機率格做線性規劃求下界。作者稱其可靠（sound）、在給定資訊下已最緊（sharp），且隨 moment 家族擴大單調收緊：四階段真實資料上，moment 從 10 個擴到 14 個，區間寬度收窄 85.7%，certified floor 從 0.2455 升到 0.4116。另外提供 anytime-valid 版本（e-process/betting martingale），其虛無假設只約束條件期望，完全不需獨立性假設，任意停止規則下仍有效，最優下注時精確等同 SPRT；作者報告在所有允許的下注比例下經驗型 I 誤差 ≤0.0471。</p>
+<h2 id="局限與作者自陳的邊界">局限與作者自陳的邊界</h2>
+<p>線性規劃對元件數 m 是指數複雜度（2^m 變數），本文所有拓撲 m≤4；聚合節點（merge/quorum）被當成確定性程式碼、不建模其失敗相依性，若聚合器本身是 LLM 則此分析不涵蓋；drift 動態承襲 v1、本文未重新量測；證書是 per-distribution 的，模型升級即失效。威脅有效性方面，模型身分與模型能力互為混淆是最嚴重的一項（換模型同時換了能力，作者用 marginal-free 統計量與內部負控制部分緩解，但未完全分離）；各 arm 任務不成對抽樣；全部 arm 在同一個約四小時視窗內依序跑完，非交錯設計。作者明確聲明不主張：相依失敗現象本身是首次發現、三層 sharing 排序成立、drift 動態在本文獲驗證、證書可擴展到大 m、或結論適用於前沿模型（本文僅用中型開源模型）。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>這篇對 ai_core 任何用「多個同模型 agent 投票／複核」當可靠度保證的設計是直接警示：quorum 或 reviewer–writer 若共用同一底層模型，用獨立假設算出的「三取二很安全」之類數字，可能系統性低估真實失敗率——本文量出的效應量（φ 最高到 0.92）不是小誤差。可借用的具體工程手法：(1) 選冗餘要看 model identity 而非 vendor；(2) 任何 composed reliability 的「保證」都該標明其成立範圍（哪個任務分布、哪個模型版本、哪個拓撲），模型一升級證書就該視為失效，這與 ai_core 的 commit-time authority 需要明確 validity scope 是同一個道理；(3) 若要做可靠度證書，優先用不假設相依結構的 moment-set 或 anytime-valid 方法，而非套一個相依模型再包個信賴區間——後者的失效沒有可見徵兆，是最危險的錯誤形態。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2608.12895_AgentContractsII.zh-TW.html"><code>../translate/2608.12895_AgentContractsII.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

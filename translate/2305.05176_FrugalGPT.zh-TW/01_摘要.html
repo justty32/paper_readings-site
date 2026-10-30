@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.05176_FrugalGPT.zh-TW.html">回 2305.05176_FrugalGPT.zh-TW 目錄</a>　<a href="02_%E5%A6%82%E4%BD%95%E8%B2%A0%E6%93%94%E5%BE%97%E8%B5%B7%E5%8F%88%E6%BA%96%E7%A2%BA%E5%9C%B0%E4%BD%BF%E7%94%A8_LLM.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>可付費查詢的大型語言模型（LLM）數量正快速增長。我們檢視查詢主流 LLM API（如 GPT-4、ChatGPT、J1-Jumbo）的成本，發現這些模型定價結構異質，費用<strong>可相差達兩個數量級</strong>。尤其是在大量查詢與文本上使用 LLM 會非常昂貴。基於此，我們列出並討論使用者可用來降低 LLM 推論成本的三類策略：1) prompt adaptation（提示調適）、2) LLM approximation（LLM 近似）、3) LLM cascade（LLM 級聯）。作為示例，我們提出 <strong>FrugalGPT</strong>——一個 LLM cascade 的簡單而靈活的實作，它會學習「針對不同查詢該用哪些 LLM 組合」以降低成本並提升準確率。實驗顯示 FrugalGPT 可在<strong>最多降低 98% 成本</strong>下匹配最佳單一 LLM（如 GPT-4）的表現，或在<strong>相同成本下把準確率較 GPT-4 提升 4%</strong>。此處提出的想法與發現為「可持續且高效地使用 LLM」奠定基礎。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>我們正處於 LLM 爆發期。將 LLM 用於商務、科學、金融等大規模應用的誘人前景，促使愈來愈多公司（OpenAI、AI21、CoHere 等）將 LLM 作為服務提供。GPT-4 這類 LLM 在問答等任務上達到前所未有的表現，但用於高吞吐應用可能非常昂貴：例如 ChatGPT 估計<strong>每日營運成本超過 70 萬美元</strong>；用 GPT-4 支援客服，小企業<strong>每月可花超過 2.1 萬美元</strong>。除財務成本外，使用最大型 LLM 還帶來可觀的環境與能源衝擊。</p>
+<p>透過 API 提供的 LLM 收費異質。使用一個 LLM API 的成本通常由三部分組成：1) 提示成本（與提示長度成正比）、2) 生成成本（與生成長度成正比）、3) 有時還有每次查詢的固定成本。我們比較了來自 OpenAI、AI21、CoHere、Textsynth 等主流供應商的 <strong>12 個商用 LLM</strong>（表 1），其成本可差達兩個數量級：例如處理 1000 萬 tokens 的提示成本，OpenAI GPT-4 為 30 美元，而 Textsynth 託管的 GPT-J 僅 0.2 美元。</p>
+<p>面對異質的成本與品質，如何有效且高效地運用整組 LLM 選項是實務上的關鍵挑戰。若任務相對簡單，聚合 GPT-J（體積比 GPT-3 小 30 倍）的多次回應可達到近似 GPT-3 的表現而省下財務與環境成本；但在困難任務上 GPT-J 表現會差很多。此外只依賴單一供應商並不可靠（供應商可能因需求暴增而不可用）。既有的 model cascade、FrugalML 等 model ensemble 範式，是為「已知固定標籤集的預測任務」設計、無法涵蓋 LLM 的完整能力。因此「如何負擔得起又準確地使用 LLM」需要新方法。</p>
+<p><strong>我們的貢獻</strong>：本文提出一個在預算約束下用 LLM API 處理自然語言查詢的靈活框架，稱為 <strong>FrugalGPT</strong>（見圖 1）。我們討論三大降本策略：</p>
+<ul>
+<li><strong>prompt adaptation</strong>：探索如何找出有效（通常更短）的提示以省成本；</li>
+<li><strong>LLM approximation</strong>：在特定任務上用更簡單、更便宜的 LLM 去匹配強大而昂貴的 LLM；</li>
+<li><strong>LLM cascade</strong>：如何針對不同查詢自適應地選擇要用哪些 LLM API。</li>
+</ul>
+<p>為展示潛力，我們用 LLM cascade 實作並評估一個簡版 FrugalGPT：在每個資料集與任務上，它學會把不同查詢自適應地分派給不同 LLM 組合（含 ChatGPT、GPT-3、GPT-4）。實驗顯示 FrugalGPT 可在匹配最佳單一 LLM API 表現的同時<strong>省下最多 98% 成本</strong>；反過來，也可在相同成本下<strong>把表現最多提升 4%</strong>。</p>
+<p><strong>相關工作</strong>：</p>
+<ul>
+<li><strong>Prompt Engineering</strong>：few-shot、chain-of-thought、知識增強等技術多半提供更詳盡的任務說明與範例，導致提示更長更貴；本文相反，探索用<strong>簡潔提示</strong>降本。</li>
+<li><strong>Model Ensemble</strong>：組合多模型做預測，但通常需白箱存取以供訓練，而 LLM API 多為黑箱；且 ensemble 需對單一 query 查詢所有模型，反增成本。</li>
+<li><strong>System Optimization for LLMs</strong>：量化、管線平行、硬體感知剪枝等需修改 LLM 內部狀態（如權重），但許多商用 LLM API 不釋出模型，且 LLM 快速變大使重訓極貴。</li>
+<li><strong>ML-as-a-Service</strong>：既有研究利用各種分類 ML API 提升表現，但需固定已知的標籤集；LLM API 的輸出涵蓋整個自然語言空間，且提示選擇與 API 選擇都顯著影響生成任務表現，最佳化空間遠大於標準分類。</li>
+</ul>
+<h2 id="2-範圍與問題陳述">2. 範圍與問題陳述</h2>
+<p><strong>自然語言查詢回答</strong>：本文聚焦標準的自然語言查詢回答任務——回答從查詢分佈 Q 抽樣的查詢 q。新聞分類、閱讀理解、常識推理等許多真實任務都可表述為查詢回答問題。</p>
+<p><strong>LLM marketplace（市場）</strong>：考慮由 K 個不同 LLM API <code>{f_i(·)}</code> 組成的市場。每個 <code>f_i: P → A</code> 給定提示空間 P 中的提示 p，產生答案分佈 A 中的答案。使用 API 前須先把 query q 轉成對應提示。每個 API 有自己的成本，通常含三部分：與提示長度成正比、與生成答案長度成正比、以及（有時）每次查詢固定成本。形式上，給定提示 p，第 i 個 API 的成本記為 <code>c_i(p) = c̃_{i,2}·‖f_i(p)‖ + c̃_{i,1}·‖p‖ + c̃_{i,0}</code>。</p>
+<p><strong>示例</strong>：假設一家小企業用 GPT-4 做客服，服務 15,000 名客戶，每人每週兩次、每次問 3 個問題，合計每月 360,000 次查詢。若每題提示平均 1800 tokens、答案約 80 tokens，GPT-4 輸入／回應成本各為每千 tokens 0.03／0.06 美元，則每月總成本約為 360 ×（0.03×1800 + 0.06×80）≈ <strong>2.12 萬美元</strong>，對許多小企業而言難以負擔。</p>
+<p><strong>問題陳述：預算感知的 LLM API 使用</strong>：主要目標是在預算約束下運用 LLM API。形式上為最大化整體任務表現 <code>E[r(a, â(s,q))]</code>，同時確保平均成本受使用者定義值 b 約束，即 <code>E[c(s,q)] ≤ b</code>。其中 a 為 q 的正確答案，â(s,q) 為策略 s 對 q 生成的答案，c(s,q) 為處理成本，reward r(·,·) 衡量生成答案與正解的貼近程度。策略的搜尋空間極大——包含用哪些提示、用哪些 API、如何聚合其回應。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

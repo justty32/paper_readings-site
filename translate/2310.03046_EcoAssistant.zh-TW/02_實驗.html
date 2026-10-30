@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2310.03046_EcoAssistant.zh-TW.html">回 2310.03046_EcoAssistant.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<p>本節在各類查詢上以模型評估與人工評估探究 EcoAssistant 的表現與美元成本，實證層級與成功解示範各自的效益，並顯示 EcoAssistant 可較單獨 GPT-4 助手高 10% 成功率、花費不到 GPT-4 一半。</p>
+<h3 id="41-設定">4.1 設定</h3>
+<p><strong>資料集</strong>：取 ToolBench 中對應 <strong>Places、Weather、Stock</strong> 三領域的資料集，各隨機抽 100 題；各附一個推薦 API（Google Places、Weather API、Alpha Vantage Stock API）。除各自評估外，也把三者合併成 300 題、以不同順序打亂成 <strong>Mixed-1/2/3</strong>。</p>
+<p><strong>Prompt 與 LLM</strong>：初始 prompt 含查詢、API 名稱/金鑰，以及（用成功解示範時）檢索到的 query-code 對；LLM 須靠內部 API 知識與寫碼技能作答。為避免洩漏機密 API 金鑰給 LLM 服務，為每個 API 隨機生成一個假金鑰、執行時再替換回真金鑰。也做了 <strong>Chain-of-Thought（CoT）</strong> 版實驗（本文技術與既有 prompting 正交、可協同）。聚焦對話式 LLM：兩個黑箱模型（GPT-3.5-turbo、GPT-4）與一個開源模型（LLAMA-2-13B-chat）；假設 LLAMA-2-13B-chat 成本為零（可自行部署），並記錄黑箱服務的美元成本。</p>
+<p><strong>比較方法與實作</strong>：比較三個由不同 LLM 支援的助手（LLAMA-2-13B-chat、GPT-3.5-turbo、GPT-4），與兩型層級：<strong>AssistantHier-G</strong>（GPT-3.5-turbo + GPT-4）、<strong>AssistantHier-L</strong>（LLAMA-2-13B-chat + GPT-3.5-turbo + GPT-4）。每個助手/層級都含 vanilla 版與 +CoT、+SolDemo、+CoT+SolDemo 變體。<strong>EcoAssistant 即層級 + 成功解示範</strong>（AssistantHier-G/L (+CoT) + SolDemo）。全部基於 AutoGen 實作；成功解示範用 <strong>Chroma</strong> 向量庫，以 multi-qa-mpnet-base-dot-v1 嵌入查詢、cosine 相似度檢索。</p>
+<p><strong>評估協定</strong>：關注美元成本與表現（成功率，即被成功處理的查詢百分比）。因查詢通常<strong>無標準答案</strong>（如問某日天氣），同採模型評估與人工評估。模型評估以 <strong>GPT-4 當使用者代理</strong>：對話結束後把整段對話史餵給 GPT-4，問它是否成功處理查詢。每組評估以不同隨機種子重複三次。</p>
+<h3 id="42-模型評估個別資料集表-2">4.2 模型評估：個別資料集（表 2）</h3>
+<blockquote>
+<p><strong>表 2 擇要（成功率 % / 成本）</strong>：</p>
+<ul>
+<li>GPT-3.5-turbo：Places 39.33/0.47、Weather 46.00/0.41、Stock 17.00/0.36。</li>
+<li>GPT-3.5-turbo + SolDemo：Places 77.33、Weather 79.67、Stock 68.00（成本幾乎不變）。</li>
+<li>GPT-4：Places 85.00/12.58、Weather 87.33/10.73、Stock 59.33/18.49。</li>
+<li>AssistantHier-G + SolDemo：Places 96.67/3.73、Weather 95.00/3.04、Stock 81.67/8.10。</li>
+<li>AssistantHier-L + SolDemo：Places 97.00/3.33、Weather 98.00/2.24、Stock 85.00/6.70。</li>
+</ul>
+</blockquote>
+<ul>
+<li><strong>發現 1</strong>：各 LLM 表現異質——愈貴愈好。GPT-4 成功率最高、GPT-3.5-turbo 次之、LLAMA-2-13B-chat 墊底；成本則 GPT-4 最高、GPT-3.5-turbo 相對划算、LLAMA-2-13B-chat 為零。</li>
+<li><strong>發現 2</strong>：CoT 能大幅提升「中等表現」模型（GPT-3.5-turbo），但對 GPT-4（已很強、無太多提升空間）與 LLAMA-2-13B-chat（本就不擅此任務）未必有益；CoT 傾向增加成本（多 token）。有趣的是 AssistantHier-G + CoT 反比不加 CoT 便宜——因 CoT 提升 GPT-3.5-turbo 成功率、減少了對貴 GPT-4 的依賴。</li>
+<li><strong>發現 3</strong>：成功解示範能提升成功率，<strong>尤其對表現不佳的方法</strong>——幾乎讓 vanilla GPT-3.5-turbo 在 Places/Weather 成功率翻倍、在 Stock 提升 3 倍；對已很強的 GPT-4 則除 Stock（原本才約 60%）外提升不顯著，且不明顯增加成本。</li>
+<li><strong>發現 4</strong>：相較 GPT-4，助手層級顯著降本又略升成功率——AssistantHier-G 省約 10%–30%、AssistantHier-L 省約 15%–50%；因允許對單一查詢試多個助手，成功率也略升。</li>
+<li><strong>發現 5</strong>：EcoAssistant（層級 + 成功解示範）在所有資料集達最高成功率，較最佳 GPT-4 變體高約 10 個百分點，且較單用層級再省約 30%–50% 成本。此綜效令人驚訝（成功解示範單獨用時只提表現）——歸因於<strong>高表現 GPT-4 產出的解隨後指導較便宜（但較弱）的 LLM</strong>，使這些經濟型 LLM 能借 GPT-4 的解當示範解更多任務，從而減少對貴 GPT-4 的依賴、省下成本。</li>
+</ul>
+<h3 id="43-模型評估混合資料集圖-2">4.3 模型評估：混合資料集（圖 2）</h3>
+<p>在 Mixed-1/2/3 上評估六法（GPT-3.5-turbo、+SolDemo、GPT-4、+SolDemo、AssistantHier-G、AssistantHier-G+SolDemo 即 EcoAssistant），以「成功查詢數/成本 對 已處理查詢數」的曲線呈現串流場景的擴展趨勢。結論：(1) 成功解示範雖依賴過去解、可能受查詢順序影響，但實測<strong>大致 order-agnostic</strong>（X+SolDemo 各順序曲線一致）；(2) 兩個 GPT-3.5-turbo 變體最具成本效益（成本曲線近乎平），但單獨 GPT-3.5-turbo 成功數墊底，加成功解示範則大幅提升；(3) GPT-4 表現尚可但最耗成本（成本曲線最陡），層級能壓平斜率而不犧牲表現；(4) <strong>EcoAssistant 表現最佳、成本曲線遠比其他法平</strong>（僅次於 GPT-3.5-turbo 變體）。</p>
+<h3 id="44-人工評估混合資料集表-3">4.4 人工評估：混合資料集（表 3）</h3>
+<p>從 300 題抽 100 題成 <strong>Mixed-100</strong>；為每題人工挑選並驗證一段能取得所需資訊的「黃金程式碼」，評估時可參照其輸出判定成功與否。</p>
+<blockquote>
+<p><strong>表 3 擇要</strong>：成功率（%）/成本／每查詢平均 model calls：</p>
+<ul>
+<li>GPT-3.5-turbo：25 / 0.36；+SolDemo：45 / 0.48。</li>
+<li>GPT-4：59 / 13.77（GPT-4 calls 3.12）；+SolDemo：78 / 10.27（GPT-4 calls 2.57）。</li>
+<li>AssistantHier-G：63 / 11.84；<strong>+SolDemo（EcoAssistant）：80 / 5.90</strong>（GPT-3.5 calls 2.92、<strong>GPT-4 calls 僅 1.25</strong>）。</li>
+</ul>
+</blockquote>
+<p>主結論在人工評估下依然成立：成功解示範顯著提升成功率、層級相較 GPT-4 省本。EcoAssistant 較 GPT-4 <strong>成功率高 10 點、成本不到一半</strong>。model calls 分析顯示：(1) 成功解示範<strong>增加</strong> GPT-3.5-turbo 的呼叫數——因 vanilla GPT-3.5-turbo 常產不出可被抽取執行的格式化程式碼、對話早早終止；有了示範它更會產生可執行程式碼，對話得以推進。(2) 對 GPT-4，成功解示範<strong>減少</strong>呼叫數——因它一開始就寫出好碼、少幾輪精修。(3) EcoAssistant 相較無 SolDemo 版，GPT-3.5-turbo 呼叫增、GPT-4 呼叫減——即便成功率更高，仍<strong>更少依賴貴 GPT-4</strong>（GPT-3.5-turbo 靠示範解了更多查詢），故省本。</p>
+<h3 id="45-人工評估無人回饋的自主系統表-4">4.5 人工評估：無人回饋的自主系統（表 4）</h3>
+<p>前述實驗都有「使用者（真人或 GPT-4）」在迴路中判定查詢是否成功，此回饋有三用途：算成功率、決定成功解示範是否入庫、決定層級是否叫下一個助手。實務上使用者或偏好<strong>自主運作、無需回饋</strong>的系統。為此為每法建自主版：加一個 <strong>GPT-4 evaluator</strong> 承擔上述後兩項功能（並把其成本計入系統成本），所有查詢處理完再人工評成功率。</p>
+<blockquote>
+<p><strong>表 4 擇要</strong>：成功率（%）/成本/執行時間（s）：</p>
+<ul>
+<li>GPT-4：59 / 13.77 / 5272；AssistantHier-G：54 / 12.99 / 8993；<strong>EcoAssistant：72 / 5.78 / 4033</strong>。</li>
+</ul>
+</blockquote>
+<p>EcoAssistant 相較 GPT-4 仍<strong>成功率高 10+ 點、成本降 &gt;50%</strong>。惟其成功率較非自主版（表 3 的 80%）降約 8 點——因 GPT-4 evaluator 偶爾<strong>不信任 GPT-3.5-turbo 卻又不叫 GPT-4 助手</strong>，致表現下滑；同時因較少叫 GPT-4 助手，即便計入 evaluator 成本，總成本也未增。執行時間方面：成功解示範能大幅縮短 run-time（更少迭代）；單純的 AssistantHier-G 最久（常兩個助手都試）；EcoAssistant 用不到 AssistantHier-G 一半的時間、甚至快過單獨 GPT-4——再證層級與成功解示範的綜效降低了對高延遲 GPT-4 的依賴。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2402.03744_INSIDE.zh-TW.html">回 2402.03744_INSIDE.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>知識幻覺（knowledge hallucination）已引發外界對已部署 LLM 安全性與可靠性的廣泛憂慮。既有的幻覺偵測工作多在 <strong>logit 層級的不確定性估計</strong>或<strong>語言層級的自一致性評估</strong>上進行，而語意資訊在 token 解碼過程中不可避免地流失。因此，本文提出探索 LLM <strong>IN</strong>ternal <strong>S</strong>tates（內部狀態）中保留的稠密語意資訊來做 halluc<strong>I</strong>nation <strong>DE</strong>tection（<strong>INSIDE</strong>）。具體而言，本文提出一個簡單但有效的 <strong>EigenScore</strong> 指標來更好地評估回應間的自一致性，其利用回應嵌入之協方差矩陣的特徵值來測量稠密嵌入空間中的語意一致性/發散度。此外，從自一致幻覺偵測的角度出發，本文探索了一種測試時 feature clipping（特徵截斷）方法，用以截斷內部狀態中的極端啟動值，藉此降低過度自信的生成，並有助於偵測過度自信型幻覺。在多個常用 LLM 與問答（QA）基準上進行的大量實驗與消融研究，證明了本提案的有效性。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>LLM 近年取得突破性進展，但即使是最先進的 LLM 也常出現事實錯誤或不合邏輯的生成，即所謂知識幻覺。這使得在實際場景中部署 LLM 存在風險，幻覺偵測——即準確偵測並拒絕 LLM 產生幻覺時的回應——因而受到學界日益關注。</p>
+<p>Token 級不確定性估計（如預測信心或熵）在傳統 NLP 任務上已展現效力，但如何把 token 級不確定性推導為句子級，對現代自回歸 LLM（其回應內容通常多樣且複雜）仍是挑戰。為避免複雜的 token-to-sentence 推導，研究者轉而直接在輸出語言上評估句級不確定性，其中「提示 LLM 對同一問題生成多個回應、評估這些回應的自一致性」被證明對幻覺偵測有效。然而，這種在<strong>解碼後語言文字</strong>上做的事後語意度量，劣於精確地建模邏輯一致性/發散度。</p>
+<p>因此，本文不採用 logit 層或語言層的不確定性估計，而是提出利用 LLM 的內部狀態進行幻覺偵測。動機很直觀：LLM 在內部狀態中保留了整句話高度濃縮的語意資訊，可直接在句嵌入空間中偵測幻覺回應。</p>
+<p>在 INSIDE 這一泛化框架下，本文從兩個角度做幻覺偵測：第一，跳過經額外模型做二次語意抽取的步驟，直接用 LLM 的內部狀態測量輸出句子的自一致性/發散度——第 3.1 節提出 EigenScore 指標，量測句嵌入協方差矩陣的特徵值。第二，為處理自一致（過度自信）型幻覺，本文提出校正內部狀態中的異常啟動值——第 3.2 節開發了 feature clipping 方法截斷極端特徵，以在自回歸生成過程中抑制過度自信的生成。</p>
+<p><strong>主要貢獻</strong>：(1) 提出利用 LLM 內部狀態做幻覺偵測的泛化 INSIDE 框架；(2) 開發 EigenScore 指標測量嵌入空間中的語意一致性，並證明其代表句嵌入空間中的微分熵；(3) 提出測試時 feature clipping 截斷特徵空間中的極端啟動值，隱式降低過度自信的生成，並有助辨識過度自信型幻覺；(4) 在多個 QA 基準上取得 SOTA 幻覺偵測表現，並以大量消融研究驗證方法有效性。</p>
+<h2 id="2-幻覺偵測背景">2 幻覺偵測背景</h2>
+<p>給定輸入脈絡 x，一個以 θ 參數化的典型 LLM 以自回歸方式生成輸出序列。p(y_t|y_&lt;t, x) 為第 t 個 token 的最大 softmax 機率（MSP）。對序列生成任務，一個直觀的序列不確定性即為不同 token 聯合機率的負對數平均，稱為 <strong>Perplexity</strong>。由於較短序列通常有較低的困惑度，需以輸出序列長度 T 正規化。又因不同 token 對句子語意貢獻不均，僅用平均 token 級不確定性定義的困惑度無法有效捕捉整句的不確定性。研究顯示，對同一輸入使用多次生成有助於估計序列級不確定性；<strong>Length Normalized Entropy（LN-Entropy）</strong> 即利用多次生成、把序列級不確定性定義為多個回應的 token 級對數機率之期望。當模型對回應不確定時會產生高熵的答案分布。</p>
+<p>除了預測不確定性/熵，多個回應間的<strong>語意一致性</strong>也被廣泛用於衡量 LLM 幻覺程度，其假設是：LLM 若理解輸入脈絡且對答案有把握，理應生成相似的輸出。一個直觀的語意一致性指標是 <strong>Lexical Similarity</strong>，它計算多個答案間的平均相似度（以 Rouge-L 定義）作為一致性度量。</p>
+<h2 id="3-方法">3 方法</h2>
+<p>整體流程如 Figure 1：推論時，倒數第二層的極端特徵先被截斷，再基於多個回應的句嵌入計算 EigenScore。</p>
+<h3 id="31-以-eigenscore-做幻覺偵測">3.1 以 EigenScore 做幻覺偵測</h3>
+<p>既有的不確定性或一致性型幻覺偵測指標是在 logit 或語言空間中計算的，忽略了 LLM 內部狀態中保留的稠密語意資訊。為更好地利用這些資訊，本文提出在句嵌入空間中測量語意發散度。第 t 個輸出 token 在第 l 層的隱藏嵌入記為 h^l_t ∈ ℝ^d（LLaMA-7B 為 d=4096，LLaMA-13B 為 d=5120）。句嵌入可由 token 嵌入平均得到，或取最後一個 token 的嵌入。主實驗採用<strong>中間層（layer index = int(L/2)）最後一個 token 的嵌入</strong>作句嵌入，因其能有效捕捉句子語意（不同嵌入選擇的比較見 4.3 節消融）。</p>
+<p>對 K 個生成序列，K 個句嵌入的協方差矩陣為 Σ = Zᵀ·J_d·Z，其中 Σ∈ℝ^(K×K)、Z=[z_1,...,z_K]∈ℝ^(d×K) 為嵌入矩陣、J_d 為中心化矩陣。<strong>EigenScore</strong> 定義為協方差矩陣的對數行列式（LogDet）：</p>
+<p>E(𝒴|x,θ) = (1/K)·log det(Σ + α·I_K)</p>
+<p>其中加入小的正則項 α·I_K（α=0.001）使矩陣滿秩。由於矩陣行列式可由特徵值求得，EigenScore 亦可寫成 E = (1/K)·Σ_i log(λ_i)，λ 為正則化後協方差矩陣的特徵值，可由 SVD 求解。式子顯示：LLM 生成的幻覺程度可由特徵值的對數平均衡量——當模型對答案有把握、K 次生成語意相近時，句嵌入高度相關，多數特徵值趨近 0；反之，當模型猶豫不定並產生幻覺內容時，模型會生成語意發散的多個句子，導致更顯著的特徵值。</p>
+<p><strong>Remark 1</strong>：協方差矩陣的 LogDet 代表句嵌入空間中的<strong>微分熵（differential entropy）</strong>。微分熵是離散 Shannon 熵在連續空間的自然延伸；對多變量高斯分布 X∼N(μ,Σ)，可推導出微分熵 H_de(X) = ½·log det(Σ) + (d/2)(log2π+1) = ½·Σ_i log(λ_i) + C（C 為常數），即微分熵由協方差矩陣的特徵值（LogDet）決定。</p>
+<p>因此，EigenScore 代表句嵌入空間中的微分熵，作為語意發散度量具有以下優勢：(1) 在稠密嵌入空間中捕捉語意發散（熵），相較 logit 或語言空間預期保留更高度濃縮的語意資訊；(2) 在嵌入空間中表示語意發散能有效解決自然語言空間中的**語意等價（linguistic invariance）**問題；(3) 利用協方差矩陣特徵值可挖掘不同回應間的細粒度語意關係。</p>
+<h3 id="32-測試時-feature-clipping">3.2 測試時 Feature Clipping</h3>
+<p>近期研究顯示 LLM 存在自一致（過度自信）幻覺的風險，這是既有一致性方法未考慮的情形。作者觀察到 LLaMA-7B 倒數第二層的啟動值分布存在大量極端特徵，這會提高生成過度自信、自一致內容的可能性。受先前為 OOD 偵測而校正內部啟動值以降低過度自信預測的工作啟發，本文引入測試時 <strong>feature clipping（FC）</strong> 方法，以分段函數截斷超出上下界 h_min、h_max 的特徵：落在門檻內原樣輸出，低於 h_min 截為 h_min，高於 h_max 截為 h_max（h_min=-∞、h_max=+∞ 時等同不做任何處理）。</p>
+<p>門檻的決定：以一個動態存取的記憶庫在測試時保存 N 個 token 嵌入；對每個隱藏神經元，將門檻設為記憶庫中特徵的上下 p 百分位。依三倍標準差法則，本文所有實驗設 p=0.2，即記憶庫中最大與最小的前 0.2% 啟動值被視為異常特徵並予以截斷，藉此降低過度自信的生成。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

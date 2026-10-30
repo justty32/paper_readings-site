@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《從 LLM 蒸餾答案集程式設計規則用於神經符號視覺問答》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Thomas Eiter (TU Wien)、Nelson Higuera Ruiz (TU Wien)、Johannes Oetsch (Jonkoping University)</p><p>日期：2026-06</p><p>arXiv：2606.03269</p><p><a href="https://arxiv.org/abs/2606.03269" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="從-llm-蒸餾答案集程式設計規則用於神經符號視覺問答重點摘要">《從 LLM 蒸餾答案集程式設計規則用於神經符號視覺問答》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>LLM 蒸餾 ASP 規則</strong>：在不做微調的前提下，以少量 VQA 範例為指引、只用 prompting 讓 LLM 延伸既有的 ASP（Answer-Set Programming）推理理論以涵蓋新的問題類型，產出規則經由 ASP 求解器驗證語法／語意正確性與迴歸一致後整合，從而讓<strong>神經網路（LLM）的推理軌跡被蒸餾成確定性符號規則，後續由符號求解器取代 LLM 呼叫</strong>。三資料集（GQA/CLEVR/CLEGRV）×五模型（GPT-4o/DeepSeek/Mistral-Large/LLaMA3-70b/Gemini-3 Pro）驗證。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>模組化神經符號 VQA 系統的核心優勢是推理模組可解釋、透明、可擴展，但當問題需求變更時——例如需要回答新類型的問題——開發者必須手動撰寫或修改 ASP 規則來擴充推理理論，這對開發者是重大負擔。既有規則學習方法（ILP 等）需要大量訓練資料或明確的模式宣告（mode declarations），而 LLM 的 prompt-only 蒸餾路線可繞過這些前提。核心挑戰：<strong>能否用極少量範例引導 LLM 產生正確、非冗餘的 ASP 規則，並由 ASP 求解器自動驗證正確性</strong>。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>問題設定</strong>：從一個「完美」的 ASP 理論 T 開始（人工撰寫、永遠能算出正確答案），刻意刪除涉及某個謂詞 P 的所有規則，模擬理論不完整的情境。蒸餾任務就是重建這些缺失規則。</li>
+<li><strong>蒸餾演算法（Alg. 1）</strong>：對新範例逐一迭代——若既有理論 T 能正確回答則跳過；否則呼叫 LLM 產生候選規則（multi-prompting + CoT simple + CoT complex 三路並行），逐一檢查：(i) 語法檢查（ASP 求解器回報語法錯誤 → LLM syntactic mending），(ii) 語意檢查（求解器輸出不等於預期答案 → LLM semantic mending），(iii) 迴歸測試（新規則加入後過往所有範例是否仍正確）。全部通過才接受此延伸。</li>
+<li><strong>Prompting 策略</strong>：(1) preprompt：設定 VQA 語境＋解釋 ASP 語法＋展示場景/問題/答案的符號表示＋給出初始理論；(2) multi-prompting：一次要求 N=5 個替代解；(3) 兩種 CoT：簡單版（逐步 if-then → ASP 規則）與複雜版（結構化四步驟）；(4) mending：語法/語意修補 prompt。</li>
+<li><strong>組成新謂詞（§4.6）</strong>：不只重建既有謂詞，更測試 LLM 能否用既有基礎謂詞組合成全新謂詞（如 in_between, connected, isolated, count_class），包含遞迴與聚合規則。</li>
+<li><strong>冗餘修剪（§5）</strong>：以 prune sample 執行 greedy backward elimination——若移除某規則後準確度不變則標記為冗餘。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<table>
+<thead>
+<tr>
+<th>資料集</th>
+<th>GPT-4o</th>
+<th>DeepSeek</th>
+<th>Mistral-L</th>
+<th>LLaMA3</th>
+<th>Gemini-3</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GQA（平均%）</td>
+<td>~98.8</td>
+<td>~98.8</td>
+<td>~98.9</td>
+<td>~90.3</td>
+<td>~99.9</td>
+</tr>
+<tr>
+<td>CLEVR（平均%）</td>
+<td>~99.4</td>
+<td>~98.0</td>
+<td>~98.7</td>
+<td>~94.1</td>
+<td>~100.0</td>
+</tr>
+<tr>
+<td>CLEGRV（平均%）</td>
+<td>~85.6</td>
+<td>~87.0</td>
+<td>~84.3</td>
+<td>~85.3</td>
+<td><strong>~97.5</strong></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>CLEGRV 最難</strong>：涉及遞迴（cycle, shortest path）與聚合，多模型表現顯著下降。</li>
+<li><strong>範例使用極少</strong>：每蒸餾嘗試實際僅用 1–4 個範例即收斂（上限設 N=10），Gemini-3 於 CLEGRV 平均只需 1.73 範例。</li>
+<li><strong>消融實驗（§4.5）</strong>：對強模型（GPT-4o/DeepSeek），mending/CoT/multi-prompting 全開有顯著增益（+10%）；<strong>對弱模型（LLaMA3），關閉某些策略反而更好</strong>——策略負擔超過其推理能力。</li>
+<li><strong>三種效能原型</strong>：(i) 過載型（Mistral/LLaMA3）：複雜 prompt 妨礙；(ii) 平衡型（GPT-4o/DeepSeek）：策略增益明顯；(iii) 飽和型（Gemini-3）：自身推理能力已夠強，策略相對不重要。</li>
+<li><strong>冗餘修剪</strong>：GPT-4o 產出規則套數最多（CLEVR unique 平均 8.8 條被修剪），Gemini-3 產出最精簡、幾乎無冗餘。</li>
+<li><strong>組成能力（§4.6）</strong>：GPT-4o/DeepSeek/Gemini-3 可成功從既有謂詞組成含遞迴/聚合的新謂詞，LLaMA3 最不可靠。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>假設既有理論 T 是正確的（不處理既有理論有 bug 的情境）。</li>
+<li>假設場景與問題已正確解析為 ASP 事實（知覺模組的錯誤不在範圍內）。</li>
+<li>規則正確性僅經實證驗證（迴歸測試+求解器），非形式證明。</li>
+<li>Prompt 敏感性：雖然本實驗的模板跨資料集表現穩定，實際部署仍需調整。</li>
+<li>不處理既有規則的除錯/修復（只處理新增/重建）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>LLM 推理軌跡→確定性符號求解器的閉環</strong>（§3.6 固化引擎的「神經→符號→無 LLM」路徑）：LLM 只在蒸餾階段介入（產生新規則），<strong>驗證之後由 ASP 求解器完全取代</strong>——這是方向二（LLM→確定性）中「以符號形式蒸餾、以符號求解器執行」的具體實現，對照 Compiled AI（2604.05150）的 Python 編譯路線與 SemanticALLI（2601.16286）的語意快取路線。</li>
+<li><strong>少量範例即收斂</strong>的性質表示 LLM 在此扮演「將既有知識轉化為形式規則」的 translator，而非 data-driven learner——這與 ILP 有根本差異：不需要 mode declarations、不需要大量訓練資料。</li>
+<li><strong>ASP 求解器作為驗證閘門</strong>（§3.4 憑證准入的實例）：語法檢查+語意檢查+迴歸測試構成三道關卡，產出的規則保證在已有範例上一致正確——在符號領域是比「信心分數」更強的保證形式。</li>
+<li>與 <a class="paper-reference" href="2604.05150_CompiledAI.%E6%91%98%E8%A6%81.html">2604.05150</a> Compiled AI 對照（LLM→Python vs LLM→ASP，兩條確定性編譯路線的不同權衡）；與 <a class="paper-reference" href="2601.16286_SemanticALLI.%E6%91%98%E8%A6%81.html">2601.16286</a> SemanticALLI 對照（cache 命中 vs 規則生成，兩條「省 LLM」路徑）；與 <a class="paper-reference" href="2604.23853_ClawTrace.%E6%91%98%E8%A6%81.html">2604.23853</a> ClawTrace 並讀（成本感知追蹤蒸餾；本論文 token 消耗分析對應表 5）。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2606.03269_ASP_Distillation.zh-TW.html"><code>../translate/2606.03269_ASP_Distillation.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.15877_ExperienceCompressionSpectrum.zh-TW.html">回 2604.15877_ExperienceCompressionSpectrum.zh-TW 目錄</a>　<a href="02_%E7%B6%93%E9%A9%97%E5%A3%93%E7%B8%AE%E5%85%89%E8%AD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>當 LLM 代理擴展到長程、多會話部署時，如何高效管理累積的經驗成為關鍵瓶頸。代理記憶系統（agent memory）與代理技能發現（agent skill discovery）都在處理這個挑戰——從互動軌跡（interaction traces）中抽取可重用知識——然而對 22 篇主要論文的 1,136 條參考文獻做引用分析，顯示<strong>跨社群引用率低於 1%</strong>。我們提出<strong>經驗壓縮光譜（Experience Compression Spectrum）</strong>：一個統一框架，把記憶、技能、規則定位為<strong>同一條「壓縮率遞增」軸上的不同點</strong>（情節記憶 5–20×、程序技能 50–500×、宣告式規則 1,000×+），直接降低 context 消耗、檢索延遲與計算開銷。把 20+ 個系統映射到此光譜，揭露每個系統都運作在<strong>固定、預先決定的壓縮層</strong>，無一支援自適應跨層壓縮——我們稱此缺口為**「缺失的對角線（missing diagonal）」**。我們進一步論證：光靠專門化並不足夠（兩社群各自重複解相同子問題）、評估方法與壓縮層緊耦合、可遷移性隨壓縮上升但以犧牲具體性為代價、且知識生命週期管理大體被忽視。我們articulate了可擴展、全光譜代理學習系統的開放問題與設計原則。</p>
+<h2 id="1-引言">1 引言</h2>
+<p>當 LLM 代理從單會話 demo 走向持久、長程部署，會累積龐大的互動經驗。一個每天處理數千任務的代理所生成的軌跡，很快就會壓垮任何實用的 context window 或檢索預算，使<strong>高效經驗管理</strong>成為第一線的可擴展性挑戰。兩個研究社群為此而生：<strong>代理記憶社群</strong>開發抽取與檢索經驗知識的系統；<strong>代理技能社群</strong>建構從執行軌跡中發現與重用程序能力的框架。</p>
+<p>儘管處理的是同一根本問題（從互動經驗中抽取可重用知識），這兩個社群卻極度脫節：跨社群引用率低於 1%（記憶論文引技能 0.7%＝4/566；技能引記憶 1.2%＝7/570）。兩篇技能綜述皆未引任何記憶系統，只有一篇記憶綜述引了技能工作（且只引 Voyager）。</p>
+<p><strong>範圍（Scope）</strong>：我們研究在 <strong>scaffold 層</strong>（模型權重之外的執行時系統）抽取的知識。訓練時方法（RLHF、Constitutional AI）互補但不在本文範圍。</p>
+<p><strong>核心觀察</strong>：記憶抽取與技能發現是<strong>同一種操作的實例化</strong>——把互動經驗壓縮成不同粒度的可重用知識。記憶系統抽取結構化事件記錄（約 10× 壓縮）；技能系統抽取可重用行為模式（約 100×）；規則系統抽取抽象決策原則（約 1,000×+）。這不是三個獨立問題，而是<strong>單一經驗壓縮光譜上的三個點</strong>，更高壓縮直接換來更少 context 消耗、更快檢索、更低單決策計算。</p>
+<p><strong>認知科學類比</strong>：互補學習系統（CLS）理論描述海馬迴快速編碼情節記憶、逐步鞏固進新皮質知識——一條生物版壓縮光譜，暗示代理系統應在閒置時執行<strong>向上壓縮</strong>。ACT-R 的宣告式/程序式區分對應我們的 L1/L2 邊界；Fitts &amp; Posner 的技能習得理論顯示知識<strong>雙向流動</strong>（顯式規則經練習編譯成自動程序），此性質目前無系統支援。</p>
+<p><strong>實務界早已手動做全光譜壓縮</strong>：數十萬開發者維護 維護說明 與 .cursorrules 檔，把部署經驗蒸餾成可重用規則（L0→L3）。然而無系統將此過程自動化；每個系統都固定在單一預設壓縮層。</p>
+<p><strong>貢獻</strong>：(1) 形式化經驗壓縮光譜，把代理記憶、技能、規則統一到單一壓縮軸（§2）；(2) 映射 20+ 系統，揭露無一支援自適應跨層壓縮的「missing diagonal」（§2）；(3) 量化社群脫節（&lt;1% 跨引）並揭露四個從任一社群內部都看不見的結構性洞見（§3）；(4) articulate 可擴展全光譜代理學習的開放問題與設計原則（§4）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《SuS：用於內在探索的策略感知驚奇》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Mark Kashirskiy, Ilya Makarov（HSE Moscow + AI Talent Hub, ITMO）</p><p>日期：2026-01，內在動機／探索／LLM 推理</p><p>arXiv：2601.10349</p><p><a href="https://arxiv.org/abs/2601.10349" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="sus用於內在探索的策略感知驚奇重點摘要">《SuS：用於內在探索的策略感知驚奇》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>傳統好奇心探索（ICM/RND）只看「state-level 預測誤差」當 novelty，會被「noisy TV」（不可預測但任務無關的觀察）誤導；<strong>SuS（Strategy-aware Surprise，策略感知驚奇）</strong> 主張<strong>有意義的探索不是看「狀態是否新奇」，而是看「agent 的『行為策略』是否真的改變」</strong>——用對比學習訓練一個 strategy encoder 把狀態映到「策略嵌入空間」，再算兩個互補的內在獎勵：<strong>Strategy Stability（SS，行為策略跨步的一致性 = 前後策略嵌入餘弦相似度）</strong> 與 <strong>Strategy Surprise（SuS = world model 預測誤差 ×（1−SS），即「既不可預測、又造成策略位移」才獎勵）</strong>，兩者以 meta-learned 權重組合（r_int=λ₁·SS+λ₂·SuS）。在 LLM 數學推理（GSM8K、Qwen2.5-1.5B+LoRA、GRPO）上，<strong>Pass@1 相對提升 17.4%、Pass@5 提升 26.4%</strong>、策略多樣性（嵌入聚類熵）全程更高、消融顯示移除任一分量都至少掉約 10%。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>稀疏/延遲獎勵下探索是 RL 核心難題。既有內在動機各有短板：count-based 在高維狀態難精確匹配；density 估計可能只捕表面狀態變化非有意義行為差異；<strong>prediction-based（ICM 用前向模型誤差、RND 用隨機網路蒸餾誤差）只看 state-level novelty，忽略決策背後更廣的行為模式</strong>——一個狀態在觀察層新奇，行為上卻平庸，導致探索無關環境特徵（noisy TV 問題）。作者主張：<strong>有效探索應問「動作是否導致 agent 行為策略的真正改變」，而非只是產生不可預測的觀察</strong>。</p>
+<h2 id="核心方法">核心方法</h2>
+<p>增廣獎勵 <code>r = r_ext + α·r_int</code>。核心是 strategy encoder E:𝒮→ℝ^d（d=128），用<strong>對比學習</strong>訓練：同軌跡、導向相似動作分布的狀態 → 嵌入相近；不同軌跡、行為發散的 → 推遠（in-batch negatives + momentum encoder）。對每個 transition (s_t,a_t,s_{t+1}) 算前嵌入 z_pre=E(s_t)、後嵌入 z_post=E(s_{t+1})：</p>
+<ul>
+<li><strong>Strategy Stability（SS）</strong>：<code>SS = cos(z_pre,z_post)</code>——行為一致性。高 SS＝動作維持策略連貫；獎勵高 SS 鼓勵發展連貫策略（在數學推理上＝充分探索一條解法路線再換）。但單用 SS 會壓抑探索。</li>
+<li><strong>Strategy Surprise（SuS）</strong>：<code>SuS = ‖ŝ_{t+1}−s_{t+1}‖ ·(1−SS)</code>，ŝ 為 world model M(s_t,a_t) 預測。<strong>唯有「世界模型沒料到」且「結果處於不同策略位置」兩條件同時成立才高</strong>——乘法組合自動濾掉 noisy TV（同策略區內的不可預測轉移 (1−SS) 小、可預測的策略位移預測誤差小）。</li>
+<li><strong>組合</strong>：<code>r_int = λ₁·SS + λ₂·SuS</code>，λ 由訓練中 <strong>meta-learned</strong> 自動適應任務（早期 SS 建立連貫策略、後期 SuS 主導發現替代解法）。RL 底層用 <strong>GRPO</strong>（intrinsic reward 加進 advantage 前），KL 懲罰維持生成品質。</li>
+</ul>
+<h2 id="結果gsm8kqwen25-15blora200-held-out">結果（GSM8K，Qwen2.5-1.5B+LoRA，200 held-out）</h2>
+<ul>
+<li><strong>主結果（Table 1）</strong>：SuS Pass@1 14.2%（baseline 12.1%，<strong>相對 +17.4%</strong>）、Pass@5 46.8%（baseline 37.1%，<strong>+26.4%</strong>）、策略嵌入熵 1.31（baseline 0.65，+101%）。Pass@5 提升更大 → 產更多「多樣的正確解」。</li>
+<li><strong>消融（Table 2）</strong>：僅 SS → Pass@1 12.5%（−12.0%）；僅 SuS → 13.1%（−7.7%）；證實兩分量互補協同（SS 過保守、SuS 過發散）。</li>
+<li><strong>多樣性</strong>：SuS 全程維持顯著更高的策略聚類熵，<strong>防止 baseline/perplexity 那種「初期後多樣性崩塌、過早收斂窄行為」</strong>。</li>
+<li>簡單 perplexity-based intrinsic reward 在此域無意義探索增益。計算開銷：訓練 wall-clock +~15%、記憶體 +~20%（被更快收斂抵消）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>只在單一域（GSM8K 數學推理）+ 單一 1.5B 模型</strong>驗證；作者列為首要待辦（推廣到影像式 RL 等）。缺多隨機種子統計與更大模型。</li>
+<li>標題與摘要稱「移除任一分量≥10% 退化」，但消融表「僅 SuS」實為 −7.7%（與 10% 略有出入，宜以表為準）；附錄超參表列 λ_SuS=0.0、Figure 5 把 SS/SuS 標籤對調等小筆誤，閱讀時留意。</li>
+<li>引入 strategy encoder + world model 兩個額外模組（需對比學習與聯合訓練）；strategy 嵌入只 1-step 前後比較，未捕多尺度/階層行為（作者列為未來方向）。</li>
+<li>缺乏對「探索性質」的理論分析（何時/為何 SuS 成功）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 D 類<strong>內在動機探索的「換軸」之作</strong>：把 novelty 從 <strong>state-level</strong>（ICM/RND）抬到 <strong>strategy/behavior-level</strong>——與 <a class="paper-reference" href="2507.08210_Curiosity_to_Competence.%E6%91%98%E8%A6%81.html">2507.08210</a>（curiosity vs competence、empowerment 對抗 noisy TV）、<a class="paper-reference" href="2606.21271_ROVER_Occupancy_Coverage.%E6%91%98%E8%A6%81.html">2606.21271</a> ROVER（occupancy coverage 對抗非平穩 novelty 訊號）並列為「對 prediction-error novelty 已知病灶（noisy TV、過早收斂）開藥方」的三種不同切法。SuS 的解法＝乘法門控（predict-error × strategy-shift）。</li>
+<li>最值得記：<strong>SuS=‖預測誤差‖×(1−SS) 的乘法配方</strong>（兩條件同時滿足才獎勵，天然濾 noisy TV）＋ <strong>meta-learned 動態權重讓 SS/SuS 隨訓練此消彼長</strong>；以及把 DIAYN/MAP-Elites 的「behavioral descriptor」思想搬到「線上探索引導」而非「archive 選擇」。</li>
+<li>跨界點：這是「RL 探索內在動機」直接用到 <strong>LLM 推理 RL（GRPO）</strong> 的案例——把「策略多樣性」與 Pass@k 多樣正解掛鉤，對做 LLM reasoning RL、防 entropy collapse 的人有參考價值（與 <a class="paper-reference" href="2603.07642_Helix_Evolutionary_RL_OpenEnded.%E6%91%98%E8%A6%81.html">2603.07642</a> Helix 用 NSGA-II 保多樣同屬「對抗 RL 多樣性崩塌」一脈）。</li>
+<li>定位：HSE/ITMO 短篇方法 + 實證（開源 github.com/mariklolik/sus），適合做內在動機、好奇心探索、表徵學習、LLM reasoning 多樣性的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2601.10349_SuS_Strategy_aware_Surprise.zh-TW.html"><code>../translate/2601.10349_SuS_Strategy_aware_Surprise.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

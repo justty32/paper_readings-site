@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《ARC-AGI Without Pretraining：以最小描述長度在推論時求解 ARC》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Isaac Liao, Albert Gu（Carnegie Mellon University）</p><p>日期：2025-12，ARC-AGI／無預訓練／推論時學習</p><p>arXiv：2512.06104</p><p><a href="https://arxiv.org/abs/2512.06104" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="arc-agi-without-pretraining重點摘要">《ARC-AGI Without Pretraining》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>CompressARC</strong>：一個 <strong>76K 參數、零預訓練</strong>的深度學習方法，把 ARC-AGI-1 求解重新表述為「<strong>程式碼高爾夫（code-golf）/最小描述長度（MDL）</strong>」問題——找出能「印出整個謎題資料集（未知格子任意填）」的<strong>最短自含程式</strong>，由奧坎剃刀推論最短程式會以「正確解」填空。它把組合式程式搜尋轉成<strong>可微優化</strong>：對單一目標謎題過擬合一個等變神經網路，把謎題壓進權重，再精算權重位元長度當程式長度來最小化。<strong>全部學習只在推論時、只用待解謎題本身（移除答案）當唯一訓練樣本</strong>，不碰官方訓練集，卻解出 <strong>20% 評估謎題、34.75% 訓練謎題</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 時代的共識是「解 ARC-AGI 這類 IQ 視覺謎題需要靠海量預訓練得來的能力」。本文要反駁：<strong>到底需要多少資料才能碰 ARC-AGI？</strong> 探索在「無預訓練、不用官方訓練集、只用待解謎題一個樣本」的極端資料受限條件下，深度學習能走多遠。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>MDL／code-golf 表述</strong>：把 ARC 資料集視為要被「最短程式」印出的字串；最短程式（依奧坎剃刀）會把未解格子填成符合規則的「正確解」。窮舉最短程式（Solomonoff/Kolmogorov）不可行 → 改用神經網路壓縮。</li>
+<li><strong>三步驟策略</strong>：
+<ol>
+<li><strong>模板程式（Algorithm 1）</strong>：含許多待填「種子（seed）」與硬編碼權重 θ 的空位；每謎題：採樣 z∼N(0,1) → 等變網路 → 由 logits 採樣出格子並印出。</li>
+<li><strong>種子優化（Algorithm 2）</strong>：對每謎題隨機初始化權重，操弄 line 3 種子（模仿從學到的常態分佈採樣，長度類比 <strong>VAE 的 KL 損失</strong>）、line 7 種子（保證輸出匹配真謎題，長度類比 <strong>VAE 重建損失</strong>），再對分佈參數與權重做<strong>梯度下降</strong>最小化總種子長度。</li>
+<li><strong>求解（Algorithm 3）</strong>：只保留產生解所需部分，以梯度下降近似搜尋 → 整個「找最短程式」變成可微優化。</li>
+</ol>
+</li>
+<li><strong>等變神經網路</strong>：對 ARC 謎題的合法變換（輸入/輸出對順序、顏色置換、翻轉、旋轉）<strong>等變</strong>——輸入這樣變，輸出也同樣變。透過權重綁定實作反射/旋轉對稱。內含 multitensor、方向性 cummax/shift、方向性溝通層等客製層。</li>
+<li><strong>損失即 MDL</strong>：總損失 ≈ 各種子位元長度，等價於把 ARC 求解當成「對單謎題的 VAE/壓縮」。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>76K 參數、零預訓練、單樣本推論時學習</strong>下，解出 <strong>ARC-AGI-1 評估集 20%、訓練集 34.75%</strong>（每題猜 2 次，格子形狀與所有像素全對才算對）。</li>
+<li>對照：用網路規模資料的 LLM（如 o3）達 87.5%；只用 ARC 資料訓練的網路達 40.3%（HRM）；在相同極端約束下的 <strong>U-Net 基線</strong>幾乎全軍覆沒（凸顯 MDL 歸納偏置的關鍵）。</li>
+<li>能解出多樣、有創意的謎題分佈，顯示 <strong>MDL 是「除預訓練外，另一條產生智能的可行路徑」</strong>。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>20% 並非 SOTA</strong>——遠低於 LLM 與大規模訓練法；定位在「證明概念」而非刷榜。</li>
+<li>觀察到的「能/不能」清單（附錄 H）：<strong>形狀複製類</strong>任務弱（卷積會放大噪聲、歸納偏置不佳）；可能 posterior collapse。</li>
+<li>每謎題各自獨立優化（無跨謎題權重共享），未利用任務間共性；作者列出多項改進（跨謎題聯合壓縮、類卷積層、KL 下限防塌縮、正則化）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 E 類（ARC-AGI／抽象推理）的**「壓縮即智能 / MDL」極端代表**——與走 LLM 直接 transduction、DSL 程式歸納（<a class="paper-reference" href="2411.17708_GridCoder_ARC_Program_Induction.%E6%91%98%E8%A6%81.html">2411.17708</a> GridCoder）、潛程式搜尋（<a class="paper-reference" href="2411.08706_LPN_Latent_Program_Search.%E6%91%98%E8%A6%81.html">2411.08706</a> LPN）、測試時訓練（<a class="paper-reference" href="2411.07279_Test_Time_Training.%E6%91%98%E8%A6%81.html">2411.07279</a>）、induction vs transduction（<a class="paper-reference" href="2411.02272_Induction_Transduction.%E6%91%98%E8%A6%81.html">2411.02272</a>）等路線正交，主張<strong>不靠任何預訓練、只靠單一謎題的描述長度最小化</strong>就能泛化。</li>
+<li>最值得記：<strong>code-golf/MDL 表述 → 過擬合等變網路壓進權重 → 精算位元長度 → 組合搜尋變可微優化</strong>；損失各項<strong>類比 VAE 的 KL／重建項</strong>；以及「<strong>訓練只發生在一個樣本（待解謎題本身）</strong>」這一前所未見的設定。</li>
+<li>呼應 <a class="paper-reference" href="1911.01547_Measure_of_Intelligence.%E6%91%98%E8%A6%81.html">1911.01547</a>（Chollet 的智能即「技能習得效率」）——CompressARC 是「最小資料下習得新技能」的極端實驗；可與 <a class="paper-reference" href="2412.04604_ARC_Prize_2024.%E6%91%98%E8%A6%81.html">2412.04604</a> ARC Prize 2024、<a class="paper-reference" href="2601.10904_ARC_Prize_2025.%E6%91%98%E8%A6%81.html">2601.10904</a> ARC Prize 2025 的大規模路線對照閱讀。</li>
+<li>定位：<strong>概念驗證 + 完整方法/架構論文</strong>（CMU，Albert Gu 團隊，開源）；適合對 <strong>壓縮/MDL、VAE 視角、等變網路、推論時學習、資料效率</strong>有興趣的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2512.06104_CompressARC.zh-TW.html"><code>../translate/2512.06104_CompressARC.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

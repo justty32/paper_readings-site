@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>AIOS：LLM Agent 作業系統（AIOS: LLM Agent Operating System） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Kai Mei, Xi Zhu, Wujiang Xu, Mingyu Jin, Wenyue Hua, Zelong Li, Shuyuan Xu, Ruosong Ye, Yingqiang Ge, Yongfeng Zhang</p><p>日期：2024-03</p><p>arXiv：2403.16971</p><p><a href="https://arxiv.org/abs/2403.16971" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="aiosllm-agent-作業系統">AIOS：LLM Agent 作業系統</h1>
+<h2 id="摘要與-1-引言">摘要與 1. 引言</h2>
+<p>既有 agent 直接使用 LLM 與工具，缺乏集中排程、資源隔離與存取控制；並行時常把 prompt 載入 GPU，直到 OOM 才釋放重試。AIOS 將這些服務移入 kernel，agent 透過 SDK 發出 syscalls。Kernel 提供 LLM scheduling、context、memory、storage、tool 與 access management。實驗最高達 2.1× 執行效率。</p>
+<h2 id="2-aios-架構">2. AIOS 架構</h2>
+<p>Application layer 放 agent framework 與應用邏輯。Kernel layer 同時包含傳統 OS kernel 與 AIOS kernel：前者管 CPU、GPU、磁碟，後者提供 LLM-specific abstractions。Hardware layer 仍由傳統 OS 間接存取，因此 AIOS 是 serving middleware／agent kernel，而非取代 Linux 的完整作業系統。</p>
+<p>Agent query 被拆成較小的 syscall units。Scheduler 把它們送到 LLM Core、memory、storage 或 tool manager；SDK 隱藏 kernel 細節。</p>
+<h2 id="3-aios-kernel">3. AIOS Kernel</h2>
+<p>LLM Core 用 adapter 統一 hosted API 與 local models。Scheduler 支援 FCFS、round-robin 與 time limit，使多 agent 請求公平輪替。Context Manager 在 generation 中斷時保存上下文，之後恢復；這是模型請求層 preemption，不是完整 agent process checkpoint。</p>
+<p>Memory Manager 處理執行期暫存，Storage Manager 保存持久資料。Tool Manager 負責註冊、載入、argument format check 與共享資源衝突。Access Manager 根據 agent 權限決定允許、拒絕或請使用者確認。SDK 再把這些功能映射到現有 agent framework。</p>
+<h2 id="4-評估">4. 評估</h2>
+<p>Quality 使用 GPT-4o-mini、temperature 1.0。HumanEval／MINT／GAIA／SWE-bench-Lite 上，AIOS 大致保持原 performance；ReAct GAIA 從 5.5% 到 7.3%，AutoGen 從 7.3% 到 9.7%。這些增益包含 structured prompt、regex validation 與 conflict hashmap，不能視為 scheduler 的單獨效果。</p>
+<p>Efficiency 使用 Llama-3.1-8B、Mistral-7B、單張 RTX A5000。Syscall throughput 最高提升 2.1×，等待時間下降。250 到 2,000 active agents 的複製 HumanEval workload 中，時間近似線性增加，AIOS 相對 baseline 的優勢隨負載擴大。</p>
+<h2 id="56-相關工作結論與限制">5–6. 相關工作、結論與限制</h2>
+<p>AIOS 把傳統 OS 的 scheduling、memory、filesystem、access control 類比到 agent serving，提供跨框架共用 kernel。它證明資源集中管理可改善單機吞吐，但未評估故障恢復、持久事件、不可逆工具作用、分散式排程或大規模 dormant agents；access control 也只有機制描述，沒有安全實驗。</p>
+<h2 id="附錄要旨">附錄要旨</h2>
+<p>附錄列出 syscall API、adapter、scheduler queue、context snapshot、SDK 與 benchmark 細節，並測 context switch 的回覆一致性。實作價值主要在可運行介面；更強的 OS 語意仍有待補上。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

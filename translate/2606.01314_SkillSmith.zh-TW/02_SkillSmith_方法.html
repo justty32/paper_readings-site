@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_SkillSmith_方法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.01314_SkillSmith.zh-TW.html">回 2606.01314_SkillSmith.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-skillsmith-方法">3. SkillSmith 方法</h2>
+<p>SkillSmith 形式化了工程師在長期實踐中經歷的能力累積過程：不僅修改操作程序，也撰寫可重用工具、記錄失敗教訓、逐步識別工具與工作流間的協同與衝突。每個迭代包含四個階段。</p>
+<h3 id="31-統一反思與提案規劃">3.1 統一反思與提案規劃</h3>
+<p>每次迭代先從 Pareto 前沿 G 中抽樣候選組態 Σ_k，在小批量 M 上執行任務，收集失敗集 F = {x ∈ M : P(x) &lt; θ}。SkillSmith 的提案器 R 輸出一個提案計劃 L——更新或創建技能與工具的任意組合，以原子 bundle 提交。</p>
+<p>在反思前，R 接收三個輔助訊號：(1) 反模式記憶 F_t 檢索匹配的失敗記錄，將歷史歸因注入診斷上下文；(2) 生態動力學（§3.2）提供效用趨勢 ∆u_i^{(t)} 與交互估計 β̂_{ij}^{(t)}；(3) 回饋函數 µ_f 從純量分數外萃取結構化診斷（如編譯器錯誤、遺失文檔報告、約束違反）。</p>
+<p>R 沿兩個維度分析失敗：<strong>垂直</strong>——失敗源於技能編排缺陷還是工具能力不足？（決定 L 應包含何種操作類型。）<strong>水平</strong>——失敗是否涉及多技能交互？（負 β̂_{ij} 標記潛在衝突，∆u_i 趨勢標記正喪失生態位次的技能。）
+當需要工具變更時，啟動 <strong>Tool-Smith B_τ</strong>。為防止聯合搜尋空間爆炸，工具演化受限於五種型別化生命週期原語：<strong>WRAP</strong>（包裝——在既有實現外加前/後處理層而不修改原碼）、<strong>EDIT</strong>（編輯——對實現體或介面簽名施加約束的型別化 diff）、<strong>COMPOSE</strong>（組合——按組合計劃將兩個工具鏈接或並行化為一個工具）、<strong>SPLIT</strong>（拆分——將捆綁多職責的工具拆分為兩個，原始被替換）、<strong>RETIRE</strong>（退役——從 T&#x27; 中移除並記錄墓誌銘至 F_{t+1}）。</p>
+<p>L 在提交前須通過反模式否決檢查。SkillSmith 也實現了一種<strong>協同感知合併</strong>算子：合併兩個共享祖先但技能子集不同的非被支配系統狀態，對新組合的技能對若 β̂_{ij} &lt; −β_thresh 則標記為需擴展驗證。</p>
+<p><strong>為何統一輸出空間重要</strong>：單型別突變算子不是閉合於 Ω（滿足技能–工具依賴約束的有效代理狀態集合）的——一序列個別合法的編輯可能需要中間狀態落在 Ω 之外，被驗證門控淘汰。SkillSmith 將 bundle 提案定義為原子轉換算子 L : Σ_t → Σ_{t+1}，Σ_t, Σ_{t+1} ∈ Ω，因此 bundle 突變<strong>擴展了有效性約束下可達改進的集合</strong>，而非僅增大編輯規模。</p>
+<h3 id="32-技能生態動力學">3.2 技能生態動力學</h3>
+<p>既有方法以歷史平均估計技能價值，但技能很少獨立作用。SkillSmith 將技能庫視為共享生態系統，使用 Lotka-Volterra 動力學建模技能間的互補性與衝突。</p>
+<p><strong>觀測估計</strong>：為緩解任務難度混淆，原始分數轉為正規化殘差 z(x) = P(x) − b(x)（b(x) 為同類別任務的歷史平均分數）。個別效用觀測為技能啟用/未啟用時的殘差均值差，以指數移動平均平滑：</p>
+<pre><code>û_i^{(t)} = (1 − µ) û_i^{(t−1)} + µ [z̄(s_i ∈ S_act) − z̄(s_i ∉ S_act)]
+</code></pre>
+<p>對共現次數超過 n_min 的技能對，協同效用為共活化殘差與兩個別活化殘差中較高者之差：</p>
+<pre><code>β̂_{ij}^{(t)} = z̄(s_i, s_j ∈ S_act) − max(z̄(s_i ∈ S_act, s_j ∉ S_act), z̄(s_j ∈ S_act, s_i ∉ S_act))
+</code></pre>
+<p>正值表示互補，負值表示衝突。共現不足的技能對賦予零交互先驗。</p>
+<p><strong>動態更新</strong>：為避免直接使用 û_i 和 β̂_{ij} 進行檢索/退役時的噪聲、耦合漂移與貪婪振盪，SkillSmith 以輕量 LV 更新平滑局部觀測為動態效用：</p>
+<pre><code>u_i^{(t+1)} = u_i^{(t)} + ε * û_i^{(t)} * u_i^{(t)} * (1 − Σⱼ w_{ij} * u_j^{(t)} / K)
+</code></pre>
+<p>其中 K 為承載容量，w_{ii}=1，w_{ij}=−β̂_{ij}（對共現高於閾值的技能對），其餘設為 0。更新後裁剪至 [u_min, u_max]。這使技能效用既依賴自身觀測殘差也依賴當前族群，在多輪中促進相容、低冗餘的技能組合。</p>
+<p><strong>檢索評分</strong>：對查詢 q 與當前已活化集 S_act，技能 s_i 的檢索分數為：</p>
+<pre><code>score(s_i, q, S_act) = α·sim(s_i, q) + γ·u_i^{(t)} + δ·Σ_{s_j∈S_act} β̂_{ij}^{(t)} − η·cost(s_i)
+</code></pre>
+<p>融合語意相關性、動態效用、交互相容性與執行成本。</p>
+<p><strong>實例級 Pareto 管理</strong>：Pareto 前沿 G 在訓練實例粒度而非總分上維護。對各訓練實例 x_i，系統追蹤哪個狀態 Σ 達到最高分。一個狀態是非被支配的，若它在至少一個實例上是最佳表現者且未被另一狀態在所有實例上嚴格支配。抽樣候選進行突變或合併時，按各狀態唯一最佳實例數的比例加權取樣。這確保在特定任務家族上具有獨特優勢的狀態不會被平均分更高的狀態遮蔽。</p>
+<h3 id="33-驗證與狀態更新">3.3 驗證與狀態更新</h3>
+<p>候選 Σ&#x27; 經漸進驗證：工具單元測試（當 bundle 包含工具操作時）→ 端到端整合測試 → 退化檢查。對合併候選，退化檢查額外以任一家長 lineage 曾展現優勢的任務家族為條件。僅通過所有階段後才准入 Pareto 前沿 G。</p>
+<p>系統隨後更新 S_{t+1} 與 T_{t+1}，計算新一輪觀測 û_i 和 β̂_{ij}，執行一步 LV 更新。新發現的失敗模式存入 F_{t+1}。效用連續 T_ret 輪低於退役閾值的技能從庫中移除，其資訊以墓誌銘形式轉入 F_t。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

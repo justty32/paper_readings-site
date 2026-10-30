@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2309.16797_Promptbreeder.%E6%91%98%E8%A6%81.html">回 2309.16797_Promptbreeder.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Promptbreeder（PB）</strong>：用一個二元錦標賽遺傳演算法演化 task-prompt 族群，但<strong>不只演化 task-prompt，連驅動突變的 mutation-prompt 本身也用 LLM 持續演化</strong>（<code>P' = LLM(M+P)</code>，<code>M' = LLM(H+M)</code>）——五大類九種突變算子（直接突變／估計分佈突變／超突變／拉馬克式突變／交配與情境洗牌）交織出「改進改進機制的機制」的自指迴圈，在算術與常識推理基準上超越 CoT、Plan-and-Solve、APE、OPRO。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>Prompt 措辭對 LLM 表現影響極大，但主流 prompt 策略（CoT、Plan-and-Solve）都是人工設計；APE 這類自動化方法雖能生成初始 prompt 分佈，卻在<strong>約三輪迭代後報酬遞減、多樣性崩潰</strong>而被作者放棄迭代版本。Promptbreeder 想解決的正是這個「diminishing returns」問題：靠一個<strong>維持多樣性的演化演算法</strong>，讓 LLM 既生成 task-prompt 的突變、也生成並持續改善「怎麼突變」的規則本身，避免搜尋過早收斂。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>兩層演化對象</strong>：task-prompt <code>P</code>（決定 LLM 如何回答問題）與 mutation-prompt <code>M</code>（決定如何突變 <code>P</code>）1:1 綁定為一個「演化單元」；<code>P' = LLM(M+P)</code>。<strong>自指的關鍵</strong>在於 mutation-prompt 自己也會被突變：<code>M' = LLM(H+M)</code>，<code>H</code> 為 hyper-mutation-prompt，使系統不僅改進 prompt，也改進「改進 prompt 的方式」。</li>
+<li><strong>初始化</strong>：問題描述 <code>D</code> + 隨機抽樣的 mutation-prompt + 隨機抽樣的「思考風格（thinking-style）」串接後交給 LLM 生成初始 task-prompt；此突變-prompt 從此與該 task-prompt 綁定，貫穿整個演化過程。</li>
+<li><strong>演化框架</strong>：族群大小 50，20–30 世代，二元錦標賽（隨機配對兩個體，高適應度者的突變複本覆蓋輸家）；適應度＝在訓練集隨機抽樣的 100 題 Q&amp;A batch 上的準確率。</li>
+<li><strong>五類九種突變算子</strong>：
+<ol>
+<li><strong>直接突變</strong>：Zero-order（僅由問題描述生成，不依賴既有 parent，類似課程學習的均勻重取樣）／First-order（mutation-prompt + parent task-prompt → LLM 生成新 task-prompt，標準無性突變）。</li>
+<li><strong>估計分佈突變（EDA）</strong>：把整個（經 BERT embedding cosine similarity &gt; 0.95 去重的）族群列表餵給 LLM 續寫新 task-prompt；EDA Rank and Index 變體按適應度<strong>升冪</strong>排序卻對 LLM「謊稱」是降冪，刻意製造矛盾以提升多樣性（發現 LLM 直接看數字適應度值時無法理解，只能靠列表順序間接暗示）。</li>
+<li><strong>超突變（mutation-prompt 的突變）</strong>：Zero-order Hyper-Mutation（問題描述+思考風格→新 mutation-prompt）／First-order Hyper-Mutation（<code>&quot;Please summarize and improve the following instruction:&quot;</code> + 既有 mutation-prompt → 新 mutation-prompt，隨即套用於該單元的 task-prompt）——<strong>這是自指自我改進最直接的體現</strong>：進化「進化力」本身（借用生物學 evolution of evolvability 概念）。</li>
+<li><strong>拉馬克式突變</strong>：把「導致正確答案的具體解題過程（working out）」反向推論回 task-prompt（<code>&quot;I gave a friend an instruction... Here are the correct examples of his workings out... The instruction was:&quot;</code>），概念近似 APE 的 instruction induction、STaR、APO；在問題描述缺失或誤導時尤其關鍵。</li>
+<li><strong>交配與情境洗牌</strong>：10% 機率以適應度比例選擇法把 task-prompt 替換為另一族群成員的 task-prompt（不套用於 mutation-prompt）；few-shot 情境（正確解題過程池）也會隨機重取樣/替換。</li>
+</ol>
+</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>零樣本／少樣本推理基準</strong>（GSM8K、SVAMP、MultiArith、AddSub、AQuA-RAT、SingleEq、CSQA、SQA）：PB（PaLM 2-L）全面超越 CoT、PoT、Plan-and-Solve（PS/PS+）、Auto-CoT、APE，多數資料集取得當時最佳分數。</li>
+<li><strong>GSM8K 零樣本</strong>：PB 找到的最佳 prompt 竟只是單字 <code>&quot;SOLUTION&quot;</code>，達 <strong>83.9%</strong>，超越同期 OPRO 用複雜 meta-prompt 找到的 <code>&quot;Take a deep breath and work on this problem step-by-step&quot;</code>（<strong>80.2%</strong>）；少樣本設定下 PB 達 83.5%。</li>
+<li><strong>ETHOS 仇恨言論分類</strong>：PB 演化出兩段接續套用的較長 prompt，達 <strong>89%</strong>，遠超人工設計的 <code>&quot;Determine whether a text contains hate speech&quot;</code>（80%），展現對複雜領域任務的適應力。</li>
+<li><strong>消融（附錄 L）</strong>：移除任一自指組件在幾乎所有情況下都有害；<strong>單一貢獻最大的是初始化時「思考風格引導的 task-prompt 重新描述」</strong>；唯一發現有害的個案是 GSM8K 上「初始化時隨機抽樣 mutation-prompt」。在刻意用<strong>未充分指定的問題描述</strong>（<code>&quot;Solve the Problem&quot;</code> 取代 <code>&quot;Determine whether a text contains hate speech&quot;</code>）重跑 ETHOS 消融時，<strong>移除拉馬克式「情境→task-prompt」突變傷害最大</strong>（81.6%→64.6%），因為它是唯一能把 prompt 內容直接「拉回」正確解題證據的機制。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>拓撲固定</strong>：只演化 prompt 的<strong>內容</strong>，不演化提示的<strong>演算法結構</strong>本身（例如 prompt 之間如何條件式串接）；作者自陳仍遠不及人類思維的開放式重組能力，也未處理多模態。</li>
+<li><strong>成本高</strong>：一次演化run＝族群 50 × 20–30 世代的大量 LLM 呼叫（突變＋評估），遠比單輪方法（CoT、Self-Refine）昂貴，論文未報告演化本身的 token/美元成本。</li>
+<li><strong>適應度必須來自有標籤的訓練集</strong>（100 題 Q&amp;A batch 的正確率），且論文發現 LLM 無法直接理解數值化的適應度分數，須靠列表順序間接暗示——顯示連「自指」層面的探索，最終仍完全依賴一個<strong>外部、確定性、由程式碼計算</strong>的評分函數。</li>
+<li>全文沒有 Reflexion／STOP 式的 broader-impact 或 reward-hacking 專節討論；演化過程是否可能在小型訓練 batch 上過擬合或利用評分函數的偏誤，論文未量測。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

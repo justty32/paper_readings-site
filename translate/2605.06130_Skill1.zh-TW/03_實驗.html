@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.06130_Skill1.zh-TW.html">回 2605.06130_Skill1.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-設定">4.1 設定</h3>
+<p><strong>環境</strong>：ALFWorld（文字家庭環境，需多步規劃與物件互動，六種任務型態：Pick/Look/Clean/Heat/Cool/Pick2）與 WebShop（線上購物模擬，搜尋並購買符合使用者規格的商品）。評估指標為測試集成功率（%）。</p>
+<p><strong>訓練</strong>：初始 policy 為 Qwen2.5-7B-Instruct，凍結 encoder 為 all-MiniLM-L6-v2（384 維）。GRPO（G=16, lr=1×10⁻⁶）。空庫起步容量 |B| ≤ 5000。訓練資料使用對應環境的訓練集。完整超參數見附錄 C。</p>
+<p><strong>基線</strong>三類：(1) 無訓練（ReAct、Reflexion、Mem0、ExpeL）；(2) 純 RL 無技能（PPO、RLOO、GRPO、GiGPO）；(3) RL + 技能（EvolveR、Mem0+GRPO、SimpleMem+GRPO、SkillRL、RetroAgent）。全部使用相同基礎模型 Qwen2.5-7B-Instruct 公平比較。</p>
+<h3 id="42-主要結果">4.2 主要結果</h3>
+<p><strong>Skill1 取得最高整體表現</strong>。ALFWorld 平均成功率 97.5%，超越先前最佳 RetroAgent 2.6 點，六任務型態中五項第一。Clean 例外（Skill1 96.0% vs RetroAgent 97.9%），但差距不統計顯著（p=0.147）。WebShop 同樣最佳（score 89.7% vs 89.3%）。</p>
+<p><strong>顯式技能庫補充參數化 RL</strong>：GiGPO（最強純 RL 方法）隱性吸收策略無法跨任務重用，Skill1 勝 6.7 點。最大收益在 Look（+26.1）與 Pick2（+23.1）——需要組合多子程序之處從可重用技能獲益最大。</p>
+<p><strong>統一最佳化勝過部分最佳化</strong>：RetroAgent 以獨立 intrinsic reward 最佳化利用與蒸餾但不提供選擇梯度訊號；SkillRL 冷啟動 SFT 後凍結選擇機制。Skill1 以單一任務結果訊號聯合最佳化全部三階段。比較結果顯示效能隨共演化程度遞增。</p>
+<p><strong>統計分析</strong>（附錄 D）：三種子獨立運行，Welch&#x27;s t-test p=0.021（&lt;0.05）vs RetroAgent，確認增益非種子變異所致。Skill1 整體標準差（0.6）小於 RetroAgent（0.9），統一演化降低初始化敏感度。Heat（p=0.004）、Cool（p=0.005）、Look（p=0.020）上最顯著。</p>
+<h3 id="43-分析">4.3 分析</h3>
+<h4 id="431-消融table-2">4.3.1 消融（Table 2）</h4>
+<p><strong>技能庫為基礎，蒸餾使其有效</strong>：完全移除庫→最大跌幅（97.5%→80.9%），Heat/Pick2 各掉 &gt;28 分。這些任務型態需組合多步子程序，從可重用技能受益最大。移除蒸餾保持庫→−5.1 點（92.4%），庫儲存原始軌跡而非壓縮策略，使選擇更吵、重用效果更差。</p>
+<p><strong>選擇損失傳播至下游</strong>：移除選擇→−5.7 點（91.8%），集中於 Heat/Pick2——路由到正確多步技能最關鍵處。即使利用 reward 完整，次優路由仍瓶頸整條管線。</p>
+<p><strong>兩個輔助目標互補</strong>：λ1=0 或 λ2=0 各 −3.5/−2.6。兩者皆零 →90.2%（−7.3），比移除任一單項更差。此差距顯示訊號受益利用超越其直接目標，兩個訊號對維持完整共演化皆必要。</p>
+<h4 id="432-共演化動態figure-3">4.3.2 共演化動態（Figure 3）</h4>
+<p>追蹤三項能力指標：(1) 選擇精度（技能效用分數 U(s) 平均）；(2) 利用成功率 r(τ)；(3) 蒸餾正向率（新 rollout 超越 Û_i 的比例）。統一訓練下三項能力互相強化——選擇精度先收斂（20 步達 0.95），高品質技能供應加速利用與蒸餾（60 步皆達 0.8）。序列加速顯示一階段的改善向前傳播整個生命週期。移除任一 credit 訊號拖慢所有三項能力：移除選擇訊號降低精度也拖累利用與蒸餾（因常路由到次優技能）；進一步移除蒸餾連利用分數都下降——每項訊號貢獻整體上升趨勢，是共演化的直接證據。</p>
+<h4 id="433-選擇與蒸餾品質figures-45">4.3.3 選擇與蒸餾品質（Figures 4–5）</h4>
+<p><strong>Policy 學會生成越來越精確的選擇查詢</strong>（Figure 4）：任務-技能相似度從 0.51→0.60，因趨勢訊號 reward 檢索歷史上高效用技能的查詢。移除選擇訊號減緩此學習，完全不學習選擇時相似度幾乎持平。</p>
+<p><strong>庫天花板隨 policy 學會蒸餾更好技能而上升</strong>（Figure 5）：Û（每任務頂端技能效用）從 0.51→0.91。變異訊號創造壓力——產出與既有相似的技能得低 reward，迫使 policy 發現真正更好的策略才能獲得正梯度。</p>
+<h4 id="434-技能庫多樣性figure-6">4.3.4 技能庫多樣性（Figure 6）</h4>
+<p>檢視匯聚後的庫是作為多樣化集體資產使用還是坍縮到少數主導條目。<strong>共演化啟動更廣技能集</strong>：Skill1 下技能使用次數分佈更均勻；無演化訊號時分佈集中化，只有少數流行技能密集使用。t-SNE 視覺化顯示 Skill1 高頻使用技能覆蓋更廣策略空間、數量約兩倍；無演化訊號時流行技能擠在一起、覆蓋有限。設計原理：產出與既有相似的低表現技能得負 reward，迫使 policy 覆蓋未被充分服務的場景而非複製成功技能。</p>
+<h4 id="435-計算開銷table-3">4.3.5 計算開銷（Table 3）</h4>
+<p>相同硬體（8×H800 80GB）比較：GRPO 無庫約 290s/step；SkillRL 近乎固定成本（庫僅從 60→83 技能，但效能限於 89.9% vs 97.5%）。Skill1 操作在 387–494s（約 1.3–1.7× GRPO），開銷來自成長的庫上下文。選擇步驟本身增加可忽略開銷——查詢生成與重排序遠短於多輪環境互動。<strong>蒸餾控制庫品質與計算成本</strong>：無蒸餾時原始軌跡直接入庫，以 2.4× 速度成長（step 60: 2200 vs 3900 技能）、慢 69%、更早飽和 5000 上限。蒸餾壓縮經驗為精簡技能，改善品質同時控制成本。</p>
+<h2 id="5-結論與局限">5. 結論與局限</h2>
+<p><strong>結論</strong>：Skill1 證明單一 policy 可透過單一任務結果目標共同演化技能選擇、利用與蒸餾。將此訊號分解為低頻趨勢與高頻變異，Skill1 無需輔助 reward 即可推導各能力的 credit 指派。ALFWorld 與 WebShop 上全面超越既有技能型與 RL 基線，消融確認三項能力以耦合方式演化。自然延伸：將此生命週期擴展至階層或多智能體設定，技能共享與衝突解決為統一 credit 指派引入新挑戰。</p>
+<p><strong>局限</strong>：(1) 環境覆蓋——僅評估兩個代表性文字智能體環境，是否泛化至更多環境（如深度搜尋）或具視覺觀察的環境仍未知；(2) 技能庫可擴展性——上限 5,000 條，隨任務多樣性成長固定大小庫可能成瓶頸，需更複雜的淘汰或階層組織策略；(3) 凍結 encoder——all-MiniLM-L6-v2 不可訓練，查詢品質改善僅來自 policy 端文字生成而無法從 embedding 端調整，可能限制檢索質量上限。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

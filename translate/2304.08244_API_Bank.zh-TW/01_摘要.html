@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2304.08244_API_Bank.zh-TW.html">回 2304.08244_API_Bank.zh-TW 目錄</a>　<a href="02_%E7%9B%B8%E9%97%9C%E5%B7%A5%E4%BD%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）可藉由使用外部工具增強能力，但三個關鍵問題仍未解答：(1) 現有 LLM 使用工具的有效性如何？(2) 如何增強其工具使用能力？(3) 要善用工具還需克服哪些障礙？作者提出 <strong>API-Bank</strong>，一個專為工具增強型 LLM 設計的基準。針對第一題，建置了由 73 支 API 工具組成的可執行評測系統，人工標註 314 則工具使用對話、共 753 次 API 呼叫，評估 LLM 在規劃、檢索、呼叫 API 三方面的能力。針對第二題，構建了涵蓋 1,000 個領域、2,138 支 API、1,888 則對話的訓練集，並訓練出以 Alpaca 初始化的 <strong>Lynx</strong>。實驗顯示 GPT-3.5 優於 GPT-3，GPT-4 尤擅規劃，但仍有相當進步空間；Lynx 較 Alpaca 提升超過 26 點，逼近 GPT-3.5。透過錯誤分析，作者點出該領域未來須面對的關鍵挑戰，回答第三題。資料與程式碼公開於 GitHub（AlibabaResearch/DAMO-ConvAI）。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM（GPT-3、Codex、ChatGPT、GPT-4）雖展現接近人類的對話、上下文學習與程式生成能力，但仍受限於訓練資料——資料會過時、無法涵蓋所有場景，因此近期大量研究聚焦讓 LLM 運用外部 API 工具。工具使用向來被視為人類獨有行為、靈長類演化的里程碑；類比此點，作者主張現階段必須回答上述三個關鍵問題。</p>
+<p>為此，作者先訪談 500 位使用者以確立設計原則：評測範圍須涵蓋規劃、檢索、呼叫三項能力，並考量領域多樣性、API 多樣性、API 真實性、評測真實性。回答第一題：實作 73 支常用 API、人工標註 314 則對話（753 次呼叫），構成第一個可執行、真實的評測系統。回答第二題：建置 2,138 支 API、1,888 則對話（4,149 次呼叫）的訓練集；由於人工標註數千支 API 太昂貴耗時，作者提出 <strong>Multi-agent</strong>——五個協作 agent 逐步生成領域、API、查詢、呼叫與回應的自動化資料生成法，較人工標註省 98% 成本；並以此訓練資料微調 Alpaca-7B 得到 <strong>Lynx</strong>。</p>
+<p>實驗發現：Alpaca-7B、ChatGLM-6B 等小模型已有約 20% 的 API 呼叫準確率，但檢索與規劃能力幾乎為零；175B 的 GPT-3 Davinci 反而幾乎不具工具使用能力，顯示工具使用並非 LLM 固有特性；Lynx 較 Alpaca-7B 三項能力平均提升 24%，逼近 GPT-3.5，但與 GPT-4 仍有 21% 差距。（圖 1：Call／Retrieve+Call／Plan+Retrieve+Call 三種能力示意。）</p>
+<h2 id="2-api-bank-的設計原則">2. API-Bank 的設計原則</h2>
+<p>作者訪談 500 多位有意在 LLM 中整合額外工具的使用者，首次提供衡量工具增強型 LLM 能力的定義與資料標準。</p>
+<h3 id="21-能力分級">2.1 能力分級</h3>
+<p>理想的工具增強型 LLM 應讓使用者在私有 API Pool 中定義所需 API，並在適當時機呼叫。訪談歸納出兩個維度：<strong>API Pool 少量 vs 大量</strong>（少量時可把所有 API 資訊與查詢一併輸入 LLM 判斷該呼叫哪支；大量時受輸入長度限制，須先檢索出候選 API 才能呼叫）；<strong>每輪單次 vs 多次呼叫</strong>（有些使用者願意把複雜需求拆成多個單次呼叫的簡單查詢，有些則要求 LLM 在單輪內自主完成多步呼叫）。兩維度組合出四種情境，因「少量 API」下規劃多次呼叫較直接，前兩種情境被合併，最終對應三項評測能力：</p>
+<ol>
+<li><strong>Call</strong>：API 已知時，依查詢正確呼叫 API；</li>
+<li><strong>Retrieve+Call</strong>：API 未知時，檢索並呼叫單一 API；</li>
+<li><strong>Plan+Retrieve+Call</strong>：API 未知時，持續規劃、檢索並呼叫多支 API 以完成複雜需求。</li>
+</ol>
+<h3 id="22-資料標準">2.2 資料標準</h3>
+<p>API 呼叫發生在開放環境、且嚴謹如數學——任何錯誤（API 名稱、輸入參數、呼叫順序）都可能導致需求未被滿足。因此須考量：<strong>領域多樣性</strong>（訓練測試資料盡可能涵蓋廣泛領域）、<strong>API 真實性</strong>（名稱/定義/參數貼近真實世界）、<strong>API 多樣性</strong>（涵蓋各式 API 類型用途）、<strong>評測真實性</strong>（須有可即時互動、依實際執行結果評分的系統，而非僅比對文字）。</p>
+<h2 id="3-api-bank-的評測系統">3. API-Bank 的評測系統</h2>
+<p><strong>系統實作</strong>：73 支自建 API（天氣預報、呼叫其他 AI 模型如文生圖等），資深工程師耗時 98 人日於同一框架實作；資料庫類 API 預先灌入初始資料；外部資訊類 API（如搜尋引擎）把特定時間點的檢索結果硬編碼寫死以確保可重現。另開發特殊 <strong>API Search</strong>：Retrieve+Call、Plan+Retrieve+Call 情境下 LLM 事先不知可用 API，須先把需求濃縮成關鍵詞，API Search 取關鍵詞與 API Pool 所有 API 元資訊的句嵌入、算餘弦相似度、回傳最相似者的元資訊；規則規定每次呼叫其他 API 前都須先做一次 API Search。</p>
+<p><strong>對話標註</strong>：Call 資料——隨機抽樣 API，標註者依文件構想查詢、標註呼叫、由系統執行、依輸出標註回應（可含同組 API 的多輪查詢）。Retrieve+Call 資料——取 1–5 支 API，判斷能否共同解決一個複雜需求，可以則拆成數個簡單查詢，逐一標註應呼叫的 API、參數、回應。Plan+Retrieve+Call 資料——類似 Retrieve+Call 但不拆解需求，須標註一整條依序呼叫鏈與最後一次執行的回應。每則對話須經兩位標註者討論、另兩位覆核格式/邏輯一致性/合理性，平均標註成本 $8；400 則中因品質問題捨棄 21.5%，最終保留 314 則、753 次呼叫。</p>
+<p><strong>評測指標</strong>：API 呼叫用 <strong>Accuracy</strong>（預測呼叫與標註呼叫是否執行相同資料庫查詢/修改、回傳結果是否一致）；呼叫後回應用 <strong>ROUGE-L</strong>。</p>
+<h2 id="4-api-bank-的訓練集">4. API-Bank 的訓練集</h2>
+<p>人工標註成本高（$8/則）且標註者只能想出約 100 支 API，難以支撐多樣化訓練集，因此作者提出 multi-agent 資料生成法。直接下達涵蓋「領域多樣性＋API 多樣性/真實性＋三種能力」的複雜指令，ChatGPT 可用資料率僅 5%（GPT-4 提升到 25%），因為一次塞給模型過多要求難以理解；於是拆解成五個協作 agent（如圖 3）依序執行：(1) 生成領域；(2) 依領域生成潛在 API（混入 Public APIs 真實範例強化真實性）；(3) 隨機選 API 與能力層級、造使用者查詢；(4) 模擬執行 API 呼叫並生成回應；(5) 測試者 agent 自動驗證是否符合設計原則（淘汰約 35%）。五個 agent 皆以特定 prompt 交由 ChatGPT 實作，每則對話成本僅 $0.1，較人工標註省 98%。最終訓練集含 1,000 領域、2,138 支 API、1,888 則對話（5,221 輪、4,149 次呼叫，Call/Retrieve+Call/Plan+Retrieve+Call 分別 720/719/449）；評測集則為 8 領域、73 支 API、314 則對話（914 輪，三類分別 214/50/50）。</p>
+<p>（表 1：與 Toolformer 資料集、APIBench、ToolAlpaca、ToolBench（Qin/Xu 兩版）、ToolQA 等基準比較，API-Bank 涵蓋最多領域與 API、同時涵蓋多輪與多次呼叫對話、同時評測呼叫與回應、完整考量三種能力。）</p>
+<h2 id="5-基準分析">5. 基準分析</h2>
+<p>最終基準合計 1,008 領域、2,211 支 API、2,202 則對話、6,135 輪（Call 934 則、Retrieve+Call 769 則、Plan+Retrieve+Call 499 則）。訓練資料由 LLM 自動生成、評測資料人工標註，兩者在領域與 API 範圍上刻意存在分布偏移，用以測試模型泛化能力。品質檢驗：從訓練集隨機抽 100 筆交標註者評估，Multi-agent 生成資料可用率 94%，較單純 self-instruct 高 89%；測試者 agent 篩除的資料中 78% 確實不合格，顯示該 agent 運作良好。作者主張 API-Bank 相較同期基準具最高多樣性、最高真實性、最高覆蓋度（表 1）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>TreeCoder：框架設計（2/4） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2511.22277_TreeCoder.zh-TW.html">回 2511.22277_TreeCoder.zh-TW 目錄</a>　<a href="02_%E7%B4%84%E6%9D%9F%E8%A7%A3%E7%A2%BC%E6%A1%86%E6%9E%B6.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>LLM 在僅以自然語言提示引導時，其程式輸出常違反語法或語意約束。我們提出 TreeCoder，目前最通用且靈活的框架，用於探索 LLM 解碼策略、約束與超參數，並在解碼階段強制程式正確性而非依賴提示工程。TreeCoder 將解碼表示為候選程式的樹搜尋，解碼策略與約束函數（風格、語法、執行）皆為一等可優化元件。Python、SQL 與 Rust 實驗表明，TreeCoder 在 CodeLlama、Mistral、DeepSeek 和 Qwen 等開源模型上一致提升準確率，常顯著超越無約束基線。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 已成為程式相關任務的事實標準，但其輸出常違反目標語言語法或引入邏輯錯誤。提升基礎模型昂貴且不提供保證。更有效的替代方案是在推理階段調整解碼過程：(1) 解碼策略——調整模型如何探索其機率分佈；(2) 約束解碼——將輸出限制為滿足外部規則的結果。</p>
+<p><strong>解碼策略</strong>：Sampling 從條件分佈隨機抽取 token 以產生多樣化輸出。Beam search 在每步保持 top-k 最可能延續。Best-first search 優先高機率延續但在驗證拒絕時回溯。MCTS 與 SMC 從遊戲和貝氏推論借鑑規劃技術。每種策略體現不同偏差-方差取捨：sampling 促進多樣性但可能無效，beam search 優先機率但犧牲多樣性，MCTS/SMC 在固定計算預算下平衡探索與利用。沒有一種方法在所有領域均最優。</p>
+<p><strong>約束解碼</strong>：通過謂詞 Φ: Σ* → {0,1} 修改解碼過程，指定部分序列是否可接受。約束後的 token 分佈為 P_θ^Φ(x_t | x_&lt;t) ∝ P_θ(x_t | x_&lt;t) · Φ(x_{1:t})。解碼策略控制搜尋過程，約束方法正交地強制外部規則。程式生成中正確性是離散且非協商的——任何語法或邏輯違反立即導致編譯或執行失敗。</p>
+<p><strong>主要挑戰</strong>：每種解碼策略實現自有控制迴路，每種約束類型與特定解碼例程緊耦合。既有系統硬編碼特定組合，難以隔離貢獻、比較效果或複用。沒有原則性方法系統化探索或優化此設計空間——解碼策略、約束與超參數以非線性方式互動。</p>
+<p><strong>此研究貢獻</strong>：(1) 理論貢獻——統一的解碼抽象：部分程式的樹和 expand-update-prune-move 操作，推廣多種 state-of-the-art 解碼策略。(2) 技術貢獻——基於此抽象的模組化框架，去耦合解碼策略、約束、終止條件、聚合函數與優化為可組合元件。在 MBPP 上與 HuggingFace 比無可測量開銷。(3) 實證——提升小型開源模型表現，適用於隱私或成本限制偏好本地部署的場景。</p>
+<h2 id="2-背景">2. 背景</h2>
+<p>解碼函數分類法沿五個正交維度刻畫多數既有解碼策略：</p>
+<ul>
+<li><strong>確定性</strong>：隨機（sampling）或確定性（beam search、best-first search）</li>
+<li><strong>並行性</strong>：多假設並行擴展（族群型）或一次一條軌跡（軌跡型）</li>
+<li><strong>回溯</strong>：能否重訪早期狀態探索未訪問分支</li>
+<li><strong>Roll-out</strong>：候選延續在被評估前是否遞迴擴展至完整完成</li>
+<li><strong>優化目標</strong>：最可能完成（MAP 型）或近似底層分佈（分佈型）</li>
+</ul>
+<p>MAP 型方法（beam search、best-first search、MCTS）優先最可能程式。分佈近似方法（sampling、SMC、ASAp）捕捉多樣化延續，近似約束後驗。Roll-out 演算法（MCTS、ASAp）回溯並擴展候選至完成；best-first search 回溯但不做完整 roll-out。</p>
+<h2 id="框架中實例化六種代表性技術beam-searchsmcsamplingmctsasap-和-best-first-search每種使用共享模組化元件顯示多樣化解碼演算法可在單一樹搜尋抽象內表達">框架中實例化六種代表性技術：beam search、SMC、sampling、MCTS、ASAp 和 best-first search，每種使用共享模組化元件，顯示多樣化解碼演算法可在單一樹搜尋抽象內表達。</h2>
+<h2 id="title-treecoderllm-程式生成的解碼與約束之系統化探索與優化part-24框架設計-source-httpsarxivorgabs251122277-arxiv_id-251122277-date-2025-11--pldi-2026">title: TreeCoder：LLM 程式生成的解碼與約束之系統化探索與優化（part 2/4：框架設計）
+source: https://arxiv.org/abs/2511.22277
+arxiv_id: 2511.22277
+date: 2025-11 / PLDI 2026</h2>
+<h1 id="treecoder框架設計24">TreeCoder：框架設計（2/4）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

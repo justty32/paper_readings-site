@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Agent2World: Learning to Generate Symbolic World Models via Adaptive Multi-Agent Feedback 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Mengkang Hu、Bowei Xia、Yuran Wu、Ailing Yu、Yude Zou、Qiguang Chen 等</p><p>日期：2025-12-26（v1，cs.AI）</p><p>arXiv：2512.22336</p><p><a href="https://arxiv.org/abs/2512.22336" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="agent2world-learning-to-generate-symbolic-world-models-via-adaptive-multi-agent-feedback-重點摘要">Agent2World: Learning to Generate Symbolic World Models via Adaptive Multi-Agent Feedback 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>用「深度研究者—開發者—測試團隊」三個角色的多智能體迴圈，把生成符號世界模型（PDDL 或可執行程式碼）從一次性生成變成靠執行回饋反覆修正的過程，同時把這個推論期互動軌跡直接收成訓練資料，拿去監督微調同一顆模型。</p>
+<h2 id="三階段架構與訓練範式">三階段架構與訓練範式</h2>
+<ul>
+<li><strong>Stage I 知識合成</strong>:Deep Researcher agent 用網路搜尋補齊描述裡缺的常識知識，輸出補完後的中介表示，解決 LLM 本身常識不足或描述本身不完整的問題。</li>
+<li><strong>Stage II 世界模型生成</strong>:Model Developer agent 帶著沙箱程式碼執行工具，把補完後的描述實作成 PDDL 或可執行程式碼，執行失敗就在同一輪內反覆除錯。</li>
+<li><strong>Stage III 評估驅動精修</strong>:Unit Tester 針對描述裡的謂詞、動作、不變量自動產生 Pytest 風格單元測試；Simulation Tester 用 ReAct 迴圈實際跑軌跡，抓出「目標不可達」「前置條件缺失」「狀態更新不一致」這類只有互動執行才會暴露的行為級錯誤。兩者產生的診斷回饋送回 Model Developer，直到通過檢查或達收斂上限。</li>
+<li><strong>訓練範式</strong>：把 Model Developer 與 Testing Team 的互動形式化成一個 MDP——狀態是世界模型描述加測試診斷，動作是新實作或修補，獎勵聚合單元測試通過率與模擬表現。再用 verifier-guided rejection sampling 篩選軌跡：只有最終模型「可在沙箱成功執行」且「通過 Testing Team 的測試與模擬檢查」才保留，聚合成 1526 條涵蓋四種世界模型類型的訓練軌跡，用於監督微調 Llama-3.1-8b。</li>
+</ul>
+<h2 id="作者報告的結果">作者報告的結果</h2>
+<p>三個 benchmark（Text2World 的 PDDL 生成、CWMB 的 MuJoCo 風格可執行程式碼、ByteSized32 的推理密集文字遊戲）上，Agent2World_Multi 在 gpt-4.1-mini 與 Llama-3.1-8b-instruct 兩種底層模型都取得作者自報的最佳成績。Text2World 上可執行率達 93.1%，比對照的 Text2World_EC=3 高 14.9 個百分點，F1_avg 達 75.4（作者自報）。CWMB 上整體正規化回報 R 達 0.4811，比先前最佳的 GIF-MCTS 高 0.132（作者自報）。SFT 後的 Llama-3.1-8b 相對訓練前平均相對提升 30.95%（作者自報，摘要語）,Text2World 可執行率從 27.7% 升到 44.6%(+16.9)。消融顯示拿掉 Unit Tester 對 CWMB 離散動作空間影響最大（正確率降 0.3008、R 降 0.4470，作者自報）。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>這篇最直接可借的是<strong>驗證器守門的訓練資料引擎</strong>設計：Testing Team 不是單純的離線驗證，而是動態依當前模型犯的錯誤合成測試案例，再用「能否在沙箱執行 + 能否通過合成測試/模擬」這個二元 verifier 篩選要不要保留整條互動軌跡進訓練集——這正對應 ai_core §3.4 治理原則裡「憑證准入」該長的樣子：准入門檻不是靜態規則清單，而是可執行、可重新合成的動態檢查。對固化引擎（§5）的啟發是，推論期的多輪修正互動本身就是可直接轉成訓練軌跡的副產品，不必另外設計資料蒐集流程；但這個機制的可信度完全繫於 Testing Team 本身的測試覆蓋——若合成測試有系統性盲區（測不到某類行為維度），被留下的訓練軌跡會把這個盲區一併蒸餾進模型裡。對 ai_core 而言，「軌跡通過 verifier」不能直接等同品質保證，固化前仍需獨立檢查 verifier 本身的覆蓋率。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2512.22336_Agent2World.zh-TW.html"><code>../translate/2512.22336_Agent2World.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

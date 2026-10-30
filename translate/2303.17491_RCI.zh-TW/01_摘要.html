@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2303.17491_RCI.zh-TW.html">回 2303.17491_RCI.zh-TW 目錄</a>　<a href="02_%E8%A9%95%E4%BC%B0.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>能在電腦上執行一般任務的 agent，可以透過自動化重複工作、協助複雜問題求解來提升效率與生產力。理想上，這樣的 agent 應該能靠自然語言指令解決呈現給它的新電腦任務。然而先前的做法都需要大量專家示範與任務專屬的獎勵函數，兩者對新任務都不切實際。本文顯示：一個預訓練的大型語言模型（LLM）agent，只要用一個簡單的 prompting 方案——讓 agent <strong>遞迴地批評並改進自己的輸出（Recursively Criticizes and Improves，RCI）</strong>——就能依自然語言指引執行電腦任務。RCI 顯著勝過現有的 LLM 自動化方法，並在 <strong>MiniWoB++</strong> 基準上超越監督式學習（SL）與強化學習（RL）方法。比較多個 LLM 後發現，搭配 InstructGPT-3+RLHF 的 RCI 在 MiniWoB++ 上達到 state-of-the-art，而<strong>每個任務只用少數幾條示範（而非數萬條），也不需要任務專屬的獎勵函數</strong>。此外，RCI 也能提升 LLM 在一系列自然語言推理任務上的推理能力，在有外部回饋時勝過思維鏈（CoT）prompting；而 RCI 與 CoT 結合的效果比兩者單獨使用都好。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>人工智慧長期目標之一是打造能像人類一樣完成認知任務的通用智能 agent——它應該能透過自然語言溝通，解決任何人類能做的電腦任務。</p>
+<p>LLM 已展現跨領域的 in-context learning 能力，也能操作文字與高階 API 工具，但過去讓 LLM <strong>直接下鍵盤與滑鼠動作</strong>的做法，相較模仿學習與強化學習仍相形見絀。LLM 在電腦上行動要面對數個障礙：確保生成的動作<strong>切合任務（task grounding）</strong>、在<strong>當前狀態下可行（state grounding）</strong>、以及<strong>可被執行（agent grounding）</strong>。</p>
+<p>先前表現最好的方法並未使用 LLM，而是從頭訓練網路，依 prompt 與截圖或 DOM 資訊預測動作，透過專家示範的監督式學習（SL）、人工設計獎勵訊號的強化學習（RL）、或兩者併用（SL+RL）。SL+RL 在許多個別電腦任務上表現良好，但因為每個任務都需要專家資料與獎勵函數，尚未被證明能在少樣本設定下泛化到新任務。</p>
+<blockquote>
+<p><strong>圖 1（MiniWoB++ 環境）要旨</strong>：每個任務都有一段以黃色標示的自然語言提示，agent 用鍵盤敲擊與滑鼠點擊來完成任務。</p>
+</blockquote>
+<p>本文提出的 prompting 方案稱為 <strong>RCI（Recursive Criticism and Improvement）</strong>：先讓 LLM 依零樣本 prompt 產生輸出，接著提示 LLM 找出該輸出的問題，最後提示 LLM 依據找到的問題產生更新後的輸出。</p>
+<p>把 RCI 套用到電腦任務時，作者<strong>依序改進任務接地、狀態接地與 agent 接地</strong>：任務接地用任務文字提示 LLM 產生高階計畫；狀態接地把任務接地得到的高階概念連結到當前狀態中真實存在的 HTML 元素，輸出適當動作；agent 接地確保動作輸出的格式正確。RCI 被套用在這三個步驟上，但作者發現<strong>批評狀態接地這一步只需要做一次</strong>。</p>
+<p>作者在 MiniWoB++ 上評估，結果超越既有的 SL、RL 與 LLM 方法，且<strong>每任務只用少量示範而非數萬條、也不依賴任務專屬獎勵函數</strong>。此外在自然語言推理任務上，當給予外部回饋時，RCI 大幅勝過零樣本 prompting，也略勝 CoT；有趣的是 RCI 與 CoT 有<strong>綜效</strong>，兩者結合勝過所有其他方法。</p>
+<blockquote>
+<p><strong>圖 2 要旨</strong>：以 GSM8K 為例對比顯式 RCI 與基線 prompting 的執行軌跡。基線一步就給答案；RCI 分兩步（批評、改進），因而抓出基線答案中的邏輯錯誤（例如總金額只算了 Valerie 和她哥哥、漏掉媽媽給的錢），並在批評的條件下產生修正後的答案。</p>
+</blockquote>
+<h2 id="2-方法">2. 方法</h2>
+<h3 id="21-rci-prompting">2.1 RCI prompting</h3>
+<p>既有研究已顯示 LLM 具備自我批評能力、能找出自己輸出中的錯誤。因此作者提出 RCI 這個簡單的推理架構：提示 LLM 找出自身輸出的問題，並依據所找到的問題改進輸出——本質上是在產生最終答案前<strong>插入一個批評步驟</strong>。</p>
+<p>RCI 包含兩步：批評前一個答案（例如「Review your previous answer and find problems with your answer」），以及依批評改進答案（例如「Based on the problems you found, improve your answer」）。RCI 的迭代過程可以持續進行，直到滿足特定條件，例如收到環境回饋、達到預定的最大迭代次數、或符合某些啟發式規則。</p>
+<p>作者定義兩種 RCI：<strong>顯式 RCI</strong> 會把批評文字本身放進「產生改進輸出」的 prompt 中；<strong>隱式 RCI</strong> 則不明確採樣批評，直接更新前一版輸出。</p>
+<blockquote>
+<p><strong>圖 3 要旨</strong>：terminal 任務的執行軌跡。LLM 先為高階自然語言任務（用終端機刪除某個以 <code>.rb</code> 結尾的檔案）產生逐步計畫，接著對計畫跑一次<strong>顯式 RCI</strong>，依批評採樣出改進後的計畫，提升計畫的任務接地程度。每一步先依改進後的計畫採樣任務接地動作，再由<strong>隱式 RCI</strong> 依序更新該動作以取得狀態接地與 agent 接地，最後由遵循指令的 agent 在環境中執行。</p>
+</blockquote>
+<h3 id="22-rci-用於電腦任務">2.2 RCI 用於電腦任務</h3>
+<h4 id="221-問題設定">2.2.1 問題設定</h4>
+<p>假設已有一個「遵循指令的電腦 agent」，能在給定自然語言指令時執行一組<strong>可受理動作（admissible actions）</strong>；不屬於可受理動作的指令會被忽略。每一步收到高階自然語言任務提示與環境狀態，從 LLM 採樣最可能的動作，再把該自然語言動作餵給電腦 agent。</p>
+<p>以完全生成式方式採樣動作是個挑戰，因為動作必須同時考慮任務、當前狀態下的可行性、以及對電腦 agent 的可受理性。因此作者把動作採樣<strong>拆解成三個推理步驟</strong>：任務接地讓動作更能有效解決任務；狀態接地確保動作在當前狀態可行；agent 接地考慮動作對 agent 規格而言是否可執行。</p>
+<p>流程是：先採樣一份逐步計畫（改進任務接地）→ 條件於當前狀態、任務與計畫，採樣任務接地動作 → 條件於任務接地動作，產生狀態接地動作 → 若仍無法被 agent 執行，再採樣 agent 接地動作。每一次接地動作的採樣都用 RCI prompting，讓 LLM 考慮該層接地所需的特定資訊。</p>
+<h4 id="222-在電腦任務中接地語言模型">2.2.2 在電腦任務中接地語言模型</h4>
+<p><strong>任務接地。</strong> 第一步是讓 LLM 產生一份可執行步驟的計畫，之後的動作採樣都以「當前狀態、任務、已產生的計畫」為條件。以計畫為條件有兩個好處：其一，讓 LLM 能辨識 agent 目前處於解題的哪個階段，<strong>等於一個記憶模組</strong>；其二，可以對計畫執行<strong>顯式 RCI</strong> 以進一步提升成功率。顯式 RCI 迴圈次數可以任意，但作者觀察到對多數 MiniWoB++ 任務而言<strong>跑一輪就足夠</strong>。</p>
+<p><strong>狀態接地。</strong> 目標是把任務接地動作改進成在當前狀態可行。前一階段產生的動作雖然切合任務，卻常缺乏在當下情境執行所需的具體性。例如任務是「把 Bob 的信轉寄給 Alice」，任務接地動作是「在收件匣點開 Bob 的信」，就必須把「Bob 的信」這個抽象概念與當前 HTML 狀態中的具體元素（信件標題）連結起來。作者用<strong>隱式 RCI</strong> 提示 LLM 考慮當前狀態，輸出精修後的狀態接地動作；該動作額外以任務接地動作為條件。依觀察，<strong>重複執行隱式 RCI 超過一次並不會改變成功率</strong>，故只跑一次。</p>
+<p><strong>agent 接地。</strong> 前面步驟產生的動作雖然可行且切題，卻可能因格式不當而無法被 agent 執行。此處再用<strong>隱式 RCI</strong>，條件於當前狀態、任務、任務接地動作與狀態接地動作，採樣出 agent 接地動作，並提示 LLM 考慮電腦 agent 的規格。隱式 RCI <strong>重複執行直到結果動作可被執行</strong>，並設有最大迴圈數上限；在 MiniWoB++ 上的實證顯示<strong>迴圈數設為 3 時效果最佳</strong>。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

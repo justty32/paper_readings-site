@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2302.07863_BigLittleDecoder.zh-TW.html">回 2302.07863_BigLittleDecoder.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-設定">4.1 設定</h3>
+<p><strong>模型與資料集</strong>：翻譯用 IWSLT 2017 De-En、WMT 2014 De-En；摘要用 XSUM、CNN/DailyMail。翻譯以 mT5-large／small、摘要以 T5-large／small 為目標模型，<strong>大小約差 20 倍</strong>。基於 PyTorch 與 HuggingFace Transformers 及其預訓練檢查點。
+<strong>訓練</strong>：在目標基準上 fine-tune 預訓練模型 500k 步得 baseline 小、大模型；aligned 小模型則用大模型對訓練集輸入生成的校準集、以相同訓練配方與步數 fine-tune。
+<strong>推論</strong>：於單張 NVIDIA T4 GPU（GCP n1-standard-4）、<strong>batch size 1</strong>（線上服務常見情境）評估。rollback 的距離 d 用「小模型硬標籤與大模型軟標籤的交叉熵」。掃描不同 fallback／rollback 門檻以探索品質—延遲取捨。</p>
+<h3 id="42-主要結果">4.2 主要結果</h3>
+<p>圖 4 顯示品質與（以純大模型 vanilla 延遲正規化的）平均端到端延遲的取捨，由調整兩門檻得到。<strong>表 1</strong> 摘要如下（T4，數字為 BLEU／ROUGE-L 與相對加速）：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>IWSLT BLEU</th>
+<th>加速</th>
+<th>WMT BLEU</th>
+<th>加速</th>
+<th>XSUM R-L</th>
+<th>加速</th>
+<th>CNN/DM R-L</th>
+<th>加速</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Vanilla（大模型）</td>
+<td>40.32</td>
+<td>-</td>
+<td>31.38</td>
+<td>-</td>
+<td>35.08</td>
+<td>-</td>
+<td>41.54</td>
+<td>-</td>
+</tr>
+<tr>
+<td>BiLD 未對齊（品質不掉）</td>
+<td>40.33</td>
+<td>1.43×</td>
+<td>31.28</td>
+<td>1.34×</td>
+<td>35.12</td>
+<td>1.48×</td>
+<td>41.44</td>
+<td>1.71×</td>
+</tr>
+<tr>
+<td>BiLD 未對齊（約掉 1 分）</td>
+<td>39.44</td>
+<td>1.58×</td>
+<td>30.47</td>
+<td>1.43×</td>
+<td>34.02</td>
+<td>1.72×</td>
+<td>40.57</td>
+<td>2.05×</td>
+</tr>
+<tr>
+<td>BiLD 對齊（品質不掉）</td>
+<td>40.24</td>
+<td>1.62×</td>
+<td>31.26</td>
+<td>1.47×</td>
+<td>35.05</td>
+<td>1.50×</td>
+<td>41.52</td>
+<td>1.85×</td>
+</tr>
+<tr>
+<td>BiLD 對齊（約掉 1 分）</td>
+<td>39.13</td>
+<td>1.78×</td>
+<td>30.33</td>
+<td>1.70×</td>
+<td>33.95</td>
+<td>1.80×</td>
+<td>40.96</td>
+<td>2.12×</td>
+</tr>
+</tbody>
+</table>
+<p>要點：未對齊 BiLD（純 plug-and-play、無額外訓練）品質不掉時<strong>平均 1.50×</strong>、最高 1.71×；容許約 1 分下降時平均 1.70×、最高 2.05×。對齊 BiLD 一致優於未對齊：品質不掉時<strong>平均 1.61×</strong>、最高 1.85×；容許約 1 分下降時<strong>平均 1.85×、最高 2.12×</strong>。高延遲區間 BiLD 的分數甚至<strong>超過大模型 baseline</strong>（歸因於用兩個不同模型的集成效應）。</p>
+<p><strong>對比推測式取樣（speculative sampling [4]）</strong>：同環境、同 baseline 大小模型、固定窗口 [3,10]。IWSLT 上 speculative sampling 為 BLEU 39.93、1.28× 加速；BiLD（未對齊）在相近加速下 BLEU 高 0.61，或在相近 BLEU 下多 0.21× 加速。XSUM 上 speculative sampling 為 ROUGE-L 35.00、1.25× 加速；BiLD 可多 0.30 ROUGE-L 且更快，或多 0.22× 加速且更好 ROUGE-L。優勢來自 BiLD 的非隨機 rollback 與動態 fallback 窗口。</p>
+<h3 id="43-消融研究">4.3 消融研究</h3>
+<p>分別移除 (1) rollback 與 (2) fallback。移除 rollback 時沿用主實驗的 fallback 門檻；移除 fallback 時沿用 rollback 門檻，並在固定次數小模型執行後（掃描 [3,10]）強制 fallback（類似 [4]）。結果（IWSLT／XSUM，aligned）顯示：rollback 在所有延遲區間都帶來更好品質，尤其在高 BLEU/ROUGE 區——此時大模型經 rollback 介入以糾正小模型錯誤至關重要；儘管有重算的額外延遲，品質增益蓋過此成本。移除 fallback、改為固定間隔交棒也顯著掉品質。<strong>兩策略皆為 BiLD 不可或缺的元件</strong>。</p>
+<h3 id="44-bild-框架中的-early-exiting-策略">4.4 BiLD 框架中的 Early Exiting 策略</h3>
+<p>擁有兩個獨立模型並非限制：可把大模型的一部分（如前幾層）當小模型，合成單一模型，這類似 early exit。作者用 <strong>mT5-small 當大模型、其（8 層中的）第一層當小模型</strong>，在 IWSLT／WMT 上評估；為確保第一層與最後一層預測一致，以兩層平均損失訓練、共享預測頭。結果在少於 1 分 BLEU 下降內分別達最高 <strong>1.60×／1.74×</strong> 加速，顯示 BiLD 對 early exit 問題的延展性。相較 <strong>CALM</strong>，BiLD 有兩優勢：(1) 早退（小模型）預測即使錯了也可經 rollback 糾正替換；(2) 跳過層的 KV cache 填入<strong>真實值</strong>而非由早退層隱狀態推算，減少誤差傳播、提升解碼穩定性。結果 BiLD 在兩資料集上比 CALM 高最多約 <strong>2 BLEU</strong>（圖 7）。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>本文提出 <strong>BiLD</strong>，一個無需訓練或修改既有模型即可為多種文字生成任務降低端到端延遲的框架：耦合一大一小兩個 decoder，讓小模型大部分時間自回歸、低成本地生成，大模型非自回歸地修正小模型的不準確預測。BiLD 含 fallback（小模型不確定時交棒）與 rollback（大模型撤回小模型錯誤預測）兩策略。跨機器翻譯、摘要、語言建模評估，於 NVIDIA Titan Xp GPU 上，品質不掉時平均 1.52× 加速、部分任務最高 2.18×；容許約 1 分下降時平均 1.76×、最高 2.38×。（主實驗於 T4 GPU 的對應數字見 §4.2 與表 1。）</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2302.07863_BigLittleDecoder.%E6%91%98%E8%A6%81.html"><code>../summarize/2302.07863_BigLittleDecoder.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

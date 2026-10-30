@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.01658_CORAL.zh-TW.html">回 2604.01658_CORAL.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實驗">4. 實驗</h2>
+<h3 id="41-設定">4.1 設定</h3>
+<ul>
+<li><strong>任務</strong>：6 個數學最佳化（circle packing、Erdős overlap、MMD 等）+ 5 個系統最佳化（EPLB、PRISM、LLM-SQL 等），來自 EvoX 與 TTT-Discover suite。再加兩個壓力測試：Anthropic Kernel Engineering（VLIW SIMD tree-traversal、官方最佳 1,363 cycles）與 Polyominoes packing（Frontier-CS 172 題中最難）。</li>
+<li><strong>Baseline</strong>：OpenEvolve、ShinkaEvolve、EvoX（同種子程式、evaluator、預算）。單 agent 與壓力測試用 Claude Opus 4.6 + Claude Code；多 agent 數學/系統 suite 用開源棧（MiniMax M2.5 + OpenCode）驗證泛化。</li>
+<li><strong>預算</strong>：3 小時 wall-clock 或 100 迭代（baseline）。CORAL 跑 baseline 中最短時長。壓力測試跑到收斂。4 獨立 trial 平均。</li>
+</ul>
+<h3 id="42-自主演化勝固定演化搜尋">4.2 自主演化勝固定演化搜尋</h3>
+<p>CORAL 在全部 11 任務取得最佳最終分數，8 個新 SOTA。改善率 3–10× baseline、僅需 5–20 次評估收斂 vs baseline 60–100 次。CORAL 不浪費評估在無產出的候選上——因為 agent 自主分析過往 attempt 與回饋後決定下一步，而非被動遵循固定突變管線。</p>
+<h3 id="43-多-agent-演化推展搜尋前沿">4.3 多 Agent 演化推展搜尋前沿</h3>
+<p>四 agent 協同演化在單 agent 已最強的基礎上再推進，特別是壓力測試（單 agent 會早期 plateau）：Kernel Eng. <strong>1,350 → 1,103 cycles（多 agent）</strong>，Polyominoes <strong>80.2 → 84.2</strong>。開源棧上 multi-agent gains 同樣成立。多 agent 勝過獨立 best-of-4。</p>
+<h3 id="44-分析與消融">4.4 分析與消融</h3>
+<p><strong>為何自主演化有效</strong>：</p>
+<ul>
+<li><strong>本地驗證</strong>：有本地測試的 attempt 改善率較高（如 Kernel Eng. 57% 測試率→47% 改善率 vs 平均 43%）。編譯類任務（Transaction 61%、Kernel Eng. 57%）本地執行常攔截編譯失敗後再提交。</li>
+<li><strong>知識累積</strong>：進階任務知識創建 10×+（0.55–0.68 vs 0.05/attempt），存取知識的改善率 55%（Kernel Eng.）vs 26%（標準任務）。Kernel Eng. notes 辨識架構瓶頸（如 VALU、WAR dependency）、Polyominoes 有 &quot;what NEVER worked&quot; 目錄避免重訪失敗策略。</li>
+</ul>
+<p><strong>為何多 agent 組織有效</strong>：</p>
+<ul>
+<li><strong>跨 agent 資訊傳遞</strong>：Kernel Eng. 36% attempt 用他人 commit 為父代，改善率 17%（全體 9%），66% 新記錄源自跨 agent parent。Polyominoes 87% 輪次引用他 agent 知識。</li>
+<li><strong>探索多樣性</strong>：每 agent 策略詞彙過半獨特（Jaccard 0.31–0.43）。</li>
+<li><strong>貢獻平衡</strong>：Kernel Eng. 四 agent 各貢獻 130–165 attempt、10–16 次改善，記錄均分（14/15/10/15）。</li>
+</ul>
+<p><strong>消融</strong>：拔除 notes/skills → Kernel Eng. -18.6%。Co-evolution vs best-of-4 獨立：協同演化全勝（非僅多算力）。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>CORAL 把剛性演化搜尋啟發式換成控制 RETRIEVE / PROPOSE / EVALUATE / UPDATE 的自主 agent，透過共享持久記憶協調，跨任務大幅提升效能。四 agent 發現單一 agent（即便四倍算力）找不到的解。更廣義地，自主 agent 正成為開放式發現的承諾範式。CORAL 可作為系統性探索研究、強 baseline 框架、與可擴展基礎設施，支持未來自主發現系統的發展。</p>
+<h2 id="附錄要點">附錄要點</h2>
+<ul>
+<li><strong>Limitations（A）</strong>：依賴 frontier 模型難以本地部署、所有 agent 初始同質缺 bootstrap 多樣性、假設有合理 evaluator（對許多開放式問題 evaluator 自身也需協同演化）。</li>
+<li><strong>Polyominoes SOTA（B.1）</strong>：單次 baseline 56.0% 覆蓋率；開 web search 的四 agent CORAL 達 89.4%（超越原 SOTA 87.0%）。</li>
+<li><strong>軌跡統計（B.2）</strong>：標準任務本地測試率、知識存取率與進階任務對比（見表 4）。</li>
+<li><strong>實作細節（C）</strong>：完整架構圖與各模組（AgentManager、HeartbeatRunner、GraderInterface、WorkspaceSetup 等）說明。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

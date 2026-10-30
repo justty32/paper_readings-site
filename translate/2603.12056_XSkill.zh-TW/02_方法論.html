@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>XSkill：多模態代理從經驗與技能中的持續學習（續 3） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2603.12056_XSkill.zh-TW.html">回 2603.12056_XSkill.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="2-方法論">2. 方法論</h2>
+<p>XSkill 將知識結構化為雙層表徵以解決工具使用效率低與編排僵化的瓶頸。<strong>技能</strong>提供任務級指引（結構化工作流），<strong>經驗</strong>提供動作級洞察（針對特定執行脈絡）。它們分別儲存在基於 Markdown 的技能庫 K 與基於 JSON 的經驗庫 E 中。框架使用兩個專門的 MLLM 實例：MLLM_exec 執行工具使用推論，MLLM_kb 處理知識庫操作（提取、固化、適配）。此分離允許為知識管理使用更強的模型，同時保持執行模型的靈活性，並實現跨模型知識轉移。</p>
+<h3 id="21-問題形式化">2.1 問題形式化</h3>
+<p><strong>技能</strong> k ∈ K 是任務級指引文件，k = ⟨M, W, P⟩，其中 M 為名稱/描述/版本號，W 為工作流序列，P 為可重用工具模板。以結構化 Markdown 文件儲存。</p>
+<p><strong>經驗</strong> e ∈ E 是非參數化戰術提示，e = ⟨c, a, v_e⟩，其中 c 為觸發條件，a 為建議行動，v_e 為語意嵌入向量。組合文本長度 |c| + |a| ≤ L_e_max = 64 詞，用於橋接通用工作流與具體環境約束。</p>
+<p>任務形式化為 POMDP：T = ⟨q, I⟩，其中 q 為自然語言查詢，I = {I₁, I₂, ..., I_m} 為相關影像集合。agent 配備工具集 F = {f₁, f₂, ..., f_n}。軌跡 τ = [(s₀, a₀, o₀), ..., (s_T, a_T, o_T)]。目標：構造外部知識庫 KB = ⟨K, E⟩，使結合 MLLM_exec 時最大化正確答案機率。</p>
+<h3 id="22-階段一任務經驗與技能的累積">2.2 階段一：任務經驗與技能的累積</h3>
+<h4 id="221-軌跡摘要rollout-summary">2.2.1 軌跡摘要（Rollout Summary）</h4>
+<p>對每個訓練任務 T_i = ⟨q_i, I_i⟩，MLLM_exec 執行 N = 4 條獨立 rollout 產生軌跡集合 R_i。MLLM_kb 執行<strong>視覺接地摘要</strong>：接收交錯的影像觀察與軌跡文本，分析每張影像與其局部生成脈絡（工具呼叫、中間輸出、任務需求）。產生的摘要 SR_i 不僅記錄採取了什麼行動，還記錄了驅動該行動的視覺證據及該證據如何影響後續決策。例如，它可能識別出反轉影像觸發了旋轉、或低對比度驅動了影像增強。同時，技能提取產生 ΔK_i：工作流提取識別結構化序列，工具模板提取捕捉可重用程式碼模式——具體實體替換為變數佔位符以確保跨任務泛化。</p>
+<h4 id="222-跨軌跡對比批判cross-rollout-critique">2.2.2 跨軌跡對比批判（Cross-Rollout Critique）</h4>
+<p>MLLM_kb 在成功與失敗軌跡之間進行對比分析，識別結果背後的因果因素。輸出結構化經驗更新 ΔE_i = {op₁, op₂, ..., op_Mi}，每個操作形式為 ⟨action, args⟩，其中 action ∈ {add, modify}。add 引入新經驗 e ∈ E，modify ⟨e_id, e&#x27;⟩ 將既有經驗精煉為 e&#x27;。每條經驗限制在 ≤ 64 詞、須泛化至同類問題實例，由 prompt 中的約束強制執行。</p>
+<h4 id="223-知識固化knowledge-consolidation">2.2.3 知識固化（Knowledge Consolidation）</h4>
+<p>為確保知識庫的可擴展性與品質，階層式固化機制將暫態軌跡洞察轉化為持久、可泛化智慧：</p>
+<p><strong>經驗固化</strong>：新經驗 e 提交前，系統檢查是否與庫中現有條目餘弦相似度高於 θ_sim = 0.70。若相似，則 e 與所有相似條目一併交予 MLLM_kb 產出單一合併條目（保留核心洞察、移除原條目）；否則直接新增。modify 操作就地更新目標條目。當庫大小超過 N_max^E = 120 時，經驗管理器執行 delete 操作移除冗餘或低品質條目，品質由 MLLM_kb 依泛化性與可操作性評分決定。</p>
+<p><strong>技能固化</strong>：ΔK_i 中的技能片段與全域技能文件 K 一併交予 MLLM_kb，後者逐節決策更新/合併/移除。技能管理器監控文件長度，超過 L_max^K = 1000 詞時觸發精煉：MLLM_kb 自評每個元件的泛化性、工作流正確性、精簡度，移除過度具體細節、替換具體實例為可重用佔位符。</p>
+<h3 id="23-階段二使用經驗與技能解決任務">2.3 階段二：使用經驗與技能解決任務</h3>
+<h4 id="231-任務分解檢索task-decomposition-retrieval">2.3.1 任務分解檢索（Task Decomposition Retrieval）</h4>
+<p>直接以原始查詢 q 檢索經驗常因視覺語意落差而結果不佳。為此，MLLM_kb 將任務分解為 n_g 個抽象子任務 G = {g₁, ..., g_ng}，每個子任務捕捉不同技術需求（如暗影像處理、幾何比較、錯誤恢復）。對每個子任務產出短文查詢並以語意嵌入檢索 top-k = 3 條經驗（k = 3，相似度 &gt; τ_min = 0.0）。</p>
+<h4 id="232-任務適配與注入">2.3.2 任務適配與注入</h4>
+<p><strong>經驗改寫</strong>：MLLM_kb 接收檢索經驗＋任務描述 q＋任務影像 I，將每個經驗的條件重寫至匹配當前任務與視覺狀態、用任務相關細節實例化行動、丟棄顯然不適用的經驗。輸出為一組脈絡特定改寫 E_rewritten。</p>
+<p><strong>技能適配</strong>：MLLM_kb 修剪不相關段落（依據當前影像與任務描述）、將改寫後的經驗整合進工作流步驟、調整程式碼模板至當前任務相關。適配過程存取任務影像 I 以執行視覺語意對齊，確保適配後的知識接地於當前視覺脈絡。結果 K_adapted 以非規範參考形式注入 agent 的 system prompt，允許 agent 保留彈性。</p>
+<p><strong>持續學習閉環</strong>：使用歷史 H_usage = ⟨K_adapted, E_ret⟩ 回饋至累積階段，基於真實使用模式逐步精煉知識庫。</p>
+<h1 id="xskill多模態代理從經驗與技能中的持續學習續-3">XSkill：多模態代理從經驗與技能中的持續學習（續 3）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_對讀者的價值 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2310.16427_PromptAgent.%E6%91%98%E8%A6%81.html">回 2310.16427_PromptAgent.摘要 目錄</a>　<a href="01_%E4%B8%80%E5%8F%A5%E8%A9%B1%E6%A6%82%E6%8B%AC.html">← 上一節</a></p>
+</blockquote>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>對 ai_core <strong>§1「可優化計算圖」</strong>：PromptAgent 把「提示詞優化」本身表述成一張以 MCTS 搜尋的樹（節點＝完整提示詞文字、邊＝錯誤回饋動作），是「將優化目標本身當成搜尋問題」的具體樣板；但要點在於它的搜尋空間是<strong>單一提示詞字串</strong>，不像 <a class="paper-reference" href="../2410.10762_AFlow.%E6%91%98%E8%A6%81.html">2410.10762</a> AFlow 搜的是「以程式碼表示的整個工作流圖（節點＝帶 prompt 的 LLM 呼叫、邊＝程式碼控制流）」——AFlow 連控制流拓撲都能改，PromptAgent 則固定只有一個 LLM 節點、只改它吃的那段文字。兩者共用 MCTS 骨架（selection/expansion/simulation/backprop），差異在<strong>被優化物件的粒度</strong>：一個是 prompt 文字，一個是整張執行圖。</li>
+<li>對 §2「工廠/消費者」：優化階段由昂貴的優化器 LLM（GPT-4，扮演「專家工廠」角色，負責讀錯誤、生回饋、改寫）一次性產出高品質提示詞，之後便宜的基底 LLM（GPT-3.5，「消費者」）反覆套用這段提示詞執行任務——優化成本被攤提到後續大量推論調用中，是「貴稀有智能產資產、便宜高頻智能消費」的清楚案例。</li>
+<li>對 §3.3「成本梯度」：MCTS 需要大量評估 rollout 才能穩定 Q 值——每次迭代的 expansion 要對多個訓練批次跑基底模型、每次改寫又要呼叫一次優化器 LLM，12 次迭代乘上樹深度/寬度，是實打實要付的搜尋成本，不是免費的。這點與 §3.3 的核心直覺一致：任何自動化優化迴圈的「探索」都對應真實金錢與延遲開銷，需要被記入投資報酬計算。</li>
+<li>對 §3.6「固化引擎」：優化出的專家提示詞把「試錯中習得的領域洞見」（術語邊界、例外處理、格式要求）固化進一段可重複使用、甚至可跨模型遷移的文字資產（Table 3 的遷移實驗即為佐證），是一種<strong>軟性固化</strong>；但<strong>這仍是給 LLM 讀的自然語言指令，執行時依然要完整跑一次 LLM 推論</strong>，並未如 §3.6 理想中的固化引擎那樣把案例結晶成不再依賴 LLM 的確定性程式碼/查表邏輯——prompt 優化得再精緻，也只是「餵給 LLM 的輸入變好了」，不等於「拿掉了 LLM」。</li>
+<li><strong>與庫中同主題（主題10：LLM-as-optimizer／自動 prompt 優化）方法對比</strong>：
+<ul>
+<li>vs <a class="paper-reference" href="../2211.01910_APE.%E6%91%98%E8%A6%81.html">2211.01910</a> APE：APE 用蒙地卡羅取樣＋驗證集打分挑最佳候選、必要時重採樣，是<strong>無方向性的單輪／少輪取樣搜尋</strong>；PromptAgent 本身也在論文中直接把 APE 當基線比較，強調 APE「缺乏錯誤導向的反思與有原則的探索策略」。</li>
+<li>vs <a class="paper-reference" href="../2309.03409_OPRO.%E6%91%98%E8%A6%81.html">2309.03409</a> OPRO：OPRO 讓 LLM 讀「歷史解＋分數」整條軌跡、單線性地迭代提出下一個解，本質是<strong>沒有分支、沒有回溯的爬山式改寫</strong>；PromptAgent 用真正的樹結構做多分支前瞻與回溯（selection/backprop），能在多個候選路徑間比較後再決定往哪個方向深入。</li>
+<li>vs <a class="paper-reference" href="../2310.03714_DSPy.%E6%91%98%E8%A6%81.html">2310.03714</a> DSPy／<a class="paper-reference" href="../2406.11695_MIPRO.%E6%91%98%E8%A6%81.html">2406.11695</a> MIPRO：兩者的優化對象是<strong>多模組 LM pipeline</strong>（DSPy 的 teleprompters 自動 bootstrap 多模組的指令與 few-shot 示範；MIPRO 用貝氏代理模型做跨模組聯合信用分配），關注「一組串接模組要如何共同調」；PromptAgent 只處理<strong>單一提示詞</strong>在一個任務上的深度優化，換取更集中的錯誤回饋與更深的樹搜尋。</li>
+<li>vs <a class="paper-reference" href="../2406.07496_TextGrad.%E6%91%98%E8%A6%81.html">2406.07496</a> TextGrad：TextGrad 把任意計算圖節點（prompt、程式碼、分子結構等）都能用「文本梯度反向傳播＋文本梯度下降」做一次性局部更新，通用但單通道、無前瞻；PromptAgent 範圍窄（只做提示詞），但靠 MCTS 換來能前瞻模擬未來獎勵、必要時回溯換路徑的規劃能力，消融實驗（Table 4）證明這確實優於單純貪婪/beam 式的前向更新。</li>
+<li>vs <a class="paper-reference" href="../2410.10762_AFlow.%E6%91%98%E8%A6%81.html">2410.10762</a> AFlow：如上述，同樣用 MCTS，但<strong>搜尋空間層級不同</strong>——AFlow 搜工作流拓撲（含程式碼控制流），PromptAgent 搜提示詞文字本身；可視為 AFlow 是把 PromptAgent 這類「單節點 prompt 搜尋」再往上疊一層「多節點圖結構搜尋」。</li>
+</ul>
+</li>
+<li>跨主題 7（自我改進／反思迴圈）：其「收集錯誤→反思→回饋→改寫」的迴圈與 <a class="paper-reference" href="../2303.11366_Reflexion.%E6%91%98%E8%A6%81.html">2303.11366</a> Reflexion 的「失敗訊號→言語反思→存記憶→重試」神似，差別在 Reflexion 反思進的是<strong>易失、跨試驗不持久</strong>的情節記憶，PromptAgent 則把反思結果直接固定進<strong>下一版提示詞狀態</strong>，並用樹搜尋系統性地比較多條反思路徑。歸 <strong>I 類</strong>。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../../translate/2310.16427_PromptAgent.zh-TW.html"><code>../translate/2310.16427_PromptAgent.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

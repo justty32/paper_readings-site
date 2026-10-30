@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>What Has a Foundation Model Found? Using Inductive Bias to Probe for World Models 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Keyon Vafa、Peter G. Chang、Ashesh Rambachan、Sendhil Mullainathan</p><p>日期：2025-07-09（v1，cs.LG）</p><p>arXiv：2507.06952</p><p><a href="https://arxiv.org/abs/2507.06952" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="what-has-a-foundation-model-found">What Has a Foundation Model Found?</h1>
+<h2 id="引言準確預測不等於學到世界模型">引言：準確預測不等於學到世界模型</h2>
+<p>Kepler 的橢圓軌道公式能精準預測行星位置，但要等 Newton 把它擴展成能推導力、質量與加速度的力學體系，才算真正理解背後機制。基礎模型有沒有做到同樣跳躍——從準確預測走到學會可靠的世界模型？直接檢查模型內部權重本身有可靠性爭議，也不反映模型面對新資料的實際行為。作者改用 no-free-lunch 定理：學習演算法面對有限資料必須外推，它傾向學到哪些函式就是歸納偏誤；模型若真學到某個世界模型，歸納偏誤該偏向只依賴該狀態的函式。</p>
+<h2 id="第-2-節框架">第 2 節：框架</h2>
+<p>設輸入 x、輸出 y，資料集是一批 (x,y) 配對。基礎模型是一個學習演算法：給它一個資料集，回傳一個預測函式。世界模型由狀態空間 S 與映射 h（把每個輸入對應到某狀態）構成。一個資料集若對每筆 (x,y)，輸出都是狀態的確定函式，就稱為與該世界模型「一致（consistent）」。作者引入「容許函式（admissible functions）」集合 F：世界模型允許狀態到輸出的關係只能是 F 裡某個函式（例如要求輸出對狀態平滑變化，F 就是 Lipschitz 函式族），一致的定義相應改成輸出等於某個 f∈F 作用在狀態上的結果。</p>
+<p>探針做法：反覆抽樣與世界模型一致的合成資料集，微調基礎模型擬合每個資料集，再看它在保留輸入上的預測。核心量是「外推可預測性（extrapolative predictability）」：給定一族預測器與一個損失函數，衡量模型對輸入 x 的預測能否從它對另一輸入 x′ 的預測被預測到，跨許多合成資料集平均。若模型外推真依賴假設的世界模型，狀態越相似的輸入之間，外推可預測性應越高。</p>
+<p>校準基準是「oracle 基礎模型」：直接讀取真實狀態與容許函式擬合，而非讀原始輸入。把待測模型與 oracle 的外推可預測性拿來比對，定義成模型對世界模型的歸納偏誤，可畫成模型 vs oracle 的曲線：45 度線代表兩者完全吻合，這條曲線可當校準曲線來讀。</p>
+<p>有限狀態、二元輸出是特例，退化成兩個指標。R-IB（respecting state）衡量同狀態的不同輸入，模型預測是否夠一致；D-IB（distinguishing state）衡量不同狀態的輸入，模型預測是否夠不一致。兩者互補，類似精確率與召回率——一律輸出同一值，R-IB 會很高但 D-IB 會崩掉。</p>
+<h2 id="第-3-節軌道力學">第 3 節：軌道力學</h2>
+<p>作者模擬多組太陽系軌跡（依已知系外行星的離心率、半長軸分佈取樣初始條件），把每顆行星與太陽的座標依固定間隔交錯排成序列，每條序列 1,000 個觀測。固定 6 個月間隔的訓練集有 2B tokens（100 萬條序列）；一半 6 個月、一半 1 週間隔的變動間隔訓練集有 20B tokens（1000 萬條序列）。作者訓練一個 109M 參數 transformer 做下一詞元預測，座標離散化成每個座標 7K 個 bin、範圍 -50 到 50 AU，用 8 張 H100 訓練 25 個 epoch（皆作者自報）。</p>
+<p>模型在保留資料上預測準確，明顯優於「重複上一位置」或「取軌道平均」等基準。但用探針比對「牛頓狀態向量（相對位置、相對速度、質量）」——產生 100 個合成資料集，其輸出是狀態的線性函式，微調模型擬合——結果歸納偏誤遠低於 oracle 的 45 度線：模型對狀態很不同的軌道給出相似預測，對狀態相似的軌道反而給出不同預測。</p>
+<p>作者接著只用太陽系本身的軌跡序列、其中 1% 的觀測附上真實力向量（F=Gm₁m₂/r²，方向沿相對位置）微調模型預測力向量，結果預測明顯失真。再把力量級微調資料擴大到 10K 個太陽系，用 PySR 對模型的力量級預測做符號回歸，得到的公式並非平方反比律，而是看不出物理意義的式子；同樣流程套在讀真實狀態的 oracle 上，則穩定還原牛頓定律。更關鍵的是，作者把同一個微調後模型分別套用到 5 組不同、隨機抽樣的銀河系樣本各自做符號回歸（作者自報）：五組各得到不同的偽物理定律，沒有一組還原真實定律；oracle 五組都精準還原同一條牛頓定律。可見模型並非學到通用定律，而是逐資料切片臨時拼湊定律。</p>
+<h2 id="第-4-節其他領域">第 4 節：其他領域</h2>
+<p>作者在兩個狀態已知的離散領域重複這套探針：一維、有邊界的格子世界（agent 沿線段移動，狀態數從 2 增到 5，訓練集 10M tokens、保留集 100K tokens）；以及 Othello 棋盤（狀態是完整 8x8 盤面，訓練集 7.7M tokens、保留集 300K tokens，皆作者自報）。比較 RNN、LSTM、transformer、Mamba、Mamba-2 五類序列模型，各自比較「未訓練、直接在合成任務上微調」與「先做下一詞元預測（NTP）預訓練再微調」兩種版本。</p>
+<p>所有 NTP 預訓練模型在下一詞元預測上都表現極佳：五狀態格子世界中每個模型的頂端預測 100% 落在合法狀態內，Othello 上也高達 90%（作者自報）。但探針結果顯示，隨格子世界狀態數增加，所有模型的歸納偏誤都明顯下滑，transformer 表現持續墊底；Othello 上全面比格子世界差，例如 NTP 預訓練 transformer 在 Othello 的 R-IB 只有 0.668、D-IB 只有 0.593（作者自報，Table 2）——即使下一步合法率接近 100%，模型對真實棋盤幾乎沒有歸納偏誤。</p>
+<p>作者進一步驗證替代假說：模型的歸納偏誤其實偏向「下一步合法詞元集合相同」的粗粒度劃分，而非底層真實狀態。微調模型預測完整棋盤時，即使盤面預測有錯，隱含的合法著法集合常仍與真實盤面一致；把 D-IB 拆成「不同狀態但合法著法相同」與「不同狀態且合法著法不同」兩組，前者可預測性顯著高於後者，說明模型按合法著法集合分組外推，而非依賴真正盤面狀態。</p>
+<h2 id="第-6-節結論與局限">第 6 節：結論與局限</h2>
+<p>基礎模型的承諾是序列預測能揭露更深機制，但結果顯示：許多序列模型在下一詞元預測上表現優異，對真正的世界模型卻只有薄弱的歸納偏誤，更像依賴粗粒度狀態或非簡約的替代表徵。局限在於：探針須先指定候選世界模型才能檢驗，這雖與同類文獻一致，但對想反推模型實際依賴哪種表徵的人仍是限制；作者提出「下一詞元劃分」這類候選假說的檢驗策略，但認為後續工作應發展能自動從模型行為反推隱含世界模型的方法。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2507.06952_InductiveBiasProbe.%E6%91%98%E8%A6%81.html"><code>../summarize/2507.06952_InductiveBiasProbe.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

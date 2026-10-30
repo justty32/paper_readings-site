@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.27960_LLM_ASP_Self_Correction.zh-TW.html">回 2604.27960_LLM_ASP_Self_Correction.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>近期大型語言模型（LLM）達成亮眼的推理里程碑，卻仍受困於<strong>高計算成本、邏輯不一致、高複雜度問題上效能急跌</strong>。神經符號法試圖透過耦合 LLM 與符號推理器緩解，但既有作法多依賴<strong>單調邏輯（如 SMT）</strong>，無法表達可廢止（defeasible）推理——而那是人類認知的核心。</p>
+<p>本文提出 <strong>LLM+ASP</strong> 框架，把自然語言翻成 <strong>Answer Set Programming（ASP，基於穩定模型語意的非單調形式體系）</strong>。不同於先前需手寫知識模組、領域 prompt 或限於單一問題類的 LLM+ASP 作法，本框架<strong>完全無逐任務工程</strong>，一套橫跨多樣推理任務。系統用<strong>自動自我修正迴圈</strong>——ASP 求解器（clingo）的結構化錯誤回饋驅動迭代精煉。在六個多樣基準上證明：</p>
+<ol>
+<li><strong>穩定模型語意</strong> 讓 LLM 自然表達預設規則與例外，在非單調任務上<strong>大幅勝過 SMT</strong> 法；</li>
+<li><strong>迭代自我修正是效能主因</strong>，有效取代手寫領域知識；</li>
+<li><strong>精簡 in-context 參考指南顯著勝過冗長文件</strong>，揭露「context rot（脈絡腐爛）」現象——過多脈絡反害約束遵循。</li>
+</ol>
+<h2 id="1-引言">1. 引言</h2>
+<p>推理型 LLM（Gemini 系列、OpenAI o 系列、DeepSeek R1）靠生成顯式中間「思考 token」、反思、自我修正來解多步問題。但有三弱點：<strong>計算成本高</strong>、<strong>超過某複雜度門檻效能急跌</strong>、<strong>思考軌跡與最終答案常邏輯不一致</strong>。</p>
+<p>神經符號法（結合 LLM 自然語言能力 + 外部符號推理器的嚴謹）有潛力，但常侷限窄領域、需仔細 prompt 或人介入。<strong>關鍵限制：許多既有法依賴單調邏輯（FOL、SMT）</strong>——一旦推出結論就不能因新資訊撤回，無法表達可廢止推理、偏好、例外。而人類推理本質<strong>非單調</strong>：常做預設假設（「鳥會飛」），遇到例外（「企鵝」）就撤回。</p>
+<p><strong>LLM+ASP</strong> 把 LLM 耦合 ASP 來補此缺口。ASP 的穩定模型語意把<strong>預設否定（default negation）</strong> 與多個可能世界當一等公民，比 FOL/SMT 更自然建模邏輯衝突。</p>
+<p><strong>與先前 LLM+ASP 工作的區別</strong>：作者早期工作依賴逐任務工程——Yang et al. (2023) 生成部分 ASP 表示、需手寫知識模組與逐問題類 few-shot；Ishay et al. (2023) 用自訂 prompt 生完整程式但只在邏輯格謎評估。<strong>兩者都把 LLM 當一次性翻譯器、無錯誤恢復機制</strong>——若程式有缺陷就無修正路徑。LLM+ASP 引入<strong>求解器回饋驅動的自動自我修正迴圈</strong>，無逐任務 prompt、無 few-shot、無手寫領域知識，使<strong>單一任務無關框架橫跨六基準</strong>（約束滿足、規劃、非單調推理）。</p>
+<p>關鍵實證觀察：近期 LLM（尤其擴大測試時計算者）只需少量指引即能生成 ASP 程式（可能因訓練資料見過足夠 ASP），但首次嘗試常有瑕疵。雖「執行回饋迭代精煉」的核心原則建於語意剖析/程式合成既有工作，本文貢獻在於<strong>證明它用於非單調語意的 ASP 時，能跨多樣任務型達穩健自動推理而免任務專屬工程</strong>。推理型模型尤其擅長靠求解器輸出訊息反思修程式。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<h3 id="21-llm-推理">2.1 LLM 推理</h3>
+<p>大型推理模型靠擴大測試時計算達高效能，但面臨三限制：高計算成本、超複雜度門檻後急跌、推理軌跡與答案不一致。</p>
+<p><strong>神經符號替代</strong>：耦合 LLM 與符號推理器一致勝過直接 LLM 規劃，但既有法需手寫領域知識、手設 schema、人在迴圈介入或任務專屬 prompt 工程。已知 LLM 可靠各種回饋自我修正，程式合成系統用編譯器回饋迭代精煉。LLM-Modulo 框架提供結構化回饋但需正確初始模型。</p>
+<p><strong>LLM 與 ASP</strong>：先前 LLM+ASP（Yang 2023、Ishay 2023）把 LLM 當一次性翻譯器、需任務專屬工程、無錯誤恢復。Ishay and Lee (2025) 改用動作語言 BC+ 配自修但主要聚焦規劃。本文的自動自我修正迴圈（4.3 節指為效能主因）解決這共通限制。</p>
+<h3 id="22-answer-set-programmingasp">2.2 Answer Set Programming（ASP）</h3>
+<p>ASP 是基於<strong>穩定模型語意（Gelfond and Lifschitz 1988）</strong> 的知識表示形式體系，能表達因果推理、預設推理、聚合、約束。其宣告式本質讓使用者指定「什麼必須為真」而非「怎麼找解」。高效求解器如 <strong>clingo</strong> 用衝突驅動子句學習（CDCL）處理 NP-hard 及更難問題。</p>
+<p>ASP 規則形如「derive H if 能推 B 且不能推 not-part」，其中 <strong>not 是預設否定</strong>。例：<code>flies(X) :- bird(X), not penguin(X)</code> 讀作「X 若是鳥且無證據是企鵝則會飛」。事實如 <code>bird(tweety)</code> 無 body。約束如 <code>:- flies(X), penguin(X)</code> 禁止某模式。現代 ASP 含聚合（<code>#count</code>、<code>#sum</code>）、選擇規則（<code>{color(X,red); color(X,blue)}</code>）、優化（<code>#minimize</code>）。寫 ASP 通常需專業；本文證明近期 LLM 整合自我修正迴圈即能免人介入自動生成 ASP。</p>
+<h2 id="3-方法">3. 方法</h2>
+<p>LLM+ASP 流水線（圖 1）：</p>
+<ol>
+<li><strong>LLM 生成器</strong> 收自然語言問題描述，用簡短指令 prompt 寫/更新 ASP 表示。Prompt 含問題描述、<strong>任務無關指令</strong>、可選 ASP 參考指南（in-context learning）。「任務無關」指 prompt <strong>無逐任務工程</strong>：無逐任務 prompt、無 few-shot 任務範例、無手寫領域知識。</li>
+<li><strong>兩種參考</strong>：
+<ul>
+<li><strong>標準參考（standard reference）</strong>：Gemini 2.5 Pro 對官方 clingo 手冊的摘要（<strong>22k token</strong>）。</li>
+<li><strong>精簡參考（compact reference）</strong>：由標準參考衍生，限於常見 ASP 構造（基本規則語法、變數慣例、常見運算子、pooling、標準約束格式），<strong>2.6k token，僅 1/8 長</strong>。</li>
+<li>參考製作是一次性手工，但消除每問題的逐任務 prompt 工程。</li>
+</ul>
+</li>
+<li><strong>clingo 求解</strong>（用 v5.8.0）：輸出回饋給生成器，生成器決定接受所提答案集（穩定模型）還是依求解器回饋更新 ASP——指令為「UPDATE」或「PASS」。PASS 只在 LLM 判定輸出正確時選；否則迭代直到通過或達最大修正次數。</li>
+</ol>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

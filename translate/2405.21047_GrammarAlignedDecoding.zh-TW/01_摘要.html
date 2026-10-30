@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2405.21047_GrammarAlignedDecoding.zh-TW.html">回 2405.21047_GrammarAlignedDecoding.zh-TW 目錄</a>　<a href="02_%E5%B8%B6%E8%BF%91%E4%BC%BC%E6%9C%9F%E6%9C%9B%E6%9C%AA%E4%BE%86%E7%9A%84%E8%87%AA%E9%81%A9%E6%87%89%E5%8F%96%E6%A8%A3ASAp.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）難以可靠地產出高度結構化的輸出，如程式碼、數學公式或格式良好的標記語言。<strong>約束解碼（constrained decoding）<strong>透過在每一步貪婪地限制 LLM 可輸出的 token，來保證輸出符合給定約束。具體而言，在</strong>文法約束解碼（grammar-constrained decoding, GCD）<strong>中，LLM 的輸出必須遵循給定文法。本文證明：GCD 技術（乃至一般的約束解碼技術）<strong>會扭曲 LLM 的分布</strong>，導致輸出雖合文法、其出現機率卻與 LLM 給定的機率不成比例，最終品質低落。我們把「讓取樣與文法約束對齊」的問題稱為</strong>文法對齊解碼（grammar-aligned decoding, GAD）</strong>，並提出 <strong>ASAp（adaptive sampling with approximate expected futures，帶近似期望未來的自適應取樣）</strong>——一種解碼演算法，保證輸出合文法，同時可證明地產出「符合 LLM 分布在該文法約束下之條件機率」的輸出。演算法利用先前的樣本輸出，健全地（soundly）過近似不同輸出前綴的未來合文法性。在程式碼生成與結構化 NLP 任務上的評估顯示，ASAp 常能產出「依 LLM 分布看來機率更高」的輸出，同時仍強制滿足文法約束。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>預訓練 LLM 儘管成功，卻常難以生成高度結構化輸出。一個天真作法是<strong>拒絕取樣（rejection sampling）</strong>：反覆從 LLM 取樣字串、用一個有效性 oracle（通常是上下文無關文法 CFG）檢查；但對限制性強的文法與長序列而言極度低效甚至不可行——多數生成串都不在目標文法內。</p>
+<p><strong>約束解碼</strong>透過貪婪地「強迫」LLM 輸出滿足約束來解決拒絕取樣的低效。當約束以文法給定時，GCD 可建自動機，在解碼中即時遮罩掉「必然導致輸出落在文法外」的 token。GCD 雖不像拒絕取樣有那樣的額外開銷（生成輸出永遠在文法語言內），但本文指出它（與一般所有結構化解碼）帶來新問題：<strong>結構化解碼扭曲了 LLM 學到的語言分布，反而妨礙了 LLM 的能力。</strong></p>
+<p>本文引入並形式化 <strong>GAD</strong>：從 LLM 取樣，使輸出（1）保證遵守給定文法，且（2）相對 LLM 分布不偏（unbiased）。雖然精確 GAD 一般不可解（如拒絕取樣），我們提出一個近似 GAD 的自適應解碼演算法：起點就是 GCD、再逐步收斂到 LLM 分布，因而能在效率與準確度間權衡。此演算法名為 <strong>ASAp</strong>，建於既有約束解碼演算法「之上」。GCD 只是遮罩掉「對某前綴會導致非文法序列」的 token；ASAp 則對所有取樣過的前綴，<strong>記住被遮罩 token 的機率</strong>，用它來上界「合文法性的機率」。當觀察到更多樣本時更新此上界，解碼分布便收斂到目標——即從「LLM 誘導、且條件於輸出被文法接受」的機率取樣。此想法適用任何結構化解碼，本文聚焦以文法表達的約束。</p>
+<p>我們在兩個結構化預測任務上評估 ASAp：形式化程式合成與成分句法剖析。實驗顯示 GCD 產出的輸出合文法但依 LLM 看來不可能出現；而用 ASAp，生成輸出的機率隨時間提升、收斂到目標約束 LLM——即 GAD 在強制約束的同時更尊重 LLM。</p>
+<h2 id="2-文法對齊解碼">2. 文法對齊解碼</h2>
+<p>本節把 GAD 形式化為「從自回歸語言模型解碼、同時強制輸出序列被給定 CFG 接受」，並展示既有作法的局限。</p>
+<p><strong>語言模型</strong>：自回歸語言模型透過左到右的下一 token 條件分布之乘積，定義字串上的機率分布 <code>P(w_1…w_n)=Π P(w_i | w_{1:i-1})</code>。</p>
+<p><strong>上下文無關文法（CFG）</strong>：四元組 <code>G=(Σ, N, S, R)</code>（終端符/token 詞彙、非終端符、起始符、產生規則）。文法的語言 <code>L(G)</code> 是所有可從 S 推導出的 token 串。並定義<strong>前綴語言</strong> <code>L_prefix(G)</code>＝L(G) 中句子的所有前綴集合。圖 1 給出一個玩具文法 <code>G_sk</code>（token 為 {0,1}），只接受字串 <code>00000</code> 以及所有「以 1 開頭、長度為 5」的字串。</p>
+<p><strong>GAD 的定義</strong>：給定模型分布 P 與 CFG G，GAD 的任務是從分布 <code>Q^{P,G}</code> 取樣，該分布正比於 P 但限制在 G 的句子上：</p>
+<blockquote>
+<p><code>Q^{P,G}(w) = 1[w∈L(G)]·P(w) / Σ_{w'} 1[w'∈L(G)]·P(w')</code></p>
+</blockquote>
+<p><strong>範例 2（GAD）</strong>：提示 LLM「生成一個以 1 結尾的二進位字串」，P 應對形如 <code>(0|1)*1</code> 的字串賦高機率（Mixtral-8x7B-Instruct-v0.1 在 temperature=1 時約 90% 會生成以 1 結尾的字串）。若再用圖 1 的 <code>G_sk</code>（只接受長度 5 的字串，且其中唯一以 0 開頭的合文法串 <code>00000</code> 並不以 1 結尾）約束之，則理想 GAD 分布應：(i) 對八個形如 <code>1 w2 w3 w4 1</code> 的串（同時合文法又合提示）賦高機率；(ii) 對 <code>00000</code>（合文法但不合提示）賦低機率；(iii) 對其餘串賦零機率。</p>
+<p><strong>精確 GAD</strong>：拒絕取樣可得精確 GAD 樣本，但若 P 多數質量落在 L(G) 外便慢到不可行。能否把 Q 分解成左到右條件以便祖先取樣（ancestral sampling）？精確條件為：</p>
+<blockquote>
+<p><code>Q^{P,G}(w_i | w_{1:i-1}) ∝ P(w_i | w_{1:i-1}) · c(w_{1:i})</code></p>
+</blockquote>
+<p>其中額外的加權項 <code>c(w_{1:i}) = E_{P(w_{i+1:n}|w_{1:i})}[1[w∈L(G)]]</code> 稱為<strong>期望未來合文法性（expected future grammaticality, EFG）</strong>——即從 P 取樣的 <code>w_{1:i}</code> 之延續落入 L(G) 的機率。精確計算 EFG 不可解：模型對它的貢獻一般無法分解（最後的條件機率是一個觸及每個變數的非線性神經網路全域勢函數）。因此本文主目標是：對 EFG 發展有效的<strong>近似</strong>，以便計算 Q 的左到右條件。</p>
+<p><strong>GCD 的局限</strong>：既有 GCD 依賴一個增量剖析器（incremental parser），能高效檢查給定串是否為文法中某句子的前綴（<code>w∈L_prefix(G)</code>）；解碼時遮罩掉「使前綴無任何合文法延續」的下一 token。以 GAD 觀之，GCD 等於把精確條件裡的 EFG <code>c(w_{1:i})</code> 用<strong>二元近似</strong> <code>1[w_{1:i}∈L_prefix(G)]</code> 取代——它考慮了「未來是否可能合文法」，卻完全不整合模型的機率去估計「期望的」未來合文法性；凡 <code>c(w_{1:i})&gt;0</code> 都被近似為 1，造成取樣分布顯著偏差。</p>
+<p><strong>範例 3（GCD）</strong>：對範例 2 的問題，理想分布應偏好同時以 1 起訖的串、對 <code>00000</code> 賦低機率；但 GCD 只有 30% 的時間生成以 1 結尾的串——GCD 實質上因把取樣偏向 <code>00000</code> 這個錯誤輸出，而毀掉了 LLM 遵循提示的能力。原因：生成第一個 token 時，GCD 不知每個字元能開出多少合文法串、更不知它們在 P 下多可能；由於 0 與 1 都「有可能」導向合文法串，GCD 把兩者的 EFG 都估為 1、各選約一半；一旦選了 0，就被困進「唯一合文法串是低機率的 <code>00000</code>」的搜尋空間。這凸顯了設計更好 EFG 近似的重要性。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

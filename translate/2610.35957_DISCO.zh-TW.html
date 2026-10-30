@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Distributed LLM Inference via Communication-Efficient Speculative Decoding 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Joohyun Shin、Byeonghyeon Park、Keumseo Ryum、Joonhyuk Kang</p><p>日期：2026-10-25（v1，cs.LG）</p><p>arXiv：2610.35957</p><p><a href="https://arxiv.org/html/2610.35957v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="disco以省通訊的推測解碼進行分散式-llm-推論">DISCO：以省通訊的推測解碼進行分散式 LLM 推論</h1>
+<h2 id="摘要與第-i-節研究問題">摘要與第 I 節：研究問題</h2>
+<p>分散式推測解碼讓裝置上的小模型先產生候選 token，伺服器上的大模型並行驗證；但精確拒絕取樣可能需要跨網路傳送整個詞彙表的機率分布。DISCO 在伺服器額外放一份草稿模型副本，拒絕候選時在本地重算草稿分布，只傳 token 索引和純量機率，減少與詞彙表大小成比例的通訊。（<a href="https://arxiv.org/html/2610.35957v1#S1">摘要與 §I</a>）</p>
+<h2 id="第-ii-節推測解碼背景">第 II 節：推測解碼背景</h2>
+<p>草稿模型依序取樣 <code>γ</code> 個候選。對位置 <code>j</code>，目標模型分布為 <code>p_j</code>，草稿分布為 <code>q_j</code>；候選 <code>x_j</code> 以 <code>min(1, p_j(x_j)/q_j(x_j))</code> 的機率接受。拒絕時改從 <code>max(0, p_j−q_j)</code> 正規化後的分布抽取替代 token；若全部接受，目標模型再產生一個 token。正確使用這些分布時，標準推測解碼保留目標模型的取樣分布。（<a href="https://arxiv.org/html/2610.35957v1#S2.SS1">§II-A</a>）</p>
+<p>DSD 將完整草稿分布由裝置上傳給伺服器；DSSD 僅上傳草稿 token 及其機率，但拒絕時須將完整目標分布下傳裝置重採樣。兩者在不同方向產生詞彙表規模的傳輸。（<a href="https://arxiv.org/html/2610.35957v1#S2.SS2">§II-B</a>）</p>
+<h2 id="第-iii-節disco">第 III 節：DISCO</h2>
+<p>裝置送出草稿 token 與各自的草稿機率，伺服器使用目標模型驗證；拒絕時，伺服器副本根據相同前綴重算草稿分布，於本地與目標分布做拒絕後重採樣，再回傳 token 與位置。全部接受時伺服器回傳額外抽出的 token。（<a href="https://arxiv.org/html/2610.35957v1#S3">§III，演算法 1</a>）</p>
+<p>理論精確性依賴傳送的候選機率與重採樣所用的草稿分布一致，且裝置與伺服器副本對同一前綴產生匹配的分布：作者假設 tokenizer、模型參數與解碼流程相同。若兩端的數值精度、取樣處理或機率表示使分布不一致，就不能僅依副本存在推定精確性。論文的通訊模型將傳送機率值計為 16 位元；原文未分析有限精度或異硬體重現誤差，不能將理論主張視為位元級實測保證。（<a href="https://arxiv.org/html/2610.35957v1#S3">§III</a>、<a href="https://arxiv.org/html/2610.35957v1#S4">§IV</a>）</p>
+<h2 id="第-iv-節通訊與計算取捨">第 IV 節：通訊與計算取捨</h2>
+<p>作者將每輪通訊延遲建模為 <code>RTT + 上傳位元數／上傳速率 + 下載位元數／下載速率</code>；主要分析假設上下行對稱。DISCO 拒絕時新增伺服器小模型運算，但省去完整分布傳輸；拒絕機率、詞彙表大小、頻寬與重算成本共同決定是否值得。（<a href="https://arxiv.org/html/2610.35957v1#S4">§IV</a>）</p>
+<p>以 OPT 詞彙表 50,272、草稿長度 4、token 與位置索引各 32 位元、機率 16 位元計，作者估算 DSD 每輪上傳約 402.2 kB，DISCO 為 24 B；DSSD 在拒絕時下傳約 100.5 kB，DISCO 下傳 8 B。這些是表中訊息 payload 的估計，不含額外協定成本。（<a href="https://arxiv.org/html/2610.35957v1#S4">§IV，表 I</a>）</p>
+<p>在作者的對稱頻寬和忽略小型索引項的近似下，DISCO 與 DSSD 的臨界頻寬約為 <code>|V| × 機率位元數／伺服器草稿重算時間</code>；低於該值時 DISCO 的預期每輪延遲較低。這是該延遲模型的近似，不是所有網路或併發設定的通則。（<a href="https://arxiv.org/html/2610.35957v1#S4">§IV，式 7–8</a>）</p>
+<h2 id="第-v-節實驗">第 V 節：實驗</h2>
+<p>主要實驗以 OPT-125M 草稿／OPT-30B 目標及 Qwen2.5-0.5B／32B 配對，在兩張 NVIDIA A100 40GB 上執行；草稿模型使用一張 GPU，目標模型跨兩張。GSM8K、CNN/DailyMail、HumanEval 每組各測 100 個樣本、三個隨機種子；以一般自回歸解碼的平均吞吐量為基準，模擬 1～100 Mbps 頻寬，固定 RTT 20 ms，草稿長度為 2～8。（<a href="https://arxiv.org/html/2610.35957v1#S5.SS1">§V-A</a>）</p>
+<p>作者自報 GSM8K、草稿長度 4 的例子如下，單位為相對一般自回歸吞吐量倍數；小於 1 表示較慢。（<a href="https://arxiv.org/html/2610.35957v1#S5.SS1">§V-A，表 II</a>）</p>
+<table>
+<thead>
+<tr>
+<th>模型配對／頻寬</th>
+<th style="text-align:right">DSD</th>
+<th style="text-align:right">DSSD</th>
+<th style="text-align:right">DISCO</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OPT／1 Mbps</td>
+<td style="text-align:right">0.05×</td>
+<td style="text-align:right">0.53×</td>
+<td style="text-align:right">1.67×</td>
+</tr>
+<tr>
+<td>OPT／50 Mbps</td>
+<td style="text-align:right">1.06×</td>
+<td style="text-align:right">1.62×</td>
+<td style="text-align:right">1.68×</td>
+</tr>
+<tr>
+<td>Qwen／1 Mbps</td>
+<td style="text-align:right">0.03×</td>
+<td style="text-align:right">0.40×</td>
+<td style="text-align:right">1.55×</td>
+</tr>
+<tr>
+<td>Qwen／50 Mbps</td>
+<td style="text-align:right">0.75×</td>
+<td style="text-align:right">1.48×</td>
+<td style="text-align:right">1.56×</td>
+</tr>
+</tbody>
+</table>
+<p>作者報告在所測條件下，低頻寬時完整分布傳輸占比尤其高；其 GSM8K 延遲拆解估計臨界頻寬約 109 Mbps，接近兩方法曲線在約 100 Mbps 趨近的區域。伺服器副本仍增加模型記憶體與拒絕時運算，這些成本不能從 payload 大小直接忽略。（<a href="https://arxiv.org/html/2610.35957v1#S5.SS2">§V-B–V-C</a>）</p>
+<p>作者另以 RTX 3090 或 4090 作裝置、兩張 A100 作伺服器，在實測 LAN <code>RTT=0.5 ms</code>、<code>BW=84.3 Mbps</code> 測試。GSM8K 上作者報 DISCO 分別為 1.75×、1.92×，DSSD 為 1.57×、1.72×；這是特定硬體與網路下相對自回歸的吞吐比較。（<a href="https://arxiv.org/html/2610.35957v1#S5.SS4">§V-D，表 III</a>）</p>
+<h2 id="第-vi-節限制與結論">第 VI 節：限制與結論</h2>
+<p>DISCO 透過伺服器重算，將詞彙表規模傳輸換成額外小模型資源；在所測網路與模型配對中取得加速。作者目前只評估單請求，多使用者併發留待後續研究；伺服器容量、不同硬體上的重算成本及實際網路表現仍會影響部署結果。（<a href="https://arxiv.org/html/2610.35957v1#S6">§VI</a>）</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2610.35957_DISCO.%E6%91%98%E8%A6%81.html">DISCO 摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

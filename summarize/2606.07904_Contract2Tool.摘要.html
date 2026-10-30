@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Contract2Tool: Learning Preconditions and Effects for Reliable Tool-Augmented LLM Agents》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Rahul Suresh Babu、Laxmipriya Ganesh Iyer（Independent Researchers）</p><p>日期：2026-06</p><p>arXiv：2606.07904</p><p><a href="https://arxiv.org/abs/2606.07904" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="contract2tool重點摘要">《Contract2Tool》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>從工具元資料、Schema、文件與執行軌跡中自動推斷工具合約（preconditions/effects/risk/cost）</strong>，使 LLM agent 僅在因果必要時才暴露工具；混合文件+軌跡證據的學習合約在 CMTF（causal minimal tool filtering）下游達到 0.980 成功率（金合約 0.990），同時將可見工具從 100 降至 1，token 從 26,172 降至 2,528。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>工具增強 LLM agent 越來越多依賴外部 API，但標準 function-calling 介面只描述<strong>如何調用</strong>工具（名稱、描述、輸入 schema），不描述<strong>何時應暴露</strong>該工具、需要什麼任務狀態、產生什麼狀態變化、以及風險等級。手動為成百上千工具撰寫並維護合約不具規模性。本文研究：能否從可觀察的工具證據中<strong>自動推斷</strong>這些合約？</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>合約定義</strong>：c_i = (R_i, E_i, ρ_i, k_i)——所需狀態變數（preconditions）、產生狀態變數（effects）、風險標籤、成本估計。</li>
+<li><strong>Contract2Tool 管線</strong>：證據視圖（name/metadata/schema/docs/traces）→ LLM 生成原始合約 → 正規化與驗證（映射到標準變數詞彙、去重、格式檢查）→ 學習合約集。</li>
+<li><strong>六種證據條件</strong>：Name → Metadata → Schema → Documentation → Traces → Hybrid（docs+traces）。</li>
+<li><strong>軌跡證據的關鍵作用</strong>：執行前後狀態差異直接揭示文件未描述的效果變數（例如文件說&quot;搜尋日曆返回事件列表&quot;，但工作流需要特定 event identifier）。</li>
+<li><strong>三層評估</strong>：內在合約品質（precision/recall/F1/exact match）、filter-oracle 因果前沿測試（合約是否暴露正確的下一步工具）、下游 agent 任務表現（102 個多步驟任務）。</li>
+</ul>
+<h2 id="關鍵發現數據">關鍵發現/數據</h2>
+<ul>
+<li><strong>內在品質</strong>：Schema/documentation 條件下 Requires F1 達 0.99-1.00；Hybrid（Opus 4.8）達 Requires F1 1.00、Produces F1 0.98、exact match 0.77。</li>
+<li><strong>Filter-oracle</strong>：文件/ schema 合約僅在 84.1% 步驟暴露金下一步工具（7.8% 步驟無可見工具）；Hybrid 合約達到 100% 金工具暴露、零無可見率、每步僅暴露 1 個工具。</li>
+<li><strong>下游 agent</strong>（四模型聚合）：Learned CMTF 成功率 0.980 vs Gold CMTF 0.990；錯誤工具調用 0.020/任務；可見工具從 100→1；token 從 26,172→2,528。</li>
+<li><strong>軌跡證據不可替代</strong>：靜態文件描述人類可讀輸出，軌跡揭示工作流所需的具體狀態變數——這是 filter-oracle 從 84.1% 跳到 100% 的關鍵。</li>
+<li><strong>內在準確性必要但不充分</strong>：高平均 F1 的合約仍可能遺漏任務關鍵的因果邊——exact match 是保守指標，下游過濾取決於保留關鍵因果邊。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>使用受控合成工具註冊表（100 工具），可能未捕捉真實 API 生態系統的複雜性（不完整文件、不一致 schema、認證限制、速率限制、副作用）。</li>
+<li>假設固定的標準狀態變數詞彙，實際定義此詞彙本身是設計挑戰。</li>
+<li>軌跡實驗使用受控模擬任務軌跡，真實軌跡可能稀疏、嘈雜、偏向常見工作流。</li>
+<li>下游評估使用模擬工具執行，未測試真實 API 故障、延遲變化、授權錯誤、不可逆副作用。</li>
+<li>部分模型出現工具調用相容性問題（如 Llama 3.3 70B 在各方法下均近乎零成功）。</li>
+</ul>
+<h2 id="對-ai_core-的價值34--5-接點">對 ai_core 的價值（§3.4 + §5 接點）</h2>
+<p><strong>工具合約即憑證准入機制（§3.4）</strong>：Contract2Tool 的合約層本質上是 ai_core §3.4「憑證化能力准入」的工具層實現——每個工具的 requires/produces/risk 欄位構成其&quot;能力憑證&quot;，CMTF 過濾器根據當前任務狀態與合約匹配決定暴露哪些工具。這與 ai_core 將 agent 能力封裝為可驗證憑證、僅在滿足前置條件時授權呼叫的設計完全對應。學習合約進一步展示：准入憑證可從運行時證據自動生成與刷新，無需手動維護——即 ai_core 的「憑證生命週期自動化」。</p>
+<p><strong>確定性把關（§5）</strong>：合約層的 preconditions/effects 構成符號級的確定性閘控——CMTF 不依賴語意相似度或 LLM 判斷來選擇工具，而是根據滿足的符號狀態變數做確定性過濾（&quot;當前狀態具備 R_i 中的所有變數嗎？→暴露工具&quot;）。這直接對應 ai_core §5「約束/結構化輸出把關」的核心原則：以可驗證的符號條件而非模型推斷來決定行為邊界。合約正規化（將表面形式映射到標準詞彙）正是 ai_core 治理層將 LLM 輸出轉化為可執行約束的關鍵步驟。</p>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2606.07904_Contract2Tool.zh-TW.html"><code>../translate/2606.07904_Contract2Tool.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

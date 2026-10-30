@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《用於自動細胞自動機分類的卷積神經網絡》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Michiel Rollier、Aisling J. Daly、Jan M. Baetens（Ghent University 生物科學工程系）</p><p>日期：2024-09，CA 行為分類 + CNN（書章）</p><p>arXiv：2409.02740</p><p><a href="https://arxiv.org/abs/2409.02740" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="用於自動細胞自動機分類的卷積神經網絡重點摘要">《用於自動細胞自動機分類的卷積神經網絡》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>把 CA 的<strong>時空圖（spacetime diagram）當成數位影像</strong>，用 CNN 做 ECA 的 <strong>Li-Packard 五類行為分類</strong>；核心論點是：<strong>先前的 CNN 其實是偷偷在反推局部更新規則（微觀基因型），而非辨識真正定義行為類別的「介觀（mesoscopic）圖樣（表現型）」</strong>；作者藉<strong>有意「致殘」的網路設計（卷積核小到裝不下規則的 T-tetromino、最後 dense 層小到無法編碼規則）＋資料增強（尤其 2×2 粗粒化）</strong>，做出一個<strong>僅 389 個可訓練參數</strong>卻仍近完美分類、且<strong>刻意學不會規則</strong>的 CNN，以利泛化到非基本 CA。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>ECA（256 條基本規則）的行為分類已成熟，但<strong>非基本 CA（更大鄰域、非均勻、多狀態）數量爆炸、無法人工窮舉分類</strong>。理想是有個「對介觀複雜圖樣敏感、但不依賴知道局部規則」的自動分類器，才能遷移到非基本 CA。問題在於：既有 CNN 分類器（Silverman 2019、Comelli et al. 2021）準確度雖極高（&gt;99%），卻<strong>沒察覺時空圖裡藏著規則表這個「破綻」</strong>——CNN 可能只是用昂貴方式反推局部規則，而非學介觀圖樣，<strong>泛化性存疑</strong>。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>資料/目標</strong>：全 256 條 ECA 規則，N cell + 週期邊界，演化 64 步生成時空圖（單通道二值低解析影像）；每條規則取樣若干時空圖，目標＝給時空圖預測其 <strong>Li-Packard（LP）五類</strong>（null、fixed point、periodic、locally chaotic、chaotic）。選 LP 而非 Wolfram，因 LP <strong>規則→類別是滿射（surjective）映射</strong>，可生成可靠的「規則-圖」配對資料集；Wolfram 類別偏質性、同規則的圖可落入不同類，不利訓練。</li>
+<li><strong>基準（揭露問題）</strong>：純 grid search——掃時空圖第一列即可&gt;99% 機率填齊 8 條規則表項（八種 T-tetromino），再靠滿射映射近完美定類。<strong>證明此分類目標本質上「可解」、是送給演算法的送分題</strong>；近 37 萬樣本中無一缺少 7 條以上規則項，僅 1 張圖會被誤分類。</li>
+<li><strong>預設 CNN（重現 Silverman）</strong>：兩層 16 通道卷積 + 全域 max pooling + 256 節點 dense + 5 節點輸出（SoftMax）。卷積核 2×2 恰能框住 T-tetromino → 等於在反推規則。驗證集近完美（僅 6 張誤分），但這正是「作弊」。作者另證可手選權重做出<strong>完美規則辨識 CNN</strong>（固定參數，把圖解碼成 8 通道再 max pooling 得規則八元組）。</li>
+<li><strong>致殘式重設計（Trimmed CNN，圖 10）</strong>：三原則——(1) 第一層卷積核<strong>不可框住「鄰域+次態」的 T-tetromino</strong>；(2) 需<strong>夠大的感受野</strong>（靠多卷積層 + 中央 max pooling）以看見介觀結構；(3) 最後 dense 層（16 節點）<strong>小到無法編碼規則</strong>。如此僅 <strong>389 個可訓練參數</strong>仍達 LP 分類驗證準確度 ≳ 高水準，而規則辨識準確度則大幅掉到約 1/6。</li>
+<li><strong>針對性資料增強（線上、每 batch 隨機）</strong>：四種——<strong>反相（inversion）、鏡像（mirroring）、2×2 粗粒化（coarse-graining）、椒鹽噪聲</strong>。原則是「改像素層、不毀整體圖樣」（人類仍能分類）。重點不是提升驗證準確度，而是<strong>拉大「規則辨識準確度」與「類別辨識準確度」的差距</strong>。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>預設 CNN</strong>：LP 分類驗證近完美（驗證集僅 6 張誤分，皆屬邊界案例）；規則辨識也&gt;99%——印證「在反推規則」。</li>
+<li><strong>粗粒化是最有效的增強</strong>：把規則辨識準確度從 &gt;99% 壓到不足 1/6，<strong>規則↔類別的準確度差距最大</strong>；反相/鏡像則因對應 ECA 等價類（鏡像常等同恆等操作、僅少數規則是自身反相），主要把規則「換成等價規則」、對「獨立規則辨識」幾乎無損。椒鹽噪聲對所有準確度都有害且<strong>不偏向類別分類</strong>，故最終棄用。</li>
+<li><strong>最終模型</strong>（全增強除椒鹽噪聲，在含驗證集的完整訓練集上再訓）：測試集 LP 分類達高準確度、獨立規則辨識則明顯較低——<strong>成功達成「會分類、不會反推規則」的目標</strong>。混淆矩陣顯示<strong>最常見錯誤是把 chaotic 誤判為 locally chaotic</strong>。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>仍是<strong>監督式</strong>，依賴人工/演算法產生的標籤（LP 本身是否最佳分類存疑，尤其難以精準鎖定 Wolfram「class-IV 複雜」行為）。</li>
+<li>只在 ECA（1D、二態、3 鄰域）上驗證；遷移到非基本 CA 僅是「設計動機」，<strong>尚未實測</strong>。</li>
+<li>增強會降低整體驗證準確度（換取規則-類別差距）；多種增強合用反而更難收斂。</li>
+<li>在訓練分佈外資料上的推斷須謹慎。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 **F 類（細胞自動機）**裡與「GPT 路線」（<a class="paper-reference" href="2506.17333_AutomataGPT.%E6%91%98%E8%A6%81.html">2506.17333</a> AutomataGPT 用 transformer 同時做預測與規則反推）形成有趣對照：AutomataGPT <strong>想要</strong>模型學會規則矩陣；本文反其道，<strong>刻意讓 CNN 學不會規則、只抓介觀圖樣</strong>——因為兩者目標不同（前者要預測/反推動態，後者要可遷移的行為分類）。</li>
+<li>最值得記的方法論教訓：<strong>評估深度學習「成功」時要警惕捷徑/破綻</strong>——高準確度可能只是模型走了你沒料到的捷徑（這裡是規則表這個 giveaway）；要逼模型學「對的特徵」，可<strong>從架構容量與資料增強兩端動手</strong>（縮小容量到裝不下捷徑、用粗粒化抹掉微觀線索）。</li>
+<li>與 NCA（<a class="paper-reference" href="2505.13058_Universal_NCA.%E6%91%98%E8%A6%81.html">2505.13058</a>、<a class="paper-reference" href="2506.22899_Cells_to_Pixels.%E6%91%98%E8%A6%81.html">2506.22899</a>）方向不同：本文是「<strong>CNN 輔助 CA 研究（自動分類）</strong>」而非「CA 當神經網路」。作者預告下一步走<strong>自監督學習</strong>（讓演算法自行分群、免標籤）與時間序列/RNN、Lyapunov 譜預測、生成式選規則等。</li>
+<li>定位：<strong>書章（book chapter）型方法探討 + 消融</strong>，適合做 <strong>CA 分類、湧現複雜度量化、可遷移表徵學習、以及「如何防止模型抄捷徑」</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2409.02740_CNN_CA_Classification.zh-TW.html"><code>../translate/2409.02740_CNN_CA_Classification.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

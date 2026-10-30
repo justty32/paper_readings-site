@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_主要結果與討論 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2505.16741_Minimum_Attention_MetaRL.zh-TW.html">回 2505.16741_Minimum_Attention_MetaRL.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-主要結果與討論">4. 主要結果與討論</h2>
+<p>探討三問：(1) 相較其他 model-based RL 是否更省訓練採樣？(2) 是否降低學習曲線變異？(3) 相較其他模型式元策略 RL 是否改善泛化？評估設計欲證明 MA 正則化能：1) 改善漸近性能與學習穩定、2) 誘導更平滑更省能的結構化控制、3) 增強對 OOD 擾動的快速適應。</p>
+<h3 id="41-實驗設置高維動力系統">4.1 實驗設置：高維動力系統</h3>
+<p>因焦點是<strong>正則項而非新架構</strong>，選 <strong>MB-MPO</strong>（Clavera 2018）為主骨幹（它明確分離模型學習／策略適應／元策略優化，便於分析 MA 對回饋敏感度、前饋變化、能量、適應的影響）。把 MA 整合進 MB-MPO 的 actor-critic 更新，用 SAC 做策略優化。對比原始 MB-MPO 與純 model-free SAC。另把正則項插進現代世界模型 <strong>MAMBA</strong> 與 <strong>DreamerV3</strong> 測互補性。</p>
+<p>四個 MuJoCo agent（OpenAI Gym）：Half-Cheetah（17 維狀態/6 維控制）、Walker2D（17/6）、Hopper（11/3）、HumanoidTruncated（45/17）。學習在模型學習與元策略學習間交替（有/無 MA 正則）。一般用 10 個隨機種子；每種子最終跑 10 episodes。指標：平均回饋範數（Jacobian）、平均前饋範數（jerk）、平均能量（控制成本平方和）。並用回饋/前饋熱圖質性判斷 MA 影響。元測試聚焦 OOD 任務與快速適應。</p>
+<h3 id="42-與-sota-rl-對比">4.2 與 SOTA RL 對比</h3>
+<p>Half-Cheetah（圖 2）：對比 SAC、MB-MPO、MB-MPO+MA。<strong>MA 帶來統計顯著的變異下降</strong>。Hopper/Walker2D/Humanoid（圖 3）：三個運動學各異的 agent，MA（藍）一致收斂到比原始 MB-MPO（紅）更高的平均回報；Humanoid 變異也明顯更低。</p>
+<p><strong>Table 1 量化（HalfCheetah, 200K 迭代）</strong>：標準元訓練下，最佳 λ 達成<strong>比 MB-MPO 高 45% 的獎勵（6692±318→9721±128）</strong>，同時<strong>回饋範數 −28%（783→567）、能量 −15%（4.54→3.85）</strong>——正則化不是用性能換平滑，而是發現「更高性能又更省」的策略。樣本效率不輸 MB-MPO，且學習曲線變異更低。</p>
+<p><strong>現代世界模型</strong>：MA 插進 MAMBA（Humanoid 30M: 2453→2553）、DreamerV3（HalfCheetah 500K: 575→625）皆有獎勵增益與變異下降。<strong>消融</strong>：完整 MA（9721）顯著勝 <strong>Jacobian-only（6484，僅狀態平滑）</strong> 與 <strong>Temporal-only（6475，僅時間平滑）</strong>，證實狀態與時間兩項缺一不可。</p>
+<h3 id="43-學到的控制策略分析">4.3 學到的控制策略分析</h3>
+<p>從空間項（狀態相關回饋敏感度）與時間項（控制時間變化）兩視角分析。把控制器分解為回饋增益 K 與開迴路前饋。相比原始策略，MA 策略在 K 與前饋上<strong>離散度更窄</strong>（變異更低，圖 4a），但<strong>並非一味壓制回饋</strong>：早期/瞬態階段局部 K 仍升高，表示需要時仍能施加修正回饋。MA 把回饋與前饋組織成<strong>較不變動但仍可適應</strong>的策略。</p>
+<p><strong>經驗穩定性檢查</strong>（圖 4b）：在 HalfCheetah 狀態擾動網格上，MA 在多處降低<strong>經驗失敗頻率</strong>（失敗＝軀幹高度過低致大量貼地，或軀幹俯仰超出可恢復範圍）——但這不是形式化安全保證。</p>
+<p><strong>回饋敏感度熱圖</strong>（圖 5，三個狀態投影）：(1) <strong>峰值敏感度降低</strong>——MA 罰大導數、平滑策略、防止小狀態變化引發過劇動作；(2) <strong>敏感度分布更均勻</strong>——原始策略有集中的極高敏感「熱點」，MA 把敏感度攤開、只在 trade-off 認定關鍵處才高。兩策略都認定「低 Z 座標、高前向速度」（高速平衡）為高敏感區，說明這是環境動力學決定的關鍵區；MA 影響的是這些關鍵區的<strong>敏感度幅度</strong>。原始策略在關鍵區學到更「激進/反應式」的強回饋（高 Jacobian），對純獎勵最大化或許最優但較不魯棒/不省能；MA 則在保持較低控制努力下完成任務，動作更平滑、更省能、對小擾動可能更魯棒。</p>
+<h3 id="44-最小注意力的元學習功能分析">4.4 最小注意力的元學習功能分析</h3>
+<p>Half-Cheetah 的模型擾動＝瘸腿、增減體重；環境擾動＝地面坡度（上下坡）。<strong>關鍵</strong>：在「瘸腿」元測試中，MA 的性能優勢<strong>維持甚至放大</strong>——MA 達成比原始基線更高的獎勵，且回饋與前饋（jerk）範數更低。這說明 MA 學到的平滑策略是「對顯著 OOD 形體變化快速適應」的更好先驗。圖 6（體重/瘸腿/坡度三難度 OOD）顯示 MA 總獎勵勝出、變異降低。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>最小注意力形式化展現<strong>降低訓練與元測試學習曲線變異</strong>的靈巧簽名，對設計<strong>低變異、更省能</strong>的學習控制器很重要。儘管 MA 蘊含「狀態與時間上保守的最小變化」，仍在 OOD 元測試與域適應上展現少樣本能力。</p>
+<p><strong>局限</strong>：結果為<strong>經驗性</strong>，限 MuJoCo 稠密獎勵連續控制；不建立形式化安全保證或對所有機器人設定的遷移。低變異與平滑控制應解讀為「學習穩定性改善」的證據，非「安全行為」的證明。MA 與少樣本適應的連結在本文是經驗的；基於 control Lyapunov function 的有界性/穩定性理論待補（Thompson sampling 可參考）。正則權重 λ <strong>逐環境族手調</strong>；未研究獎勵函數會變的任務。未來可探 MA 在演算法去偏、語言模型奇異/罕見事件退化、model-free RL、以多任務學習克服梯度式元學習限制等方向。</p>
+<p><strong>演算法 1（帶最小注意力的元學習）</strong>：初始化模型與控制參數 → 外層迴圈交替【模型學習：從環境採軌跡訓集成模型】與【元策略學習：用模型生成想像軌跡、VPG/SAC 適應、再用適應後策略採模型軌跡】→ 用 SAC（式 10）更新策略參數（VPG/TRPO/SAC 均驗證可用）。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2505.16741_Minimum_Attention_MetaRL.%E6%91%98%E8%A6%81.html"><code>../summarize/2505.16741_Minimum_Attention_MetaRL.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

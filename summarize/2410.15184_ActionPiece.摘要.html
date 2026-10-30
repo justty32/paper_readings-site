@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《動作抽象用於攤還式取樣（Action Abstractions for Amortized Sampling）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Oussama Boussif, Léna Néhale Ezzine, Joseph Viviano, Michał Koziarski, Moksh Jain, Nikolay Malkin, Emmanuel Bengio, Rim Assouel, Yoshua Bengio（Mila / U. de Montréal 等）</p><p>日期：2024-10</p><p>arXiv：2410.15184</p><p><a href="https://arxiv.org/abs/2410.15184" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="動作抽象用於攤還式取樣action-abstractions-for-amortized-sampling重點摘要">《動作抽象用於攤還式取樣（Action Abstractions for Amortized Sampling）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>ActionPiece</strong>：把 NLP 的 <strong>BPE（byte pair encoding）子詞切分</strong>搬到強化學習／GFlowNet 的<strong>動作序列</strong>上——在訓練中反覆從高回報軌跡裡抽出「常一起出現的動作子序列」，把它「chunk（成塊）」成一個高階動作加進動作空間，藉此<strong>縮短軌跡長度、改善長程信用分配與探索</strong>；抽出來的 chunk 還會<strong>還原目標分佈的潛在結構</strong>（如 RNA 的 codon），並可<strong>跨任務、跨取樣器遷移</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>RL 與 GFlowNet 用策略取樣長軌跡，軌跡愈長，<strong>信用分配（credit assignment）與探索</strong>愈難、長規劃視野阻礙 mode 發現與泛化。此問題在<strong>追求熵/多樣性</strong>的方法（如 GFlowNet，需從結構化分佈取樣、發現多個各需多步才能到達的高回報 state）上尤其嚴重。既有 macro-action / option 手法效果時好時壞，取決於巨集動作是否貼合任務的潛在結構。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>三步外迴圈（抽象）＋內迴圈（取樣器訓練）</strong>：1) 生成動作語料（取 N 條軌跡，可摻 replay buffer 中比例 p 的高回報軌跡）；2) <strong>chunking</strong>：對動作序列跑 <strong>BPE</strong>（Gage, 1994）得到新 token（chunk）；3) 把 chunk 加進動作空間，選中時依序執行其構成的原子動作。</li>
+<li><strong>兩種變體</strong>：<strong>ActionPiece-Increment</strong>（每輪只加「最高頻」那一個 chunk，動作空間一次長一格，像 curriculum 漸進成長）；<strong>ActionPiece-Replace</strong>（每輪取前 M 高頻 chunk、幾乎整組替換舊庫，一步可挖多個 chunk 但更新過猛）。</li>
+<li><strong>非平穩動作空間的參數化</strong>：策略不再輸出固定維度 logits，而是輸出動作嵌入 qt，並用 <strong>LSTM 動作編碼器</strong> 把 chunk 的原子動作序列編成嵌入，logits = f(A)·qt/√d，讓網路能吃進不斷變動的動作集。</li>
+<li><strong>ShortParse 反向策略</strong>：為 GFlowNet 新設計的固定 backward policy，專取「步數最少」的反向軌跡。</li>
+<li><strong>何時 chunk</strong>：每 k 次迭代一次；GFlowNet 亦可用 TB loss 降到閾值以下為觸發條件。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>加速 mode 發現</strong>：跨 FractalGrid / RNA Binding / Bit Sequence，GFlowNet 版 ActionPiece 一致優於無壓縮的 ATOMIC；FractalGrid 中所有取樣器原本都卡在第一個 mode，chunking 解鎖了抓遠處 mode 的探索力。對 A2C/SAC 則效果不一（貪婪行為會加入超大 chunk 反傷探索）。</li>
+<li><strong>改善密度估計</strong>（7 節點圖環境，Table 1）：ActionPiece-Increment 的 ELBO Gap 0.25（±0.14）、JSD 0.36、L1 1.39，優於 ATOMIC（JSD 0.38、L1 1.44）。</li>
+<li><strong>chunk 捕捉潛在結構</strong>：GFlowNet + Increment 的 chunk occurrence/coverage 最高；shortest parse 最短（最接近直接對 modes 跑 BPE 的下界），代表壓縮力最強。</li>
+<li><strong>可遷移</strong>：用 L14 RNA1 學到的庫初始化去跑 RNA2/RNA3 仍提升 mode 數；GFlowNet 產出的庫遷移性最佳。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>只用 BPE、且針對<strong>固定目標分佈</strong>做 chunking；未學「任務條件化的庫」。</li>
+<li>ActionPiece-Replace 更新過猛（一次換掉全庫），策略來不及適應，表現與遷移都較差。</li>
+<li>對貪婪型 RL（A2C/SAC）可能有害；隨機取樣器只在簡單任務有效。</li>
+<li>未來方向：把「學抽象」建模成聯合分佈 p(X, L)（L 為抽象庫的分佈），並延伸到<strong>程式碼生成</strong>（好抽象讓複雜任務變簡單）。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>直接對應 ai_core §3.6 <strong>固化引擎</strong>最硬的未決點：<strong>「庫成長不爆炸的控制式增量抽象」</strong>。ActionPiece 給了一個乾淨的機制答案——<strong>Increment 每輪只加一個最高頻 chunk</strong>（curriculum 式漸進、庫線性成長、策略有時間適應），對照 <strong>Replace 一次全換就崩</strong>，正是「控制增量 vs 爆炸」的實證對照組。這暗示 ai_core 的抽象庫應採<strong>單步增量入庫＋讓下游先穩定</strong>，而非批量重建。</li>
+<li>與已入庫的 <strong>[[SkillReuseCompression]]（MDL 壓縮技能）</strong> 對照：本文同樣站在 <strong>MDL/最短描述長度</strong>傳統（明確引 Rissanen 1978、DreamCoder、library learning），但把壓縮對象從「技能/程式」換成「動作軌跡」，並用 <strong>shortest parse</strong> 當壓縮度的可量化指標——可作為固化引擎「一個案例被結晶得多好」的度量。</li>
+<li>機制可移植：<strong>BPE 對高頻子序列成塊</strong>是把「LLM 反覆處理的相似案例」結晶成確定性抽象的低成本做法；<strong>只餵高回報軌跡</strong>＝憑證式篩選（呼應 §3.4 拒絕為預設）。歸 <strong>I 類</strong>（抽象/庫學習；因觸及程式合成，偏 G 亦可）。適合思考固化引擎、技能庫治理、增量抽象控制的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2410.15184_ActionPiece.zh-TW.html"><code>../translate/2410.15184_ActionPiece.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

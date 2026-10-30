@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>自動化技能發現：探索與迭代回饋（2/2） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2506.04287_AutoSkillDiscovery.zh-TW.html">回 2506.04287_AutoSkillDiscovery.zh-TW 目錄</a></p>
+</blockquote>
+<h2 id="1-引言">1. 引言</h2>
+<p>大型語言模型（LLM）驅動的代理在複雜環境互動中展現出顯著能力。對這些代理的一個重要願景是實現<strong>開放式性（open-endedness）</strong>：在無人類干預的情況下自主探索、學習並持續擴展其能力範圍。僅依靠提示技術（如推理、反思、樹搜尋）的上下文學習不足以支撐持續性自主學習——代理在陌生環境中缺乏對可能行動及其後果的認知，必須具備環境內持續學習機制。</p>
+<p>收集合適訓練資料是關鍵瓶頸。手動收集軌跡成本極高。近期工作利用 LLM 自動合成指令-軌跡資料集，但多採用 <strong>proposal-first（先提案後執行）</strong> 策略：讓 LLM 直接提出任務再收集軌跡。此策略有雙重缺陷：（1）未與環境互動的 LLM 無法判斷任務可行性，產出大量無效任務；（2）不了解代理當前能力缺口，生成資料對代理學習無幫助（已勝任的任務不提供學習訊號）。</p>
+<p>本文提出 <strong>EXIF（EXploration and Iterative Feedback）</strong>，結合探索優先機制與迭代回饋的自動化技能發現框架。核心由兩個 LLM 代理構成——<strong>Alice</strong>（探索代理，ϕ）與 <strong>Bob</strong>（目標代理，θ）——形成「探索→生成指令→訓練→評估→回饋→再探索」的閉環。</p>
+<h2 id="2-方法exif">2. 方法：EXIF</h2>
+<h3 id="21-探索與技能資料集生成">2.1 探索與技能資料集生成</h3>
+<p><strong>初始探索</strong>：Alice 不帶外部目標 g 與環境互動，僅基於互動歷史 h_t 與當前觀察 o_t 生成行動 a_t ∼ π_ϕ(·|h_t, o_t)。目標是產生多樣互動軌跡 τ_exp = (o_1, a_1, ..., o_T, a_T)。使用弱約束（Webshop 中指定 persona 引導購物偏好；Crafter 中「盡可能存活」）避免完全隨機行為。探索至終止條件後，產出軌跡集 D_exp = {τ_exp^(j)}。</p>
+<p><strong>指令生成</strong>：Alice 分析每條軌跡 τ_exp^(j)，生成描述所展示行為的自然語言指令 I^(j)。產出技能資料集 D_skill = {(I^(j), τ^(j))}——每條指令由實際可執行的軌跡反向生成，保證可行性與 grounding。</p>
+<p><strong>回饋條件探索</strong>：第二輪起，探索以前一輪回饋 F^(k) 為條件：a_t ∼ π_ϕ(·|h_t, o_t, F^(k))。回饋將探索引向 Bob 當前能力缺口所在區域。</p>
+<h3 id="22-bob-的監督微調">2.2 Bob 的監督微調</h3>
+<p>Bob（π_θ）在 D_skill 上進行 SFT，最大化軌跡中行動的對數似然：L_SFT(θ; D_skill) = −Σ_j Σ_t log π_θ(a_t^(j) | h_t^(j), o_t^(j), I^(j))。產出 Bob 的首版策略 π_θ(0)。</p>
+<h3 id="23-回饋生成與迭代流程">2.3 回饋生成與迭代流程</h3>
+<p><strong>回饋生成</strong>：評估 Bob 策略 π_θ(k) 在目標環境中的表現，Alice 分析成敗模式（如搜尋關鍵字不夠精細、未能完成特定子任務、重複無效行動），生成自然語言回饋 F^(k) 編碼 Bob 的不足。</p>
+<ul>
+<li><strong>Webshop</strong>：從驗證集（task IDs 501-550）抽樣 6 條軌跡（2 成功 + 4 失敗，reward 0.5 為閾值），產出 2 條探索指引。</li>
+<li><strong>Crafter</strong>：Bob 無目標存活，Alice 分析 20 條 rollout 軌跡，以 JSON 產出 behavior_analysis 與 next_iteration_advice（通常以&quot;Focus on...&quot;開頭）。</li>
+</ul>
+<h2 id="重複流程回饋條件探索指令生成訓練評估回饋形成閉環每輪技能資料集皆針對-bob-的前一輪弱點"><strong>重複流程</strong>：回饋→條件探索→指令生成→訓練→評估→回饋，形成閉環，每輪技能資料集皆針對 Bob 的前一輪弱點。</h2>
+<h2 id="title-透過探索與迭代回饋實現語言代理的自動化技能發現part-22實驗與結論-source-httpsarxivorgabs250604287-arxiv_id-250604287-date-2025-06">title: 透過探索與迭代回饋實現語言代理的自動化技能發現（part 2/2：實驗與結論）
+source: https://arxiv.org/abs/2506.04287
+arxiv_id: 2506.04287
+date: 2025-06</h2>
+<h1 id="自動化技能發現探索與迭代回饋22">自動化技能發現：探索與迭代回饋（2/2）</h1>
+<h2 id="3-實驗">3. 實驗</h2>
+<h3 id="31-環境與設定">3.1 環境與設定</h3>
+<ul>
+<li><strong>Webshop</strong>：文字模擬電子商務。觀察為網頁文字，行動為搜尋與點擊。關鍵技能：指令接地、關鍵字選擇、產品識別與屬性點擊。Alice 用 GPT-4o，每輪探索 250 episodes，最大值步數 10。</li>
+<li><strong>Crafter</strong>：類 Minecraft 2D 生存。將圖像轉文字（狀態、庫存、周圍、前方實體）。關鍵技能：探索、健康管理、礦物收集、工具製作。探索 50 episodes/round，每條長軌跡經規則分段（監測狀態/庫存/周圍變化）後取最後四步為技能片段。</li>
+<li><strong>Bob 模型</strong>：Qwen2.5-7B 與 Llama3.1-8B。另測試 Qwen2.5-7B 同時擔任 Alice 與 Bob（自演化實驗）。使用 LoRA SFT。</li>
+<li><strong>基線</strong>：Base（未訓練）、PF（proposal-first）、EF（explore-first 無回饋）、GPT-4o。</li>
+</ul>
+<h3 id="32-主要結果">3.2 主要結果</h3>
+<p><strong>Webshop</strong>：Llama3.1-8B reward 從 2.0→52.0（超越 GPT-4o 的 16.5）；Qwen2.5-7B 從 5.0→52.6。SR 從 0%→7%（Llama）/12.4%（Qwen）。GPT-4o 自身也不熟悉 Webshop，解釋了 PF 的失敗。</p>
+<p><strong>Crafter</strong>：Qwen NS 從 9→15（與 GPT-4o 持平）；Llama NS 從 7→14。AP 方面 Qwen 從 11.6%→30.4%，Llama 從 11.4%→31.9%。代理學會管理健康、逐步升級裝備。</p>
+<p><strong>迭代趨勢</strong>：EF 在 1-2 輪後 plateau——僅堆資料無效；EXIF 每輪回饋都帶來穩定增益。</p>
+<h3 id="33-軌跡與回饋分析">3.3 軌跡與回饋分析</h3>
+<ul>
+<li><strong>可行性</strong>：PF 有效技能資料比例 &lt;30%（Webshop 22%, Crafter 45%），EF 達 70-93%。PF 產出「用煤炭熔煉生牛肉」等看似合理但環境中不存在的任務。</li>
+<li><strong>行為改變</strong>（Webshop）：回饋驅動搜尋關鍵字增加、重複行動減少、屬性點擊增加。</li>
+<li><strong>技能遷移</strong>（Crafter）：迭代 1 聚焦基礎採集，迭代 3 聚焦鐵工具素材、避開低階木製工具重複。技能分佈從基礎→進階，回饋有效引導探索方向。</li>
+</ul>
+<h3 id="34-附加研究">3.4 附加研究</h3>
+<ul>
+<li><strong>自演化</strong>：Alice 換成 Qwen2.5-7B（與 Bob 相同），效能仍顯著提升並接近 GPT-4o-Alice——不需專有模型即可自我演化（似 self-play）。</li>
+<li><strong>累積策略</strong>：Webshop 中非累積即可（新資料品質更高自然覆蓋舊資料）；Crafter 中累積較好（不同輪次技能正交，防止遺忘）。</li>
+</ul>
+<h2 id="4-相關工作">4. 相關工作</h2>
+<p>語言代理中的技能可定義為潛在變數、自然語言子目標、或隱式行動序列。本文跟隨後者，旨在發現受環境與代理能力雙重接地的可行技能。課程生成方面，近期工作使用 LLM 為代理定義訓練課程或基於有趣性生成任務；EXIF 增加了探索後回溯標註的可行性保證。資料集合成方面，EXIF 將探索式合成擴展為師生代理間的迭代互動。</p>
+<h2 id="5-結論">5. 結論</h2>
+<p>EXIF 為 LLM 代理提供無需人類示範的自動化技能發現框架——探索優先確保可行性、迭代回饋確保針對性、雙代理分工（Alice 探索/評估，Bob 學習/執行）實現閉環。實驗證明可在多樣環境中有效擴展代理技能，甚至在自演化設定下也展現潛力，朝向真正的開放式學習代理。</p>
+<h2 id="關鍵概念速查">關鍵概念速查</h2>
+<table>
+<thead>
+<tr>
+<th>概念</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>探索優先（exploration-first）</td>
+<td>先自由互動收集軌跡，事後生成指令——軌跡保證可行性</td>
+</tr>
+<tr>
+<td>提案優先（proposal-first）</td>
+<td>先提目標任務再嘗試執行——LLM 不知環境，任務常無效</td>
+</tr>
+<tr>
+<td>Alice（探索代理）</td>
+<td>無目標探索、生成指令、評估 Bob 表現、產出回饋</td>
+</tr>
+<tr>
+<td>Bob（目標代理）</td>
+<td>接受技能資料 SFT 訓練，在環境中執行任務</td>
+</tr>
+<tr>
+<td>迭代回饋閉環</td>
+<td>Alice 分析 Bob 成敗→回饋→引導下一輪探索→訓練→再評估</td>
+</tr>
+</tbody>
+</table>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

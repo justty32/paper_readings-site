@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實證發現 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2308.00675_ToolDoc.zh-TW.html">回 2308.00675_ToolDoc.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97%E8%A8%AD%E5%AE%9A.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實證發現">4 實證發現</h2>
+<p>從三方面展示工具文件的重要性：（一）文件減少對示範的需求（§4.1）；（二）據此，靠文件而非示範能更可擴展地為 LLM 配備大量工具（§4.2）；（三）僅憑工具文件，LLM 就能理解並運用最新視覺模型，在影像編輯與影片追蹤上做出令人印象深刻、原本需人工示範或預定義流程才能達成的結果（§4.3）。</p>
+<h3 id="41-文件繞過對示範的需求">4.1 文件繞過對示範的需求</h3>
+<p>在 ScienceQA、TabMWP、NLVRv2 三個資料集上，評估「加/不加工具文件」在不同示範數下的表現。</p>
+<p>圖 4 顯示：有工具文件時，隨示範數被逐步抽掉，模型表現仍穩定。事實上完全不用示範（0-shot）時，模型在 TabMWP 追平 <strong>16-shot</strong>、在 NLVRv2 追平 <strong>12-shot</strong>；在 ScienceQA 甚至僅靠文件就<strong>勝過</strong>額外用 10-shot 示範。反之，沒有工具文件時模型對示範數極敏感——減少示範，三個資料集表現都大跌。這凸顯工具文件的重要，是減少對示範依賴的有效途徑。表 1 也顯示，即使 0-shot，加文件也能與既有基線競爭。</p>
+<p>繞過示範需求後，就能省去精心策劃示範的功夫。與近期研究一致，圖 4 中模型表現對「用哪些示範」很敏感（如 ScienceQA 的 5-shot、NLVRv2 的 2-shot 都有很大的表現變異）。</p>
+<p>（圖 4：gpt-3.5-turbo 在各基準上，加/不加文件與示範及其組合的工具使用表現；只用文件（左上藍點）在所有資料集上都有競爭力。）</p>
+<p><strong>表 1（與既有基線比較，擇要）</strong>：0-shot＋文件表現有競爭力，在 ScienceQA、TabMWP 勝過 CoT 與 PoT。</p>
+<table>
+<thead>
+<tr>
+<th>基準</th>
+<th>基線方法</th>
+<th>無 doc（0-shot）</th>
+<th>有 doc（0-shot）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ScienceQA</td>
+<td>CoT 78.54</td>
+<td>78.25</td>
+<td><strong>79.91</strong></td>
+</tr>
+<tr>
+<td>TabMWP</td>
+<td>PoT 89.28</td>
+<td>84.13</td>
+<td><strong>92.69</strong></td>
+</tr>
+<tr>
+<td>NLVRv2</td>
+<td>ViLT-NLVR 76.30（微調）</td>
+<td>0.00</td>
+<td>63.40（LLM 零樣本）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="42-文件讓工具使用可有效率地規模化">4.2 文件讓工具使用可有效率地規模化</h3>
+<p>§4.1 顯示可用文件減少對少樣本示範的依賴。放寬此約束後，研究文件能否讓 LLM 更可擴展地配備大量工具——少樣本示範在覆蓋有限工具用例時會力不從心。本節在新收集、含 <strong>200 個可用工具</strong>的 LLM Cloud CLI 上呈現發現。</p>
+<p><strong>質性走查（圖 3）</strong>：如預期，零樣本 LLM 能正確回應熟知的 <code>touch</code> 命令；但面對未見的 LLM-Cloud 命令列，因不懂其語法與用法而失敗。少樣本示範雖有潛力，但因命令列工具數量龐大、覆蓋有限，某些命令或旗標未被充分涵蓋——例如模型雖從示範學會常見的資料複製，卻在較少見的 <code>--port</code> 旗標上出錯，因熟悉 Linux 的 <code>scp -P</code> 而幻覺地用了 <code>-P</code>。反之，僅靠提供的文件，模型不但能辨識用工具所需步驟（如「送訊息前需先建 topic」這種隱藏步驟），還能靠文件資訊正確設定旗標（如 <code>--port</code>）。</p>
+<p><strong>量化比較（圖 5）</strong>：計算每例的命令列層級 F1、取 50 例平均。零樣本設定下所有 LLM F1 都低：零樣本 text-davinci-002 為 <strong>0.02</strong>、gpt-3.5-turbo 為 <strong>0.13</strong>（後者較高是因較會處理 <code>touch</code> 等常見 Linux 命令）。少樣本雖優於零樣本，但仍在未覆蓋的命令/旗標上失敗——最佳少樣本在兩模型分別僅 <strong>0.05 / 0.19</strong>。而加上文件則大幅提升到 <strong>0.37 / 0.45</strong>。</p>
+<p>進一步比較「純文件」與「文件＋少樣本示範」：text-davinci-002 上純文件 F1 為 0.37，文件加不同 shot 平均反而是 0.35；gpt-3.5-turbo 上不同 shot（0.44、0.44、0.42）也一致低於純文件的 0.45。兩點觀察：其一，模型表現對少樣本示範的選擇高度敏感，更多示範可能因虛假相關而冗餘甚至降效，凸顯謹慎挑選與設計（需更多人工）的重要；其二，零樣本讀文件基線展現出色的穩健與競爭力，凸顯「單靠通常容易取得的文件」的價值與可靠。</p>
+<h3 id="43-影像與影片新工具的即插即用">4.3 影像與影片新工具的即插即用</h3>
+<p>驗證僅憑工具文件、無需更多示範，就能為 LLM 配備未見工具以解新任務。近期視覺模型突破——GroundingDINO（先進開集物件偵測器）、SAM（頂尖影像分割）、XMem（頂尖影片物件分割）——皆為 LLM（gpt-3.5-turbo）不熟悉的新工具。把它們加入 VisProg，探索 LLM 能否輕鬆理解其文件並即插即用地組合。</p>
+<p>圖 6 中，面對影像編輯請求「把長椅換成藍色沙發」，LLM 生成的 VisProg 程式用 GroundingDINO 與 SAM 分割長椅、再用 Stable Diffusion 合成沙發——在不知情的情況下<strong>重新發明</strong>了近期熱門專案 <strong>Grounded-SAM</strong>。同理，面對「追蹤影片中的貓」，生成的程式用 GroundingDINO＋SAM 做首幀分割當初始化、交給 XMem 做影片追蹤——重新發明了同期工作 <strong>Track Anything</strong>。作者指出 TaskMatrix 雖也有結合 Grounded-SAM 的做法，但它是把整條 Grounded-SAM 編輯流程<strong>預先寫死</strong>成一個影像編輯函式供 LLM 控制，而非如本文讓 LLM <strong>僅用積木工具自行生成</strong>編輯程式。</p>
+<p>在不知情、僅靠可用積木的情況下成功重新發明 Grounded-SAM 與 Track Anything，LLM 展現了不僅能輕鬆理解並組合帶文件的新工具，更凸顯其<strong>自動知識發現</strong>的潛力——僅靠既有知識、無需更多示範就發現新洞見。</p>
+<h3 id="44-表現-vs-文件品質">4.4 表現 vs 文件品質</h3>
+<p>探討文件品質對表現的影響。為評估 LLM 理解真實文件的能力，作者刻意<strong>不做</strong>內容工程或策劃，而是以「截斷保留前 n 字」變動文件長度、作為評估詳盡度/品質的代理。此消融用有長文件（基於真實 GCP CLI 手冊）的 LLM-Cloud 基準。</p>
+<p>圖 7：在 text-davinci-002 與 gpt-3.5-turbo 上一致觀察到——表現隨文件長度增加而提升，直到 <strong>600 字</strong>。這印證模型有能力有效理解並運用文件，且此提升<strong>無需任何額外訓練、微調或文件策劃</strong>，凸顯提供完整文件的巨大價值：僅靠讀懂文件就能規模化地運用大量命令列工具。文件超過 600 字後表現略降，歸因於語言模型理解長文的固有困難；但作者預期長輸入處理技術的持續進展會逐步解決此限制，留作未來研究。</p>
+<h2 id="5-結論">5 結論</h2>
+<p>本文檢視工具文件在賦能 LLM 零樣本使用工具上的效果。先顯示 LLM 有工具文件時可達到與少樣本相當甚至更好的表現；再透過純文件規模化到大得多的工具集；只要把新工具連同其文件插入，LLM 就能無需更多示範地處理影像編輯與影片追蹤等未見任務、並複製近期熱門專案的功能，暗示自動知識發現的潛力。整體而言，本文提供工具使用的新視角——聚焦 LLM 藉文件展現的內部規劃與推理能力，而非以示範明確引導其行為。</p>
+<h2 id="附錄擇要">附錄擇要</h2>
+<ul>
+<li><strong>A 更廣影響與局限</strong>：本研究探討工具文件在讓 LLM 組合多樣工具用法以完成複雜任務上的重要性。須審慎思考該把哪些工具開放給 LLM、以及如何解讀與依賴模型結果。作者把工具文件視為引導 LLM「更安全、且符合工具原始設計意圖」地使用工具的管道。</li>
+<li><strong>B 實作細節</strong>：所有實驗在配 40GB A100 GPU 的 Debian GNU/Linux 10 機器上進行。ScienceQA 沿用 Chameleon 原始設定（含工具文件與示範），並為常給出不準確描述的「Image Captioner」模組在文件中加註「生成的說明可能不準」。TabMWP 嚴格沿用 Chameleon 設定。NLVRv2 沿用 VisProg 設定、但因其未用文件，作者自建工具文件。<strong>LLM-Cloud CLI</strong>：用 BeautifulSoup 爬取 GCP CLI 文件、去 HTML 標籤並執行改名程序；刻意<strong>不移除</strong>條款、超連結等無關內容，以避免過度工程化文件、更能評估 LLM 讀文件的穩健性。文件檢索：因 200 工具的完整文件塞不進單一提示，每題以簡單 TF-IDF 取前 10 份相關文件、截斷至最多 600 字（實際 token 數依各 LLM 分詞器而定，通常多於 600）。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2308.00675_ToolDoc.%E6%91%98%E8%A6%81.html"><code>../summarize/2308.00675_ToolDoc.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

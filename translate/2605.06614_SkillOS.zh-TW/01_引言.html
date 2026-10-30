@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>SkillOS（Part 2：方法） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.06614_SkillOS.zh-TW.html">回 2605.06614_SkillOS.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="1-引言">1. 引言</h2>
+<p>基於 LLM 的代理（agent）正被大量部署於現實場景處理串流任務，但主流範式仍是「一次性」執行——每個任務從頭開始，無法從過去互動中學習。這使得自我進化（self-evolution）至關重要：有能力的代理不應反覆從零開始，而應持續累積、精煉、重用經驗。</p>
+<p>自我進化的關鍵基質之一是<strong>程序性記憶（procedural memory）</strong>——具體而言，是從過去互動中蒸餾出的<strong>可重用技能（reusable skills）</strong>。在現實串流環境中，技能驅動的自我進化代理遵循閉環工作流：對每個新任務，選擇相關技能引導執行，再根據執行軌跡更新技能集合。這使得<strong>技能策展（skill curation）</strong>——提取高品質經驗並整合進技能集合——成為自我進化代理的核心瓶頸。</p>
+<p>然而，現有技能策展方法存在明顯局限：(1) 手動策展（如 Anthropic skills repository）需要大量人類專業知識且無法擴展；(2) 提示或啟發式方法（指令固定規則進行記憶操作）缺乏下游效能反饋，無法適應 executor 的實際需求；(3) 近期 RL 研究雖開始最佳化技能相關系統，但要麼只教代理使用技能、要麼在短任務流中最佳化技能操作，未能提供學習長程管理操作（如更新過時技能、刪除有害技能）所需的密集訊號。</p>
+<p>為解決此挑戰，本文提出 <strong>SkillOS</strong>——一種基於經驗驅動的 RL 訓練方案，用於學習自我進化代理的技能策展能力。核心設計：</p>
+<ul>
+<li>
+<p><strong>模組化雙代理架構</strong>：凍結的 Agent Executor（<span class="math inline">\(\pi_L\)</span>）利用外部 SkillRepo 解決任務；可訓練的 Skill Curator（<span class="math inline">\(\pi_S\)</span>）透過函式呼叫（insert_skill / update_skill / delete_skill）管理 SkillRepo。技能以 Markdown 檔案表示（YAML frontmatter + 指令文本），管理介面類似作業系統檔案 I/O——故名 SkillOS。</p>
+</li>
+<li>
+<p><strong>分組任務流訓練</strong>：每訓練實例為一組相關任務（LLM 標註屬性後依軟 Jaccard 相似度分組），早期任務的技能更新在後續相關任務中被評估——將策展奠基於長程效用。</p>
+</li>
+<li>
+<p><strong>複合獎勵</strong>：結合任務成功率、函式呼叫有效性、技能內容品質（Qwen3-32B 裁判）、SkillRepo 精簡度四種訊號來解決延遲反饋歸因問題。</p>
+</li>
+</ul>
+<p>以 GRPO 最佳化策展器。在 ALFWorld、WebShop 等代理任務與 AIME、GPQA 等推理任務上，SkillOS 一致超越無記憶與記憶基礎基線（最高 +9.8%、-6.0% 步驟）。8B 策展器甚至超越 Gemini-2.5-Pro 直當策展器，且跨 executor 與跨任務域泛化。分析顯示策展器產生更有針對性的技能使用，SkillRepo 隨時間演化出更豐富的內部結構與高階元技能。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<h3 id="自我進化代理的記憶機制">自我進化代理的記憶機制</h3>
+<p>從過去經驗學習作為程序性記憶是自我進化代理的核心機制。記憶表示分為兩層級：</p>
+<ul>
+<li><strong>案例層級</strong>：以最小處理儲存經驗供直接重播或作為上下文範例——如原始軌跡、抽象化查詢–回應對。</li>
+<li><strong>策略層級</strong>：將經驗抽象化為可編輯、可審計、可組合的高階知識——如可重用工作流、蒸餾洞察、重複模式。近期**技能（skills）**作為一種新的代理原生記憶形式崛起，因其模組化和易於客製而成為可編排的能力層。</li>
+</ul>
+<p>Anthropic 將每技能概念化為包含指令、腳本和支援資源的資料夾——此設計已被社群廣泛採用。本文遵循此理念，為研究目的簡化為每技能一個 Markdown 檔案。</p>
+<h3 id="用-rl-學習記憶與技能策展">用 RL 學習記憶與技能策展</h3>
+<p>用 RL 訓練具記憶能力的 LLM 代理系統已成新興方向。一條線聚焦於訓練長上下文管理（如壓縮），另一條線聚焦於透過學習額外記憶工具呼叫或訓練各階段策略來實現記憶利用與管理。更近期，RL 被應用於代理技能開發各階段：SkillRL 和 D2Skill 教小型模型使用來自強 LLM 策展的技能；ARISE 訓練共享策略同時作為技能檢索器與工作者。</p>
+<h2 id="關鍵近展是開始訓練代理進行記憶技能策展但其監督大多局限於短任務流中的局部適應這有利於-skill-insertion-等立即可用操作但對複雜管理操作修訂過時技能刪除有害技能提供的訊號有限skillos-將技能策展形式化為長程executor-接地的學習問題透過分組相關任務為訓練實例並結合下游任務成果與中間獎勵將延遲且間接的反饋轉化為策展學習訊號">關鍵近展是開始訓練代理進行記憶／技能策展，但其監督大多局限於短任務流中的局部適應——這有利於 skill insertion 等立即可用操作，但對複雜管理操作（修訂過時技能、刪除有害技能）提供的訊號有限。SkillOS 將技能策展形式化為長程、executor 接地的學習問題：透過分組相關任務為訓練實例，並結合下游任務成果與中間獎勵，將延遲且間接的反饋轉化為策展學習訊號。</h2>
+<h2 id="title-skillos學習技能策展以實現自我進化代理skillos-learning-skill-curation-for-self-evolving-agents-part-2-source-httpsarxivorgabs260506614-arxiv_id-260506614-note-3-方法接續-part-112-summary-summarize260506614_skillos摘要md-parent-260506614_skilloszh-twmd">title: SkillOS：學習技能策展以實現自我進化代理（SkillOS: Learning Skill Curation for Self-Evolving Agents）— Part 2
+source: https://arxiv.org/abs/2605.06614
+arxiv_id: 2605.06614
+note: §3 方法。接續 Part 1（§1–§2）。
+summary: ../summarize/2605.06614_SkillOS.摘要.md
+parent: 2605.06614_SkillOS.zh-TW.md</h2>
+<h1 id="skillospart-2方法">SkillOS（Part 2：方法）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

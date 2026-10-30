@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2505.20881_MoH_Meta_Optimization_Heuristics.zh-TW.html">回 2505.20881_MoH_Meta_Optimization_Heuristics.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>以大型語言模型（LLM）做啟發式設計，已成為求解組合最佳化問題（COP）的有前景途徑。但既有方法常依賴<strong>人工預設的演化計算（EC）啟發式優化器</strong>與<strong>單一任務訓練</strong>，限制了多樣啟發式的探索並阻礙泛化。為此提出 <strong>MoH（Meta-Optimization of Heuristics）</strong>——一個在<strong>優化器層級</strong>運作的新框架，依<strong>元學習</strong>原則發掘有效的 heuristic-optimizer。具體而言，MoH 用 LLM 迭代精煉一個 <strong>meta-optimizer</strong>，後者透過 <strong>（自我）調用</strong> 自主構造多樣的 heuristic-optimizer，從而<strong>擺脫對預設 EC 優化器的依賴</strong>；這些被構造出的 heuristic-optimizer 再為下游任務演化啟發式，達成更廣的探索。此外 MoH 採<strong>多任務訓練</strong>提升泛化。經典 COP 實驗顯示 MoH 能構造出有效且可解釋的 meta-optimizer，在各下游任務（尤其<strong>跨規模</strong>設定）達到 SOTA。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>啟發式長期是求解 COP 的核心（精確法因指數時間複雜度而不可行時尤甚），如 TSP 的 Lin-Kernighan（LKH）、BPP 的 Best Fit。但人工設計啟發式需深入理解各問題結構、耗時且高度依賴專家。近年 LLM 帶來轉變：以**情境學習（in-context learning）**提示 LLM 產生啟發式，作為（元）啟發式或學習型求解器的組件。Romera-Paredes 等（2024，FunSearch）首開先河；後續 <strong>LLM-EC</strong> 框架（EoH、ReEvo 等）用 LLM 執行交叉、變異等演化操作來演化啟發式。</p>
+<p><strong>既有 LLM-EC 的兩大限制</strong>：(1) 搜尋空間被<strong>人工預設、固定的 EC 啟發式優化器</strong>（如固定的「交叉後變異」工作流）框死，限制多樣啟發式探索；(2) 優化只針對<strong>單一任務（固定規模 COP）</strong>，限制泛化。圖 1 顯示代表性方法 EoH 在 TSP 上，<strong>隨問題規模增大性能差距持續擴大</strong>；引入跨規模資料只能部分緩解。</p>
+<p><strong>MoH</strong> 利用 LLM 的情境推理與精煉能力來<strong>自動化優化器設計</strong>。論文依角色把優化器分兩類：<strong>heuristic-optimizer</strong>（如傳統 EC 框架，用來生成/精煉 COP 啟發式以提升解品質）與 <strong>meta-optimizer</strong>（更高層程序，調適並強化前者）。MoH 在多任務框架內實作一個<strong>迭代式元優化模組</strong>。每輪迭代，meta-optimizer 透過（自我）調用生成一群多樣的候選 heuristic-optimizer；以「在下游任務優化任務專屬啟發式的成效」評估，<strong>最有前景者升格為下輪的 meta-optimizer</strong>。</p>
+<p><strong>貢獻</strong>：1) 提出 MoH，以元優化自主發掘有效優化策略、拓寬探索，解決 LLM-EC 固有限制；2) 置於多任務訓練框架以增進對未見任務的泛化；3) 大量實驗證明 MoH 能產生有效且可解釋的 meta-optimizer，一致勝過基線，且在大規模 COP 實例上表現強勁。</p>
+<h2 id="2-預備知識">2. 預備知識</h2>
+<p><strong>三個經典 COP</strong>：</p>
+<ul>
+<li><strong>TSP（旅行商）</strong>：完全圖上找成本最小的哈密頓迴路，每城恰訪一次。</li>
+<li><strong>BPP（裝箱）</strong>：把物品裝入最少數量、固定容量 C 的箱子。分<strong>線上</strong>（物品依序到達、即時且不可逆地決策、無未來資訊）與<strong>離線</strong>（已知全部物品、可全域最佳化）。</li>
+<li><strong>CVRP（容量受限車輛路徑）</strong>：在 TSP 上加入車輛容量限制——每條路徑起訖於 depot、每客戶恰訪一次、路徑總需求不超過容量 Q，最小化總成本。</li>
+</ul>
+<p><strong>既有 LLM-EC</strong>：維持固定大小的啟發式族群，EC 優化器反覆選優並施加交叉/變異產生改良變體；雖能快速收斂到不錯的啟發式，但受限於對龐大搜尋空間探索不足。後續變體（反思機制、結合 MCTS）仍受探索受限或計算成本高之苦。<strong>對比</strong>：既有法聚焦用固定 EC 優化器做<strong>啟發式設計</strong>，MoH 則瞄準<strong>優化器設計</strong>，更進一步讓這類高層優化框架本身可被自動設計。</p>
+<h2 id="3-方法">3. 方法</h2>
+<p><strong>兩層優化</strong>：<strong>外迴圈做優化器設計、內迴圈做啟發式設計</strong>。MoH 旨在構造一個能同時生成有效優化策略並改進下游任務啟發式的 meta-optimizer。</p>
+<h3 id="31-問題形式化">3.1 問題形式化</h3>
+<p>設有 N 個下游任務，每個對應一個 COP 的啟發式設計任務。對任務 i，hᴵᵢ 為優化器 I 找到的啟發式，Dᵢ 為驗證集，Uᵢ(hᴵᵢ, Dᵢ) 為效用函數（定義為<strong>解最佳性差距 gap 的負值</strong>）。啟發式設計目標：在搜尋空間 Hᵢ 內求最佳啟發式（式 1）。多數既有研究把 EC 當成 LLM 內的 heuristic-optimizer I，但固定 I 的剛性結構難以探索龐大空間，且需對每個任務分別訓練、成本高；單純混合各任務資料又因「單一 COP 啟發式難跨任務適配」（No Free Lunch）而次優。</p>
+<p>MoH 不靠固定 I，而<strong>直接搜尋優化器</strong>（優化器設計）。其目標（式 2）：
+I* ← Ĩ = argmax_I Σᵢ wᵢ · Uᵢ(h̃ᴵᵢ, Dᵢ)，其中 h̃ᴵᵢ = argmax Uᵢ(hᴵᵢ, Dᵢ)，
+任務權重 <strong>wᵢ = sᵢ / Σⱼ sⱼ</strong>（sᵢ＝第 i 個下游任務的問題規模）。即在式 1 外再套一層外迴圈：meta-optimizer I* 經（自我）調用產生一群候選 heuristic-optimizer，效用最高者 Ĩ 成為下輪的 I*。</p>
+<h3 id="32-總體流程演算法-1">3.2 總體流程（演算法 1）</h3>
+<ul>
+<li>為每個任務 i 初始化啟發式族群 Hᵢ（提示 LLM 以自然語言產生多樣點子 + 對應程式碼）。</li>
+<li>用給定的<strong>種子 meta-optimizer</strong>（圖 8）初始化優化器族群 P，作為起點與基準。</li>
+<li>迭代 t：當前 meta-optimizer Iₜ₋₁* 經（自我）調用生成候選集 {Iₜ¹,…,Iₜᴹ}；每個候選用自身 LLM 生成的策略對所有 N 任務演化啟發式，蒐集各任務最佳啟發式，算效用 U(Iₜʲ)=Σᵢ wᵢ·Uᵢ(h̃ᵢ,Dᵢ)；最高者成為 Iₜ*。</li>
+<li><strong>推論</strong>：訓練好的 Iᴛ* 可部署到新任務（如更大規模），跑數輪啟發式設計即得該任務客製啟發式。</li>
+</ul>
+<h3 id="33-詳細實作">3.3 詳細實作</h3>
+<ul>
+<li><strong>個體與族群結構</strong>：個體＝三元組〔程式碼（String）、核心策略的高層自然語言描述（String）、效用分（Float）〕；<strong>啟發式與優化器共用此格式</strong>。H 與 P 各保 <strong>10 個個體</strong>以兼顧多樣與穩定。</li>
+<li><strong>族群管理</strong>：依效用排序；新候選若勝過當前最差者則替換，插入後重排（以 heap 高效管理）。</li>
+<li><strong>優化器簽名</strong>（圖 3）：<code>optimize_algorithm(population, utility, language_model, subtask_prompt, subtask) -&gt; Tuple[str, str, float]</code>；實作由 LLM 生成，<strong>支援遞迴調用</strong>（首輪外迴圈可把自身實作經 population 參數傳入）。</li>
+<li><strong>優化器生成三步</strong>：1) 個體選擇（meta-optimizer 用其策略從 P 選候選，平衡利用高效用者與探索多樣者）；2) 點子生成（鼓勵以自然語言提出探索/精煉構想——LLM 的迭代改良關鍵在自然語言闡述的演算法推理）；3) 實作生成（依點子與任務提示，經（自我）調用 Iₜ₋₁* 精煉/生成新程式碼）。附錄 E 展示生成的 meta-optimizer，有些像傳統元啟發式，有些是混合或非常規策略。</li>
+<li><strong>啟發式生成三步</strong>：與上類似，但作用於某個 heuristic-optimizer Iₜʲ 對任務 i 的內迴圈。</li>
+<li><strong>內外迴圈差異</strong>：外迴圈以 meta-optimizer 生成 heuristic-optimizer；內迴圈把每個 heuristic-optimizer 套到所有下游任務生成啟發式。內迴圈調用頻率高於外迴圈。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

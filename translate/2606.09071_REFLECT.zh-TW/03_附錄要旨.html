@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_附錄要旨 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2606.09071_REFLECT.zh-TW.html">回 2606.09071_REFLECT.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">← 上一節</a></p>
+</blockquote>
+<h2 id="附錄要旨">附錄要旨</h2>
+<h3 id="a-提示模板">A. 提示模板</h3>
+<p>所有提示要求 LLM 回傳結構化 JSON。錯誤定位提示（§3.2）：格式化編號步（工具名、參數、推理、截斷結果 ≤500 字元），預期答案欄位可設為 [WITHHELD]。錯誤分類提示（§3.3）：呈現錯誤步的工具/推理/參數/結果，歸入 11 類。診斷提示（§3.3）：呈現正確前綴、錯誤步上下文、錯誤級聯、預期答案，產出修補計畫（根本原因、修正指令、禁止動作、預期下一工具）。忠實度閘提示（§3.3.1）：LLM 驗證提議行動是否跟隨計畫，輸出 is_faithful 及違規類型。修正後解釋提示（§3.4）：呈現原始與修正軌跡，LLM 以修正為證據解釋錯誤。步索引由重播基礎設施機械決定（ı̂_final ← 成功回溯點 p），非 LLM 判斷。</p>
+<h3 id="b-基線定位器演算法">B. 基線定位器演算法</h3>
+<p><strong>AAO（All-at-Once）</strong>：單次 LLM 呼叫接收整條軌跡，識別最早決定性錯誤步。<strong>SBS（Step-by-Step）</strong>：LLM 逐步評估，對每步 t 呈現步 1…t 並詢問步 t 是否為首個決定性錯誤，最壞 T 次呼叫。<strong>BS（Binary Search）</strong>：軌跡遞迴二分，LLM 每次選擇最早決定性錯誤步所在半區，共 ⌈log₂T⌉+1 次呼叫。</p>
+<h3 id="cd-驗證器與-ics-回溯器">C–D. 驗證器與 ICS 回溯器</h3>
+<p>四種驗證器：OracleVerifier（WTQ/GAIA 確定性字串萃取）、BBMVerifier（任務特異萃取器）、SWEVerifier（執行基準測試套件）、SelfVerifier（LLM 自主判斷，主實驗未使用）。ICS 實作依 Samanta et al. (2026)：從裸前綴重抽樣、無錯誤提示或結構化修補引導、定位器看不見預期答案。</p>
+<h3 id="e-資料處理">E. 資料處理</h3>
+<p>所有軌跡轉換為統一 StructuredTrace 格式，每步記錄：索引、AI 推理鏈、工具名、工具參數、工具結果（截斷至 500 字元）、is_final_answer。WTQ 軌跡由 R EALY agent（14 個表格代數工具的 LangGraph 系統）在 WikiTableQuestions 子集上生成，119 條軌跡由兩名註釋者獨立標註。GAIA 與 SWE-bench 使用 TRAIL 基準軌跡與人類步級標註；BBM 使用 Tyen et al. (2024) 的 mistake_index 標籤。</p>
+<h3 id="f-標註者間一致性">F. 標註者間一致性</h3>
+<p>WTQ 119 條標註軌跡每條由兩名註釋者標記最早決定性錯誤步與自由文字錯誤描述。成對 EM 一致性 0.78、Krippendorff&#x27;s α（有序）0.82，達實質一致性。剩餘分歧反映多步貢獻失敗時識別「第一個」錯誤的真實模糊性；保留所有標註者標籤為集合值黃金標準供評估。</p>
+<h3 id="g-錯誤分類法">G. 錯誤分類法</h3>
+<p>11 類源自 256 個 SWE-bench 人類標註（合併拼寫變體）：formatting_error、instruction_noncompliance、context_handling_failure、resource_abuse、poor_information_retrieval、incorrect_problem_identification、hallucination、tool_error、task_orchestration、goal_deviation、incorrect_memory_usage。</p>
+<h3 id="h-重現性">H. 重現性</h3>
+<p>Python ≥3.10、err-loc 0.1.0、langchain-openai ≥0.2、langgraph ≥1.0.2。所有實驗使用 OpenAI API gpt-5.2-2025-12-11 溫度 0.0（Opus 4.6 比較用 claude-opus-4-6 溫度 0.0）。ThinkPRM 使用發布的 1.5B checkpoint（本地 GPU 推論）。無需 GPU——全部計算透過 API。每基準 wall-clock：WTQ ~70 min、GAIA ~60 min、BBM ~45 min、SWE-bench ~30 min。全消融 ~6 小時。</p>
+<h3 id="i-計畫錨定驗證器">I. 計畫錨定驗證器</h3>
+<p>四階段：(1) 錨點生成——從問題合成硬錨點（必要實體/表格、過濾條件、輸出規格等不可協商義務）與軟錨點（1–2 個合理執行計畫備案）。(2) 軌跡正規化——事件歸組為巨集步。(3) 步級審計——每巨集步分類為良性（HOUSEKEEPING/ALIGNED/VALID_ALTERNATIVE/RECOVERY）或偏離（CONSTRAINT_DROP/EVIDENCE_CONTRADICTION/UNSUPPORTED_JUMP/MISSED_REQUIRED_SUBGOAL/OUTPUT_DRIFT），長軌跡分塊含 2 步重疊。(4) 雙重評分——誤差信號 E（嚴重性加權和經 sigmoid 壓縮）、信心 C（受模糊性懲罰）。</p>
+<p>跨基準檢測：AUROC 在 SWE-bench 0.97、GAIA 0.84、WTQ 0.68、BBM 0.56。BBM 最低因純 CoT 軌跡缺乏工具結構。</p>
+<h3 id="j-agent-配置">J. Agent 配置</h3>
+<p>WTQ：R EALY（14 表格代數工具 LangGraph 系統）。GAIA：web 搜尋、頁面導航、檔案搜尋、文字分析工具。BBM：純連鎖思考推理，無工具呼叫。SWE-bench：smolagents CodeAgent，每步直接執行 Python 程式碼（檔案讀寫、搜尋、測試執行）。</p>
+<h3 id="k-計算成本表-10">K. 計算成本（表 10）</h3>
+<p>REFLECT 的準確率增益不能歸因於更高計算預算：AgentRx 最耗計算（WTQ 20,023 tokens/trace，SWE-bench 157,599 tokens/trace，達 REFLECT 的 3 倍），但 WTQ EM 僅 51.1%（vs. REFLECT 76.3%）。ICS 比 REFLECT 便宜（WTQ 7K vs. 12K tokens）但修正率遠低（WTQ 23.7% vs. 92.6%）。REFLECT 在診斷、閘控、多重回溯上花費的額外計算產出質性不同的結果。</p>
+<h3 id="l-忠實度細節">L. 忠實度細節</h3>
+<p>補充測試：(C) 效果對措辭、位置、格式變體穩健（全在 6pp 內）。(D) 正確提示將目標工具機率提高 +17.3pp。(E) 96.7% 案例中提示在首個重生成步即刻改變行為（平均首分歧步 3.09），確認修補引導立即生效。(F) 計畫品質與遵循度交互：好計畫＋被遵循時修正率 88%，好計畫＋未被遵循時 75%（+13pp）；壞計畫＋遵循僅 +2pp（73% vs 71%）。</p>
+<h3 id="m-解釋品質表-11">M. 解釋品質（表 11）</h3>
+<p>REFLECT 在全部基準上達最高步條件化相似度：WTQ 0.760、GAIA 0.610、SWE-bench 0.450。覆蓋感知 Sim_cov 進一步擴大 REFLECT 優勢（因其更高 EM 使更多預測獲非零解釋分數）。修正-解釋耦合（§4.4）是 REFLECT 解釋的關鍵優勢：修正成功時修正後重定位產出以對比證據為接地的根因解釋。</p>
+<h3 id="n-驗證-vs-退路定位表-12">N. 驗證 vs. 退路定位（表 12）</h3>
+<p>按修正結果分層的定位：GAIA 驗證 47.1% vs. 退路 25.8% EM、BBM 35.8% vs. 14.3%，確認干預支撐歸因強於純模式匹配。WTQ 退路 N=10 且恰好全正確定位（WTQ 最簡單基準）。</p>
+<h3 id="o-案例研究圖-4">O. 案例研究（圖 4）</h3>
+<p>WTQ 例：「哪個國家有最多人口超過 50 萬的城市？」Agent 步 4 正確過濾 population &gt; 500000，但步 5 group_by 作用在原始未過濾表（靜默 bug：應使用過濾後的表輸出）。<strong>REFLECT</strong> 定位步 4，診斷為 stale-reference 錯誤，回溯至步 4 注入「將過濾輸出傳給 group_by」，重播答「United States」（正確），修正後重定位確認步 4（相似度 0.95）。<strong>ICS</strong>（無目標化引導）從步 5 前綴重抽樣三次，每次重新推導出相同 group_by（在未過濾表），答案是錯的，解釋模糊（「agent 分組時應更謹慎」）。</p>
+<h3 id="p-對各基線的延伸定位">P. 對各基線的延伸定位</h3>
+<p>逐一評定基線 R1–R4：Reflexion 僅 R4。ICS 滿足 R2+R4，R1 部分（執行重播但不回饋精煉），R3 違反（裸重抽樣）。AgenTracer/TrajAD 違反 R1–R3（前者也違反 R4）；ThinkPRM 違反 R1–R3；AgentRx 違反 R1–R3。DoVer 滿足 R3+R4，R2 部分（重播但不用對比證據），R1 部分（干預結果不用於精煉定位）。僅 REFLECT 滿足全部四項。</p>
+<h3 id="qs-授權限制倫理">Q–S. 授權、限制、倫理</h3>
+<p>所有基準均使用公開可用資源。WTQ（CC-BY-4.0）、GAIA（CC-BY-4.0）、SWE-bench（MIT）、BBM（Apache-2.0）。err-loc 函式庫以 MIT 授權釋出。</p>
+<p><strong>限制</strong>：(1) 評估限於相對結構化的靜默失敗設置；(2) 主實驗依賴 oracle 答案驗證，proxy 驗證器較弱；(3) 重播需重新執行 agent，在工具呼叫有不可逆副作用或執行環境不再可用時不可行；(4) 僅定位單一最早決定性錯誤步，多錯誤或分散失敗需多點歸因。</p>
+<p><strong>倫理</strong>：REFLECT 用於事後除錯與審計 LLM agent 軌跡，我們預見無直接負面社會影響。方法作用於已完成軌跡、不即時修改已部署 agent 行為。建議將 REFLECT 輸出視為診斷輔助而非最終判斷，人類審查仍應留存於任何部署管線。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

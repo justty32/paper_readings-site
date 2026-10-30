@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.08399_CoCoDA_Compositional_DAG.zh-TW.html">回 2605.08399_CoCoDA_Compositional_DAG.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>工具增強語言模型能以外部可執行技能擴展小型語言模型，但擴大工具庫造成耦合挑戰：庫須隨 planner 演化（新可重用子程序湧現時），而從成長中的庫檢索又須維持在固定上下文預算內。既有工具使用與技能庫方法多把工具當扁平或文字索引記憶，使提示成本隨庫大小成長、且遮蔽了可執行程式碼的型別化、組合式結構。我們提出 <strong>CoCoDA</strong>：透過單一程式碼原生結構——<strong>組合式程式碼 DAG</strong>——共演化 planner 與工具庫。節點是 primitive 或 composite 工具，邊編碼呼叫依賴，每節點存型別簽章、描述、前/後條件規格、worked example。推論時 <strong>Typed DAG Retrieval</strong> 以符號簽章合一剪枝候選、按描述排序、按行為規格過濾、用範例消歧，把昂貴的上下文實體化保留在逐級縮小的候選集上。訓練時把成功軌跡折疊成已驗證 composite 工具，並用 DAG 誘導獎勵（按 primitive 展開大小給 composite 信用）更新 planner。我們提供理論結果：檢索成本下降、次線性檢索時間、塑形獎勵下的組合優勢、保守更新下單調共演化、DAG 良構。橫跨數學推理、表格分析、程式任務基準，CoCoDA 讓 8B 學生在 GSM8K 與 MATH 上匹敵或超越 32B 教師，並一致優於強工具使用與庫學習基線。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>工具增強讓小模型把計算、符號操作、長程程序卸載到可重用庫；對上下文窗與參數容量有限的小模型尤其有吸引力。原則上夠豐富的工具庫能作外部程序記憶：planner 檢索一小組相關工具、經 executor 調用、組合輸出成答案。</p>
+<p>但<strong>擴庫造成張力</strong>：一方面庫須隨 planner 演化（planner 探索新任務時發現該抽成可重用工具的反覆子軌跡，否則反覆重建相同 primitive 計算）；另一方面每加工具增檢索負擔（扁平庫讓提示成本隨工具數成長、上下文預算先被耗盡）。故小模型的工具庫學習須同解兩耦合問題：如何隨 policy 成長庫、如何在固定上下文窗下從成長庫檢索。</p>
+<p>既有方法只解部分：靜態工具使用假設固定清單；技能庫/agent 記憶（Voyager、CRAFT、TroVE、ReGAL）存成扁平文字記憶，依賴結構對檢索與訓練不可見；階層記憶/RAG（RAPTOR）按主題相似度聚類而非可執行組合；程式碼庫學習/程式合成（DreamCoder、Stitch）善用組合結構但非為 token 預算下檢索的 LLM planner 設計。缺的機制是<strong>同時程式碼感知、檢索高效、可線上學習</strong>的結構。</p>
+<p><strong>關鍵觀察</strong>：可執行工具含文字記憶沒有的結構——型別簽章、可執行依賴、行為規格、具體 input-output 範例；這些訊號不只能組織庫，還能決定哪些紀錄須暴露給 planner。我們因此把庫表示為<strong>組合式程式碼 DAG</strong>：節點是 primitive/composite 工具、邊是從可執行體抽出的呼叫依賴、每節點存四級紀錄（型別簽章、描述、前/後條件規格、worked example）。此 DAG 是 CoCoDA 耦合「庫成長」與「上下文受限檢索」的單一物件。</p>
+<p><strong>推論時</strong> CoCoDA 做 Typed DAG Retrieval：先符號簽章合一剪枝、再描述排序、再前/後條件相容性過濾、最後範例消歧；昂貴 LLM 計費紀錄只在存活候選實體化，故成本逐級收縮而非隨全庫；因階層循呼叫依賴而非文字相似度，能浮現行為上涵蓋某 primitive 子軌跡的 composite。</p>
+<p><strong>訓練時</strong> CoCoDA 共演化 planner 與庫：成功軌跡交給固定 teacher abstractor 提出 composite，僅在保 acyclicity 並通過依賴與規格檢查時才提交；planner 以 <strong>DAG 誘導獎勵</strong>（按工具 primitive 展開大小給信用）更新——調用代表多個 primitive 呼叫的 composite 得正 saved-call 信用、調用 primitive 不得；故在相同已驗證結果的行為等價軌跡中，planner 被鼓勵用可重用 composite。同一 DAG 雙重角色：控檢索在預算內、定義訓 planner 利用新抽象的結構訊號。</p>
+<p><strong>貢獻</strong>：(1) 把小模型工具庫學習形式化為帶顯式檢索成本與上下文窗約束的「planner-庫聯合優化」；(2) Typed DAG Retrieval——用簽章、呼叫邊、規格、範例的程式碼原生檢索級聯，使提示成本對庫大小次線性；(3) 線上共演化程序——插入已驗證 composite 並用 DAG 誘導 saved-call 獎勵訓 planner；(4) 理論結果（檢索成本下降、次線性時間、組合優勢、單調共演化、DAG 良構）；(5) 跨數學/表格/程式基準，8B 學生匹敵/超越 32B 教師、一致優於基線。</p>
+<h2 id="2-相關工作精要">2. 相關工作（精要）</h2>
+<ul>
+<li><strong>工具增強 LM</strong>：Toolformer、ReAct、ToolLLM、Gorilla、AnyTool、ToolAlpaca；RLTF/ToRL/ToolRL/ReTool/ARTIST 以執行回饋的 outcome 獎勵端到端訓（多基於 GRPO）。這些把工具清單當靜態扁平文字資源、policy 只優化不重塑，共演化與檢索的每提示成本縮放皆未解。</li>
+<li><strong>技能庫學習與 agent 記憶</strong>：Voyager、Ghost in the Minecraft、CRAFT、LATM、CREATOR、TroVE、ReGAL 線上下成長技能記憶但依賴結構不可見；MemGPT、Generative Agents、Reflexion、Self-Refine 按主題相似度階層化/自精煉 NL 記憶。把程式碼組織成階層的一線則「非此即彼」：DreamCoder、Stitch、軟工程呼叫圖索引產生真正程式碼感知階層（型別化、組合式、可靜態抽取）但針對符號合成器或人類開發者，無 token 預算分層、無簽章級預過濾、無認證的宏動作等價；CodeRAG、CodeT5+ 針對 LLM 但用扁平嵌入空間；RAPTOR 為 LLM 上下文預算分層卻按文字相似度聚類、丟棄所有程式碼特定訊號。CoCoDA 佔據缺失象限。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Text2World: Benchmarking Large Language Models for Symbolic World Model Generation 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Mengkang Hu、Tianxing Chen、Yude Zou、Yuheng Lei、Qiguang Chen、Ming Li、Yao Mu、Hongyuan Zhang、Wenqi Shao、Ping Luo</p><p>日期：2025-02-18（v1，cs.CL）</p><p>arXiv：2502.13092</p><p><a href="https://arxiv.org/abs/2502.13092" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="text2world-benchmarking-large-language-models-for-symbolic-world-model-generation-重點摘要">Text2World: Benchmarking Large Language Models for Symbolic World Model Generation 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>Text2World 用多領域 PDDL、確定性的 parser 與元件級 F1，直接檢驗 LLM 能否從抽象自然語言推回 action precondition 與 effect；結果顯示 reasoning model 較強，但最好的模型仍常漏掉世界運作所需的規則。</p>
+<h2 id="問題與任務定義">問題與任務定義</h2>
+<p>先前的符號世界模型評估常只涵蓋少數 domain、仰賴另一個 LLM 打分，或只看 planner 最後有沒有成功。這三種做法分別限制外推性、引入評審隨機性，也讓人看不出錯在 predicate、parameter、precondition 還是 effect。作者的前測中，LLM 評審與人工評審的 Cohen’s κ 只有 0.10（作者自報），因此 Text2World 改採可執行的 PDDL 驗證。</p>
+<p>輸入是 domain 的自然語言說明、predicate signature 與 action 的高階描述；action 描述刻意不直接列出 precondition 與 effect。模型必須推導隱含的動態與限制，再輸出完整 PDDL domain。評估包括 parser 能否接受的 executability、與 gold PDDL 的 normalized Levenshtein structural similarity，以及 predicate、parameter、precondition、effect 四種 macro F1。</p>
+<h2 id="benchmark-建構">Benchmark 建構</h2>
+<p>資料先從公開 repository 與 planning competition 收集 1801 份 PDDL，經 syntax validation、TF-IDF 去重、複雜度與長度過濾，再人工排除不適合 world modeling 的案例，留下 264 份候選（作者自報）。六位資工畢業生撰寫自然語言說明，兩位資深 reviewer 各自複核兩次，最終得到 103 個 gold domain；其中兩個作為 in-context exemplar，101 個作為 test set，審查 Fleiss Kappa 為 0.82（作者自報）。</p>
+<p>作者也做 contamination 檢查：用前二十個 token 要模型續寫 domain，再以允許錯配的十元片段比對。Text2World 的平均污染率為 0.04，對照先前資料的 0.47（作者自報）。這只能降低背誦疑慮，不能證明完全沒有污染。</p>
+<h2 id="作者報告的結果">作者報告的結果</h2>
+<p>主實驗測試十六個 LLM、涵蓋九個 model family，統一以 temperature 0 執行（作者自報）。零次修正時，DeepSeek-R1 的 executability 為 72.3％，precondition F1 為 57.6％，effect F1 為 58.8％；即使是表現最佳者，關鍵動態元件仍低於六成（作者自報）。允許 parser 回傳 syntax error 並修正三次後，DeepSeek-R1 executability 升至 89.1％（作者自報）。GPT-4o-mini 也由 48.5％ 升至 72.3％，ANOVA 顯示三次修正帶來顯著改善，F＝27.48、p＝0.00012（作者自報）。</p>
+<p>人工錯誤分析把失敗分成 syntax 與 semantic。後者包括違反描述、不完整建模、冗餘規格，以及只在表面形式上不同但語意等價；近 10％ 案例同時出現不完整建模與冗餘規格（作者自報）。這解釋了為何只看字串相似度不夠，也指出主要瓶頸不是括號格式，而是缺少必要 precondition 或 effect。</p>
+<p>探索實驗顯示，增加 test-time 修正預算通常有幫助。兩個 in-context example 讓 Claude-3.5 Sonnet 的 executability 從 45.5％ 升至 78.2％，但 GPT-4o-mini 反而從 48.5％ 降至 40.6％（作者自報），說明 few-shot 並非單調有效。以 AgentGen 合成的 601 個 domain 微調 LLaMA-3.1 後，open model 明顯改善；agent trajectory 微調也帶來增益，但幅度較小（作者自報）。當輸入直接寫明 precondition 與 effect，表現一致上升，反過來支持「從抽象描述推導 action dynamics」才是難點。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>Text2World 的價值不只是排行，而是把符號世界模型拆成可定位的故障面。reasoning model 與 error correction 都能提高格式正確率，但格式可執行不等於動態正確；最難的仍是補齊自然語言沒有明說、卻對環境因果有效性不可少的條件與效果。</p>
+<p>資料規模受公開 PDDL domain 數量限制，沒有形成大型 training set。自然語言標註即使經過雙人審查，仍可能帶入人工主觀偏差。structural similarity 也會懲罰語意等價的表面差異，因此應與 execution 與 component F1 一起閱讀，而不能單獨代表世界模型品質。</p>
+<h2 id="對讀者的價值ai_core-接點">對讀者的價值／ai_core 接點</h2>
+<p>這篇替 ai_core 的「自然語言意圖轉可執行規格」提供了現成的驗收分層：先驗 syntax 與 executability，再逐欄比對 predicate、parameter、precondition 與 effect。端到端成功只告訴你一次任務有沒有過；元件級指標才告訴你是哪一類契約缺失。</p>
+<p>另一個接點是 correction loop 的邊界。parser feedback 很適合修正可機械檢查的錯誤，卻不能保證補回遺漏語意。ai_core 若採自動修復，應把 validator 能證明的部分與仍需語意憑證的部分分開，避免把「能執行」誤當成「符合意圖」。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2502.13092_Text2World.zh-TW.html"><code>../translate/2502.13092_Text2World.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

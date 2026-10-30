@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2502.09100_LLM_Logical_Reasoning_Survey.zh-TW.html">回 2502.09100_LLM_Logical_Reasoning_Survey.zh-TW 目錄</a>　<a href="02_%E5%A2%9E%E5%BC%B7%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>隨著 OpenAI o3、DeepSeek-R1 等先進推理模型的出現，LLM 展現了亮眼的推理能力。然而它們能否做<strong>嚴謹的邏輯推理</strong>仍是開放問題。本綜述彙整 LLM 邏輯推理的近期進展：勾勒其範圍、理論基礎與評估用 benchmark；分析不同推理範式（<strong>演繹、歸納、溯因、類比</strong>）下的現有能力；評估增強推理表現的策略（資料中心調校、強化學習、解碼策略、神經符號）。最後給出未來方向，強調加強 AI 系統邏輯推理仍需進一步探索。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>邏輯推理是 AI 與 NLP 的根本挑戰。早期形式邏輯方法在可擴展性與適應性上受限，1980 年代起資料驅動模型成主流。近期預訓練 LLM 及其<strong>湧現的邏輯推理能力</strong>受關注：邏輯推理把 LLM 與推理結構化結合，支援多步演繹與抽象，提升可解釋性、可靠性與泛化（處理訓練外的新情境）。隨 LLM 深入法律分析、科學發現等領域，<strong>確保其推理的正確性與可驗證性</strong>日益重要，使「為推理而後訓練 LLM」成為工業界與研究界熱點。</p>
+<h2 id="2-ai-中的邏輯">2. AI 中的邏輯</h2>
+<p>（2.1 邏輯推理研究史略。）</p>
+<h3 id="22-邏輯推理的類型">2.2 邏輯推理的類型</h3>
+<ul>
+<li><strong>演繹推理</strong>：從一般原則/前提推具體結論；前提皆真且推理有效則結論必真（「蘋果都是紅的」+「這是蘋果」→「這是紅的」）。數學與形式邏輯的根本。</li>
+<li><strong>歸納推理</strong>：從具體觀察推一般結論；結論通常為機率性、不保證真（「至今所見天鵝皆白」→「天鵝都是白的」）。科學發現、資料決策常用。</li>
+<li><strong>溯因推理</strong>：對一組觀察找最合理解釋（常在資訊不完整下）；診斷與現實解題尤有用（「街上有濕痕」→「最近下過雨」）。結論不確定但提供假設生成與不確定下決策的實用基礎。</li>
+<li><strong>類比推理</strong>：跨相似情境/領域比較以推論或解題；辨識不同情境的平行性使創意解題與知識遷移成為可能。教育、設計、創新領域尤有價值。</li>
+</ul>
+<h2 id="3-任務與-benchmark">3. 任務與 Benchmark</h2>
+<p>依資料來源分三類：</p>
+<ul>
+<li><strong>規則生成</strong>（RuleTaker、CLUTRR）：用邏輯規則自動生成，可大規模；須確保多樣性以免重複模式。</li>
+<li><strong>專家設計</strong>（FOLIO）：領域專家構造，精準但通常較小，對深入評估不可或缺。</li>
+<li><strong>考試衍生</strong>（LogiQA、ReClor、AR-LSAT）：源自標準化考試（中國公務員考、LSAT、GRE），大規模高品質。</li>
+</ul>
+<p>（Table 1 主要資料集：LogiQA 15937/ReClor 6138/AR-LSAT 2064/CLUTRR 6016/GSM 19K/LINGOLY 1133/ConTRoL 8325/FOLIO 1351/LogicNLI 30K/ProofWriter/LogicBench 1270/GLoRE 17 任務/LogiGLUE 24 任務/LogiTorch 16 任務/BIG-Bench 7 任務。）</p>
+<h3 id="31-自然語言推理nli">3.1 自然語言推理（NLI）</h3>
+<p>評估「假設是否邏輯地由前提導出」。標籤二元（蘊涵/非蘊涵）或三元（蘊涵/矛盾/中性）。</p>
+<ul>
+<li><strong>ConTRoL</strong>：招聘考試衍生，8325 條，Correct/Incorrect/Can&#x27;t Say。</li>
+<li><strong>FOLIO</strong>：專家構造的**一階邏輯（FOL）**資料集，1351 條 True/False，形式推理的嚴格 benchmark。</li>
+<li><strong>LogicNLI</strong>：規則生成 30K，隔離 FOL 推理與常識推理。</li>
+<li><strong>ProofWriter</strong>：擴展 RuleTaker，引入 CWA（封閉世界）/OWA（開放世界）處理否定與開放世界推理。</li>
+<li><strong>LogicBench</strong>：GPT-3 生成，涵蓋 25 類推理（命題/FOL/非單調），1270 條 Yes/No。</li>
+</ul>
+<h3 id="32-機器閱讀理解mrc">3.2 機器閱讀理解（MRC）</h3>
+<p>依文章答題，多選 QA 因標準化尤有效。</p>
+<ul>
+<li><strong>LogiQA</strong>（中國公務員考，15937 中英）、<strong>ReClor</strong>（GMAT，6138 四選）、<strong>AR-LSAT</strong>（LSAT，2064，排序/分組/分配遊戲，五選）、<strong>CLUTRR</strong>（歸納，推親屬關係，6016）、<strong>GSM</strong>（GSM8K 8.5K + GSM-PLUS 擾動穩健性）、<strong>LINGOLY</strong>（語言奧賽，1133 題、90+ 語言）。</li>
+</ul>
+<h3 id="33-benchmark-套件">3.3 Benchmark 套件</h3>
+<p><strong>GLoRE</strong>（17 個 test-only 資料集，少樣本/零樣本泛化）、<strong>LogiGLUE</strong>（24 任務、seq2seq 統一格式、含訓練集）、<strong>LogiTorch</strong>（PyTorch 庫，16 資料集 + API）、<strong>BIG-bench</strong>（7 邏輯任務，如 Logic Grid Puzzle、Logical Fallacy Detection）。</p>
+<h2 id="4-評估">4. 評估</h2>
+<h3 id="41-演繹">4.1 演繹</h3>
+<p>對自動定理證明關鍵。LLM 在組合證明、標準 benchmark、編碼蘊涵關係上表現好，但<strong>在延長推理、無範例的假設子證明、泛化、對語法變異的敏感性上掙扎</strong>。</p>
+<h3 id="42-歸納">4.2 歸納</h3>
+<p>對假設生成、模式辨識關鍵。預訓練模型可當有效「推理器」；但即使先進 LLM <strong>在符號設定下連簡單歸納任務都困難</strong>;Transformer 即使微調後仍學不會基本邏輯原則，顯示歸納能力有限。</p>
+<h3 id="43-溯因">4.3 溯因</h3>
+<p>對法律、醫療關鍵。LLM 在「從不完整資訊生合理假設」上面臨挑戰；法律領域即使整體表現強，溯因仍掙扎。</p>
+<h3 id="44-類比">4.4 類比</h3>
+<p>對需創意與知識遷移的任務關鍵。ANALOGICAL benchmark 顯示類比複雜度升高時 LLM 難辨類比對；有研究顯示模型可用極少資料學類比、近人類表現；但也有研究質疑 LLM 是否真靠類比——<strong>prompt 中放隨機範例常與相關範例表現相當</strong>。</p>
+<h3 id="45-整體分析與指標">4.5 整體分析與指標</h3>
+<p>GPT-4 勝 ChatGPT，但兩者都在 OOD 任務掙扎。NeuLR 從六維度評估（正確性、嚴謹性、自我覺察、主動性、引導性、無幻覺）。
+<strong>指標</strong>：傳統 accuracy/F1 不足；近期引入 <strong>consistency（對邏輯等價輸入不變）、generalization（OOD 表現）、explainability（推理步驟清晰度）</strong>。BERTScore + 傳統指標更貼合人類判斷；BERTScore 在邏輯一致性排名上甚至優於 GPT-4 評審；歸納推理需考慮邏輯理論表達力的指標。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

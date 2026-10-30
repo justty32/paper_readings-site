@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2507.14172_SOAR.zh-TW.html">回 2507.14172_SOAR.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>許多程式合成任務即使對 SOTA LLM 也難以單次解出。基於搜尋的演化方法藉迭代探索解空間提供出路，但其效能受限於底層生成模型的<strong>固定能力</strong>。本文提出 <strong>SOAR</strong>：把 LLM 嵌入<strong>自我改進的演化閉環</strong>來學習程式合成。SOAR 交替於 (1) 用 LLM 採樣與精煉候選解的<strong>演化搜尋</strong>，與 (2) 把搜尋嘗試轉成有效 （問題， 解） 對來微調 LLM 採樣與精煉能力的<strong>事後學習（hindsight learning）階段</strong>——使後續迭代搜尋更有效。在挑戰性的 <strong>ARC-AGI</strong> 上，SOAR 跨模型尺寸與迭代取得顯著增益，利用採樣與精煉微調間的<strong>正向遷移</strong>；這些增益延續到測試時調適，使 SOAR 解出公開測試集 <strong>52%</strong>。程式碼開源於 github.com/flowersteam/SOAR。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>程式合成讓使用者以約束/範例/自然語言表達意圖，由演算法找出實作。傳統做法（遺傳程式設計、序貫貝氏推論）仰賴智慧的程式生成器與變異運算子，否則需盲目耗費巨量計算。LLM 成為強力程式生成器（單次可解不少任務），對更難問題可當演化搜尋的智慧運算子。但<strong>這些方法的根本侷限：採樣/精煉所用模型能力固定，單純多採樣或多精煉邊際遞減</strong>。</p>
+<p>本文提出 <strong>SOAR</strong>（Self-improving Operators for Automated program Refinements），交替兩階段：用 LLM 採樣並精煉候選（Sample&amp;Refine 階段），再用這些搜尋軌跡微調模型的採樣與精煉能力 → 良性循環。相對前作 CodeIt（Butt et al. 2024）於 ARC 的自我改進，SOAR 四點擴展：(1) 用通用 <strong>Python</strong> 而非手刻 DSL;(2) 引入用執行回饋修補的<strong>迭代精煉步</strong>;(3) 擴展到更大開源 LLM;(4) 結合<strong>測試時訓練 + 測試時搜尋</strong>做持續調適。SOAR 純從自身合成嘗試（含成功與失敗）學習，不用人工 DSL 或人工解。</p>
+<p>在 ARC 上：當前 LLM 直接合成很弱（GPT-4.1 僅 8%、Claude-4-Sonnet 20.75%）；搜尋把開源模型從 1-2% 提到 14-26%，但固定能力造成天花板。經迭代自我改進，4 輪訓練後各尺寸多解 <strong>+10~19%</strong>；有目標任務但無真值時，TTT 再多解 <strong>+3~5%</strong>；最終測試表現 <strong>52%</strong>——勝過先前基於開源 LLM 且無人工資料的程式合成法。貢獻：(1) 不靠人工資料、從自身搜尋經驗迭代改善搜尋能力的框架；(2) 測試時訓練機制；(3) 迭代模型改進可克服搜尋法效能瓶頸的實證；(4) 開源 LLM 在 ARC-AGI 公開測試集的程式合成 SOTA。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p>傳統程式合成靠遺傳程式設計/序貫蒙地卡羅等迭代搜尋，效能高度依賴良好工程化的程式先驗與變異運算子；深度學習則學習這些組件（DeepCoder、DreamCoder）但多在受限手定語言內窮舉。LLM 既可當直接生成器也可當演化搜尋的變異運算子（FunSearch 風格的收斂/發散搜尋），但<strong>都把 LLM 當固定組件</strong>。另一線「學會推理」靠在成功推理軌跡上訓練（STaR、DeepSeek-R1、Stream of Search）;<strong>SOAR 也內化搜尋軌跡，但能用 hindsight learning 同時利用成功與失敗，並學會精煉</strong>。</p>
+<p>ARC 可用兩法解：(1) 直接預測輸出格（<strong>轉導</strong>）、(2) 預測轉換程式（<strong>歸納</strong>）。最相關的 <strong>CodeIt</strong> 用手刻 DSL 的 expert-iteration + 事後重標記；SOAR 換成通用 Python、加執行回饋精煉步、擴到更大開源 LLM，並結合 TTT 與測試時搜尋，消除對人工工程與資料集的依賴。</p>
+<h2 id="3-方法">3. 方法</h2>
+<p>SOAR 在<strong>演化搜尋階段</strong>用 LLM 採樣並精煉程式產出多樣解嘗試；在<strong>學習階段</strong>用搜尋軌跡微調 LLM。迭代成良性循環。</p>
+<h3 id="31-問題定義">3.1 問題定義</h3>
+<p>ARC 是 programming-by-example（PBE）典例：找程式對所有 （輸入， 輸出） 範例皆正確。每任務含 2–10 個訓練範例（彩色格對）+ 測試輸入；目標是找 Python 函數對所有訓練範例成立並產生正確隱藏輸出。格為 ≤30×30 的 2D 陣列、每格 0–9 表顏色。ARC 含 400 訓練 + 400 測試任務；每任務編碼新隱式轉換（計數/算術/補全/空間推理），人易機難。</p>
+<h3 id="32-以-llm-採樣與精煉做演化搜尋">3.2 以 LLM 採樣與精煉做演化搜尋</h3>
+<p>ARC 太難無法直接解。<strong>Sample&amp;Refine</strong>：先採樣初始候選池（採樣步），再用執行回饋迭代精煉最有望者（精煉步），最後多數投票選最可能測試輸出格提交。</p>
+<ul>
+<li><strong>程式採樣</strong>：用 base LLM 直接採樣 Python 程式（不限手刻 DSL），各程式經直譯器執行得輸出格。歸納式 sample-and-test——加大候選數提升找到滿足所有範例之轉換的機會（AlphaCode 曾擴到每任務數百萬次）。</li>
+<li><strong>程式精煉</strong>：當候選產生錯誤輸出，把執行回饋（清楚標示成功/失敗轉換）餵回 LLM 引導其精煉。</li>
+<li><strong>Sample&amp;Refine 演算法</strong>：(1) 初始獨立採樣 3k 候選；(2) 精煉預算 3k——把精煉構造成<strong>生成式多臂老虎機</strong>（每次精煉開新臂可再被精煉），用 <strong>REX</strong>（基於訓練範例準確度的 Thompson sampling + 額外探索獎勵）平衡探索新變體與利用已知成功路徑。</li>
+<li><strong>加權多數投票集成</strong>：起於 6k 程式（3k 採樣 + 3k 精煉）；各程式算其在範例上準確度並跑測試輸入得輸出格；按測試輸出格分組，每組分數＝產生它的所有程式之範例準確度總和 → 加權投票偏好更準程式產生的格；最終回傳 2 個候選。</li>
+</ul>
+<h3 id="33-經自我改進的採樣與精煉學會搜尋">3.3 經自我改進的採樣與精煉學會搜尋</h3>
+<p>用搜尋階段產生的資料微調以改進採樣/精煉。</p>
+<ul>
+<li><strong>採樣微調</strong>：對 ARC-train 有真值，可辨識正確採樣程式得 （任務， 解） 對。但多數任務搜不到正確解 → 用 <strong>hindsight relabeling</strong>：任一採樣程式對「它實際產生的輸出」必然正確 → 造合成任務得有效 （任務， 解） 對。每任務 6k 點 × 400 = 2.4M 點；子採樣每任務 50 條（按範例+測試準確度排序取 25 條最佳 + 25 條最差保多樣性，即 greedy-diverse），微調最小化採樣損失。</li>
+<li><strong>精煉微調</strong>：對有真值任務辨識「錯程式→對程式」的成功精煉得資料集；子採樣每任務 50 條，按父程式輸入輸出準確度分箱（0%、1-34%、34-98%、100%）平衡以保多樣性。</li>
+</ul>
+<h3 id="34-閉環訓練與測試任務上的迭代自我改進">3.4 閉環：訓練與測試任務上的迭代自我改進</h3>
+<ul>
+<li><strong>訓練任務自我改進</strong>：每輪交替 (1) 用 model_i 搜尋、(2) 用軌跡微調得 model_{i+1}；逐輪累積。訓練後用嵌入模型（CodeRankEmbed，cos 相似度 0.9）去重所有解，子採樣（偏好較短程式）微調出供 TTT 起點的 base model。</li>
+<li><strong>測試時訓練（TTT）</strong>：目標任務無真值 → 改用「<strong>僅範例準確度</strong>」選解再做 hindsight relabeling，專注微調採樣能力（精煉的無真值版留待未來）。先在訓練集跑數輪完整自我改進，再對測試任務多跑數輪。</li>
+<li><strong>實作</strong>：用 Qwen-2.5-Coder（7B/14B/32B）+ Qwen-2.5-72B + Mistral-Large-2407；單張 H100，RS-LoRA / RS-QLoRA（rank 256，3 epochs，lr 5e-5），Unsloth 庫。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

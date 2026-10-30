@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>AGM: Achievement-Grounded Memory for Closed-Loop Agents with Frozen VLA Policies 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Hongbo Gao、Zeyu Ni、Xin Wen、Siyu Xu、Ruifeng Li</p><p>日期：2026-08-30（v1，cs.RO）</p><p>arXiv：2608.29537</p><p><a href="https://arxiv.org/abs/2608.29537" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="agm-achievement-grounded-memory-for-closed-loop-agents-with-frozen-vla-policies">AGM: Achievement-Grounded Memory for Closed-Loop Agents with Frozen VLA Policies</h1>
+<h2 id="摘要與問題">摘要與問題</h2>
+<p>凍結的視覺—語言—動作策略可以依語言子目標執行操作，卻常以開迴路動作區塊前進，沒有可靠的任務進度狀態。外加記憶看似能補上缺口，但若每次「嘗試」後就推進進度，漏抓、滑落或放置失敗會被永久記成已完成。一次局部執行錯誤於是變成持續的任務狀態錯誤，甚至可能比完全不用進度記憶更差。</p>
+<p>AGM 的主張很簡單：長時程 agent 的關鍵不只是記住多少，而是什麼證據足以准許寫入。它把任務表示為有序子目標序列與一個進度指標；只有觀察到目前子目標確實完成，才更新記憶。VLA 策略、點追蹤器與視覺語言編碼器都保持凍結，部署時也不需呼叫額外的自回歸大型模型。</p>
+<h2 id="方法">方法</h2>
+<h3 id="事件觸發的成就驗證">事件觸發的成就驗證</h3>
+<p>AGM 先以夾爪開合寬度與負載狀態機定位可能改變進度的互動事件，例如穩定抓取或從負載狀態釋放。事件只表示「現在值得檢查」，不等於成功證據；空手釋放或與當前子目標不相容的事件會被忽略。這種設計避免固定頻率查詢大型模型，也把驗證窗口對準真正的物理轉換。</p>
+<p>抓取成功屬於運動學問題。系統在末端執行器附近取樣影像點，交給凍結的 CoTracker3 追蹤抬升片段；若一群可見點與夾爪一致向上移動，才視為物體確實被帶起。作者以高反應點的中位數抑制背景靜止點與少數追蹤錯誤。</p>
+<p>放置成功則是語意關係問題。AGM 從子目標整理出物體—目標關係查詢，比較釋放前後的前視與腕視影像，並加入事件附近的本體感覺資訊。凍結的 SigLIP 產生影像與文字特徵，輕量驗證頭判斷要求的關係是否已建立。訓練標籤來自離線執行事件，環境真值只用於製作標籤，不在部署時提供。</p>
+<h3 id="進度轉移與復原">進度轉移與復原</h3>
+<p>驗證成功時，進度指標前移。抓取被拒絕時，指標停在原子目標，讓策略重試；可恢復的平面放置失敗時，指標回退到對應抓取步驟，完整重做抓放。不可恢復的容器放置採較寬鬆門檻，因為誤判失敗後多放一個物體會破壞計數。系統另設拒絕與逾時上限避免死鎖，終止前也重新檢查最近一次可恢復放置。未被夾爪事件涵蓋的子目標直接交回凍結策略。</p>
+<h2 id="實驗作者自報">實驗（作者自報）</h2>
+<p>RoboMME Counting 的四項任務用來區分「操作技能不足」與「不知道做到第幾次」。AGM 在 PickXTimes 達到 100.00%，BinFill 達到 84.00%，四任務平均成功率為 55.96%。未以夾爪互動為錨點的任務則按設計退回基礎策略，表現不變。</p>
+<p>重複深度分析顯示，裸策略在單次操作時已有所需技能，隨要求次數增加才因進度漂移而崩落；AGM 能在漏抓時拒絕寫入並重試。消融也顯示，只用夾爪負載與末端抬升的本體感覺檢查已帶來大部分增益，而點追蹤仍能補上「夾爪移動但物體沒有跟著動」的缺口。把可恢復與不可恢復放置改用同一門檻，會讓正確容器投放更常遭誤拒。</p>
+<p>真實機器人實驗在相同框架下重訓策略與驗證頭。作者觀察到裸策略仍會隨重複次數累積進度錯誤，AGM 則能維持已驗證的計數；後段 BinFill 的剩餘失敗主要集中在容器逐漸塞滿後的物理放置困難。</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>AGM 把凍結 VLA 外部的記憶寫入改造成「執行—驗證—更新」閉迴路。其價值不是增加記憶容量，而是用可觀察的物理結果約束前進、停留與回退，防止嘗試被誤當成成就。</p>
+<p>作者在延伸局限中明示四項邊界。其一，事件詞彙綁在抓取與釋放，推、滑、關節物體操作或持續抓握的工具使用不會觸發相容驗證。其二，單一指標只能表示線性序列，無法處理分支、偏序或可交換順序的子目標。其三，拒絕上限以可能的未驗證前進換取不中止，不能保證錯誤寫入永不發生。其四，整體表現受驗證器誤接受與誤拒絕限制；真機範圍也只涵蓋有限任務、單一平台與夾爪幾何，校準門檻不能宣稱跨平台直接轉移。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2608.29537_AGM.%E6%91%98%E8%A6%81.html"><code>../summarize/2608.29537_AGM.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

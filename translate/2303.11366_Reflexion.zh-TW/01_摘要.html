@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2303.11366_Reflexion.zh-TW.html">回 2303.11366_Reflexion.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）愈來愈常被當作目標導向的智能體，去和外部環境（遊戲、編譯器、API）互動。然而傳統強化學習需要大量訓練樣本與昂貴的模型微調，讓這些語言智能體難以快速、有效地從試誤中學習。我們提出 <strong>Reflexion</strong>——一個不靠更新權重、而是透過<strong>語言回饋（linguistic feedback）<strong>來強化語言智能體的新框架。具體而言，Reflexion 智能體對任務回饋訊號進行</strong>言語反思（verbally reflect）</strong>，把這些反思文字保存在一個**情節式記憶緩衝（episodic memory buffer）**中，以誘導後續嘗試做出更好的決策。Reflexion 足夠靈活，可納入多種型態（純量或自由格式語言）與來源（外部或內部模擬）的回饋訊號，並在多樣任務（序列決策、程式撰寫、語言推理）上大幅超越基線。例如在 HumanEval 程式基準上達到 <strong>91% pass@1</strong>，超越前 SOTA 的 GPT-4（80%）。程式碼、示範與資料集開源於 github.com/noahshinn024/reflexion。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>ReAct、SayCan、Toolformer、HuggingGPT、generative agents、WebGPT 等近期工作已證明「以 LLM 為核心的自主決策智能體」可行。由於它們依賴龐大模型，過去只能靠 in-context 範例來「教」智能體，因為梯度下降式強化學習需要可觀的算力與時間。</p>
+<p>本文提出替代路徑 <strong>Reflexion</strong>：用**言語強化（verbal reinforcement）**幫助智能體從先前失敗中學習。它把環境給的二元或純量回饋轉成一段文字摘要形式的言語回饋，作為下一回合 LLM 智能體的額外脈絡。這種自我反思回饋扮演「<strong>語意梯度訊號（semantic gradient signal）</strong>」，給智能體一個具體的改進方向——就像人類會反思上次的失敗，為下次擬定更好的行動計畫。</p>
+<p>生成有用的反思回饋很難，因為需要理解模型錯在哪裡（即<strong>信用分派問題，credit assignment</strong>），並產出含可執行洞見的摘要。作者探索三種做法：簡單的二元環境回饋、常見失敗情形的預定啟發式、以及自我評估（決策用 LLM 二元分類、程式用自寫單元測試）。所有實作中，評估訊號都被<strong>放大成自然語言的經驗摘要</strong>存入長期記憶。</p>
+<p>相較 policy/value-based 的傳統 RL，Reflexion 的優勢：(1) 輕量、不需微調 LLM；(2) 允許更細緻的回饋（如針對性的動作修改），純量/向量獎勵難以做精準信用分派；(3) 提供更明確、可解釋的情節記憶；(4) 對未來回合給出更明確的動作提示。缺點是依賴 LLM 自評能力（或啟發式），且無成功的形式保證；但作者預期隨 LLM 能力提升此範式會愈來愈好。</p>
+<p><strong>貢獻</strong>：提出 Reflexion 這一「言語強化」新範式（把策略參數化為「智能體記憶編碼＋LLM 參數選擇」）；實證自我反思是 LLM 的一種<strong>湧現特性</strong>、對少樣本學習複雜任務極有用；提出 <strong>LeetcodeHardGym</strong>（40 題 hard、19 種程式語言的程式生成 RL gym）；在多項程式生成基準取得 SOTA。三類任務上（決策、推理、程式）分別在 AlfWorld 絕對 +22%、HotPotQA +20%、HumanEval 最多 +11%。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p><strong>推理與決策</strong>：Self-Refine 用迭代式自我精修、以自評自我改進，但侷限於<strong>單次生成</strong>的推理任務。Pryzant et al. 做類似的語意 prompt 最佳化，同樣限於單次生成。Paul et al. 微調 critic 模型在軌跡中給中間回饋。Xie et al. 用隨機 beam search 做更有效的決策搜尋。Kim et al. 用固定步數的 retry 但沒有評估步驟。本文顯示這些概念都能加上<strong>自我反思</strong>，建立一個持久的自我反思經驗記憶，讓智能體辨識自己的錯誤並自我提示教訓。（表：Reflexion 相對 Self-refine、Beam search，獨有「二元獎勵＋記憶」皆備。）</p>
+<p><strong>程式</strong>：AlphaCode 用隱藏測試評估多份生成；CodeT 用自生單元測試評分；Self-Debugging 依執行環境回饋改進實作；CodeRL 用 actor-critic 的 RL 框架除錯。這些對較簡單的 bug 有效，但多依賴<strong>真值測試集（invalidate pass@1 資格）</strong>，且不用自我反思去彌合「錯誤辨識」與「實作改進」之間的落差。Reflexion 五項特徵（測試執行、除錯執行、自生測試、多語言、自我反思）皆備。</p>
+<h2 id="3-reflexion透過言語反思進行強化">3. Reflexion：透過言語反思進行強化</h2>
+<p>框架採模組化，含三個模型：</p>
+<ul>
+<li><strong>Actor（M_a）</strong>：基於 LLM，依狀態觀察生成文字與動作。類比 policy-based RL，在時刻 t 從當前策略 π_θ 取樣動作 a_t、收到觀察 o_t。探索 Chain-of-Thought 與 ReAct 兩種 Actor。額外加入<strong>記憶元件 mem</strong> 提供上下文（靈感來自 Brooks et al. 的 in-context policy iteration）。</li>
+<li><strong>Evaluator（M_e）</strong>：對 Actor 產生的軌跡打分，輸出反映任務表現的獎勵分數。語意空間中定義有效的 value/reward 函式很難，故用多種變體：推理任務用 exact-match（EM）評分；決策任務用預定啟發式函式；亦試用另一個 LLM 實例當評估器（決策與程式）。</li>
+<li><strong>Self-Reflection（M_sr）</strong>：以 LLM 實例化，把「稀疏獎勵訊號（如成功/失敗二元狀態）＋當前軌跡＋持久記憶 mem」轉成細緻具體的回饋。此回饋比純量獎勵更具資訊量，存入 mem。例：多步決策中收到失敗訊號時，智能體可推斷某動作 a_i 導致後續錯誤動作，於是言語陳述「本應改採 a_i′」並存入記憶，後續回合據此調整。</li>
+</ul>
+<p><strong>記憶</strong>：短期記憶＝軌跡歷史（近期細節）；長期記憶＝Self-Reflection 的輸出（歷次萃取的重要經驗）。二者協作提供既具體又受多次試驗教訓影響的脈絡，是 Reflexion 相對其他 LLM 動作選擇工作的關鍵優勢。</p>
+<p><strong>Reflexion 流程（Algorithm 1）</strong>：首回合 Actor 產軌跡 τ_0；Evaluator 算分 r_0 = M_e(τ_0)（僅一個純量）；為把 r_0 放大成 LLM 可用來改進的回饋形式，Self-Reflection 分析 {τ_0, r_0} 產出摘要 sr_0 存入 mem；三個模型在迴圈中反覆協作，直到 Evaluator 判定 τ_t 正確。每回合把 sr_t 附加進 mem；實務上以最大儲存經驗數 Ω（通常 1–3）限制 mem 大小以符合脈絡上限。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_設計多智能體系統 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2502.02533_MultiAgent_Design.zh-TW.html">回 2502.02533_MultiAgent_Design.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_MASS%EF%BC%9AMulti-Agent_System_Search.html">下一節 →</a></p>
+</blockquote>
+<h2 id="2-設計多智能體系統">2. 設計多智能體系統</h2>
+<p>本節先提供 MAS 設計的形式化，再分析 prompt 與拓撲設計的影響。我們把 agent 的結構性安排稱為 agent 的<strong>拓撲（topology）</strong>，並把跨不同拓撲的邏輯序列定義為建構出 MAS 的<strong>工作流（workflow）</strong>。MAS 的設計可大致分為兩個層次：<strong>block-level 設計</strong>與 <strong>workflow-level 編排</strong>。在 block level，一個建構區塊指涉一群為某特定功能（如辯論）而共同運作的 agent，我們的目標是透過更好的 prompt 設計，設計出最能勝任其角色的有效個別 agent。另一方面在 workflow level，優化涉及決定要納入哪些類型與數量的 agent，以及如何以最有效的方式排列它們，稱為拓撲優化。</p>
+<p>形式上，給定一個定義所有有效 agentic 配置的搜尋空間 𝒜={aᵢ}（涵蓋建構區塊搜尋維度 aᵢ），個別 agent 及其組成的拓撲皆可被參數化為此搜尋空間中的特定配置。要得到最佳 workflow 𝒲*(a)，workflow 拓撲優化被形式化為以下優化問題：在目標輸入輸出集合 (x,y)∼𝒟、給定搜尋空間 𝒜 下，最大化目標函數 f(·,·)：</p>
+<p>𝒲*(a) = argmax_{a∼𝒜} 𝔼_{(x,y)∼𝒟}[f(𝒲(a(x)), y)]。（式 1）</p>
+<h3 id="21-block-level-分析agent-的-prompt-設計">2.1 Block-level 分析：Agent 的 Prompt 設計</h3>
+<p>在 block level，顯著影響下游表現的主要「可優化組件」是 <strong>prompt</strong>——它定義 agent 的角色（如「你是善於反思錯誤的專家……」）、提供額外指令來塑造其行為（如「你應該逐步思考……」）、並可選擇性包含少樣本示範（in-context 範例）來引導 agent 的回應。舉例來說，一個 SOTA prompt optimizer 同時搜尋指令與少樣本示範，其中示範是根據驗證指標，從模型自身在驗證集上的正確預測 bootstrap 而來；在示範的條件下，prompt optimizer 接著提出若干候選指令，搭配資料集摘要或各種提示以改進候選多樣性；指令與示範隨後被聯合優化。</p>
+<p>雖然眾所周知 LLM 對 prompt 很敏感，但把自動 prompt 優化（APO）技術套用到 MAS 並不直接。在單輪任務中，APO 可透過把 prompt 當作可優化變數、把驗證集上的表現當作目標，輕易地實現。然而在 MAS 中，由於 agent 之間的相互依賴（例如，一個 agent 的輸出可能是串接鏈中另一個 agent 的輸入，而中間輸出卻沒有真值可用）、以及隨 agent 數量 n 增加而指數增長的組合優化複雜度，APO 變得更複雜；當 n 增加時獎勵訊號也變得更稀疏，使我們無法在任何可控預算內直接對 MAS 實作 APO；因此許多先前工作在 MAS 中仍主要使用手工打造的 prompt，而非把 prompt 納入 MAS 設計中的可優化組件。</p>
+<p>為了系統性地理解 prompt 設計在 MAS 中的影響，作者特別對 prompt 優化的效果做量化分析，並與 MAS 文獻中常見的其他操作（如用預設 prompt 擴大 agent 數量）比較其有效性。他們透過 SOTA prompt optimizer <strong>MIPRO</strong>（能聯合優化指令與 1-shot 示範）對一個 chain-of-thought agent 做 APO，並在公平的總推理 token 成本下，與 self-consistency、self-refine、multi-agent debate 比較（Fig. 2）。結果顯示：賦予 agent 更具資訊量的指令與範例的 prompt 優化，其 token 效益顯著優於其他建構區塊。此外，在 prompt 優化過的 agent 之上再套用 self-consistency，可觀察到改善的 token 成本擴展性，而標準的擴大 agent 數量做法（如 SC 或 Reflect）則更早飽和。這個實證觀察揭示了 prompt 的重要性，也為設計有效 MAS 提供早期證據——<strong>先局部優化 agent，再擴大其拓撲</strong>。</p>
+<h3 id="22-workflow-level-搜尋空間設計">2.2 Workflow-level 搜尋空間設計</h3>
+<p>在 workflow level，主要焦點在於有效地編排 agent 以達最佳表現，拓撲優化近來備受關注。然而，既有研究多半強調<strong>搜尋方法</strong>——例如發掘識別最優配置最有效率的方式——卻較少關注<strong>搜尋空間的設計</strong>，即決定任何搜尋演算法的邊界與範圍。這與神經架構搜尋（NAS）的歷史發展有相似之處：初期領域聚焦於精緻的搜尋方法（如貝氏優化、可微分搜尋），後續研究則凸顯了常被忽視的搜尋空間設計的重要性，主張它可能同樣重要、甚至更重要。</p>
+<p>受此啟發，作者假設手工打造的拓撲可能是次優的，而自動拓撲優化（可能被形式化為嚴謹的優化問題）可透過審慎設計 MAS 的搜尋空間，扮演同樣關鍵的角色。為此，他們首先定義一個表達力豐富的搜尋空間（類似先前工作），由以下建構區塊之間的連接組成，共同形成 MASS 的統一搜尋空間：</p>
+<ul>
+<li><strong>Aggregate（聚合）</strong>：agent 可以帶著多元化的預測並行協作，接著由聚合算子取得最一致的預測。此區塊由 Nₐ 個 agent 參數化，也定義了並行運作的 agent 鏈數量。多數投票與 self-consistency 皆屬於此拓撲。</li>
+<li><strong>Reflect（反思）</strong>：agent 可扮演驗證者，根據先前的預測提供批評與改進建議，回饋接著被餵回預測者或反思者自身以做迭代改進。此區塊由 N_r 參數化，定義自我反思的輪數。Self-Refine 與 Reflexion 屬於此區塊，N_r 可被解讀為貢獻於 MAS 網路深度的參數。</li>
+<li><strong>Debate（辯論）</strong>：辯論中的 agent 能比單一 agent 引出更真實的預測，其中每個辯論 agent 會收集所有其他 agent 的意見並提供更新後的回應。此拓撲涉及一組混合 agent，N_d 定義辯論的輪數（即拓撲空間中全連結 agent 層的數量）。</li>
+<li><strong>Custom Agents（自訂 agent）</strong>：前三種形式涵蓋了絕大多數以並行、串行、混合方式構成的 agent 拓撲，但更多樣化的 agent 定義仍可插入 MAS 設計空間。例如針對特定任務的用例，作者引入 <strong>Summarize（摘要）</strong> agent 來增強可配置設計空間中的長上下文能力，N_s 定義資訊摘要的輪數。</li>
+<li><strong>Tool-use（工具使用）</strong>：邁向有效的 MAS，讓 agent 能利用工具存取外部資訊對系統表現至關重要，例如在 RAG 中使用檢索器、在程式生成中使用帶測試案例的執行器。作者把 tool-use（如程式碼執行）引入為一個對預測者而言可優化的二元「插入」決策 N_T∈{0,1}。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

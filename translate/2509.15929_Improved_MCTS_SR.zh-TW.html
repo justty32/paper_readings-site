@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>改進符號迴歸的蒙特卡羅樹搜尋（Improving Monte Carlo Tree Search for Symbolic Regression） · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：PKU-CMEGroup</p><p>日期：2025-09</p><p>arXiv：2509.15929</p><p><a href="https://arxiv.org/abs/2509.15929" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="改進符號迴歸的蒙特卡羅樹搜尋">改進符號迴歸的蒙特卡羅樹搜尋</h1>
+<p>PKU-CMEGroup（程式碼 github.com/PKU-CMEGroup/MCTS-4-SR）</p>
+<h2 id="摘要">摘要</h2>
+<p>SR 旨在發掘簡潔可解釋、滿足目標（如擬合資料）的數學表達式，是高度組合的優化問題。GP 長期主流，近期探索 RL 提升搜尋效率。MCTS 經引導搜尋平衡探索-利用，成為符號表達式發現的有望技術。但其<strong>傳統 bandit 策略與逐符號建構常限制表現</strong>。本文提出改進 MCTS 框架，經兩大創新解決：(1) <strong>為辨識全域最優表達式量身的極值老虎機分配策略</strong>，多項式獎勵衰減假設下有有限時間表現保證；(2) <strong>演化啟發的狀態跳躍動作（如變異、交叉）</strong>，使非局部轉移到搜尋空間有望區。這些狀態跳躍動作也在搜尋中重塑獎勵地形，提升穩健與效率。我們做徹底數值研究並在多種資料集（ground-truth + 黑箱）上對比既有 SR 方法。本法回復率與 SOTA 庫相當，在準確 vs 模型複雜度的 Pareto 前沿佔有利位置。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>SR 不假設預設形式、發掘可解釋簡潔解析式；同時搜尋函數形式與參數（組合空間），產人讀式利於科學發現（金融/材料/氣候/醫療/即時控制）。SR 是 <strong>NP-hard</strong> 組合優化（搜尋樹結構 + 參數）。<strong>GP 最主流</strong>（演化候選式經變異/交叉/選擇）但<strong>常產過複雜公式、對超參敏感</strong>。學習法利用結構規律（對稱/可分離/組合性）；深度網路可直接生候選式但常只擅長資料擬合、難泛化出訓練分布。另一途徑把 SR 當序列決策用 <strong>RL</strong>（受 Go 啟發，policy-gradient/RNN 逐 token 建式；MCTS 導航符號程式空間）。</p>
+<p><strong>SR 與傳統 RL 兩處不同</strong>：(1) 目標是<strong>找全域最優狀態（最高獎勵）<strong>而非最大化期望累積獎勵；(2) 動作空間非固定、可設計成彈性狀態跳躍繞過逐步轉移。<strong>貢獻</strong>：(1) 制定類比 UCB 的</strong>極值老虎機分配策略</strong>並推導某些獎勵假設下的最優性保證；(2) 引入<strong>演化啟發狀態跳躍動作（變異、交叉）</strong> 把 MCTS 獎勵分布移向更高值；(3) 精煉 MCTS 框架達 SOTA 競爭力 + 對「RL 用於組合優化」新洞見。</p>
+<h3 id="11-相關工作">1.1 相關工作</h3>
+<ul>
+<li><strong>MCTS for SR</strong>：受 AlphaGo 啟發。早期用預訓練 actor-critic 當價值函數於 UCB；後有 module transplantation（手動加高獎勵狀態的子式）、transformer 引導動作機率、GA+MCTS 混合（MCTS 初始化 GP、GP 訓練 MCTS 內 double Q-learning）。共通：強調利用高獎勵動作（ε-greedy 或把 UCB 平均換最大）。</li>
+<li><strong>Bandit 分配</strong>：UCB 平衡探索-利用，但 <strong>UCB 最小化平均 regret，SR 求單一最佳</strong> → 研究 <strong>extreme-bandit</strong> 設定。本文提有最優保證的 extreme-bandit 分配規則嵌進 MCTS。</li>
+<li><strong>混合法</strong>：GP（有限狀態馬可夫過程、收斂靠遍歷性，但須仔細平衡探索-利用、對超參敏感）+ RL（MCTS/policy gradient，逐符號建式平衡較好但逐步建構低效）。近期混合 RL+GP 交替。本文把生物啟發的<strong>狀態跳躍（變異/交叉）嵌進 MCTS</strong>。</li>
+</ul>
+<h2 id="2-背景">2. 背景</h2>
+<p>（2.1 SR：表達式表為二元樹/符號序列；2.2 MCTS 四步選擇/擴展/模擬/反向傳播 + UCB。）</p>
+<h2 id="3-方法">3. 方法</h2>
+<p>（3.1 極值老虎機分配策略 UCB-extreme + 多項式獎勵衰減下的最優性保證；3.2 狀態跳躍動作變異/交叉。）</p>
+<h2 id="4-實驗與結果">4. 實驗與結果</h2>
+<p><strong>基本 benchmark</strong>（ground-truth 已知閉式）：Nguyen、Nguyen C、Jin、Livermore（至多兩變數）。<strong>SRBench 黑箱</strong>：Feynman、Strogatz、Black-box（122 任務，46 真實觀測 + 76 合成）。含常數時各表達式評估用 BFGS 優化常數。</p>
+<p><strong>演算法分析</strong>（Nguyen）：</p>
+<ul>
+<li>先視覺化獎勵分布（高機率回復的重要指標）。多數 Nguyen 案例尾衰減率約在某區間（圖 2 Nguyen-4）。</li>
+<li>只配 UCB-extreme：尾衰減率估計高於某值時可達最優回復；但<strong>對尾衰減率參數敏感、需仔細調</strong>，複雜目標式（如 Nguyen-4）常掙扎。</li>
+<li>加狀態跳躍動作：<strong>劇烈重塑獎勵地形</strong>。加入前 Nguyen-4 的尾衰減（Beta 分布 β 參數）在某區間，<strong>加入後降到 &lt;2</strong>；其餘 Nguyen 案例 β 從原區間移到 <strong>[2,4]</strong>。實務上降 β → <strong>更快更穩收斂</strong>。後續比較固定此設定。</li>
+</ul>
+<p><strong>比較研究（Table 1，200 萬評估、100 次平均回復率%）</strong>：</p>
+<ul>
+<li>Nguyen：<strong>Ours 93.25</strong> / NGGP 92.33 / GEGL 86 / DSR 83.58 / PySR 74.41</li>
+<li>Nguyen C：Ours/DSR/GEGL/NGGP 皆 100、PySR 65.40</li>
+<li>Jin：<strong>Ours 100</strong> / NGGP 100 / GEGL 95.67 / DSR 70.33 / PySR 72.17</li>
+<li>Livermore：<strong>Ours 71.41</strong> / NGGP 71.09 / GEGL 56.36 / DSR 30.41 / PySR 46.14</li>
+<li>→ 與 SOTA（DSR/GEGL/NGGP/PySR）相當或更優。</li>
+</ul>
+<p><strong>SRBench（對比 21 基線）</strong>（圖 3）：本法在<strong>準確-複雜度間取得有利平衡——測試準確排第 2（僅次 Operon），但模型簡單得多</strong>；在 Pareto 前沿位列頂尖（與 Operon、GP-COMEA、DSR 並列）。</p>
+<h2 id="5-討論與限制">5. 討論與限制</h2>
+<p>（極值老虎機對尾衰減率敏感、需調；狀態跳躍重塑獎勵地形的機制與更廣適用性。）</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2509.15929_Improved_MCTS_SR.%E6%91%98%E8%A6%81.html"><code>../summarize/2509.15929_Improved_MCTS_SR.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

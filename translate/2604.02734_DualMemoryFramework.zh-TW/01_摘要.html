@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.02734_DualMemoryFramework.zh-TW.html">回 2604.02734_DualMemoryFramework.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>大型語言模型（LLM）在長時程決策任務中展現強大潛力，但在複雜環境中代理常陷入無盡試誤或偏離主要目標。作者將此失敗歸因於兩種基本錯誤：全域<strong>進展漂移（Progress Drift）<strong>與局部</strong>可行性違規（Feasibility Violation）</strong>。既有方法多試圖以單一範式同時處理兩者，但這兩種挑戰本質不同：前者依賴模糊語意規劃，後者要求嚴格邏輯限制與狀態驗證。單一範式的內在局限對現有模型構成根本性挑戰。</p>
+<p>為此，本文提出 <strong>神經符號雙記憶框架（Neuro-Symbolic Dual Memory Framework）</strong>，明確解耦語意進展引導與邏輯可行性驗證。推論階段同步調用兩種記憶機制：<strong>神經 Progress Memory</strong> 從成功軌跡提取語意藍圖引導全局任務推進；<strong>符號 Feasibility Memory</strong> 利用從失敗轉換合成的可執行 Python 驗證函數進行嚴格邏輯驗證。在 ALFWorld、WebShop 與 TextCraft 上顯著超越既有競爭基線，且大幅降低無效動作率與平均軌跡長度。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>近年 LLM 代理在具身操作與網路互動等任務中展現巨大潛力。但當環境具有嚴格動作限制與長程依賴時，代理極易陷入低效試誤或偏離任務目標。作者將此歸因於兩個耦合的基礎危機：全域進展漂移（代理在子步驟間失去推進方向）與局部可行性違規（代理在未滿足前置條件時嘗試執行動作）。</p>
+<p>既有方法多試圖以單一架構或統一經驗表徵同時解決兩者（Reflexion、ExpeL、AWM 等），核心局限在<strong>未明確分離語意進展引導與邏輯可行性驗證</strong>——即使進展校準與可行性校準對推理的要求根本不同。全域進展本質模糊且依賴上下文，需要高維語意匹配與歸納；局部動作可行性由環境物理定律決定，需要絕對嚴格的邏輯邊界與條件觸發。將兩者強制合併，常導致神經網路在硬限制上幻覺，或符號規則缺乏處理複雜語意的彈性。</p>
+<p>因此本文論證<strong>解決雙對齊危機需要為每個對齊目標配備適合其推理需求的架構</strong>：進展校準依賴語意歸納，最適合神經機制；可行性校準依賴嚴格邏輯驗證，最適合符號機制。長時程代理任務的本質正是語意規劃與邏輯限制的有機整合。</p>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p><strong>LLM 代理</strong>：現有方法多透過提示、檢索或文字反思，在共享語意記憶空間中複用軌跡／反思／階段提示／修正啟發式，對高層進展引導有效，但當同一表徵被用於需要嚴格邏輯邊界的局部可行性違規時，常不可靠。</p>
+<p><strong>神經符號代理</strong>：SayCan、SayPlan 等將語言規劃與 affordance 感知接地結合；Re2 Agent、WALL-E 2.0 透過失敗抽象、動作規則與結構化場景表徵減少無效動作。這些設計有助確保動作可行性，但控制仍受相對僵化的規則框架限制，缺乏處理高度可變長時程任務所需的彈性。本文框架明確分離語意進展引導與符號可行性驗證，讓神經記憶處理全局推進、符號記憶強制局部可執行性。</p>
+<h2 id="3-方法">3. 方法</h2>
+<h3 id="31-概述">3.1 概述</h3>
+<p>將環境建模為部分可觀測馬可夫決策過程（POMDP）E=(S,A,O,T,Ω)。以 ReAct 策略在 50 題不相交訓練任務上收集軌跡資料集 D，包含任務指令 x、觀測序列 o、動作序列 a、結果 y。目標：最大化任務完成期望 reward E[R(τ)]。</p>
+<p>離線階段：失敗轉換→誘導符號驗證器構成 Feasibility Memory M^f；成功軌跡→蒸餾階段化藍圖構成 Progress Memory M^p。推論階段：兩記憶同步運作，神經路徑提案、符號路徑驗證。</p>
+<h3 id="32-可行性校準符號記憶-mf">3.2 可行性校準：符號記憶 M^f</h3>
+<p><strong>目標</strong>：以強制動作可執行性邊界防止局部可行性違規。長時程任務中許多失敗並非源於錯誤的高層規劃，而是違反環境施加的精細前置條件。可行性校準依賴嚴格且條件觸發的驗證，因此以可執行 Python 驗證器建模。</p>
+<p>從 D 提取所有動作前觀測、重建場景圖 g_t=Γ(h_t)、動作、下一觀測，建立全局轉換池 Z。g_t 是環境特定的輕量結構化表徵，僅記錄軌跡自身揭露的實體、關係與介面 affordance，不依賴任何特權 oracle。根據後續觀測是否顯示成功執行（Valid(o&#x27;)∈{0,1}），將 Z 劃分為 Z^+（正例）與 Z^-（負例）。</p>
+<p><strong>Inductor Agent</strong> 對比正／負例上下文，歸納導致動作失敗的自然語言限制，編譯成可執行 Python 驗證函數 f_r(o_t, g_t, a_t) → (c_r, m_r, u_r)：</p>
+<ul>
+<li>c_r∈{0,1}：合法性判決</li>
+<li>m_r：具體錯誤回饋</li>
+<li>u_r：針對性修正建議</li>
+</ul>
+<p><strong>驗證協定保守</strong>：先在整個 Z 上篩除任何假陽性規則（攔截 Z^+ 中任一正例即捨棄），再對零假陽性規則以貪婪覆蓋選擇——每輪選覆蓋最多未被覆蓋負例的規則（Cover(r)），直至預定預算或邊際收益閾值。最終保留規則集構成 M^f。由此碎片化失敗經驗轉化為可驗證、可詮釋、可直接執行的局部符號限制。</p>
+<h3 id="33-進展校準神經記憶-mp">3.3 進展校準：神經記憶 M^p</h3>
+<p><strong>目標</strong>：透過將代理錨定至任務當前語意階段來緩解全域進展漂移。進展校準依賴模糊、上下文依賴的語意歸納，因此以從成功軌跡蒸餾的神經記憶建模。</p>
+<p>從 D 濾出成功完成任務的 D^+。成功軌跡是進展校準的特權訊號——揭示哪些高層語意階段真正導致完成。<strong>Distiller Agent</strong> 沿時間軸解耦為任務級程序藍圖：有序進展錨點 p_1→…→p_L，每錨點對應關鍵語意節點；同步提取對應連續動作塊 c_ℓ（(o_i,a_i) 片段）。單一成功經驗結構化為 P={x, {(p_ℓ, c_ℓ)}^L_{ℓ=1}}。</p>
+<p>建構兩層神經索引：任務級嵌入 e_x=φ_x(x)（Top-3 相似任務）與錨點級嵌入 e_ℓ=φ_p(p_ℓ)（Top-3 相似錨點），以 cosine 相似度與 all-mpnet-base-v2 編碼器支援雙粒度檢索。此設計保留階段級任務結構，允許跨任務語意轉移，以對齊當前階段的錨點示範取代粗糙的少樣本全軌跡，提供更乾淨的進展訊號。</p>
+<h3 id="34-雙對齊推論">3.4 雙對齊推論</h3>
+<p>給定新任務 x*：Blueprint Planner 從 M^p 檢索 Top-3 相關歷史藍圖，以 x* 與檢索到的先驗藍圖為條件，生成當前任務結構化藍圖 P̂=[p̂_1,…,p̂_L̂]。執行階段維持動態錨點 p̂_j。</p>
+<p>每時間步 t：</p>
+<ol>
+<li>從 M^p 檢索與 p̂_j 匹配的參考動作塊 c*_j</li>
+<li>Actor 綜合歷史 h_t、原始任務 x*、當前錨點 p̂_j、參考動作 c*_j，生成候選動作 ã_t</li>
+<li>Feasibility Memory 重建場景圖 g_t=Γ(h_t)，以驗證器攔截 ã_t，迭代修正至通過或達 5 次上限</li>
+<li>執行 a_t，獲得 o_{t+1}</li>
+<li>Progress Monitor ψ_φ 評估當前階段完成度，輸出切換訊號 u_t∈{0,1}→j_{t+1}=j_t+u_t（完成則推進至下一錨點）</li>
+</ol>
+<p>透過將全域進展推理路由至神經記憶、將局部可執行性檢查路由至符號記憶，代理得以避免單範式系統的兩種特徵性失敗：來自結構不足進展建模的語意漂移、以及來自接地不足動作生成的無效試誤。</p>
+<blockquote>
+<p><a href="../2604.02734_DualMemoryFramework.zh-TW.html">上一部分 ←</a></p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

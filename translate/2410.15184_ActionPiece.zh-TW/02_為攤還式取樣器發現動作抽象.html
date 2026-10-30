@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_為攤還式取樣器發現動作抽象 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2410.15184_ActionPiece.zh-TW.html">回 2410.15184_ActionPiece.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-為攤還式取樣器發現動作抽象">4. 為攤還式取樣器發現動作抽象</h2>
+<p>軌跡步數愈多，訓練攤還式取樣器就愈難：一次接一個節點建 n 節點圖需 O(n²) 步；自回歸取樣長字串亦然。在 LLM 中，取樣「常出現的子序列（token）」而非單一字元，能縮短編碼高似然句子所需的軌跡長度，通常同時降低訓練與推論成本——這可視為<strong>以「減少 MDP 深度」換取「增加廣度」</strong>、使任務更易學的策略。</p>
+<p>受此啟發，本文提出對任何取樣器都適用的三步「chunking」（見 Algorithm 1）：</p>
+<ol>
+<li><strong>生成動作語料</strong>：從取樣器取 N 條動作序列，可再從「過往高回報軌跡的 replay buffer」抽比例 p 摻入。</li>
+<li><strong>Chunking（成塊）</strong>：對這 N 條序列跑 NLP 常用的 <strong>BPE（byte pair encoding；Gage, 1994）</strong>，得到新 token（chunk）。</li>
+<li><strong>擴充動作空間</strong>：把抽象動作加入 A；選中它時，依序執行其構成的原子動作。（與 option 框架不同，這裡不允許只部分執行；若某抽象動作在某 state 無法完整執行，就由策略把它遮罩掉。）</li>
+</ol>
+<p><strong>兩種成塊機制</strong>（都與無壓縮的 <strong>ATOMIC</strong> 取樣器對照）：</p>
+<ul>
+<li><strong>ActionPiece-Increment</strong>：對語料跑 tokenizer，只把<strong>最高頻</strong>的那個 token 加入動作空間，動作空間每次長一格。漸進建庫，但易受 chunk 重複或低品質序列影響。</li>
+<li><strong>ActionPiece-Replace</strong>：取 tokenizer 找到的<strong>前 M 高頻</strong> token（附加到初始動作集）；每次抽象幾乎會<strong>整組替換</strong>動作空間（原子 token 除外）。能降低存冗餘 chunk 的機會、一步挖出多個有用 chunk。</li>
+</ul>
+<p><strong>成塊頻率</strong>：最簡單是每 k 次迭代成塊一次（多數實驗採此）；另一選擇是某條件滿足才做——GFlowNet 可用 TB loss 當「取樣器對當前動作空間的擬合度」代理，等 loss 降到閾值以下再進行一輪成塊。</p>
+<h2 id="5-實驗設定">5. 實驗設定</h2>
+<p>比較 <strong>SAC、A2C、GFlowNet</strong> 與隨機取樣器基線。GFlowNet 用 TB，並含三種反向策略：<strong>Uniform P_B</strong>（均勻選父）、<strong>MaxEnt P_B</strong>（均勻選反向軌跡；在 Tree MDP 與 Uniform 等價）、以及新提出的 <strong>ShortParse P_B</strong>（取步數最少的反向軌跡）。</p>
+<p><strong>非平穩動作空間的策略參數化</strong>：為應付因成塊而變動的動作集，策略不再輸出「固定動作數的 logits」，改為吃進當前 state、輸出動作嵌入 qt∈R^d；並用<strong>動作編碼器</strong> f_θ 對每個動作算嵌入——f_θ 以 <strong>LSTM</strong> 吃 chunk 的原子動作序列（長度可為 1）。設 f_θ(A) 為全體動作嵌入矩陣，則 logits ℓ_t = f_θ(A)·qt/√d（式 4）。</p>
+<p><strong>任務</strong>：三個合成任務——bit sequence（位元序列生成）、FractalGrid（改自 hypergrid）、graph generation（圖生成）；一個實務任務——RNA 序列生成（L14 RNA1）。</p>
+<h2 id="6-結果">6. 結果</h2>
+<h3 id="61-chunking-是否改善生成式建模">6.1 chunking 是否改善生成式建模？</h3>
+<p><strong>加速 mode 發現？</strong>（圖 2）跨所有環境，GFlowNet 版 ActionPiece 在 mode 發現速度上都優於 ATOMIC；FractalGrid 中所有取樣器原本都卡在第一個 mode，chunking 解鎖了抓遠處 mode 的探索力。其他演算法結果不一：ActionPiece 幫到 FractalGrid 的 A2C/SAC，卻傷 RNA binding；Replace 在 BitSequence 幫到 A2C，Increment 反而傷。可能原因是 SAC/A2C 的貪婪行為——發現 mode 後會過度取樣，加入一個超大 chunk，後續 chunk 又都含它的片段，傷害探索；GFlowNet 因學習目標帶來的探索性而較不受此害。隨機取樣器只在簡單任務有效。</p>
+<p><strong>改善密度估計？</strong> 圖 3 顯示 chunking（尤其 Increment）強化了 GFlowNet 固有的探索、幫助覆蓋整個 state 空間並更準地從目標分佈取樣（TB loss、L1、JSD、ELBO Gap 皆改善；跨 65²、129² 網格皆加速訓練）。Table 1（7 節點圖環境，三個 seed）：</p>
+<table>
+<thead>
+<tr>
+<th>機制</th>
+<th>ELBO Gap</th>
+<th>JSD</th>
+<th>L1 Distance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ATOMIC</td>
+<td>—（±0.39）</td>
+<td>0.38</td>
+<td>1.44</td>
+</tr>
+<tr>
+<td>ActionPiece-Increment</td>
+<td>0.25（±0.14）</td>
+<td>0.36</td>
+<td>1.39</td>
+</tr>
+<tr>
+<td>ActionPiece-Replace</td>
+<td>0.35（±0.11）</td>
+<td>0.40</td>
+<td>1.47</td>
+</tr>
+</tbody>
+</table>
+<p>Increment 改善了密度估計，Replace 亦具競爭力；整體指向 chunking 有助密度估計（少數例外，如 bit sequence 上 chunking 反略差）。</p>
+<h3 id="62-chunk-是否捕捉底層分佈的結構">6.2 chunk 是否捕捉底層分佈的結構？</h3>
+<p>以 RNA Binding（L14 RNA1，有高回報物件資料集）分析。RNA 分子本由稱作 **codon（密碼子，三核苷酸一組）**的building block 組成，正對應「chunk」概念。度量：<strong>chunk occurrence</strong>（每個 chunk 在資料集物件中平均出現次數）、<strong>chunk coverage</strong>（含該 chunk 的物件比例）。</p>
+<p><strong>是否代表潛在結構？</strong>（Table 2）GFlowNet 系（GFlowNet、MaxEnt、ShortParse）在 Increment 下 chunk occurrence/coverage 都明顯較高；A2C/SAC/隨機取樣器則中低，Replace 幾乎所有取樣器中位數都近零。Increment 優於 Replace（推測 Replace 更新太快，策略難以準確建模）。結論：<strong>GFlowNet + Increment 能有效捕捉分佈的潛在結構，尤其在 mode 附近</strong>。</p>
+<p><strong>是否降低描述長度/複雜度？</strong> 用學到的 chunk 庫算已知 modes 的 <strong>shortest parse（最短剖析，取樣一個 mode 所需的最短軌跡長度）</strong>；只用原子動作是最長剖析，直接對 modes 跑 BPE 是下界。圖 4 顯示 GFlowNet 系的 shortest parse 最短（chunk 多樣性高、壓縮力強），RL 系較長（其 chunk 聚焦較小 state 區、探索受限傷 chunk 品質）。對 RL 而言 Replace 學到的庫壓縮不佳，GFlowNet 則找到能捕捉潛在結構、壓縮更好的庫。</p>
+<p><strong>能否遷移到新模型與新任務？</strong>（圖 5）用學到的 chunk 庫初始化取樣器，比不做 chunking 就已提升 mode 數；用 L14 RNA1 學到的庫去跑結構相似的 RNA2/RNA3 仍提升，顯示 chunk 可遷移。GFlowNet 誘導的庫在 mode 發現上平均最佳（RL 系易卡在 state 空間子區、學到的 chunk 難泛化）。此結論適用於 Increment，但不適用 Replace（一次換全庫太激進；Increment 每次只加一個 chunk、像 curriculum，給取樣器時間適應）。</p>
+<h2 id="7-結論">7. 結論</h2>
+<p>抽象與動態概念學習是人類認知的關鍵，也應被人工學習系統建模。本文研究攤還式取樣器中的<strong>動態動作空間學習</strong>，提出 <strong>ActionPiece</strong>——用 tokenizer 對動作序列成塊，可視為「以減少 MDP 深度換取增加廣度」的策略。實證顯示它在多領域改善 mode 發現與捕捉環境潛在結構；對 GFlowNet 這類取樣器，選出的 chunk 能捕捉目標分佈的底層結構並泛化到其他目標分佈。</p>
+<p><strong>局限與未來工作</strong>：本文用 BPE、針對<strong>固定目標分佈</strong>成塊。未來可研究<strong>任務條件化的庫</strong>，並把「學抽象」形式化為建模聯合分佈 p(X, L)（L 為抽象庫），即對「可能的概念庫」建立一個分佈。也可把抽象的想法用於<strong>程式碼生成</strong>——好的抽象能自然讓複雜任務變簡單（Ellis 等， 2021；Stengel-Eskin 等， 2024）。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2410.15184_ActionPiece.%E6%91%98%E8%A6%81.html"><code>../summarize/2410.15184_ActionPiece.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

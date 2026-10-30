@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《以互補神經元與膜電位聚合增強的三值脈衝神經網路》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Boxuan Zhang、Jiaxin Wang、Zhen Xu、Kuan Tao</p><p>日期：2026-01，三值脈衝神經網路（I 類：低位元/類腦運算）</p><p>arXiv：2601.15598</p><p><a href="https://arxiv.org/abs/2601.15598" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="以互補神經元與膜電位聚合增強的三值脈衝神經網路重點摘要">《以互補神經元與膜電位聚合增強的三值脈衝神經網路》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>針對發放 <strong>{−1, 0, 1} 三值脈衝</strong>的脈衝神經元（比二值更合生物的「興奮-抑制平衡」、資訊容量更大），本文診斷出其三大缺陷——<strong>迭代資訊損失、時間梯度消失、膜電位分布不規則</strong>——並提出 <strong>CTSN（互補三值脈衝神經元，加一個可學習的「互補項」保存歷史輸入）+ TMPR（時變膜電位正則化訓練法）</strong> 來逐一修補，在 CIFAR/ImageNet-100/CIFAR10-DVS 上達 SOTA（如 CIFAR-100 <strong>81.19%</strong>、ImageNet-100 <strong>85.06%</strong>）。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>脈衝神經網路（SNN）以「乘法-free、事件驅動」著稱、能耗低。但傳統**二值脈衝神經元（發放 0/1）<strong>生物合理性低、資訊容量受限。近期的</strong>三值脈衝神經元（{−1,0,1}）**更貼合生物的興奮-抑制平衡、容量更大且保留乘法-free 與事件驅動特性，卻仍有三大未解缺陷：</p>
+<ul>
+<li><strong>迭代資訊損失</strong>：因「硬重置」（發放後膜電位歸 0），是個<strong>無記憶模型</strong>——一旦發放，先前時步輸入的資訊全丟（二值用軟重置解，但作者實驗證明軟重置套到三值神經元效果不佳）。</li>
+<li><strong>時間梯度消失</strong>：用 BPTT 訓練，當 |u(t)| ≥ (3/2)V_th 時某係數 κ=0，只要在該條件下發放過一次，對應的時間梯度就消失——<strong>三值神經元不可避免的問題</strong>。</li>
+<li><strong>膜電位分布不規則</strong>：靜態影像上隨時步出現偏離閾值的雙峰分布（→過度激活→梯度消失）；神經形態資料上後期過於尖峰（→大量神經元沉默→表徵力下降）。</li>
+<li>此外三值神經元忽略<strong>神經元動態的異質性</strong>，是 SNN 表現次優的主因之一。</li>
+</ul>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>CTSN（互補三值脈衝神經元）</strong>：在積分過程加一個<strong>可學習的互補項 h(t)</strong>（更新函數 𝔾 含可學習參數 α、β、γ，初值 0.5）。h(t) 像一個<strong>無重置機制的「憶阻器」</strong>：持續把先前輸入的資訊重新注入膜電位，隨時步累積。作用三合一——(1) 保存歷史資訊、緩解迭代資訊損失；(2) 在 BPTT 中<strong>創造額外反向傳播路徑</strong>、放大中間時步的時間梯度以對抗梯度消失（T&gt;2 時生效，T≤2 退化回原三值神經元）；(3) 平滑膜電位分布。可學習因子賦予神經元<strong>強異質性</strong>，能自適應調整動態。</li>
+<li><strong>TMPR（時變膜電位正則化）</strong>：在交叉熵損失外加一項 L_TMPR ∝ Σ_t (λ/t) Σ_l ũ_l(t)²，用膜電位的<strong>聚合度</strong>（ũ(t)²）當正則項。關鍵設計：<strong>早期時步強正則</strong>（逼膜電位聚集到 0）、<strong>後期減弱正則</strong>（避免後期不規則分布招致過度懲罰造成訓練不穩）——順應膜電位分布的時間演化趨勢。等效於在空間與時間維度加入<strong>強度隨時間變化的殘差連接</strong>，補償早期時步各層的時間梯度消失。</li>
+<li><strong>聯合作用</strong>：CTSN + TMPR 同時強化空間與時間維度的梯度反傳，理論分析（梯度公式 Part I/II）與實驗一致。</li>
+</ul>
+<h2 id="關鍵結果">關鍵結果</h2>
+<ul>
+<li><strong>CIFAR-10：96.46%</strong>、<strong>CIFAR-100：81.19%</strong>，同骨幹下超越所有比較的 SNN 方法。</li>
+<li><strong>ImageNet-100：85.06%</strong>（4 時步），相較其他方法大幅提升。</li>
+<li><strong>神經形態 CIFAR10-DVS：79.06% / 81.23%</strong>，顯著優於其他脈衝神經元模型；用開源碼以 VGGSNN 實作達 <strong>83.20%</strong>（展現靈活性）。</li>
+<li><strong>時步消融</strong>：T=2 時 CTSN 無法放大時間梯度，準確度 ~73.4%（與原三值神經元相近）；隨 T 增大 CTSN 持續勝過原三值神經元，印證互補項對時間梯度的貢獻。</li>
+<li>可學習參數 α/β/γ 在各層充分學習調整，證明參數可學習性與神經元異質性；CTSN+TMPR 後膜電位分布更平滑、緊湊、對稱（尤其 CIFAR-100）。</li>
+</ul>
+<h2 id="局限作者自陳">局限（作者自陳）</h2>
+<ul>
+<li>CTSN 對不同輸入類型（靜態 vs 神經形態）呈現不同神經元行為，<strong>缺乏通用性</strong>。</li>
+<li>同時發放正負脈衝使其<strong>比二值神經元發放更頻繁→能耗更高</strong>，且<strong>與現有為二值設計的神經形態硬體相容性差</strong>。</li>
+<li>CTSN/TMPR 對膜電位引入額外運算，<strong>降低訓練期計算效率</strong>；CTSN 數學複雜，神經元動態與時間資訊傳遞機制仍需更全面分析。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 <strong>I 類（低位元/類腦運算）</strong> 的代表：把「低位元」從權重量化擴到<strong>脈衝表徵的三值化</strong>，與 [[2509.07025_Binary_Normalized_NN]]、[[2512.04189_BEP_Binary_Error_Propagation]]、[[2601.22660_StoMPP_STE_Free_BNN]] 等二值/低位元線索互補——三值在「資訊容量 vs 能耗/硬體相容」上是另一條取捨曲線。</li>
+<li>最值得記：<strong>三值脈衝（{−1,0,1}）= 興奮-抑制平衡的生物動機</strong>；硬重置導致的<strong>無記憶/迭代資訊損失</strong>與三值特有的<strong>時間梯度消失</strong>兩大病灶；解法是<strong>可學習互補項 h(t)（無重置、創額外梯度路徑）+ 時變正則 TMPR（早強晚弱）</strong>。</li>
+<li>適合做 SNN 直接訓練（BPTT/代理梯度）、低能耗類腦運算、或關心「擴大脈衝表徵空間是否真有用」的人。注意其硬體相容性與能耗代價——並非無條件勝過二值。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2601.15598_CTSN_Ternary_SNN.zh-TW.html"><code>../translate/2601.15598_CTSN_Ternary_SNN.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

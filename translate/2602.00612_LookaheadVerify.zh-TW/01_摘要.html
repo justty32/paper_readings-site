@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>前瞻而後驗證（LAVE）Part 2：實驗設置、結果、討論與結論 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2602.00612_LookaheadVerify.zh-TW.html">回 2602.00612_LookaheadVerify.zh-TW 目錄</a>　<a href="02_%E5%AF%A6%E9%A9%97%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>擴散大語言模型（dLLM）展現出良好的生成能力，並日益被用於產生由上下文無關文法（CFG）定義的形式語言（如程式碼、化學式）。然而作為機率模型，它們仍難以可靠地生成語法正確的輸出。一個自然且有前景的方向是將約束解碼技術用於在生成過程中強制語法正確性。但此方向面臨兩大障礙：(1) dLLM 的非自迴歸特性使大多數現有約束解碼方法不適用；(2) 現有針對 dLLM 的方法可能允許「無法被完成為合法句型」的中間輸出，嚴重限制可靠性。本文提出 <strong>LAVE（Lookahead-then-Verify）</strong>，利用 dLLM 每次前向傳播可並行預測所有位置分布的關鍵特性：當模型提議新 token 時，LAVE 使用這些分布進行前瞻（lookahead），高效可靠地驗證所提 token 是否保持輸出的可延伸性。在 4 個廣泛使用的 dLLM 與 3 個代表性基準上的實驗表明，LAVE 一致優於既有方法，語法正確率大幅提升，運行時間開銷幾乎可忽略。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>近年擴散 LLM 受到學術與工業界高度關注（LLaDA、Dream、Mercury Coder、Gemini Diffusion、LLaDA2 100B 等）。與自迴歸 LLM 不同，dLLM 以非自迴歸方式生成 token——右側 token 可能先於左側生成，產生含有 [MASK] 的<strong>不完整前綴</strong>。dLLM 正被應用於產生形式語言，但語法錯誤率仍居高不下：例如 Dream-v0-Instruct-7B 在 HumanEval-CPP 上語法錯誤率達 23.8%。</p>
+<p>現有 CFG 約束解碼技術依賴語法剖析器檢查「完整前綴」的有效性，這與 AR LLM 的左到右生成自然吻合，但與 dLLM 的不完整前綴不相容。近期 Mündler et al. 提出首個針對 dLLM 的 CFG 約束解碼：將 token 有效性檢查化約為正規語言與 CFG 的交集問題（交集引導），但為計算可行而忽略遮罩區段的實際長度上限（假設任意長度），導致<strong>不可靠約束</strong>——可能接受讓中間輸出無法完成的 token。</p>
+<p>本文形式化定義<strong>可靠約束</strong>：每一步中間輸出都必須可被延伸為至少一個合法句子。在此定義下，提出 LAVE——核心思想「前瞻而後驗證」：每當 dLLM 為某 [MASK] 位置提議新 token，LAVE 先對剩餘 [MASK] 位置採樣填充、轉換為完整前綴，再以 CFG 剖析器驗證是否存在可延伸路徑。若有則接受；否則拒絕。另搭配快取增強恢復機制處理卡住狀態。</p>
+<p>貢獻：(1) 識別現有 dLLM CFG 約束方法的不可靠問題；(2) 提出可靠約束解碼 LAVE;(3) 廣泛實驗證明 LAVE 大幅提升可靠性。</p>
+<h2 id="2-背景與相關工作">2. 背景與相關工作</h2>
+<h3 id="21-擴散大語言模型">2.1 擴散大語言模型</h3>
+<p>主流 dLLM 推論採迭代去噪：從全 [MASK] 序列 y0 開始，每步模型前向傳播<strong>並行預測所有仍為 [MASK] 位置的 token 分布</strong>，從中解碼部分位置為非 [MASK] token，重複至無 [MASK] 為止。關鍵特性：(1) 生成順序不嚴格左到右——右側 token 可先於左側生成；(2) 一次前向傳播同時給出所有位置的預測分布。早期開源模型 LLaDA、Dream 已展現與 LLaMA3-8B 相當的能力；Dream-Coder、DiffuCoder 等專精程式碼生成；Mercury Coder 與 Gemini Diffusion 已達商用 AR LLM 水準。</p>
+<h3 id="22-約束解碼">2.2 約束解碼</h3>
+<p>約束解碼廣泛用於確保 LLM 輸出符合 CFG。大多數方法專為 AR LLM 的左到右生成設計，依賴「完整前綴」才能檢查有效性——dLLM 的不完整前綴使這些方法無法直接套用。DINGO 為 dLLM 設計了基於動態規劃的約束解碼，但僅限於正規文法（非 CFG）。</p>
+<p>Mündler et al. 提出首個 dLLM CFG 約束解碼（交集引導，IG-CD）：將新提議 token 的有效性檢查化約為「正規語言與 CFG 交集非空」問題。然而為計算可行，正規語言被迫<strong>忽略遮罩區段確切長度</strong>（改以 Σ* 過近似）。此過近似使約束不可靠：可能接受實際上使中間輸出無法完成為合法句型的 token（例如 <code>for ( </code> 後只有一個 [MASK] 位置，不可能在一個 token 內塞進兩個分號，但過近似仍接受閉括號）。</p>
+<p>作者定義<strong>可靠約束</strong>（每步中間輸出皆可被延伸為合法句子）vs <strong>不可靠約束</strong>（存在某步無法延伸），指出可靠約束是實際部署的前提。</p>
+<h2 id="3-方法lave">3. 方法：LAVE</h2>
+<h3 id="31-整體流程演算法-1">3.1 整體流程（演算法 1）</h3>
+<p>採迭代「提案−驗證」機制：dLLM 依原生解碼策略為任意 [MASK] 位置提議 token → <strong>前瞻驗證</strong>決定接受或拒絕 → 接受則更新輸出繼續，拒絕則重提另一 token → 若連續失敗超過提案預算 τ，觸發<strong>快取增強恢復</strong> → 迴圈至無 [MASK]。</p>
+<h3 id="32-前瞻驗證lookahead-based-verification核心">3.2 前瞻驗證（Lookahead-Based Verification，核心）</h3>
+<p>令 y 為含新提議 token 的更新輸出。定義右側最末非 [MASK] 位置 r(y)，由此形成前綴 y_p = y[1:r]（通常為不完整前綴，含剩餘 [MASK] 位置 M(y_p)）。</p>
+<p>目標：斷定是否存在對 M(y_p) 各位置的賦值，使所得完整前綴可合法延伸（IsExtendable）。若有，接受該 token。</p>
+<p><strong>可行性</strong>：在 HumanEval-CPP 上，隨機遮罩參考解的某些 token 模擬中間狀態，以模型邊際分布獨立採樣 N 組完整前綴。N=10 時 Dream-7B 接受率 98.1%、LLaDA-8B 97.3%（圖 3），證明少量前瞻即能有效判定可延伸性。</p>
+<p><strong>程序</strong>：對 y_p 中每個 [MASK] 位置 j，從其邊際分布 P_j 獨立採樣 N 組賦值（z^(1)...z^(N)），填入得 N 組完整前綴 s^(n)。並行以 Earley 剖析器檢查 IsExtendable(s^(n))：至少一組為 true 即接受 token，否則拒絕。通過驗證的那組完整前綴即為「可延伸的建設性證據」，保證輸出永遠保持可完成性。</p>
+<h3 id="33-快取增強恢復cache-enhanced-recovery">3.3 快取增強恢復（Cache-Enhanced Recovery）</h3>
+<p>實際推論中可能進入困難上下文，模型反覆提議都被拒絕、近乎停滯。解法：維護全域變數 y_cache，每當有完整前綴 s^(n) 通過驗證便記錄之。當連續失敗次數 ≥ τ（預設 5），以 y_cache 取代當前輸出前綴。</p>
+<p>若當前前綴已無 [MASK]（與 y_cache 完全相同），則利用剖析器提供的合法下一 token 集合 V，對下一位置約束取樣一個新 token：P&#x27;_hat(t) ∝ P(t) · I[t ∈ V]。取樣後恢復標準提案−驗證流程，有效改變上下文而不犧牲可靠性。</p>
+<blockquote>
+<p>接 <a href="../2602.00612_LookaheadVerify.zh-TW.html">Part 2：實驗設置、結果、討論、結論</a></p>
+</blockquote>
+<hr />
+<h2 id="title-前瞻而後驗證擴散大語言模型在-cfg-下的可靠約束解碼lave-part-2實驗與結論-source-httpsarxivorgabs260200612-arxiv_id-260200612-parent-260200612_lookaheadverifyzh-twmd">title: 前瞻而後驗證：擴散大語言模型在 CFG 下的可靠約束解碼（LAVE）—— Part 2：實驗與結論
+source: https://arxiv.org/abs/2602.00612
+arxiv_id: 2602.00612
+parent: ./2602.00612_LookaheadVerify.zh-TW.md</h2>
+<h1 id="前瞻而後驗證lavepart-2實驗設置結果討論與結論">前瞻而後驗證（LAVE）Part 2：實驗設置、結果、討論與結論</h1>
+<h2 id="4-實驗設置">4. 實驗設置</h2>
+<ul>
+<li><strong>基準</strong>：CPP-Bench（C++ 程式碼生成， HumanEval-CPP, 164 題）、JSON-Bench（JSON 資訊抽取， JSON-Mode-Eval-Extended, 272 題）、SMILES-Bench（化學分子式生成， 167 題）。</li>
+<li><strong>文法</strong>：C++ 與 SMILES 基於標準語法；JSON 為每題獨立 Schema CFG。</li>
+<li><strong>基線</strong>：(1) NO-CD（無約束）;(2) FS-CD（強制左到右生成順序，套用 AR 約束解碼的 Earley 剖析器）;(3) IG-CD（Mündler et al. 交集引導）。</li>
+<li><strong>指標</strong>：syntactic@k（k 次生成中至少一次語法正確之題目比例）、functional@k（功能正確）、平均推論時間。</li>
+<li><strong>模型</strong>：LLaDA-8B-Instruct / LLaDA-1.5 / Dream-v0-Instruct-7B / DiffuCoder-7B-cpGRPO。</li>
+<li><strong>超參數</strong>：最大長度 L=256，去噪步數 T=128，溫度=0.2，前瞻大小 N=10，提案預算 τ=5，區塊大小=32。使用 Earley 演算法實現 CFG 剖析器。8×A100 40GB 伺服器。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

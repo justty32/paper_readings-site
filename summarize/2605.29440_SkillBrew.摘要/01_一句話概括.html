@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.29440_SkillBrew.%E6%91%98%E8%A6%81.html">回 2605.29440_SkillBrew.摘要 目錄</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>SkillBrew</strong>：將技能庫策展形式化為「有用性（utility）、多樣性（diversity）、覆蓋率（coverage）」三目標的 Pareto 最優化問題，以雙層 propose-then-verify 迴圈解題：內層從軌跡證據生成 K EEP / R EWRITE / R EMOVE 候選編輯，外層以效用約束下的 Pareto 選擇器驗證並挑選新銀行，取代既有方法「只加不刪」或「單一純量信號策展」的慣例——在 ALFWorld 上平均勝最強基線 9.7pp，且跨五種 worker LLM（含 GPT-4o、Gemini-2.5-Pro）一致提升。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 智能體日益依賴<strong>技能庫（skill bank）</strong>——一組可檢索、可重用的文本原則，引導智能體在複雜任務上的決策（Voyager、ExpeL、Trace2Skill、SkillRL 等皆屬此範式，已被 Anthropic Agent Skills spec 標準化）。然而既有方法分為兩類：(A) 累積式擴張（append-only，如 Voyager）任由庫膨脹，從不刪除冗餘或有害技能；(B) 局部技能級優化（如 ExpeL 投票式新增/編輯、Skill-Pro 線上評分閘）雖可編輯技能，但策展標準坍縮為<strong>單一純量</strong>，無法在有用性、多樣性、覆蓋率之間做出原理性取捨。SkillBrew 提出第三範式 (C) <strong>全局銀行級優化</strong>：把整個技能庫視為被優化的對象，而非逐技能個別評判。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>形式化為受限多目標優化</strong>（§3.1–3.2）：理想技能庫 B* 須在有用性 J_util、多樣性 J_div、覆蓋率 J_cov 上 Pareto 最優，且 J_util 需超越最低閾值 η（即「有用為前提、多樣/覆蓋為結構正則項」的非對稱設計）。三項指標：(1) J_util 以<strong>每技能反事實貢獻</strong>估計——對每個檢索到技能 s 的軌跡 τ，做 leave-one-out 重播 τ̃_{t\s}，計算 Δ(τ, s) = r(τ, s) − r(τ, ∅)（有／無該技能的回報差），再以檢索頻率加權聚合；(2) J_div 以技能嵌入的 Gram 矩陣行列式（正規化後）衡量——懲罰冗餘、獎勵結構多樣的庫；(3) J_cov = 檢索密度（每個任務中檢索槽被填滿的平均比例）× 技能使用率（曾被檢索至少一次的技能佔銀行比例）——獎勵不只經常檢索且廣泛使用整組庫的銀行。</li>
+<li><strong>雙層 propose-then-verify 迴圈</strong>（§3.3）：將任務分為 support set D_support（提供軌跡證據）與 query set D_query（驗證候選銀行），防止過擬合。<strong>內層</strong>用三個組件：(1) Skill Distiller 讀取無檢索軌跡中的失敗，聚類後生成候選 A DD 技能；(2) Skill Diagnoser 對每個檢索技能做 leave-one-out 反事實重播，依據原本結果與反事實結果的對比發出 K EEP / R EWRITE / R EMOVE 判決；(3) Edit Planner 將三類編輯池組合成 K 個候選銀行。<strong>外層</strong>對每個候選銀行計算客觀輪廓 Φ(B) = (J_util, J_div, J_cov)，加上 null 候選（保持不變），在 Pareto 前沿上用字典序（J_util 優先、epsilon=0.03 容忍）選擇，若 J_util 平手則以 J_div+J_cov 的 hypervolume 貢獻打破僵局。每回合內建不退步保證 J_util(Bⁱ⁺¹) ≥ J_util(Bⁱ) − ϵ。</li>
+<li><strong>冷啟動</strong>：先在不使用技能的條件下收集軌跡，成功/失敗軌跡送入 Skill Distiller 合成初始 A DD 技能，作為 B⁰。</li>
+<li><strong>內容定址反事實快取</strong>（附錄 A.5）：以 SHA-256（任務 ID + 每個檢索技能的規範化內容）為鍵快取反事實重播，跨回合與跨候選銀行共享，實測第二輪起命中率 &gt;60%，大幅降低成本。</li>
+</ul>
+<h2 id="結果4">結果（§4）</h2>
+<ul>
+<li><strong>主表（Qwen2.5-7B-Instruct 作為 frozen worker）</strong>：ALFWorld 六類任務平均成功率 59.0%，勝最強技能基線 Skill-Pro 9.7pp、勝只加不刪的 Voyager 12.0pp；WebShop Score 59.3%、Succ. 38.4%，雙指標最優。</li>
+<li><strong>跨 worker 泛化</strong>（五種 backbone：Qwen3-4B、Qwen3-30B-A3B、GPT-4o、Gemini-2.5-Pro）：SkillBrew 在所有 worker 上一致提升 ReAct baseline，ALFWorld 增幅從 +20.2pp（Qwen3-30B-A3B）到 +41.7pp（GPT-4o）。即使 Qwen3-4B 經策展後的表現（60.4%）已逼近未策展的 Gemini-2.5-Pro（61.8%），暗示好庫可部分補償模型規模。</li>
+<li><strong>技能庫可轉移</strong>：一個 worker 策展的銀行用於另一個 worker 時僅微幅下降（如 Qwen3-4B 的銀行讓 GPT-4o 從 46.4% 升至 78.4%，僅比 GPT-4o 自身銀行低 9.7pp），顯示策展技能編碼的是<strong>可遷移的程序知識</strong>而非特化於特定 worker。</li>
+<li><strong>策展迴圈動力學</strong>：銀行大小從冷啟動的大值收縮至 9–10 輪後穩定，不會無限制膨脹；測試成功率在每種 worker 上隨迴圈上升。</li>
+</ul>
+<h2 id="消融實驗與分析43">消融實驗與分析（§4.3）</h2>
+<p><strong>目標消融</strong>：只用 J_util 時的 ALFWorld 成功率 45.8%，加入 J_div 升至 51.4%，加入 J_cov 升至 52.6%，三者並用達 59.0%——兩個正則項互補：J_div 防止冗餘，J_cov 懲罰囤積卻閒置的技能。</p>
+<p><strong>編輯操作消融</strong>：僅 A DD 時 ALFWorld 僅 47.0%（庫單調膨脹、閒置技能擠佔檢索槽）；A DD+R EWRITE 升至 53.5%（多數問題可修復）；A DD+R EMOVE 僅 48.3%（太粗粒度，部分正確技能直接被丟棄）。三者全開達 59.0%——R EWRITE 是主要救援路徑，R EMOVE 僅用於原則上無法修復的少數。</p>
+<h2 id="貢獻">貢獻</h2>
+<ol>
+<li>首次將技能庫策展建立為受限多目標最優化問題（有用性約束 + 多樣性/覆蓋率結構正則項），取代 append-only 或單一純量的慣例。</li>
+<li>雙層 propose-then-verify 框架：內層以反事實診斷生成 K EEP / R EWRITE / R EMOVE 編輯，外層以 Pareto 選擇器驗證並挑選新銀行，每回合不退步。</li>
+<li>ALFWorld + WebShop 全面勝出基線，跨五種 worker（含 GPT-4o、Gemini-2.5-Pro）一致提升，技能庫展示跨 worker 遷移能力。</li>
+</ol>
+<h2 id="局限">局限</h2>
+<ul>
+<li>worker 凍結（skill bank 優化期間不更新 agent 本身），聯合共適應留待未來（如遞歸共訓練或 RL）。</li>
+<li>雖有反事實快取，仍依賴大量重播 rollout，大規模時成本仍高。</li>
+<li>假設任務分佈相對靜態，開放世界與持續變化環境的延伸是重要方向。</li>
+</ul>
+<h2 id="與-ai_core-的關聯">與 ai_core 的關聯</h2>
+<p>本文直接對應 §3.6「如何策展而非只增長技能庫」的核心問題：以多目標最優化取代 append-only，以 Pareto-aware 選擇取代單一純量閘，以雙層 propose-then-verify 結構將技能庫策展從「局部信號驅動的增量編輯」升級為「全局結構優化」——正是 ai_core 可靠函式地景中「技能庫的退役、收斂與品質控制」所需的操作化框架。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

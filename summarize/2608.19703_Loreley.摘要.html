@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Loreley: Repository-Scale Program Evolution with Quality-Diversity Search 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Mohan Chen</p><p>日期：2026-08-20（v1，cs.SE）</p><p>arXiv：2608.19703</p><p><a href="https://arxiv.org/abs/2608.19703" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="loreley-repository-scale-program-evolution-with-quality-diversity-search-重點摘要">Loreley: Repository-Scale Program Evolution with Quality-Diversity Search 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>Loreley 把整個 Git repository 狀態（而非單一函式或片段）當作 QD archive 的候選，用 repository embedding 分格、每格保留多目標 Pareto front，並在受控實驗中誠實報告：archive 確實保留並重新取用了非當家（non-incumbent）狀態，但在 48-job 的預算下，這種保留並未換來優於 Sequential Champion 的最終效能。</p>
+<h2 id="方法骨架">方法骨架</h2>
+<ul>
+<li>候選＝一個 Git commit，由 coding agent 在隔離 worktree 中對 base 修改產生，只由專案自帶的外部 evaluator（build/test/量測/gate）判定有效性與目標值。</li>
+<li>Behavior descriptor：對 repository 內所有納入檔案的 embedding 取均值，做 PCA 降維到 3 維，定期 refit 並整體重建 archive（archive 具路徑依賴、非平穩）。</li>
+<li>每個 MAP-Elites cell 保留一個 bounded 多目標 Pareto front（ε-dominance + crowding distance），cell 選擇與 cell 內成員選擇分開做，避免大 front 的格被過度取樣。</li>
+<li>Inspiration 機制：取樣附近 cell 的 elite 作為「上下文」提供給 agent，但不改變 Git parent——parent edge 記血緣，inspiration edge 記提供的資訊，兩者分開統計。</li>
+<li>三個政策比較：Loreley QD（archive 取 base + 2 inspirations）、Sequential Champion（只用當前最佳當 parent，序列式）、Independent Root（永遠從 frozen root 出發，平行但不累積）。</li>
+</ul>
+<h2 id="作者報告的實驗與數字皆為作者主張">作者報告的實驗與數字（皆為作者主張）</h2>
+<p>在 Zstandard 上跑 7 組 paired block、每 block 每政策 48 個 physical job（共 1,008 job，948 個成功候選），三政策共用 frozen root、任務、agent routes 與 training evaluator。48-job 時：QD 比 Sequential 低 0.135%（95% BCa 區間 [-0.556%, +0.161%]），比 Independent Root 高 0.320%（[-0.082%, +0.686%]）；兩個區間都跨零，作者明講<strong>未能證明 QD 優勢</strong>，且 Sequential 在觀測到的 48-job 平均與中位數上最高。</p>
+<p>Archive 的「engagement」證據：7 個 block 中有 4 個最終 QD winner 的 primary-parent 血緣裡含非當家狀態，納入 inspiration edge 後上升到 6/7；67 個相關節點中 49 個是曾被admit 為非當家、之後又出現在某條 outgoing edge 上的狀態。作者特別區分「archive 有沒有被用到」（engagement，觀察到了）與「這樣做有沒有換來更好的最終結果」（efficacy，未證實），全文反覆強調兩者不能混為一談。三個較早的 capability campaign（markdown-it-py +6.75%、python-pathspec +25.14%、另一版 Zstandard +1.234%，皆在各自 validation/holdout 上量測）展示系統能產生 generation-4 的多檔案改動，但作者明講這些只是能力案例，不是政策對照組。</p>
+<h2 id="對-ai_core-的價值接點">對 ai_core 的價值／接點</h2>
+<p>這篇對 ai_core 的「archive／族群設計」與「多樣性度量」章節有直接參考價值，主要不在於它證明了 QD 有效，而在於它示範了一種<strong>誠實的陰性結果報告法</strong>：把「archive 機制有沒有被啟用」（parent/inspiration 血緣可觀察）與「啟用了是否真的更好」（需要 held-out 對照）拆成兩個可分別驗證的命題，避免把「archive 有保留分支」直接當成「QD 更好」的證據——這正是評估 ai_core 自身搜尋/演化模組時容易犯的推論跳躍。此外，用整個 repository 的檔案 embedding 均值當 behavior descriptor 有明顯侷限（patch 通常只動一小部分檔案，導致原始向量餘弦距離僅 ~1e-6 量級，descriptor 對「未來變異價值」的鑑別力存疑），這對 ai_core 若要設計程式演化的行為描述子是一個具體的反面教材：均值 embedding 可能只反映「哪些檔案被改了」而非「改動的語意方向」，值得改用 diff-restricted 或結構化的描述子做對照。48-job 的短視界結果也提醒：QD 的 stepping-stone 優勢可能需要更長的搜尋才會顯現，短預算下貿然下「QD 沒用」的結論同樣危險。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2608.19703_Loreley.zh-TW.html"><code>../translate/2608.19703_Loreley.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

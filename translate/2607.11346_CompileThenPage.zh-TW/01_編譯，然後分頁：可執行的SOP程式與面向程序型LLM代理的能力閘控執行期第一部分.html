@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>Compile, Then Page: Executable SOP Programs and a Capability-Gated Runtime for Procedural LLM Agents (Part 2) · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2607.11346_CompileThenPage.zh-TW.html">回 2607.11346_CompileThenPage.zh-TW 目錄</a>　<a href="02_%E7%B5%90%E6%9E%9C.html">下一節 →</a></p>
+</blockquote>
+<h2 id="編譯然後分頁可執行的sop程式與面向程序型llm代理的能力閘控執行期第一部分引言與方法">編譯，然後分頁：可執行的SOP程式與面向程序型LLM代理的能力閘控執行期（第一部分：引言與方法）</h2>
+<blockquote>
+<p>返回<a href="../2607.11346_CompileThenPage.zh-TW.html">母檔（含摘要與完整目錄）</a>
+接續：<a href="../2607.11346_CompileThenPage.zh-TW.html">Part 2</a>（實驗設置與結果）</p>
+</blockquote>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>將語言代理部署於面向客戶的營運，本質上是一個程序遵循問題。銀行、診所與服務台將義務編碼為SOP：長時程工作流程，包含條件分支與安全關鍵的拒絕規則——做什麼、先驗證什麼、何時拒絕。在SOPBench上，最佳官方配置在Bank子集上僅通過82.4%的任務，最佳拒絕準確率為90.7%——合規部門無法接受的錯誤率。</p>
+<p>主流做法將整個SOP以文字形式放入提示詞。常駐散文（Bank每回合約10^4字元）與對話爭奪注意力，而文字化剝奪了可執行結構：替代順序、閘短路、必須成立與如何驗證之間的邊界。症狀包括：跳過檢查、提前行動、錯誤拒絕。</p>
+<p>我們將SOP視為程式而非文字。一個離線的、確定性的編譯器將基準的機器可讀依賴約束——與其文字化器渲染為基準散文的相同來源——轉換為兩層偽代碼程式：每個使用者目標對應一個處理函數，以及將每條約束與其驗證配方及附證據回傳配對的規則子程式。一個線上的PG執行期將其作為兩層虛擬機執行：符號堆疊機處理簿記（堆疊、游標、變數、恢復），僅將活躍幀分頁送入上下文，而LLM進行對話、呼叫工具並判斷證據。強制是刻意軟性的——管理注意力而非權限——代價是正確性取決於忠實的本地幀執行。</p>
+<p>相關工作涵蓋四個脈絡：(1) <strong>漸進式揭露與上下文工程</strong>——長駐文字不被可靠使用（Liu et al., 2024），記憶分頁（MemGPT/Packer et al.），我們分頁的是策略而非記憶；(2) <strong>控制語言模型的程式</strong>——DSPy、LMQL、SGLang編譯或腳本化LM呼叫管線，我們反轉此關係——程式是模型必須遵循的產出；(3) <strong>SOP遵循代理與硬強制</strong>——SOP驅動代理將程序編碼為提示詞或角色腳本，FlowAgent加入決策控制器，受限解碼與FSM風格控制器執行硬結構強制，我們的軟強制居於中間；(4) <strong>代理基準</strong>——一般基準測量工具能力或使用者互動可靠性，SOPBench以oracle依賴圖評分。</p>
+<h2 id="2-方法">2. 方法</h2>
+<h3 id="21-sop編譯為可執行程式">2.1 SOP編譯為可執行程式</h3>
+<p>官方基準將相同依賴樹文字化，但丟失了替代順序、閘短路、以及「必須成立」與「如何驗證」之間的分離。編譯器產出兩層程式：處理函數呼叫規則子程式，回傳{holds, evidence}。五大機制：</p>
+<ol>
+<li><strong>具狀態的子程式</strong>：互動約束編譯為多回合函數，進度跨回保持。</li>
+<li><strong>遞移驗證閘拉升</strong>：驗證所需的登入/認證閘遞移閉合，置於受保護檢查之前（公式HT = lfp X Γ(AR(T) ∪ AG(X))）。</li>
+<li><strong>兩種析取</strong>：普通or採用證據完整排程（Anyall，收集所有選項後析取）；gate為短路求值（Anyfirst，首個成功停止）。</li>
+<li><strong>幀因式分解</strong>：大型複合群組成為具名函數，保持續延明確。</li>
+<li><strong>附證據回傳</strong>：語義識別符與明確回傳合約使每個判決與其驗證器綁定。</li>
+</ol>
+<p><strong>命題1（語義與排程保存）</strong>：對於符合的執行（規則回傳忠於其驗證工具結果），編譯程式的控制流在增強SOP成立時到達目標操作，否則先到達fail。其追蹤保留鏈順序、窮盡的普通or證據收集、有序閘短路，模除同幀相同（rule, θ）結果的重用。</p>
+<p>技術優勢：全830個產出以閉合呼叫圖載入，零缺失配方。平均可操作指令表面從~10^4常駐字元降至~570字元幀。</p>
+<h3 id="22-程式引導執行期pg-runtime">2.2 程式引導執行期（PG Runtime）</h3>
+<p>執行期透過單一工具 <code>pg_program_step</code> 驅動堆疊機：start、call、return、select_branch、emit_artifact、complete、fail。維護呼叫堆疊、游標與回傳變數儲存，僅將活躍幀揭露至任務本地上下文槽位。Call揭示被呼叫者；return恢復暫停的呼叫者並綁定結果、推進游標。狀態在對話外持久化，中斷後可重新揭露。LLM為語義執行器：對話、選擇工具參數、解釋證據、透過return報告判決。</p>
+<p><strong>幀與配置形式化</strong>：φ = ⟨f, κ, η, ρ⟩（函數、游標、本地變數、呼叫者回傳槽位），σ = (S, Λ)（幀堆疊、僅追加追蹤）。Call推入新幀；return恢復呼叫者。巢狀呼叫保留待處理續延。渲染函數R(σ) = render(top(S))，僅注入活躍幀，|R(σ)| ≤ BP（程式最大幀大小），與呼叫深度及對話長度無關。</p>
+<p><strong>命題2（良括號可審計性）</strong>：每個綁定結果有一個動態產生的return；所有其可接受的證據位於相應的call-return區間內。無匹配證據的return、游標域外呼叫、或接受根游標之前的目標操作均可從追蹤中檢測——執行期不阻擋，但使其可觀測。</p>
+<h3 id="23-軟性強制與有界裁量">2.3 軟性強制與有界裁量</h3>
+<p>硬阻擋在目標改變或證據以多種順序到達時脆弱。我們的執行期管理注意力而非權限：每個操作仍可執行，堆疊使跳過的檢查與無支撐回傳可觀測。此靈活性預測了能力閾值——模型必須忠實執行本地幀——實驗對此直接測試。編譯器確定性且無LLM（830程式約0.1秒）；執行期增加一個簿記工具並持久化每任務狀態。</p>
+<h1 id="compile-then-page-executable-sop-programs-and-a-capability-gated-runtime-for-procedural-llm-agents-part-2">Compile, Then Page: Executable SOP Programs and a Capability-Gated Runtime for Procedural LLM Agents (Part 2)</h1>
+<h2 id="編譯然後分頁可執行的sop程式與面向程序型llm代理的能力閘控執行期第二部分實驗結果討論結論">編譯，然後分頁：可執行的SOP程式與面向程序型LLM代理的能力閘控執行期（第二部分：實驗、結果、討論、結論）</h2>
+<blockquote>
+<p>返回<a href="../2607.11346_CompileThenPage.zh-TW.html">母檔（含摘要與完整目錄）</a>
+前接：<a href="../2607.11346_CompileThenPage.zh-TW.html">Part 1</a>（引言與方法）</p>
+</blockquote>
+<hr />
+<h2 id="3-實驗設置">3. 實驗設置</h2>
+<p><strong>基準</strong>：SOPBench，Bank為主要歸因領域（134實例，14目標——執行與拒絕任務）。上游零通過篩選排除9個Bank執行任務（2個確認為模擬器缺陷，1個實證排除），乾淨子集125個（39執行，86拒絕）。保守滿分母評分將9個排除視為失敗得offtext/flat/pg = 65.7/80.6/86.6。</p>
+<p><strong>三臂</strong>：offtext（官方文字化約束常駐）；flat（完整編譯程式文字常駐，僅表徵）；pg（編譯程式由PG執行期即時分頁執行）。offtext→flat測量編譯效果，flat→pg測量執行期效果。診斷臂full-cursor：游標引導+活躍幀置前+完整程式保留為全局參考。</p>
+<p><strong>六模型</strong>：DeepSeek-V4-Flash、Qwen3.7-Plus（強）；GPT-4o-mini、Qwen2.5-7B-Instruct（弱）；同供應商探針對Qwen3.6-27B/-35B-A3B（過渡帶）。使用者模擬器統一為V4-Flash。每任務150回合上限、50行動刷新窗口、900s/30次領域呼叫/3次使用者回。</p>
+<hr />
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

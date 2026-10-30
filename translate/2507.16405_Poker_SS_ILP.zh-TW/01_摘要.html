@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2507.16405_Poker_SS_ILP.zh-TW.html">回 2507.16405_Poker_SS_ILP.zh-TW 目錄</a>　<a href="02_Poker_%E6%BC%94%E7%AE%97%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>像 <strong>Meta-Interpretive Learning（MIL）</strong> 這類 <strong>歸納邏輯編程（ILP）</strong> 方法，能從<strong>少量例子</strong>學出帶<strong>發明謂詞（invented predicates）<strong>且泛化良好的</strong>遞迴邏輯程式</strong>。但這項能力倚賴<strong>背景理論</strong>與<strong>負例</strong>，兩者都需以對問題與其解的專家知識精心挑選。若沒有這種任務專屬背景理論或負例呢？本文把此問題形式化為<strong>自監督 ILP（SS-ILP）<strong>新設定，並提出一個新 MIL 演算法：從</strong>部分正標記</strong>＋<strong>零或多個未標記</strong>例子學習，並在學習中<strong>自動生成並標記新的正、負例</strong>。實作為 Prolog 的新 MIL 系統 <strong>Poker</strong>。在「從正標記字串、無負例、僅以語言的終端詞彙當一階背景理論」學習 CFL 與 L-System 文法的實驗上，與 SOTA 的 MIL 系統 <strong>Louise</strong> 比較。提出以**二階確定範式（SONF）**有原則地選擇二階背景理論——它足夠泛化、能學一整類的所有程式，從而免除為每個任務客製背景理論。結果發現：Poker 效能隨自動生成例子數增加而提升；而缺負例的 Louise 則過度泛化。</p>
+<ul>
+<li><strong>程式碼</strong>：https://github.com/stassa/aaai_26_experiments/</li>
+</ul>
+<h2 id="1-引言">1. 引言</h2>
+<p>在 ILP 的 <strong>Standard Setting</strong> 中，用「背景理論 + 正例 + 負例」當訓練資料，學一個正確假設 H：與背景理論連用時接受所有正例、不接受任何負例。背景理論與負例通常由使用者依其對學習目標（待學的邏輯程式）的知識<strong>手動挑選與編寫</strong>，且<strong>負例特別針對每個目標量身打造</strong>以避免過度泛化。給對的背景理論與負例，近年 ILP 系統能學出帶遞迴子句與發明謂詞的正確假設。</p>
+<p>能在訓練資料納入背景知識是 ILP 的優點，但<strong>手工為每個目標製作專屬背景理論並挑選負例</strong>，是限制 ILP 實用化的持續負擔。</p>
+<p>本文以<strong>自監督 MIL</strong>（更具體說是 SS-ILP）的新演算法緩解此負擔，實作為新系統 <strong>Poker</strong>（取名自維根斯坦的「撥火棍 Poker」，對 Popper 的善意調侃）。Poker 是「自監督」的：既從正標記也從未標記例子學習，並在學習中<strong>自動生成新正、負例</strong>。因為會造負例，Poker 能在「<strong>不為學習目標量身打造</strong>」的背景理論下學習而不過度泛化；它回傳的不只是假設，還有對未標記與自動生成例子的一個<strong>標記（labelling）</strong>。</p>
+<p><strong>Table 1 示例</strong>：給 Poker 3 個 aⁿbⁿ（CFL）的正標記例 + 30 個 aⁿbᵐ（含 aⁿbⁿ 為子集）的未標記例。一階背景理論只是兩語言的終端詞彙（DCG 前終端符）。二階背景理論含兩條 metarule（Chain 與 Identity）+ 一組編碼 <strong>SONF</strong> 的約束，足以表達任何「至多兩字元」位元串 CFL 或正則語言的 CFG。</p>
+<p><strong>最大泛化的雙重作用</strong>：(1) 保證背景理論夠泛化以學到目標文法；(2) 不再針對單一目標——可重用於學任何位元串 CFG。但最大泛化也帶來問題：<strong>無負例時無法把 aⁿbⁿ 與 aⁿbᵐ 區分開</strong>（事實上無負例就無法把任何位元串語言與「所有位元串」這個最泛化語言區分）。故<strong>負例是必要的</strong>，而 Poker 能自動生成負例以避免過度泛化。（亦可只接受給定正例即過擬合，但 Poker 須學能正確標記未標記例子的假設，因此必須至少泛化到那些字串。）</p>
+<h3 id="偵測矛盾達成自監督-ilp">偵測矛盾達成自監督 ILP</h3>
+<p>直覺：若兩原子 e₁、e₂ 被同一假設 H 接受，卻把 e₁ 當正例、e₂ 當負例，便是矛盾。偵測法：設假設集 H、e₂∈某假設接受集。從每個接受 e₂ 的假設移除它，得殘集 H&#x27;。兩種可能：H&#x27; 仍接受 e₁（無矛盾）；或 H&#x27; 拒絕 e₁（有矛盾）——表示 e₂ 其實是被移除子集接受的<strong>正例而非負例</strong>。</p>
+<p>據此，Poker 先構造接受正標記例子的<strong>初始假設集</strong>；可把假設當生成器執行以產生新的未標記例子加入。然後假設每個未標記例子為負，從每個接受它的假設移除之；若殘餘假設現在拒絕了某正例，便把該例<strong>重新標記為正並移入正例集</strong>。標記過程迭代特化直到與正例一致。過程非無誤，但其<strong>準確度隨未標記例子集的基數單調上升</strong>。</p>
+<h3 id="貢獻">貢獻</h3>
+<ul>
+<li>自監督 ILP 的新設定（SS-ILP）。</li>
+<li>實作該設定的新 MIL 演算法與新系統 Poker。</li>
+<li><strong>SONF（Second-Order Definite Normal Forms）</strong> 定義：一種足以學「某類所有程式」的新二階背景理論。</li>
+<li>給 CFG 與 L-System 文法（DCG 表示）的兩個 SONF。</li>
+<li>證明 Poker 準確率隨未標記例子數<strong>單調遞增</strong>。</li>
+<li>探討自動生成例子對 Poker 學習效能影響的實驗。</li>
+</ul>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p><strong>自監督學習</strong>：源自「Self-Taught Learning」（少量正標記 + 大量未標記學下游監督任務的判別特徵，尤指影像分類）；後續方法靠「pretext 任務」（影像旋轉/平移等，如對比學習）自動造負例，但選 pretext 需領域知識且生成例不用於下游。Poker 則<strong>自動生成正負例並一致標記、無需 pretext</strong>，且不學下游特徵而是<strong>直接學任意邏輯程式</strong>（可當判別器或生成器執行）。</p>
+<p><strong>ILP 中的自監督</strong>：作者未見更早的自監督 ILP 工作。相關緩解 ILP 過度依賴的工作：one-shot learning（單例、無負例，但仍靠手選任務專屬背景理論防過度泛化）;<strong>DeepLog</strong>（從單例學、用通用低階原語庫，但限二元 dyadic 邏輯）;<strong>Popper</strong>（Learning from Failures，仍需任務專屬一階背景理論、mode 宣告、負例）;<strong>Meta Abd</strong>（神經符號 MIL，仍需任務專屬一階背景理論）。Poker 不需任務專屬背景理論，SONF 不受 arity 等語法限制。</p>
+<h2 id="3-框架">3. 框架</h2>
+<h3 id="meta-interpretive-learningmil">Meta-Interpretive Learning（MIL）</h3>
+<p>MIL 是一種 ILP 設定：以正負例的基底原子之 <strong>SLD-Refutation</strong> 學一階理論。例子與<strong>高階背景理論</strong>（含一階與二階確定子句，後者即「metarules」）做歸結。首次 SLD-Refutation 證明正例產出初始假設，第二次證明負例以辨識並丟棄過度泛化假設。metarules 的二階變數在歸結中被統一到謂詞符號（可含自動生成的發明謂詞符號），構造出一階假設的子句。Table 2 列常見 metarules（Identity、Inverse、Precon、Chain）。</p>
+<h3 id="ilp-的自監督學習設定ss-ilp">ILP 的自監督學習設定（SS-ILP）</h3>
+<p>仿 Normal Setting 形式化（Definition 1）：<strong>不給</strong>目標謂詞 T、其 Herbrand Base、預期解釋（哪些原子真/假）;<strong>給</strong>有限基底原子集 E（分為正標記 E⁺ 與未標記 Eᵤ，兩者不可皆空）與一個<strong>最大泛化的高階背景理論</strong>;<strong>求</strong>：一個正確假設 H（接受正例、拒絕對應負例）與一個正確的<strong>標記 labelling</strong>（把未標記例子正確分為正、負）。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

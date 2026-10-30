@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《大型語言模型的高效引導式生成（Efficient Guided Generation for Large Language Models）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Brandon T. Willard, Rémi Louf（Normal Computing）</p><p>日期：2023-07</p><p>arXiv：2307.09702</p><p><a href="https://arxiv.org/abs/2307.09702" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="大型語言模型的高效引導式生成efficient-guided-generation-for-large-language-models重點摘要">《大型語言模型的高效引導式生成（Efficient Guided Generation for Large Language Models）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Outlines 方法論文</strong>：把「LLM 生成的文字必須符合正則表達式／上下文無關文法（CFG）」這個引導式生成問題，重構為<strong>有限狀態機（FSM）狀態間的轉移</strong>——先用正則表達式的 FSM <strong>離線預處理整個詞彙表、建立一份索引</strong> σ（把「FSM 狀態」映射到「該狀態下會被接受的 token 子集」），使解碼時每一步只需查表就能取得合法 token 集合並構造遮罩（mask），把原本每步 <strong>O(N)（N＝詞彙表大小）</strong> 的全詞彙掃描降到<strong>平均 O(1)</strong>；此法模型無關、能保證輸出結構，並可延伸到下推自動機（PDA）以支援 JSON／Python／SQL 等程式語言文法。開源於 Python 函式庫 <strong>Outlines</strong>。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>在嚴格格式要求下讓 LLM 輸出可用（正則表達式或 CFG），單靠 fine-tune 難以且昂貴。多數引導式生成的做法是<strong>偏置 logits</strong>：每生一個 token，就對整個詞彙表逐一評估哪些 token 合法、把不合法的機率設為 0——這是<strong>固定 O(N) 成本</strong>（N 通常 10⁴ 量級或更大）。更糟的是，這種約束本質上是「不完整字串的<strong>迭代式比對／剖析</strong>」問題，若每步都從序列開頭重新做部分比對，成本會<strong>至少隨序列長度線性增長</strong>，疊在 O(N) 之上。核心問題：如何在 Algorithm 2 的每次迭代中，<strong>不對整個詞彙表做執行期評估</strong>就決定遮罩 m？</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>把正則表達式視為 5-tuple 有限自動機</strong> (Q, Σ, δ, q₀, F)（Sipser 定義 1.5）：Q 狀態集、Σ 字母表、δ 轉移函數、q₀ 起始態、F 接受態集；詞彙表字元取自 Σ，FSM 狀態以整數表示。此框架能精確定出「取樣一個 token 後 FSM 停在哪個狀態」，於是狀態可在解碼過程中被追蹤、增量續跑，<strong>不必每步從頭讀整個成長中的序列</strong>。</li>
+<li><strong>關鍵：對詞彙表建索引</strong>。因為詞彙表裡的字串可能匹配正則表達式的<strong>任意片段</strong>（片段即隱含的 FSM 狀態），所以要<strong>考慮從每一個可行 FSM 狀態出發</strong>：
+<ul>
+<li><strong>Algorithm 3（find_sub_sequences）</strong>：對每個詞彙字串 v，找出 FSM 接受 v 時會走過的所有狀態子序列（從各可能起始態走 δ，走不通就換下一個起始態）。</li>
+<li><strong>Algorithm 4（map_states_to_vocab）</strong>：據此建立映射 <strong>σ : Q → P(V)</strong>，把每個 FSM 狀態連到「在該狀態下會被 FSM 接受的詞彙子集」。</li>
+</ul>
+</li>
+<li><strong>O(1) 遮罩</strong>：以雜湊表（hash-map）實作 σ，解碼每步只要用「當前 FSM 狀態」查 σ 拿到合法 token 集合、據此構造遮罩，<strong>平均成本 O(1)</strong>。σ 在取樣程序之外預先構造，其執行期成本實質上無關緊要；代價是記憶體理論上正比於 FSM 狀態數 |Q|（時間換空間）。</li>
+<li><strong>延伸到 CFG／LALR(1) 剖析器（PDA）</strong>：用 6-tuple 下推自動機 (Q, Σ, Γ, δ, q₀, F)。為每個剖析狀態建一個 FSM（該狀態可讀的各終結符 FSM 之聯集）；掃描／詞法分析辨識可能終結符集合 V，再對 V 中字串套 Algorithm 3。因需針對剖析器<strong>堆疊值</strong>查詢，此時索引須用 <strong>trie</strong> 結構；REDUCE 操作要記錄對應的子堆疊（合法前綴）。此法是對既有剖析器實作的增補，不需重寫底層自動機。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>複雜度</strong>：把每 token 的引導成本從 <strong>O(N)</strong> 降到<strong>平均 O(1)</strong>（原文明述於摘要與 §3）。</li>
+<li><strong>與 Guidance 函式庫對比（§3.2）</strong>：Guidance 採「每步從頭做部分正則比對、且對 N=50,257 的詞彙逐一迭代」，隨 max_tokens 增加，執行時間呈顯著上升（圖示 runtime 隨生成 token 數快速攀高）；Outlines 幾乎持平，差距「striking」。</li>
+<li><strong>索引記憶體實測（§5）</strong>：在稍加擴增的 Python 文法上，即使是「未化簡 DFA、含冗餘狀態」的粗糙索引也僅約 <strong>50 MB</strong>；若有需要可改用更省記憶體的狀態機表述（如 NFA）。</li>
+<li>具體示例（§3.1，GPT2-medium + Outlines）：以正則 <code>\s*([Yy]es|[Nn]o|...)</code>、<code>\s*19[0-9]{2}</code>、IP 位址正則等，成功把自由生成收斂到符合格式的輸出（如強制回答為 yes/no、四位年份、IP 格式）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>時間換記憶體的取捨</strong>：索引理論上需要正比於 |Q| 的記憶體；作者認為平均而言記憶體成本相對低、必要時可用常規手段（DFA 化簡、改 NFA）壓縮，但這仍是本方法的內在代價。</li>
+<li><strong>CFG 情形更重</strong>：PDA 索引需 trie 結構、REDUCE 需追蹤子堆疊，構造較正則情形複雜。</li>
+<li><strong>對比實驗較粗</strong>：與 Guidance 的比較是「single loop / single repeat（每個 max_tokens 只取一個樣本）」的簡單量測，作者亦聲明不排除有配置疏失造成落差（雖判斷此縮放趨勢本身具指示性）。</li>
+<li>論文聚焦「保證結構」，遮罩會改變原始分佈；作者把「量化遮罩後 logits 與原始 logits 的差異」列為未來可探索方向而非本文成果。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li><strong>對 ai_core 的直接接點（受約束生成的可落地機制）</strong>：ai_core 北極星是「程式碼助手」，其下層策略是<strong>受約束生成</strong>——把笨模型的輸出收縮到窄面（固定 snippet、由行數助手精準標記該填哪），自由度愈小、笨模型愈不易搞砸（roadmap §5、§3.2「確定性前濾網→落穿才進 LLM」）。<strong>Outlines 正是把「輸出必須符合語法」這件事，用 FSM 引導解碼做成一個 O(1) 的確定性約束層</strong>：語法（正則／CFG）在解碼前就編譯成 FSM／PDA 並對詞彙表建索引，執行期每步只做查表遮罩——這正好是 §5「受約束填碼」最現成、最省算力的實作骨架（把「哪些 token 合法」變成離線可算的確定前濾網，只有落在合法面內的機率才進入取樣）。</li>
+<li><strong>與庫內 FSM／自動機理論呼應</strong>：本庫已有 <a class="paper-reference" href="2505.11694_NN_as_Universal_FSM.%E6%91%98%E8%A6%81.html">2505.11694</a>（神經網路作為通用有限狀態機的構造性 DFA 理論）與 <a class="paper-reference" href="2412.07331_NeSyA.%E6%91%98%E8%A6%81.html">2412.07331</a>（NeSyA：神經符號自動機）談「把自動機塞進／接上神經網路」；Outlines 則是反向的一面——<strong>用外部 FSM 去約束神經網路的輸出</strong>，同樣以 FSM 的 determinism 為槓桿。三者合看，構成「自動機×神經網路」在 ai_core 語境下的理論（庫內）＋工程落地（本文）配對。</li>
+<li><strong>最值得記</strong>：三個一等技術事實——(1) <strong>把正則表達式當 FSM、把 CFG 當 PDA</strong> 來框定引導式生成；(2) <strong>對詞彙表離線建索引 σ:Q→P(V)</strong>（考慮從每一可行狀態起匹配，因為 token 可匹配正則的任意片段）；(3) 以雜湊表查索引使每步遮罩<strong>平均 O(1)</strong>，取代傳統 O(N) 全詞彙掃描。定位：<strong>方法／系統論文</strong>，開源實作即 Outlines 函式庫。適合做 <strong>受約束解碼、結構化輸出（JSON/程式碼）、LLM 工具介面可靠化、以及 ai_core §5 受約束填碼下層</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2307.09702_Outlines_Guided_Generation.zh-TW.html"><code>../translate/2307.09702_Outlines_Guided_Generation.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2409.02740_CNN_CA_Classification.zh-TW.html">回 2409.02740_CNN_CA_Classification.zh-TW 目錄</a>　<a href="02_%E5%88%86%E9%A1%9E_CNN_%E7%9A%84%E8%AE%8A%E9%AB%94%E8%88%87%E6%93%B4%E5%B1%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>CA 時空圖中的湧現動態常以若干<strong>行為類別</strong>來組織。基本 CA（ECA）的分類可行且研究充分，但非基本 CA 太多樣、太龐大，無法人工窮舉分類。本章把<strong>時空圖當成數位影像</strong>，用簡單電腦視覺技術，自動把 ECA 分到 <strong>Li-Packard（LP）五類</strong>。具體是給 CNN 一個監督學習任務，並使其<strong>可推廣到非基本 CA</strong>——為此必須<strong>把演算法的注意力從底層『微觀』局部更新引開</strong>。我們先證明：先前的深度學習方法其實被訓練成在<strong>辨識局部更新規則</strong>，而非直接聚焦於與行為類別相關的<strong>介觀（mesoscopic）圖樣</strong>。接著透過<strong>論證充分的網路設計</strong>與<strong>若干資料增強技術</strong>，做出一個近乎完美辨識行為類別、卻<strong>不必先辨識底層微觀動態</strong>的 CNN。</p>
+<hr />
+<h2 id="1-引言">1. 引言</h2>
+<p>ECA 從初始配置依局部規則演化，其湧現行為通常以<strong>時空圖</strong>呈現（圖 1：規則表＝3 輸入 1 輸出的布林函數；初始布林配置離散演化生成時空圖）。我們要建一個能<strong>自動分類</strong>的神經網路。設計目標有二：(1) 讓網路聚焦<strong>介觀結構</strong>而非像素級圖樣——介觀結構正是湧現複雜度的標誌（如 Game of Life 的滑翔機 glider），複雜度是數學家/計算機科學家最感興趣的非平凡 CA 性質；(2) 若網路無需知道規則就能分類，便<strong>可遷移到非基本 CA</strong>（非均勻、多狀態等）辨識有趣類別。非基本 CA 變體爆炸性增長、人工分類不可行；電腦視覺式的自動工具則客觀、嚴謹、快速。</p>
+<h3 id="11-ca-的行為分類">1.1 CA 的行為分類</h3>
+<p>ECA 的性質一向分兩種：<strong>與局部規則相關的（基因型 genotype）</strong>、與<strong>時空圖相關的（表現型 phenotype）</strong>；本章聚焦表現型。Martínez (2013) 回顧了 15 種既有分類（表 1 列了 17 種，如 Wolfram 四類、ECA-memory、LP 五類、拓撲、功率譜等）。本章採 <strong>Li-Packard（LP）分類</strong>，三個理由：(1) 常見且研究充分，便於與文獻比較；(2) <strong>類別直接關聯時空圖的局部結構（表現型）</strong>，無需功率譜等中間分析——這是電腦視覺式方法的前提；(3) LP 的類別定義使「<strong>ECA 規則 → LP 類別」是滿射（surjective）映射</strong>，可生成可靠的規則-圖配對資料集（訓練 NN 所需/強烈偏好）。Wolfram 分類滿足前兩點但<strong>不滿足第三點</strong>——其類別偏質性、同規則的圖可被歸入不同 Wolfram 類，這種不確定性妨礙生成可靠資料集。</p>
+<p><strong>LP 五類</strong>（系統演化「安定」後）：null、fixed point、periodic、locally chaotic、chaotic（表 2 含各類規則數）。</p>
+<p>文獻回顧：(1) Kunkle (2003) 二十多年前就用很簡單的全連接 NN，餵入 7 個<strong>基於規則表（基因型）<strong>的參數值，&gt;99% 正確辨識 LP 類——是自動分類概念驗證，但用了我們想避開的先驗知識。(2) da Silva et al. (2016)、Machicao et al. (2018) 把時空圖當</strong>二維紋理</strong>、用紋理描述子（LBP variance、Fourier descriptors）做 Wolfram 分類（非 NN），辨識複雜度準確度雖低，但其他類別高準確——顯示「把時空圖當含紋理的影像」是有前景的途徑。(3) CNN（LeCun et al. 1998）是影像辨識最有力工具。(4) Silverman (2019) 與 Comelli et al. (2021) 已用簡單 CNN 做 ECA 自動分類（後者比較 11 種分類），證明可行，但<strong>兩者都沒注意到時空圖裡藏的轉移規則是個破綻（dead giveaway）</strong>——CNN 不一定學了人類會用的介觀圖樣，可能只是用昂貴方式反推局部規則。<strong>這正是本章要點明並設法避免的問題（為改善泛化性）</strong>。</p>
+<h3 id="13-資料與目標">1.3 資料與目標</h3>
+<p>全 <strong>256 條 ECA 規則</strong>、N cell + 週期邊界、演化 <strong>64 步</strong>。每條規則取樣若干時空圖（另有每規則若干測試圖）。目標：<strong>給時空圖預測 LP 類別</strong>。先示範這目標經 grid search 即可輕鬆達成（§2.1），再示範用 CNN 把「圖（資料）」擬合到「規則/類別（標籤）」（§2.2）。</p>
+<h2 id="2-一個基本的-ca-分類-cnn">2. 一個基本的 CA 分類 CNN</h2>
+<h3 id="21-基準簡單-grid-search">2.1 基準：簡單 grid search</h3>
+<p>掃時空圖就能「填」出規則表（八種 T-tetromino）：觀察三相鄰 cell 加下一時步的中心 cell 即填一項；右移一格續填（若三元組不同）。對隨機初始配置，<strong>單在第一列（第一個 N-cell 時步）就有 &gt;99% 機率遇齊全部八種三元組、填完規則表</strong>。靠滿射映射，此 grid search 即能<strong>近完美且高效</strong>地解分類目標。</p>
+<p>少數情況下圖中不足八項：每缺一項，猜對規則的機率減半，但<strong>猜對類別的機率下降較慢</strong>（因同 LP 類規則的規則表有關聯）。掃描資料集發現訓練/測試集含「不完整資訊」的圖佔極少數；<strong>沒有任何一張圖少於七項</strong>，故除一張外全部可正確 LP 分類。null/fixed-point 規則因湮滅或重複輸入資訊，<strong>不成比例地</strong>常產生缺漏資訊，而（局部）混沌規則生成不可預測圖樣。圖 4 給了幾個顯著例子（含唯一一張可能被誤分類的 fixed-point 圖、以及罕見的「混沌卻仍藏住一項」的圖）。<strong>結論：此分類目標本質可解、是送分題。</strong></p>
+<h3 id="22-預設-cnn重現-silverman">2.2 預設 CNN（重現 Silverman）</h3>
+<p>有限 ECA 時空圖＝數位影像，目標即明確定義的電腦視覺任務。Silverman (2019) 對 Wolfram 分類報告訓練 &gt;99%、測試集滿分；Comelli et al. (2021) 用類似簡單 CNN 比較 11 種分類、LP 分類準確度極高——這些超高準確度正可由「§2.1 證明的可解問題」解釋。</p>
+<p>本文重現 Silverman 架構（圖 5）：輸入單通道黑白影像 → <strong>兩層連續 16 通道卷積</strong>（卷積核 <strong>2×2</strong>，6 權重 1 偏置；2×2 核恰能辨識規則表的 T-tetromino，T-tetromino 有 8 種變體 → 故設 16 通道）→ ReLU → <strong>全域 max pooling</strong>（每通道只留最大值、濾噪，是瓶頸）→ <strong>256 節點全連接 dense 層</strong>（佔總參數一半以上）→ 若預測規則則 dense 即輸出層；若預測 LP 類則接 <strong>5 節點輸出 + SoftMax</strong>（讀作離散機率分佈）。</p>
+<p><strong>訓練</strong>：資料隨機切訓練/驗證（資料量大、免交叉驗證）；標籤轉 one-hot、用 categorical cross-entropy；batch size 給定；Keras 內建 Adam；學習率給定；最多若干 epoch，但驗證準確度連續 epoch 改善 &lt;閾值即早停。NVIDIA T4 GPU，單 epoch 約數秒。</p>
+<h3 id="23-預設模型性能">2.3 預設模型性能</h3>
+<p><strong>LP 分類</strong>：訓練/驗證準確度近完美——<strong>驗證集僅 6 張誤分</strong>（圖 8 顯示六張皆為可原諒的邊界案例），且高於 Comelli et al.（部分因訓練集更大）。<strong>規則辨識</strong>：訓練/驗證準確度也&gt;99%，第一個 epoch 後即超高——印證模型其實在反推規則（圖 7：誤辨規則多屬 periodic 類、無一屬 locally chaotic）。<strong>接下來目標：把這個明顯過強的模型『瘦身』，並針對分類目標改造資料與架構。</strong></p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

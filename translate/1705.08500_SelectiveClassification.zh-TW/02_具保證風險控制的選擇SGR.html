@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_具保證風險控制的選擇SGR · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../1705.08500_SelectiveClassification.zh-TW.html">回 1705.08500_SelectiveClassification.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%B5%90%E8%AA%9E.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-具保證風險控制的選擇sgr">3. 具保證風險控制的選擇（SGR）</h2>
+<p>本節提出一個通用技術：基於給定的分類器 f 與其<strong>信心評級函數（confidence-rate function）</strong> κ_f: 𝒳→ℝ⁺，構造具保證表現的選擇函數。我們對 κ_f 不做任何假設，其詮釋是 κ 能<strong>排序</strong>：若 κ_f(x₁) ≥ κ_f(x₂)，表示對預測 f(x₂) 的信心不高於對 f(x₁) 的信心。本節不關心什麼是好的 κ_f（第 4 節討論）；目標是對給定的 κ_f 產生有保證表現的 g。本文其餘部分損失函數取標準 0/1 損失（除非另註明）。</p>
+<p>對 θ&gt;0，定義選擇函數 g_θ(x) = 1 若 κ_f(x) ≥ θ，否則 0。（式 3）對任意 (f,g)，定義相對於標註樣本 S_m 的<strong>經驗選擇性風險</strong> r̂(f,g|S_m) ≜ [(1/m)Σℓ(f(x_i),y_i)g(x_i)] / φ̂(f,g|S_m)，其中 φ̂ 為經驗覆蓋率 (1/m)Σg(x_i)。以 g(S_m) 記 S_m 的 g-投影：{(x,y)∈S_m : g(x)=1}。</p>
+<p><strong>SGR（Selection with Guaranteed Risk）學習演算法（Algorithm 1）</strong>：輸入分類器 f、信心評級函數 κ_f、信心參數 δ、目標風險 r*、訓練集 S_m；以<strong>二分搜尋</strong>找出以足夠信心保證所需風險的最優界。流程：</p>
+<ol>
+<li>依 κ_f(x_i) 對 S_m 排序；</li>
+<li>z_min=1、z_max=m；迭代 k ≜ ⌈log₂ m⌉ 次：取中點 z，令 θ = κ_f(x_z)，得 g_i = g_θ；</li>
+<li>計算經驗選擇性風險 r̂_i，再算風險上界 b*_i = B*(r̂_i, δ/⌈log₂ m⌉, g_i(S_m))（見 Lemma 3.1）；</li>
+<li>若 b*_i &lt; r* 則 z_max=z（可再放寬閾值換覆蓋率），否則 z_min=z；</li>
+<li>輸出選擇性分類器 (f, g_k) 與界 b*_k。</li>
+</ol>
+<p><strong>Lemma 3.1（Gascuel &amp; Caraux, 1992）</strong>：對任意分布 P 與分類器 f，令 B*(r̂, δ, S_m) 為方程 Σ_{j=0}^{m·r̂(f|S_m)} C(m,j)·b^j(1−b)^{m−j} = δ 之解 b，則 Pr_{S_m}{ R(f|P) &gt; B* } &lt; δ。作者強調此<strong>數值界是此設定下可能的最緊界</strong>；用 Hoeffding 等濃縮不等式導出的解析界只是它的近似、帶有鬆弛。</p>
+<p><strong>Theorem 3.2（SGR 之一致收斂）</strong>：對 SGR 各迭代 i=1,…,k 產出的 (f,g_i) 與 b*<em>i，有 Pr</em>{S_m}{ ∃i: R(f|P_{g_i}) &gt; B*(r̂_i, δ/k, g_i(S_m)) } &lt; δ，其中 P_g 為 P 在 g 上的投影分布 P(X,Y|g(X)=1)。證明要點：對每次迭代固定被接受樣本數 m_i，對投影分布 P_{g_i} 套用 Lemma 3.1 得 δ/k 界；注意到 R(f|P_{g_i}) 恰等於選擇性風險 R(f,g_i)；對 m_i 的所有可能取值做全機率分解，再對 k 次迭代取 union bound（聯集界）即得。</p>
+<h2 id="4-神經網路的信心評級函數">4. 神經網路的信心評級函數</h2>
+<p>理想的信心評級函數 κ_f(x) 應反映<strong>真實損失的單調性</strong>：κ_f(x₁) ≤ κ_f(x₂) 若且唯若 ℓ(f(x₁),y₁) ≥ ℓ(f(x₂),y₂)。顯然不能期望有理想的 κ_f。分析 κ_f 有效性的有用方式，是畫出其誘導拒絕函數 g_θ(x|κ_f) 的風險—覆蓋率曲線。（註：Theorem 3.2 恆成立，但若 κ_f 嚴重偏斜（遠非理想），所得選擇性分類器的界可能遠離目標風險。）本文考慮兩種基於前人工作的 κ_f：</p>
+<ul>
+<li><strong>Softmax response（SR，softmax 響應）</strong>：NN 圈流傳多年、並在拒絕選項脈絡中被明確提及的做法——設網路最後一層為 softmax，以 f(x|j) 記第 j 類的軟響應輸出，定義 κ ≜ max_{j∈𝒴} f(x|j)。softmax 響應常被當成機率（各響應為正且總和為 1），亦有作者批評此觀點；但注意就本文目的而言，理想 κ 只需提供<strong>連貫的排序</strong>而非絕對機率值，因此 softmax 響應是相對信心評級的潛在好候選。作者未見對 SR 的嚴謹解釋，但可從神經元活化直觀理解：圖 1 顯示 MNIST 類別「8」在倒數第二層每個神經元對真陽性與假陽性的平均響應值——活躍神經元上真陽性的活化響應遠高於假陽性，且大活化值分散在許多神經元上，顯示信心訊號源自該層神經元偵測到的眾多模式；更深層亦有質性相似行為。</li>
+<li><strong>MC-dropout</strong>：近期為量化 NN 不確定性而提出。對給定實例 x 執行多次前向傳播，每次在最後全連接層施加 dropout；不確定性取「最可能類別對應神經元響應的變異數」，以<strong>負的不確定性</strong>作為 MC-dropout 信心評級。</li>
+</ul>
+<h2 id="5-實證結果">5. 實證結果</h2>
+<p>為 CIFAR-10、CIFAR-100、ImageNet 訓練 VGG 模型，對每個模型同時考慮 SR 與 MC-dropout 兩種 κ_f 及其誘導拒絕函數。圖 2 呈現三個資料集的風險—覆蓋率曲線（以多個 θ 值計算驗證風險與覆蓋率而得）：兩種機制在 CIFAR 上輪廓幾乎相同；但在 ImageNet 上（top-1 虛線、top-5 實線）<strong>SR 在兩個任務上都顯著優於 MC-dropout</strong>——如 top-1 任務在 60% 覆蓋率下，SR 拒絕的錯誤率為 10%，MC-dropout 則超過 20%。最重要的是，這些曲線顯示選擇性分類有潛力大幅降低三個資料集上的錯誤。因 SR 的相對優勢，後續實驗只聚焦 SR。</p>
+<h3 id="51-cifar-10-的-sgr">5.1 CIFAR-10 的 SGR</h3>
+<p>用 VGG-16 適配 CIFAR-10（加入大量 dropout），採水平翻轉、平移、旋轉等資料增強，SGD momentum 0.9、初始學習率 0.1、weight decay 0.0005，每 25 epochs 學習率乘 0.5，共訓 250 epochs，達 93.54 驗證準確率，以此網路 f₁₀ 為基礎。SGR 的訓練集 S_m 取標準 CIFAR-10 驗證集隨機對半切分的一半，另一半保留來測試所得的界（各約 5000 樣本）。以多個期望風險 r* 執行 SGR；所有實驗都用特別小的信心水準 <strong>δ = 0.001</strong>。結果（表 1 擇要）：</p>
+<table>
+<thead>
+<tr>
+<th>期望風險 r*</th>
+<th>測試風險</th>
+<th>測試覆蓋率</th>
+<th>風險界 b*</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0.01</td>
+<td>0.0092</td>
+<td>0.7856</td>
+<td>0.0099</td>
+</tr>
+<tr>
+<td>0.02</td>
+<td>0.0149</td>
+<td>0.8466</td>
+<td>0.0199</td>
+</tr>
+<tr>
+<td>0.05</td>
+<td>0.0486</td>
+<td>0.9596</td>
+<td>0.0491</td>
+</tr>
+</tbody>
+</table>
+<p>風險界 b* 總是非常接近目標風險 r*，且測試風險一律被 b* 從上方界住。可以此法保證驚人的 <strong>1% 錯誤率並覆蓋超過 78%</strong> 的域。</p>
+<h3 id="52-cifar-100-的-sgr">5.2 CIFAR-100 的 SGR</h3>
+<p>同一 VGG 架構（適配 100 類）、同一實驗設計。結果（表 2 擇要）：r*=0.02 時測試覆蓋率 0.2134；r*=0.10 時 0.5952；r*=0.25 時 0.8826——界同樣緊、且從未被真實風險違反。雖然所用架構並非最先進，但在 67% 覆蓋率下即輕鬆超越 CIFAR-100 當時最佳已知結果（wide residual network 的 18.85% 錯誤率）。</p>
+<h3 id="53-imagenet-的-sgr">5.3 ImageNet 的 SGR</h3>
+<p>用已訓練的 ImageNet VGG-16（ILSVRC2014），訓練與測試集各約 25,000；另實作 RESNET-50 檢驗不同架構是否有質性相似結果。VGG-16 top-1（表 3 擇要）：r*=0.02 覆蓋率 0.2322；r*=0.10 覆蓋率 0.5951；r*=0.25 覆蓋率 0.9120。VGG-16 top-5（表 4 擇要）：r*=0.02 覆蓋率 0.5351；r*=0.05 覆蓋率 0.8262。RESNET-50 top-5（表 6 擇要）：<em><em>r</em>=0.02 覆蓋率 0.5935</em>*（即摘要所稱「2% top-5 錯誤、99.9% 機率保證、近 60% 覆蓋」）；r*=0.05 覆蓋率 0.8846。所有情況下測試風險都不超過對應的 b*。即使在最具挑戰性的 ImageNet 上，兩種架構的選擇性分類器都極有效；在合適的覆蓋率妥協下輕鬆超越 ImageNet 最佳已知結果。RESNET 對 VGG 的既有優勢在所有 r* 值上都得以保持。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_實驗 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2310.12963_AutoMix.zh-TW.html">回 2310.12963_AutoMix.zh-TW 目錄</a>　<a href="02_AutoMix.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-實驗">5. 實驗</h2>
+<h3 id="51-成本效能效率指標ibc">5.1 成本—效能效率指標：IBC</h3>
+<p><strong>每單位成本增量效益（Incremental Benefit Per Cost, IBC）</strong>：對混用方法 M（成本 C_M、效能 P_M），IBC_M = (P_M − P_SLM)/(C_M − C_SLM)；基線 IBC_base = (P_LLM − P_SLM)/(C_LLM − C_SLM)（「永遠用 LLM」相對 SLM 的效益率）；Δ_IBC(M) = (IBC_M − IBC_base)/IBC_base × 100。<strong>幾何解釋</strong>：在效能—成本圖上，SLM 與 LLM 兩點連線的斜率＝每單位成本的基準效能增速；方法 M 的 IBC＝從 SLM 點到 M 點的斜率。M 落在 SLM–LLM 線段上方＝斜率更陡＝正 Δ_IBC（比單純換用 LLM 更划算）；落在下方＝負。目標是找出在各成本區間都維持正 IBC 的方法。</p>
+<h3 id="52-設定">5.2 設定</h3>
+<ul>
+<li><strong>模型與成本</strong>：SLM 用 GPT-3.5、LLaMA2-13B、Mistral-7B（instruct v0.2）三種；LLM 用 GPT-4。每次查詢總成本 C = C_SLM + C_ver + w·C_LLM（w＝是否呼叫大模型）；驗證由 SLM 執行、主要成本來自上下文，故設 C_ver = C_SLM。依 API 實際價差，GPT-3.5／LLaMA2-13B／Mistral-7B 對 GPT-4 的相對成本比分別為 1:60／1:100／1:200。成本比會隨部署情境大幅變動（如自有單張 A6000 跑 13B 幾乎免費、GPT-4 極貴），§5.4 模擬此情形；成本也可泛指延遲或能耗。</li>
+<li><strong>資料集</strong>（五個）：QASPER（研究論文 QA，F1）、QuALITY（長文多選題，accuracy）、CoQA（會話式閱讀理解，F1）、MuTual（多輪對話推理／下一回應預測，accuracy）、DiPlomat（多輪對話語用推理，accuracy）。上下文以檢索保留至多 3500 tokens（all-MiniLM-L6-v2）。各資料集取 1000 筆驗證樣本。</li>
+<li><strong>基線</strong>：<strong>FrugalGPT</strong>（微調 DistilBERT 為路由器，信心低於閾值即升級）與 <strong>HybridLLM</strong>（訓練 DeBERTa 路由器，<strong>不生成 SLM 答案</strong>直接在 SLM/LLM 間選）。兩者皆需域內訓練；推論時其路由器成本計為 0（對基線有利），AutoMix 的驗證成本則照算。</li>
+</ul>
+<h3 id="53-主要結果">5.3 主要結果</h3>
+<p>在 Mistral-7B/GPT-4 上（圖 4），AutoMix-POMDP 與 AutoMix-Threshold 在所有資料集的成本—效能曲線<strong>一致高於 FrugalGPT 與 HybridLLM</strong>，且穩定位於 SLM–LLM 線性內插（隨機混用）之上；LLaMA2-13B 與 GPT-3.5 作 SLM 亦然（15 個「資料集×SLM」配置中 13 個全域明顯較佳，其餘 2 個持平）。表 1（五個等寬成本區間的平均 Δ_IBC）擇要：</p>
+<table>
+<thead>
+<tr>
+<th>SLM</th>
+<th>方法</th>
+<th>DiPlomat</th>
+<th>MuTual</th>
+<th>CoQA</th>
+<th>QASPER</th>
+<th>QuALITY</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Mistral-7B</td>
+<td>FrugalGPT</td>
+<td>16.8</td>
+<td>20.3</td>
+<td>−16.7</td>
+<td>7.7</td>
+<td>8.1</td>
+</tr>
+<tr>
+<td>Mistral-7B</td>
+<td><strong>AutoMix+POMDP</strong></td>
+<td><strong>156.8</strong></td>
+<td><strong>46.7</strong></td>
+<td><strong>12.4</strong></td>
+<td><strong>69.3</strong></td>
+<td><strong>51.6</strong></td>
+</tr>
+<tr>
+<td>LLaMA2-13B</td>
+<td><strong>AutoMix+POMDP</strong></td>
+<td><strong>58.5</strong></td>
+<td><strong>12.4</strong></td>
+<td>83.1</td>
+<td>8.5</td>
+<td><strong>10.3</strong></td>
+</tr>
+<tr>
+<td>GPT-3.5</td>
+<td><strong>AutoMix+POMDP</strong></td>
+<td>151.2</td>
+<td><strong>18.8</strong></td>
+<td><strong>65.0</strong></td>
+<td><strong>114.7</strong></td>
+<td><strong>24.1</strong></td>
+</tr>
+</tbody>
+</table>
+<p>AutoMix-POMDP 是<strong>唯一在所有配置皆取得正增益</strong>的方法，並穩定等於或優於閾值版；DiPlomat 上增益最大（三種 SLM 平均 122%）。測試涵蓋不同任務難度（準確率 30%–90%）、模型差距（8%–約 50%）、答案型態（多選／開放式），顯示自我驗證＋合適路由能在不碰權重、無域內路由資料下有效混用各種 SLM 與 GPT-4。</p>
+<h3 id="54-其他實驗">5.4 其他實驗</h3>
+<ul>
+<li><strong>成本比的影響</strong>：把 LLM:SLM 成本比從主實驗的 60–200 倍往下調，<strong>低至 1:10 就開始對多數資料集產生可觀增益</strong>，成本比越懸殊增益越大；即使 20:1 的悲觀情境仍勝基線，2000:1 時改善更大。方法不需任何修改即適應各種成本情境。</li>
+<li><strong>低資源場景</strong>：只有 <strong>50 個訓練樣本</strong>時，AutoMix 仍維持 15% Δ_IBC，<strong>以絕對值超過 20% 擊敗基線</strong>（基線有域內訓練＋零成本驗證器仍不敵）；訓練資料增多後 FrugalGPT 才逐步縮小差距。</li>
+<li><strong>POMDP 何時有幫助</strong>：POMDP 隱式把問題難度分三類——(a) 小模型可解的簡單題、(b) 只有大模型能解的複雜題、(c) <strong>誰都可能解不了的無解題</strong>，並用（噪音的）自我驗證機率做<strong>非線性決策</strong>。例如 QASPER＋Mistral-7B 上，POMDP 發現<strong>低信心值其實對應無解題</strong>，不像其他方法照樣升級，而是直接回傳 SLM 答案省錢。</li>
+<li><strong>域外泛化</strong>：在一個資料集上訓練路由器、在其餘四個上測試（表 5，五資料集×三 SLM 平均）：AutoMix 28.3／31.5／70.9（Mistral／LLaMA-13B／GPT-3.5），遠勝 FrugalGPT（12.5／0.0／14.3）與 HybridLLM（2.4／−2.8／7.6）——POMDP 只吃自我驗證信心、不假設任務特性，故可跨任務泛化。</li>
+<li><strong>延遲與整合</strong>：兩模型情形 POMDP 推論每查詢 <strong>&lt; 1ms</strong>（有限觀察序列使策略可離線算成查表）；相比秒級的 LM 生成時間可忽略。函式庫整合不到五行程式碼。</li>
+</ul>
+<h3 id="55-三模型結果">5.5 三模型結果</h3>
+<p>以 LLaMA2-13B 為 SLM、LLaMA2-70B 為 MLM、GPT-4 為 LLM。AutoMix₃ 在所有成本區間一致優於：FrugalGPT（級聯式、必須逐級經過 MLM）、<strong>Union AutoMix</strong>（依成本需求在兩兩配對的雙模型 AutoMix 間擇一）、<strong>Chained AutoMix</strong>（把 SLM–MLM 與 MLM–LLM 兩個 AutoMix 串接——無法從 SLM 直跳 LLM、且每過 MLM 必付驗證成本，全面落後）。附錄 C 的穩健性實驗：(1) 當 <strong>MLM 是比 SLM 還差的干擾模型</strong>時，FrugalGPT 因固定級聯而浪費資源，AutoMix 自動學到 MLM 無用、按需從 SLM 直接路由到 LLM；(2) 當 MLM 較弱<strong>但其驗證器有訊息量</strong>時，AutoMix 結合 SLM 與 MLM 的驗證機率做更細緻決策，甚至能在<strong>約一半成本下統計上超越 LLM</strong>；(3) 失敗案例：當 MLM 的自我驗證無用時，AutoMix 與 FrugalGPT 相當、對 IBC 線的優勢可忽略或為負——未來需引入上下文資訊或其他驗證形式。</p>
+<h2 id="6-結論與局限">6. 結論與局限</h2>
+<p>AutoMix 把多個黑盒 LLM API 整合進多步解題框架，優化計算成本—效能取捨。本工作把 <strong>GOFAI（好舊式人工智慧）方法與 LLM 交織</strong>：引入 POMDP 即可在 LLM 間有效路由，在各種模型組合與成本區間上一致大幅超越基線。上下文錨定的 few-shot 驗證＋POMDP 的組合前景可期，未來可延伸到效能定義較主觀的生成任務。<strong>局限</strong>：適用性隨模型與資料集而異；設計面向對話／上下文錨定推理（自我驗證需要上下文可查證），<strong>不含事實問答與常識推理</strong>這類無上下文可對照的任務；未來開源模型變強、推論變便宜後，或可對所有查詢都用強模型，但可用性取捨仍可能需要 AutoMix 這類機制管理。</p>
+<h2 id="附錄擇要">附錄擇要</h2>
+<ul>
+<li><strong>A：自我驗證有多有效？</strong> 除 QuALITY（及 QASPER 少數離群點）外，<strong>驗證機率越高、答案正確的比例越高</strong>——few-shot 自我驗證能利用上下文找出 SLM 答案中的錯誤。定性案例：能抓到「無依據的日期」類錯誤；但對「換句話說其實正確」的答案會誤判；也有驗證器判對、其實是金標答案錯的案例。</li>
+<li><strong>A.3：POMDP 求解細節</strong>：狀態空間連續（(N+1) 維）、但視界有限且小（最多 N 步）、觀察數有限（9 種），且問題呈 DAG 單向推進——可用粒子濾波＋決策樹枚舉所有觀察序列，離線學出<strong>確定性策略，推論時降為查表</strong>，成本可忽略；更複雜場景可換用 AdaOps 求解器。</li>
+<li><strong>E：提示</strong>：所有任務共用同一驗證提示（few-shot 蘊涵判斷）；任務提示沿用 ZeroSCROLLS。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2310.12963_AutoMix.%E6%91%98%E8%A6%81.html"><code>../summarize/2310.12963_AutoMix.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《文法對齊解碼（Grammar-Aligned Decoding）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Kanghee Park, Jiayu Wang, Taylor Berg-Kirkpatrick, Nadia Polikarpova, Loris D&#x27;Antoni（UW-Madison / UC San Diego）</p><p>日期：2024-05</p><p>arXiv：2405.21047</p><p><a href="https://arxiv.org/abs/2405.21047" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="文法對齊解碼grammar-aligned-decoding重點摘要">《文法對齊解碼（Grammar-Aligned Decoding）》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Grammar-Aligned Decoding（GAD，文法對齊解碼）</strong>：指出標準的<strong>文法約束解碼（grammar-constrained decoding, GCD）雖保證輸出合文法、卻會扭曲 LLM 原始分布</strong>（合文法但機率與模型偏好不成比例、品質低落），把「既合文法又忠於 LLM 條件分布」形式化為 GAD 問題，並提出 <strong>ASAp（Adaptive Sampling with Approximate Expected Futures，帶近似期望未來的自適應取樣）</strong>——用歷次樣本迭代地**上界逼近「期望未來合文法性（EFG）」**這個關鍵重加權項，可證明地收斂到「LLM 分布在文法約束下的條件分布」。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 難以可靠產出高度結構化輸出（程式碼、公式、標記語言）。GCD 用增量剖析器在每步遮罩掉「必然導致非文法」的 token 來強制合規，效率遠勝拒絕取樣（rejection sampling）。但作者證明：GCD（乃至所有結構化解碼）會<strong>貪婪地扭曲模型分布</strong>——它只把 EFG 二元近似為「這個前綴還有沒有合文法的延續（1 或 0）」，完全不顧「這些延續在 LLM 下有多可能」，導致取樣被推向合文法但低機率、低品質的序列。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>形式化 GAD</strong>：目標分布 <code>Q(w) ∝ 1[w∈L(G)]·P(w)</code>，即 LLM 分布 P 條件於「輸出被文法 G 接受」。精確左到右取樣需一個重加權項 <strong>EFG</strong> <code>c(w_{1:i}) = E_{P}[1[延續合文法]]</code>（前綴 w_{1:i} 的隨機延續落在文法內的機率）；精確算 EFG 與拒絕取樣一樣難解。</li>
+<li><strong>GCD 之弊</strong>：GCD 等於把 EFG 粗暴近似成 <code>1[w_{1:i}∈L_prefix(G)]</code>——只要「還有」合文法延續就當成 1，忽略 P 的機率質量，造成顯著偏差（範例：Mixtral 本應約 90% 產出「以 1 結尾」的字串，GCD 卻只有 30%，且被困進唯一合文法的低機率串 00000）。</li>
+<li><strong>ASAp</strong>：架在既有 GCD 之上。每取樣一條序列，就從序尾往前<strong>回傳更新</strong> EFG 的上界過近似 <code>c̃_S</code>——把「必然導致非文法的 token 機率」扣除，對已探索過的前綴改用「先前算過的 next-token 機率」重估 EFG（Eq. 3）。反覆取樣不斷收緊上界（Thm 1：<code>c̃_S ≥ c</code>；Thm 2：<code>m→∞</code> 時 <code>c̃_S → c</code>，即收斂到精確 GAD 分布），在效率與精度間可調。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>模型 Mistral-7B-Instruct-v0.2（Top-P=1、Temperature=1、Top-K=0，以還原原始分布）；每個 benchmark 跑 2,000 次取樣。任務：SyGuS 的 SLIA（字串+線性整數算術）15 題、INV-BV（位元向量迴圈不變量）15 題、成分句法剖析（constituency parsing, CP）6 題。</li>
+<li>用 <code>KL(Q̃‖P)</code> 衡量與理想 GAD 分布的對齊：多數 benchmark 上 ASAp 隨迭代收斂、GCD 不隨時間改善（維持論文所述偏差）。2,000 次後期望值對 P 的最小平方差：<strong>SLIA 2.259→1.242、INV-BV4 1.852→0.802（GCD→ASAp，皆下降）</strong>；CP 因點少（0.109→0.159）不足下結論。</li>
+<li>下游正確率為混合結果：INV-BV4 上 ASAp 產出正確解比 GCD 多約 38%（幾何平均，與其收斂較快一致）；但在兩者都能解的 SLIA 上 ASAp 反而少約 73%（GCD 偏向最可能結果反而剛好有利）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>收斂慢</strong>：部分 benchmark 即使 2,000 次迭代 KL 幾無改善；ASAp 對「解下游任務本身」無強效果。</li>
+<li>作者定位本文為「<strong>發現並形式化約束解碼的偏差 + 提出首個可證明收斂的解法</strong>」，明言仍有「低垂果實」（如用 beam search 引導取樣、一次取多 token）待未來加速。</li>
+<li>僅在上下文無關文法（CFG）約束、單一 7B 模型、少量 benchmark 上驗證。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>對 ai_core <strong>§5「受約束填碼（下層）」的品質保真問題</strong>是直接警訊：把 LLM 包成「在文法/型別約束下填碼」的可靠函數時，<strong>約束的實作方式本身會反噬模型判斷</strong>——GCD 這種貪婪遮罩看似「只是保證合規、不動內容」，實則系統性偏移了模型的偏好，產出合法但低品質的碼。ai_core 若在符號計算圖裡放「受約束的 LLM 節點」，必須意識到「合約束 ≠ 保真」，並在需要忠實反映模型分布處採 GAD/ASAp 這類對齊取樣，而非裸 GCD。</li>
+<li>與 <strong>CRANE 互為「約束副作用」的兩種診斷</strong>：本篇診斷的是<strong>分布層面</strong>的副作用（約束扭曲機率、犧牲品質），CRANE 診斷的是<strong>推理層面</strong>的副作用（硬約束壓抑思維鏈/推理能力）；兩者共同說明「加約束不是免費的」，是 ai_core 設計受約束生成節點時該並列參照的兩面。歸 <strong>I 類</strong>（受約束解碼/結構化生成的保真與副作用）。</li>
+<li>最值得記：<strong>「合文法 ≠ 對齊」</strong>、<strong>EFG（期望未來合文法性）作為精確 GAD 的關鍵重加權項</strong>、<strong>GCD＝把 EFG 二元近似為 1 的偏差來源</strong>、<strong>ASAp 用歷史樣本上界逼近 EFG 且可證明收斂</strong>、以及「收斂慢」這個尚未解的實務瓶頸。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2405.21047_GrammarAlignedDecoding.zh-TW.html"><code>../translate/2405.21047_GrammarAlignedDecoding.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

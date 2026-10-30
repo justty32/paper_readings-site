@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實證評估 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2408.11042_GraphFSA.zh-TW.html">回 2408.11042_GraphFSA.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-實證評估">4. 實證評估</h2>
+<p>兩部分：(1) 經典 CA 問題（最簡演算法版本，組裝後可現複雜行為）;(2) 用 GRAB benchmark + 更難圖演算法，重點是<strong>外推</strong>（訓小圖、測大圖）。</p>
+<h3 id="41-訓練">4.1 訓練</h3>
+<p>取法先前可微 FSM 研究，提出 <strong>Diff-FSA</strong>。為維可微，<strong>鬆弛</strong>「為轉移選單一下一態」為「下一態上的機率分布」（機率自動機）；用大小（|S|×聚合值數×|S|）的矩陣 P 存所有轉移機率。跑 m 步、對 ground-truth 末態算損失反傳（節點分類任務預測各節點末態 s_v^m），用 L2 損失。訓完離散化 P（取最可能下一態）抽出決策矩陣 D。</p>
+<ul>
+<li><strong>迭代穩定性（Iteration stability）</strong>：希望步數變動時仍正確（外推靠調步數，尤其大直徑圖需資訊傳遍）。兩法：<strong>Random iteration offset</strong>（訓練時隨機微調步數）;<strong>Final state loss</strong>（用 L1 罰「從終止態切換到其他態的機率 &gt; 0」，鼓勵停留終止態 → 預測更穩）。</li>
+<li><strong>基線</strong>：最接近的是 <strong>GNCA</strong>（單步監督，多步時跑多輪）；另用 <strong>recurrent message-passing GNN</strong>（encode-process-decode、GRU 節點更新，效果最佳）。更進階架構不適用此設定（GraphFSA 目標是純從局部鄰域抽規則更新離散態）。</li>
+</ul>
+<h3 id="42-經典元胞自動機">4.2 經典元胞自動機</h3>
+<ul>
+<li><strong>1D-CA</strong>：256 條規則，各為「（左鄰， 自己， 右鄰）→新態」的映射（需區分左右鄰）。Diff-FSA 用位置聚合，<strong>單步訓練（t=1）即學對規則</strong>。附錄表 3/4：訓 t=1、外推到 t=100，Diff-FSA 全程 <strong>1.00</strong>;GNCA 0.66–0.86、recurrent GNN 0.47–0.79（崩）。</li>
+<li><strong>Game of Life</strong>：Conway 規則（恰 3 活鄰則生、&lt;2 或 &gt;3 則死，否則維持）；另有六邊形變體（圖表示使可學一般拓樸）。狀態空間 2、界限參數 5、學 2 步。</li>
+<li><strong>WireWorld</strong>：模擬電路電子流，四態（空/電子頭/電子尾/導線）；狀態空間 4、界限參數 3。</li>
+<li><strong>結果</strong>：2D CA 用計數聚合。訓單步時各模型訓練準確都高；但<strong>外推到 10×10 大格、多步推論時，recurrent GNN 與 GNCA 都退化</strong>，<strong>只有 Diff-FSA 全程保持良好迭代穩定性</strong>（圖 6 WireWorld、附錄圖 8/9 Game of Life）。</li>
+</ul>
+<h3 id="43-用-grab-評估">4.3 用 GRAB 評估</h3>
+<p><strong>表 1</strong>（樹圖、4 態 ground-truth FSA）：Diff-FSA（4/5/6 態） val 0.99–1.00，外推 n=10/20/50/100 仍 0.94–0.98;<strong>GNCA 僅 ~0.38–0.40</strong>（多步難學）;<strong>recurrent GNN</strong> val 1.00 但 n=100 掉到 0.81（連續態、難泛化大圖）。值得注意：即使<strong>學習用狀態數 ≠ ground-truth 的 4</strong> 也照樣好 → 不需事先知狀態數，可用更多態訓練。</p>
+<h3 id="44-圖演算法">4.4 圖演算法</h3>
+<p>用 Grötschla 等的圖演算法資料集（Distance、RootValue、PathFinding、PrefixSum）。訓 ~10 步、加 final state loss 確保穩定。</p>
+<ul>
+<li><strong>Distance（表 2，判各節點到根的奇偶距離）</strong>：Diff-FSA 在 n=10/20/50/100 <strong>全 1.00</strong>（追平 recurrent GNN、勝 GNCA 的 0.50）。</li>
+<li><strong>RootValue（表 6）</strong>：Diff-FSA n=100 達 0.99（recurrent GNN 掉到 0.91）。</li>
+<li><strong>PathFinding（表 7）</strong>：0.85–0.91。</li>
+<li><strong>PrefixSum（表 8，較弱）</strong>：Diff-FSA 0.61–0.74，輸給 recurrent GNN。
+主旨：Diff-FSA 一致勝 GNCA；與 recurrent GNN 比非全面領先，但<strong>能學到正確解且可抽出、可解釋、可驗證</strong>（Diff-FSA 在離散態上學更難）。</li>
+</ul>
+<h2 id="5-局限與未來工作">5. 局限與未來工作</h2>
+<p>主優勢是<strong>離散狀態 → 可透過狀態自動機詮釋學到的機制</strong>，在「規則可用離散轉移建模、輸入輸出可表為離散態」的演算法情境表現好，但<strong>限制了對任意（連續特徵）圖學習任務的適用性</strong>。未來可研究「連續輸入值→離散態」的可訓模組；研究更多有限聚合（影響表達力/對齊任務）;Diff-FSA 只是一種訓練法，<strong>訓出離散轉移仍困難</strong>，有改進空間。</p>
+<h2 id="6-結論">6. 結論</h2>
+<p>提出 GraphFSA：在圖上以離散狀態空間擴展 FSA 的執行框架，能模擬離散決策過程做圖演算法學習；並推出 GRAB benchmark 跨多種圖分布/大小測試相容方法。評估顯示 Diff-FSA 能有效學經典 CA 問題（如 Game of Life）的規則、產出結構化可解釋的 FSA 表示；雖刻意受限卻簡化複雜度、對齊任務。在合成狀態自動機與複雜演算法資料集上進一步驗證——<strong>離散狀態空間使 Diff-FSA 展現穩健泛化</strong>。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2408.11042_GraphFSA.%E6%91%98%E8%A6%81.html"><code>../summarize/2408.11042_GraphFSA.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

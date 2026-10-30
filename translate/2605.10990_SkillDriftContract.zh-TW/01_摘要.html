@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2605.10990_SkillDriftContract.zh-TW.html">回 2605.10990_SkillDriftContract.zh-TW 目錄</a>　<a href="02_DRIFTBENCH%EF%BC%9A%E6%8A%80%E8%83%BD%E5%8A%A3%E5%8C%96%E5%9F%BA%E6%BA%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>LLM agent 日益依賴可復用的技能庫（skill library），但隨著這些技能所引用的外部服務、套件、API 與配置不斷演化，技能會<strong>悄然衰變</strong>。現有監控以錯誤的粒度偵測此類變更：它們觀察「值」，而非該值在技能中扮演的「角色」。出現在註解中的版號只是噪音；出現在固定依賴（pinned dependency）中的同一版號則是作業義務。我們將技能漂移形式化為<strong>合約違反（contract violation）</strong>，並提出 SKILLGUARD：從技能文件中提取可執行的環境合約，僅對照已知或即時條件驗證那些角色承載（role-bearing）的假設。此區分將嘈雜的監控轉變為精確優先的維護訊號。無合約的 CI 探針產生 40% 誤報，而 SKILLGUARD 在 599 個無漂移與 hard-negative 案例中零誤報（Wilson 95% CI [0, 0.6]%）。已知漂移驗證中以最強骨幹達 100% 精確率與 76% 召回；在預先註冊的 49 個真實技能研究中，以 86% 保守精確率發現即時漂移。違反的合約還使修復變得可操作，將單輪成功率從無定位的 10% 提升至 78%。我們釋出 DRIFTBENCH，一個 880 對的技能劣化基準。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM agent 正從一次性任務求解 [2,22,23,28,32] 轉向長期存在的<strong>技能庫</strong> [18,26,27,30,31,33]：可復用的服務部署、測試編寫、基礎設施配置與外部工具互動程序。此轉變使維護成為一級可靠性問題。技能在撰寫時可能是正確的，卻因其所假設的環境已變而後來失效。API 遷移、套件廢棄介面、URL 移動、配置預設值變更、認證機制演化 [11]。因此問題不僅是 agent 如何獲取有用技能，更是這些技能在部署後如何保持有效。</p>
+<p>現有監控與此問題匹配不佳，因為它們觀察環境「值」而非該值在技能中扮演的「角色」。套件註冊表能報告版號躍升、URL 探針能找到重新導向、CI 檢查能暴露失效端點。這些訊號說明世界變了，卻不說這變更對特定技能是否重要。如圖 1 所示，監控裸值迫使做出不良取捨：對附帶變更發出警報而產生誤報，或積極過濾而漏掉嵌在自然語言程序中的漂移。</p>
+<p>本文的關鍵觀察是：<strong>技能漂移是角色相依的</strong>。漂移不僅是外部值的屬性，更是該值在技能中所扮演角色的屬性。我們將此觀點形式化為合約違反。技能隱含地攜帶<strong>環境合約</strong>：關於服務、套件、API、配置、schema、憑證的可測試假設，必須保持有效才能使技能如預期執行。監控目標因此不是「世界裡什麼變了？」，而是「此技能的哪些角色承載假設不再成立？」</p>
+<p>我們提出 SKILLGUARD，一個精確優先監控器，實踐此合約觀點。給定技能文件，SKILLGUARD 提取可執行的環境合約，僅驗證那些承載合約的假設。這在探測環境前便將作業依賴與附帶提及分開。失敗的合約還提供局部化的修復證據：不再要求 LLM 從頭重寫過時技能，而是標識必須更新的具體假設。</p>
+<p>我們透過三個主張評估此觀點。第一，合約抑制誤報：CI 式無合約探針產生 40% 誤報，而 SKILLGUARD 在 599 個無漂移與 hard-negative 案例中零誤報。第二，精確率並非來自忽略漂移：已知漂移驗證中最強骨幹達 100% 精確率與 76% 召回。第三，此框架可遷移至封閉世界規格外：在預先註冊的 49 個真實技能研究中，SKILLGUARD 以 86% 保守精確率發現即時漂移。違反的合約還使修復局部化而非開放式，將單輪成功率從無定位的 10% 提升至 78%。</p>
+<p>貢獻：</p>
+<ol>
+<li><strong>合約違反框架</strong>：識別技能維護中的粒度不匹配——有用的監控必須區分作業環境假設與附帶環境提及。</li>
+<li><strong>SKILLGUARD</strong>：從技能文件提取可執行環境合約、對照已知或即時條件驗證、並用違反定位修復的合約監控器。</li>
+<li><strong>DRIFTBENCH 與實證</strong>：引入 880 對基準（174 生成漂移、107 真實世界漂移、599 負控制），展示合約粒度產生精確優先偵測、即時發現與針對性修復。</li>
+</ol>
+<h2 id="2-相關工作">2. 相關工作</h2>
+<p><strong>Agent 技能、技能基準與技能審計。</strong> LLM agent 日益將程序性知識封裝為可復用技能：Voyager [27] 透過自我驗證建構技能庫，SkillFlow [26] 從 agent 軌跡發現可復用技能。近期工作將技能視為一等工件：SkillsBench 評估策展或自生技能是否提升 agent 跨異質任務表現 [16]，agentic skills 的系統化工作研究其表示、組合、評估、更新與治理 [13]。一條密切相關的安全線路審計載入不受信任的 Agent Skills 是否安全，使用角色感知證據提取、語義驗證與裁決 [19]。這些工作確立了技能層的重要性，但針對不同的生命週期問題：技能獲取與實用性、載入前安全審計或治理。SKILLGUARD 研究<strong>部署後維護</strong>：一個先前有效的技能是否因環境面向假設不再成立而過時。</p>
+<p><strong>反應式修復與定位。</strong> 自動程序修復在觀察到失敗後定位故障並修補代碼 [4,5,24]。Self-refine [20] 與 Reflexion [25] 也透過迭代回饋改進模型輸出。這些方法是<strong>反應式</strong>的：需要失敗的執行、測試或軌跡後才嘗試修復。SKILLGUARD 則針對<strong>主動式維護</strong>：在依賴執行失敗之前偵測違反的環境合約，並用失敗合約作為局部化修復訊號。因此我們的修復結果應解讀為定位證據，而非對更強多輪修復方法的支配主張。</p>
+<p><strong>合約與規格挖掘。</strong> 可執行合約與規格挖掘從程式、軌跡或文件中提取假設 [3,6,8,9,10,15,21]。我們使用合約在來源與目的上皆不同。Agent 技能常將作業依賴與註解、範例、徽章、散文及部分配置片段混合。主要困難因此不僅是提取待檢查的謂詞，更是<strong>決定一個環境值是否應被監控</strong>。在 SKILLGUARD 中，合約是角色承載的義務：附帶提及被抑制，而固定依賴、API 端點、schema 欄位、認證機制與配置值才被驗證。</p>
+<p><strong>依賴、API 與配置漂移監控。</strong> 依賴更新工具、API 演化分析與 DevOps 監控追蹤結構化軟體生態系的變更 [7,11]。近期 LLM agent 系統也研究雲端與基礎設施即代碼設定中的配置漂移 [1]。這些系統通常假設結構化清單、遙測、IaC 規格或可執行環境。Agent 技能則較少結構化：環境假設可能嵌在自然語言指令、shell 片段、範例、部分配置與文件參考中。這改變了監控目標。探測每個觀察到的值會產生誤報，而只探測宣告的清單會漏掉以散文表達的假設。SKILLGUARD 透過驗證角色承載的環境合約而非所有觀察值來解決此差距。</p>
+<p><strong>Agent 與軟體維護基準。</strong> AgentBench [17]、SWE-bench [14] 與 SWE-Skills-Bench [12] 評估任務求解、軟體工程與技能品質。這些基準有價值，但未隔離本文研究的維護失敗：<strong>一個曾經有效的技能會因外部環境變更而劣化</strong>。DRIFTBENCH 補足之——將先前有效的技能與生成漂移、LLM-free 真實世界漂移、以及改變文字或值但不違反作業合約的 hard negatives 配對。此設計同時測試漂移召回與誤報抵抗，即精確優先技能維護的兩面。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

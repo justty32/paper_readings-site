@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2403.01632_SynCode.zh-TW.html">回 2403.01632_SynCode.zh-TW 目錄</a>　<a href="02_%E8%AA%9E%E6%B3%95%E6%AD%A3%E7%A2%BA%E7%9A%84%E7%94%9F%E6%88%90%E5%BD%A2%E5%BC%8F%E5%8C%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>LLM 廣泛用於複雜 AI 應用中，其輸出須遵循特定格式（JSON、YAML 等資料序列化格式，或程式語言的程式碼）才能與系統其他組件整合；這些格式規則通常以<strong>上下文無關文法（context-free grammar, CFG）<strong>表達。本文提出 <strong>SynCode</strong>，一個高效且通用的 LLM 語法約束解碼（syntactical decoding）框架：相對於形式語言的 CFG，SynCode 保證</strong>健全（soundness，保留所有合法 token）<strong>且在特定條件下</strong>完備（completeness，剔除所有非法 token）</strong>。SynCode 的核心是離線建構的高效查找表——<strong>DFA mask store</strong>，由文法終端符的 DFA（確定有限自動機）建成。SynCode 可無縫接上任何以 CFG 定義的語言，實驗涵蓋 JSON、SQL、Python、Go：JSON 生成上<strong>消除全部語法錯誤</strong>並顯著勝過最先進基線；Python 與 Go 程式碼生成上平均<strong>削減 96.07% 的語法錯誤</strong>。程式碼開源於 github.com/uiuc-focal-lab/syncode。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>LLM 在複合 AI 系統（compound AI systems）中扮演樞紐：OpenAI code interpreter 生成並執行 Python、Wolfram Alpha 把數學問題譯成 DSL、其他應用把自然語言譯成邏輯求解器或定理證明器的輸入。這些場景都要求輸出遵循特定語法結構，但幻覺與不穩健使 LLM 不可靠；理論與實證研究更指出 transformer 難以學會基本形式文法。既有的文法導引生成（grammar-guided generation）方法有三類問題：</p>
+<ul>
+<li><strong>語法準確度不足</strong>：文法的<strong>終端符（terminal）</strong>（關鍵字、運算子等）由 lexer 從輸入切出<strong>詞法 token</strong>；而 LLM token 是訓練前就固定的詞彙表元素，與任何文法的詞法 token <strong>並不對齊</strong>——此即 **token misalignment（token 錯位）**問題，使精確的文法導引生成困難、健全性難以形式化證明。</li>
+<li><strong>推論時運算負擔高</strong>：語法檢查通常在 CPU 上序列執行，與 GPU 加速的 LLM 生成形成瓶頸。低開銷需要（1）把計算盡量移到<strong>離線</strong>；（2）把額外計算卸載到 GPU 等硬體平行執行。</li>
+<li><strong>通用性不足</strong>：先前工作綁定特定解碼方案（如 PICARD 綁 beam search）；理想演算法應可與 greedy、beam search、各種溫度取樣任意組合。</li>
+</ul>
+<p><strong>SynCode</strong>：輸入以 EBNF 規則表示的 CFG，保證 LLM 輸出遵循該文法，且可與任何解碼演算法組合。解碼每步分兩階段：先由部分輸出算出可接續的終端符序列（<strong>accept sequences</strong>）與可能改變詞法型別的後綴（<strong>remainder</strong>）；再以 remainder 走 DFA、查 <strong>DFA mask store</strong> 得到每個 accept sequence 的布林遮罩（mask），取聯集即得語法合法 token 集合。主要貢獻：（1）基於剖析（parsing-based）的 LLM 解碼技術與高效演算法；（2）可用於任何使用者提供 CFG 的通用框架；（3）對 JSON、SQL、Python、Go 的廣泛評估。</p>
+<h2 id="2-背景">2. 背景</h2>
+<p><strong>語言模型與解碼</strong>：LM 在 token 詞彙表 V 上運作，對輸入 token 序列輸出分數向量 z，softmax 後得下一 token 的機率分佈；greedy、取樣、beam search 等策略反覆選 token 直到 EOS。<strong>受約束遮罩（constrained masking）</strong>：以函數 f_m 產生遮罩 m ∈ {0,1}^|V|（1 為可用、0 為剔除），解碼作用於 m ⊙ softmax(z) 並重新歸一化。SynCode 即以此技術剔除語法非法 token。</p>
+<p><strong>形式語言文法</strong>：CFG 由產生式規則 E → β 組成（E 為單一非終端符）。終端符集合記為 Γ，各終端符以正則表達式 ρ 描述（如 int 為 <code>[0-9]+</code>），正則表達式對應 <strong>DFA</strong>（五元組 (Q, Σ, δ, q0, F)）。<strong>Lexer 假設</strong>：詞法分析採 1 字元前瞻（lookahead）、不回溯——這是 SynCode 效率的關鍵假設。</p>
+<h2 id="3-綜覽">3. 綜覽</h2>
+<h3 id="31-說明性範例">3.1 說明性範例</h3>
+<p>以 Lark EBNF 定義的算術 DSL 文法為例（含四則運算、括號與 math_exp／math_sqrt／math_sin／math_cos 函數）。讓 LLM 把自然語言譯成此 DSL、由直譯器算出精確結果。標準 LLaMA-7B 生成會發明文法中不存在的函數（math_area、math_side）且不停止；SynCode 則在每步剔除語法非法選項——生成 <code>math</code> 後排除 <code>_area</code> 等，模型改選合法的 <code>_sqrt</code>。形式化地說：令 L(G) 為文法 G 的所有合法字串、L_p(G) 為其所有前綴（可延伸為合法輸出的字串）；只要維持不變式「每步部分輸出 C_k ∈ L_p(G)」，完成時 C_n 必屬 L(G)。</p>
+<h3 id="32-syncode-演算法">3.2 SynCode 演算法</h3>
+<p>對部分輸出 C_k，定義 V_k ⊆ V 為所有能維持 C_k.t ∈ L_p(G) 的 token 子集；此公式化與任何解碼演算法皆可組合。兩步驟：</p>
+<ul>
+<li><strong>剖析部分輸出</strong>：先 lexing。<strong>remainder r</strong> 是 C_k 中詞法型別仍可能改變的後綴：情況一，C_k 尾端有未被 lex 的後綴 u，則 r = u；情況二，C_k 恰以完整詞法 token 結尾，則 r 取最後一個詞法 token（如 Python 中 <code>ret</code> 下一步可能變成關鍵字 <code>return</code>）。1 字元前瞻的 lexer 假設保證 remainder 之前的部分（C_k□）詞法切分不再變動——這使<strong>增量剖析</strong>可行且 r 恆小。再以自底向上 <strong>LR 剖析器</strong>從已剖析部分算出 <strong>accept sequences A</strong>：可接續目前剖析結果的終端符序列（如剖析 <code>math_sqrt(3) * (2.27</code> 後，{rpar}、{add}、{mult} 是 1 長度、{add, int} 等是 2 長度的 accept sequence）。</li>
+<li><strong>DFA mask store</strong>：問題化約為「r.t（remainder 接上 LLM token t）是否與某個 accept sequence Λ ∈ A 部分匹配」。逐 token 檢查太慢；SynCode 的關鍵洞見是：<strong>對每個 DFA 狀態，可離線預計算「從該狀態出發走到活狀態（live state，可達接受狀態者）」的 LLM token 集</strong>，存成布林遮罩。推論時對每個 Λ 只需以 r 走一次 DFA、查一次表得 m_Λ，再對所有 Λ 取聯集 ∪ m_Λ——遮罩以張量存放，聯集是少量張量運算，可在 GPU 上高效執行。定理 1 證明此聯集<strong>過近似（overapproximate）</strong> V_k，保證健全；定理 2 證明前瞻夠長時恰等於 V_k，即完備。</li>
+</ul>
+<h3 id="33-時間複雜度">3.3 時間複雜度</h3>
+<p>每步解碼成本為 O(T_∪ · |A|)（T_∪ 為布林遮罩聯集時間）。實務上 |A| 很小（實驗平均 &lt;10），最壞情況等於終端符數 |Γ|（最大的 Python 文法 |Γ| = 94）；GPU 上向量化聯集運算高效。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

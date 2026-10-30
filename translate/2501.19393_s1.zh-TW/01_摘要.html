@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>s1：簡單的測試時推論擴展（2/4） · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2501.19393_s1.zh-TW.html">回 2501.19393_s1.zh-TW 目錄</a>　<a href="02_%E6%96%B9%E6%B3%95.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>測試時推論擴展已在語言模型中展現顯著的推理改進——OpenAI 的 o1 為最突出的案例。然而，這些「推理」模型如何被訓練與實作仍為不透明的專有技術。本研究嘗試回答一個基本問題：<strong>達成測試時擴展的最簡方法是什麼？</strong> 我們提出 s1，一個最小規模的訓練配方——僅以 1,000 條經難度、多樣性與品質三準則精心篩選的推理軌跡（s1K）做監督微調（SFT），即能實現測試時擴展。同時，我們提出 <strong>Budget Forcing</strong>：透過控制性地追加 <code>Wait</code> 使模型延長推理，或注入 <code>&lt;/thought&gt;</code> 強制結束推理以截斷——一套簡單的推論時控制機制。經 s1K 微調 Qwen2.5-32B-Instruct 後，s1-32B 在競賽數學基準 AIME24 上達到 56.7%（超越 o1-preview 的 40.0%），在 MATH500 達 83.2%（超越 o1-preview 的 81.4%），在 GPQA Diamond 達 59.6%（超越 o1-preview 的 56.6%）。此方法極具效率：s1K 微調僅需 30 分鐘於單節點 8×H100 GPU。我們的發現表明，測試時推論擴展可被小規模、開放權重模型以簡潔方式解鎖，無需複雜的強化學習（RL）管線或大規模訓練基礎設施。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>語言模型的推論效能近年來持續提升，其中一個關鍵方向是測試時推論擴展（test-time scaling）——在推論階段投入更多計算以提升輸出品質。OpenAI 的 o1 模型展示了此方法的顯著潛力：透過在回答前內部「思考」更久（即生成更長的隱式推理鏈），在多項基準上大幅超越標準模型。但 o1 的核心方法細節（訓練資料、訓練演算法、推理控制機制）完全不公開。後續的開源嘗試（如 DeepSeek-R1）雖揭露了部分細節，但仰賴大規模 RL 訓練（數十萬條偏好資料 + 多階段 RL 管線 + 大規模 GPU 叢集），難以複製。</p>
+<p>本研究提出 <strong>s1</strong>，旨在探索測試時擴展的<strong>最小可行配方</strong>。核心假設：高品質推理軌跡的小型資料集，加上簡單的推論時控制機制，足以實現顯著的測試時擴展——複雜的 RL 管線可能是充分條件而非必要條件。兩個核心貢獻：</p>
+<p><strong>(1) s1K 資料集</strong>：從完整候選池（59K 條推理軌跡）經三維度精選至僅 1,000 條。難度維度確保僅納入標準模型無法輕易解答的問題（AIME、MATH 等高難度競賽題目）；多樣性維度依數學子領域（代數、幾何、數論、組合數學、機率）、程式碼（演算法設計、程式除錯、複雜度分析）、科學推理（物理、化學）系統抽樣；品質維度以 Gemini 1.5 Pro 與 Claude 3.5 Sonnet 生成推理軌跡，僅保留含明確逐步推理、自我驗證（向後代入檢查、約束測試）、錯誤修正（回溯修正誤算或邏輯失誤）且最終答案正確的樣本。</p>
+<p><strong>(2) Budget Forcing</strong>：不經訓練即可控制模型「思考」長度的推論技術。若模型企圖提前結束思考（輸出答案），系統在生成中追加 <code>Wait</code>——強制模型回到推理軌跡並重新檢查、補完、修正先前的推理。此追加可多次重複，每次通常促使模型更深層驗證其推理、搜尋替代解法。反之，當達到目標 token 預算時，系統注入 <code>&lt;/thought&gt;</code> 強制立即產出最終答案，截斷過長的推理以避免循環思考或資源浪費。</p>
+<h2 id="作者將-s1k-與-budget-forcing-應用於-qwen25-32b-instruct-得到-s1-32b此模型在-aime24math500gpqa-diamond-三基準上全面超越-openai-o1-preview且訓練僅需單節點-8h100-gpu不到-30-分鐘結果挑戰了測試時擴展必須依賴大規模-rl偏好最佳化的敘事並為開源社群提供了一條易於複製的推理增強路徑">作者將 s1K 與 Budget Forcing 應用於 Qwen2.5-32B-Instruct 得到 <strong>s1-32B</strong>。此模型在 AIME24、MATH500、GPQA Diamond 三基準上全面超越 OpenAI o1-preview，且訓練僅需單節點 8×H100 GPU、不到 30 分鐘。結果挑戰了「測試時擴展必須依賴大規模 RL/偏好最佳化」的敘事，並為開源社群提供了一條易於複製的推理增強路徑。</h2>
+<h2 id="title-s1簡單的測試時推論擴展part-24方法s1k-與-budget-forcing-source-httpsarxivorgabs250119393-arxiv_id-250119393-date-2025-01">title: s1：簡單的測試時推論擴展（part 2/4：方法——s1K 與 Budget Forcing）
+source: https://arxiv.org/abs/2501.19393
+arxiv_id: 2501.19393
+date: 2025-01</h2>
+<h1 id="s1簡單的測試時推論擴展24">s1：簡單的測試時推論擴展（2/4）</h1>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

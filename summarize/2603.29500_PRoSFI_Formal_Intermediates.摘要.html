@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《PRoSFI：以「結構化形式中介」過程獎勵訓練可形式驗證的逐步邏輯推理》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Luoxin Chen、Yichi Zhou、Huishuai Zhang（附屬未列）</p><p>日期：2026-03，神經符號（主題 B：可驗證 LLM 推理 / 形式驗證導向 RL）</p><p>arXiv：2603.29500</p><p><a href="https://arxiv.org/abs/2603.29500" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="prosfi以結構化形式中介過程獎勵訓練可形式驗證的逐步邏輯推理重點摘要">《PRoSFI：以「結構化形式中介」過程獎勵訓練可形式驗證的逐步邏輯推理》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>PRoSFI（Process Reward over Structured Formal Intermediates）</strong>：不讓 7B 模型直接生成完整形式證明（幾乎做不到），而是讓它輸出<strong>與自然語言推理對齊的「結構化中介步驟」</strong>（JSON：id／dependencies／conclusion 用 Lean4 語法的單一 FOL 公式／rule），每步交給形式證明器（Prover9／Z3／Lean <code>aesop</code>）驗證，<strong>只有全部步驟都驗過的推理鏈才拿高獎勵</strong>——讓「最終答對但中間步驟錯」的不可靠推理被矯正；在 ProverQA-Hard 上把 GPT 評定的推理 soundness 從 21.97% 拉到 76.07%（+54 分）而答對率不降，是首個讓 7B 模型在困難 FOL 任務上產出可機器檢查證明的結果。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 用 outcome-reward RL（如 DeepSeek-R1）能拉高答對率，但<strong>outcome 獎勵會忽略有瑕疵的中間步驟</strong>——最終答案對、推理鏈卻不可靠。直接生成完整形式證明又行不通：7B 這種中型模型難搞形式語法、把驗證塞進訓練又造成計算瓶頸。PRoSFI 要在<strong>不犧牲準確率</strong>下提升推理可靠性。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>結構化形式中介</strong>：介於自然語言與形式驗證之間的輕量 JSON/YAML 中介；每個推理塊含 <code>id</code>、<code>dependencies</code>（限 &lt;5 條前提/前步）、<code>conclusion</code>（單一 FOL 公式、Lean4 語法）、<code>rule</code>（推理規則）。避開完整形式證明的分布漂移，又在 7B（Qwen2.5-7B-Instruct）可及範圍內。</li>
+<li><strong>逐步形式驗證</strong>：抽出每個中介表示的命題交給形式證明器（Prover9／Z3／輕量 Lean tactic 如 <code>aesop</code>）；<strong>驗單步而非要完整證明</strong>，降低驗證複雜度。</li>
+<li><strong>分級獎勵</strong>：<code>1.0</code>＝答對且全步驟驗過；<code>0.3</code>＝答對但有步驟未驗過；<code>0.1</code>＝格式對但答錯；<code>0.0</code>＝格式錯/其他失敗。模型單次前向生成、驗證<strong>事後全批次平行</strong>，避開效率瓶頸。</li>
+<li><strong>訓練</strong>：GRPO；lr 3e-7、batch 64、每迭代 8 回應、max 5,120 token、KL 0.001、960 迭代（≈14 小時、8× Hopper GPU）；用 DAPO clip-higher（ε_low=0.2, ε_high=0.28）穩定。資料：ProverQA（1,500 FOL，排除 Uncertain 後 769 訓練）＋ ProverQA-Extra（128 較難合成題）。</li>
+</ul>
+<h2 id="結果含數字">結果（含數字）</h2>
+<ul>
+<li><strong>ProverQA-Hard</strong>：答對率 92.97%、GPT soundness <strong>76.07%</strong>（對比 Outcome-CoT 91.31% / 21.97%——soundness +54.1 分）。</li>
+<li><strong>ProverQA-Extra（OOD）</strong>：答對率 91.94%、soundness 56.10%（+44.2 分）。</li>
+<li><strong>直接生 Lean 證明的基線</strong>：reward hit 僅 13.77%（Hard）/ 4.35%（Extra），編譯率太低、證明過於不透明，反而拖累準確與 soundness。</li>
+<li><strong>測試期擴展（搭 DTV「Don&#x27;t Trust; Verify」）</strong>：採樣多條推理路徑＋形式驗證選擇，持續提升 soundness；Outcome-CoT 無法從加採樣受益。</li>
+<li><strong>泛化（Knights and Knaves 謎題，2–8 人）</strong>：soundness 全面提升——2 人 64.81%→86.56%、3 人 68.56%→90.31%、<strong>8 人（OOD）47.94%→80.94%（+33 分）</strong>，答對率幾乎不變。</li>
+<li>相關分析：PRoSFI 的 reward hit 與目標品質指標 GPT-soundness 的相關性，高於「僅答對率」。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>目前<strong>僅限一階邏輯（FOL）任務</strong>；尚未推及更廣的自然語言推理與自動定理證明。</li>
+<li>依賴「逐步可被現成證明器驗證」的中介表示；複雜推理需更強基模、更多元資料、與領域形式工具更深整合。</li>
+<li>soundness 由 GPT 評定（非 100% 客觀真值）；獎勵的信用分派仍可再細化。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本主題 B 中**「用形式驗證當過程獎勵、矯正『答對但推理錯』捷徑」這條 RL 路線的代表**——與 <a class="paper-reference" href="2510.14538_Reasoning_Shortcuts.%E6%91%98%E8%A6%81.html">2510.14538</a>（推理捷徑）、<a class="paper-reference" href="2602.18095_Logitext_NeSy_SMT.%E6%91%98%E8%A6%81.html">2602.18095</a>（Logitext 也觀察到「整體答對但子句層級錯」）、<a class="paper-reference" href="2502.09100_LLM_Logical_Reasoning_Survey.%E6%91%98%E8%A6%81.html">2502.09100</a>（LLM 邏輯推理綜述）對讀，正面回應「outcome reward 縱容瑕疵中間步驟」這個痛點。</li>
+<li>與 <a class="paper-reference" href="2604.26311_DreamProver.%E6%91%98%E8%A6%81.html">2604.26311</a>（DreamProver）、<a class="paper-reference" href="2606.08728_AI4Math_Survey.%E6%91%98%E8%A6%81.html">2606.08728</a>（AI4Math 綜述）對照：那些追求完整形式證明，PRoSFI 走「結構化中介＋逐步驗證」的折衷，讓 7B 也能玩。</li>
+<li>最值得記：<strong>「別生完整證明、改生可逐步驗證的結構化中介」這個降門檻設計</strong>；以及那組數字——soundness +54 分而答對率不降、直接生 Lean 證明 reward hit 僅 13.77%（凸顯折衷的必要）。</li>
+<li>定位：<strong>方法論文（可驗證推理 RL）</strong>；適合做 process reward、可信推理對齊、neurosymbolic RL 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2603.29500_PRoSFI_Formal_Intermediates.zh-TW.html"><code>../translate/2603.29500_PRoSFI_Formal_Intermediates.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

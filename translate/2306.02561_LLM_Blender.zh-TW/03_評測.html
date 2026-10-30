@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>03_評測 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2306.02561_LLM_Blender.zh-TW.html">回 2306.02561_LLM_Blender.zh-TW 目錄</a>　<a href="02_PairRanker%EF%BC%9A%E6%88%90%E5%B0%8D%E6%8E%92%E5%BA%8F.html">← 上一節</a></p>
+</blockquote>
+<h2 id="5-評測">5 評測</h2>
+<h3 id="51-設定">5.1 設定</h3>
+<p><strong>NLG 指標</strong>：使用兩類評測指標（Q）：一是傳統 NLG 自動指標——BERTScore、BLEURT、BARTScore；二是 <strong>GPT-Rank</strong>——透過提示 ChatGPT 對所有候選做成對比較，依勝場數（MaxWins 聚合）決定排名。</p>
+<p><strong>模型訓練</strong>：PairRanker 骨幹採用 <strong>DeBERTa（400M）</strong>，GenFuser 基於 <strong>Flan-T5-XL（3B）</strong>；依消融結果選用 BARTScore 作監督訊號（因其與 GPT-Rank 相關性最高，見 5.2）。</p>
+<h3 id="52-主要結果">5.2 主要結果</h3>
+<p>表 2 呈現 N=11 個 LLM 及其他方法在 MixInstruct 上的整體表現（依 GPT-Rank 由好到壞排序）：</p>
+<p><strong>LLM 各有優劣</strong>：Open Assistant、Vicuna、Alpaca 是前三名；Baize、Moss、ChatGLM（皆用中英雙語指令資料微調）表現也不錯；Mosaic MPT、StableLM、Flan-T5 敬陪末座。但無論頭尾模型，平均 GPT-Rank 都與第一/最後名（1 或 11）有明顯差距，凸顯集成 LLM 的重要性。</p>
+<p><strong>頂尖 LLM 也並非總是最好</strong>：儘管 OA 與 Vicuna 表現優異，仍有相當比例的例子由其他 LLM 表現更好——例如 Koala 平均 GPT-Rank 僅 6.76，但約 40% 的例子中 Koala 的回應優於或等同於 OA 與 Vicuna 兩者，進一步凸顯 LLM-Blender 排序與融合框架的重要性。</p>
+<p><strong>NLG 指標</strong>：對各指標本身做 oracle（top-1）選擇分析，發現一致性良好：GPT-Rank 的 oracle 選擇取得 BARTScore -3.33，優於 OA（-3.45）；BARTScore 的 oracle 選擇則在 GPT-Rank 上取得 3.69，同樣顯著優於 OA（3.90），佐證用 BARTScore 監督 PairRanker 訓練的合理性。</p>
+<p><strong>PairRanker 優於其他排序器</strong>：MLM-Scoring 甚至不及隨機選擇；SimCLS、SummaReranker、PairRanker 在 BARTScore 與 GPT-Rank 上都優於最佳單一模型 OA。PairRanker 選出候選的平均 GPT-Rank（3.20）顯著優於最佳模型 0.70 分（相對提升 18%），也優於所有其他排序器，並在 BARTScore（-3.14）上有明顯優勢；PairRanker 的選擇在 54.76%/57.79% 的例子中優於或等同 Vicuna/OA，並在 65.12% 的例子排進前三。</p>
+<p><strong>LLM-Blender 表現最佳</strong>：取 PairRanker 的 top-3 選擇餵給 GenFuser。整合後，LLM-Blender GPT-Rank 達 3.01，大幅超越最佳模型 OA（3.90）；BERTScore（79.09）、BARTScore（-3.02）、BLEURT（-0.17）分別優於最佳模型 4.41、0.43、0.22，優勢顯著。LLM-Blender 也在超越前兩名模型 Vicuna（70.73%）與 OA（77.72%）上表現良好，彌補了 PairRanker 的不足。</p>
+<h3 id="排序相關性">排序相關性</h3>
+<p>除了只看各排序器的 top-1 選擇，作者也對所有候選的整體排序與 GPT-Rank 做相關性分析（Pearson、Spearman、Spearman&#x27;s Footrule）。結果顯示 BARTScore 與 GPT-Rank 相關性最高，佐證用其作訓練監督的選擇；MLM-Scoring 仍不及隨機排列；SummaReranker 在 Pearson（41.13）與 Spearman（39.10）相關性較優，SimCLS 則在 Footrule 距離（29.32）較優。值得注意的是，<strong>PairRanker 在所有相關性指標上都取得最高分</strong>，甚至遠優於 BARTScore 本身，顯示成對比較學到的排序能力優於單點回歸代理指標。</p>
+<p>更多消融研究與分析（將 PairRanker 應用於摘要 CNN/DM、機器翻譯 WMT18-zh-en、受限文字生成 CommonGen 等傳統 NLG 任務）詳見附錄，其中 PairRanker 在使用同一基礎模型解碼出 N 個候選（不同解碼演算法）的情境下仍大幅優於其他方法；MaxLogits 顯著優於 MaxWins，且在推論效率為重要考量時，bubble sort 聚合法性價比很高。</p>
+<h2 id="6-相關工作">6 相關工作</h2>
+<p><strong>LLM 評測</strong>：隨開源 LLM 蓬勃發展並在各 NLG 任務展現強大競爭力，評估 LLM 能力變得極具挑戰。Zheng et al.（2023）率先建立 chatbot arena，讓使用者對兩個隨機選定 LLM 的回應做成對評測，據此建立 LLM Elo 排行榜；Cabrera and Neubig（2023）在客服資料集上用 BERTScore、ChrF 等自動指標進行評測研究，得出類似的 LLM 排序結果；Yidong et al.（2023）開發微調模型 PandaLM 比較不同 LLM 的回應；AlpacaFarm 也致力於用成對回饋評測 LLM。</p>
+<p><strong>成對排序</strong>：成對排序長期以來在眾多 NLP 任務中證明有效；RankNet 與 LambdaRank 是強大的排序技術，著名的 RLHF 流程中的獎勵模型訓練也採用基於 OPT 的成對訓練——但這些方法仍是逐一計算分數、僅在損失層級做成對訓練。相對地，本文提出的 PairRanker 不僅採用成對訓練，也在推論階段利用注意力機制做成對推論，作者認為這更能捕捉候選間的細微差異，第 5.2 節的結果也印證了這點。</p>
+<p><strong>集成學習</strong>：集成學習是透過結合多個較弱模型提升模型能力的常用技術，通常透過考慮模型權重或結合多樣化輸出來實現。Mix-of-Experts（MoE）是一種結合多個專門子模型預測以提升整體效能的集成方法，已成功應用於 NLP 與電腦視覺等領域。至於候選融合，Izacard and Grave（2021）提出 Fusion-in-Decoder（FiD）框架、透過融合檢索文本提升問答品質；Ravaut et al.（2022b）在此基礎上，進一步探討融合在文字摘要中的效果，但他們在把候選餵入融合模組前，忽略了先做選擇的步驟，效果只有中等程度的提升。相對地，LLM-Blender 先用 PairRanker 演算法篩掉品質較差的候選，再只對排名靠前的候選做融合，帶來更優越的表現。</p>
+<h2 id="7-結論與未來方向">7 結論與未來方向</h2>
+<p>本文闡述了利用開源 LLM 多樣優劣勢的動機，旨在建立一個集成框架、發揮它們的互補能力，在各種指令跟隨任務上持續產生更優結果。透過動態集成 LLM，作者期望能降低個別模型的偏誤、錯誤與不確定性，產出更符合人類回饋的輸出。</p>
+<p><strong>主要貢獻</strong>：（1）<strong>新框架</strong>：LLM-Blender 是一個事後（post-hoc）集成學習方法，用於排序與融合多個 LLM 的輸出，由 PairRanker 與 GenFuser 兩個簡單而有效的模組組成；（2）<strong>新資料集</strong>：MixInstruct 是為訓練與評測 LLM 集成方法而建立的指令跟隨任務基準；（3）<strong>有前景的結果</strong>：本方法在多項指標上顯著提升整體表現，顯示這個方向對研究社群與實務工作者都有前景；（4）<strong>工具套件</strong>：開源此框架，便於他人採用此方法、開發出穩健性、泛化性與準確性更佳的 AI 系統。</p>
+<p><strong>未來方向</strong>：可能的方向包括將 LLM-Blender 框架擴展到更多模型類型或非文字模態、開發更精細的排序與融合技術、探討此集成方法在其他領域與任務上的可遷移性；此外，探索降低計算開銷的方式、結合主動學習策略以快速適應新的專門領域與資料來源，都是有價值的研究方向。整體而言，本工作凸顯了結合多個模型獨特貢獻的價值。</p>
+<h2 id="局限性">局限性</h2>
+<p><strong>效率</strong>：要從 PairRanker 取得最佳效能，可能需要呼叫模型 O(n²) 次以取得完整矩陣，導致效率大幅降低；作者嘗試以多輪 bubble sort 方法降低所需推論次數，效果良好，並強調雖然為取得最佳效能所需推論次數可能很多，這些推論彼此獨立，可平行執行。</p>
+<p><strong>人工評測</strong>：作者承認自動指標有其局限，人工評測能提供更可靠、更全面的評測結果；但由於模型數量與生成候選數量龐大，無法負擔大規模人工評測，因此主張用 ChatGPT 做評測是不錯的替代方案（依據近期研究）；此外評分時向 ChatGPT 提供了真值答案，比常見做法更具資訊量。</p>
+<h2 id="倫理聲明">倫理聲明</h2>
+<p>本工作完全遵守 ACL 倫理政策，作者聲明就其所知本文不涉及倫理問題。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2306.02561_LLM_Blender.%E6%91%98%E8%A6%81.html"><code>../summarize/2306.02561_LLM_Blender.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>FARM: Reading Failure Signals from the Internal Predictive States of a Frozen Robotic World Model 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Haoran Pei、Mingrui Luo、Senbao Wang、Haoran Lv、Jie Guo、Sheng Zhong、Ruixi Ci</p><p>日期：2026-09-10（v1，cs.RO）</p><p>arXiv：2609.11445</p><p><a href="https://arxiv.org/abs/2609.11445" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="farm-reading-failure-signals-from-the-internal-predictive-states-of-a-frozen-robotic-world-model">FARM: Reading Failure Signals from the Internal Predictive States of a Frozen Robotic World Model</h1>
+<h2 id="摘要與問題第-i-節">摘要與問題（第 I 節）</h2>
+<p>機器人長時間部署需要在線失敗監測，才能決定繼續、介入、復原或重置。既有方法常以不確定性、新穎度、動作不一致或進度估計當代理訊號，也有方法另訓練監測專用的動態模型。但這些訊號不等同任務失敗：策略可能很有信心、動作也一致，卻一直沒有進展；陌生狀態也未必真的失敗。</p>
+<p>FARM 問一個更直接的問題：預訓練機器人世界模型的內部預測狀態，是否已經含有可解碼的失敗資訊。它從凍結的 VLA-JEPA 讀取預測器內部狀態，只訓練一個小型監測頭，輸出每一步的失敗分數與截至當下的軌跡風險。如此可把「表徵本來就有資訊」與「另訓練一個強大監測模型學會資訊」分開。</p>
+<h2 id="方法第-iii-節">方法（第 III 節）</h2>
+<h3 id="凍結世界模型狀態與輕量讀出">凍結世界模型狀態與輕量讀出</h3>
+<p>每次重新規劃時，V-JEPA2 編碼器把截至當下的觀察歷史轉為世界狀態 token，再與任務條件化的潛在動作 token 一起送入時間因果的 VLA-JEPA 預測器。FARM 取出預測器最後區塊在正規化與輸出投影之前的狀態，移除動作條件 token，且對整條抽取路徑停止梯度。</p>
+<p>讀出器對每個預測 token 共用同一投影，以注意力池化選取與當前執行狀態有關的部分，再經窄瓶頸與輸出層得到失敗機率。共享投影讓參數量不隨 token 數增加，小瓶頸也限制讀出器自行重建複雜動態，迫使它利用凍結狀態中既有的資訊。</p>
+<p>訓練只需要軌跡層級的成功或失敗標籤，每個有效時間步繼承該軌跡結果。抽樣先在任務間平均，再抽軌跡與時間步，避免長軌跡或資料較多的任務支配損失。世界模型、編碼器與預測器始終不更新。</p>
+<h3 id="因果監測與跨域使用">因果監測與跨域使用</h3>
+<p>FARM 的即時分數只依賴目前以前的觀察。運行中的軌跡風險取所有已觀察分數的最大值，能保留短暫但強烈的失敗證據，而且只需儲存一個純量；後續要觸發介入、復原或重置，則留給部署系統決定。</p>
+<p>目標域有兩種模式。固定讀出零樣本模式直接把來源域讀出器套到新政策、機器人與視覺域，完全不使用目標標籤。若已有少量目標成功／失敗軌跡，讀出器可單獨調適，世界模型及抽取介面仍維持凍結。兩種模式因此共用同一預測表徵，只差是否用目標監督重新校準解碼規則。</p>
+<h2 id="實驗第-iv-節作者自報">實驗（第 IV 節，作者自報）</h2>
+<p>模擬基準涵蓋十項 LIBERO 操作任務，區分來源／已見任務與嚴格未見任務。表徵分析採軌跡分組的交叉驗證，並以低階統計量、較早預測層與多種政策特徵、距離、異常及動作一致性方法作對照。最終世界模型狀態的 pooled AUROC 為 85.68、pooled AUPRC 為 88.59；它優於粗略隱狀態統計，支持失敗資訊確實已存在於凍結預測表徵，而非只由監測頭記住訓練資料。</p>
+<p>在已見任務上，FARM 的整體判別優於匹配的基線；嚴格未見任務較困難，某個不依賴任務監督的動作一致性基線表現更好。加入目標標籤後，只更新讀出器即可吸收部分任務語意偏移。</p>
+<p>真實機器人評估跨越 PIPER X、SO-101 與 Franka，包含不同執行政策、攝影機與視覺域。擴大來源監督通常改善零樣本轉移，而讀出器單獨調適在各目標設定都改善結果，顯示可重用的是狀態介面，實際解碼規則仍受來源資料影響。部分歷史分析則顯示，隨已觀察軌跡增加，因果風險能逐步分辨失敗。當世界模型狀態已經可用時，FARM 額外平均 CUDA 延遲為 0.2256 ms。</p>
+<h2 id="結論與局限第-v-節">結論與局限（第 V 節）</h2>
+<p>實驗支持凍結機器人世界模型的內部預測狀態可兼作執行監測特徵。FARM 不修改預測骨幹，卻能提供逐步、因果且低額外負擔的失敗分數，並以相同介面支援匹配任務、跨政策／平台零樣本測試與讀出器單獨調適。</p>
+<p>作者明示，零樣本轉移並不一致，效果取決於來源讀出器如何建立；嚴格未見任務仍比已見任務困難。FARM 必須能存取世界模型內部狀態，也需要標記結果才能訓練或調適讀出器。延遲測量只涵蓋狀態已在 GPU 上之後的監測頭，不含世界模型推論、狀態抽取、前處理、資料傳輸或控制器開銷。本文也只研究風險讀出，尚未把分數與介入或復原政策整合；作者把跨預測層的失敗資訊分布與閉迴路處置列為後續工作。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2609.11445_FARM.%E6%91%98%E8%A6%81.html"><code>../summarize/2609.11445_FARM.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

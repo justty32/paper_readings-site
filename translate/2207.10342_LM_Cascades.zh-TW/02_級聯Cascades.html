@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_級聯Cascades · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2207.10342_LM_Cascades.zh-TW.html">回 2207.10342_LM_Cascades.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="3-級聯cascades">3. 級聯（Cascades）</h2>
+<p>本節示範如何建構 LM 級聯來處理各種語言推理問題。<strong>一個級聯就是一個機率程式，其中含有由 LM 取樣的字串值隨機變數。</strong> 例如一段問答級聯（Figure 2）：每個 <code>yield S(...)</code> 依 LM 分布 S 回傳一個字串，程式因此定義了變數 question、thought、answer 上的<strong>聯合分布</strong>。<code>S</code> 的第一個參數是該隨機變數的<strong>唯一名稱</strong>，其餘參數把 LM 條件在字串前綴上；變數可在程式內或推論期被標記為 observed。</p>
+<p>實作上，級聯是一個<strong>嵌入 Python 的 trace-based PPL</strong>：以 effect handlers（受 Pyro／NumPyro 啟發）與 coroutine（受 PyMC4 啟發）承載，用一個預訓練 LM 參數化所有條件分布，<strong>支援任意控制流與遞迴</strong>。雖然本文以少樣本提示的因果 LM 為主，但這些想法可直接套用到微調模型、masked LM，以及影像等其他複雜資料型別。</p>
+<h3 id="31-scratchpads-與-chain-of-thought">3.1 Scratchpads 與 Chain of thought</h3>
+<p>把 chain of thought 表示為 <strong>Q→T→A（問題-思考-答案）</strong> 模型：A 節點不只條件在測試問題 Q，也條件在先前的 (Qm,Tm,Am) 三元組上（即少樣本提示部分，圖中以 plate 內的陰影節點表示）。推論用**祖先取樣（ancestral sampling）**實作。</p>
+<pre><code class="language-python">def qta():
+    q = yield S('question')
+    t = yield S('thought', question=q)
+    a = yield S('answer', question=q, thought=t)
+    return a
+</code></pre>
+<h3 id="32-半監督學習">3.2 半監督學習</h3>
+<p>比起手工提供全部 (Q,T,A) 三元組，更可擴展的做法是：定義一小組「監督」三元組 DS，再提供一大組較易蒐集的 (Q,A) 對 DL，把 DL 中的 T 當隱變數，形成半監督設定。</p>
+<h3 id="33-selection-inference">3.3 Selection-Inference</h3>
+<p>Selection-Inference 是多個互動 LM 模組的近例：把推理拆成 <strong>selection 模組</strong>（給定問題，從預先指定的事實集選出子集）與 <strong>inference 模組</strong>（依此子集推出新事實）。兩者可迭代做多步推理；模型靠把範例 <code>D={(Qm,{Fmj},Sm,Im,Am)}</code> 放進提示來「訓練」。</p>
+<h3 id="34-驗證器verifiers">3.4 驗證器（Verifiers）</h3>
+<p>即使加了顯式思考變數，模型仍會答錯、或「用錯誤理由得到正確答案」。一個直觀改進是訓練模型<strong>判斷答案與思考是否可能有效</strong>。Cobbe et al. 用一個獨立模型當驗證器來過濾解答。做法是造帶「驗證」標籤的訓練集 <code>D={(Qm,Tm,Am,Vm)}</code>，<code>Vm∈{0,1}</code> 表示 Tm 是否為由 Qm 導出 Am 的有效推理；驗證器可在祖先取樣時<strong>拒絕錯例</strong>，思考生成器本身也可被條件在「驗證正確」上（靠微調或提示），呼應 <strong>RL as inference</strong> 與 <strong>decision-transformer</strong> 式的目標條件策略。</p>
+<p>可延伸為 <strong>N 步推理</strong>（Figure 5 的 Verifier 模型）：其中<strong>小的雙圈節點是確定性緩衝（buffer）節點，負責拼接輸入、累積所有過去字串；其餘節點皆為隨機節點；驗證器節點被觀測為「正確」值。</strong> 以 N=1 為例：訓練好後取 K 個樣本 (Tk,Vk,Ak)，用 <code>rk=p(Vk=1|Ak,Q,D)</code> 為有效性排序、取分數最高的 Ak。Cobbe et al. 訓練驗證器預測二元正確標籤；Scheurer et al. 納入<strong>自然語言回饋</strong>、學習更省樣本；初步證據顯示 LM 能用語言批評自己的推理鏈，此時驗證器輸出自然語言，<code>p(V=...|...)</code> 變成驗證器取某個字串值（如「推理與解答正確」）的似然（Saunders et al. 在摘要情境研究模型生成的批評）。</p>
+<h3 id="35-工具使用tool-use">3.5 工具使用（Tool-use）</h3>
+<p>前述應用都是在某控制流內迭代 LM、<strong>無外部回饋</strong>。但許多任務中模型需與外部系統互動：Cobbe et al. 讓 LM 用<strong>計算器</strong>解數學題、Nakano et al.（WebGPT）把 LM 放進與<strong>網頁瀏覽器</strong>的迴圈回答問題。用 PPL 表示這些機率模型，只要<strong>把對外部工具的呼叫直接寫進程式</strong>即可；接著就能套用如 <strong>simulation-based inference</strong> 等技術在這類情境做推論。</p>
+<h3 id="36-twenty-questions二十問">3.6 Twenty Questions（二十問）</h3>
+<p>用級聯解 BIG-bench 的 Twenty Questions：Alice 與 Bob 兩代理對話，兩者都被告知規則，Alice 另被給定一個要描述的概念（如 &#x27;apple&#x27;）；Bob 以「Is it X?」連續提問，Alice 只答 &#x27;Yes.&#x27;／&#x27;No.&#x27;，直到 Bob 猜中或達回合上限。這可視為<strong>一對互動的馬可夫鏈，彼此交換字串直到終態</strong>（Figure 6）。目標是推論 Bob 該問哪些問題以最快猜中——可轉為<strong>字串值動作的 RL</strong>、或等價地轉為<strong>條件在目標狀態（<code>AT='yes'</code> 且 T 越早越好）上的推論問題</strong>（呼應 planning as inference）。</p>
+<p>初步實驗用<strong>前向取樣（祖先取樣）</strong>：每概念取樣 50 條對話、溫度 1.0，若目標概念出現在 Bob 提問中即算成功；對「畸形」鏈（如 Bob 沒生成問題）提早拒絕。Bob 的回合以 &#x27;Is the concept&#x27; 起頭再由 LM 補全；Alice 生成答案後做後處理——把真概念的所有提及換成一般詞 &#x27;concept&#x27; 以防資訊洩漏。用 <strong>LaMDA 137B</strong>，模型解出 <strong>29% 的任務</strong>（附錄 B 詳述；40 概念中答對 11 個最不抽象者：apple、dinosaur、airplane、house、tree、shoes、car、cow、eat、love、beauty）。</p>
+<h2 id="4-討論">4. 討論</h2>
+<p>我們展示了機率程式如何提供一個<strong>靈活的形式框架</strong>，把模型組合起來、對字串定義複雜機率模型，並把許多既有演算法<strong>放進統一框架</strong>。這雖暗示可把各種既有的推論與訓練期技術套到這些模型上，但本文除<strong>拒絕取樣</strong>外並未評估其他方法。透過「control as inference」的視角，也能把許多 planning 與 RL 任務納入本框架。雖然本文限於字串設定，這些想法同樣適用於多模態（結合影像與文字模型成更大系統）。</p>
+<p><strong>在實務中套用級聯的挑戰是：字串值變數上的機率推論很難。</strong> 這也是 PPL 一貫的核心技術難題。一個我們打算在未來探索的關鍵洞見是：可以<strong>把 LM 訓練成「填空」（fill in the blanks）</strong> 來模擬後驗推論——對應到未知變數；類似想法見於 foundation posteriors（套在 Stan 機率程式上，顯示 LM 也適用於數值資料型別）。換言之，可用 LM 當 <strong>proposal 分布或 guide 網路</strong>。我們也打算探索微調方法（超越本文的少樣本提示）。程式合成的近期進展則暗示了<strong>機率程式歸納（probabilistic program induction）</strong> 的可能：去<strong>搜尋</strong>能解目標任務的級聯結構，而非假設固定的機率程式結構。</p>
+<h2 id="附錄摘要">附錄摘要</h2>
+<ul>
+<li><strong>A. 實作／推論</strong>：給定表示機率模型的程式，推論把觀測值條件下的未觀測值具體化（reify）。最簡單的推論演算法是祖先取樣（前向取樣）。基本 API 形如 <code>infer(program, seed=0, observe={...}, examples=[...])</code>：<code>observe</code> 指定觀測變數、<code>examples</code> 指定少樣本範例。附錄給出多個可執行級聯：<code>question_answer</code>（直接由問題生答案）、<code>question_thought_answer</code>（先產隱思考再作答）、<code>question_thought_answer_critique</code>（多一步用自然語言批評自身推理）、<code>qta_verifier</code>（逐句驗證器；驗證器項當作序列似然，且<strong>何時停止本身也是隨機變數</strong> <code>should_stop</code>）、<code>selection_inference</code>（先選事實子集再據以推新事實、含自訂提示與動態迴圈）。</li>
+<li><strong>B. Twenty Questions 細節</strong>：Alice 得到要猜的概念與任務說明、Bob 得到任務指示；若 Alice 回應含關鍵概念就替換成 &#x27;concept&#x27;（或拒絕該 trace）；程式在 Bob 猜中、或 10 題內未猜中、或 Bob 沒回答問題時結束。附有 Alice／Bob 的提示與數段實際對話樣本（成功如 love、shoes；失敗如 television 十回合未猜中），以及直接構造提示的 <code>twenty_questions_program</code> 程式碼。</li>
+</ul>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2207.10342_LM_Cascades.%E6%91%98%E8%A6%81.html"><code>../summarize/2207.10342_LM_Cascades.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

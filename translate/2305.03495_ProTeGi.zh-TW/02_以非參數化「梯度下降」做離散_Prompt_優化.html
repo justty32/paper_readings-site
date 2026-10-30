@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_以非參數化「梯度下降」做離散_Prompt_優化 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.03495_ProTeGi.zh-TW.html">回 2305.03495_ProTeGi.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E5%AF%A6%E9%A9%97.html">下一節 →</a></p>
+</blockquote>
+<h2 id="2-以非參數化梯度下降做離散-prompt-優化">2. 以非參數化「梯度下降」做離散 Prompt 優化</h2>
+<p>演算法假設可存取一個初始 prompt p₀，以及由（輸入，輸出）文字配對組成的 i.i.d. 訓練資料 D_tr。所有 prompt p 均取自「通順自然語言」的空間 L。演算法假設可存取一個黑箱 LLM API：LLM_p(x) ≈ argmax_y P_LLM(y|p,x)，即把 prompt p 與輸入 x 串接後，回傳最可能的文字延續 y（例如少樣本 prompt 加輸入範例、或聊天機器人人設加對話歷史）。</p>
+<p>在此設定下，演算法迭代精煉初始 prompt p₀ 以逼近 p̂——最優 prompt p* = argmax_p{m(p, D_te)} 的近似解，其中 m 為某個度量函數、D_te 為域內測試或開發資料。以下先介紹演算法如何以有方向的方式做文本「梯度下降」改進 prompt（§2.1），接著介紹演算法如何利用這些梯度下降步驟，在梯度引導下對通順語言空間 L 做 beam search，並以高效的最佳臂辨識做束選擇（§2.2）。</p>
+<h3 id="21-以-prompt-做梯度下降">2.1 以 Prompt 做梯度下降</h3>
+<p>在本文設定下，梯度下降指的是：(1) 用一批資料評估某個 prompt；(2) 產生一個「局部損失訊號」，內含如何改進當前 prompt 的資訊；(3) 在進入下一輪迭代前，把 prompt 往梯度的相反語意方向編輯。</p>
+<p>我們用一對靜態的 LLM prompt 模板來完成上述流程。第一個模板用於產生損失訊號（「梯度」），稱作 <strong>∇</strong>。雖然其具體內容可因任務而異（本文所有任務皆共用同一套 prompt），但 ∇ 必須永遠參照當前 prompt p₀，加上 p₀ 在一批 minibatch 資料（尤其是錯誤案例）上的行為，並生成一段描述 p₀ 缺陷的自然語言摘要。這段摘要即為梯度 g。如同傳統梯度代表參數空間中會讓模型變差的方向，這段文本「梯度」g 代表語意空間中會讓 prompt 變差的方向。</p>
+<p>第二個模板稱作 <strong>δ</strong>，同樣可因任務調整，但必須永遠接受梯度 g 與當前 prompt p₀，然後對 p₀ 做出「梯度 g 的相反語意方向」的編輯，即修正 g 所指出、p₀ 具有的問題（作者指出：概念上可透過調整 δ 的措辭來實現學習率／步長，例如做大幅或小幅編輯，但本作採「自適應」步長——讓 LLM 自行決定編輯幅度，並將此留給未來工作）。</p>
+<p>與傳統機器學習不同，本文不只產生單一梯度或單一編輯，而是產生多個可能改進當前 prompt 的方向；候選 prompt 的生成與挑選細節見 §2.2。</p>
+<h3 id="22-對-prompt-做束搜尋beam-search">2.2 對 Prompt 做束搜尋（Beam Search）</h3>
+<p>§2.1 描述的梯度下降步驟，被用來引導對 prompt 空間的束搜尋，此為訓練演算法的外層迴圈（Algorithm 1）：初始化束 B₀={p₀}；對 i=1 到 r−1 的每一輪，把束中每個候選 p 都做一次擴展 Expand(p) 並集成候選集合 C，再用 Select_b(C, m) 從 C 中挑出 b 個最優候選作為下一輪的束 B_{i+1}；r 輪後回傳束中依 m 分數最高的候選 p̂。束搜尋是一個反覆優化流程：每一輪先用當前 prompt 生成大量新候選（<strong>擴展</strong>），再用<strong>選擇</strong>流程決定哪些候選值得帶進下一輪，藉此在多個候選 prompt 之間逐步改進並探索。</p>
+<h4 id="221-擴展步驟">2.2.1 擴展步驟</h4>
+<p>擴展步驟（Algorithm 2）用於從一個當前 prompt 生成多個新候選，並運用 §2.1 的「梯度下降」框架。流程如下：首先抽樣一批 minibatch 資料，用當前 prompt p₀ 對這批資料跑 LLM_p₀ 並蒐集錯誤；接著把這些錯誤代入 ∇ prompt 模板，指示 LLM 描述 p₀ 可能導致這些錯誤的問題所在，產生的文字即為自然語言梯度。然後，把梯度餵給另一個 LLM prompt δ，指示 LLM 編輯當前 prompt 以修正梯度所指出的問題——這構成了一個類似 Socratic 對話的遞迴回饋迴圈。最後，把既有候選餵給一個釋義（paraphrase）LLM 模板 LLM_mc，探索新候選附近的局部蒙地卡羅搜尋空間，生成用詞不同但語意相近的額外候選。</p>
+<h4 id="222-選擇步驟">2.2.2 選擇步驟</h4>
+<p>擴展步驟把每個候選 prompt 都展開成多個後繼候選後，選擇步驟要從中挑出 b 個最有希望的候選留在下一輪束中。在整個訓練資料集上評估每個候選代價高昂，我們希望盡量減少此類查詢。這幾乎完全對應到 bandit 優化中已被充分研究的**最佳臂辨識（best arm identification）**問題：n 個臂對應 n 個 prompt 候選，其在底層資料集上的表現是臂的隱藏價值，「拉」一次臂對應在一個隨機抽取的資料點上評估該 prompt 一次；目標是用盡量少的拉臂次數找出 b 個最好的臂。本文考慮以下演算法：</p>
+<ul>
+<li><strong>UCB Bandits</strong>：依候選表現的提案分布抽樣一個候選子集，在隨機資料子集上評估，再依觀察到的表現更新提案分布；最後選出提案分布中權重最高的 b 個候選（Algorithm 3）。其中 Q_t(p_i) 為候選 p_i 在時刻 t 的估計表現，N_t(p_i) 為累計查詢次數，c 為探索參數。UCB 雖是自然選擇，但主要設計目標是遺憾最小化（regret minimization），與本文想做的最佳臂辨識並非同一目標；且若探索參數 c 未妥善調校，UCB 可能表現不佳。</li>
+<li><strong>UCB-E</strong> 是 UCB 的變體，藉由偏重探索來修正上述部分問題，理論收斂性質更好，但仍需調校 T、c、|D_sample| 等超參數。</li>
+<li>**Successive Rejects（Algorithm 4）**已被證明對最佳臂辨識是最優的、不像 UCB 系列需要超參數，且相當簡單：演算法分 n−1 個階段，每階段維護一組存活候選集合 S_k；第 t 階段用 n_t 個隨機資料點評估 S_{t−1} 中每個候選的經驗分數，再淘汰該階段分數最低者形成 S_t；n_t 依一條隨查詢預算 B 遞增的公式計算，確保各階段抽樣量隨階段數增加。</li>
+<li>**Successive Halving（SH）**更為激進：每階段結束時直接淘汰分數最低的一半候選，n_k 依候選存活數與階段數計算。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

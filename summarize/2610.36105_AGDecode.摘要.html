@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>AGDecode: Semantic Attribute Grammar Derivatives for Safety-Constrained Decoding of Large Language Models 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Rajan Maghera、Asher Tempest Arya、Aren A. Babikian、Marsha Chechik、Maryam Mehri Dehnavi</p><p>日期：2026-10-26（v1，cs.SE）</p><p>arXiv：2610.36105</p><p><a href="https://arxiv.org/pdf/2610.36105v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="agdecode-semantic-attribute-grammar-derivatives-for-safety-constrained-decoding-of-large-language-models-重點摘要">AGDecode: Semantic Attribute Grammar Derivatives for Safety-Constrained Decoding of Large Language Models 重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>AGDecode 將尚未完成的程式表示成含孔洞的屬性文法，再把前綴能否延伸成符合語義規格的完整程式交給約束求解器。作者證明的正確性相對於理想 oracle；實作在求解逾時時允許暫未驗證的 token，因此實驗中的生成前綴不能一律視為已證安全。</p>
+<h2 id="方法">方法</h2>
+<p>一般語法約束解碼只保留能延伸成合法語法的 token；AGDecode 額外要求存在至少一個符合所指定語義性質的完成式。它以屬性文法表達型別、符號表或路徑狀態等規則，在未展開的語法樹節點保留帶型別的孔洞；前綴每增加字元，文法導數更新剩餘可能結構，再將殘餘語義條件交給外部 oracle。（<a href="https://arxiv.org/pdf/2610.36105v1#page=7">PDF 第 3～4、7～8 頁，§2～3</a>）</p>
+<p>實作將規則編譯為 constrained Horn clauses（CHC），以 Z3 Spacer 處理遞迴關係與可達性。結構選擇變數與全域路徑一致性約束要求同一樹位置的屬性使用一致產生式，避免靠不相連的推導拼湊語義解；以關係別名記錄遞迴導數狀態，避免無限展開。規格與求解器分離，但規格本身是否正確、是否涵蓋所有欲保證的行為仍是前提。（<a href="https://arxiv.org/pdf/2610.36105v1#page=16">PDF 第 16～19 頁，§5.2～6</a>）</p>
+<h2 id="理論與未知結果">理論與未知結果</h2>
+<p>作者的定理 5.6 說明：若新前綴的關係導數約束被 oracle 判為不可滿足，則沒有符合頂層語義規格的完整樹可延伸該前綴；定理 5.7 說明，對任何符合規格的完整樹，其每個前綴的導數系統保持可滿足。第 6 節再聲稱 CHC 編譯與宣告式系統的可滿足性對應，核心元定理以 Rocq 機械化。這些結論相對於文中模型與理想驗證 oracle，並不是未受規格覆蓋的任意程式行為保證。（<a href="https://arxiv.org/pdf/2610.36105v1#page=16">PDF 第 16、18～19 頁，§5.3、§6.3</a>）</p>
+<p>實際求解可能 <code>unknown</code> 或逾時。作者區分三種模式：理想 oracle 下 sound 且 complete；保守拒絕未知結果，可保持 sound 但可能排除有效完成式；推測模式接受未知結果以繼續生成，直到後續查詢重新驗證整個前綴，在此之前沒有即時 soundness。若後續驗證未成功或最終輸出仍有未解查詢，不能把先前推測性接受當作已驗證。（<a href="https://arxiv.org/pdf/2610.36105v1#page=18">PDF 第 18 頁，§6.3</a>）</p>
+<h2 id="作者自報實驗">作者自報實驗</h2>
+<p>作者從 MultiPL-E 的 161 個 HumanEval C++ 題改寫介面為 C，選出 77 個涉及記憶體或指標且不含浮點型別的題目；提示本身也要求使用支援的 C 文法、注意記憶體安全並檢查指標參數。CodeLLaMA-13B 以溫度 <code>0.3、0.5、0.7</code> 生成，使用 Python、Z3 Spacer、單張 H100，求解每個查詢最多 5 秒。實驗採<strong>推測模式</strong>，逾時或未知結果暫當作接受，而不是只生成每一步均已證實的前綴。（<a href="https://arxiv.org/pdf/2610.36105v1#page=19">PDF 第 19～20 頁，§7.1～7.2</a>）</p>
+<table>
+<thead>
+<tr>
+<th>溫度</th>
+<th style="text-align:right">查詢總數</th>
+<th style="text-align:right">invalid／valid／timeout 數</th>
+<th style="text-align:right">timeout 比例</th>
+<th style="text-align:right">valid 中位延遲</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0.3</td>
+<td style="text-align:right">3,911</td>
+<td style="text-align:right">1,803／1,196／912</td>
+<td style="text-align:right">23.3%</td>
+<td style="text-align:right">1.806 秒</td>
+</tr>
+<tr>
+<td>0.5</td>
+<td style="text-align:right">3,602</td>
+<td style="text-align:right">1,580／1,108／914</td>
+<td style="text-align:right">25.4%</td>
+<td style="text-align:right">1.950 秒</td>
+</tr>
+<tr>
+<td>0.7</td>
+<td style="text-align:right">4,291</td>
+<td style="text-align:right">1,668／1,692／931</td>
+<td style="text-align:right">21.7%</td>
+<td style="text-align:right">1.124 秒</td>
+</tr>
+</tbody>
+</table>
+<p>Invalid 查詢的中位延遲為 <code>0.001～0.002</code> 秒；timeout 中位數為上限 <code>5.000</code> 秒。這是查詢層級的延遲分布，不是每個任務的端到端耗時，也不是題目成功率或最終程式安全率。作者以單例展示移除指標檢查後，某陣列存取的後續 token 被拒；論文沒有提供對所選 77 題的整體功能正確率或完整安全通過率。（<a href="https://arxiv.org/pdf/2610.36105v1#page=21">PDF 第 20～21 頁，§7.3、表 1</a>）</p>
+<p>作者觀察到，尚未完成的運算式孔洞可能有大量續寫，導致求解逾時；到完整敘述邊界時，具體化與快取可能使部分查詢較容易。這是實驗觀察及批次驗證的動機，並非每個敘述邊界都便宜的保證。（<a href="https://arxiv.org/pdf/2610.36105v1#page=21">PDF 第 21～22 頁，§7.3</a>）</p>
+<h2 id="限制">限制</h2>
+<p>案例規格針對空指標解參考、除以零及未初始化變數使用；作者明示未建完整記憶體模型，不能因此保證任意 C 程式的完整記憶體安全。人工編寫的文法與語義約束可能漏項或出錯。實作缺乏回溯：推測接受後若較晚查詢否定前綴，尚須找出應替換的 token；token 層級的長尾求解延遲也可能妨礙實用。嚴格遮罩改變語言模型的輸出分布，可能影響生成品質。（<a href="https://arxiv.org/pdf/2610.36105v1#page=22">PDF 第 22 頁，§7.4</a>）</p>
+<p>作者討論與 ChopChop 的共歸納表示差異，但沒有在此 C 路徑敏感安全案例直接做實證比較；因此不能從本文推定兩者實際性能優劣。（<a href="https://arxiv.org/pdf/2610.36105v1#page=22">PDF 第 22～23 頁，§7.5</a>）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.36105_AGDecode.zh-TW.html">AGDecode 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

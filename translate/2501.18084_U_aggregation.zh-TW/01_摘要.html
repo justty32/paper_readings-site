@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_摘要 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2501.18084_U_aggregation.zh-TW.html">回 2501.18084_U_aggregation.zh-TW 目錄</a>　<a href="02_%E7%90%86%E8%AB%96%E6%80%A7%E8%B3%AA.html">下一節 →</a></p>
+</blockquote>
+<h2 id="摘要">摘要</h2>
+<p>開放科學與開源 ML 使越來越多模型公開可用，讓實務者直接整合進自身情境、減少資料標註/訓練/校準。但因可遷移性有限、資料異質、真實情境難取得真標籤/結果，<strong>為特定目標族群挑最佳模型仍困難</strong>。本文提出無監督模型聚合法 <strong>U-aggregation</strong>，整合多個預訓練模型以在新族群獲得增強且穩健的表現。不同於既有監督式聚合或 super learner，U-aggregation <strong>假設目標族群無觀測標籤/結果</strong>。本法改善既有無監督聚合的限制，容納更真實的設定——<strong>模型層級與個體層級的異質變異（heteroskedasticity）</strong>、以及<strong>對抗模型（adversarial models）<strong>的存在。借隨機矩陣理論，U-aggregation 含一個</strong>變異數穩定步驟</strong>與一個<strong>迭代稀疏訊號回復過程</strong>，改善對目標族群個體真實風險的估計、並評估候選模型的相對表現。論文提供理論分析與系統數值實驗，並用 U-aggregation 整合 PGS Catalog 的公開模型來增強複雜性狀的基因風險預測。</p>
+<p><strong>關鍵詞</strong>：集成學習、異質變異、模型聚合、譜方法、基因風險預測。</p>
+<h2 id="1-引言">1. 引言</h2>
+<p>開放科學使預訓練模型廣泛可用（如多基因風險預測領域的 <strong>PGS Catalog</strong> 開放資料庫，可直接下載套用 PRS 模型）；一兩年內已有 &gt;5,000 模型涵蓋 &gt;650 性狀，常見性狀（身高、BMI、乳癌）逾 100 個模型，由不同團隊以各種統計/ML 方法在不同資料集開發。</p>
+<p>套到新族群時，<strong>分布偏移</strong>常使準度下降。常見對策（遷移學習、微調、再校準）需源訓練資料或目標族群帶結果/標籤的驗證資料，且多針對校準<strong>單一</strong>模型、不適用於大量模型。隨預訓練模型增多，<strong>有效組合</strong>它們愈發重要。監督式聚合（如最佳線性組合）、boosting/bagging/super learner 等需同一帶標籤資料集訓練並聚合；但<strong>標籤/結果常不可得</strong>（年輕族群多未發病、EHR 標註昂貴），且聚合模型效能綁定特定訓練資料、可遷移性受限。maximin/環境不變/分布穩健學習等雖瞄準可遷移性，但需源族群資料（實務上比模型本身更難取得）。因此<strong>直接聚合預訓練模型預測值的無監督聚合</strong>極具實用價值。</p>
+<p>既有少數無監督聚合：Parisi(2014) 整合二元分類器（假設分類器條件獨立）；Ahsen(2019) 擴展到連續分數；Ma(2023) 整合多降維演算法（假設輸出=訊號+同質高斯噪聲）；Coombes(2020) 用 PCA 改善 PRS 調參。<strong>這些都對一致性矩陣做譜分解、用特徵向量定權重做加權平均</strong>。另有無監督排名聚合（學共識排名，與群眾外包相關），但對連續輸出未必適用、無法善用輸出量值。</p>
+<p>本文處理更真實困難的情境：候選模型在目標資料表現不一（→ 模型專屬異質噪聲）、不同受試者風險估計難易不同（→ 個體層級異質）、可能混入完全無資訊模型（訓練問題或上傳錯誤 → 對抗模型）。既有方法在此常結果不一致。<strong>U-aggregation</strong> 含兩主步：(1) 借隨機矩陣理論的<strong>資料歸一化（變異數穩定）</strong>；(2) 結合修正冪迭代（即<strong>近似訊息傳遞 AMP</strong>）與最終重歸一化，估出稀疏載荷係數向量與所有受試者真實風險值。理論證明兩步的一致性、揭示高維（樣本數與模型數同增）下聚合風險評分估計量的漸近行為。模擬顯示在異質噪聲下優於既有法。並在 All of Us（AoU）世代用 PGS Catalog 的 PRS 模型實作。</p>
+<h2 id="2-方法">2. 方法</h2>
+<h3 id="21-記號與問題設定">2.1 記號與問題設定</h3>
+<p>用 m 個預訓練模型對 n 個受試者得預測值。提出 <strong>scale-free 稀疏 signal-plus-noise 模型（式 1）</strong>：第 i 模型對 n 受試者的預測值 = <strong>模型專屬全域縮放因子 × 二元稀疏指示（該模型是否含訊號 θ，允許部分非資訊模型）× 真實風險訊號向量 θ + 噪聲向量</strong>。噪聲含<strong>樣本專屬噪聲水準</strong>與<strong>模型專屬噪聲水準</strong>（值越大準度越低）。為可識別性對 θ 做歸一化。</p>
+<p>目標：得 θ 的共識估計（有效結合各模型預測），並評估各模型相對表現——儘管真實風險 θ 不可觀測。難點：相關模型（指示=1）有樣本+模型雙層異質噪聲卻共享同一 θ；無關模型（指示=0）使訊號難與噪聲區分。因縮放差異，定義歸一化預測值矩陣 Ỹ（式 2）；由大數法則，Ỹ 的對角量近似一個量 ρ，它<strong>量化各模型表現</strong>（指示=1 時噪聲越大 ρ 越小；指示=0 時 ρ=0）→ ρ 的好估計可評模型表現，真實風險含於 rank-one 訊號分量中可同時回復。當兩噪聲矩陣皆為單位陣，問題退化為同質噪聲下的 rank-one 矩陣估計（→ PCA/SVD 合理）；但歸一化後噪聲結構複雜（樣本+模型異質），不處理異質變異會使譜分解準度低。</p>
+<h3 id="22-用-dyson-equalizer-做變異數穩定">2.2 用 Dyson Equalizer 做變異數穩定</h3>
+<p>既有處理異質噪聲低秩估計的方法多假設獨立、零均值噪聲，不直接適用。本資料模型下，噪聲矩陣的<strong>逐元素變異數矩陣漸近呈 rank-one 結構</strong>（式 4-5）。此性質促成變異數穩定：若一般矩陣 = 確定性低秩 + 逐元素獨立零均值噪聲、且其變異數矩陣呈 rank-one（兩正向量 u,v 外積），可對行列做**歸一化（雙白化 bi-whitening）**使結果噪聲變同質 → 傳統譜分解更準。<strong>估出該 rank-one 變異數結構（u,v）是關鍵。</strong></p>
+<p><strong>Dyson 方程</strong>連結隨機矩陣的元素與變異數矩陣。定義對稱化矩陣與其 <strong>resolvent（式 6）</strong>；既有成果證明 resolvent 主對角線會集中於確定性向量值 Dyson 方程（式 7）的解；取特定 z=iη 後可建立 resolvent 對角值與噪聲變異數矩陣的連結（式 8-9）→ 由資料矩陣估 u,v（至一縮放因子）。</p>
+<p><strong>Algorithm 1（變異數穩定）</strong>：(1) 對歸一化矩陣做 SVD；(2) 取奇異值中位數，由左右奇異向量算估計量；(3)(4) 依式 8-9 得行/列變異數穩定因子，做雙白化 → 得「歸一化 rank-one 訊號 + 近同質變異噪聲」（式 12）。Section 3 證明 Step 2 的歸一化向量是 rank-one 變異數分量（u,v）的一致估計（至縮放）。</p>
+<h3 id="23-用近似訊息傳遞做訊號回復">2.3 用近似訊息傳遞做訊號回復</h3>
+<p>因模型資訊指示為二元 → 載荷向量稀疏。提出 <strong>AMP</strong> 利用稀疏結構、以<strong>去偏冪迭代</strong>遞迴增強估計。AMP 源於資訊論與統計物理，交替「矩陣乘法」與「非線性運算」，多項式時間內高效估參，且高維極限行為可由 **狀態演化（state evolution）**精確刻畫。在帶稀疏約束的奇異向量估計中，AMP 類似投影冪迭代。</p>
+<p><strong>Algorithm 2（迭代估計）</strong>：輸入雙白化後矩陣，初始化為其第一右奇異向量；Step 2 迭代回復 rank-one 兩分量——以<strong>軟閾值算子</strong>把載荷向量中小於閾值的分量壓成 0（鼓勵稀疏），並加 <strong>Onsager 項</strong>校正「當前估計與前一步估計相關性」引入的偏差，使高維行為可精確控制；Step 3 移除變異數穩定的縮放、重歸一化得最終估計。閾值序列：已知稀疏度時依式 16 設定；<strong>未知時用 Algorithm 3 交叉驗證</strong>選超參，逼近 oracle。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

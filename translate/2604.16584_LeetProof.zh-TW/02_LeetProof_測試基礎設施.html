@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_LeetProof_測試基礎設施 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2604.16584_LeetProof.zh-TW.html">回 2604.16584_LeetProof.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="4-leetproof-測試基礎設施">4. LeetProof 測試基礎設施</h2>
+<h3 id="41-測試規格">4.1 測試規格</h3>
+<p>形式化定義了規格精確性的兩個準則：(1) <strong>健全性</strong>——所有預期輸出都被接受；(2) <strong>完備性</strong>——所有非預期輸出都被拒絕。在確定性輸出假設下，完備性簡化為唯一性檢查。</p>
+<h3 id="42-處理存在量化">4.2 處理存在量化</h3>
+<p>PBT 本質上難以處理存在量化，但程式驗證中出現的 VC 通常具有可從定理結構推導的有限範圍。LeetProof 擴展 Plausible：從不等式約束中提取候選範圍、用 Lean tactic（grind、omega）證明範圍有效、然後在測試時以有界枚舉取代存在量化。</p>
+<h3 id="43-測試程式與不變量">4.3 測試程式與不變量</h3>
+<p>將 Velvet 方法轉換為測試 harness：隨機取樣滿足前置條件的輸入、在迴圈入口與每次迭代後插入不變量 Plausible 檢查、在最終結果上檢查後置條件。失敗時精確指出哪個不變量被哪個具體輸入違反。</p>
+<h3 id="44-lean-元程式">4.4 Lean 元程式</h3>
+<p>透過 monad transformer（<code>ExceptT String (StateT StdGen VelvetM)</code>）實現測試 harness 生成，在 Lean 編譯期間以元程式將每個不變量標註替換為內嵌的 Plausible 檢查。</p>
+<h2 id="5-規格推斷評估">5. 規格推斷評估</h2>
+<h3 id="rq1生成規格多準確">RQ1：生成規格多準確？</h3>
+<p>在 VERINA benchmark（188 題）上，以 Aristotle AI prover 做形式等價檢查，結果：</p>
+<ul>
+<li><strong>等價</strong>：150 題（79.8%）</li>
+<li><strong>參考問題（benchmark 自身缺陷）</strong>：16 題（8.5%）</li>
+<li><strong>前置條件變體（有效擴展）</strong>：14 題（7.4%）</li>
+<li><strong>模稜兩可語言</strong>：3 題（1.6%）</li>
+<li><strong>過度約束（但健全）</strong>：2 題（1.1%）</li>
+<li><strong>真正錯誤</strong>：3 題（1.6%）</li>
+</ul>
+<p>扣除 benchmark 自身缺陷後，<strong>語義正確率 97.4%</strong>。PBT 過濾在 LLM judge 已通過的規格中再攔截 2/7 錯誤。</p>
+<h3 id="52-benchmark-中的規格缺陷">5.2 Benchmark 中的規格缺陷</h3>
+<p>以純 PBT（無 LLM 輔助）掃描 VERINA 與 CLEVER 的參考規格，在單台 Apple M4 MacBook Pro 上一天內發現 <strong>VERINA 13 個 + CLEVER 18 個問題</strong>。PBT 成本僅需 9 分鐘（vs Aristotle 等價檢查約 8 小時）。</p>
+<h2 id="6-認證程式合成評估">6. 認證程式合成評估</h2>
+<h3 id="61-benchmark">6.1 Benchmark</h3>
+<p>新建 50 題 LeetCode 命令式問題（two-pointer、sliding window、隨機索引存取），附複雜度標註，含 15 題開發集與 35 題評估集。</p>
+<h3 id="rq2多模態-vs-單模式gpt-52每題-5">RQ2：多模態 vs 單模式（GPT-5.2，每題 $5）</h3>
+<table>
+<thead>
+<tr>
+<th>結果</th>
+<th>Velvet（多模態）</th>
+<th>Lean 單模式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>完全證明</td>
+<td><strong>28</strong></td>
+<td>17</td>
+</tr>
+<tr>
+<td>部分證明（Aristotle ok）</td>
+<td>18</td>
+<td>23</td>
+</tr>
+<tr>
+<td>部分證明（Aristotle 失敗）</td>
+<td>0</td>
+<td>7</td>
+</tr>
+<tr>
+<td>合成失敗</td>
+<td>4</td>
+<td>3</td>
+</tr>
+</tbody>
+</table>
+<p>Velvet 多 <strong>65%</strong> 完全證明的程式。重疊分析顯示 Velvet 並非均勻支配：4 題 Lean 完全證明但 Velvet 僅部分證明（如 LeetCode 917——函數式遞迴自然處理跳過非字母字元，命令式雙指標需複雜不變量）。因 Velvet 嵌入 Lean，使用者可自由退回單模式。</p>
+<h3 id="rq3部分證明的程式真的正確嗎">RQ3：部分證明的程式真的正確嗎？</h3>
+<p>18 個 Velvet 部分證明全數由 Aristotle 關閉——<strong>管線合成的所有程式與不變量都是正確的</strong>，未完成的證明反映預算限制而非產物錯誤。Lean 單模式有 7 題 Aristotle 也關不掉的 VC，而對應的 Velvet VC 全數可關閉——多模態分解產生的證明義務結構上更容易關閉。</p>
+<h3 id="rq4跨-llm-後端穩健性">RQ4：跨 LLM 後端穩健性？</h3>
+<p>在隨機抽取 25 題上以 Claude Opus 4.6 複現：Velvet 10 題 vs Lean 7 題完全證明。排名不變（Velvet 優於單模式），但絕對數字因 Opus 較高每 token 成本而降低。</p>
+<h2 id="7-有效性威脅">7. 有效性威脅</h2>
+<ul>
+<li>benchmark 僅 50 題演算法型，不覆蓋並行或 I/O 密集型系統</li>
+<li>15 題開發集可能引入設計偏差，但規格評估跨兩個外部 benchmark 結果一致</li>
+<li>固定 $5 預算：更高預算可能縮小差距，但多模態的「便宜過濾→昂貴證明」成本分層無論模型能力如何都成立</li>
+<li>RQ3 的「全數可關閉」依賴 Aristotle 當前能力</li>
+</ul>
+<h2 id="8-相關工作">8. 相關工作</h2>
+<p>與既有 LLM vericoding 方法（Dafny：Misu et al./Clover/ATLAS/Laurel;Verus：AlphaVerus/AutoVerus;F*：Chakraborty et al.;Lean：Lean Copilot;Rocq：Cobblestone/Rango/AutoRocq）相比，LeetProof 的關鍵區別在於<strong>多模態驗證器</strong>使管線能為每階段選擇最具成本效益的推理模式——這不是針對單一工具註解語言的提示策略，而是可重用的「模式感知分解」原則。</p>
+<p>與非 LLM 認證合成（Fiat、Rupicola、Watanabe et al.）相比，LeetProof 以 LLM 橋接自然語言到形式規格的間隙，補足這些方法需手寫規格的限制。</p>
+<p>規格驗證方面，LeetProof 把 PBT 當成<strong>線上過濾器</strong>（而非像 VERINA 僅做事後評估），且唯一性檢查不需參考規格對照——只需測試案例與生成規格本身。</p>
+<h2 id="9-結論">9. 結論</h2>
+<p>LeetProof 展示了以多模態驗證為核心的分階段 vericoding 管線，在相同成本下產出顯著多於單模式 baseline 的完全認證解，同時隨機化規格測試能捕捉既有 benchmark 遺漏的缺陷。雖然理論上一個夠強的 AI prover 可以涵蓋所有階段，但實驗證明<strong>把互動證明保留給最後一哩、用 PBT 與 SMT 做早期過濾，可在不犧牲正確性的前提下將成本降低數個數量級</strong>。多模態因此不是便利性的選項，而是實際必要——在基礎性框架內對互補推理模式做原則性組合，為未來 vericoding 系統提供了穩固基礎。</p>
+<p>資料可用性：LeetProof 實作、50 題 benchmark、與評估 harness 在 Zenodo 公開 <a href="https://doi.org/10.5281/zenodo.19624966"><code>doi:10.5281/zenodo.19624966</code></a>。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

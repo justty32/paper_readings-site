@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_實驗設定 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2207.10397_CodeT.zh-TW.html">回 2207.10397_CodeT.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a></p>
+</blockquote>
+<h2 id="3-實驗設定">3. 實驗設定</h2>
+<p><strong>模型</strong>：Codex 三個版本（code-cushman-001、code-davinci-001、code-davinci-002）、InCoder-6B、CodeGen-Mono-16B。</p>
+<p><strong>指標與基線</strong>：以 pass@k（n 個樣本中選 k 個評估，任一解通過全部真值測試即算解出該題）衡量。基線採 Chen et al.（2021）的無偏 pass@k 定義（從 n 樣本隨機挑 k 個）；CodeT 則以雙重執行一致性挑 k 個。另複現 AlphaCode（Li et al., 2022b）的聚類選解法作為對比（記 <strong>AlphaCode-C</strong>：用 CodeT 生成的測試輸入執行各解、按輸出分群、按群大小排序）。</p>
+<p><strong>基準</strong>（均為 zero-shot；統計見表 4）：(1) <strong>HumanEval</strong>：164 題手寫 Python 問題，平均每題 7.77 條真值測試；移除原 context 中的範例輸入輸出（附錄 B 證明此操作合理且必要）。(2) <strong>MBPP</strong>（sanitized 版）：427 題群眾外包 Python 問題。(3) <strong>APPS</strong>：5,000 題（Introductory/Interview/Competition 各 1,000/3,000/1,000）。(4) <strong>CodeContests</strong>：165 題 Codeforces 競賽題，平均每題 203.7 條真值測試。APPS 與 CodeContests 的 zero-shot context 構造：問題描述做註解（移除輸入輸出範例）＋簡單函數標頭 <code>def solution(stdin:str)-&gt;str:</code>。採樣數 n：HumanEval/MBPP 為 100、APPS 為 50、CodeContests 為 1,000。</p>
+<p><strong>實作細節（附錄 A 擇要）</strong>：溫度 0.8、top-p 0.95、最長生成 300 tokens、單一測試執行逾時 0.1 秒；基線 pass@1 用溫度 0 貪婪解碼。測試生成每題採樣 100 次（APPS/CodeContests 為 50），每樣本抽取前 5 條語法正確的 assert（每題至多 500 條測試）。評分時實際對 |S_x| 取<strong>平方根</strong>以降低解數的影響——作者認為「通過更多測試」比「更多同功能解」更重要（附錄 C 的實驗支持此設計）。</p>
+<h2 id="4-實驗結果">4. 實驗結果</h2>
+<h3 id="41-humaneval-與-mbpp-結果">4.1 HumanEval 與 MBPP 結果</h3>
+<p>基線的 pass@100 遠高於 pass@1，顯示「從 100 個樣本中選出最佳解」的巨大潛力。三個 Codex 模型上，CodeT 的 pass@1 較基線絕對提升約 10%，HumanEval 上一致超過 10 點；最強的 code-davinci-002 增益反而最大——<strong>+18.8%，pass@1 達 65.8%</strong>，較先前最佳結果（Inala et al., 2022 的 42.7%）絕對提升 20 點以上（歸因於其生成測試品質更高，見 §4.3）。MBPP 上增益略小，如 code-davinci-002 pass@1 +9.6%。<strong>CodeT 的 pass@2 已接近基線的 pass@10</strong>；HumanEval 上 pass@10 增益也一致超過 10 點。InCoder-6B 與 CodeGen-Mono-16B 的 pass@1 絕對提升介於 4.2%～13.1%（InCoder 在 MBPP 上 +13.1% 最大），證明 CodeT 對各種預訓練模型皆一致有效。</p>
+<p>擇要數字（pass@1，基線→CodeT）：HumanEval——cushman 33.5→44.5、davinci-001 39.0→50.2、davinci-002 47.0→65.8、InCoder 16.4→20.6、CodeGen 27.3→36.7；MBPP——cushman 45.9→55.4、davinci-001 51.8→61.9、davinci-002 58.1→67.7、InCoder 21.3→34.4、CodeGen 42.4→49.5。</p>
+<p><strong>AlphaCode-C 在兩基準、各模型上一致劣於 CodeT</strong>，證明納入測試案例資訊的雙重執行一致性之優越。另：生成的解與測試存在重複，附錄 D 消融顯示去重對結果影響很小；附錄 E 顯示選較高溫度 0.8 的合理性。</p>
+<h3 id="42-apps-與-codecontests-結果">4.2 APPS 與 CodeContests 結果</h3>
+<p>在更難的兩個基準上（code-davinci-002），CodeT 一致提升：APPS Introductory pass@1 +7.4%（27.2→34.6）、Interview +3.0（5.1→8.1）、Competition +0.4（1.8→2.2）；CodeContests pass@1 0.7→2.1、pass@100 7.5→9.9。競賽級問題增益不顯著，反映其難度。此外 code-davinci-002 在這兩個基準上會生成許多瑣碎（trivial）解，附錄 F 證明 CodeT 對此問題穩健；附錄 G 為 one-shot 設定的實驗。</p>
+<h3 id="43-測試案例分析">4.3 測試案例分析</h3>
+<p><strong>Q1 生成測試的品質如何？</strong> 以 canonical solution 能否通過來判定測試正確性：Codex 系模型生成的測試準確率遠高於 CodeGen/InCoder。另引入<strong>毒性率（toxicity rate）</strong>——若某測試能被任一生成解通過、卻不能被 canonical solution 通過，則為「毒性」測試（會干擾共識集評分、導致 CodeT 失敗）。毒性率與準確率高度相關，Codex 系的毒性比例更小。程式碼覆蓋率（附錄 H.2）上 Codex 系平均超過 95%。<strong>測試品質與 CodeT 增益強相關。</strong></p>
+<p><strong>Q2 更好的測試能否進一步提升平庸模型？</strong> 用 code-davinci-002 生成的測試餵給其他四個模型：cushman/davinci-001 的 pass@1 再提升 1.8%～4.3%，InCoder/CodeGen 提升 6.2%～15.9%（如 InCoder 在 MBPP 上 34.4→50.3）。顯示<strong>平庸模型生成的正確解可藉更好的測試被進一步挖掘</strong>。</p>
+<p><strong>Q3 測試較少時 CodeT 是否仍有效？</strong> 消融「採樣數 × 每樣本抽取上限」：測試越多整體越好，但採樣數 ≥50、上限 ≥3 後增益趨平；<strong>僅 10 條測試就能讓 code-davinci-002 的 pass@1 提升 9.5%</strong>——測試效率很高，實際應用可用較小採樣數平衡效能與計算成本。</p>
+<h3 id="44-案例研究">4.4 案例研究</h3>
+<p>「dual（雙重）」意指解與測試皆關鍵。圖 6(a)（HumanEval，cushman）：最高分共識集功能正確（列表所有數皆低於門檻 t 才回傳 true），第 2 名共識集沒抓準邊界條件——後者其實通過<strong>更多</strong>測試（226 vs 218），但同時考量解數與測試數後 CodeT 仍正確排序。此類案例不罕見；附錄 I 的消融（只用解數或只用測試數評分）進一步支持雙重設計。</p>
+<p>CodeT 由預訓練模型賦能、也受其限制：§2.2 的假設 (2) 不總成立。cushman 在 HumanEval 上有 <strong>53/164 題</strong>「正確解已生成、卻不在 top-1 共識集」；人工調查發現其中 20% 可歸咎於問題描述含糊、邊角案例未涵蓋、缺 import 等，其餘是模型未能理解問題描述。圖 6(b) 為歧義案例：「sum(first index value, last index value)」正解是首尾兩值相加，但「從首加到尾」的解群被排到第 1。</p>
+<h2 id="5-相關工作">5. 相關工作</h2>
+<p><strong>大模型程式碼生成</strong>：AlphaCode 在真實程式競賽中勝過半數人類選手；Codex 驅動 Copilot。開源模型有 GPT-Neo、GPT-J、CodeParrot、PolyCoder、CodeGen、InCoder 等。</p>
+<p><strong>自動測試生成</strong>：早期 Randoop、EvoSuite、MOSA、DynaMOSA、MIO 針對 Java 等靜態型別語言，Pynguin 處理 Python，皆為搜索式啟發法，生成測試的多樣性與數量受限；近期方法改用微調過的 BART/T5。<strong>本文不需啟發規則或模型訓練</strong>，直接以精心提示從 Codex 這類強模型 zero-shot 採樣測試。</p>
+<p><strong>多樣本選解</strong>：數學應用題領域，Cobbe et al.（2021）以訓練出的 verifier 排序、Shen et al.（2021）多任務聯合訓練生成器與排序器；通用程式碼生成領域，Inala et al.（2022）訓練 fault-aware ranker；另有利用執行資訊的工作（Shi et al. 2022、AlphaCode、Le et al. 2022、Lahiri et al. 2022）。<strong>與需要模型訓練、現成測試或使用者互動的既有工作不同，我們讓大模型自己為自己生成測試，並基於測試驅動的雙重執行一致性自動排序</strong>。基於一致性排序的想法也見於推理領域（self-consistency 等）。</p>
+<h2 id="6-結論與未來工作">6. 結論與未來工作</h2>
+<p>CodeT 利用預訓練模型同時生成解與測試，用測試執行解、依雙重執行一致性選出最佳解。實驗證明「與測試及其他解的雙重一致」是成功關鍵，並深入分析了生成測試的品質及其影響。挑戰仍在：<strong>CodeT 只適用於可執行的程式碼生成</strong>，且測試生成引入額外計算成本。未來將探索解決之道，並改進 CodeT 以求解更難的程式設計問題。</p>
+<hr />
+<blockquote>
+<p>重點摘要見 <a href="../../summarize/2207.10397_CodeT.%E6%91%98%E8%A6%81.html"><code>../summarize/2207.10397_CodeT.摘要.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《Hybrid LLM：具成本效益且品質感知的查詢路由（Hybrid LLM: Cost-Efficient and Quality-Aware Query Routing）》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Dujian Ding, Ankur Mallick, Chi Wang, Robert Sim, Subhabrata Mukherjee, Victor Rühle, Laks V.S. Lakshmanan, Ahmed Awadallah（Microsoft／UBC，ICLR 2024）</p><p>日期：2024-04</p><p>arXiv：2404.14618</p><p><a href="https://arxiv.org/abs/2404.14618" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="hybrid-llm具成本效益且品質感知的查詢路由重點摘要">《Hybrid LLM：具成本效益且品質感知的查詢路由》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>Hybrid LLM Routing（混合推論查詢路由）</strong>：訓練一個輕量 <strong>BERT 式編碼器路由器（router）</strong>，在<strong>生成前</strong>依「查詢難度 × 使用者要求的品質水準」把每條查詢<strong>只指派給大模型或小模型其中一個</strong>（永遠單次 LLM 呼叫），並在**測試時只調一個門檻（threshold）**就能無縫在成本與品質間滑動——在不掉品質的前提下最多可少呼叫大模型 40%。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>大模型品質高但只能跑在昂貴雲端伺服器；小模型（可跑在筆電/邊緣裝置）便宜但品質落後。但作者觀察到：多數任務都混雜著不同難度的查詢，總有一批「easy」查詢——小模型的回應品質可媲美甚至勝過大模型（本資料集約 20% 查詢 Llama-2 13b 不輸 GPT-3.5-turbo）。既有多 LLM 方案（ensemble 每題叫多個模型、cascade 依序叫到有信心為止）對單一查詢常呼叫超過一個 LLM，額外開銷大；把小/大模型與路由器從頭訓練（如影像分類的 hybrid ML）又違背「用預訓練基礎模型」的前提。目標：只訓練一個路由器，達到成本可調、品質可控的混合推論。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>「easy 查詢」定義</strong>：小模型回應品質接近大模型的查詢（不是本身容易回答，而是小模型追得上大模型）。品質用 <strong>BART score</strong> 衡量（比 GPT-ranking 便宜且與人類判斷相關）。</li>
+<li><strong>品質差（quality gap）</strong>：<code>H(x) = q(S(x)) − q(L(x))</code>，因 LLM 生成非確定性而是隨機變數。路由器分數設計為估計 <code>Pr[H(x) ≥ 0]</code>（小模型不輸大模型的機率），分數高於門檻者路由到小模型。</li>
+<li><strong>三種路由器（逐步強化）</strong>：
+<ol>
+<li><strong>r_det（確定性）</strong>：每模型每查詢各抽一個回應，以硬標籤 <code>1[q(S)≥q(L)]</code> 訓 BERT 路由器（二元交叉熵）。</li>
+<li><strong>r_prob（機率式）</strong>：每模型抽 10 個回應，用軟標籤 <code>Pr[H(x)≥0]</code> 的樣本平均取代硬標籤，把 LLM 回應的隨機性納入訓練、降低變異。</li>
+<li><strong>r_trans（機率式＋資料轉換）</strong>：當大模型遠強於小模型時 <code>Pr[H(x)≥0]</code> 對約 90% 查詢趨近 0、訊號極弱；改用鬆弛標籤 <code>Pr[H(x)≥−t]</code>，用 grid search 選讓標籤兩兩差距最大的 <code>t*</code>，使標籤分佈平衡、路由器更有效。</li>
+</ol>
+</li>
+<li><strong>架構與訓練</strong>：路由器＝DeBERTa-v3-large（300M），單次前向傳播即產生分數、開銷可忽略；用 MixInstruct 資料集（QA/摘要/資訊抽取等，10k 訓練、各 5k 驗證/測試）訓 5 epoch。</li>
+<li><strong>門檻選擇</strong>：用少量（500 筆）校準集 grid search，選在「品質掉幅 ≤ 1%」下成本優勢最大的門檻，門檻可依需求動態調鬆或調緊。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li><strong>小品質差（Llama-2 7b vs 13b）</strong>：r_prob/r_trans 可把 20% 查詢送小模型且品質零掉幅；40% 成本優勢僅掉 0.1%。</li>
+<li><strong>中品質差（Llama-2 13b vs GPT-3.5-turbo）</strong>：所有路由器 20%（40%）成本優勢下品質掉幅 ≤1%（≤4%）；圖 1(c) 顯示 22% 查詢改用小模型、品質僅掉不到 1%。</li>
+<li><strong>大品質差（FLAN-t5 800m vs Llama-2 13b）</strong>：r_det/r_prob 僅略勝隨機；<strong>r_trans</strong> 仍能區分難易，40% 成本優勢下品質掉 10.3%，較 r_det/r_prob 少掉 3.5%/2.8%。</li>
+<li><strong>延遲</strong>：路由器每查詢 0.036s，比最快的 LLM（FLAN-t5 800m 0.46s）快近 10 倍，比 Llama-2 13b（14.61s）快數百倍。</li>
+<li><strong>可泛化</strong>：門檻能從驗證集遷移到測試集；用「訓練/測試 LLM 對的品質差相關性」可事先判斷路由器能否套到新模型對（相關係數 &gt;0.7 時泛化良好）。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>路由決策只看查詢輸入，未用 task label（作者列為 task-aware routing 未來工作）。</li>
+<li>目前只做兩模型路由，尚未擴展到 N 模型（含負載平衡）。</li>
+<li>模型對與資料分佈在訓練/測試固定，OOD 泛化未解——換模型對或換分佈可能要重訓路由器（雖可用品質差相關性事先評估）。</li>
+<li>r_trans 的鬆弛參數 t 靠樣本平均與 grid search 估計，在低成本優勢/小品質差時可能因雜訊略遜 r_det/r_prob。</li>
+<li>依賴 BART score 當代理指標，其與人類判斷相關性有限；更好的評估指標留待未來。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>對應 <strong>ai_core §3.3「成本梯度／級聯路由」</strong>：本篇正是把「成本梯度」做成**一個可在測試時動態轉的旋鈕（門檻）**的乾淨範例——先估「小模型追得上大模型的機率」，再用單一門檻在成本/品質曲線上滑動。這給 ai_core 的啟發是：<strong>成本梯度可調旋鈕不必等到生成後才決策</strong>，可用一個 300M 編碼器在呼叫前就分流，開銷可忽略（比最小 LLM 快 10 倍），符合「多數確定性節點＋少數 LLM」的計算圖精神——路由器本身就是一個便宜的確定性節點。</li>
+<li>與已入庫三篇對照（同歸 I 類「成本/路由」）：<strong>FrugalGPT</strong>＝級聯（生成後打分、可能連叫多個 LLM）；<strong>RouteLLM</strong>＝路由（同樣生成前分流，但偏偏好資料學習）；<strong>AutoMix</strong>＝先小模型答、自我驗證後才升級。Hybrid LLM 的差異點：<strong>永遠只叫一個 LLM</strong>（無級聯開銷）、<strong>以「品質差機率」而非正確性為路由訊號</strong>、且對「大小模型能力差距大」提供 r_trans 資料轉換這一獨到解法。對 ai_core 而言，這條「生成前單次路由」路線最貼近「把 LLM 呼叫剃到最少」的北極星——每題最多一次 LLM，且可據品質預算調鬆。</li>
+<li>最值得記：<strong>quality gap 的機率化路由訊號</strong>、<strong>測試時單門檻＝成本梯度旋鈕</strong>、<strong>大差距時的資料轉換 (Pr[H≥−t])</strong>、<strong>用品質差相關性判斷路由器能否遷移到新模型對</strong>。定位：方法＋實證論文，開源（github.com/m365-core/hybrid_llm_routing）。適合做 <strong>LLM 路由、成本/品質權衡、邊緣-雲端分流</strong> 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2404.14618_HybridLLM.zh-TW.html"><code>../translate/2404.14618_HybridLLM.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>01_一句話概括 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2305.03495_ProTeGi.%E6%91%98%E8%A6%81.html">回 2305.03495_ProTeGi.摘要 目錄</a>　<a href="02_%E5%B0%8D%E8%AE%80%E8%80%85%E7%9A%84%E5%83%B9%E5%80%BC.html">下一節 →</a></p>
+</blockquote>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>ProTeGi（Prompt Optimization with Textual Gradients；論文摘要另稱之為 Automatic Prompt Optimization, APO）</strong>：把「改 prompt」比擬成梯度下降——用一個 LLM 對 minibatch 上的錯誤案例產生自然語言「文本梯度」（批評當前 prompt 哪裡有問題），再用另一個 LLM 沿梯度的反方向把 prompt 編輯得更好，並以 **beam search + best-arm-identification 式 bandit（UCB／Successive Rejects 等）**篩選候選、控制昂貴的全量評估成本；在四個二元分類任務（含新提出的 jailbreak 偵測）上，最多把初始 prompt 表現拉高 31%，平均勝過 Monte-Carlo 基線 3.9%、RL 基線 8.2%。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>LLM 的表現高度依賴人工反覆試錯寫出的 prompt。既有自動化路線大致有兩類：一類靠可微的軟提示調校，但需要存取模型內部狀態（梯度），實務上多數人只能透過 API 呼叫，拿不到梯度；另一類走離散操作——RL 對 prompt 做逐詞／逐片語的編輯（依賴額外訓練的 reward model，動作本質上是「無方向的」局部操弄），或像 APE 那樣做無方向的 Monte Carlo 搜尋。作者要在<strong>只有黑箱 LLM API 與（輸入， 輸出）訓練資料</strong>這個最弱假設下，設計一個仍能給出「明確、可解釋改進方向」的非參數化 prompt 優化演算法。</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>把梯度下降的三步驟搬進文字世界</strong>：(1) 用一批（minibatch）訓練資料評估當前 prompt；(2) 用 LLM 把錯誤案例轉成一段自然語言的「損失訊號」——文本梯度 g，描述 prompt 犯了什麼問題；(3) 用另一個 LLM 把 prompt 往「與 g 相反的語意方向」編輯，修掉 g 指出的毛病。兩個角色各對應一段固定的靜態 prompt 模板：<strong>∇（產生梯度）<strong>與</strong>δ（依梯度編輯 prompt）</strong>，皆是全任務共用、不需任務特化的模板。作者也指出：概念上可用 δ 的措辭操控「編輯幅度／學習率」，但本作僅採「LLM 自行決定改多少」的 adaptive 步長，未進一步實驗。</li>
+<li><strong>束搜尋（Algorithm 1）作為外層迴圈</strong>：把 §2.1 的一次梯度下降步驟當作束搜尋的**擴展（expansion）**操作——每個候選 prompt 都會產生多個梯度、每個梯度編輯出多個新 prompt、再對新 prompt 做一輪釋義（paraphrase）式 Monte Carlo 取樣以探索附近語意空間（Algorithm 2）；**選擇（selection）**步驟則從所有候選中挑出 b 個留在下一輪的束。</li>
+<li><strong>把候選篩選問題重述成 bandit 的「最佳臂辨識（best-arm identification）」</strong>：在全部訓練資料上評估每個候選代價太高，作者將「挑出表現最好的 b 個候選」形式化為 n 個臂（候選 prompt）、拉一次臂＝在隨機抽樣資料點上評估一次的最佳臂辨識問題，比較 <strong>UCB、UCB-E、Successive Rejects（可證明最優、免調參）、Successive Halving</strong> 四種選臂策略，用最少的評估次數逼近「哪個候選最好」。</li>
+<li>整體上，這是<strong>單一 prompt 上的定向局部搜尋</strong>：沒有多模組計算圖、沒有跨模組的信用分配，梯度只描述「這個 prompt 錯在哪」，不涉及多變數之間的傳播。</li>
+</ul>
+<h2 id="結果">結果</h2>
+<ul>
+<li>四個二元分類任務：Jailbreak（新提出、452 筆多語言人工標註）、Ethos（英文仇恨言論偵測，997 筆）、Liar（英文假新聞偵測，4000 筆）、Sarcasm（阿拉伯文諷刺偵測，10,000 筆）；主模型為 2023 年 1 月版 gpt-3.5-turbo，指標為測試集 F1（3 次試驗平均）。</li>
+<li><strong>整體結果</strong>：ProTeGi 在全部四個資料集上勝過所有基線；平均勝過 Monte-Carlo（APE 式無方向搜尋）3.9%、勝過 RL（GrIPS/TEMPERA 式片語級操作）8.2%、勝過起始 prompt 15.3%、勝過 AutoGPT 15.2%；此優勢在查詢預算 12～50 次評估/候選間大致穩定。RL 基線在 Ethos、Sarcasm 上表現接近起始 prompt；AutoGPT 六輪回饋後在 Jailbreak、Sarcasm 上反而<strong>拉低</strong>了起始 prompt 的表現。</li>
+<li><strong>束搜尋消融（表 1）</strong>：以相同查詢預算比較「無迭代（單輪枚舉+選擇）」「貪婪 DFS」「束搜尋（ProTeGi）」，束搜尋在 Jailbreak/Liar/Sarcasm 三者上全面勝出（如 Jailbreak 0.85 vs 0.82 vs 0.80）。</li>
+<li><strong>bandit 演算法比較（表 2）</strong>：所有近似最佳臂辨識演算法都勝過「均勻分配預算」基線；<strong>UCB 系列意外地穩定優於理論上更優的 Successive Rejects 系列</strong>，作者推測是因為本設定下 UCB 的探索/利用平衡在實務上表現較好。</li>
+<li><strong>學習曲線</strong>：所有資料集大約在 3 個優化步驟左右達到高峰，之後出現過擬合訓練集或落入局部極小的跡象。</li>
+<li><strong>底層模型消融（表 3）</strong>：GPT-3（davinci）表現最差，InstructGPT、ChatGPT、GPT-4 依序遞增，RLHF 調校模型明顯優於未調校的 GPT-3，作者歸因於較強的推理能力。</li>
+<li><strong>附錄變異數研究</strong>：小預算（6 次查詢/候選、12 次重複）下 ProTeGi 準確率始終優於 MC，但標準誤有時更高（如 Jailbreak 0.81±0.006 vs MC 0.76±0.009），顯示文本梯度的語意定向性有時也伴隨較高變異。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li><strong>效率受限於 LLM API 速率限制</strong>：梯度生成與束候選的完整評估都要大量 API 呼叫（且 prompt 常很長），即使查詢預算不大，實測執行時間仍可能超過 1 小時；對超大 prompt 空間或時效性要求高的場景，若無充足算力並不划算。</li>
+<li>全文自稱是**「有限的初步案例研究（preliminary case study）」**：僅在四個二元分類任務上驗證，未涵蓋更複雜的建模需求（如生成式任務），也未做超參數搜尋（含 bandit 的探索參數 c、束寬 b 等皆用預設值）。</li>
+<li>質化分析顯示文本梯度<strong>並非總是有用</strong>：例如 Jailbreak 案例中，梯度把焦點窄化成「兒童誘拐」這個具體子問題，反而讓改寫後的 prompt 偏離原任務；有時 LLM 也會忽略梯度、單純用自身知識重新定義概念，而非真的針對梯度描述的問題作答。</li>
+</ul>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

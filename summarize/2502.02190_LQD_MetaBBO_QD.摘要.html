@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>《透過 Meta-Black-Box Optimization 發現 Quality-Diversity 演算法》重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Maxence Faldor、Robert Tjarko Lange、Antoine Cully（Imperial College London / Sakana AI）</p><p>日期：2025-01，元學習／演化演算法發現／Quality-Diversity</p><p>arXiv：2502.02190</p><p><a href="https://arxiv.org/abs/2502.02190" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="透過-meta-bbo-發現-quality-diversity-演算法重點摘要">《透過 Meta-BBO 發現 Quality-Diversity 演算法》重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p><strong>LQD（Learned Quality-Diversity）</strong>：把 QD 演算法裡決定「誰跟誰競爭、誰存活」的 <strong>competition 函數</strong>改用一個<strong>置換等變的 Transformer（θ）參數化</strong>，再用 <strong>Meta-Black-Box Optimization（外層 Sep-CMA-ES 演化 θ、內層在 22 個 BBOB 函數上跑 QD）自動發現新的局部競爭規則</strong>；發現出的 LQD 變體在 BBO 與機器人控制上匹敵或勝過手工的 MAP-Elites、Dominated Novelty Search，且能外推到更高維度、更大族群與訓練時沒見過的 robot control；最驚人的是即使<strong>只用 fitness 當 meta-objective</strong>，學到的演算法仍自發維持族群多樣性——元學習「重新發現」了多樣性是達成高效能的工具性目標。</p>
+<h2 id="解決什麼問題">解決什麼問題</h2>
+<p>QD 演算法（MAP-Elites 用網格、unstructured archive 用最近鄰）用<strong>局部競爭</strong>產生「多樣又高效能」的解集合，但它們的競爭機制都是<strong>手工啟發式</strong>：網格離散化粗糙、需預先定 descriptor 邊界；unstructured archive 的距離閾值超參難調。這些固定規則限制了 QD 能捕捉的「個體間關係」的複雜度。能否不靠人手設計、直接<strong>從資料發現</strong>更好的局部競爭規則？</p>
+<h2 id="核心方法">核心方法</h2>
+<ul>
+<li><strong>QD = GA + 局部競爭</strong>：把 QD 看成「把全域競爭（identity 函數）換成局部競爭函數 <code>competition(f,d)</code>」的遺傳演算法。LQD 把這個函數參數化成神經網路 θ。</li>
+<li><strong>為何用 Transformer</strong>：族群是<strong>無序集合</strong>，競爭結果不該受個體排序影響 → scaled dot-product attention 的<strong>置換等變性</strong>天然符合；且 Transformer inductive bias 極小、能表達幾乎任意競爭規則。流程：Featurize（標準化 f+d）→ Embed → Transformer → 投影成純量 competition fitness <code>f̃</code>，再 top-N 截斷選擇。<strong>不預埋任何演化原則</strong>（連「保留最高 fitness」都得自己學出來）。</li>
+<li><strong>Meta-BBO（外層）</strong>：meta-population M=256 組 θ，每 meta-generation 抽 K=256 個 BBO 任務評估各 θ，正規化聚合成 meta-fitness，用 Sep-CMA-ES 更新分布。訓練 16,384 meta-generations、內層 256 generations、族群 128。Transformer 4 層 / 16 features / 4 heads。</li>
+<li><strong>Meta-task</strong>：22 個 BBOB 函數，維度 2–12、加 uniform/Gaussian/Cauchy 噪音 + 隨機旋轉做資料增強；用<strong>隨機投影</strong>（Johnson-Lindenstrauss 保距）把基因型投到 descriptor 空間，做到 domain-agnostic。</li>
+<li><strong>三種 meta-objective → 三個變體</strong>：LQD(F) 純 fitness、LQD(N) 純 novelty、LQD(F+N) QD score（= 最高 fitness × 平均 dominated novelty）。</li>
+</ul>
+<h2 id="結果jaxevosaxqdax8h10032-次重複mann-whitney-u--holm-bonferroni">結果（JAX/evosax/QDax，8×H100，32 次重複，Mann-Whitney U + Holm-Bonferroni）</h2>
+<ul>
+<li><strong>BBO</strong>：LQD(N) novelty 勝 Novelty Search（p&lt;1e-9）;LQD(F) fitness 勝標準 GA（p&lt;1e-10）;LQD(F+N) novelty 勝 ME（p&lt;1e-7）但 fitness 不及、接近但未超越 DNS（同時優化兩目標仍難）。</li>
+<li><strong>外推</strong>：訓練只用 pop=128、dim 2–12，但 LQD(F) 在更大族群與更高維幾乎全面勝 ME，gap 隨規模放大而增。</li>
+<li><strong>機器人控制（OOD，1M 評估）</strong>：從沒訓練過 robot;LQD 在 Walker2d / HalfCheetah / Ant（feet-contact descriptor）勝所有 baseline，聚合顯著勝除 GA 外全部（p&lt;0.005）。</li>
+<li><strong>湧現多樣性</strong>：純 fitness 訓練的 LQD(F) 在 Walker2d 仍達 ME 約 <strong>40%</strong> 的 novelty，而 GA 不到 <strong>10%</strong>。視覺化顯示 LQD(N) 學成距離型 novelty、LQD(F) 學成「在好解周圍製造 fitness-sensitive 獎勵」。</li>
+<li><strong>descriptor 消融</strong>：給隨機（無意義）descriptor，LQD 退化成 GA → 其優勢確實來自利用 descriptor 結構找 stepping stone。</li>
+</ul>
+<h2 id="局限">局限</h2>
+<ul>
+<li>LQD(F+N) 同時優化 quality+diversity 仍不穩定地超越 DNS（平衡兩目標是根本難題）。</li>
+<li>meta-training 成本高（8×H100、16k meta-gen）。</li>
+<li>competition 函數雖學出來，但仍在「GA + 截斷選擇」的固定外框內，未演化 reproduction/archive 機制。</li>
+</ul>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<ul>
+<li>本批 D 類**「元學習發現演化演算法本身」**的純度最高代表——與 <a class="paper-reference" href="2606.26327_EVOM_MetaEvolution_ActorCritic.%E6%91%98%E8%A6%81.html">2606.26327</a> EVOM（LLM 演化 RL 架構）、<a class="paper-reference" href="2603.28416_Evolutionary_Discovery_RL_Algos_LLM.%E6%91%98%E8%A6%81.html">2603.28416</a>（演化發現 RL update rule）、<a class="paper-reference" href="2601.21847_READY_Reward_Discovery_MetaBBO.%E6%91%98%E8%A6%81.html">2601.21847</a> READY（演化發現 reward）並列「自動發現 X」家族，但這篇發現的是 <strong>QD 演算法的局部競爭規則</strong>，且用的是 ES-based Meta-BBO 而非 LLM。</li>
+<li>最值得記：<strong>「把演算法的某個函數參數化成置換等變 Transformer + 外層 ES 演化、內層跑該演算法當 fitness」</strong> 的 Meta-BBO 配方（承接作者群 LES/LGA 路線）；以及 <strong>「純 fitness 目標下多樣性自發湧現」</strong> 這個對「為何探索有用」的實證再發現。</li>
+<li>與 <a class="paper-reference" href="2502.00593_DNS_QD_Local_Competition.%E6%91%98%E8%A6%81.html">2502.00593</a> DNS 是同一作者群的<strong>對照組</strong>：DNS 用人手設計更好的競爭規則，本篇直接讓機器<strong>學</strong>競爭規則並把 DNS 當 baseline——兩篇一起讀能看清「手工 vs 元學習」設計 QD 的光譜。</li>
+<li>定位：方法 + 實證論文（JAX 開源），適合做 AutoML-for-EA、Quality-Diversity、open-ended evolution、meta-BBO 的人。</li>
+</ul>
+<blockquote>
+<p>完整翻譯見 <a href="../translate/2502.02190_LQD_MetaBBO_QD.zh-TW.html"><code>../translate/2502.02190_LQD_MetaBBO_QD.zh-TW.md</code></a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="29922820546fc3e5b8d14e4db1396380492e52da"><title>02_學習強化學習演算法 · 論文閱讀</title><link rel="stylesheet" href="../../html/_shared.css"><link rel="stylesheet" href="../../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../../html/index.html">總覽</a><a href="../../index/README.html">論文索引</a><a href="../../html/deep.html">深掘綜述</a><a href="../../html/video.html">訪談</a></nav><main class="reading"><blockquote>
+<p>← <a href="../2101.03958_Evolving_RL_Algorithms.zh-TW.html">回 2101.03958_Evolving_RL_Algorithms.zh-TW 目錄</a>　<a href="01_%E6%91%98%E8%A6%81.html">← 上一節</a>　<a href="03_%E7%B5%90%E8%AB%96.html">下一節 →</a></p>
+</blockquote>
+<h2 id="3-學習強化學習演算法">3. 學習強化學習演算法</h2>
+<h3 id="31-問題設定">3.1 問題設定</h3>
+<p>Agent 以策略 π_θ(a_t|s_t) 輸出動作、得獎勵 r_t 與下一狀態。聚焦離散動作 value-based 方法，故 θ 是 Q 值函數參數、策略由 Q 值經 ε-greedy 取得。Agent 把轉移 <code>(s_t, a_t, r_t, s_{t+1})</code> 存入 replay buffer，以梯度下降持續最小化損失 <code>L(s_t, a_t, r_t, s_{t+1}, θ, γ)</code> 更新策略。訓練 M 個 episode，每個 episode 回報 <code>R_m = Σ_t r_t</code>。以<strong>正規化平均訓練回報</strong>（把每環境回報用其已知最小/最大值正規化後平均）為演算法評分——用此而非最終策略回報，是因為它也反映<strong>樣本效率</strong>。內迴圈評估程序記為 <code>Eval(L, E)</code>（Algorithm 1）。</p>
+<p>meta-learner 目標：找最佳損失函數 <code>L*</code>，使其在訓練環境集上最大化正規化平均訓練回報，即 <code>L* = argmax_L Σ_E Eval(L, E)</code>。L 以計算圖表示。</p>
+<h3 id="32-搜尋語言">3.2 搜尋語言</h3>
+<p>語言須足夠表達既有演算法、又能學到跨環境泛化的新演算法。把 RL 演算法描述成領域特定語言（DSL）的通用程式，目標是更新<strong>策略</strong>（而非用於探索的獎勵 bonus）。演算法把轉移 <code>(s_t, a_t, s_{t+1}, r_t)</code>、策略參數 θ、折扣 γ 映射成待以梯度下降最佳化的純量損失。L 表示成有型別輸入/輸出之節點構成的<strong>有向無環圖（DAG）</strong>（圖 2 即 DQN 的此種表示）。節點型別：</p>
+<ul>
+<li><strong>輸入節點</strong>：程式輸入，含轉移元素 <code>(s_t, a_t, s_{t+1}, r_t)</code> 與常數（如折扣 γ）。</li>
+<li><strong>參數節點</strong>：NN 權重，可在各資料型別間映射（如 Q 網路權重把 state 型別輸入映射到各動作的實數清單）。</li>
+<li><strong>運算節點</strong>：給定父節點輸入計算輸出，含套用參數節點，以及線代/機率/統計的基本數學運算子（完整清單見附錄 A）。預設最後一個節點輸出待最佳化的純量損失。</li>
+</ul>
+<p>關鍵：節點輸入/輸出在 (state, action, vector, float, list, probability) 間<strong>有型別</strong>——讓程式可套用到任何領域，並把搜尋限制在型別合法的程式以縮減空間。</p>
+<h3 id="33-演化搜尋方法">3.3 演化搜尋方法</h3>
+<p>在多個複雜環境上評估數千個程式（尤其序列執行）代價過高。採用遺傳程式設計搭配<strong>正規化演化</strong>（採錦標賽選擇的經典演化變體，已證明可學監督式學習演算法、可跨計算節點平行）。錦標賽選擇維持 P 個演算法的族群，每輪隨機抽 T&lt;P 個比賽、選最佳者為親代，突變成子代加入族群、移除族群中最舊個體。突變只有一種：先選圖中某節點、再以隨機運算節點替換（輸入從所有可能輸入均勻抽取）。</p>
+<p>圖配置數量組合爆炸，且評估單一圖＝訓練整個內迴圈 RL 演算法、耗時遠高於監督式。故擴充正規化演化以加速（Algorithm 2）：</p>
+<ul>
+<li><strong>功能等價檢查</strong>：評估前先檢查是否與先前評估過的程式功能等價——對 10 組隨機輸入串接輸出做雜湊比對。若等價仍加入族群但複用舊分數（因部分節點不總是貢獻輸出，突變後可能變成功能不同的程式）。</li>
+<li><strong>早期關卡（early hurdles）</strong>：以 CartPole 為早期關卡環境 E_h，固定 episode 數先訓練；表現差的程式 episode 會很快結束（桿子迅速倒下），快速耗盡訓練 episode。以 <code>Eval(L, E_h) &lt; α</code> 判定表現差（α 經驗選定）。</li>
+<li><strong>程式檢查</strong>：損失須為純量（輸出型別為 float）；須對策略參數可微（檢查輸出節點與策略參數節點間是否有路徑）。</li>
+<li><strong>從零學與自舉</strong>：從零學＝隨機初始化族群（依序對 DAG 每個節點均勻抽運算與合法輸入）。自舉＝以 DQN 損失初始化，前 7 個節點代表標準 DQN 損失、其餘隨機；演化過程中節點不凍結，既有子圖若有更好解可被完全替換。</li>
+</ul>
+<h2 id="4-學到的-rl-演算法結果與分析">4. 學到的 RL 演算法：結果與分析</h2>
+<h3 id="41-訓練設定">4.1 訓練設定</h3>
+<p>meta-training：程式最多 20 個節點（不含輸入/參數節點）；族群 300、錦標賽 25、突變率 0.95（否則重抽新隨機程式）；300 CPU 跑約 72 小時、評估約 20,000 個程式；分散式分配使無閒置 CPU。</p>
+<p>訓練環境：4 個古典控制（CartPole、Acrobot、MountainCar、LunarLander）＋ 12 個 MiniGrid 多任務 gridworld 環境（含密集/稀疏獎勵、長時程、需依序解子目標如拿鑰匙開門）。CartPole 永遠當初始關卡（正規化訓練表現 &gt;0.6 才進更難環境）。實驗抽 3 個當訓練、其餘留作測試。</p>
+<p>RL 訓練：所有環境共用超參——MLP (256,256)+ReLU、Adam lr=0.0001、ε 線性衰減。</p>
+<h3 id="42-學習收斂">4.2 學習收斂</h3>
+<p>訓練末約 70% 提案程式與先前評估程式<strong>功能等價</strong>，早期關卡再砍掉約 40% 非重複程式。</p>
+<ul>
+<li><strong>訓練環境數量</strong>：只用 CartPole 從零學 vs. 用 CartPole+LunarLander——兩者都達最高表現但學到的演算法不同。雙環境學到<strong>標準 TD 損失</strong> <code>L_DQN = (Q(s_t,a_t) − (r_t + γ·max_a Q_targ(s_{t+1},a)))²</code>；單環境學到<strong>不含折扣</strong>的變體。顯示訓練環境難度範圍對泛化很重要。</li>
+<li><strong>從零 vs. 自舉</strong>：在 5 個訓練環境上，從零學訓練表現未飽和、仍有改進空間；<strong>從 DQN 自舉顯著改善收斂與表現，最終訓練表現提升約 40%</strong>。</li>
+</ul>
+<h3 id="43-學到的演算法dqnclipped-與-dqnreg">4.3 學到的演算法：DQNClipped 與 DQNReg</h3>
+<p>令 <code>Y_t = r_t + γ·max_a Q_targ(s_{t+1},a)</code>，<code>δ = Q(s_t,a_t) − Y_t</code>。</p>
+<p><strong>DQNClipped</strong>：<code>L = max[Q(s_t,a_t), δ² + Y_t] + max[Q(s_t,a_t) − Y_t, γ·(max_a Q_targ(s_{t+1},a))²]</code>。從 DQN 自舉、用 3 個訓練環境學得。勝過 DQN 與 double-DQN（DDQN）。直覺：當 Q 值過大（<code>Q(s_t,a_t) &gt; δ² + Y_t</code>）時，損失轉為最小化 <code>Q(s_t,a_t)</code>（而非正常的 δ² 損失）；亦即當 δ 夠小時就只是壓低 Q 值。</p>
+<p><strong>DQNReg</strong>：<code>L = 0.1·Q(s_t,a_t) + δ²</code>。從 DQN 自舉、用另 3 個訓練環境學得。相較 DQNClipped，它以<strong>恆常啟動</strong>的加權項直接正則化 Q 值。雖極簡，卻在所有訓練/測試環境（古典控制＋MiniGrid）匹敵或勝過基線；在某些測試環境（SimpleCrossingS9N1、DoorKey-6x6、Unlock）他法拿不到任何獎勵時它能解；方差更低、測試環境上樣本效率更高。兩個損失都把原 DQN 損失改成<strong>壓低 Q 值</strong>。</p>
+<p><strong>Atari 泛化</strong>：用與 DQN 相同架構與 no-op 評估程序。雖只在非影像的簡單環境 meta-train，DQNReg 能泛化到影像環境並勝過基線——Asteroid 2390.4、Bowling 80.5、Boxing 100.0、RoadRunner 65516（皆優於 DQN/DDQN/PPO）。</p>
+<p>兩演算法與後來人工提出的 <strong>CQL（保守 Q-learning）</strong>、<strong>M-DQN</strong> 相關：CQL 以 Q 值正則項增廣標準 Bellman 誤差使 agent 貼近資料分佈、維持最大熵策略；DQNReg 也以 Q 值正則項增廣標準目標，但方向是<strong>防止高估</strong>。M-DQN 則把縮放後的 log-policy 加進即時獎勵。顯示本法能自動找到研究者正手動探索的有用結構，可為研究者提出新探索方向。學到 DQNReg 的實驗中最佳演算法一致呈 <code>L = δ² + k·Q(s_t,a_t)</code> 形式。</p>
+<h3 id="44-學到演算法的分析">4.4 學到演算法的分析</h3>
+<p>value-based RL 中「價值高估」普遍有害。比較各演算法估計的 Q 值與人工最優策略算出的真值 Q 值：DQN 常<strong>高估</strong>；DDQN 一致<strong>低估</strong>後收斂到真值；DQNClipped 類似 DDQN（略更激進地低估）；DQNReg 顯著<strong>低估</strong>且不收斂到真值。多項工作已指出高估有害、抑制高估能提升表現。</p>
+<p>DQNClipped 是兩個 max 之和，可拆成四種情形分析（<code>max(v1,v2)+max(v3,v4)</code>）：情形 2 對應最小化 Q 值、情形 3 對應正常 DQN 損失 δ²。訓練中情形 3 多半最活躍（穩定約 95%）；情形 2（正則化 Q 值）在訓練初期短暫上升後下降——對應 DQNClipped 在訓練初期強烈低估 Q 值。可視為一種<strong>受約束最佳化</strong>：Q 值正則化量被相應調整，初期高估有害時更強、隨 δ² 變小而變弱。</p>
+<footer class="site-footer"><a href="../../html/index.html">回閱讀總覽</a> · 閱讀版本 29922820</footer></main></body></html>
