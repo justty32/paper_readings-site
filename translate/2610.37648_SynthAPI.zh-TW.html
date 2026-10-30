@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="b7f0941de2691fa88e6b24d499dc491e4fb2a843"><title>Scaling Laws for Tool-Use Agents via Controllable Environment Synthesis 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Andrew Szot、Samira Abnar、Omar Attia、Abbas Kazerouni、Michael Kirchhof、Cheng-Yu Hsieh、Raviteja Vemulapalli、Alexander Toshev</p><p>日期：2026-10-27（v1，cs.LG）</p><p>arXiv：2610.37648</p><p>閱讀說明：主文及附錄A–E精譯，省略prompts、大表與fit係數；數字為作者自報，保留task／FLOPs／tokens分母及跨baseline設定差異；未重現。</p><p><a href="https://arxiv.org/html/2610.37648v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="可控環境合成下的工具agent-scaling-law">可控環境合成下的工具agent scaling law</h1>
+<h2 id="第13節可執行工具與四個控制">第1–3節：可執行工具與四個控制</h2>
+<p>SynthAPI以關閉網路的Gemini-3.1 Pro生成app metadata、Python database schema與APIs，覆蓋八taxonomy。API經CRUD操作資料並記log，不靠LLM編造每次tool response。</p>
+<p>Task為指令<span class="math inline">\(x\)</span>、verifier <span class="math inline">\(v\)</span>、起始<span class="math inline">\(\mathrm{Db}^0\)</span>及oracle solver <span class="math inline">\(\pi^*\)</span>。Oracle看完整state與privileged IDs，修改仍只用public API。過濾要求開始<span class="math inline">\(v=false\)</span>、oracle執行後<span class="math inline">\(v=true\)</span>；指令不需問user。</p>
+<p><span class="math inline">\(A\)</span>是app數，<span class="math inline">\(T\)</span>是每app指令數，<span class="math inline">\(S\)</span>是同指令的database instantiations；總instances <span class="math inline">\(N=A T S\)</span>。<span class="math inline">\(D\)</span>是core加<span class="math inline">\(D-1\)</span>批distractors的<strong>總batch數</strong>，只改複雜度，不再乘入<span class="math inline">\(N\)</span>。所有訓練task單app，跨app只在下游測。（<a href="https://arxiv.org/html/2610.37648v1#S3">§3</a>、<a href="https://arxiv.org/html/2610.37648v1#A1">附錄A</a>）</p>
+<p>Agent用持續Python REPL，每turn可多tool／迴圈，經list_apps／list_tools／get_tool_documentation發現工具，結果JSON。SynthAPI最多32steps、observation截2048tokens；必須complete_task且verifier true才成功，到限即使state達標仍fail。（<a href="https://arxiv.org/html/2610.37648v1#A1.SS3">附錄A.3</a>）</p>
+<h2 id="第41節資料訓練與評估">第4.1節：資料、訓練與評估</h2>
+<p>64apps共10472APIs（6266write＋4206read）、458752tasks；849trained models涵蓋Qwen3.5-2B／4B／9B／27B。GLM-5.2每episode最多四attempt，只保留第一條成功trajectory、全失敗丟棄，所以每分析task恰一trajectory。總5.9B tokens中721M是施loss的reasoning／action tokens；prompt／tool outputs等mask。<strong>本文做SFT，不是RL。</strong> 主分析最多一epoch，validation連五次增加則早停，選最低losscheckpoint。（<a href="https://arxiv.org/html/2610.37648v1#S4.SS1">§4.1</a>、<a href="https://arxiv.org/html/2610.37648v1#A2">附錄B</a>）</p>
+<p>下游包括AppWorld Test-N168／Test-C417tasks、BFCLv3 Multi-Turn800、ASTRA-Bench最難High939，以及SynthAPI-Holdout新4apps×25tasks。Scaling只用AppWorld與Holdout的diagnostic set，已需1.8M evaluation episodes；不是四集合都參與fit。Success每episode平均四trials，非四training seeds。AppWorld最多50steps，per-action輸出最多4096tokens含reasoning。（<a href="https://arxiv.org/html/2610.37648v1#S4.SS1">§4.1</a>、<a href="https://arxiv.org/html/2610.37648v1#A4">附錄D</a>）</p>
+<p>Normalized <span class="math inline">\(P\)</span>在每benchmark先扣該尺寸zero-shot，再除以「全尺寸已訓練模型最高觀察success減該zero-shot」，最後跨diagnostic項平均。這是相對改善，不是raw success；表1／2另報未正規化百分比。（<a href="https://arxiv.org/html/2610.37648v1#S4.SS1">§4.1</a>）</p>
+<h2 id="第42節固定task量最佳組成隨scale變">第4.2節：固定task量，最佳組成隨scale變</h2>
+<p>9B固定<span class="math inline">\(S=1,D=2\)</span>，64–512tasks以8apps較好，4096以上64apps較好。即使1024tasks／app，median工具使用率只51%，不是工具已全用盡才需要更多app。</p>
+<p>調整<span class="math inline">\(A,T\)</span>使<span class="math inline">\(N=A T S\)</span>固定，32–512instances以<span class="math inline">\(S=1\)</span>較佳，512–4096以2較佳，更高以4較佳。同指令多state在大budget下比再加指令更有價值。比較<span class="math inline">\(D=1,2,4\)</span>時高budget以4較好；作者提醒更密database可能需要不同benchmark，不能外推永遠越複雜越好。（<a href="https://arxiv.org/html/2610.37648v1#S4.SS2">§4.2</a>）</p>
+<h2 id="第43節組成感知law與外推">第4.3節：組成感知law與外推</h2>
+<p>用generalized logistic再把ceiling改成組成函式：</p>
+<div class="math block">
+\[\widehat P_M^1(A,T,S,D)=\sigma(c_0+c_A\log_2(A S D))\,\sigma(b_0+b_T\log_2T)^\nu.\]
+</div>
+<p>每個model size獨立fit五參數。849runs構成資料，hold out最高25% training FLOPs、只用剩餘fit；<span class="math inline">\(C\approx6ML\)</span>，<span class="math inline">\(L\)</span>是supervision tokens。圖只畫FLOP最佳frontier，fit用所有非held-out點。</p>
+<p>至fit最大FLOPs的16倍外推，composition-aware MAE .0285，task-quantity-only .1706，單位是normalized diagnostic score；quantity改用tokens／FLOPs也有相同結論。<span class="math inline">\(ASD\)</span>控制擬合ceiling，<span class="math inline">\(T\)</span>控制接近速度，不是把<span class="math inline">\(D\)</span>算進task數，也不是所有pipeline的普遍法則。（<a href="https://arxiv.org/html/2610.37648v1#S4.SS3">§4.3</a>、<a href="https://arxiv.org/html/2610.37648v1#A3">附錄C/E.1</a>）</p>
+<h2 id="第44節配方與基線須分開看預算">第4.4節：配方與基線須分開看預算</h2>
+<p>SubOpt與Opt同32768task instances：SubOpt <span class="math inline">\(A=32,T=1024,S=1,D=2\)</span>；Opt <span class="math inline">\(A=64,T=128,S=4,D=4\)</span>。（本檔補註，非作者自陳）固定task數不自動等於固定tokens或FLOPs。Big用全部合成資料、四epochs並擴node數，非只變一個組成因素。（<a href="https://arxiv.org/html/2610.37648v1#S4.SS4">§4.4</a>、<a href="https://arxiv.org/html/2610.37648v1#A2">附錄B</a>）</p>
+<table>
+<thead>
+<tr>
+<th>AppWorld Test-C</th>
+<th style="text-align:right">4B</th>
+<th style="text-align:right">9B</th>
+<th style="text-align:right">27B</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Zero-shot</td>
+<td style="text-align:right">14.7</td>
+<td style="text-align:right">26.4</td>
+<td style="text-align:right">61.5</td>
+</tr>
+<tr>
+<td>SubOpt</td>
+<td style="text-align:right">38.4</td>
+<td style="text-align:right">53.0</td>
+<td style="text-align:right">73.8</td>
+</tr>
+<tr>
+<td>Opt</td>
+<td style="text-align:right">45.0</td>
+<td style="text-align:right">56.2</td>
+<td style="text-align:right">74.1</td>
+</tr>
+<tr>
+<td>Big</td>
+<td style="text-align:right">66.4</td>
+<td style="text-align:right">77.0</td>
+<td style="text-align:right">81.5</td>
+</tr>
+</tbody>
+</table>
+<p>Opt各setting均勝SubOpt；Big多數改善但非全部：4B Holdout Opt56.0、Big53.0。27B ASTRA Opt79.3低於zero-shot80.2，Big82.3才較高。ASTRA task可屬多類，overall不是類別欄位簡單平均。（<a href="https://arxiv.org/html/2610.37648v1#S4.T1">表1</a>、<a href="https://arxiv.org/html/2610.37648v1#A5.SS2">附錄E.2</a>）</p>
+<p>AppWorld Qwen3.5-4B／9B的Big Test-C66.4／77.0，比SimSAT多7.6／11.6points。BFCL因prior只報Qwen3，另訓Qwen3-4B／8B，Big50.5／55.6，比各尺寸最強prior多2.0／3.7points；不是主表Qwen3.5-9B的比較。Prior多SFT+RL、較小資料，Big較大資料SFT，作者明說不能隔離synthesis方法效果或宣稱相對data efficiency。（<a href="https://arxiv.org/html/2610.37648v1#S4.T2">§4.4，表2</a>）</p>
+<h2 id="附錄ae與第5節可重用趨勢及限制">附錄A–E與第5節：可重用趨勢及限制</h2>
+<p>附錄A列app／task prompts、schema／API／database／verifier／solver生成與介面；B列SFT細節，C列各尺寸fit係數，D定義benchmark評估，E提供逐尺寸與逐benchmark結果。E.3在另一pipeline SimSAT測固定128／256／512／1024tasks與8／16／32apps，低量少apps較好、1024時32優於16，支持app配置趨勢；<strong>並未跨pipeline驗整條law</strong>。（<a href="https://arxiv.org/html/2610.37648v1#A5.SS3">附錄E.3</a>）</p>
+<p>作者限制是沒有user-in-loop澄清、訓練task單app、長email／note等真實語意檢索深度不足；law只在單pipeline驗證，不保證其他生成／訓練設定。全實驗是research-only simulated environments，不代表Apple已部署產品、production系統或roadmap。（<a href="https://arxiv.org/html/2610.37648v1#S5">§5</a>）</p>
+<blockquote>
+<p>重點整理見 <a href="../summarize/2610.37648_SynthAPI.%E6%91%98%E8%A6%81.html">SynthAPI摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 b7f0941d</footer></main></body></html>

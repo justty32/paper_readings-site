@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="b7f0941de2691fa88e6b24d499dc491e4fb2a843"><title>CoEvolve: Counterfactual-Guided Co-Evolution of Memory and Collaboration in Multi-Agent Systems 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Xufei Shi、Derong Xu、Wei Chen、Yanyu Yao、Zhi Zheng、Tong Xu</p><p>日期：2026-10-24（v1，cs.AI）</p><p>arXiv：2610.33539</p><p>閱讀說明：依官方v1完整主文與附錄A–I整理；數字為作者自報，分開離線演化與線上執行、ALFWorld成功率與WebShop商品分數；未執行程式、未下載GitHub。</p><p><a href="https://arxiv.org/html/2610.33539v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="coevolve用skill介面把協作與記憶一起演化">CoEvolve：用skill介面把協作與記憶一起演化</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>CoEvolve以可重用local collaboration「skill」連接協作、分配用skill memory與executor的成功／失敗記憶；每輪從失敗軌跡的同branch context移除一executor重跑後段，找改善分支與pivot，據此一起更新skill和兩層memory metadata。ALFWorld SR .7985、WebShop product score .7072，皆高於所比基線；實驗為兩個模擬環境的跨輪適應。（<a href="https://arxiv.org/html/2610.33539v1#S1">§1</a>、<a href="https://arxiv.org/html/2610.33539v1#S3">§3</a>、<a href="https://arxiv.org/html/2610.33539v1#S4.SS2">§4.2</a>）</p>
+<h2 id="要解決的錯位新協作決策與記憶不互相支援">要解決的錯位：新協作決策與記憶不互相支援</h2>
+<p>只演化memory，固定workflow可能不會調用新經驗；只演化workflow，memory可能缺新決策需要的支援。作者稱為cross-component mismatch，以skill當共同更新單位，而非兩邊分開搜尋後假定相容。（<a href="https://arxiv.org/html/2610.33539v1#S1">§1</a>）</p>
+<p>Skill有purpose與applicable scenario，可由更細stage組成，stage可串／並行，也可組合既有skills或直接生成。Skill library存成熟模式，candidate pool存前輪新模式；skill memory的structural fields固定識別skill／context，metadata fields可演化，另有skill-specific field區分協作決策。Executor memory則分成功與失敗，存stage-level經驗。（<a href="https://arxiv.org/html/2610.33539v1#S3.SS2">§3.2</a>）</p>
+<h2 id="執行選skill分stage取相關經驗">執行：選skill、分stage、取相關經驗</h2>
+<p>Orchestrator按當前context從library或candidate pool選skill與skill-level goal，再結合retrieved skill memory與executor profiles，分配每stage的executor與stage goal；executor取自己的成功／失敗記憶執行，輸出可為reasoning或environment action。每步收feedback再循環，不是每個stage必然有實際環境動作。（<a href="https://arxiv.org/html/2610.33539v1#S3.SS3">§3.3</a>、<a href="https://arxiv.org/html/2610.33539v1#A9.SS1">附錄I.1–I.3</a>）</p>
+<p>兩種memory共用受SimUtil-UCB啟發的retrieval：</p>
+<div class="math block">
+\[\rho(q,m)=\lambda_1s(q,m)+\lambda_2u(m)+\lambda_3e(m),\qquad \operatorname{Ret}(q,M)=\operatorname{TopK}_{m\in M}\rho(q,m).\]
+</div>
+<p><span class="math inline">\(s\)</span>是semantic similarity、<span class="math inline">\(u\)</span>是歷史utility、<span class="math inline">\(e\)</span>是探索bonus；預設權重皆1，embedding為all-MiniLM-L6-v2。附錄給組合式與各項用途，未展開每項的完整數值更新式；不能自行補成特定UCB理論或保證。（<a href="https://arxiv.org/html/2610.33539v1#A1">附錄A</a>、<a href="https://arxiv.org/html/2610.33539v1#A5.SS1">附錄E.1</a>）</p>
+<h2 id="反事實訊號固定prefix重跑suffix並找pivot">反事實訊號：固定prefix，重跑suffix並找pivot</h2>
+<p>對失敗<span class="math inline">\(\tau^-\)</span>選branch <span class="math inline">\(t_0\)</span>，保留prefix，從available executors移除<span class="math inline">\(e_j\)</span>再執行後段。依最終成功或average reward的明顯改善，標improved／non-improved counterfactual；與原成功／失敗軌跡合成mining pool。（<a href="https://arxiv.org/html/2610.33539v1#S3.SS4.SSS1">§3.4.1</a>）</p>
+<p>先給每step分數<span class="math inline">\(u_t=\mathrm{StepScore}_\psi(z_t,r_t,f_{\le t})\)</span>，再對短segment以step feedback、process reward、novelty、重複feedback、trajectory位置與類型聚合$ q(b)$。Filter產<span class="math inline">\(W_+\)</span> useful／<span class="math inline">\(W_-\)</span> failure signals，另<span class="math inline">\(P\)</span>存失敗–改善counterfactual配對。附錄B維持抽象scorer／filter形式，沒有在這些式子列出統一數值閾值，本文不補造。（<a href="https://arxiv.org/html/2610.33539v1#S3.SS4.SSS2">§3.4.2</a>、<a href="https://arxiv.org/html/2610.33539v1#A2.SS1">附錄B.1–B.2</a>）</p>
+<p>配對從branch起算累積step-score差：</p>
+<div class="math block">
+\[\Delta_t=\sum_{k=t_0}^{t}(u_k^{\mathrm{cf}}-u_k^-),\qquad t^*=\min\{t:\Delta_t&gt;0\}.\]
+</div>
+<p>取<strong>首次正crossing</strong>的pivot；沒有正crossing就不產此規則的pivot，不能把所有改善trajectory都說成一定找到pivot。（本檔補註，非作者自陳）分數差是所用scorer下的local演化證據，不等於完整因果圖中唯一責任步驟。（<a href="https://arxiv.org/html/2610.33539v1#A2.SS3">附錄B.3</a>）</p>
+<h2 id="三個元件如何對齊更新">三個元件如何對齊更新</h2>
+<table>
+<thead>
+<tr>
+<th>元件</th>
+<th>更新依據</th>
+<th>更新內容／時序</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Skill library與candidates</td>
+<td>本輪實際usage feedback；<span class="math inline">\(W_+\cup W_-\)</span></td>
+<td>先試用前輪candidate，promote有效者／prune無效者，再生成下一輪新candidate</td>
+</tr>
+<tr>
+<td>Skill memory</td>
+<td>更新後library＋candidate與pivot pairs <span class="math inline">\(P\)</span></td>
+<td>改metadata fields，使未來能記新skill所需分配經驗</td>
+</tr>
+<tr>
+<td>Executor成功／失敗memory</td>
+<td>移除該executor後改善的agent-specific contrasts，連同更新skills</td>
+<td>改stage執行經驗的metadata schema，未來execution再填入entry</td>
+</tr>
+</tbody>
+</table>
+<p>不是把這輪新skill生成後立刻無測試納正式library。Appendix I要求memory演化只動<code>memory_metadata</code>，外層task／goal／state欄不改；skill memory設2–6fields，executor成功／失敗各2–6fields。這是記憶結構與協作模式演化，非此文報告的LLM權重訓練。（<a href="https://arxiv.org/html/2610.33539v1#S3.SS4.SSS3">§3.4.3</a>、<a href="https://arxiv.org/html/2610.33539v1#A5.SS2">附錄E.2</a>、<a href="https://arxiv.org/html/2610.33539v1#A9.SS5">附錄I.5–I.6</a>）</p>
+<h2 id="實驗演化與最終評估的模型不同">實驗：演化與最終評估的模型不同</h2>
+<p>三evolution rounds，每輪從official <strong>training split抽50tasks</strong>，validation／test不供演化。每輪最多20個failed tasks做counterfactual；產四candidate：兩個來自success、一個improved CF、一個failure，下一輪試用再promotion。Evolution orchestrator／演化module用Qwen3.5-Plus，executors用GPT-4.1-nano；<strong>最終評估</strong>CoEvolve orchestrator、executors與所有baselines才統一Qwen3-235B-A22B-Instruct-2507，不能把全流程都寫成單一backbone。（<a href="https://arxiv.org/html/2610.33539v1#A5.SS1">附錄E.1–E.2</a>）</p>
+<p>ALFWorld valid-unseen134tasks，最多30interaction steps，報task success rate；WebShop official test500tasks同樣30steps，報purchased-product score。後者是分數而不是「70.72%任務全成功」。Baseline有collaboration-based DyLAN／MacNet，memory-based ExpeL／AWM／EvolveR／MemEvolve／AutoGen-GMemory。（<a href="https://arxiv.org/html/2610.33539v1#S4.SS1">§4.1</a>、<a href="https://arxiv.org/html/2610.33539v1#A3">附錄C/D</a>）</p>
+<h2 id="作者自報結果與消融">作者自報結果與消融</h2>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th style="text-align:right">ALFWorld SR</th>
+<th style="text-align:right">WebShop score</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>最強overall baseline AutoGen-GMemory</td>
+<td style="text-align:right">.7537</td>
+<td style="text-align:right">.6681</td>
+</tr>
+<tr>
+<td>不演化</td>
+<td style="text-align:right">.6119</td>
+<td style="text-align:right">.5238</td>
+</tr>
+<tr>
+<td>Skill＋SMem</td>
+<td style="text-align:right">.7015</td>
+<td style="text-align:right">.6293</td>
+</tr>
+<tr>
+<td>Skill＋EMem</td>
+<td style="text-align:right">.6791</td>
+<td style="text-align:right">.6404</td>
+</tr>
+<tr>
+<td>SMem＋EMem</td>
+<td style="text-align:right">.6940</td>
+<td style="text-align:right">.5996</td>
+</tr>
+<tr>
+<td>CoEvolve三者皆演化</td>
+<td style="text-align:right">.7985</td>
+<td style="text-align:right">.7072</td>
+</tr>
+<tr>
+<td>無counterfactual</td>
+<td style="text-align:right">.6791</td>
+<td style="text-align:right">.5768</td>
+</tr>
+<tr>
+<td>無delayed promotion</td>
+<td style="text-align:right">.7164</td>
+<td style="text-align:right">.6395</td>
+</tr>
+</tbody>
+</table>
+<p>CoEvolve較AutoGen-GMemory的ALFWorld多4.48percentage points；WebShop分數增.0391，即100分尺度3.91points。ALFWorld六類中四類達／並列最好，clean／heat未最好，所以是overall第一，非每task type都勝。（<a href="https://arxiv.org/html/2610.33539v1#S4.T1">§4.2，表1</a>）</p>
+<p>Full對最強partial configuration，ALFWorld SR多9.70points、WebShop score在100分尺度多6.68points。Full的average executed skill stages是16.8806／11.7520，不演化21.4328／16.7540；無CF為19.7537／15.2980，無promotion17.3881／13.6060。這支持此設定下性能與stage效率同時改善，不是只拿整體task reward猜哪個元件有用。（<a href="https://arxiv.org/html/2610.33539v1#S4.T2">§4.3–4.4，表2</a>）</p>
+<h2 id="robustness與成本的實際涵蓋範圍">Robustness與成本的實際涵蓋範圍</h2>
+<p>作者換orchestrator容量：Qwen3.5-Plus與較弱Qwen3.5-35B-A3B，joint evolution在兩benchmark仍有最大相對無演化增益，但小模型增益較小。這是<strong>容量變動</strong>檢查，不是distribution-shift、adversarial或真實部署robustness測試。Retrieval權重sensitivity中預設1／1／1最佳，其他設定ALF .7164–.7687、WebShop .6629–.6863。（<a href="https://arxiv.org/html/2610.33539v1#S4.SS6">§4.6</a>、<a href="https://arxiv.org/html/2610.33539v1#A6.SS1">附錄F.1</a>）</p>
+<p>ALFWorld三輪counterfactual sampling每輪平均<strong>3.912M tokens、5541seconds</strong>，是離線evolution overhead，非每task inference成本，更不是完整所有演化module總費用。16.88／11.75則是online executed stages；stage可只思考不出action。（本檔補註，非作者自陳）不能把較少stage自動等同較少tokens、LLM calls、wall-clock或端到端訓練費用。（<a href="https://arxiv.org/html/2610.33539v1#S4.SS7">§4.7</a>、<a href="https://arxiv.org/html/2610.33539v1#A6.T4">附錄F.2，表4</a>、<a href="https://arxiv.org/html/2610.33539v1#A8">附錄H</a>）</p>
+<h2 id="行為分析prompt與證據限制">行為分析、prompt與證據限制</h2>
+<p>學到skills在多tasks重用，也有低coverage的專門recovery模式。Executor分工在ALFWorld較集中、WebShop較分散；F.3明說是observed roles，不能建立memory單獨造成specialization。G的personas描述傾向，不是固定stage assignment，也不證persona造成所見分工。（<a href="https://arxiv.org/html/2610.33539v1#S4.SS5">§4.5</a>、<a href="https://arxiv.org/html/2610.33539v1#A6.SS3">附錄F.3/G</a>）</p>
+<p>H的ALFWorld例顯示recovery／search-frontier導向找到book，但未列完整task outcome；WebShop例最後reward .750且log標success，但例子只是展示skill使用，不拿來替代500task aggregate或推定所有需求都滿足。I的prompt則分離選skill、分stage、executor JSON、skill生成及memory schema更新；雙稿只譯其約束與作用，不複製完整模板。（<a href="https://arxiv.org/html/2610.33539v1#A8">附錄H/I</a>）</p>
+<p>（本檔補註，非作者自陳）正文無獨立Limitations節；本文實證限兩個模擬benchmark、有限輪次與已測容量／權重配置，scorer等部分流程以抽象介面描述。移除executor改動後段協作，提供匹配context的干預對照，但不能擴成對任意workflow或記憶架構的普遍因果保證。作者Ethics Statement明列無human participants、私人資料或real-world deployment，真實自主MAS部署風險不在此次評估。（<a href="https://arxiv.org/html/2610.33539v1#S3.SS4">§3.4</a>、<a href="https://arxiv.org/html/2610.33539v1#Sx2">Ethics Statement</a>）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.33539_CoEvolve.zh-TW.html">CoEvolve翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 b7f0941d</footer></main></body></html>
