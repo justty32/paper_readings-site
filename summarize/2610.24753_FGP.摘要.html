@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="39d7251ff3f1e9896ae1076bdd0c7c10b8222c69"><title>From Overparameterised Expressions to Parsimonious Models: Fisher-Geometric Pruning for Symbolic Regression 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Veronica Guidetti、Luca La Rocca、Fabrício Olivetti de França、Gabriel Kronberger</p><p>日期：2026-10-17（v1，cs.LG）</p><p>arXiv：2610.24753</p><p>閱讀說明：依官方v1完整主文與附錄A–E整理；數字為作者自報，分開local geometry screening、CV接受與noiseless test評估，controlled與GPSR分母不混；未執行程式。</p><p><a href="https://arxiv.org/html/2610.24753v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="fgp以fisher幾何提候選以預測風險決定縮式">FGP：以Fisher幾何提候選，以預測風險決定縮式</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>Fisher-Geometric Pruning（FGP）是GPSR之後的greedy structural regulariser：對已擬合symbolic expression找可相容的zero、unit／gauge、asymptotic與signed-tying constraints，實際代換／contract／refit後，只有CV-risk增加在容忍內才接受。Fisher sensitivity低不等於可刪，高也不保證必須保留；local geometry負責提案，predictive validation決定。實驗支持更一致的complexity–accuracy trade-off，未在所有設定／單項指標勝出。（<a href="https://arxiv.org/html/2610.24753v1#S5">§1、§5</a>、<a href="https://arxiv.org/html/2610.24753v1#S7">§7</a>）</p>
+<h2 id="與search-time-parsimony代數化簡的差別">與search-time parsimony／代數化簡的差別</h2>
+<p>Search時用node count、BIC或MDL仍看當前representation，可能漏掉fit之後才顯露的dormant branches、saturation、parameter gauges。FGP不搜尋全新symbolic family，而從原模型或其closure暴露低維結構；可以改變represented function，只要求data-supported predictive fidelity。E-graph等semantics-preserving algebraic rewriting則保留同一function，兩者互補。（<a href="https://arxiv.org/html/2610.24753v1#S2.SS1">§1–2</a>、<a href="https://arxiv.org/html/2610.24753v1#S8">§8</a>）</p>
+<h2 id="local-geometry與boundary-compatibility是兩個量">Local geometry與boundary compatibility是兩個量</h2>
+<p>假設independent additive homoscedastic Gaussian noise，以least squares估constants。Current-fit residual variance是<span class="math inline">\(\hat\sigma^2=RSS/n\)</span>，不是已知true noise。Empirical total Fisher為</p>
+<div class="math block">
+\[\hat I_{[n]}=\frac{J^\top J}{\hat\sigma^2}.\]
+</div>
+<p>Eigenvalues衡量MLE附近perturbation對predictive distribution的sensitivity：大為stiff，小為sloppy。對smooth constraint <span class="math inline">\(c(\theta)=0\)</span>，若linearise constraint並將附近metric視固定，local squared distance為</p>
+<div class="math block">
+\[d_c^2=\frac{c(\hat\theta)^2}{\nabla c(\hat\theta)^\top\hat I_{[n]}^{-1}\nabla c(\hat\theta)}.\]
+</div>
+<p>只有interior identifiable optimum、finite variance及smooth boundary等regularity下可作Wald <span class="math inline">\(\chi_1^2\)</span>近似；infinity、non-identifiability與moderate <span class="math inline">\(n\)</span>破壞前提，作者只用作screening SNR。<span class="math inline">\(\tau=16\)</span>是Chebyshev-motivated permissive threshold，<strong>不是FGP刪除正確率或test-risk保證</strong>；exactly unidentifiable directions不依此式。（<a href="https://arxiv.org/html/2610.24753v1#S3">§3，式3–9</a>、<a href="https://arxiv.org/html/2610.24753v1#A1">附錄A</a>；非保證一句為本檔補註，非作者自陳）</p>
+<h2 id="taxonomy與真正algorithm的界線">Taxonomy與真正algorithm的界線</h2>
+<p>作者phenomenological taxonomy分unidentifiable、spurious stiff／legitimate stiff、spurious sloppy／legitimate sloppy；spurious sloppy又分irrelevant（zero）、saturating（infinity）、symmetric（signed identification）。Locally敏感但fit近zero也可刪；sloppy但不近任何指定boundary可能是有用subleading項。</p>
+<p>Taxonomy為說明可把coordinate連到best-aligned eigen-direction，<strong>algorithm不替每parameter唯一貼stiff／sloppy標籤</strong>。它只用eigenbasis找null subspace，其餘coordinates均依自己的boundary statistics測三類boundary；severe misspecification時taxonomy也可能混亂，解釋力取決於原family夠expressive。（<a href="https://arxiv.org/html/2610.24753v1#S4">§4</a>、<a href="https://arxiv.org/html/2610.24753v1#S5.SS1">§5.1</a>）</p>
+<h2 id="propose先修rank-deficiency再測可讀constraints">Propose：先修rank deficiency，再測可讀constraints</h2>
+<p>Null mask用<span class="math inline">\(\ln\lambda_i&lt;-10\)</span>，或離最大eigenvalue超25nats且<span class="math inline">\(\ln\lambda_i&lt;0\)</span>。對<span class="math inline">\(w\)</span>維flagged subspace，用<span class="math inline">\(u_k=\sum_{i\in null}V_{ki}^2\)</span>及pivoted-QR-style deflation選<span class="math inline">\(w\)</span>代表coordinates，參與度相近且collinear的rows可記同一null mechanism；不只挑最小eigenvector最大loading。Null候選可試<span class="math inline">\(0,1,\pm\infty\)</span>及eligible signed tying，unit是保留surviving term的gauge fixing。（<a href="https://arxiv.org/html/2610.24753v1#S5.SS1">§5.1，式11–12</a>）</p>
+<table>
+<thead>
+<tr>
+<th>Identifiable boundary</th>
+<th>Compatibility／限制</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span class="math inline">\(\theta_k=0\)</span></td>
+<td><span class="math inline">\(\hat\theta_k^2/(\hat I^{-1})_{kk}&lt;\tau\)</span></td>
+</tr>
+<tr>
+<td><span class="math inline">\(\theta_k\to\pm\infty\)</span></td>
+<td>以<span class="math inline">\(\phi_k=\arctan\theta_k\)</span>將boundary變<span class="math inline">\(\pm\pi/2\)</span>；metric pullback後screen，方向sign取fit</td>
+</tr>
+<tr>
+<td><span class="math inline">\(\theta_k=s\theta_h\)</span></td>
+<td>先測magnitudes相對差<span class="math inline">\(2\lvert\lvert\hat\theta_h\rvert-\lvert\hat\theta_k\rvert\rvert/(\lvert\hat\theta_h\rvert+\lvert\hat\theta_k\rvert)&lt;.01\)</span>，<span class="math inline">\(s=\operatorname{sgn}(\hat\theta_h\hat\theta_k)\)</span>；再過constraint statistic，不雙測兩sign</td>
+</tr>
+</tbody>
+</table>
+<p>沒有任意linear combinations的parameter reductions。Numerical geometry用pseudoinverse，但null nomination仍優先，不能把ill-defined Wald當exact singular constraint的證據。（<a href="https://arxiv.org/html/2610.24753v1#S5.T1">表1</a>、<a href="https://arxiv.org/html/2610.24753v1#S5.SS4">Algorithms1–2</a>）</p>
+<h2 id="realise實際代換contractrefit">Realise：實際代換、contract、refit</h2>
+<p>施constraint後將maximal parameter-only subtrees各collapse成一new constant，以舊fit數值warm start；一次move可能除多個parameters。對covariate-dependent algebra不做一般化簡，所以substitution可能造成可消除的singularity，例如含<span class="math inline">\(x\)</span>的common factor未cancel；作者刻意不加semantics-preserving simplify，以分離效果。Infinite limit也必須在domain上有合理symbolic結果，非將任何大parameter直接「刪掉」。（<a href="https://arxiv.org/html/2610.24753v1#S5.SS2">§5.2</a>）</p>
+<h2 id="decide每步容忍風險bic只解tie">Decide：每步容忍風險，BIC只解tie</h2>
+<p>固定<span class="math inline">\(K=8\)</span>folds（seed0），所有candidates及CV variants用同partition。每fold重新fit、以held-out squared errors估<span class="math inline">\(\hat R_{CV}\)</span>；候選<span class="math inline">\(m\)</span>先須</p>
+<div class="math block">
+\[\frac{\hat R_{CV}(f_m)-\hat R_{CV}(f)}{\hat R_{CV}(f)}\le\beta=.1.\]
+</div>
+<p>在admissible candidates找CV最小者<span class="math inline">\(f_\star\)</span>；CV差不超<span class="math inline">\(\kappa\hat s_{CV}(f_\star)\)</span>（<span class="math inline">\(\kappa=2\)</span>，<span class="math inline">\(\hat s\)</span>為across-fold SE）的equivalence band內，再選full-data BIC最小。BIC用in-sample MSE與剩餘free parameter count，noise不另計parameter；<strong>BIC不決定admissibility</strong>。10%是每步相對目前model的estimated CV-risk tolerance，不是保證final真風險或相對初始model至多增加10%。（<a href="https://arxiv.org/html/2610.24753v1#S5.SS3">§5.3，式14–17</a>、<a href="https://arxiv.org/html/2610.24753v1#S6.SS3">§6.3</a>；末句後半為本檔補註，非作者自陳）</p>
+<p>依unidentifiable→zeroing→saturating→symmetric固定順序，各mode反覆至無move，全sweep亦重複；每iteration至多接受一move、重fit並重算geometry，不沿用parent子矩陣。候選／CV用cheap screening fits；accepted model用tight multi-start bounded least squares＋ridge continuation後才作新geometry，降低optimization error沿greedy path傳播。（<a href="https://arxiv.org/html/2610.24753v1#S5.SS4">§5.4</a>、<a href="https://arxiv.org/html/2610.24753v1#A2">附錄B</a>）</p>
+<h2 id="四個公平比較的reduction-operators">四個公平比較的reduction operators</h2>
+<table>
+<thead>
+<tr>
+<th>Variant</th>
+<th>差異</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>sloppy_only</td>
+<td>每次只選最小eigenvalue方向最大loading parameter；其餘boundary families與CV rule同FGP；非完整MBAM／Bayesian renormalisation實作</td>
+</tr>
+<tr>
+<td>zero_only</td>
+<td>所有parameters按zero statistic提案，停用null／eigen gating；只zero、同CV＋BIC rule</td>
+</tr>
+<tr>
+<td>magnitude</td>
+<td>最小coefficient若小於最大magnitude的.01倍則zero/refit；無Fisher／predictive gate</td>
+</tr>
+<tr>
+<td>bic_only</td>
+<td>Candidate generation／moves同FGP，但只按<span class="math inline">\(\Delta BIC&lt;3\)</span>接受，不用CV</td>
+</tr>
+</tbody>
+</table>
+<p>所有shared fitting／contraction／refitting等held fixed、從同fitted expression比較。這是post-hoc reduction比較，不是重新跑五種SR search或與完整MBAM直接競賽。（<a href="https://arxiv.org/html/2610.24753v1#S6.SS2">§6.2，表2</a>）</p>
+<h2 id="實驗一10個controlled-diagnostics">實驗一：10個controlled diagnostics</h2>
+<p>每problem <span class="math inline">\(n=100\)</span>、兩Gaussian noise levels、30paired seeds，涵蓋regular／near-singular／singular與M-open。七M-closed（含closure）×兩noise＝14configs評recovery；全部20configs評其餘指標，每config先取30seeds median。Functional recovery須對noiseless truth refit後relative RMSE&lt;<span class="math inline">\(10^{-8}\)</span>且free dimension不超gauge-fixed truth；sufficiency只有前一條，非只看syntactic字串。（<a href="https://arxiv.org/html/2610.24753v1#S6.SS1">§6.1/6.4</a>、<a href="https://arxiv.org/html/2610.24753v1#A3">附錄C</a>）</p>
+<p>FGP與bic_only mean recovery同.47；FGP／zero_only sufficiency同74%，但zero_only recovery僅.15。FGP相對zero_only／sloppy_only／magnitude的median net recovery差+.33／+.40／+.47，Holm p=.016／.009／.009；相對bic_only為0、p=.873。Controlled中FGP與bic_only在recovery、marginal complexity／MSE與joint Pareto皆未顯著區分，不能把predictive gate說成在此套件全面更好。（<a href="https://arxiv.org/html/2610.24753v1#S7.T3">§7.1，表3</a>）</p>
+<p>FGP vs zero_only的complexity與MSE單項亦未顯著（p=.116／.298），但joint median net dominance+.17、p=.024。Bessel #5的代表trajectory中，即使刪rational correction令BIC升約80，CV risk仍由約2.5降.02；這是<strong>單一illustrative run</strong>，非20configs平均改善幅度。（<a href="https://arxiv.org/html/2610.24753v1#S7.SS1">§7.1，圖2／表3</a>）</p>
+<h2 id="實驗二gpsr完整pareto-fronts">實驗二：GPSR完整Pareto fronts</h2>
+<p>Operon以NLL＋nodes做multi-objective search，200generations、population1000、length≤100。十維inputs只有前五影響signal。Friedman固定<span class="math inline">\(n=100\)</span>、noise .5／1／13.6；additive Friedman固定noise1、<span class="math inline">\(n=50/100/1000\)</span>，共六conditions。<strong>每condition一個evolutionary run的final first front</strong>，每expression獨立prune一次；非每condition30independent GP runs。Independent test1000points、對noiseless generating function算<span class="math inline">\(MSE_\star\)</span>，CV只用training。（<a href="https://arxiv.org/html/2610.24753v1#S6.SS1">§6.1/6.4</a>）</p>
+<p>圖4分母是FGP有接受move的expressions：Friedman改善test MSE者70.0／83.9／95.7%，median test reduction各約50%；additive為49.2／72.2／91.5%，<span class="math inline">\(n=50\)</span>的median predictive effect近中性，<span class="math inline">\(n=100/1000\)</span>的median reduction32.8／15.0%。這些不是整front的overall success率，也不保證每個accepted move改善independent test。（<a href="https://arxiv.org/html/2610.24753v1#S7.SS2">§7.2，圖4</a>）</p>
+<p>跨variant的表4則先為每population定共同active subset：至少一operator有move，所有比較用此subset。Net dominance＝FGP dominates比例−competitor dominates比例，非只比modified-by-FGP。數字有例外：additive<span class="math inline">\(n=50\)</span>相對zero_only−.16、magnitude−.20，<span class="math inline">\(n=100\)</span>對magnitude−.08；Friedman noise.5對bic_only−.02。Sloppy_only六conditions皆正，bic_only在較困難evolved populations較常被FGP主導；不能稱FGP每condition、每metric都勝。（<a href="https://arxiv.org/html/2610.24753v1#S7.T4">§7.2.1，表4</a>）</p>
+<h2 id="sensitivity成本與作者限制">Sensitivity、成本與作者限制</h2>
+<p>Reference <span class="math inline">\((\beta,\tau,\kappa)=(.1,16,2)\)</span>跨problems固定。Controlled sensitivity用600paired units，另測Friedman noise1的72expressions；主要敏感於<span class="math inline">\(\beta\)</span>，太小阻止有用reductions，<span class="math inline">\(\tau\)</span>主要限候選廣度，nonzero <span class="math inline">\(\kappa\)</span>後影響較弱；不是全domain hyperparameter-free保證。（<a href="https://arxiv.org/html/2610.24753v1#A4">附錄D</a>；末項為本檔補註，非作者自陳）</p>
+<p>Controlled median wall time：FGP17s（IQR11–31）、zero_only21s、sloppy_only10s、bic_only19s、magnitude13s。這些是single-threaded per task、run內candidate未parallel；GPSR pooled empirical scaling <span class="math inline">\(t\propto p^{3.6\pm.2}\)</span>，非asymptotic theorem。反覆nonlinear fits／CV主導成本，FGP不是系統性最慢。（<a href="https://arxiv.org/html/2610.24753v1#A5">附錄E</a>）</p>
+<p>作者限制：greedy無backtracking，early move可排除較佳path，closure含truth也不保exact recovery；move catalogue不含任意linear coefficient combinations；可靠numerical optimum是geometry前提，失敗可沿trajectory擴散，conservative fitting代價高。當前適合final restricted set post-hoc，不宜每generation每individual常規套用；可前／後搭semantics-preserving simplify以降dimension、避免removable singularities。Local diagnostics＋CV只控制estimated predictive risk，不certify唯一true expression。（<a href="https://arxiv.org/html/2610.24753v1#S8.SS0.SSS0.Px1">§8 Limitations</a>）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.24753_FGP.zh-TW.html">FGP翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 39d7251f</footer></main></body></html>
