@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="cd52875bedd0f9f6f6f39f511f2fb01322f3cabf"><title>EMMA: Structured Episodic Memory for Multi-Agent Workflow Synthesis 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Ruijia Niu、Kaiwen Liu、Rose Yu、Kristina Klinkner</p><p>日期：2026-10-25（v1，cs.MA）</p><p>arXiv：2610.35966</p><p>閱讀說明：主文及附錄A–F精譯，略完整算法／prompts／artifacts與大表；數字為作者自報；文獻指令未執行，未重現。</p><p><a href="https://arxiv.org/html/2610.35966v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="emma有歸屬的多agent-episodic-memory">EMMA：有歸屬的多agent episodic memory</h1>
+<h2 id="第13節記憶是外部配置">第1–3節：記憶是外部配置</h2>
+<p>Controller、sub-agents與reflector共用同backbone，weights固定；training只更新外部文字配置。三層為controller routing memory、agent prompts、procedural skills。Controller讀index自行選load，非similarity retrieval，可不載；specialists執行時繼承generalist的<strong>當前</strong>prompt，自己的prompt只放specialization；skills按step派發全文。（<a href="https://arxiv.org/html/2610.35966v1#S3.SS1">§2–3.1</a>）</p>
+<p>Controller一次dispatch一step，讀結果後續做／改剩餘plan／終止，executor只見curated prior-output summary。Context／round overflow用partial trace拆成existing agents可做的較小steps，splice回同位置、保完成工作並記overflow證據。不是固定整條plan或無限新增agents。（<a href="https://arxiv.org/html/2610.35966v1#S3.SS1.SSS2">§3.1.2</a>）</p>
+<h2 id="第32節附錄abellm診斷與guards">第3.2節、附錄A–B／E：LLM診斷與guards</h2>
+<p>Reflector讀plan、每round code、evaluator digest、prior revisions、prompts、skills及overflow，必要時inspect logs；依localize→classify→generalize→minimize提出一action。歸屬為：一次execution slip只本task revise_plan／no_change；一般behavior改prompt；procedure改／建skill；missing capability優先skill、必要才agent；routing改controller memory／plan，有overflow才可建agent。</p>
+<p>通用behavior寫generalist、role-specific寫specialization。附錄E允許failing specialist繼承generalist時，後者未直接參與仍可修通用prompt，不能把participant-only概述絕對化。（<a href="https://arxiv.org/html/2610.35966v1#S3.T1">表1</a>、<a href="https://arxiv.org/html/2610.35966v1#A5">附錄E</a>）</p>
+<p>每failed revision只一entry／level。Guards核scope–action、strategy change、leakage、prompt preservation及bounded growth：保≥60%原prompt lines、prompt≤6000chars；agents≤10含seed、skills≤40且各≤3000chars；specialization≥150chars。檢reference answer、15-word verbatim task spans及dataset/run paths；這不證語意洩漏或錯誤lesson全被識別。</p>
+<p>同level不可連續超過兩failed cycles；同step連兩次overflow須改工作split。拒絕理由回reflector、最多3次後no_change；新／改skill-agent要在rerun plan實際exercise。LLM仍負責scope診斷與泛化，guards保acceptance envelope，不保edit語意正確。（<a href="https://arxiv.org/html/2610.35966v1#S3.SS2">§3.2</a>、<a href="https://arxiv.org/html/2610.35966v1#A2">附錄B</a>；語意界線為本檔補註，非作者自陳）</p>
+<h2 id="第33節training與test邊界">第3.3節：training與test邊界</h2>
+<p>每task fresh environment，最多5revisions／6executions，success即停、最後failure不再留未測edit。Accepted edits即使rerun仍失敗也持久。每chain後另做至多2條controller update（pass或fail），不是每task只一條memory。固定order一pass後freeze，每benchmark-backbone一artifact、無checkpoint selection。</p>
+<p>Heldout仍可select memory／replan／overflow decomposition，不呼叫reflector或寫persistent memory。Controller最多load15entries／12000chars，plan15steps、每agent-step30rounds。Gate：Krama Opus4.5 judge、AppWorld tests、BBEH exact match；weights固定不等沒LLM成本。（<a href="https://arxiv.org/html/2610.35966v1#S3.SS3">§3.3</a>、<a href="https://arxiv.org/html/2610.35966v1#A1">算法A</a>、<a href="https://arxiv.org/html/2610.35966v1#A2.T6">表6</a>）</p>
+<h2 id="第51節附錄cd實驗分母與baselines">第5.1節、附錄C–D：實驗分母與baselines</h2>
+<p>五backbones為Opus5、Sonnet5、GLM-5、DeepSeekv3.2、Kimi-K2.5。各method同disjoint split：Krama28train／76eval、六domains macro accuracy；AppWorld90train／168normal／417challenge、TGC／SGC（同scenario所有variants需pass）；challenge用training未見app。BBEH-mini23類各4train／16eval，共92／368，equal-size使macro=micro。（<a href="https://arxiv.org/html/2610.35966v1#S5.SS1">§5.1</a>、<a href="https://arxiv.org/html/2610.35966v1#A3">附錄C</a>）</p>
+<p>ACE學playbook並best-validation選；GEPA prompt evolution＋training-split validation Pareto；EvoMAS三steps演化whole配置、oracle metric減cost；ADAS code search、budget matched GEPA，AppWorld DS／Kimi未勝seed時報hand-written seed。ACE AppWorld只見pass/fail與trace。皆train學artifact再freeze，但selection／feedback／objectives不同，非等tokens／wall-time或只差guard。（<a href="https://arxiv.org/html/2610.35966v1#A4">附錄D</a>；公平性界線為本檔補註，非作者自陳）</p>
+<h2 id="第52節means與非最佳cases">第5.2節：means與非最佳cases</h2>
+<table>
+<thead>
+<tr>
+<th>Benchmark</th>
+<th>EMMA mean</th>
+<th>最強baseline mean</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Krama acc.</td>
+<td>.654</td>
+<td>GEPA .584</td>
+</tr>
+<tr>
+<td>BBEH acc.</td>
+<td>.663</td>
+<td>GEPA .605</td>
+</tr>
+<tr>
+<td>App normal TGC／SGC</td>
+<td>84.2／71.0%</td>
+<td>ACE72.3／53.6%</td>
+</tr>
+<tr>
+<td>App challenge TGC／SGC</td>
+<td>73.8／56.0%</td>
+<td>ACE67.4／50.7%</td>
+</tr>
+</tbody>
+</table>
+<p>Krama／BBEH增7.0／5.8pp；normal增11.9／17.4pp、challenge6.4／5.3pp。作者最高32.5%是relative，normal SGC71.0對53.6約32.5%相對增，非32.5pp。（<a href="https://arxiv.org/html/2610.35966v1#S5.T2">表2</a>、<a href="https://arxiv.org/html/2610.35966v1#S5.T3">表3</a>；相對分母對照為本檔補註，非作者自陳）</p>
+<p>四settings（App兩split分列）×五backbones＝20，17first／3second；second為Kimi Krama、Kimi App challenge、Sonnet BBEH，不是每cell全勝。Family gap縮小但未消除。（<a href="https://arxiv.org/html/2610.35966v1#S5.SS2">§5.2</a>、<a href="https://arxiv.org/html/2610.35966v1#S6">§6</a>）</p>
+<h2 id="第522節1738不是總成本">第5.2.2節：17–38%不是總成本</h2>
+<p>五backbone mean training executions，Krama／BBEH／App：EMMA61.8／159.6／127.8；最省baseline為ACE96.8／192.6及ADAS206.0，作者報少17–38%。這是task executions，非總calls／tokens／$／wall-time，表中無法拆出reflector／inspection成本；每execution長度亦不同。主表未給CI，不擅稱每cell顯著。（<a href="https://arxiv.org/html/2610.35966v1#S5.T5.fig1">表4</a>、<a href="https://arxiv.org/html/2610.35966v1#S5.SS2.SSS2">§5.2.2</a>；成本／顯著性界線為本檔補註，非作者自陳）</p>
+<h2 id="第53節附錄f消融與例證">第5.3節、附錄F：消融與例證</h2>
+<p>消融用Opus4.5／Krama，非主表Opus5。Controller memory每arm都學；agent＋skill不學.506、fixed agent但學skills.591、full.647，controller單獨貢獻未隔離。Test within-task reflection DACode.443／Reflexion.476／DeepResearch.535；無GT的test cross-task EvoMAS.532；train verified-memory EMMA.647。Feedback與adaptation split也不同，支持transfer而非只隔離persistence。（<a href="https://arxiv.org/html/2610.35966v1#S5.T5.fig2">表5</a>、<a href="https://arxiv.org/html/2610.35966v1#S5.SS3">§5.3</a>）</p>
+<p>Sonnet5 zebra failure先建CSP skill，再因overflow建specialist，attempt5通過後記routing rule；下三個train zebra首attempt通過。Heldout52clues例load8/101entries，一solving step、9rounds，log報blocking re-solve核unique、correct1。Controller單step可含specialist多phases／calls，不等單LLM call。此單例不保所有lessons正確；prompt／skills／artifact只當文獻未執行。（<a href="https://arxiv.org/html/2610.35966v1#A6">附錄F</a>）</p>
+<h2 id="第6節限制">第6節：限制</h2>
+<p>Accepted edits即使chain未解仍保留，可能有無效／有害entry；mini-batch cross-verification、多epochs及強reflector配弱executors均是future work。Backbone-independent只指guards的規約，diagnosis／generalization品質仍依model，不能當語意正確或無interference保證。（<a href="https://arxiv.org/html/2610.35966v1#S6">§6</a>；最後保證界線為本檔補註，非作者自陳）</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2610.35966_EMMA.%E6%91%98%E8%A6%81.html">EMMA摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 cd52875b</footer></main></body></html>
