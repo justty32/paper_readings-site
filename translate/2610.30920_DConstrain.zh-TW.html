@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="3e5c1dd0fcf9d49c496e7c9eaeee0644385c98c2"><title>DConstrain: Compiling Context-Parameterized Transitions for Diffusion Language Model Constrained Decoding 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Shidong Cao、Jing Ma、Wenhao Chai、Yuchen Tian、Lun Du、Da Zheng</p><p>日期：2026-10-22（v1，cs.AI）</p><p>arXiv：2610.30920</p><p>閱讀說明：主文與附錄A–D精譯，略完整proofs與大表；數字為作者自報，保measure／cohort／frontend界線；未下載或重現。</p><p><a href="https://arxiv.org/html/2610.30920v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="dconstrain保留上下文參數的文法轉移編譯">DConstrain：保留上下文參數的文法轉移編譯</h1>
+<h2 id="第13節瓶頸">第1–3節：瓶頸</h2>
+<p>DLM同時填多位置，單token合法不保聯合合法。Joint inference先對許多假設parser configurations構graph，再max-product找Viterbi或sum-product抽path。這需完整token-labeled successors，非AR單一prefix的boolean mask。</p>
+<p><span class="math inline">\(c=(q,s,d,\eta)\)</span>把local state、return stack、container depth及field history分開。存在<span class="math inline">\(k\)</span>個required unordered properties的schema使DFA≥<span class="math inline">\(2^k\)</span>states、CFG size<span class="math inline">\(2^{\Omega(k)}\)</span>；factorized object用<span class="math inline">\(O(k)\)</span>local states與runtime <span class="math inline">\(k\)</span>-bit history。這是worst-case表示界，非每schema解析時間。（<a href="https://arxiv.org/html/2610.30920v1#S3">§3</a>）</p>
+<h2 id="第4節附錄a3coldwarm">第4節、附錄A.3：cold／warm</h2>
+<p>Cold把schema降RTN，specialize<span class="math inline">\((q,v)\)</span>已知bytes，stack／env留參數。Summary保target、return frames、depth變化及有序guards／updates；unknown caller留residual到warm續跑。Field history用runtime bitmask，不offline枚舉subsets。</p>
+<p>Warm只instantiate reachable contexts，執行guards／caller／boundary processing；同program可給不同successors，但source關聯不能混接。Theorem4.1保reference normalized successors；同frontier／candidates／boundary保window language。（<a href="https://arxiv.org/html/2610.30920v1#S4.SS2">§4.1–4.2</a>）</p>
+<p>Proof限well-formed bindings、對應primitives、set semantics及completed computations。Normalization只刪certified dead configs；cursor耗盡非finalization，resource exhaustion是error非空successor。保complete-output language，raw window另需boundary相容；不保multiplicity或truncated results。（<a href="https://arxiv.org/html/2610.30920v1#A1.SS3">附錄A.3</a>）</p>
+<h2 id="第43節附錄a4grouping與measure">第4.3節、附錄A.4：grouping與measure</h2>
+<p>Cold依local state的canonical effects分groups，保ordered ops／operands／stack-env／boundary metadata。Canon相等是相同successors的充分非必要條件；每group算一representative，保token IDs／scores。</p>
+<p>Sum-product用<span class="math inline">\(M_i(G)=\sum_{v\in G}p_i(v)\)</span>，選group後按<span class="math inline">\(p_i(v)/M_i(G)\)</span>還原；max-product用group max並還原argmax。在同finite graph、logical edge各計一次、nonnegative weights、<span class="math inline">\(Z&gt;0\)</span>、exact arithmetic下，chain／tree保partition function與token-labeled path distribution。Viterbi optimum保留，全部最優解需留所有ties，同字串另需同tie-break。（<a href="https://arxiv.org/html/2610.30920v1#A1.SS4">附錄A.4</a>）</p>
+<p>若<span class="math inline">\(y\)</span>有<span class="math inline">\(n(y)\)</span>條accepting paths，<span class="math inline">\(w(y)=\prod_i p_i(y_i)\)</span>，則<span class="math inline">\(Q_{path}(y)\propto n(y)w(y)\)</span>，合法sequence各算一次的<span class="math inline">\(Q_{seq}\propto w(y)\)</span>。僅positive-weight support上<span class="math inline">\(n(y)\)</span>常數才相等；unambiguous足夠。Grouping不去ambiguity，language等價不保不同parser measure等價；greedy group mass非sampling，同seed／浮點次序不保同輸出。（<a href="https://arxiv.org/html/2610.30920v1#A1.SS4.SSS0.Px1">Parsing ambiguity</a>）</p>
+<p>仍需individual scores／labels，entry成本不假定constant，contexts／groups仍可爆增，非任意grammar指數加速。（<a href="https://arxiv.org/html/2610.30920v1#A1.SS5">附錄A.5</a>）</p>
+<h2 id="第45節附錄bcruntime與評估">第4–5節、附錄B–C：runtime與評估</h2>
+<p>CPU warm／propagation不用logits，分別於canvas首forward／每iteration與GPU重疊；graph＋scores ready才solve。Candidates只縮小可重用successors。C++／CSR／CUDA亦加速，DINGO-Opt共用工程但保finite states；score-dependent solve仍在critical path。（<a href="https://arxiv.org/html/2610.30920v1#A2.SS3">附錄B.3</a>）</p>
+<p>LLaDA2.2用32token blocks、Gemma256token canvases。BFCL2495（排除無valid instance schemas）、JSB5754training schemas、CFB1000cases；主cold depth4／180s timeout。Success除all attempts，quantiles用各自successes，speedup用paired means，timeouts不入latency。（<a href="https://arxiv.org/html/2610.30920v1#S5.T1">表1</a>、<a href="https://arxiv.org/html/2610.30920v1#A2">附錄B</a>）</p>
+<p>BFCL／CFB本法fixed／any-order皆100%coverage，BFCL any DINGO-Opt71.30／85.81%；JSB本法fixed僅81.4／83.3%，非完整JSON Schema。（<a href="https://arxiv.org/html/2610.30920v1#S5.T1">表1</a>）</p>
+<h2 id="第5節bfcl品質速度分母">第5節：BFCL品質、速度分母</h2>
+<p>表2 cold／completion／strict validity／semantic accuracy皆除2495；TPS／TPF用各row完成<span class="math inline">\(N\)</span>。DConstrain兩models兩orders都完成2495、100%strict validity；validity獨立於semantic accuracy，不先過濾valid。（<a href="https://arxiv.org/html/2610.30920v1#S5.T2">表2</a>）</p>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>Full2495 fixed→any accuracy</th>
+<th>Any TPF／TPS</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LLaDA2.2</td>
+<td>72.71→81.60%</td>
+<td>8.10／386.70</td>
+</tr>
+<tr>
+<td>Gemma</td>
+<td>37.27→81.56%</td>
+<td>8.15／103.82</td>
+</tr>
+</tbody>
+</table>
+<p>固定order排除合法outputs，品質增8.89／44.29pp。表3每model／order另取Native、LAVE、EPIC、DConstrain runtime成功交集，invalid completions仍留；Any不含DINGO，另做paired比較；不同order cohorts不可直接當同集合速度比較。（<a href="https://arxiv.org/html/2610.30920v1#S5.T3">表3</a>、<a href="https://arxiv.org/html/2610.30920v1#S5.SS3">§5.3</a>）</p>
+<p>表6用DINGO-Opt／DConstrain paired successes：BFCL any LLaDA E2E813.20→122.35ms（6.65倍）、solve/forward74.18→2.81ms（26.40倍）；Gemma145529→3145.64ms（46.26倍）、3195.39→29.44ms（108.54倍）。非表2throughput倍數或cold speedup。（<a href="https://arxiv.org/html/2610.30920v1#A2.T6">表6</a>）</p>
+<p>Runtime排cold／loading，E2E直接wall-clock，overlap非各段和。TPS LLaDA排prefill、Gemma含prefill；TPF non-stop model IDs／generation forwards，不含CPU completion。Overhead=<span class="math inline">\(TPS_{Native}/TPS_{method}-1\)</span>。圖示settings≥94%warm calls低於mean forward，非全部隱藏。（<a href="https://arxiv.org/html/2610.30920v1#A2.SS2">附錄B.2</a>、<a href="https://arxiv.org/html/2610.30920v1#A3">附錄C</a>）</p>
+<h2 id="第5253節附錄d1d4分析">第5.2–5.3節、附錄D.1–D.4：分析</h2>
+<p>Verifier只問有無合法continuation，不給其mass；完整assignment exact rejection可保固定proposal conditioned分布，但local acceptance／lookahead／recovery非joint objective，單iteration exact非全trajectory exact。（<a href="https://arxiv.org/html/2610.30920v1#S5.SS3.SSS0.Px2">§5.3</a>；trajectory界線為本檔補註，非作者自陳）</p>
+<p>Direct-PDA-Opt+TG對300BFCL的6.43倍E2E來自serial MAP設定。Tree solver減depth但增work／memory，未必快；P25/P95指兩selected graph sizes。Payload非total process memory。Dream7B／LLaDA8B只測tokenizer compile，JSB281/300非全5754或model runtime。（<a href="https://arxiv.org/html/2610.30920v1#A4">附錄D.1–D.4</a>）</p>
+<h2 id="附錄d5frontend與限制">附錄D.5：frontend與限制</h2>
+<p>JSB LLaDA tokenizer1072/5754fail：789semantic、274resource、9implementation/unresolved。OneOf／allOf、nested scope／dialect等仍有限制。305個oneOf／allOf拒絕可由frontend單獨重現，未進token compiler；不保延伸frontend後下游成功。</p>
+<p>作者targeted audit同305schemas：XGrammar0.2.8 strict返回298，bounded search找124schemas的accepted完整JSON違原schema；舊0.1.27重播核123。測empty-tokenizer complete-string membership，非model生成率；依declared dialect，format／network refs關閉。124是lower bound，無witness不證語義保留，也不估全域正確率或證DConstrain全accepted schemas正確。本檔未執行audit。（<a href="https://arxiv.org/html/2610.30920v1#A4.SS5">附錄D.5</a>）</p>
+<p>Supported parser的execution correctness、frontend coverage及resource construction須分開。Warm reachable contexts仍可對depth／branching指數增長，非無限深或uniformly efficient arbitrary grammar。（<a href="https://arxiv.org/html/2610.30920v1#A4.SS5.SSS0.Px3">Scope／Limitations</a>）</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2610.30920_DConstrain.%E6%91%98%E8%A6%81.html">DConstrain摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 3e5c1dd0</footer></main></body></html>
