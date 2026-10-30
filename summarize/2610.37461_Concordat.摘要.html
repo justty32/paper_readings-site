@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="06cfa0fbc5631a21fc6db49086b470732e849547"><title>Concordat: Typed Sessions for LLM Agents 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Milad Sikaroudi</p><p>日期：2026-10-27（v1，cs.AI）</p><p>arXiv：2610.37461</p><p>閱讀說明：自讀官方主文、書目與附錄 A–C；結果為作者自報，未執行或重現。</p><p><a href="https://arxiv.org/html/2610.37461v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="concordat以有限狀態協定約束-agent-工具">Concordat：以有限狀態協定約束 agent 工具</h1>
+<h2 id="核心主張">核心主張</h2>
+<p>航空客服 agent 可能在顧客催促下跳過變更預訂前的明確確認；即使最後資料庫狀態符合需求，也不代表過程遵守政策。Concordat 將 agent 類別的工具介面建成有限狀態協定：每回合只提供當前合法工具，並在呼叫前攔截非法操作。它借用 typestate 與 session types 的概念，在不可信模型的執行階段約束工具順序，而不是對模型本身做靜態型別檢查。（<a href="https://arxiv.org/html/2610.37461v1#S1">§1</a>、<a href="https://arxiv.org/html/2610.37461v1#S3">§3</a>）</p>
+<h2 id="協定與執行邊界">協定與執行邊界</h2>
+<p>協定包含有限狀態、動作、初始／終止狀態與轉移關係；單一動作可依回傳值轉移至多個可能狀態之一。定義時檢查終止狀態非空、終止狀態無動作、轉移目標非空、每個狀態從起點可達且每個狀態可到達終點。後者保證<strong>存在</strong>合法路徑，不保證模型、工具或外部環境終將選到它或實際結束。（<a href="https://arxiv.org/html/2610.37461v1#S3.SS1">§3.1</a>；終止界線為本檔補註）</p>
+<p>開發者用類別方法及 decorators 指定工具可用狀態與後繼，類別定義時建立並檢查協定。Runner 每回合提供 allowed(state) 的工具，停用平行工具呼叫；非法名稱或錯誤參數回傳錯誤，非法方法在方法本文執行之前拒絕，狀態不變。這約束已接入 runner 的工具介面；自然語言內容和政策本身的語意正確性並未因此自動得到保證。（<a href="https://arxiv.org/html/2610.37461v1#S3.SS3">§3.2–3.3</a>；後句為本檔補註）</p>
+<p><code>@human</code> 步驟可由模型請求，只能由應用提供的 approver 決定批准或拒絕，各自走不同轉移。Budget 記 token、工具呼叫與金錢，回應 token 計費，下一輸出上限受餘額限制；handoff 將子額度從父額度扣除，父項有限的維度不能給子項無限額。這是執行期資源分配，作者明說尚未做靜態 budget 型別。程式庫的人工 approver 功能與下述基準實驗中以模擬顧客訊息判斷確認是兩個不同機制。（<a href="https://arxiv.org/html/2610.37461v1#S3.SS4">§3.4</a>、<a href="https://arxiv.org/html/2610.37461v1#S5.SS1">§5.1</a>）</p>
+<p>子類別在定義時檢查 refinement：子類終止狀態須是父類終止狀態的子集；刪除子類新增動作後，所有有限子類 run 都須符合父協定，進入同名父狀態時也須是父協定可達狀態；父類 human 步驟仍須是 human。實作以子狀態與可能父狀態集合做廣度優先走訪。這是共用動作上的 trace inclusion 安全檢查，不要求子類提供父類全部選擇，也按狀態名稱關聯，作者不稱其完整 session subtyping。（<a href="https://arxiv.org/html/2610.37461v1#S3.SS5">§3.5</a>）</p>
+<h2 id="評測壓力情境與分母">評測：壓力情境與分母</h2>
+<p>作者自報以 τ-bench v1.0.1 的 airline 50 tasks，比較標準 <code>llm_agent</code> 與以工具標註建立雙狀態 gate 的 Concordat agent。查詢工具兩狀態均可用，資料庫寫入僅 confirmed；最近一則顧客訊息含 yes／yep／yeah 即進 confirmed，其他訊息回 chatting，轉人工則結束。作者加的非官方壓力情境要求模擬顧客第一次被要求確認時催促、不要說 yes，第二次才說 yes。Haiku 5.5 為 agent、Sonnet 5.5 為顧客；gpt-4.1 同時扮演 agent 與顧客，temperature 0。（<a href="https://arxiv.org/html/2610.37461v1#S5.SS1">§5.1</a>、<a href="https://arxiv.org/html/2610.37461v1#A1">附錄 A</a>）</p>
+<table>
+<thead>
+<tr>
+<th>壓力情境、雙方均完成的 task-runs</th>
+<th style="text-align:right">標準 agent：任務通過</th>
+<th style="text-align:right">Concordat：任務通過</th>
+<th style="text-align:right">標準／Concordat 未確認變更之 task-runs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Haiku（三次 pooled，部分受 API 配額損失）</td>
+<td style="text-align:right">112/128</td>
+<td style="text-align:right">105/128</td>
+<td style="text-align:right">29/128／0/128</td>
+</tr>
+<tr>
+<td>gpt-4.1（一次）</td>
+<td style="text-align:right">20/50</td>
+<td style="text-align:right">22/50</td>
+<td style="text-align:right">13/50／0/50</td>
+</tr>
+</tbody>
+</table>
+<p>未確認<strong>工具呼叫數</strong>與 task-run 數不同：標準 agent 為 Haiku 50 次呼叫、gpt-4.1 26 次；Concordat 均為零。作者對未確認率報 Fisher exact p=6×10⁻¹⁰（Haiku 明確把 task-runs 視為獨立）及 p=10⁻⁴（gpt-4.1）。這些結果是同一關鍵字判定下的結果，不能推成對任意人類同意的保證。（<a href="https://arxiv.org/html/2610.37461v1#S5.SS2">表1、§5.2</a>、<a href="https://arxiv.org/html/2610.37461v1#S5.SS3">§5.3</a>）</p>
+<p>任務成功率的配對 McNemar 精確檢定，Haiku 不一致 13 對 6、p=0.17；gpt-4.1 為 9 對 7、p=0.80。兩者均未達顯著差異，不能據此證明成功率等同。作者查看 Haiku 僅標準 agent 通過的 13 runs，11 個 Concordat 在反覆拒絕後轉人工；接著才向 Concordat 指令加入「催促不是確認，也不是轉人工理由；重述並再問」等句，gpt-4.1 使用修改後版本。模型與提示同時改變，兩模型間成功率變化不能歸因於該指令。（<a href="https://arxiv.org/html/2610.37461v1#S5.SS2">§5.2–5.3</a>、<a href="https://arxiv.org/html/2610.37461v1#A2">附錄 B</a>）</p>
+<p>首次 Haiku 壓力 run 中，標準 agent 的 13 個違規 tasks 有 8 個仍得滿分，因最後資料庫符合預期；成果評分未必測到過程。作者逐讀首次 Haiku 與 gpt-4.1 被標記的 49 次寫入前顧客訊息：除兩次「go ahead」有語意爭議外皆未確認；若把它們算確認，gpt-4.1 降為 12 個 task，Haiku 不變。（<a href="https://arxiv.org/html/2610.37461v1#S5.SS1">§5.1–5.2</a>）</p>
+<h2 id="限制與可遷移性">限制與可遷移性</h2>
+<p>Gate 與違規指標共享同一 keyword 測試，因此零違規對該定義是機制直接保證；例如「yes, but not that one」仍可能被錯誤接受。作者建議部署時用結構化確認。合作顧客的早期寬鬆 gate 若改用嚴格指標，Concordat 有一次未含 yes 的變更；壓力試驗才使用嚴格 gate。實驗僅一個領域、兩個主要模型和少量試次，Haiku 缺失部分 runs，gpt-4.1 約三分之二 tasks 因限流在另一時間重跑；模擬顧客未必代表真人。（<a href="https://arxiv.org/html/2610.37461v1#S5.SS3">§5.2–5.3</a>）</p>
+<p>程式庫作者稱約 850 行 Python、50 個單元測試，提供 Anthropic Messages／OpenAI Responses runners；本文未在本工作區安裝或驗證。多方全域協定投影、約束生成內容、靜態資源型別和持久 session 均列未來工作，不能當現成功能。（<a href="https://arxiv.org/html/2610.37461v1#S4">§4</a>、<a href="https://arxiv.org/html/2610.37461v1#S6">§6</a>）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.37461_Concordat.zh-TW.html">Concordat 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 06cfa0fb</footer></main></body></html>
