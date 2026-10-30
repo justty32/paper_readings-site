@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="67bdcc3a2ec553d8b4f7b6b4f18be0342a1a958c"><title>ThinkWorld: World Imagination Reinforces Chain-of-Dynamics Reasoning 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Chaehyun Kim、Chi-Pin Huang、Jisoo Kim、Min-Hung Chen、Yu-Chiang Frank Wang、Seungryong Kim、Fu-En Yang</p><p>日期：2026-10-27（v1，cs.RO／cs.AI／cs.CV）</p><p>arXiv：2610.37666</p><p><a href="https://arxiv.org/html/2610.37666v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="thinkworld-重點摘要">ThinkWorld 重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>ThinkWorld 在訓練時先用離散「動態鏈」（Chain-of-Dynamics，CoD）表示動作相關運動，再以其預測的未來視覺特徵是否符合影片觀察來強化學習；部署時直接輸出機器人動作，不生成 CoD 或未來影像。它結合機器人示範與人類影片，並非完全無機器人動作標註；世界預測獎勵也不是實機互動成功回饋。</p>
+<h2 id="問題與方法位置">問題與方法位置</h2>
+<p>自然語言推理可能描述「該做什麼」，卻未必學到動作如何改變場景。ThinkWorld 把共同運動表示接到潛在未來預測：從指令、視覺歷史、目前多視角影像及可用的本體感覺產生 CoD，再條件化預測未來觀察的 DINO 特徵。人類手部及機器人動作可透過共同的離散運動介面提供訓練；未標註動作的影片也可提供未來觀察作獎勵。（<a href="https://arxiv.org/html/2610.37666v1#S3.SS1">§3.1–3.2</a>）</p>
+<p>骨幹為 Qwen3-VL-2B-Instruct，未來目標編碼器是凍結的 DINOv3 ViT-H/16+。64 個未來查詢 token 經投影器預測 196 個 DINO patch 特徵；未來影格只當訓練目標，不放進模型輸入。動作專家沿用 MolmoAct2 設計，以 flow matching 學原生機器人動作；它讀取 VLM 的輸入 token 表示，<strong>不直接讀取 CoD token 或未來查詢 token</strong>。（<a href="https://arxiv.org/html/2610.37666v1#A1.SS1">附錄 A.1–A.2</a>）</p>
+<p>CoD 用 FAST 風格 tokenizer 把一秒的手腕位置及旋轉增量編成 2,048 詞彙的離散序列；單手為六維、雙手十二維，不含夾爪開合。人類與機器人的座標慣例不同，經正規化轉為共同介面；CoD 不是可直接送到不同機器人的原生控制指令。輸入歷史最多 16 張主視角影格、取樣 2 Hz；未來目標取一秒後最接近影格，誤差超過 50 毫秒則遮罩該監督。（<a href="https://arxiv.org/html/2610.37666v1#A1.SS2">附錄 A.2</a>）</p>
+<h2 id="三階段訓練與獎勵">三階段訓練與獎勵</h2>
+<p>先用機器人動作標註與人類手腕軌跡標註建立 CoD token 監督，結合未來特徵預測及輔助視覺問答訓練 VLM；再凍結 VLM，以有動作標註的機器人資料訓練動作專家。世界想像 RL 階段每個輸入取四組 CoD 候選，凍結未來投影器及動作專家，只更新語言模型，另混入少量標準 CoD 監督以維持動作 grounding（接地）。（<a href="https://arxiv.org/html/2610.37666v1#S3.SS2">§3.2–3.3</a>、<a href="https://arxiv.org/html/2610.37666v1#A1.SS4">附錄 A.4–A.6</a>）</p>
+<p>獎勵比較「以候選 CoD 預測的未來 DINO 特徵」與「實際影片未來影格的凍結 DINO 特徵」。它等權混合全 patch 平均與運動加權平均；權重由目前至觀察未來的特徵變化估計，避免靜態背景主導。GRPO 依候選相對獎勵更新；無須把候選動作送到環境執行，但仍依賴可觀察未來影格。這是<strong>離線影片上的預測一致性獎勵，不是環境任務成功率、在線控制搜尋或實機 RL</strong>。（<a href="https://arxiv.org/html/2610.37666v1#S3.SS3">§3.3</a>、<a href="https://arxiv.org/html/2610.37666v1#A1.SS6">附錄 A.6</a>）</p>
+<p>訓練來源包括 EgoDex、EgoVerse 人類影片，以及 Bimanual YAM、DROID、RoboCOIN、Bridge、RT-1、BC-Z 等機器人資料。部署時保留已受上述目標訓練的 VLM 表示與動作專家，不自迴歸生成 CoD，也不執行世界預測。作者主張因此可利用訓練時的動態推理而不增加部署推理鏈的延遲。（<a href="https://arxiv.org/html/2610.37666v1#S4.SS1">§4.1</a>、<a href="https://arxiv.org/html/2610.37666v1#A1.SS3">附錄 A.3–A.4</a>）</p>
+<h2 id="模擬結果標準任務與分布改變">模擬結果：標準任務與分布改變</h2>
+<p>ThinkWorld-LIBERO 僅在標準 LIBERO 訓練集後訓練，直接測試 LIBERO-PRO 的受控擾動，沒有用這些擾動微調。作者自報 2.9B 模型在 LIBERO 的 spatial／object／goal／long 成功率為 98.2／98.8／97.8／94.2%，平均 97.3%。（<a href="https://arxiv.org/html/2610.37666v1#S4.SS4">§4.4，表 1</a>）</p>
+<table>
+<thead>
+<tr>
+<th>LIBERO-PRO 改變軸</th>
+<th style="text-align:right">ThinkWorld 成功率</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>物件</td>
+<td style="text-align:right">73.3%</td>
+</tr>
+<tr>
+<td>位置</td>
+<td style="text-align:right">18.2%</td>
+</tr>
+<tr>
+<td>指令語意</td>
+<td style="text-align:right">93.9%</td>
+</tr>
+<tr>
+<td>任務</td>
+<td style="text-align:right">31.9%</td>
+</tr>
+<tr>
+<td>環境</td>
+<td style="text-align:right">60.9%</td>
+</tr>
+<tr>
+<td>平均</td>
+<td style="text-align:right">55.6%</td>
+</tr>
+</tbody>
+</table>
+<p>各軸先對相關任務套件取算術平均，表中平均為五軸平均。整體高於所列基線，但不是每軸最佳；位置與任務變化仍明顯困難。對 VLA-JEPA，任務／環境分別高 11.1／19.9 個百分點。基線多取官方儲存庫，表中 † 才是作者重現的數值，不能視為所有方法都同管線重訓。（<a href="https://arxiv.org/html/2610.37666v1#S4.SS4">§4.4、表 1</a>、<a href="https://arxiv.org/html/2610.37666v1#A2.SS1">附錄 B.1</a>）</p>
+<p>累加消融從基本 VLM 加動作專家開始，LIBERO-PRO 平均依序為：40.1%，加歷史 40.7%，再加未來預測 50.4%，再加 CoD 54.4%，最後加 RL 55.6%。最後 RL 平均增加 1.2 個百分點，但物件／語意軸略降，不能說各軸皆改善。另一次人類資料比例實驗中，固定機器人資料，robot-only 的 45.4% 升至 50% 人類資料設定的 47.8%；此為另一組 SFT 控制，不應混作最終完整系統成績。（<a href="https://arxiv.org/html/2610.37666v1#S4.SS5">§4.5，表 3、圖 6</a>）</p>
+<p>附錄另報 SimplerEnv 整體微平均 46.51%，沒有對該基準額外微調，但預訓練含 Bridge、RT-1；LIBERO-Plus 平均 71.7%，在所列四方法最高，攝影機改變仍僅 46.9%。（<a href="https://arxiv.org/html/2610.37666v1#A3.SS3">附錄 C.3–C.4</a>）</p>
+<h2 id="真機分清任務成功率的分母">真機：分清任務成功率的分母</h2>
+<p>Bimanual YAM 使用雙臂與三台 RGB 相機。三項任務分別收集顏色配對 60、掛杯 45、分類 100 段機器人示範；各任務以全部訓練設定訓練一個任務專屬策略。以下是<strong>完整 rollout 成功次數，不是子步驟成功率</strong>。（<a href="https://arxiv.org/html/2610.37666v1#A2.SS2">附錄 B.2–B.3</a>、<a href="https://arxiv.org/html/2610.37666v1#A3.SS1">附錄 C.1，表 6</a>）</p>
+<table>
+<thead>
+<tr>
+<th>任務</th>
+<th style="text-align:right">分布內 ID</th>
+<th style="text-align:right">分布外 OOD</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>顏色配對</td>
+<td style="text-align:right">30/30</td>
+<td style="text-align:right">24/30</td>
+</tr>
+<tr>
+<td>掛杯</td>
+<td style="text-align:right">15/15</td>
+<td style="text-align:right">15/15</td>
+</tr>
+<tr>
+<td>分類</td>
+<td style="text-align:right">15/15</td>
+<td style="text-align:right">13/15</td>
+</tr>
+</tbody>
+</table>
+<p>總計 ID 60/60、OOD 52/60，全部 120 次的微平均為 112/120＝93.3%；先平均六個任務×條件成功率則為宏平均 94.4%。最強比較基線 MolmoAct2 對應微平均 60.0%、宏平均 62.2%。不同任務分母不同，不能把 94.4% 寫成 120 次直接相除的成功率。（<a href="https://arxiv.org/html/2610.37666v1#A3.SS1">附錄 C.1，表 6</a>）</p>
+<h2 id="人類影片的技能組合證據">人類影片的技能組合證據</h2>
+<p>烤箱實驗以 100 段機器人原子技能示範，加 90 段人類完整任務序列共同訓練，包含「開門→關門」與「開門→放左側→關門」等。人類序列只提供 VLM 的未來特徵損失，不提供動作專家監督；機器人示範則包含開關門、左右放置等原子技能。作者展示烤箱及抽屜的成功組合軌跡，<strong>沒有報整體組合成功率或試驗分母</strong>。證據支持特定條件下的定性組合展示，不能寫成零機器人示範學習或普遍長程遷移。（<a href="https://arxiv.org/html/2610.37666v1#S4.SS3">§4.3</a>、<a href="https://arxiv.org/html/2610.37666v1#A2.SS3">附錄 B.3</a>、<a href="https://arxiv.org/html/2610.37666v1#A3.SS1">C.1</a>）</p>
+<h2 id="推論成本與作者明示限制">推論成本與作者明示限制</h2>
+<p>H100 80GB、batch 1、停用 CUDA graph、暖身五次後計時 50 次的測量，ThinkWorld 中位／p95 為 324.84／333.09 毫秒、記憶體 7.07 GiB；MolmoAct2 為 335.07／467.96 毫秒、12.11 GiB，啟用思考模式則為 879.37／1014.47 毫秒。各模型採其原生部署輸入，<strong>不是相同輸入的架構消融</strong>；真機另使用 RTX 3090 與 15 Hz 控制設定，不能把這兩套硬體及頻率混在一起。（<a href="https://arxiv.org/html/2610.37666v1#A3.SS5">附錄 B.2、C.5，表 9</a>）</p>
+<p>作者明示只有一個訓練 seed；episode 層級信賴區間反映評估變異，不代表獨立訓練 checkpoint 的變異。真機結果須依實際試驗次數及任務理解；延遲取決於硬體與輸入設定。論文提供初始化、訓練配置、硬體及分母以協助重現，但不構成跨訓練種子的穩健性驗證。（<a href="https://arxiv.org/html/2610.37666v1#A4">附錄 D</a>）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.37666_ThinkWorld.zh-TW.html">ThinkWorld 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 67bdcc3a</footer></main></body></html>
