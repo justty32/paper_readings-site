@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="178ead0cd8e7e61ecb70fc49395a29d277731d91"><title>MLE-World: Predicting Machine Learning Experiment Outcomes with a Learned World Model 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Brian Ko、Han Wang、Hejia Geng、Li Erran Li、Sherry Yang</p><p>日期：2026-10-27（v1，cs.LG）</p><p>arXiv：2610.37175</p><p>閱讀說明：自讀主文、書目及附錄 A–R；數字為作者自報，未重現。</p><p><a href="https://arxiv.org/html/2610.37175v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="mle-world預測機器學習程式的執行回饋">MLE-World：預測機器學習程式的執行回饋</h1>
+<h2 id="核心問題">核心問題</h2>
+<p>研究 agent 可以逐次產生程式並據訓練結果修正，但每個候選都真實訓練與評估會消耗時間。MLE-World 以 Qwen3.5-4B 微調模型，根據程式碼、套件版本、資料概覽和時限預測例外、終端輸出、validation metric 與提交旗標，用廉價預測協助探索；最終提交仍以真實 validation 選擇、隱藏測試評分。它模擬完整程式一次執行的回饋，而非重現訓練、保證結果或預測測試分數。（<a href="https://arxiv.org/html/2610.37175v1#S1">§1</a>、<a href="https://arxiv.org/html/2610.37175v1#S4">§4</a>、<a href="https://arxiv.org/html/2610.37175v1#S6">§6</a>；保證界線為本檔補註）</p>
+<h2 id="模型信心與搜尋">模型、信心與搜尋</h2>
+<p>AIDE 以 Draft、Debug、Improve 在程式樹中探索；實際執行回報訓練紀錄、錯誤 trace 與驗證分數。世界模型輸入包含完整程式、執行環境、AIDE 的檔案樹／CSV 維度與欄位示例、時限；輸出依序是 82 類例外標籤（含 null）、預測 log、metric、submission flag。模型在 497,056 條歷史執行上全參數監督微調（視覺塔凍結），失敗案例亦保留。（<a href="https://arxiv.org/html/2610.37175v1#S4">§3–4</a>、<a href="https://arxiv.org/html/2610.37175v1#A2">附錄 B</a>）</p>
+<p>首個輸出 token 的 82 類機率重新正規化後，最大機率 p_max 是對最可能<strong>例外類別</strong>的信心，1−p_max 為不確定性；p_clean 是 null 類機率。五分位資料顯示 p_max 越高，各欄位吻合率越高，但這不是經證明校準的全文正確機率或錯誤率保證。UCB 在預測正常、可提交且 metric 有限的候選池中加不確定性獎勵，作者稱之為經驗探索 proxy，非正式 confidence bound；greedy 解碼該池內 null 最可能，因此不確定性亦為 1−p_clean。（<a href="https://arxiv.org/html/2610.37175v1#S5.SS1">§4–5.1</a>、<a href="https://arxiv.org/html/2610.37175v1#S6.SS3">§6.3</a>）</p>
+<p>五種策略用預測回饋探索：Best-of-N 按預測 metric 選、Sequential 使用前一預測結果修訂、Pairwise 用 LLM 比較候選及預測 log、Fusion 合成新程式、UCB 在分數上加探索項。選中後 confidence gate 對低於門檻或缺信心者真跑；新的最佳預測 validation 分數也必須真跑以取得可驗證提交。預測 timeout 不跑，故「只跑低信心」有重要例外；此策略可能錯過被誤判 timeout 的程式。（<a href="https://arxiv.org/html/2610.37175v1#S5">§5</a>、<a href="https://arxiv.org/html/2610.37175v1#A13">附錄 M</a>；最後為本檔補註）</p>
+<h2 id="同任務新程式的預測評估">同任務新程式的預測評估</h2>
+<p>主試驗選 MLE-bench Lite 22 題中的 17 題，排除 5 題難有進展者。1,700 個留出程式是每題 100 個、平衡 agent 階段與快慢執行；任務與微調共享。抽樣前排除偵測到 exact／near duplicate 的程式；MinHash／LSH 機率式搜尋仍可能漏掉相似程式或跨題語意重疊，因此不是新任務泛化測試。（<a href="https://arxiv.org/html/2610.37175v1#S6">§6</a>、<a href="https://arxiv.org/html/2610.37175v1#A5">附錄 E</a>）</p>
+<table>
+<thead>
+<tr>
+<th>留出程式欄位，作者自報</th>
+<th style="text-align:right">MLE-World</th>
+<th style="text-align:right">最強 prompted DeepSeek</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>終端輸出 judged match</td>
+<td style="text-align:right">77.9±1.0%</td>
+<td style="text-align:right">41.1±1.1%</td>
+</tr>
+<tr>
+<td>例外類別 exact match</td>
+<td style="text-align:right">86.4±0.8%</td>
+<td style="text-align:right">57.2±1.2%</td>
+</tr>
+<tr>
+<td>crash class judged match</td>
+<td style="text-align:right">76.4±1.3%</td>
+<td style="text-align:right">48.2±1.5%</td>
+</tr>
+<tr>
+<td>validation metric 相對誤差 ≤5%</td>
+<td style="text-align:right">78.1±1.9%</td>
+<td style="text-align:right">18.6±1.7%</td>
+</tr>
+</tbody>
+</table>
+<p>表內 SE 為 2,000 次 program bootstrap。終端輸出不是逐字相等：judge 比較錯誤是否指向相同修復機制、對象及限制，成功 log 容許 headline 分數相對差 15%；獨立 120 例人工標籤與三次 judge 多數決一致 96.7%。任務多數／最近程式等 corpus controls 的 metric 命中也有 55.2%／55.6%，不可只和 prompted 模型比較。Timeout 是最弱的 outcome。（<a href="https://arxiv.org/html/2610.37175v1#S6.T1">表1</a>、<a href="https://arxiv.org/html/2610.37175v1#A9">附錄 I</a>、<a href="https://arxiv.org/html/2610.37175v1#S6.SS1">§6.1</a>）</p>
+<h2 id="12-小時搜尋與實際成本">12 小時搜尋與實際成本</h2>
+<p>每設定 17 題 × 三 seeds，以 Qwen3.5-9B 產碼、Qwen3-Coder-Next 提供 scaffold feedback；按題與 seed 平均隱藏測試 leaderboard percentile，無有效提交計零。下表是 <strong>12h、未啟用 confidence gate</strong> 的結果；SE 及 paired task bootstrap 見原表，觀察均值高不代表所有比較都已證明顯著。（<a href="https://arxiv.org/html/2610.37175v1#S6.SS2">§6.2、表2</a>）</p>
+<table>
+<thead>
+<tr>
+<th>Policy</th>
+<th style="text-align:right">平均 percentile</th>
+<th style="text-align:right">相對 Base 的 points</th>
+<th style="text-align:right">有效提交</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Base AIDE</td>
+<td style="text-align:right">45.4</td>
+<td style="text-align:right">—</td>
+<td style="text-align:right">84.3%</td>
+</tr>
+<tr>
+<td>Sequential</td>
+<td style="text-align:right">51.3</td>
+<td style="text-align:right">+5.9</td>
+<td style="text-align:right">100.0%</td>
+</tr>
+<tr>
+<td>Pairwise</td>
+<td style="text-align:right">47.1</td>
+<td style="text-align:right">+1.7</td>
+<td style="text-align:right">90.2%</td>
+</tr>
+<tr>
+<td>Fusion</td>
+<td style="text-align:right">47.5</td>
+<td style="text-align:right">+2.1</td>
+<td style="text-align:right">100.0%</td>
+</tr>
+<tr>
+<td>BoN</td>
+<td style="text-align:right">50.2</td>
+<td style="text-align:right">+4.8</td>
+<td style="text-align:right">94.1%</td>
+</tr>
+<tr>
+<td>UCB</td>
+<td style="text-align:right">52.1</td>
+<td style="text-align:right">+6.7</td>
+<td style="text-align:right">98.0%</td>
+</tr>
+</tbody>
+</table>
+<p>加 gate 的 12h Sequential 均值 55.4，相對 Base 45.4 高約 10 percentile points；作者摘要的最高 22.1% 是相對於 baseline 的提升，不是 22.1 個百分點。五策略 gate 相比各自 ungated 真實執行時間每 trial 減 30.0–39.8%，只計 real execution，不能直接當總 GPU／模型推論成本或 wall-clock 減幅。Gate 與 ungated 之比較跨封存 cohort 屬描述性；主文 §6.3 稱 12 小時 UCB 為 S50/F83，附錄 M 稱表4 UCB 為 S50/F56。（<a href="https://arxiv.org/html/2610.37175v1#S6.T4">表4</a>、<a href="https://arxiv.org/html/2610.37175v1#S6.SS3">§6.3</a>、<a href="https://arxiv.org/html/2610.37175v1#A13">附錄 M</a>、<a href="https://arxiv.org/html/2610.37175v1#A15">附錄 O</a>）</p>
+<h2 id="回饋校準與限制">回饋、校準與限制</h2>
+<p>固定狀態診斷先取 153 個狀態，Sequential／Fusion 三個未完成狀態從所有相關比較排除，表3 共 150；Fusion 用相同四候選，code-only 14.0 與預測 log 20.6 percentile，增加 6.55±2.87 points。Pairwise 和 Sequential 的預測 log 提升未確立，方法的 model calls 及額外合成不同；局部真實回饋未顯著更好不等同兩種回饋等效。（<a href="https://arxiv.org/html/2610.37175v1#S6.T3">表3</a>、<a href="https://arxiv.org/html/2610.37175v1#A16">附錄 P</a>）</p>
+<p>獨立八小時 BoN 對照中，隨機 gate 與 confidence gate 分別用 5.54／4.49 小時 real execution、均值 47.37／47.21 percentile，後者少約 19% 執行時間；每組 51 trials、seeds 不同，paired task 差 −0.15±2.32 points，未確立品質差異。這不保證每個策略、門檻或真實成本皆相同。（<a href="https://arxiv.org/html/2610.37175v1#A14">附錄 N</a>）</p>
+<p>作者另測三個微調排除任務各 100 程式，terminal judged match 53.3% 對 DeepSeek 42.1%；失敗案例占多數，尤其不足以證明成功訓練結果或 timeout 的泛化。主設定依賴約 50 萬既有執行紀錄，baseline agent 未測能否利用同樣 corpus；模型預測錯誤可能誤導搜尋、missed timeout 仍耗完整執行。正式部署或跨任務家族需獨立再驗。（<a href="https://arxiv.org/html/2610.37175v1#S7">§7</a>、<a href="https://arxiv.org/html/2610.37175v1#A18">附錄 R</a>）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.37175_MLE-World.zh-TW.html">MLE-World 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 178ead0c</footer></main></body></html>
