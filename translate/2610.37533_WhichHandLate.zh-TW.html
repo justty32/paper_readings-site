@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="edf2a8c3da799e80c192fe7f6e7a9535aa8372f1"><title>Which Hand Was Late? Diagnosis for Robot Failure Recovery in Bimanual Tool Use 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Baptiste Bonin、Caro Strickland、Audrey Durand</p><p>日期：2026-10-27（v1，cs.RO／cs.AI）</p><p>arXiv：2610.37533</p><p>閱讀說明：完整主文及A/B重要條件精譯；省略完整表格與參考文獻；數字為作者自報，保留固定排程／隱藏閾值及讀出介入界線，未執行模擬。</p><p><a href="https://arxiv.org/html/2610.37533v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="哪隻手遲了雙臂工具使用的失敗診斷">哪隻手遲了？雙臂工具使用的失敗診斷</h1>
+<h2 id="第13節原因由mechanism-trace判定">第1–3節：原因由mechanism trace判定</h2>
+<p>本文未提出新diagnoser，而以已知原因的模擬測各感測通道與VLM能讀到什麼。兩Franka Panda分別轉方鑰匙及推門；工具手不直接碰鎖。淺插的工具可在扭矩下cam-out，退出socket但仍被握住。</p>
+<p>ManiSkill3 CPU physics中，每attempt262steps；key角至少0.6rad且同一步push≥隱藏<span class="math inline">\(\tau\)</span>才開閂，<span class="math inline">\(\tau\)</span>每次由20–700N log-uniform抽，觀察不含它。開閂保持開啟。Scripted plans注入一個fault，label按trace判，一個fault仍可造成雙原因。</p>
+<p>1000seeds／23doors中17doors適合工具操作，不適合seed跳過，得758attempts：174成功、198wrong（106cam-outs）、133timing、134force、119雙原因。全部獨立process重播，記錄偏差0。（<a href="https://arxiv.org/html/2610.37533v1#S3">§3</a>、<a href="https://arxiv.org/html/2610.37533v1#A1">附錄A</a>）</p>
+<p>Wrong是key不到0.6rad或push不到5N；timing是push達<span class="math inline">\(\tau\)</span>但未與key hold同時；force是key／push≥5N重疊但未達<span class="math inline">\(\tau\)</span>；雙原因既無重疊、push又未達<span class="math inline">\(\tau\)</span>。26timing也符合force定義但優先保timing。5N接觸floor不同於開門<span class="math inline">\(\tau\)</span>。</p>
+<p>119雙原因含75tool-hand-late、44push-hand-late。理想反事實只retime修3/119、只降低<span class="math inline">\(\tau\)</span>修0/119、兩者修119/119；降低<span class="math inline">\(\tau\)</span>不是實際加深push。（<a href="https://arxiv.org/html/2610.37533v1#S3.SS2">§3.2</a>、<a href="https://arxiv.org/html/2610.37533v1#A1">附錄A</a>）</p>
+<h2 id="第33節同一linear-probe逐通道量測">第3.3節：同一linear probe逐通道量測</h2>
+<p>各通道取window首末及差值，使用<span class="math inline">\(L_2\)</span> logistic regression；正則化在training doors CV，五fold依door分組。Within-door AUC按pairs pooling，95%interval來自10000door bootstraps。Coordination測timing對force，再分late-hand兩半，不是兩種遲手直接分類accuracy。</p>
+<p>Trial106–152steps，approach0–26是negative control；VLM只看front camera106／151兩frames。通道含單手wrist／contact、tool joint、雙臂poses／commands、三camera ResNet50。Lock angle是mechanism reading，latch state含閾值是oracle，不當robot證據。（<a href="https://arxiv.org/html/2610.37533v1#S3.SS3">§3.3</a>、<a href="https://arxiv.org/html/2610.37533v1#A2">附錄B</a>）</p>
+<h2 id="第4142節工具失敗在工具手協調要涵蓋雙臂">第4.1–4.2節：工具失敗在工具手，協調要涵蓋雙臂</h2>
+<p>Cam-out對force AUC：工具torque0.972、socket contact0.986、wrist joint0.919；推手force／contact0.519／0.512。三camera0.902，VLM所看單front camera0.768，不能混成相同輸入。</p>
+<p>工具torque分tool-late／push-late對force為1.000／0.753，推手force反向為0.398／0.966。雙臂poses1.000／0.970、commands0.964／0.972、三camera1.000／0.968；timing pooled對force的poses AUC0.986。單手主要讀自己delay，雙手通道涵蓋兩半。（<a href="https://arxiv.org/html/2610.37533v1#S4.SS2">§4.1–4.2</a>、<a href="https://arxiv.org/html/2610.37533v1#S4.T1">表1</a>）</p>
+<h2 id="第43節何時被動資訊不夠">第4.3節：何時被動資訊不夠</h2>
+<p>Hands無重疊226attempts含107timing＋119雙原因；差別是push能否達隱藏<span class="math inline">\(\tau\)</span>。同door工具手延遲時push plan／force相同，區別只由<span class="math inline">\(\tau\)</span>決定，最佳passive ranking ceiling0.500；pooled0.532、push-hand-late0.509。Ceiling在probe前計算，假設開閂前訊號不受<span class="math inline">\(\tau\)</span>影響。</p>
+<p>Tool-late各numeric通道≤0.554，含閾值oracle1.000。Push-late83attempts中contact0.731、commands0.616超ceiling，作者承認假設可能失敗；24numeric cells選擇校正後仍與chance相容（p0.12／0.65）。不可泛稱所有感測器在任何情況都無法分雙原因。（<a href="https://arxiv.org/html/2610.37533v1#S4.SS3">§4.3</a>）</p>
+<h2 id="第5節先做可知修正再升級">第5節：先做可知修正，再升級</h2>
+<p>修復僅386blocked（133timing＋134force＋119雙原因），不含wrong。Same-world介入為移除late delay、push depth0.066m（三倍nominal）、或兩者。Timing retime修127/133，force加深push修81/134；雙原因兩者修81/119，單retime3、單加深push0。</p>
+<table>
+<thead>
+<tr>
+<th>Policy</th>
+<th style="text-align:right">首次／386</th>
+<th style="text-align:right">至多兩次／386</th>
+<th style="text-align:right">深推attempts</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>單label逐一correction</td>
+<td style="text-align:right">206</td>
+<td style="text-align:right">211</td>
+<td style="text-align:right">261</td>
+</tr>
+<tr>
+<td>失敗後escalate兩者</td>
+<td style="text-align:right">200</td>
+<td style="text-align:right">297</td>
+<td style="text-align:right">323</td>
+</tr>
+<tr>
+<td>Oracle true cause</td>
+<td style="text-align:right">289</td>
+<td style="text-align:right">297</td>
+<td style="text-align:right">312</td>
+</tr>
+<tr>
+<td>所有corrections</td>
+<td style="text-align:right">297</td>
+<td style="text-align:right">297</td>
+<td style="text-align:right">386</td>
+</tr>
+</tbody>
+</table>
+<p>Escalation只先問hands是否重疊（pose probe AUC0.992），做matching correction，失敗才兩者；兩次追上oracle，但首次較低、深推比oracle多，只比all-corrections少。理想降<span class="math inline">\(\tau\)</span>的119/119不能當實際policy結果。（<a href="https://arxiv.org/html/2610.37533v1#S5">§5</a>、<a href="https://arxiv.org/html/2610.37533v1#A1.T2">表2</a>）</p>
+<h2 id="第6節表徵有訊號答案未必讀到">第6節：表徵有訊號，答案未必讀到</h2>
+<p>Qwen3-VL8B用兩front frames、每半三種yes/no措辭，評第一answer token的<span class="math inline">\(\log P(Yes)-\log P(No)\)</span>，未解析生成解釋。Tool-late／push-late median AUC0.497／0.604，措辭範圍0.468–0.976／0.368–0.973：一措辭近完美，另一在chance附近。Cam-out answer0.475；同影像問門開否0.865，但只六doors、區間寬。</p>
+<p>Residual stream從layer4起兩半linear probe AUC≥0.956；final-norm input0.987／0.984。答案token讀出方向</p>
+<div class="math block">
+\[d=\gamma\odot(W_U[Yes]-W_U[No])\]
+</div>
+<p>可在作者normalization／bfloat16設定重建score；與probe方向cosine−0.010／+0.020，4096維random baseline95th percentile0.031。（<a href="https://arxiv.org/html/2610.37533v1#S6">§6</a>、<a href="https://arxiv.org/html/2610.37533v1#A2">附錄B</a>）</p>
+<p>先給同door成功reference，median answer升至0.971／0.793，probe tool-late0.991；方向cosine仍小（0.011／0.027）。刪最佳probe層方向後answer AUC只變+0.002／+0.009，後者95%interval含0。</p>
+<p>（本檔補註，非作者自陳）這分開線性可讀與本次token方向，局部ablation未顯示答案依賴該方向；不證所有層／方向都不使用此資訊，或所有prompt皆不報遲手。（<a href="https://arxiv.org/html/2610.37533v1#S6">§6</a>）</p>
+<h2 id="第7節與附錄b固定排程限制">第7節與附錄B：固定排程限制</h2>
+<p>完整time series及0.2×spread noise保雙臂interaction，approach window接近chance；但random onsets第二campaign400attempts後，poses AUC0.509／0.498、commands0.554／0.646、images0.629／0.577，relative onset卻1.000／0.990。Bilateral pattern綁原delay schedule，非任意雙臂排程定律。該campaign以recorded deviation繼續，pilot gate在8positives失敗，不能稱全程依預註冊。</p>
+<p>作者未測learned policies／real robots／多task，新感測與active diagnosis也留待後續；被動不可辨識限本隱藏閾值模型、channels及protocol。（<a href="https://arxiv.org/html/2610.37533v1#S7">§7</a>、<a href="https://arxiv.org/html/2610.37533v1#A2">附錄B</a>）</p>
+<blockquote>
+<p>重點整理見 <a href="../summarize/2610.37533_WhichHandLate.%E6%91%98%E8%A6%81.html">Which Hand Was Late?摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 edf2a8c3</footer></main></body></html>
