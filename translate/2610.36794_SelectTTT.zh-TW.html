@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="34d75684a6912a8cf944612b7cdbb366447af175"><title>Select-TTT: Query-Conditioned Selective Fast Weight Updates for In-Place Test-Time Training 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yue Wu、Yang Zhang、Weinan Gan、Chongming Gao、Xinsen Guo、Xiaoyuan Li、Fuli Feng</p><p>日期：2026-10-27（v1，cs.LG／cs.AI／cs.CL）</p><p>arXiv：2610.36794</p><p>閱讀說明：主文及關鍵附錄精譯；數字為作者自報，分清推論選擇、TTT checkpoint及持續訓練。</p><p><a href="https://arxiv.org/html/2610.36794v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="select-ttt依問題選擇原地測試時訓練的fast-weight更新">Select-TTT：依問題選擇原地測試時訓練的fast-weight更新</h1>
+<h2 id="第-13-節均勻寫入會稀釋有用資訊">第 1–3 節：均勻寫入會稀釋有用資訊</h2>
+<p>In-Place TTT將gated MLP的down-projection作fast weights，gate/up在推論中凍結。以Conv1D及target projection建NTP對齊目標，對每chunk先用目前fast weights輸出，再寫入</p>
+<div class="math block">
+\[W^{(i+1)}_{\rm down}=W^{(i)}_{\rm down}+\eta\widehat V_{[i]}^\top Z_{[i]}.\]
+</div>
+<p>均勻IP-TTT在Llama的LongMemEval-S僅由baseline33.4%到33.6%。oracle動機實驗使用答案session標註辨識answer chunks：加強其寫入可至37.8%，加強無關chunk則可由34.8%降至29.6%。這支持選擇寫入的動機；正式方法不使用答案標註打分。（<a href="https://arxiv.org/html/2610.36794v1#S2.SS2">§2.2</a>、<a href="https://arxiv.org/html/2610.36794v1#S3">§3</a>）</p>
+<h2 id="第-4142-節從問題token估相關性">第 4.1–4.2 節：從問題token估相關性</h2>
+<p>Select-TTT只將既有更新乘 <span class="math inline">\(\lambda_i\)</span>，不改IP-TTT的目標或chunk運算。問題token為 <span class="math inline">\(q_1,\ldots,q_Q\)</span>，每位置hidden state經RMSNorm及凍結LM head算</p>
+<div class="math block">
+\[\widehat{\mathrm{CE}}_{i,c}=-Q^{-1}\sum_{j=1}^{Q}\log p(q_j\mid h_{i,c}).\]
+</div>
+<p>低CE表示表徵更能預測問題。每chunk取CE最低的 <span class="math inline">\(K=\max(1,\lceil\rho C\rceil)\)</span> 位置平均為 <span class="math inline">\(s_i\)</span>；不是最高CE。預設top-<span class="math inline">\(k\)</span> mean、<span class="math inline">\(\rho=0.1\)</span>。全位置mean容易稀釋訊號，文中Max則只取最低CE單位置。</p>
+<p>倍率為</p>
+<div class="math block">
+\[\lambda_i=\operatorname{clip}\left(T\frac{e^{-s_i/\tau}}{\sum_j e^{-s_j/\tau}},0,M\right),\]
+</div>
+<p>預設 <span class="math inline">\(\tau=0.1\)</span>、<span class="math inline">\(M=10\)</span>。有限分數的softmax保持正寫入，低相關chunk寫較少而非丟棄；上限避免單chunk過度放大。沒有query時回退IP-TTT。選擇規則不增參數或監督，不等於既有TTT的Conv1D及target projection不用訓練。（<a href="https://arxiv.org/html/2610.36794v1#S4.SS2">§4.1–4.2</a>、<a href="https://arxiv.org/html/2610.36794v1#A2.SS2">B.2</a>）</p>
+<p>（本檔補註，非作者自陳）乘 <span class="math inline">\(T\)</span> 僅在clip前精確保倍率均值1。式10及演算法clip後未列重正規化，上限生效時均值可低於1；步長倍率約守恆也不證明更新範數或「資訊量」守恆。（<a href="https://arxiv.org/html/2610.36794v1#alg1">式10、Algorithm 1</a>）</p>
+<h2 id="第-43-節高效率打分及平行更新">第 4.3 節：高效率打分及平行更新</h2>
+<p>問題token對應的head rows直接gather，分母的全詞彙log-sum-exp逐block算，避免完整 <span class="math inline">\([T,C,V]\)</span> logits張量。每選擇層額外計算仍為 <span class="math inline">\(O(TCH(V+Q))\)</span>，峰值activation約 <span class="math inline">\(O(TC(B+Q))\)</span>，非免除全詞彙正規化；預設block2048。</p>
+<p>各chunk平行計score及標準更新，加權更新做causal prefix sum，chunk輸出只用前方chunk的更新；文件邊界重設fast weights。兩骨幹都在層0、6、12、18、24、30啟用TTT。（<a href="https://arxiv.org/html/2610.36794v1#S4.SS3">§4.3</a>、<a href="https://arxiv.org/html/2610.36794v1#alg1">Algorithm 1</a>）</p>
+<h2 id="第-51-節資料與兩種協議">第 5.1 節：資料與兩種協議</h2>
+<p>骨幹為Llama-3.1-8B-Instruct及Qwen3-4B，後者YaRN factor4延長位置範圍。LongMemEval-S有500問題、約40session及115K token；LoCoMo附錄列10段對話、1986題、每段19–32session及369–689turn。持續訓練用LongCite-45k的英語、上下文8K–65K子集，原庫約44600筆不等於過濾後實際筆數。</p>
+<p>Protocol I：Baseline為原始無TTT LLM；IP-TTT與Select用同一個依IP-TTT recipe取得的TTT-enhanced checkpoint，只在推論倍率不同。training-free是免額外選擇器訓練，不是原始模型不經TTT訓練。正式query由問題文字以骨幹tokenizer取得，無須相關性標籤。</p>
+<p>Protocol II：CPT無TTT，另兩法持續訓練及推論皆啟對應TTT。骨幹及新增TTT元件共同訓練至5k步，每1k評估LongMemEval-S；chunk2048、內部TTT步長0.3，外層AdamW峰值學習率 <span class="math inline">\(5\times10^{-6}\)</span>、batch8、序列至65536。內部寫入與外層訓練學習率不同。（<a href="https://arxiv.org/html/2610.36794v1#S5.SS1">§5.1</a>、<a href="https://arxiv.org/html/2610.36794v1#A2">附錄B</a>）</p>
+<h2 id="第-52-節推論換規則的結果">第 5.2 節：推論換規則的結果</h2>
+<p>以下為作者自報整體百分比分數。</p>
+<table>
+<thead>
+<tr>
+<th>基準／骨幹</th>
+<th style="text-align:right">Baseline</th>
+<th style="text-align:right">IP-TTT</th>
+<th style="text-align:right">Select</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LongMemEval／Llama</td>
+<td style="text-align:right">33.4</td>
+<td style="text-align:right">33.6</td>
+<td style="text-align:right">37.4</td>
+</tr>
+<tr>
+<td>LongMemEval／Qwen</td>
+<td style="text-align:right">27.2</td>
+<td style="text-align:right">25.4</td>
+<td style="text-align:right">28.8</td>
+</tr>
+<tr>
+<td>LoCoMo／Llama</td>
+<td style="text-align:right">39.55</td>
+<td style="text-align:right">38.90</td>
+<td style="text-align:right">40.42</td>
+</tr>
+<tr>
+<td>LoCoMo／Qwen</td>
+<td style="text-align:right">25.15</td>
+<td style="text-align:right">25.45</td>
+<td style="text-align:right">26.19</td>
+</tr>
+</tbody>
+</table>
+<p>LongMemEval相對IP提升3.8／3.4百分點。平均勝出不代表各子任務皆勝：Llama的single-session assistant/user低於baseline，Qwen single-session preference低於baseline；LoCoMo部分multi-hop亦較低。（<a href="https://arxiv.org/html/2610.36794v1#S5.T1">§5.2、表1</a>、<a href="https://arxiv.org/html/2610.36794v1#S5.T2">表2</a>）</p>
+<h2 id="第-53-節及附錄-c1持續訓練">第 5.3 節及附錄 C.1：持續訓練</h2>
+<p>5k步Qwen的CPT／IP／Select為35.0／35.6／37.4%，Llama為35.4／36.6／39.8%。並非每checkpoint都勝：Qwen1k為32.0%，低於IP33.2及CPT32.4；Llama2k為35.4%，低於IP36.4。主文以Qwen曲線分析，不能把其趨勢當兩骨幹全程一致。（<a href="https://arxiv.org/html/2610.36794v1#S5.SS3">§5.3</a>、<a href="https://arxiv.org/html/2610.36794v1#A3.T10">表10–11</a>）</p>
+<h2 id="第-5455-節消融與相關性檢查">第 5.4–5.5 節：消融與相關性檢查</h2>
+<p>測試溫度0.1／0.3／0.5時，0.1在兩骨幹最好；pool ratio非單調，0.1最佳，top-<span class="math inline">\(k\)</span> mean優於mean及單位置Max。Llama的soft+clip為37.4%，去clip34.6%，去soft但留clip30.4%，兩者皆去23.0%。（本檔補註，非作者自陳）這是經驗支持，不是穩定性定理。</p>
+<p>LongMemEval答案chunk標註用於分析排序，Hit@<span class="math inline">\(k\)</span>是前 <span class="math inline">\(k\)</span> 至少含一答案chunk，Rec@<span class="math inline">\(k\)</span>是答案chunk覆蓋比例。2048大小時Query-CE／hidden-state cosine／bge reranker的Hit@5為0.582／0.293／0.372，Rec@5為0.278／0.189／0.098。三種chunk大小各 <span class="math inline">\(k\)</span> 都是Query-CE較高。比較條件為hidden-state輸入，不能推成勝過一般文字輸入retriever；Hit@5也非QA準確率。（<a href="https://arxiv.org/html/2610.36794v1#S5.T3">§5.4、表3</a>、<a href="https://arxiv.org/html/2610.36794v1#S5.T4">§5.5、表4</a>）</p>
+<h2 id="第-5678-節效率與限制">第 5.6、7–8 節：效率與限制</h2>
+<p>作者以Qwen3-4B推論的prefill throughput與峰值GPU記憶體稱，相對IP-TTT額外開銷可忽略；（本檔補註，非作者自陳）這不建立所有硬體、模型及長度都零開銷的保證。（<a href="https://arxiv.org/html/2610.36794v1#S5.SS6">§5.6</a>）</p>
+<p>作者明示：query-CE只是啟發式相關性，把最終LM head用於不同中間層可能影響校準；學習相關性函式會增加參數與訓練成本。固定chunk利於平行但不保證語意邊界；只測兩個至多8B骨幹、兩個英語基準，更大模型、多語及其他模態待測。（<a href="https://arxiv.org/html/2610.36794v1#S8">§8</a>）</p>
+<p>（本檔補註，非作者自陳）實驗需目前問題已知，且文件邊界重設fast weights；跨query持續agent、長期累積及遺忘未評估。多問題變動上下文僅展望，不能稱已驗證長期agent記憶；也未附多種子誤差或顯著性證據。（<a href="https://arxiv.org/html/2610.36794v1#S7">§7</a>）</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2610.36794_SelectTTT.%E6%91%98%E8%A6%81.html">Select-TTT摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 34d75684</footer></main></body></html>
