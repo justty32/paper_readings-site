@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="b58358b62e0f818f4e0bffd6112ac30266a89b6c"><title>Understanding the Limits of Latent World Models 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Rodrigo Gonzalez Laiz、Steffen Schneider</p><p>日期：2026-10-27（v1，cs.LG）</p><p>arXiv：2610.37588</p><p>閱讀說明：依官方v1完整主文與附錄A–F整理；數字為作者自報，區分latent rollout R²、state probe誤差與task reward；未執行程式或下載模型。證據限所測三類模型與簡單確定性控制環境。</p><p><a href="https://arxiv.org/html/2610.37588v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="latent-world-limits任務成功不代表內在動態忠實">Latent World Limits：任務成功不代表內在動態忠實</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>作者將faithful latent world model定為「保留完整環境狀態」加「latent dynamics與真實轉移等變」，提出latent rollout consistency（LRC）並搭配state decoding與reward。在DreamerV3、TD-MPC2、LeWM及三個簡單控制環境中，高reward仍可伴隨不準的latent rollout；像素模型尤其容易缺速度資訊，也難以處理保留全部資訊的非線性觀測。（<a href="https://arxiv.org/html/2610.37588v1#S1">§1–2</a>、<a href="https://arxiv.org/html/2610.37588v1#S5">§5–6</a>）</p>
+<h2 id="忠實的兩條條件">忠實的兩條條件</h2>
+<p>環境為確定性的部分觀測受控系統：<span class="math inline">\(s_{t+1}=f(s_t,a_t)\)</span>、<span class="math inline">\(x_t=g(s_t)\)</span>。Encoder可用觀測與action歷史推latent，<span class="math inline">\(z_t=h(x_{\le t},a_{&lt;t})\)</span>；latent dynamics預測<span class="math inline">\(\hat z_{t+1}=\hat f(z_t,a_t)\)</span>。作者寫state-to-latent map <span class="math inline">\(r=h\circ g\)</span>，定義：</p>
+<div class="math block">
+\[\hat f(r(s),a)=r(f(s,a))\quad\forall s,a,\qquad r\text{ 為單射。}\]
+</div>
+<p>第一條是dynamics equivariance，第二條是state sufficiency。不同狀態不可被壓成同一latent，故比允許資訊損失的abstraction要求更強；目標為task-independent state preservation，不只保留當前reward相關資訊。本文不分析generative video或cognitive／spatial maps。（<a href="https://arxiv.org/html/2610.37588v1#S2">§2，Definition 1</a>）</p>
+<h2 id="lrcprobe與reward各自測什麼">LRC、probe與reward各自測什麼</h2>
+<p>每個evaluation episode只從開頭初始化一次open-loop autoregressive rollout，給模型<strong>實際記錄的同一串actions</strong>；在horizon <span class="math inline">\(H\)</span>比較預測<span class="math inline">\(\hat z_H\)</span>與由實際觀測歷史推得的<span class="math inline">\(z_H\)</span>，不是每步用真值重新初始化。每environment、每model seed分開算：</p>
+<div class="math block">
+\[R_j^2(H)=1-\frac{\sum_e(z_{e,H}^{(j)}-\hat z_{e,H}^{(j)})^2}{\sum_e(z_{e,H}^{(j)}-\bar z_H^{(j)})^2},\quad
+\mathrm{LRC}(H)=\frac{\sum_j V_j(H)R_j^2(H)}{\sum_j V_j(H)}.\]
+</div>
+<p><span class="math inline">\(V_j\)</span>是該座標target在episodes間的平方離差和，零variance座標不計；負分不截斷。LRC=1是精確latent預測，0等同跨episode target mean，負值比此基準更差。不同seed／environment的latent不混在一起；主實驗再平均四seeds。（<a href="https://arxiv.org/html/2610.37588v1#S4.SS2">§4.2</a>、<a href="https://arxiv.org/html/2610.37588v1#A2">附錄B，式7–8</a>）</p>
+<p>高LRC本身仍可能是representation collapse。作者凍結模型，以每state coordinate一個非線性MLP probe測可解碼性；hidden widths128／64，以完整episodes切80%train／20%test。正規化誤差為<span class="math inline">\(100\operatorname{MAE}_{m,j}/\operatorname{MAE}^{control}_j\)</span>，分母是該environment／variable共用的shuffled-target control，非「真實速度的百分比誤差」。Control用真state預測打亂配對target，最後對未打亂held-out target測試；不是每個模型各造一個分母。Good decoding支持state sufficiency，但不能證明單射。另報原生environment reward的episode累加。（<a href="https://arxiv.org/html/2610.37588v1#S4.SS2">§4.2</a>、<a href="https://arxiv.org/html/2610.37588v1#A4">附錄D，式9</a>）</p>
+<p>DreamerV3為stochastic RSSM：從同一posterior anchor抽500條future rollout，每步獨立抽categorical prior；以deterministic state與categorical probabilities串成features，逐座標平均500條再算LRC。Best-matching sample需偷看realized trajectory，只是oracle上界，不是可部署估計器。（<a href="https://arxiv.org/html/2610.37588v1#A2">附錄B</a>）</p>
+<h2 id="比較設計與訓練評估口徑">比較設計與訓練／評估口徑</h2>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>Reconstruction</th>
+<th>Reward／控制</th>
+<th>主要輸入與latent</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DreamerV3</td>
+<td>有</td>
+<td>reward-driven、task-specific</td>
+<td>64×64pixels或state；latent state1536、pixels5120</td>
+</tr>
+<tr>
+<td>TD-MPC2</td>
+<td>無</td>
+<td>reward-driven、task-specific</td>
+<td>64×64pixels或state；latent512</td>
+</tr>
+<tr>
+<td>LeWM</td>
+<td>無</td>
+<td>reward-free self-supervised prediction；post-hoc MPC</td>
+<td>224×224pixels或作者新增state版；latent192</td>
+</tr>
+</tbody>
+</table>
+<p>環境為Pendulum-swingup、CartPole-swingup、Reacher-hard，state維度3／5／6，action維度1／1／2；每模型×modality×environment四seeds。TD-MPC2與DreamerV3最多訓練一百萬environment steps、取reward穩定的checkpoint，未逐task調參。LeWM用2000episodes／200000transitions，其中OU random與TD-MPC2 expert各1000episodes；state／pixel用對齊的同軌跡，訓練50epochs並選SigReg係數。（<a href="https://arxiv.org/html/2610.37588v1#S4.SS1">§4.1</a>、<a href="https://arxiv.org/html/2610.37588v1#A3">附錄A/C，表2–3</a>）</p>
+<p>LRC另用每environment獨立的1000條、每條100steps OU random evaluation episodes，鼓勵廣state-space coverage。State-space topline為two-hidden-layer MLP的autoregressive state prediction；persistence固定初始state。Reward則評500-step episodes：task-driven模型每seed100episodes；LeWM每model seed、每三planner seeds各50episodes。LeWM採<strong>用aligned simulator states訓練的frozen MLP解碼state cost</strong>，因其return較terminal latent cost高；也選所測reward最高planner。因此不是原版純latent-cost controller的直接結果。（<a href="https://arxiv.org/html/2610.37588v1#S4.SS2">§4.2</a>、<a href="https://arxiv.org/html/2610.37588v1#A3.SS3">附錄A/C.3</a>）</p>
+<h2 id="結果task-rewardrepresentation與dynamics可分離">結果：task reward、representation與dynamics可分離</h2>
+<p>TD-MPC2與DreamerV3可高reward但低LRC。作者提出可能的task-specific shortcuts，或policy／value隱含預測資訊補償explicit dynamics；這是解釋假說，不是本實驗已定位的機制。LeWM先學dynamics再MPC，沒有同樣的joint policy／value補償路徑；其所測pixel rollout不足以支援良好控制。（<a href="https://arxiv.org/html/2610.37588v1#S5.SS1">§5.1</a>）</p>
+<p>像素LRC比state input更快惡化並接近persistence；CartPole decoded rollouts在30control steps內已偏離。多數條件position的normalized probe error約0–7%，velocity約3–22%；像素velocity較差，CartPole velocity median error依模型／變數約為state-input的2–15倍。誤差在大速度區較高。低LRC可來自encoder、dynamics或兩者，不可只靠單項probe定位。（<a href="https://arxiv.org/html/2610.37588v1#S5.SS2">§5.2，圖4–5</a>）</p>
+<h2 id="干預一補真實速度有幫助但不等於任務成功">干預一：補真實速度有幫助，但不等於任務成功</h2>
+<p>CartPole pixel模型從頭訓練，以小MLP將真cart／pole velocity轉16維features再融合visual embedding；只在encoding觀測時提供速度，open-loop prediction後續不再餵速度。TD-MPC2／LeWM另比較三frames與一frame；DreamerV3每步一frame、context由RSSM保留。干預用TD-MPC2與DreamerV3各四seeds、LeWM三seeds。（<a href="https://arxiv.org/html/2610.37588v1#S5.SS3">§5.3</a>、<a href="https://arxiv.org/html/2610.37588v1#A5.SS2">附錄E.2</a>）</p>
+<table>
+<thead>
+<tr>
+<th>模型／輸入</th>
+<th style="text-align:right">LRC10</th>
+<th style="text-align:right">LRC30</th>
+<th style="text-align:right">Reward R</th>
+<th style="text-align:right">normalized velocity error</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DreamerV3 state</td>
+<td style="text-align:right">95.2</td>
+<td style="text-align:right">81.9</td>
+<td style="text-align:right">871</td>
+<td style="text-align:right">2.28</td>
+</tr>
+<tr>
+<td>DreamerV3 frames</td>
+<td style="text-align:right">63.8</td>
+<td style="text-align:right">8.9</td>
+<td style="text-align:right">872</td>
+<td style="text-align:right">9.51</td>
+</tr>
+<tr>
+<td>DreamerV3 +v</td>
+<td style="text-align:right">37.9</td>
+<td style="text-align:right">&lt;0</td>
+<td style="text-align:right">774</td>
+<td style="text-align:right">8.06</td>
+</tr>
+<tr>
+<td>TD-MPC2 state</td>
+<td style="text-align:right">97.4</td>
+<td style="text-align:right">83.4</td>
+<td style="text-align:right">878</td>
+<td style="text-align:right">1.18</td>
+</tr>
+<tr>
+<td>TD-MPC2 3frames</td>
+<td style="text-align:right">29.6</td>
+<td style="text-align:right">&lt;0</td>
+<td style="text-align:right">832</td>
+<td style="text-align:right">11.45</td>
+</tr>
+<tr>
+<td>TD-MPC2 3frames+v</td>
+<td style="text-align:right">80.8</td>
+<td style="text-align:right">16.4</td>
+<td style="text-align:right">855</td>
+<td style="text-align:right">1.90</td>
+</tr>
+<tr>
+<td>LeWM state</td>
+<td style="text-align:right">100.0</td>
+<td style="text-align:right">99.9</td>
+<td style="text-align:right">757</td>
+<td style="text-align:right">0.73</td>
+</tr>
+<tr>
+<td>LeWM 3frames</td>
+<td style="text-align:right">96.7</td>
+<td style="text-align:right">1.2</td>
+<td style="text-align:right">151</td>
+<td style="text-align:right">10.16</td>
+</tr>
+<tr>
+<td>LeWM 3frames+v</td>
+<td style="text-align:right">99.6</td>
+<td style="text-align:right">96.3</td>
+<td style="text-align:right">178</td>
+<td style="text-align:right">1.29</td>
+</tr>
+</tbody>
+</table>
+<p>LRC與error皆percentage units，R保留作者表值、不換算成功率。減為一frame且不補v，TD-MPC2／LeWM error升到130.61／130.39%；補v降至1.81／1.28%，LRC30為5.0／94.4。速度改善不保證return同步增加，LeWM仍遠低state-input；DreamerV3甚至退步。作者推測RSSM posterior有v而prior沒有可能造成mismatch，未證為唯一原因。（<a href="https://arxiv.org/html/2610.37588v1#S5.T1">表1</a>）</p>
+<h2 id="干預二資訊完整的非線性觀測仍難學">干預二：資訊完整的非線性觀測仍難學</h2>
+<p>CartPole原state先通固定、可逆的0–3層mixing network，保持simulator dynamics與資訊量。每depth各模型從頭訓練；主文以較少task-specific confounds的LeWM呈現。LeWM只在0／1層解決任務，深度增加時LRC與reward一起下降；一層position error約0.5%，二層超1.5%，pixel略超1%。這支持所測objective難從可逆非線性觀測學到可恢復physical state的representation，不能歸因為input已丟資訊。（<a href="https://arxiv.org/html/2610.37588v1#S5.SS4">§5.4，圖7</a>）</p>
+<p>附錄E.1用bias-free5×5linear maps與map間LeakyReLU（negative slope0.2），矩陣須通condition-number篩選；mixer seed42且凍結、同depth各model seeds共用。這是受控synthetic intervention，不等同已涵蓋所有真實visual perception難度。（<a href="https://arxiv.org/html/2610.37588v1#A5.SS1">附錄E.1</a>；末句為本檔補註，非作者自陳）</p>
+<h2 id="附錄的反例與適用界線">附錄的反例與適用界線</h2>
+<p>附錄F／圖2沒有學習world model，而是在oracle CartPole MPC分別加dynamics noise或inverse-encoder noise。Identity encoding下probe可完美而dynamics已壞；可逆非線性encoding下linear probe差不代表資訊遺失；encoder noise亦可使LRC先崩而reward／decoding仍高。故三種診斷應一起看，不能把probe可解碼性當作rollout正確性。（<a href="https://arxiv.org/html/2610.37588v1#S2.F2">§2，圖2</a>、<a href="https://arxiv.org/html/2610.37588v1#A6">附錄F</a>）</p>
+<p>作者明列限制：只測三種代表模型、簡單確定性continuous-control環境；對stochastic、partial-observable、discrete或更高維系統的延伸未定。這些是「控制成功不蘊含忠實動態」的受控反例，不是證明所有latent world models必有同樣失敗模式。主實驗也不給普遍injectivity或identifiability保證。（<a href="https://arxiv.org/html/2610.37588v1#S6">§6–7</a>；末句為本檔補註，非作者自陳）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.37588_LatentWorldLimits.zh-TW.html">LatentWorldLimits翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 b58358b6</footer></main></body></html>

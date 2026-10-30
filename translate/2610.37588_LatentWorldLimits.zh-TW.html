@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="b58358b62e0f818f4e0bffd6112ac30266a89b6c"><title>Understanding the Limits of Latent World Models 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Rodrigo Gonzalez Laiz、Steffen Schneider</p><p>日期：2026-10-27（v1，cs.LG）</p><p>arXiv：2610.37588</p><p>閱讀說明：完整閱讀主文與附錄A–F後精譯；省略文獻逐條介紹、完整超參數與大表。數字為作者自報，LRC、probe誤差及reward分開；未重現實驗。</p><p><a href="https://arxiv.org/html/2610.37588v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="latent-world-limits忠實的內在動態如何評估">Latent World Limits：忠實的內在動態如何評估</h1>
+<h2 id="第12節成功控制不夠">第1–2節：成功控制不夠</h2>
+<p>本文研究action-conditioned latent dynamics，排除generative video與cognitive／spatial maps。環境為<span class="math inline">\(s_{t+1}=f(s_t,a_t)\)</span>、<span class="math inline">\(x_t=g(s_t)\)</span>；encoder用觀測與actions歷史推<span class="math inline">\(z_t=h(x_{\le t},a_{&lt;t})\)</span>，模型以<span class="math inline">\(\hat f(z_t,a_t)\)</span>預測下一latent。</p>
+<p>作者令<span class="math inline">\(r=h\circ g\)</span>，將faithfulness定為兩條：</p>
+<div class="math block">
+\[\hat f(r(s),a)=r(f(s,a))\quad\forall s,a,\qquad r\text{ 為單射。}\]
+</div>
+<p>即真實轉移後再encode，等於encode後再預測；且representation保留完整state，非只保留當前reward所需資訊。高reward不保證這兩條成立。（<a href="https://arxiv.org/html/2610.37588v1#S2">§1–2</a>）</p>
+<h2 id="第242節與附錄bd三項診斷">第2、4.2節與附錄B/D：三項診斷</h2>
+<p>LRC從每evaluation episode開頭初始化一次latent rollout，重播記錄的actions，逐horizon比較autoregressive prediction與實際觀測歷史推得的latent。每environment／model seed各自算，不混不同latent座標系：</p>
+<div class="math block">
+\[R_j^2=1-\frac{\sum_e(z_{e,H}^{(j)}-\hat z_{e,H}^{(j)})^2}{V_j},\quad V_j=\sum_e(z_{e,H}^{(j)}-\bar z_H^{(j)})^2,\]
+</div>
+<div class="math block">
+\[\mathrm{LRC}(H)=\frac{\sum_j V_j R_j^2}{\sum_j V_j}.\]
+</div>
+<p>零variance座標略去，負值保留；1是精確預測、0等同跨episode target mean、負值更差。高LRC也可能只是collapse，因此另用凍結latent的state probes。每state coordinate一個MLP（128／64hidden units），完整episodes切80%train／20%test。報physical-unit MAE，以及<span class="math inline">\(100\operatorname{MAE}_{m,j}/\operatorname{MAE}^{control}_j\)</span>；control是該environment／variable共用shuffled-target baseline，非相對真實速度百分比。Good decoding支持state sufficiency，不能證明單射。Reward另報native episode return。（<a href="https://arxiv.org/html/2610.37588v1#S4.SS2">§4.2</a>、<a href="https://arxiv.org/html/2610.37588v1#A2">附錄B/D</a>）</p>
+<p>DreamerV3從同一posterior anchor抽500條stochastic rollout；features串deterministic state與categorical probabilities，先逐座標平均500條再算LRC。挑最接近realized trajectory的sample是oracle上界，不能部署。（<a href="https://arxiv.org/html/2610.37588v1#A2">附錄B</a>）</p>
+<h2 id="第34節與附錄ac比較設計">第3–4節與附錄A/C：比較設計</h2>
+<p>DreamerV3有reconstruction且reward-driven；TD-MPC2無reconstruction、仍reward-driven；LeWM無reconstruction／reward，以self-supervised prediction學dynamics後再MPC。比較Pendulum、CartPole、Reacher，state維度3／5／6；三模型皆有state與pixel版，主實驗各四seeds。Pixel為DreamerV3／TD-MPC2的64×64與LeWM的224×224；state LeWM為作者新增版本。（<a href="https://arxiv.org/html/2610.37588v1#S4.SS1">§3–4</a>、<a href="https://arxiv.org/html/2610.37588v1#A3.SS1">附錄A/C.1</a>）</p>
+<p>TD-MPC2／DreamerV3最多一百萬environment steps，取reward穩定checkpoint；LeWM用OU random與TD-MPC2 expert各1000episodes，共200000transitions，state／pixel軌跡對齊，訓練50epochs。LRC另用每environment1000條100-step OU episodes；state-space MLP為topline，固定初始state為persistence。（<a href="https://arxiv.org/html/2610.37588v1#S4.SS2">§4.2</a>、<a href="https://arxiv.org/html/2610.37588v1#A3.SS2">附錄A/C.2</a>）</p>
+<p>Reward評500-step episodes：task-driven模型每seed100episodes；LeWM每model seed、三planner seeds各50episodes。LeWM以aligned simulator states訓練frozen decoder，把預測latent轉state cost；因比terminal latent cost好，正式結果採此cost及所測最高reward planner，非直接照搬原版controller。（<a href="https://arxiv.org/html/2610.37588v1#A3.SS3">附錄C.3</a>）</p>
+<h2 id="第5152節reward與latent預測分離">第5.1–5.2節：reward與latent預測分離</h2>
+<p>TD-MPC2／DreamerV3可高reward、低LRC。作者提出task-specific shortcuts或policy／value補償explicit dynamics的可能解釋，並未證實唯一機制。LeWM先學dynamics再MPC，沒有相同joint-controller補償路徑。Pixel rollouts較state input更快退化，CartPole預測30control steps內已偏離。多數position normalized probe errors約0–7%，velocity約3–22%；CartPole pixel velocity median error依模型／變數約為state-input的2–15倍，大速度區更難。（<a href="https://arxiv.org/html/2610.37588v1#S5.SS1">§5.1–5.2</a>）</p>
+<h2 id="第53節與附錄e2補速度仍未閉合差距">第5.3節與附錄E.2：補速度仍未閉合差距</h2>
+<p>CartPole真cart／pole velocities先經MLP成16維features再與visual embedding融合，模型從頭訓練。速度只在encoding觀測時提供，後續open-loop prediction不再餵入；TD-MPC2／LeWM比較一或三frames，DreamerV3以RSSM保留temporal context。此干預TD-MPC2／DreamerV3各四seeds、LeWM三seeds。</p>
+<table>
+<thead>
+<tr>
+<th>模型／輸入</th>
+<th style="text-align:right">LRC10</th>
+<th style="text-align:right">LRC30</th>
+<th style="text-align:right">R</th>
+<th style="text-align:right">velocity error</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DreamerV3 frames</td>
+<td style="text-align:right">63.8</td>
+<td style="text-align:right">8.9</td>
+<td style="text-align:right">872</td>
+<td style="text-align:right">9.51</td>
+</tr>
+<tr>
+<td>DreamerV3 +v</td>
+<td style="text-align:right">37.9</td>
+<td style="text-align:right">&lt;0</td>
+<td style="text-align:right">774</td>
+<td style="text-align:right">8.06</td>
+</tr>
+<tr>
+<td>TD-MPC2 3frames</td>
+<td style="text-align:right">29.6</td>
+<td style="text-align:right">&lt;0</td>
+<td style="text-align:right">832</td>
+<td style="text-align:right">11.45</td>
+</tr>
+<tr>
+<td>TD-MPC2 3frames+v</td>
+<td style="text-align:right">80.8</td>
+<td style="text-align:right">16.4</td>
+<td style="text-align:right">855</td>
+<td style="text-align:right">1.90</td>
+</tr>
+<tr>
+<td>LeWM 3frames</td>
+<td style="text-align:right">96.7</td>
+<td style="text-align:right">1.2</td>
+<td style="text-align:right">151</td>
+<td style="text-align:right">10.16</td>
+</tr>
+<tr>
+<td>LeWM 3frames+v</td>
+<td style="text-align:right">99.6</td>
+<td style="text-align:right">96.3</td>
+<td style="text-align:right">178</td>
+<td style="text-align:right">1.29</td>
+</tr>
+</tbody>
+</table>
+<p>LRC與error為percentage units，R保留作者表值、不轉成功率。一frame無v時TD-MPC2／LeWM error為130.61／130.39%，補v降1.81／1.28%。改善速度representation不保證reward提高，LeWM仍遠低state-input；DreamerV3反而退步。作者推測posterior有v而prior沒有可能造成mismatch。（<a href="https://arxiv.org/html/2610.37588v1#S5.T1">§5.3、表1</a>、<a href="https://arxiv.org/html/2610.37588v1#A5.SS2">附錄E.2</a>）</p>
+<h2 id="第54節與附錄e1非線性觀測">第5.4節與附錄E.1：非線性觀測</h2>
+<p>CartPole state經固定可逆的0–3層mixing後再encode，資訊量與simulator dynamics不變，每depth從頭訓練。LeWM只解決0／1層，深度增時LRC與reward一起降；一層position error約0.5%，二層超1.5%，pixel略超1%。輸入沒丟state資訊，仍難學可恢復physical state的representation。Mixer是bias-free5×5maps、map間LeakyReLU slope0.2；seed42、凍結且同depth跨model seeds共用。（<a href="https://arxiv.org/html/2610.37588v1#S5.SS4">§5.4</a>、<a href="https://arxiv.org/html/2610.37588v1#A5.SS1">附錄E.1</a>）</p>
+<h2 id="附錄f與第67節反例與限制">附錄F與第6–7節：反例與限制</h2>
+<p>圖2是oracle CartPole MPC加dynamics或inverse-encoder noise，沒有學習world model：probe可完美而dynamics已壞，linear probe差也可只因可逆非線性座標；encoder noise亦可使LRC先崩而reward仍高。因此要一起看LRC、decoding與reward。（<a href="https://arxiv.org/html/2610.37588v1#A6">附錄F</a>）</p>
+<p>作者限制為三種代表模型與簡單確定性continuous control；對stochastic、部分觀測、discrete或更高維環境的延伸未定。這是成功控制不蘊含忠實動態的受控反例，非所有latent models都有同樣失敗模式的證明。改善representation與dynamics必須一併考慮。（<a href="https://arxiv.org/html/2610.37588v1#S6">§6–7</a>）</p>
+<blockquote>
+<p>重點整理見 <a href="../summarize/2610.37588_LatentWorldLimits.%E6%91%98%E8%A6%81.html">LatentWorldLimits摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 b58358b6</footer></main></body></html>
