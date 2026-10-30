@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="8add5969002d2287a35585971934c19e9d4c08c6"><title>D-Skill: Distilling Teacher Knowledge through Agent Skills 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Shuo Yuan、Dacheng Li、Joseph E. Gonzalez</p><p>日期：2026-10-20（v1，cs.AI）</p><p>arXiv：2610.28914</p><p>閱讀說明：依官方v1完整主文與附錄A–D整理；數字為作者自報，保native offline／SkillOpt gate、gap分母、skill replicates、SFT與成本範圍；未執行文獻prompt或skill，未下載程式、模型或重現。</p><p><a href="https://arxiv.org/html/2610.28914v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="d-skill把教師與學生的行為落差蒸餾成外部技能文件">D-Skill：把教師與學生的行為落差蒸餾成外部技能文件</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>D-Skill針對同一批tasks各取teacher／student一條獨立rollout，用difference analyst從<strong>行為差異與共同策略</strong>提煉有trace證據的可遷移lessons，再以modified Trace2Skill map–reduce–apply consolidation離線更新單一skill文件，inference時交student讀。不改weights、不複製教師hidden reasoning或既有skill；native管線在rollout collection後不再要environment、labels、rewards或evaluation feedback。這不代表不用analysis／consolidation LLM，也不代表fresh rollout原本沒有environment成本。（<a href="https://arxiv.org/html/2610.28914v1#S3">§1、§3</a>）</p>
+<h2 id="衡量的是gap-closure不是絕對accuracy">衡量的是gap closure，不是絕對accuracy</h2>
+<p>Teacher與student共task／action space，skill-conditioned student為<span class="math inline">\(\pi_S^s\)</span>。作者定義</p>
+<div class="math block">
+\[\mathrm{GapClosed}(s)=\frac{J(\pi_S^s)-J(\pi_S)}{J(\pi_T)-J(\pi_S)}.\]
+</div>
+<p>因此「75%–95%」是填補原teacher–student差距的比例，非student成功率75%–95%、非teacher accuracy保留比例。以Terra→Luna SSB-V為例，bare25.3、D-Skill69.7、teacher78.5，作者報83.4%gap closure。小gap及不同teacher會改分母，不能直接把各pair %GC當同一absolute improvement。（<a href="https://arxiv.org/html/2610.28914v1#S3.SS1">§3.1</a>、<a href="https://arxiv.org/html/2610.28914v1#S4.T1">表1</a>；最後一句為本檔補註，非作者自陳）</p>
+<h2 id="三階段與可見資訊">三階段與可見資訊</h2>
+<p>Rollout collection對每unlabeled task各收一條獨立teacher／student action–observation trace，可fresh execute或用saved logs；彼此不看對方行為。之後不再求policy生成新軌跡，分析及consolidation仍會呼叫其角色LLMs，甚至可和teacher同model name，故「不再query policies」不應讀成任何LLM API都停止。（<a href="https://arxiv.org/html/2610.28914v1#S3.SS2">§3.2–3.4</a>）</p>
+<p>Difference analyst按inspection、action／tool use、error recovery、verification等固定dimensions比較，每pair至多3lessons、按預期future usefulness排序；divergence寫student行為、teacher替代及一條reusable instruction，agreement保留共同有用策略。附錄prompt至多1success item，所有items要具體trace evidence及runtime check，不許判定哪條trace答對或替未見steps編故事。（<a href="https://arxiv.org/html/2610.28914v1#S3.SS3">§3.3</a>、<a href="https://arxiv.org/html/2610.28914v1#A2">附錄B</a>）</p>
+<p>SSB teacher的reasoning、skill及system-prompt-related內容在交analysis前移除；analyst只見外部行為。SSB另給graded answer range位置與兩agent最後留在該range的cells（cap4000chars），<strong>不給gold values</strong>。每trace取前10000chars及tail、總cap35000；有可見結果供behavioral diff，不是完全沒有task-specific資訊，也不是看完整未截斷trajectory。（<a href="https://arxiv.org/html/2610.28914v1#S4.SS0.SSS0.Px2">§4 Models</a>、<a href="https://arxiv.org/html/2610.28914v1#A2">附錄B</a>）</p>
+<p>Lessons pool shuffle後分chunks依序更新skill。Map各lesson獨立產append／replace／new section patch，Reduce去重、解conflicts及generalize，Apply deterministic合入當前文件才處理下一chunk。Native backend是modified Trace2Skill，不靠held-out task validation選patch；readable artifact可檢視修改，但本文未以人類user study證明所有lesson都正確或可安全泛化。（<a href="https://arxiv.org/html/2610.28914v1#S3.SS4">§3.4</a>；後一證據界線為本檔補註，非作者自陳）</p>
+<h2 id="data-splits教師與role-models">Data splits、教師與role models</h2>
+<p>SSB-V共400tasks，fixed shuffled split取200evaluation；另200中固定99為distillation。ALFWorld取train split57games收traces，standard134test報success。Chess100distillation puzzles與200evaluation disjoint，strict整段tactical sequence成功才算solve；不是只猜第一步。（<a href="https://arxiv.org/html/2610.28914v1#S4.SS0.SSS0.Px1">§4 Datasets</a>）</p>
+<p>SSB／ALF教師是DeepSeek-V4-Pro-0423或GPT-5.6Terra，均加existing skill強化teacher、skill內容不露給蒸餾；students是Qwen3.6-35B-A3B及GPT-5.6Luna，兩analysis／consolidation roles皆DeepSeek-V4-Pro-0423，不必等於該pair教師。Chess是Sonnet5→Haiku4.5及Haiku4.5→Qwen，roles都用Sonnet5；後者analyst甚至比作為teacher的Haiku更強。（<a href="https://arxiv.org/html/2610.28914v1#S4.SS0.SSS0.Px2">§4 Models</a>）</p>
+<p>Bare student／teacher scores為兩evaluation passes mean±SD；D-Skill為3independently distilled documents、每doc兩passes，共6evaluations，不是6independent skills或6training seeds。Chess estimated Elo另先對每doc兩pass平均，再對3distillation replicates算SD；不要將所有uncertainties當同分母。（<a href="https://arxiv.org/html/2610.28914v1#S4.SS0.SSS0.Px3">§4 Metrics</a>、<a href="https://arxiv.org/html/2610.28914v1#A1.SS0.SSS0.Px5">附錄A Estimated Elo</a>）</p>
+<h2 id="主要結果與teacher分母">主要結果與teacher分母</h2>
+<p>下列D-Skill score皆0–100scale、mean±SD，GC沿作者自報。SSB accuracy、ALF success、Chess solve rate是不同tasks的不同success metrics。（<a href="https://arxiv.org/html/2610.28914v1#S4.T1">表1</a>）</p>
+<table>
+<thead>
+<tr>
+<th>Teacher</th>
+<th>Student</th>
+<th>SSB bare→D-Skill（GC）</th>
+<th>ALF bare→D-Skill（GC）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DeepSeek＋skill</td>
+<td>Qwen</td>
+<td>28.0→71.7±3.6（85.1%）</td>
+<td>59.0→84.2±3.3（85.7%）</td>
+</tr>
+<tr>
+<td>DeepSeek＋skill</td>
+<td>Luna</td>
+<td>25.3→73.3±1.0（89.0%）</td>
+<td>55.2→83.3±3.5（84.6%）</td>
+</tr>
+<tr>
+<td>Terra＋skill</td>
+<td>Qwen</td>
+<td>28.0→73.1±3.4（89.3%）</td>
+<td>59.0→83.1±1.4（93.8%）</td>
+</tr>
+<tr>
+<td>Terra＋skill</td>
+<td>Luna</td>
+<td>25.3→69.7±.8（83.4%）</td>
+<td>55.2→83.1±3.2（94.6%）</td>
+</tr>
+</tbody>
+</table>
+<p>Teacher SSB／ALF scores：DeepSeek79.3±1.8／88.4±.5，Terra78.5±.7／84.7±1.1。所有八configs學生都提高但未超teacher。Chess Sonnet→Haiku：41.2±1.1→52.5±1.1，teacher56.2±3.2，75.3%GC，estimated Elo1058→1286；Haiku→Qwen：24.8±.4→39.0±3.5，teacher41.0±1.4，87.7%GC，Elo663→979。兩Haiku baseline41.2及teacher41.0來自不同harness：前者Claude Code、後者text-tag harness，不當作同一實驗重複值衝突。（<a href="https://arxiv.org/html/2610.28914v1#S4.T1">表1及footnote</a>）</p>
+<h2 id="paired-contrastrole能力與backend消融">Paired contrast、role能力與backend消融</h2>
+<p>在固定99-task SSB set、analysis／consolidation models及lesson format下，student-only／teacher-only／paired三者Qwen47.7±6.7／56.3±6.1／71.7±3.6，Luna49.8±8.8／63.5±5.4／73.3±1.0。配對contrast超過任一側單獨資訊；不表示只有paired才可提高student，兩個one-sided variants也有收益。（<a href="https://arxiv.org/html/2610.28914v1#S4.T2">表2</a>）</p>
+<p>Chess Haiku→Qwen固定teacher／student，Sonnet analyst＋Sonnet consolidator39.0；Sonnet analyst＋Qwen consolidation34.3（59%GC）；Qwen analyst＋Sonnet31.1（39%GC），兩者Qwen32.6（48%GC）。強analysis比昂貴consolidation更關鍵；這是該ablation的實測，非保證所有domain只要某role強便足夠。弱consolidator還產更長skill。（<a href="https://arxiv.org/html/2610.28914v1#S4.T3">表3</a>）</p>
+<p>SkillOpt backend variant用D-Skill lessons替原reflection input，其他merging、ranking及<strong>held-out validation gate保留</strong>。Chess one-epoch rollout budget下SkillOpt29.6±1.4、D-Skill/SkillOpt36.9±5.7、native39.0±3.5；這支持lessons可移植，但variant不再符合native的「無held-out evaluation／further environment feedback」條件。附錄SkillOpt把同100puzzles分60train／40validation，不混作native全100fixed-pair設定。（<a href="https://arxiv.org/html/2610.28914v1#S4.T4">表4</a>、<a href="https://arxiv.org/html/2610.28914v1#A1.SS0.SSS0.Px2">附錄A</a>）</p>
+<h2 id="trace2skill與sft相同teacher-corpus不等所有資源相同">Trace2Skill與SFT：相同teacher corpus不等所有資源相同</h2>
+<p>SSB Trace2Skill student-trace/student-authored得Qwen33.0、Luna31.1；teacher-authored/student-trace提升36.0／46.2，改teacher-traces反34.2／37.0。D-Skill71.7／73.3，優勢不能只用「給了teacher traces」解釋；also配對student traces及difference-analysis訊號不同。（<a href="https://arxiv.org/html/2610.28914v1#S5.T5">表5</a>）</p>
+<p>SFT用同DeepSeek teacher episodes、同Qwen學生／harness scorer，移除teacher system／skill，LoRA rank16、Tinker、lr<span class="math inline">\(10^{-4}\)</span>／5%warm-up／linear decay、5epochs、assistant-token loss；所有teacher episodes含failures，不用correctness labels。Action-only variant跟D-Skill同teacher action–observation內容；reasoning+actions variant另有teacher reasoning進student think channel，這部分D-Skill看不到。D-Skill另使用配對student traces與analysis calls，沒有等total compute證據。（<a href="https://arxiv.org/html/2610.28914v1#S5.SS2">§5.2</a>、<a href="https://arxiv.org/html/2610.28914v1#A3">附錄C</a>；最後一句為本檔補註，非作者自陳）</p>
+<p>圖3 D-Skill只畫每benchmark<strong>單一document lineage</strong>，隨consolidation chunks評；75.5（SSB）／82.5（ALF）非主表六評均值。SSB one-epoch SFT actions49.5、reasoning55.5，epochs2–5分別54.3–64.5／61.5–72.3。ALF附表8 one-epoch75.8／78.8，附表9 multi-epoch79.5–83.2／83.5–86.6；故D-Skill82.5優於一epoch，但<strong>不能說必勝多epoch reasoning SFT</strong>。X-axis為首pass處理的unique teacher tasks，不是相同token／GPUhours或end-to-end wall time。（<a href="https://arxiv.org/html/2610.28914v1#S5.F3">§5.2、圖3</a>、<a href="https://arxiv.org/html/2610.28914v1#A3.T8">附表8</a>、<a href="https://arxiv.org/html/2610.28914v1#A3.T9">附表9</a>）</p>
+<h2 id="成本list-price-inference與一次性蒸餾分開">成本：list-price inference與一次性蒸餾分開</h2>
+<p>Terra→Luna同family的inference成本，SSB每task <strong>.35美分</strong>、ALF每episode <strong>2.0美分</strong>，分別比teacher便宜8.3／5.7倍，對應83.4／94.6%GC。這不是美元.35／2.0，也不是整個offline distillation＋deployment總成本。DSkill較bare student反而稍貴，因讀skill多input tokens，有時也多interaction steps。（<a href="https://arxiv.org/html/2610.28914v1#S5.SS3">§5.3、圖4</a>）</p>
+<p>作者另報一次性distillation：SSB99tasks共$3.28／每training task3.3美分，ALF57tasks共$1.51／2.6美分；解釋analysis每pair一次call、consolidator fixed chunks，因此隨training tasks線性增。表6未逐項列fresh rollout collection、analysis／consolidation各費及SFT training cost，不能據這些數字擅算完整life-cycle savings、compute parity或break-even門檻；list-price比值也非跨vendor／未來價格不變的保證。（<a href="https://arxiv.org/html/2610.28914v1#S5.T6">表6</a>；後一成本界線為本檔補註，非作者自陳）</p>
+<h2 id="chess工具rating與skill內容的範圍">Chess工具、rating與skill內容的範圍</h2>
+<p>Chess evaluation200puzzles ratings649–1987（179two-move＋21one-move），distillation100 ratings612–2357（78＋22）；filter popularity≥100、plays≥1000、rating deviation≤80。每move最多10tool calls，六tools只在board copies回static facts，沒有engine／search/evaluation；合法move lists、agent指定line／reply的simulation仍可幫計算，不能說完全無工具。Full solution正確或checkmate才算解完。（<a href="https://arxiv.org/html/2610.28914v1#A1">附錄A</a>）</p>
+<p>Estimated Elo是對該200puzzles每pass fit <span class="math inline">\(P(solved|r)=\sigma(\alpha+\beta(r-1200)/400)\)</span>，取半機率rating <span class="math inline">\(1200-400\alpha/\beta\)</span>；不是實際對人類對戰rating。附錄D只展示最高分Qwen document之固定節選：SSB先inspect／寫output／reload驗證，ALF acquire→transform→deliver與避免重複探索，Chess確定後commit及避免重複推理。這些是<strong>文獻中的task-specific instructions</strong>，本檔不把它們當本工作區操作規則。（<a href="https://arxiv.org/html/2610.28914v1#A1.SS0.SSS0.Px5">附錄A Estimated Elo</a>、<a href="https://arxiv.org/html/2610.28914v1#A4">附錄D</a>）</p>
+<h2 id="作者限制">作者限制</h2>
+<p>需要capable analyst，弱student自己分析轉移大幅縮水；skill加context及有時多steps；只能傳可用文字表達、student本身能執行的procedural capabilities，如planning／verification／tool use，無法補原本沒有的深計算、perception或capacity。Black-box policy transfer與readable artifact的實測成立範圍是三類tasks和指定harnesses，不等於任意skill、任意小模型都能填95%gap。（<a href="https://arxiv.org/html/2610.28914v1#S6">§6</a>；最後一句為本檔補註，非作者自陳）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.28914_DSkill.zh-TW.html">DSkill翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 8add5969</footer></main></body></html>
