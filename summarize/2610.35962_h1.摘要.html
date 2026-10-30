@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="1165881708851b9d6f0bb961d48f394440d95858"><title>h1: A Taste of the Bitter Lesson in Automated Theorem Proving 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Skander Moalla、Ahmad Rammal、Niket Patel、Rémi Munos、Julia Kempe</p><p>日期：2026-10-25（v1，cs.LG／cs.LO）</p><p>arXiv：2610.35962</p><p><a href="https://arxiv.org/html/2610.35962v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="h1-重點摘要">h1 重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>h1 不替模型安排證明分解或搜尋樹，而是提供高效率 Lean 4 介面，讓模型在持續檔案上局部修改、取得即時錯誤、驗證失敗後反思再試。作者以成功率與推論成本曲線顯示，這種簡單迴圈可逼近或超過多種專用工作流；但「簡單」仍需要可靠工具、強制續跑與妥善管理上下文，不能簡化成只加一句提示詞。</p>
+<h2 id="問題與方法定位">問題與方法定位</h2>
+<p>不同系統的一次 attempt 可能包含不同數量的修補、規劃與多代理呼叫，pass@1 相同不代表運算量相同。本文固定模型比較 harness，或固定 harness 比較模型，將未快取輸入、快取讀寫、輸出 token（含推理 token）分別計價。這些是指定歷史牌價下的 <strong>API-equivalent 成本，不是實際支出或 FLOPs</strong>；不同既有工作的計價規則仍不完全一致。（<a href="https://arxiv.org/html/2610.35962v1#S2.SS1">§2.1</a>、<a href="https://arxiv.org/html/2610.35962v1#A3.SS3">附錄 C.3</a>）</p>
+<p>h1 是模型外圍的工具與控制迴圈，不是新訓練的定理證明模型。每輪以 ReAct 方式推理及呼叫工具，最多 <span class="math inline">\(T\)</span> 回合，修改持續保留的工作檔；每次編輯後編譯、回傳錯誤及尚未證明的目標。模型可自行提交，達回合上限則強制提交。外部驗證拒絕後，反思 LLM 將本輪軌跡、驗證回饋及過往摘要壓成下一輪上下文，連同原始命題及目前工作檔繼續。正常情況持續至驗證通過或成本上限；不可恢復的 Lean 故障也可中止並計為失敗，實驗另受時間及運算限額而可人工停止；一個 pass@1 可以含很多輪壓縮，不等於單次模型呼叫。（<a href="https://arxiv.org/html/2610.35962v1#S2.SS2">§2.2</a>）</p>
+<h2 id="工具反思與可信驗證">工具、反思與可信驗證</h2>
+<p>介面提供局部字串編輯、撤回、工作檔與原始檔分頁；LeanExplore、Loogle、ripgrep 查 Mathlib；REPL 檢查獨立片段；語言伺服器查目標、定義及診斷。模型自己選何時查什麼，不強制特定分解或規劃順序。工具錯誤有明確處置：短暫連線失敗重啟並重試同一命令，編輯檢查發生程序故障則恢復前一檔案；從保存狀態續跑不增加 pass@k 的獨立樣本數。連續三次執行重現的確定性 Lean 故障計為失敗。（<a href="https://arxiv.org/html/2610.35962v1#A2.SS1">附錄 B.1、B.3</a>）</p>
+<p>詳細提示要求維持命題完整性、不以「開放問題」為理由放棄；反思須區分已由驗證器確認的內容和證明模型自己的信念，不能把未核假說升格為事實，也不能替模型發明下一步證明策略。這是經驗壓縮與控制續跑，不是 oracle 提供數學答案。（<a href="https://arxiv.org/html/2610.35962v1#A2.SS2">附錄 B.2</a>）</p>
+<p>編譯成功不等於證明了原命題。原始挑戰在可信隔離環境編譯並保存，提交時只搬入指定原始碼，在無網路新沙箱對唯讀依賴重新編譯，再由 SafeVerify 對照命題、允許的公理並經 Lean kernel 重播。代理產生的編譯成品不受信任；匯入模組仍屬可信環境。支援時可接受原命題的形式化否定；<code>sorryAx</code>、新增公理及依賴 <code>native_decide</code> 的最終證明不通過。<strong>kernel 正確性仍不保證形式化命題符合人類原意</strong>。（<a href="https://arxiv.org/html/2610.35962v1#A3.SS2">附錄 C.2</a>、<a href="https://arxiv.org/html/2610.35962v1#A4.SS2">D.2</a>）</p>
+<h2 id="作者自報主結果">作者自報主結果</h2>
+<p>以下 SOTA 指作者截至 <strong>2026-08-27</strong> 納入的公開比較結果，不代表發表當日或今日完整排行榜。多數配置僅跑一次；作者將這些結果定位為「簡單迴圈能達到此解題數」的存在性證據，而非每項差異都經多種子顯著性驗證。（<a href="https://arxiv.org/html/2610.35962v1#S3.SS1">§3.1</a>、<a href="https://arxiv.org/html/2610.35962v1#A3.SS6">C.2、C.6</a>）</p>
+<table>
+<thead>
+<tr>
+<th>基準</th>
+<th>h1 模型</th>
+<th style="text-align:right">單次執行解題數</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PutnamBench</td>
+<td>GPT-5.5</td>
+<td style="text-align:right">670/672</td>
+</tr>
+<tr>
+<td>FATE-X</td>
+<td>GPT-5.6 Sol</td>
+<td style="text-align:right">90/100</td>
+</tr>
+<tr>
+<td>FC100-solved</td>
+<td>GPT-5.6 Sol</td>
+<td style="text-align:right">78/100</td>
+</tr>
+<tr>
+<td>FormalQualBench</td>
+<td>GPT-5.6 Sol</td>
+<td style="text-align:right">14/23</td>
+</tr>
+<tr>
+<td>IMO 2026</td>
+<td>GPT-5.6 Sol</td>
+<td style="text-align:right">6/6</td>
+</tr>
+</tbody>
+</table>
+<p>PutnamBench 最後兩題另各跑八個副本，才在修正過形式化敘述的新版本達到 672/672，不能稱為原始單次執行全解。假設各副本在相同美元成本時取消，含先前失敗嘗試為每題 $17.86；把後續副本全額成本納入則是 $20.99。兩者與其他系統仍有不同成本口徑。（<a href="https://arxiv.org/html/2610.35962v1#A3.SS4">附錄 C.4</a>）</p>
+<p>作者對 236 個選為開放的 Formal Conjectures 目標，報告八個結果：Erdős 138、337 的指定變體、OEIS A108081／A211417／A022030、AME(9,10) 存在性、Written on the Wall II 100／314。後兩個先修正敘述再證明；結果只限列出的變體及形式化命題，不能推成完整解決所有同名原猜想。作者也以反證找出缺假設或可編輯答案造成的失真；此類空泛答案不算解題。（<a href="https://arxiv.org/html/2610.35962v1#S3.T1">§3.1，表 1</a>、<a href="https://arxiv.org/html/2610.35962v1#A4">附錄 D</a>）</p>
+<h2 id="工作流比較與未消失的差距">工作流比較與未消失的差距</h2>
+<p>PutnamBench 的 h1＋DeepSeek V4 Flash 解 598 題，估計每題 $1.08；Goedel-Architect 的 proof-seeded pass@4 是 597 題、$1.47。（本檔補註，非作者自陳）<strong>原文標示存在差異</strong>：§3.2 稱相同 Flash 模型，表 10 卻將該基線列為 Flash/Pro；此外 h1 的 DeepSeek 成本以未變提示前綴重建快取命中，Goedel 的牌價及快取用量未說明。因此這組結果不能自行升格成完全受控、實測成本相同口徑的因果比較。（<a href="https://arxiv.org/html/2610.35962v1#S3.SS2">§3.2</a>、<a href="https://arxiv.org/html/2610.35962v1#A3.T10">表 10</a>、<a href="https://arxiv.org/html/2610.35962v1#A3.SS5">C.5</a>）</p>
+<p>在 Numina 的 Putnam 2025 形式化版本，h1＋GPT-5.2 單模型逐題一次解 12/12，總成本 $565；Numina 完整系統也為 12/12，但使用 Opus 4.5、Gemini 3 Pro、GPT-5.2 與專門子代理流程，報 $1,800 預算上限。這是系統能力與費用口徑不同的比較，並非同模型消融。FormalQualBench 同 Opus 4.7 時，MerLean 在四小時上限與無上限都多解一題；h1 換更新模型後超過其分數，不能據此宣稱舊差距已在固定模型下消失。（<a href="https://arxiv.org/html/2610.35962v1#S3.T2">表 2</a>、<a href="https://arxiv.org/html/2610.35962v1#A5.SS1">附錄 E.1</a>）</p>
+<h2 id="延長單次嘗試與重複抽樣">延長單次嘗試與重複抽樣</h2>
+<p>對 APN 報告的六個 Erdős 目標，h1 使用 Gemini 3.1 Pro、每題十六個副本。五個三系統都至少成功一次的題目上，h1 pass@1 隨預算增加達 82.5%、成功條件平均成本 $121；APN basic pass@3 為 75.4%／$191，APN full 為 76%／$317。成功條件成本排除完全沒成功的副本群組；APN full 的 AlphaProof 成本也未列入公開座標，不能把圖當所有實際運算的總成本比較。（<a href="https://arxiv.org/html/2610.35962v1#S3.SS3">§3.3</a>、<a href="https://arxiv.org/html/2610.35962v1#A5.SS6">附錄 E.4、E.6</a>）</p>
+<p>同一 h1 資料改計成功與失敗群組，五題 pass@1 在平均 $138 達 82.5%，pass@3 至少達此率需 $202；較大預算下重複嘗試仍能達更高成功率。第六題 Erdős 125 的十六次 h1 全因 Lean timeout 失敗，APN full 保有優勢。全六題終點平均成功率 h1 pass@1 為 68.75%、APN full pass@1 為 71.67%，h1 pass@3 為 79.73%；這些終點<strong>不是相同預算估計</strong>。深度與廣度取捨依題目及預算而異。（<a href="https://arxiv.org/html/2610.35962v1#A5.T15">附錄 E.6，表 15、圖 12</a>）</p>
+<h2 id="介面與上下文的消融">介面與上下文的消融</h2>
+<p>作者自報相同模型下，介面差異很大：Gemini 3 Flash、Putnam100、每題 $20 上限時，AxProverBase 解 18 題，h1 解 69 題。前者回饋後重生整份證明，後者持續局部修改；這是整體設計比較，不能只歸因於其中一項。h1 的工作檔預載 Mathlib，也避免了該 AxProverBase 配置中占失敗編譯 42.2% 的壞 import。（<a href="https://arxiv.org/html/2610.35962v1#S4">§4</a>、<a href="https://arxiv.org/html/2610.35962v1#A5.SS8">附錄 E.8</a>）</p>
+<p>只保留工作檔編輯檢查，Putnam100／FATE-X 解 49／49 題；全工具為 69／63。任一搜尋工具或 REPL 可補回大部分效益，移除任一單項至多少四題。Opus 4.8 在原生 Claude Code、換入本文提示與 Lean MCP 工具、h1，FATE-X 分別為 63／73／83；Putnam100 為 81／95／99。h1 額外控制驗證失敗後續跑及 API 重試，故不只是換工具。（<a href="https://arxiv.org/html/2610.35962v1#S4">§4</a>、<a href="https://arxiv.org/html/2610.35962v1#A5.SS9">附錄 E.9</a>、<a href="https://arxiv.org/html/2610.35962v1#A6">F</a>）</p>
+<p>每回合反思時，Putnam100／FATE-X 解 50／39；每十回合反思為 72／65；每二百回合為 60／52。很長上下文雖便宜快取，仍可能劣化。Gemini 3.1 Pro 在 Putnam100 由低推理強度 89 題、每題 $20.63，到高強度 99 題、$5.34，顯示較多回合不必然比每回合多思考有效。DeepSeek 在 FC100-solved 與 FATE-X 因設定錯誤未開自我反思，不能當完整 h1 配置的反思消融。（<a href="https://arxiv.org/html/2610.35962v1#S4">§4</a>、<a href="https://arxiv.org/html/2610.35962v1#A5.SS3">附錄 E.3</a>、<a href="https://arxiv.org/html/2610.35962v1#A6">F</a>）</p>
+<h2 id="作者明示限制與閱讀界線">作者明示限制與閱讀界線</h2>
+<p>前沿模型多為黑箱，無法量出訓練接觸基準或解答的程度；選用早於部分題目的模型降低風險，但日期不能證明訓練資料內容。多數比較單次執行，選定工具及提示消融才做重抽樣信賴區間。成本也依各圖表改用全題平均、成功條件均值、總額或預算上限：FormalQualBench 的表 2 是<strong>成功題平均</strong>，不能與 PutnamBench 全題平均混成統一成本指標。（<a href="https://arxiv.org/html/2610.35962v1#S5">§5</a>、<a href="https://arxiv.org/html/2610.35962v1#A3.SS3">附錄 C.3、C.6</a>）</p>
+<p>h1 只處理單檔 Lean 證明；超出上下文的整部形式化專案仍需跨檔依賴、程式庫層驗證及平行共享中間成果。工具不含數值計算、模擬、視覺化或網路搜尋；與自動形式化系統的比較僅測固定命題的 proof completion，不評估它們開放式形式化的價值。專用系統仍可能較快找到答案，低 token 成本不代表更低牆鐘時間。（<a href="https://arxiv.org/html/2610.35962v1#S5">§5</a>、<a href="https://arxiv.org/html/2610.35962v1#A1">附錄 A、E.1</a>）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.35962_h1.zh-TW.html">h1 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 11658817</footer></main></body></html>
