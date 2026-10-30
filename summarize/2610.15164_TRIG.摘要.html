@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="33cc76ed37914627180ead68c313260f66f54d35"><title>TRIG: Toward Measuring Texture Realism in Image Generation 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zhiwei Xu、Jiali Cui、Zhiqiang Lao、Heather Yu、Liang Peng</p><p>日期：2026-10-10（v1，cs.CV）</p><p>arXiv：2610.15164</p><p>閱讀說明：依官方v1完整主文與附錄A–H整理；數字為作者自報，區分set-level TRIG distance、single-image S與人工rank correlation；未執行程式、未下載資料或權重。</p><p><a href="https://arxiv.org/html/2610.15164v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="trig以texture-gan-prior量生成圖的局部真實感">TRIG：以texture GAN prior量生成圖的局部真實感</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>TRIG以在真實texture資料預訓練的StyleGAN3 discriminator作frozen prior，再用真實照片的局部synthetic degradations訓練FPN與plausibility head。比較生成／真實image sets時，對128維texture descriptors算sliced Wasserstein distance（SWD）；在兩個人工評估protocol的point estimates比所比基線更貼近realness ranking，但不涵蓋整體圖像品質，也不證明對所有生成器普遍勝出。（<a href="https://arxiv.org/html/2610.15164v1#S3">§1、§3</a>、<a href="https://arxiv.org/html/2610.15164v1#S4.SSx2">§4.2、§6</a>；末項普遍性界線為本檔補註，非作者自陳）</p>
+<h2 id="要測的不是越清晰越真">要測的不是「越清晰越真」</h2>
+<p>FID／KID多用Inception分類特徵，CMMD用CLIP image–text features；作者認為其訓練目標鼓勵忽略部分low-level variation，可能漏掉局部texture不自然。自然照片本來有depth-consistent defocus、motion blur、sensor noise；TRIG目標是local statistics與真實影像及周邊context的一致性，不是單純sharpness。這是評估representation的改造，不是新image generator。（<a href="https://arxiv.org/html/2610.15164v1#S1">§1–3</a>）</p>
+<h2 id="texture-prior與兩種不同輸出">Texture prior與兩種不同輸出</h2>
+<p>Prior來自NUUR-Texture2953的2953張真實homogeneous textures，在StyleGAN3 texture GAN的adversarial訓練中分辨real／synthesized crops；不是拿本次被評生成器的outputs訓練fake detector。保留discriminator b256至b16、凍結權重；b8／b4不進FPN forward。FPN將b16／b32／b64／b128 features投影128channels、coarse-to-fine融合，產<span class="math inline">\(F(I)\in\mathbb R^{128\times64\times64}\)</span>。（<a href="https://arxiv.org/html/2610.15164v1#S3.SSx2">§3</a>、<a href="https://arxiv.org/html/2610.15164v1#A2">附錄A/B</a>）</p>
+<ul>
+<li><strong>Set-level descriptor</strong>：<span class="math inline">\(g(I)=\operatorname{mean}_{u,v}F(I)_{u,v}\)</span>，128維；比較兩組descriptor distributions。</li>
+<li><strong>Local map</strong>：plausibility head的sigmoid <span class="math inline">\(M(I)\)</span>，64×64；低回應定位與已學real texture statistics不一致處。</li>
+<li><strong>Single-image score</strong>：<span class="math inline">\(S(I)\)</span>為<span class="math inline">\(M(I)\)</span>在全圖或指定region的平均，越高越consistent。</li>
+</ul>
+<p>TRIG distance不是對<span class="math inline">\(S(I)\)</span>取均值，也不是把每張圖判真／假後算accuracy。（<a href="https://arxiv.org/html/2610.15164v1#S3.SSx4">§3，式4、7、9–10</a>；末句為本檔補註，非作者自陳）</p>
+<h2 id="fine-tuning只用真照片加proxy-degradations">Fine-tuning：只用真照片加proxy degradations</h2>
+<p>SAM2先分object／material regions；不足三valid regions則用regular grid。每image抽clean probability <span class="math inline">\(U(0.3,0.7)\)</span>，region依此保持原狀，否則均勻抽七operators：Gaussian、box、motion blur、bicubic resampling、frequency suppression、high-frequency phase smoothing、constant-variance Gaussian noise。Gaussian blur與noise各有兩strength ranges，總九variants。Natural defocus／sensor noise留在未改real positives；synthetic negatives是局部uniform blur／band alteration／signal-independent noise等proxy，<strong>label只說有無套operator，不保證每個perturbation都universally不真實</strong>。（<a href="https://arxiv.org/html/2610.15164v1#S3.SSx3">§3</a>、<a href="https://arxiv.org/html/2610.15164v1#A2">附錄B</a>）</p>
+<p>用spatial BCE加same-operator ordering loss：</p>
+<div class="math block">
+\[L=L_{BCE}+0.5L_{ord},\quad L_{ord}=\max(0,p_{severe}-p_{mild}+0.05),\quad |\Delta severity|\ge0.1.\]
+</div>
+<p>不同operator severity無共通尺度，不跨type排序。僅FPN與head共747009parameters可訓練；AdamW、batch8、learning rate <span class="math inline">\(2\times10^{-4}\)</span>、50000steps，cosine降至<span class="math inline">\(2\times10^{-6}\)</span>。圖片直接Lanczos resize到256×256、不保aspect ratio、無crop／flip／color augmentation。Hyperparameters依internal validation BCE／ordering loss與held-out noise-SRCC選，未用最終human ranking或RAISE correlation選。（<a href="https://arxiv.org/html/2610.15164v1#A2.SSx3">附錄B，表6</a>）</p>
+<p>Fine-tuning用ImageNet training的1105841images、internal validation5000images，另扣住ImageNet-eval50000；ImageNet-anchor50000來official validation，每class50。NUUR texture prior與各evaluation／human manifests分開；fine-tuning不使用被評生成器圖。這分離prior資料、head訓練、model-level anchor與人工study anchor。（<a href="https://arxiv.org/html/2610.15164v1#A2.SSx3">附錄B，表8</a>）</p>
+<h2 id="distance固定representation後才比較分布">Distance：固定representation後才比較分布</h2>
+<p>TRIG預設SWD：anchor-only mean／std先standardize各feature dimension，抽1000個unit-sphere directions，逐方向排序一維projections、比較Wasserstein，再平均；unequal sets以empirical quantiles插值至<span class="math inline">\(L=\min(n,m)\)</span>的共同grid。主文式10以一般<span class="math inline">\(W\)</span>表示，附錄C再列<span class="math inline">\(\mathrm{SWD}_2^2\)</span>形式；本摘要不補造未展示code的root／scale convention。（<a href="https://arxiv.org/html/2610.15164v1#S3.SSx4">§3，式10</a>、<a href="https://arxiv.org/html/2610.15164v1#A3">附錄C，式13–14</a>；末句為本檔補註，非作者自陳）</p>
+<p>Lower distance表示相對所選real anchor的texture statistics較近。FD消融用raw FPN features；MMD用anchor-standardized features與anchor一次決定的RBF bandwidth，故不是每source重調bandwidth。SWD每projection排序<span class="math inline">\(O(n\log n)\)</span>，避免MMD pairwise quadratic成本；128維也遠小於Gram descriptors。作者自報feature extraction約213.09images/s，50k約234s，排除initialization／loading／cache；主模型訓練約10h、單H100，<strong>不含precomputed SAM2 masks成本</strong>。（<a href="https://arxiv.org/html/2610.15164v1#A3">附錄B/C</a>）</p>
+<h2 id="model-level比較與兩種人工實驗">Model-level比較與兩種人工實驗</h2>
+<p>廣評12個ImageNet generators，每source50000張、1000classes各50，解析度256×256；涵蓋diffusion、flow、autoregressive與GAN。表1的兩real sets距離最低；TRIG中ImageNet-eval .105±.001，VAR-d30 .438±.008為所比generator最低，ADM-G1.329±.026。這是texture distance，不能當overall generation quality排名。（<a href="https://arxiv.org/html/2610.15164v1#S4.SSx1">§4.1，表1</a>；末句為本檔補註，非作者自陳）</p>
+<p><strong>RAISE protocol</strong>不是480張各別metric–MOS相關：作者將480張AI images依MOS排序，切24個consecutive、non-overlapping groups，每組20；對固定COCO val2017的1000image anchor算distance，再與group mean MOS算correlation，樣本數<span class="math inline">\(n=24\)</span>。分組是人為quality strata、非official RAISE categories或random partition；這測MOS-strata間的monotonicity。（<a href="https://arxiv.org/html/2610.15164v1#S4.SSx2">§4.2</a>、<a href="https://arxiv.org/html/2610.15164v1#A6">附錄F</a>）</p>
+<p><strong>ImageNet人工study</strong>有24participants×200trials=4800pairwise judgments，盲測同class兩source的surface texture，允許tie；10sources為兩real sets與八generators。Win-rate=<span class="math inline">\((wins+0.5ties)/games\)</span>；metric correlation用<strong>九non-anchor sources</strong>（八generators＋一real set），不是4800獨立source ranks。Study有9509distinct images；distance取各source實際被看過的distinct images，另用與study／training不重疊、每class一張共1000的ImageNet-Study-Anchor（作者稱official test來源），不與表1的50k anchor混用。（<a href="https://arxiv.org/html/2610.15164v1#A5.SSx2">附錄E.2–E.6</a>）</p>
+<h2 id="作者自報的相關結果">作者自報的相關結果</h2>
+<p>Distance越小越真，故期待負correlation：</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th style="text-align:right">RAISE Spearman／Kendall</th>
+<th style="text-align:right">ImageNet Spearman／Kendall</th>
+<th>ImageNet Spearman 95% trial-bootstrap CI</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FID</td>
+<td style="text-align:right">+.269／+.232</td>
+<td style="text-align:right">+.467／+.278</td>
+<td>[+.300,+.517]</td>
+</tr>
+<tr>
+<td>KID</td>
+<td style="text-align:right">−.093／−.101</td>
+<td style="text-align:right">−.100／−.056</td>
+<td>[−.300,+.033]</td>
+</tr>
+<tr>
+<td>CMMD</td>
+<td style="text-align:right">+.044／+.087</td>
+<td style="text-align:right">−.683／−.500</td>
+<td>[−.800,−.617]</td>
+</tr>
+<tr>
+<td>Gram-MMD DINOv2</td>
+<td style="text-align:right">−.688／−.500</td>
+<td style="text-align:right">−.600／−.444</td>
+<td>[−.767,−.467]</td>
+</tr>
+<tr>
+<td>Gram-MMD DC-AE</td>
+<td style="text-align:right">−.743／−.558</td>
+<td style="text-align:right">−.283／−.222</td>
+<td>[−.433,−.167]</td>
+</tr>
+<tr>
+<td>TRIG</td>
+<td style="text-align:right">−.747／−.594</td>
+<td style="text-align:right">−.750／−.611</td>
+<td>[−.817,−.550]</td>
+</tr>
+</tbody>
+</table>
+<p>TRIG在這些baselines中point estimate最負，但<strong>CMMD CI與TRIG重疊</strong>；不能從此表宣稱對CMMD顯著優勝。Participant-cluster bootstrap的TRIG CI為[−.817,−.567]，也排除0。作者自報primary九source排名的split-half Spearman median .917，Spearman–Brown corrected .957；這是human ordering reliability，不是TRIG accuracy。（<a href="https://arxiv.org/html/2610.15164v1#S4.T2">表2</a>、<a href="https://arxiv.org/html/2610.15164v1#A5.SSx5">附錄E.3/E.5，表12</a>）</p>
+<p>作者指出generator-vs-generator常難分、intervals重疊；某些participants在texture線索不明時回到semantic impressions。這是作者對CMMD表現差異的解釋，不能當作已完全隔離semantics的證明。（<a href="https://arxiv.org/html/2610.15164v1#A5.SSx5">附錄E.5</a>；末句為本檔補註，非作者自陳）</p>
+<h2 id="消融與local-maps支持什麼">消融與local maps支持什麼</h2>
+<p>TRIG-MMD的RAISE Spearman−.770、ImageNet−.767，略較SWD主設定更負；FD為−.590／−.600。故主要訊號來自representation、SWD則著重可擴展性，不是SWD在每指標最高。Random／ImageNet pretraining、移除noise或masks等會損害部分study；No Noise在ImageNet甚至+.300。Ordering loss移除仍−.659／−.733，顯示其為refinement，非唯一訊號來源。（<a href="https://arxiv.org/html/2610.15164v1#S5.T4">§5，表4</a>、<a href="https://arxiv.org/html/2610.15164v1#A4">附錄D，表10</a>）</p>
+<p>Single-image maps在生成圖foreground常有較低consistency，Gaussian blur coverage增加時local response擴大。附錄H以訓練未見JPEG quality50→5及第二種content作qualitative checks；附錄G加強blur後source distances收斂，被作者解讀為texture sensitivity。這些圖示是sanity checks，不是有generated-artifact ground-truth masks的完整localization benchmark。（<a href="https://arxiv.org/html/2610.15164v1#S4.SSx3">§4.3–4.4</a>、<a href="https://arxiv.org/html/2610.15164v1#A8">附錄G/H</a>；末句為本檔補註，非作者自陳）</p>
+<h2 id="適用範圍與證據界線">適用範圍與證據界線</h2>
+<p>作者將TRIG定位為既有metrics的補充，因texture只是quality一面；方法明說synthetic degradations向generated textures的transfer仰賴兩者departure足夠相關的假設。人工task也非完全排除semantics。（本檔補註，非作者自陳）主文無獨立Limitations節，驗證主要是ImageNet class-conditioned生成與MOS-defined RAISE strata；不能外推到任意domain、text–image alignment或整體多樣性評估，也不把plausibility map等同物理正確性的證明。（<a href="https://arxiv.org/html/2610.15164v1#S6">§3、§6</a>、<a href="https://arxiv.org/html/2610.15164v1#A2">附錄B/E/F</a>）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.15164_TRIG.zh-TW.html">TRIG翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 33cc76ed</footer></main></body></html>

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="33cc76ed37914627180ead68c313260f66f54d35"><title>SemantEq: Faithful Bidirectional Equivalence of Formal Statements 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Xinrui Li、Pawan Sasanka Ammanamanchi、Siddharth Bhat、Rianna Jamdar、Yongxi Lin、Stella Biderman</p><p>日期：2026-10-23（v1，cs.AI）</p><p>arXiv：2610.32919</p><p>閱讀說明：主文與附錄A–K精譯，略完整proof／prompt／grid；數字為作者自報，分開定義、policy及改標資料，未執行Lean。</p><p><a href="https://arxiv.org/html/2610.32919v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="semanteq限制proof如何運用另一陳述">SemantEq：限制proof如何運用另一陳述</h1>
+<h2 id="第1節與附錄ae為何雙向compile不夠">第1節與附錄A/E：為何雙向compile不夠</h2>
+<p>Lean只檢proof對formal statement成立，不檢statement對informal source忠實。兩個無關但library各自可證的命題也可證<span class="math inline">\(P\leftrightarrow Q\)</span>。本文假定trusted formal reference，只判candidate與reference的claim；reference錯誤可被照抄。拒絕不代表不等價。（<a href="https://arxiv.org/html/2610.32919v1#S1">§1–2</a>、<a href="https://arxiv.org/html/2610.32919v1#A5">附錄E</a>）</p>
+<h2 id="第21節與附錄cd抽象relation">第2.1節與附錄C/D：抽象relation</h2>
+<p>固定library <span class="math inline">\(\mathcal L\)</span>，statement無free variables、up to bound renaming及definitional unfolding。四種faithful derivation steps：</p>
+<ol>
+<li>Logical rearrangement：相同atoms、所有interpretations下等價，且每atom在兩側都能影響真值；equations也當opaque atoms。</li>
+<li>Bridge rewriting：用library非pure-logic的equation／iff theorem在context中雙向替換；instance terms來自context，hypotheses在library＋context可證。</li>
+<li>Change of variables：加fresh universal variable，或以prefix可用term實例化universal；structure須原statement已攜帶。</li>
+<li>Structural weakening：positive occurrence可丟conjunct、加disjunct、以context witness引existential；prefix可加hypothesis，或移除由其他hypotheses純邏輯蘊含者。</li>
+</ol>
+<p>新term按定義不可含context hypotheses之外的proof。單step保implication但未必可逆，因此</p>
+<div class="math block">
+\[P\simeq_{Sem,\mathcal L}Q\iff P\rightsquigarrow^*_{\mathcal L}Q\land Q\rightsquigarrow^*_{\mathcal L}P.\]
+</div>
+<p>Proposition1證此為equivalence relation且蘊含<span class="math inline">\(\mathcal L\vdash P\leftrightarrow Q\)</span>。Proposition2的strictly-finer性質僅限無bridges的一階opaque core，非所有Lean chains。Bridges取所有符合shape的library theorems；作者假設其多反映同義改寫，但Mathlib非處處理想，bridge hypotheses若由library滿足仍可連已證等價命題。故acceptance是faithfulness證據，非普遍證明。（<a href="https://arxiv.org/html/2610.32919v1#S2.SS1">§2.1</a>、<a href="https://arxiv.org/html/2610.32919v1#A3">附錄C</a>、<a href="https://arxiv.org/html/2610.32919v1#S5.SS0.SSS0.Px1">Limitations</a>）</p>
+<h2 id="第22節與附錄fsemanteq-eval">第2.2節與附錄F：SemantEq-Eval</h2>
+<p>Definitional相同立即accept，否則兩方向都須成功。五stage依序direct use、normalisation、logical rearrangement、restricted discovery、bridge rewriting，不用model／GPU，不造new objects或bridges。</p>
+<p>四audits為relevance（先查goal parts無antecedent可否證）、proof-term grading（展auxiliaries依constant shape核）、explosion check（拒ex falso直接閉goal、容negation內真正refutation）、antecedent-free replay（拿掉antecedent重播transform仍閉goal即拒）。通過是程式criterion，非Proposition1保證。實作也容許class instances、disequality與固定16numeral facts等。（<a href="https://arxiv.org/html/2610.32919v1#S2.SS2">§2.2</a>、<a href="https://arxiv.org/html/2610.32919v1#A6">附錄F</a>）</p>
+<p>已知validation pair Munkres18.8b被誤接受：Eval提供goal未攜帶的specialization preorder，違反定義的structure限制。Eval無instantiation check，ProofAudit能拒相同proof term；test零FP不等於永無誤接受。（<a href="https://arxiv.org/html/2610.32919v1#A6.SS0.SSS0.Px11">附錄F</a>）</p>
+<h2 id="第31節與附錄hlabel與test分母">第3.1節與附錄H：label與test分母</h2>
+<p>ProofNetVerif全3752pairs；test1452中1303可在本文toolchain elaborate。作者只review原equivalent pairs，102改non-equivalent，人裁定final labels；88由工具結果促發、14由model／manual review，至少八是criterion差異，不必然原標錯。</p>
+<table>
+<thead>
+<tr>
+<th>Labels／system</th>
+<th>TP／FP／FN／TN</th>
+<th style="text-align:right">Precision</th>
+<th style="text-align:right">Recall</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Published／Eval</td>
+<td>242／0／229／832</td>
+<td style="text-align:right">100.0%</td>
+<td style="text-align:right">51.4%</td>
+</tr>
+<tr>
+<td>Published／BEq+</td>
+<td>230／8／241／824</td>
+<td style="text-align:right">96.6%</td>
+<td style="text-align:right">48.8%</td>
+</tr>
+<tr>
+<td>Adjudicated／Eval</td>
+<td>242／0／127／934</td>
+<td style="text-align:right">100.0%</td>
+<td style="text-align:right">65.6%</td>
+</tr>
+<tr>
+<td>Adjudicated／BEq+</td>
+<td>228／10／141／924</td>
+<td style="text-align:right">95.8%</td>
+<td style="text-align:right">61.8%</td>
+</tr>
+</tbody>
+</table>
+<p>（本檔補註，非作者自陳）Precision分母TP＋FP，recall分母TP＋FN；改標471→369，不是Eval新增成功。BEq+已port同toolchain。（<a href="https://arxiv.org/html/2610.32919v1#S3.T1">表1</a>、<a href="https://arxiv.org/html/2610.32919v1#A8">附錄H/K</a>）</p>
+<h2 id="第3233節與附錄iaudit與搜尋瓶頸">第3.2–3.3節與附錄I：audit與搜尋瓶頸</h2>
+<p>100non-equivalent ablation pairs有50test＋50constructed，full Eval誤接受0，移除relevance／grading／explosion／replay各19／8／3／2，全移除35，BEq+54；此set不估真實盛行率。</p>
+<p>Search grid另用407equivalent＝369test＋38recall。Base266／407=65.4%，CPU3.45h、median2s、mean30.5s；最強30.67h（8.9倍）僅多三pairs至66.1%。Miss可能需建object或補bridge，受限search不做。（<a href="https://arxiv.org/html/2610.32919v1#S3.SS2">§3.2–3.3</a>、<a href="https://arxiv.org/html/2610.32919v1#A9">附錄I</a>）</p>
+<h2 id="第41節與附錄gproofaudit政策近似">第4.1節與附錄G：ProofAudit政策近似</h2>
+<p>Lean先核model proof有效，再按term位置分goal derivation、antecedent arguments、rewrite justification。Goal每part須由antecedent做實際工作，bridge應convert而非直接證goal；local lemmas展開或獨立核其雙向implication。Instantiation檢type／object／structure來自goal，replay保留proof自造但不用antecedent的constructions，查其是否已足以閉goal。</p>
+<p>Policy有tolerances：library facts可滿足antecedent hypothesis，rewrite justification可容任意shape facts，並記錄non-bridge／non-logical uses。Strict mode拒不依local hypotheses／antecedent的severe use。它沒有Eval relevance search，部分application另取local name不追instantiation，額外axioms只report；不能將通過稱為完整實現抽象relation的soundness theorem。（<a href="https://arxiv.org/html/2610.32919v1#S4.SS1">§4.1</a>、<a href="https://arxiv.org/html/2610.32919v1#A7">附錄G</a>；末項定理界線為本檔補註，非作者自陳）</p>
+<h2 id="第42節與附錄bhkllm結果">第4.2節與附錄B/H/K：LLM結果</h2>
+<p>Certification511pairs＝原test equivalent471＋recall40，改標後407equivalent／104non-equivalent。GPT5.6Sol（gpt-5.6-sol、medium）四prompt各每pair一session、主campaign不看audit feedback。Proof產於Lean4.28.1／Mathlib1f9fffd5，核於Lean4.30.0-rc1／Mathlib0c154d67；4088directions中340未證、62換toolchain後不elaborate。</p>
+<table>
+<thead>
+<tr>
+<th>方法／prompt</th>
+<th style="text-align:right">Equivalent雙向／407</th>
+<th style="text-align:right">Non-equivalent雙向／104</th>
+<th style="text-align:right">Recall</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BEq+</td>
+<td style="text-align:right">245</td>
+<td style="text-align:right">2</td>
+<td style="text-align:right">60.2%</td>
+</tr>
+<tr>
+<td>Eval</td>
+<td style="text-align:right">266</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">65.4%</td>
+</tr>
+<tr>
+<td>ProofAudit Expedient</td>
+<td style="text-align:right">309</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">75.9%</td>
+</tr>
+<tr>
+<td>Unrestricted</td>
+<td style="text-align:right">322</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">79.1%</td>
+</tr>
+<tr>
+<td>Faithful</td>
+<td style="text-align:right">330</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">81.1%</td>
+</tr>
+<tr>
+<td>Rewrite</td>
+<td style="text-align:right">329</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">80.8%</td>
+</tr>
+</tbody>
+</table>
+<p>ProofAudit各prompt實測precision100%。Expedient／Unrestricted對43／45個non-equivalent pairs雙向compile，audit全部未雙向accept；只一方向過不算pair等價。Faithful與Eval交集255、union341／407=83.8%；strict policy Faithful降323／407=79.4%，全拒antecedent-hypothesis tolerances則303／407。（<a href="https://arxiv.org/html/2610.32919v1#S4.T3">表3</a>、<a href="https://arxiv.org/html/2610.32919v1#A7">附錄G/K</a>）</p>
+<h2 id="第5節與附錄j限制">第5節與附錄J：限制</h2>
+<p>IMO1983例把type positivity放成conclusion conjunct，雖logical equivalent仍按作者criterion改標，development revision loop不是主campaign多輪成績。作者限制為bridge假設、自己的adjudication、一個prover與每pair／style一session、trusted reference需求；直接對informal source評仍future work。（<a href="https://arxiv.org/html/2610.32919v1#A10">附錄J</a>、<a href="https://arxiv.org/html/2610.32919v1#S5.SS0.SSS0.Px1">限制</a>）</p>
+<blockquote>
+<p>重點整理見 <a href="../summarize/2610.32919_SemantEq.%E6%91%98%E8%A6%81.html">SemantEq摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 33cc76ed</footer></main></body></html>

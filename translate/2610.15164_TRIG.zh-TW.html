@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="33cc76ed37914627180ead68c313260f66f54d35"><title>TRIG: Toward Measuring Texture Realism in Image Generation 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zhiwei Xu、Jiali Cui、Zhiqiang Lao、Heather Yu、Liang Peng</p><p>日期：2026-10-10（v1，cs.CV）</p><p>arXiv：2610.15164</p><p>閱讀說明：主文與附錄A–H精譯，省略完整operator參數、大表及sampling設定；數字為作者自報，區分distance、單圖score與human correlation，未重現。</p><p><a href="https://arxiv.org/html/2610.15164v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="trig生成影像的texture-realism">TRIG：生成影像的texture realism</h1>
+<h2 id="第12節改造評量的representation">第1–2節：改造評量的representation</h2>
+<p>生成模型已能重現內容與global structure，但局部texture仍可能不真。FID／KID的Inception與CMMD的CLIP特徵原為分類／image–text alignment學習，可能對low-level texture變化不敏感。Texture realism也不等於sharpness：自然defocus、motion blur及sensor noise本來可以合理。TRIG專注真實texture statistics，作者定位為整體quality metrics的補充。（<a href="https://arxiv.org/html/2610.15164v1#S1">§1–2</a>、<a href="https://arxiv.org/html/2610.15164v1#S6">§6</a>）</p>
+<h2 id="第3節與附錄abtexture-priormap與descriptor">第3節與附錄A/B：texture prior、map與descriptor</h2>
+<p>從NUUR-Texture2953真實homogeneous textures預訓練的StyleGAN3 discriminator取prior，凍結b256–b16，b8／b4不進FPN。由b16／b32／b64／b128 features做128-channel coarse-to-fine融合，得<span class="math inline">\(F(I)\in\mathbb R^{128\times64\times64}\)</span>。Spatial pooling得到128維<span class="math inline">\(g(I)\)</span>，用於set-level distance；plausibility head的sigmoid map <span class="math inline">\(M(I)\)</span>定位texture一致性，<span class="math inline">\(S(I)\)</span>則是全圖／region的map平均。Set distance不等於平均<span class="math inline">\(S\)</span>。（<a href="https://arxiv.org/html/2610.15164v1#S3">§3</a>、<a href="https://arxiv.org/html/2610.15164v1#A2">附錄B</a>）</p>
+<p>只訓練FPN與head，共747009parameters。SAM2分regions，不足三regions用grid；每image抽clean probability <span class="math inline">\(U(0.3,0.7)\)</span>，未改區label1，套synthetic operator區label0。七operators為Gaussian／box／motion blur、bicubic、frequency suppression、high-frequency phase smoothing、constant-variance Gaussian noise，共九strength variants。自然blur／noise留在real positives；proxy labels只表示套過perturbation，不代表每個negative都universally perceptually不合理。</p>
+<div class="math block">
+\[L=L_{BCE}+0.5L_{ord},\quad L_{ord}=\max(0,p_{severe}-p_{mild}+0.05).\]
+</div>
+<p>只有same-operator且normalized severity差至少0.1的regions排序，不跨operator比severity。AdamW、batch8、初始lr <span class="math inline">\(2\times10^{-4}\)</span>、50000steps。直接Lanczos resize256×256、不保aspect ratio、不作crop／flip／color augmentation。（<a href="https://arxiv.org/html/2610.15164v1#S3.SSx3">§3</a>、<a href="https://arxiv.org/html/2610.15164v1#A2">附錄B</a>）</p>
+<p>Fine-tuning只用ImageNet train：1105841train、5000internal validation；ImageNet-eval50000另留，ImageNet-anchor50000取official validation，每class50。Prior有2953textures且與evaluation manifests分離；不使用被評生成器輸出。Hyperparameters用internal validation losses與held-out noise-SRCC選，不用最終human ranking或RAISE correlation。單H100訓練約10h，不含預先計算的SAM2 mask generation。（<a href="https://arxiv.org/html/2610.15164v1#A2.SSx3">附錄B，表6/8</a>）</p>
+<h2 id="第3節與附錄cset-level-trig">第3節與附錄C：set-level TRIG</h2>
+<p>以anchor-only mean／std標準化<span class="math inline">\(g(I)\)</span>，抽1000unit-sphere directions，逐方向投影、排序比較一維Wasserstein再平均。Unequal set sizes以quantile interpolation對齊<span class="math inline">\(L=\min(n,m)\)</span>；lower distance表示更接近real anchor的texture statistics。主文式10寫一般<span class="math inline">\(W\)</span>，附錄列<span class="math inline">\(\mathrm{SWD}_2^2\)</span>；此處不補未展示code的root／scale convention。FD消融用raw features，MMD用anchor標準化及anchor一次決定的RBF bandwidth。SWD排序每projection <span class="math inline">\(O(n\log n)\)</span>，128維features也比高維Gram便宜。（<a href="https://arxiv.org/html/2610.15164v1#S3.SSx4">§3，式9–10</a>、<a href="https://arxiv.org/html/2610.15164v1#A3">附錄C</a>；不補root／scale為本檔補註，非作者自陳）</p>
+<h2 id="第41節生成器比較">第4.1節：生成器比較</h2>
+<p>12個ImageNet generators各50000images、1000classes各50，涵蓋diffusion／flow／autoregressive／GAN。兩real sets的distance最近；表1 TRIG real-eval .105±.001、VAR-d30 .438±.008為所比generator最低。這只比texture distribution，非overall quality。（<a href="https://arxiv.org/html/2610.15164v1#S3.T1">表1</a>；末句為本檔補註，非作者自陳）</p>
+<h2 id="第42節與附錄ef兩種human-protocol">第4.2節與附錄E/F：兩種human protocol</h2>
+<p>RAISE的480張AI images依MOS排序切24groups×20張，再各對固定1000張COCO val2017 anchor算distance，與group mean MOS求相關。Correlation樣本數<span class="math inline">\(n=24\)</span>，不是480；分組是作者新增quality strata，非official categories或independent random partition，測的是MOS strata間monotonicity。（<a href="https://arxiv.org/html/2610.15164v1#A6">附錄F</a>）</p>
+<p>ImageNet study為24participants×200trials=4800judgments，同class的兩source盲比surface texture，允許tie。10sources含兩real與八generators；主ranking用<span class="math inline">\((wins+0.5ties)/games\)</span>，correlation只用九non-anchor sources（八generators＋一real）。Distance取source實際被看過的distinct images，對另一1000image ImageNet-Study-Anchor（作者稱official test來源、與study／training不重疊）計算，勿與表1的50k anchor混淆。（<a href="https://arxiv.org/html/2610.15164v1#A5.SSx2">附錄E.2–E.6</a>）</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th style="text-align:right">RAISE Spearman／Kendall</th>
+<th style="text-align:right">ImageNet Spearman／Kendall</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FID</td>
+<td style="text-align:right">+.269／+.232</td>
+<td style="text-align:right">+.467／+.278</td>
+</tr>
+<tr>
+<td>KID</td>
+<td style="text-align:right">−.093／−.101</td>
+<td style="text-align:right">−.100／−.056</td>
+</tr>
+<tr>
+<td>CMMD</td>
+<td style="text-align:right">+.044／+.087</td>
+<td style="text-align:right">−.683／−.500</td>
+</tr>
+<tr>
+<td>Gram-MMD DINOv2</td>
+<td style="text-align:right">−.688／−.500</td>
+<td style="text-align:right">−.600／−.444</td>
+</tr>
+<tr>
+<td>Gram-MMD DC-AE</td>
+<td style="text-align:right">−.743／−.558</td>
+<td style="text-align:right">−.283／−.222</td>
+</tr>
+<tr>
+<td>TRIG</td>
+<td style="text-align:right">−.747／−.594</td>
+<td style="text-align:right">−.750／−.611</td>
+</tr>
+</tbody>
+</table>
+<p>Distance越小越好，期待負相關。TRIG在這些baselines中point estimate最負；ImageNet trial-bootstrap95% CI[−.817,−.550]，participant-cluster CI[−.817,−.567]，均排除0。CMMD trial CI[−.800,−.617]與TRIG重疊，不宣稱顯著勝過CMMD。九source human split-half Spearman median .917、corrected reliability .957，這是人類排名可靠度。作者承認texture難分時部分participants回到semantic impressions；不是已完全隔離semantics。（<a href="https://arxiv.org/html/2610.15164v1#S4.T2">表2</a>、<a href="https://arxiv.org/html/2610.15164v1#A5.SSx5">附錄E.3/E.5</a>；統計界線為本檔補註，非作者自陳）</p>
+<h2 id="第435節與附錄dgh消融與local回應">第4.3–5節與附錄D/G/H：消融與local回應</h2>
+<p>TRIG-MMD的Spearman為RAISE−.770／ImageNet−.767，略較SWD主設定更負；FD為−.590／−.600，支持representation貢獻而非SWD全面最好。No Noise使ImageNet相關變+.300；無ordering loss仍−.659／−.733，ordering是refinement。Local maps對人工blur coverage增加而擴大低分區，也回應未訓練JPEG degradation；生成圖foreground較常低分。這些是qualitative sanity checks，非完整有ground-truth生成artifact masks的benchmark。（<a href="https://arxiv.org/html/2610.15164v1#S5.T4">§5，表4</a>、<a href="https://arxiv.org/html/2610.15164v1#A8">附錄D/G/H</a>；末句為本檔補註，非作者自陳）</p>
+<h2 id="第6節與適用界線">第6節與適用界線</h2>
+<p>Texture僅quality一面，TRIG是補充protocol。方法依賴synthetic perturbations與生成texture departures足夠相關的transfer假設。（本檔補註，非作者自陳）主文無獨立Limitations節，證據主要限ImageNet生成與MOS-defined RAISE strata，不證任意domain、text–image alignment或整體diversity評量能力。（<a href="https://arxiv.org/html/2610.15164v1#S6">§3、§6</a>、<a href="https://arxiv.org/html/2610.15164v1#A2">附錄B/F</a>）</p>
+<blockquote>
+<p>重點整理見 <a href="../summarize/2610.15164_TRIG.%E6%91%98%E8%A6%81.html">TRIG摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 33cc76ed</footer></main></body></html>
