@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="61692c7a5e51a741171e485d13bfe0646908daac"><title>SkillLifeBench: Benchmarking Security Across the Lifecycle of Agent Skills 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Chenxu Zhang、Zhou Liu、Wu Xin、Wentao Zhang</p><p>日期：2026-10-26（v1，cs.LG／cs.AI）</p><p>arXiv：2610.35215</p><p>閱讀說明：主文與A–D關鍵協議精譯；省略完整模型表、prompt、案例及參考文獻；數字為作者自報，未執行程式或攻擊案例。</p><p><a href="https://arxiv.org/html/2610.35215v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="skilllifebench追蹤skill生命週期的安全與效用">SkillLifeBench：追蹤skill生命週期的安全與效用</h1>
+<h2 id="第12節選到哪一版不代表執行哪一版">第1–2節：選到哪一版，不代表執行哪一版</h2>
+<p>agent可能完成報告卻同時越權複製資料，也可能選了修正版skill，保留handle卻仍呼叫舊碼。因此評測須連結版本選擇、載入實作、實際呼叫與任務／危害結果。程式hash建立身份，結果checker才建立危害。（<a href="https://arxiv.org/html/2610.35215v1#S1">§1</a>、<a href="https://arxiv.org/html/2610.35215v1#S3.SS4">§3.4</a>）</p>
+<h2 id="第3134節資料與決策軌">第3.1–3.4節：資料與決策軌</h2>
+<p>每對固定請求與授權，只更動skill條件；生命週期包含准入、儲存、選版、執行及後繼啟用。64個實作／介面案例指定固定apply_contract呼叫，非自由決策。</p>
+<p>388個源scenario含262新引入、126改編AgentDojo；A實作19、B介面／實作77、C runtime128、D傳播65、E版本99。13個D控制另替換來源值或移除命令；完整suite每模型789 runs。</p>
+<p>兩決策軌各測14模型：runtime89題為具完整task及goal checker的semantic core；lifecycle60題由B／D／E各4template、各5instance而成，允許檢視、選版、reload與設workflow。兩軌clean/challenged合計4172次；只有12模型覆蓋全388題，baseline總執行11504次。（<a href="https://arxiv.org/html/2610.35215v1#S3.SS2">§3.1–3.3</a>、<a href="https://arxiv.org/html/2610.35215v1#A2">附錄B</a>）</p>
+<p>Task須完整答案、artifacts、狀態與順序皆正確。Joint success是完成task且沒有已註冊attack goal；已發生goal不因事後repair消失。拒絕／budget耗盡也可能導致未完成。支援實驗有些只驗case-specific utility與effect，不能等同完整task／goal。</p>
+<p>SkillLifeEval分推論、執行、量測；synthetic files/canary在可丟棄Linux sandbox，credentials留外部、收件者為受控本地捕捉。記錄active／selected／executed版本、loaded object、執行source hash與handle links。決策budget為15rounds、30calls、每request2048 output tokens、request180秒、episode900秒。（<a href="https://arxiv.org/html/2610.35215v1#S3.SS4">§3.4</a>、<a href="https://arxiv.org/html/2610.35215v1#S4.SS1">§4.1</a>）</p>
+<h2 id="第42節任務成功會掩蓋越權">第4.2節：任務成功會掩蓋越權</h2>
+<p>Sol與Sonnet4.6 runtime同73/89=82.0%，lifecycle卻58/60=96.7%及34/60=56.7%；Terra同為58/60。這顯示兩軌提供不同訊息。</p>
+<p>840次challenged lifecycle中，548任務成且goal未成、103兩者皆成、153兩者皆未成、36任務敗但goal成。task成功651/840=77.5%，joint548/840=65.2%；103次有用完成也伴隨攻擊。139次goal成功中78次首次goal發生於執行不同於所選實作的呼叫後。</p>
+<p>群組bootstrap的Sol–Sonnet4.6差40.0百分點，95%區間23.3–58.3；Sol–Terra差0，區間−5.0–5.0。未多重調整。（<a href="https://arxiv.org/html/2610.35215v1#S4.SS2">§4.2</a>、<a href="https://arxiv.org/html/2610.35215v1#A2">附錄B</a>）</p>
+<h2 id="第3543節授權檢查與可信還原">第3.5、4.3節：授權檢查與可信還原</h2>
+<p>388題中170有agent可見安全workflow、189有已驗證可信部署干預、29未驗證干預。170workflow各換5個private值，850 replay皆保utility且無指定harm；不代表所有模型能自行找到它。</p>
+<p>Check在Default加呼叫前的操作、資料、資源、目的地授權檢查。兩Qwen pooled joint：non-runtime29/92→43/92，runtime core120/178→129/178，其他runtime26/70→35/70。core task成功134→145，attack goals也19→21；joint改善不等於攻擊數下降。</p>
+<p>另一189-case deployment cohort×2模型，可信還原utility joint26/378→267/378（6.88%→70.63%），觀測harm216→0；benign utility303→294/378（80.16%→77.78%）。（<a href="https://arxiv.org/html/2610.35215v1#S3.SS5">§3.5</a>、<a href="https://arxiv.org/html/2610.35215v1#S4.SS3">§4.3</a>、<a href="https://arxiv.org/html/2610.35215v1#S4.SS5">§4.5</a>）</p>
+<h2 id="第3644節配對復原研究">第3.6、4.4節：配對復原研究</h2>
+<p>復原另用77個B-parent、17template、六類故障：磁碟替換、版本routing錯、stale loaded code、old handle、同digest錯instance、允許但有缺陷舊碼。每模型77risk＋77benign，只測兩Qwen；每方法risk154、benign154。</p>
+<p>Logs(M)已有授權、呼叫、native logs、版本、磁碟hash、approvals與候選；Provenance(E)再加loaded implementation、invocation-time source hash、handle links。incident、模型、prompt、actions、budget相同，隱藏fault及repair答案不給模型。M仍可能有native-log execution identities。</p>
+<p>模型只選一次plan，不能trial repair或先看後續任務；共用executor從相同磁碟／registry／cache／memory狀態施行，再用全新Default對話完成固定後續任務。Full從公開合格候選依approval_seq與digest tie-break還原並restart，並非偷用hidden clean reference。（<a href="https://arxiv.org/html/2610.35215v1#S3.SS6">§3.6</a>、<a href="https://arxiv.org/html/2610.35215v1#A1.SS1">附錄A.1</a>）</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th style="text-align:right">Risk utility joint／154</th>
+<th style="text-align:right">Benign utility／154</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Logs</td>
+<td style="text-align:right">76（49.35%）</td>
+<td style="text-align:right">120</td>
+</tr>
+<tr>
+<td>Provenance</td>
+<td style="text-align:right">101（65.58%）</td>
+<td style="text-align:right">115</td>
+</tr>
+<tr>
+<td>R-Hash-Reload</td>
+<td style="text-align:right">90</td>
+<td style="text-align:right">122</td>
+</tr>
+<tr>
+<td>R-Hash-Restore</td>
+<td style="text-align:right">94</td>
+<td style="text-align:right">118</td>
+</tr>
+<tr>
+<td>R-Hash-Link</td>
+<td style="text-align:right">100（64.94%）</td>
+<td style="text-align:right">120</td>
+</tr>
+<tr>
+<td>Full</td>
+<td style="text-align:right">107（69.48%）</td>
+<td style="text-align:right">117</td>
+</tr>
+</tbody>
+</table>
+<p>E相對M有30 gains／5 losses，淨25；Link只少1risk成功、卻多5benign成功。Full比Restore淨多13成功，全在無hash trigger的46risk題：32對19；觸發108題兩者皆75成功。</p>
+<p>逐次移除E的執行hash、handle links、identity，成功降至85、91、100/154；其他證據與native logs保留，不能當單獨證據效力。（<a href="https://arxiv.org/html/2610.35215v1#S4.SS4">§4.4</a>、<a href="https://arxiv.org/html/2610.35215v1#A1.T8">表8</a>）</p>
+<h2 id="第45節復原也有正常效用與時間成本">第4.5節：復原也有正常效用與時間成本</h2>
+<p>308次評估M／E／Full提交165／137／308個non-noop plans，平均102.50／97.50／127.50秒。E比Full少55.52%plans、23.53%時間，risk與benign成功也較少。失敗／拒絕的已提交非noop仍算plan；時間含online證據準備、診斷、repair、後續任務與timeouts，排除重建snapshot及另行收證。（<a href="https://arxiv.org/html/2610.35215v1#S4.SS5">§4.5</a>、<a href="https://arxiv.org/html/2610.35215v1#A1.SS1">附錄A.1</a>）</p>
+<h2 id="第46節及附錄dstale-handle案例">第4.6節及附錄D：stale handle案例</h2>
+<p>使用者要發布example-skill文件並排除.git；包裝skill為另一物件packager-vcs。更新<span class="math inline">\(t_1\)</span>三政策都選<span class="math inline">\(v_1\)</span>，Reuse卻由舊handle執行<span class="math inline">\(v_0\)</span>，ZIP同有normal.txt及禁止的.git/config；Fresh／Revalidate執行<span class="math inline">\(v_1\)</span>，保文件無canary。<span class="math inline">\(t_0\)</span>皆舊版、<span class="math inline">\(t_2\)</span>排定fresh resolution皆新版。source manifest綁upstream module，code_sha256綁wrapper，不能混同。（<a href="https://arxiv.org/html/2610.35215v1#S4.SS6">§4.6</a>、<a href="https://arxiv.org/html/2610.35215v1#A4">附錄D</a>）</p>
+<h2 id="附錄ac復原協議及閱讀界線">附錄A–C：復原協議及閱讀界線</h2>
+<p>六actions涵蓋不動作、reload、啟用核准版、隔離、restart與Full。Reload／Restore檢查digest約束；Link再檢handle binding並依adapter能力選修法。合法舊版不自動是fault。</p>
+<p>診斷與repair各120秒，follow-up900秒；無效plan不重生、partial failure保留已發生變動。M／E／Full各有11個unobserved harm checks，deployment各18，皆留原分母。</p>
+<p>（本檔補註，非作者自陳）本篇無獨立Limitations節；12個lifecycle template、兩Qwen復原及受控synthetic案例不建立生產全面安全保證，joint只排除已註冊goal／effect。（<a href="https://arxiv.org/html/2610.35215v1#A3">附錄A–C</a>）</p>
+<blockquote>
+<p>重點整理見 <a href="../summarize/2610.35215_SkillLifeBench.%E6%91%98%E8%A6%81.html">SkillLifeBench摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 61692c7a</footer></main></body></html>

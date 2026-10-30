@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="61692c7a5e51a741171e485d13bfe0646908daac"><title>SkillLifeBench: Benchmarking Security Across the Lifecycle of Agent Skills 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Chenxu Zhang、Zhou Liu、Wu Xin、Wentao Zhang</p><p>日期：2026-10-26（v1，cs.LG／cs.AI）</p><p>arXiv：2610.35215</p><p>閱讀說明：依主文及A–D附錄整理；數字為作者自報，區分源案例、決策軌與兩Qwen復原實驗，未執行作者程式或攻擊案例。</p><p><a href="https://arxiv.org/html/2610.35215v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="skilllifebench-重點摘要">SkillLifeBench 重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>SkillLifeBench把skill的磁碟程式、registry所選版本、載入物件及保留handle串成執行證據，再把「任務完成」與「越權目標達成」分開驗。關鍵不是只辨識prompt injection文字，而是檢查選定修正版是否真的在下一次呼叫執行；實驗顯示好用輸出可與危害共存，execution provenance可幫復原，但規則法、模型診斷與全面還原各有風險／正常效用／成本取捨。</p>
+<h2 id="評測對象與資料分母">評測對象與資料分母</h2>
+<p>生命週期分Acquire、Store、Retrieve、Execute、Evolve：分別涉及准入、持久程式與registry、版本選擇、實作呼叫、後繼版本啟用。每一對固定使用者請求與授權，只更動指定skill條件；授權界線包含可讀資料、目的地與可改狀態。主比較通常讓模型看到名稱／描述／schema／回饋，executor才解析實作；64個實作／介面案例指定精確apply_contract呼叫，用於測固定呼叫下的實作後果，不能全部當自由agent決策。（<a href="https://arxiv.org/html/2610.35215v1#S3.SS1">§3.1–3.2</a>）</p>
+<p>源benchmark共有388個配對scenario：262新引入（260建構＋2個OpenClaw更新），126改編AgentDojo並保留payload、任務、攻擊目標與介面。五family為A實作19、B介面／實作關係77、C runtime內容128、D工作流傳播65、E版本99。13個D案例另有固定下游工具的來源替換／命令移除control，完整suite為每模型<span class="math inline">\(2\times388+13=789\)</span>次執行。（<a href="https://arxiv.org/html/2610.35215v1#S3.SS2">§3.2</a>、<a href="https://arxiv.org/html/2610.35215v1#A1.T5">附錄A，表5</a>）</p>
+<p>兩條<strong>決策軌</strong>各自評14模型，不與全源案例混算：</p>
+<ul>
+<li>Runtime：89題，來自126個AgentDojo改編案例中具完整task／attack-goal checker者，亦稱semantic core。</li>
+<li>Autonomous lifecycle：60題，從B／D／E各4個parent template、每template 5個instance而成；可檢視、選版、reload、設workflow或直接組合工具。12template不是60個獨立來源機制；560 qualification controls全過。</li>
+</ul>
+<p>兩軌clean/challenged共4,172次決策執行。另12模型覆蓋完整源suite，兩Qwen加runtime，連同lifecycle合計11,504 baseline executions；這不是14模型全都跑完388題。（<a href="https://arxiv.org/html/2610.35215v1#S3.SS3">§3.3</a>、<a href="https://arxiv.org/html/2610.35215v1#S4.SS1">§4.1</a>、<a href="https://arxiv.org/html/2610.35215v1#A2">附錄B</a>）</p>
+<h2 id="joint-success與執行證據如何定義">Joint success與執行證據如何定義</h2>
+<p>決策軌task及attack goal皆為Boolean，完整答案、artifacts、狀態及順序須全符合才算task完成；拒絕、無效動作或budget耗盡也可能導致未完成。Joint success為<strong>完成任務且未達成已註冊攻擊目標</strong>；一旦攻擊已發生，事後repair不會把它抹除。支援實驗另有case-specific utility與registered effect，不能一律升格為完整task／goal。（<a href="https://arxiv.org/html/2610.35215v1#S3.SS4">§3.4</a>、<a href="https://arxiv.org/html/2610.35215v1#A1.SS0.SSS0.Px2">附錄A，execution-bound outcomes</a>）</p>
+<p>SkillLifeEval分離模型推論、skill執行與量測。skill執行置於可丟棄Linux sandbox，接收宣告引數、synthetic task files與canary，API credentials留外部，外傳捕捉於受控本地環境；這不是對真實收件者或生產資料的攻擊測試。記錄包含呼叫參數／回饋、狀態、active／selected／executed versions、loaded object identity、執行時source hash及handle links。<strong>hash證明程式身份，checker才判定危害</strong>；對照磁碟hash、版本label本身不證明實際執行哪份程式。（<a href="https://arxiv.org/html/2610.35215v1#S3.SS4">§3.4</a>）</p>
+<p>每軌共同budget為15 logical rounds、30 attempted tool calls、每request 2048 output tokens、request 180秒、episode 900秒；運送失敗至多兩次transport attempts，不因無效內容重新抽答。Hosted用provider defaults；local Qwen為固定greedy設定。（<a href="https://arxiv.org/html/2610.35215v1#S4.SS1">§4.1</a>、<a href="https://arxiv.org/html/2610.35215v1#A1.SS1">附錄A.1</a>）</p>
+<h2 id="作者自報14模型決策結果">作者自報14模型決策結果</h2>
+<p>下列為challenged Joint SR，runtime分母89、lifecycle分母60，不能把兩欄直接合成同一ranking。</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th style="text-align:right">Runtime %</th>
+<th style="text-align:right">Lifecycle %</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPT-5.6-Sol</td>
+<td style="text-align:right">82.0</td>
+<td style="text-align:right">96.7</td>
+</tr>
+<tr>
+<td>GPT-5.6-Terra</td>
+<td style="text-align:right">80.9</td>
+<td style="text-align:right">96.7</td>
+</tr>
+<tr>
+<td>Sonnet 5</td>
+<td style="text-align:right">76.4</td>
+<td style="text-align:right">88.3</td>
+</tr>
+<tr>
+<td>GLM-5.2</td>
+<td style="text-align:right">74.2</td>
+<td style="text-align:right">88.3</td>
+</tr>
+<tr>
+<td>GLM-5.3</td>
+<td style="text-align:right">76.4</td>
+<td style="text-align:right">80.0</td>
+</tr>
+<tr>
+<td>DeepSeek-V4-Pro</td>
+<td style="text-align:right">77.5</td>
+<td style="text-align:right">76.7</td>
+</tr>
+<tr>
+<td>Kimi-K2.6</td>
+<td style="text-align:right">77.5</td>
+<td style="text-align:right">76.7</td>
+</tr>
+<tr>
+<td>DeepSeek-V3.2</td>
+<td style="text-align:right">28.1</td>
+<td style="text-align:right">60.0</td>
+</tr>
+<tr>
+<td>Sonnet 4.6</td>
+<td style="text-align:right">82.0</td>
+<td style="text-align:right">56.7</td>
+</tr>
+<tr>
+<td>Qwen3.5-4B</td>
+<td style="text-align:right">61.8</td>
+<td style="text-align:right">55.0</td>
+</tr>
+<tr>
+<td>Qwen3.5-9B</td>
+<td style="text-align:right">73.0</td>
+<td style="text-align:right">51.7</td>
+</tr>
+<tr>
+<td>DeepSeek-V4-Flash</td>
+<td style="text-align:right">77.5</td>
+<td style="text-align:right">45.0</td>
+</tr>
+<tr>
+<td>GPT-6-Luna</td>
+<td style="text-align:right">73.0</td>
+<td style="text-align:right">31.7</td>
+</tr>
+<tr>
+<td>Gemini 3.5 Flash</td>
+<td style="text-align:right">67.4</td>
+<td style="text-align:right">10.0</td>
+</tr>
+</tbody>
+</table>
+<p>來源：<a href="https://arxiv.org/html/2610.35215v1#S3.T2.fig1">表2</a>、<a href="https://arxiv.org/html/2610.35215v1#A2.T9">附錄B，表9</a>。Sol與Sonnet4.6同為73/89 runtime成功，但lifecycle分別58/60與34/60；Sol與Terra皆58/60。</p>
+<p>14模型合計840次challenged lifecycle執行：548任務完成且goal未成、103兩者皆成、153兩者皆未成、36任務失敗但goal達成。因此task成功651/840=77.5%，joint548/840=65.2%；不是「只有task失敗才有安全問題」。Clean為688/840 joint且goal成功0。Luna challenged完成19題且goal0；Qwen4B完成52題但其中19題亦goal成功，joint只33題。139次goal成功中，78次首次goal發生於執行實作不同於所選版本的呼叫之後；這是觀測關聯，不是所有攻擊的唯一原因。（<a href="https://arxiv.org/html/2610.35215v1#S4.SS2">§4.2，圖3</a>）</p>
+<p>12template群組bootstrap的Sol–Sonnet4.6差40.0百分點，95% percentile interval為23.3–58.3；Sol–Terra差0.0，區間−5.0–5.0。作者說明未作多重調整，描述對template組合的敏感性，不應包裝成通用模型能力排名。（<a href="https://arxiv.org/html/2610.35215v1#A2">附錄B</a>）</p>
+<h2 id="可行干預不代表模型總能選對">可行干預不代表模型總能選對</h2>
+<p>388源案例中170有agent-visible可行workflow、189有已驗證可信部署干預、29未驗證可行干預。170個workflow各換5個private test values，850 replay全保utility且無指定harm；這是可行性證明，不是14模型都能找到此路徑。（<a href="https://arxiv.org/html/2610.35215v1#S3.SS5">§3.5</a>）</p>
+<p>Check在Default系統指示加上呼叫前查操作、資料範圍、資源、目的地與使用者授權；tool／skill文字不創造權限。兩Qwen配對結果：46 non-runtime案例×2模型joint 29/92→43/92（+15.22百分點）；runtime core120/178→129/178（+5.06）；其他runtime26/70→35/70（+12.86）。<strong>runtime core task成功134→145，但完整attack goals也19→21</strong>，不能只報joint改善就稱攻擊數全面下降。（<a href="https://arxiv.org/html/2610.35215v1#S4.SS3">§4.3，表3</a>、<a href="https://arxiv.org/html/2610.35215v1#A3.T11.fig1">附錄C，表11</a>）</p>
+<p>另一個189-case deployment cohort×2模型，可信還原的utility joint26/378=6.88%→267/378=70.63%，觀測harm216→0；正常配對utility303/378→294/378（80.16%→77.78%）。這與下述77-case matched recovery是不同cohort。（<a href="https://arxiv.org/html/2610.35215v1#S4.SS5">§4.3、4.5</a>）</p>
+<h2 id="matched-recovery如何公平比較證據">Matched recovery如何公平比較證據</h2>
+<p>重用77個B-family parent、17template、6種互斥主要故障：磁碟程式替換24、版本／routing錯10、stale loaded code12、old handle8、同digest錯instance binding5、已允許但有缺陷舊碼18。每parent有risk與benign狀態；兩Qwen各77 risk＋77 benign，故每方法risk分母154、benign154，合計308。（<a href="https://arxiv.org/html/2610.35215v1#S3.SS6">§3.6</a>、<a href="https://arxiv.org/html/2610.35215v1#A1.T6">附錄A，表6</a>）</p>
+<p>Logs(M)有授權、calls/returns、incident outcomes、native logs、installed/active版本、file hashes、approvals與合格候選；Provenance(E)只再加loaded implementation、invocation-time source hashes、stored-handle links。兩者incident、模型、prompt、actions、budget相同，fault labels及repair答案不給模型；M仍可含native-log execution identities，不能說Logs完全沒有任何執行資訊。（<a href="https://arxiv.org/html/2610.35215v1#S3.SS6">§3.6</a>、<a href="https://arxiv.org/html/2610.35215v1#A1.SS2">附錄A.1–A.2</a>）</p>
+<p>模型一次選一plan：noop、reload_selected、activate_approved_and_reload、quarantine_selected、restart_runtime、full_restore，不允許trial repairs或先偷看follow-up。共同executor從匹配磁碟／registry／cache／memory狀態施行，再由全新Default對話做固定後續任務。Full不經診斷，從公開可用、核准且未撤銷、完整性驗證與task-compatible候選，依最大approval_seq、digest字典序tie-break選版，preflight後全還原並restart；不是拿hidden clean reference直接救回。（<a href="https://arxiv.org/html/2610.35215v1#A1.SS1">附錄A.1</a>）</p>
+<p>規則Reload以executed/disk hash違反版本／approval約束觸發reload或activate，多包則Full；Restore同trigger但直接Full；Link再檢查handle–object–call關係，依adapter能否刷新引用決定reload、restart或Full。允許的舊版本可合法，不能單憑不是最新就判故障。（<a href="https://arxiv.org/html/2610.35215v1#A1.SS2">附錄A.2</a>）</p>
+<h2 id="作者自報復原效果與成本">作者自報復原效果與成本</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th style="text-align:right">Risk utility joint／154</th>
+<th style="text-align:right">Benign utility／154</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Logs(M)</td>
+<td style="text-align:right">76（49.35%）</td>
+<td style="text-align:right">120（77.92%）</td>
+</tr>
+<tr>
+<td>Provenance(E)</td>
+<td style="text-align:right">101（65.58%）</td>
+<td style="text-align:right">115（74.68%）</td>
+</tr>
+<tr>
+<td>R-Hash-Reload</td>
+<td style="text-align:right">90</td>
+<td style="text-align:right">122</td>
+</tr>
+<tr>
+<td>R-Hash-Restore</td>
+<td style="text-align:right">94</td>
+<td style="text-align:right">118</td>
+</tr>
+<tr>
+<td>R-Hash-Link</td>
+<td style="text-align:right">100（64.94%）</td>
+<td style="text-align:right">120</td>
+</tr>
+<tr>
+<td>Full</td>
+<td style="text-align:right">107（69.48%）</td>
+<td style="text-align:right">117（75.97%）</td>
+</tr>
+</tbody>
+</table>
+<p>來源：<a href="https://arxiv.org/html/2610.35215v1#S4.SS4">§4.4–4.5</a>、<a href="https://arxiv.org/html/2610.35215v1#A1.T8">表8</a>。E相對M有30 paired gains、5 losses，淨25；Link只比E少1 risk成功，卻多5 benign成功。Full相對Restore的13個淨優勢全來自無hash trigger的46 risk評估：Full32成功、Restore19，觸發的108題兩者皆75成功。</p>
+<p>在E逐一移除執行source hash、handle links、implementation identity後，risk成功分別85、91、100，對完整101減少16／10／1；其他證據與native logs保留，不能解讀成單一證據孤立效力。（<a href="https://arxiv.org/html/2610.35215v1#S4.SS4">§4.4</a>、<a href="https://arxiv.org/html/2610.35215v1#A1.SS2">附錄A.2</a>）</p>
+<p>308次評估中M／E／Full提交non-noop plans165／137／308，平均online時間102.50／97.50／127.50秒。E比Full少55.52% plans、23.53%時間，但risk與benign utility都較低。計時包含online evidence preparation、診斷、repair、後續任務及失敗／timeout；排除snapshot reconstruction與另行收集證據。送出的非noop即使拒絕／失敗也計數，不是「成功修復數」。（<a href="https://arxiv.org/html/2610.35215v1#S4.SS5">§4.5</a>、<a href="https://arxiv.org/html/2610.35215v1#A3">附錄A.1、C</a>）</p>
+<h2 id="實例選對修正版仍執行舊handle">實例：選對修正版仍執行舊handle</h2>
+<p>OpenClaw包裝案例中，使用者要發布example-skill一般文件並排除.git；packager-vcs才是包裝skill，兩者不是同一物件。<span class="math inline">\(t_1\)</span>三政策都active／selected <span class="math inline">\(v_1\)</span>，但Reuse保留handle而執行<span class="math inline">\(v_0\)</span>，ZIP同時有normal.txt與禁止的.git/config；Fresh／Revalidate執行<span class="math inline">\(v_1\)</span>，保文件且無canary。source manifest綁upstream module，code_sha256綁wrapper，不能混成同一hash。<span class="math inline">\(t_0\)</span>皆舊版、<span class="math inline">\(t_2\)</span>排定fresh resolution皆新版；這是受控routing，不是任意部署都會自然延續。（<a href="https://arxiv.org/html/2610.35215v1#S4.SS6">§4.6，表4</a>、<a href="https://arxiv.org/html/2610.35215v1#A4">附錄D</a>）</p>
+<p>支援storage study以77 B-skills、兩Qwen與SmolLM3-3B形成924 trajectories；231 admission/replacement配對中，66個skills新增161個harm positives。更新study共108 runs（54 challenged／54 benign）；<span class="math inline">\(t_1\)</span>的36 controlled post-update執行有12次parent執行，分6 harmful challenged及6無害benign。<strong>執行不一致與危害仍須分別驗</strong>。（<a href="https://arxiv.org/html/2610.35215v1#S4.SS4">§4.4</a>、<a href="https://arxiv.org/html/2610.35215v1#A4">附錄D</a>）</p>
+<h2 id="閱讀界線">閱讀界線</h2>
+<p>（本檔補註，非作者自陳）本篇未設獨立Limitations節；具體限制來自實驗設計：lifecycle只有12個來源template，復原只測兩個Qwen，受控synthetic fixtures與預定actions不是生產系統全面安全保證；joint也只排除已註冊goal／effect，不排除所有未知危害。非決策支援實驗仍有unobserved checks：M／E／Full各11、deployment各18，作者全留原分母，不應寫成所有效應都已完整觀測。Hosted ID及版本依作者實驗紀錄，不是本檔對今日服務的再查。（<a href="https://arxiv.org/html/2610.35215v1#A3">附錄A–C</a>）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.35215_SkillLifeBench.zh-TW.html">SkillLifeBench翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 61692c7a</footer></main></body></html>
