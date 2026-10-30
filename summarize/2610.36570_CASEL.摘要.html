@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="405d927badef085dc2609fdf46afd5103c93fd49"><title>CASEL: Consequence-Aware Selective Execution for Reliable Long-Horizon Tool-Using Agents 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Yanyan Zhang、Fei Shen、Ting Yan、Hao Zhang</p><p>日期：2026-10-27（v1，cs.AI／cs.CR／cs.SE）</p><p>arXiv：2610.36570</p><p>閱讀說明：依官方v1完整主文與表格整理；數字為作者模擬自報，干預效果與成本是設定值而非實測，保留selective-risk及ledger保證條件；未執行程式或真實agent部署。</p><p><a href="https://arxiv.org/html/2610.36570v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="casel依失敗後果與可逆性分配工具執行審查">CASEL：依失敗後果與可逆性分配工具執行審查</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>CASEL在base agent與tool executor間，依校準失敗率、後果、可逆性等訊號，選直接執行、驗證、sandbox、澄清、批准或棄權。在<strong>預設各干預效果的受控模擬</strong>，它比同menu／同compute成本的uncertainty ranking減少嚴重副作用；簡單的<span class="math inline">\(\hat p\hat c\)</span>排序已有稍低傷害，CASEL的額外價值是較少人工approval。Trajectory ledger反而更差，作者預設不採用；本文不是部署有效性或整體安全保證。（<a href="https://arxiv.org/html/2610.36570v1">摘要</a>、<a href="https://arxiv.org/html/2610.36570v1#S6.SS2">§VI-B</a>、<a href="https://arxiv.org/html/2610.36570v1#S8">§VIII</a>）</p>
+<h2 id="問題與路由同一失敗率不同後果">問題與路由：同一失敗率，不同後果</h2>
+<p>對步驟<span class="math inline">\(t\)</span>提議的call <span class="math inline">\(a_t\)</span>，<span class="math inline">\(F_t\)</span>表示相對任務、政策、tool contract或環境狀態的無效行動；真失敗率<span class="math inline">\(p_t\)</span>、錯誤後果<span class="math inline">\(c_t\in[0,1]\)</span>形成期望有害損失<span class="math inline">\(r_t=p_tc_t\)</span>。執行時只用帶帽估計，不把真值當controller可見訊號。CASEL是model-agnostic的<strong>執行前資源分配policy</strong>，不重訓base LLM，也不替代verify／rollback／approval等實際機制。（<a href="https://arxiv.org/html/2610.36570v1#S3">§III</a>、<a href="https://arxiv.org/html/2610.36570v1#S4">§IV</a>）</p>
+<ol>
+<li>Raw failure score以獨立held-out資料做isotonic regression，若有logits亦可temperature scaling，得<span class="math inline">\(\hat p_t\)</span>。</li>
+<li><span class="math inline">\(\hat c_t=\operatorname{clip}(c_{\rm base}(z_t)M_{\rm scope}(\theta_t,h_t),0,1)\)</span>：工具基本severity來自write權、privilege、敏感度、value transfer；scope估受影響records、金額、rollback成本等。</li>
+<li>可逆性<span class="math inline">\(\rho_t\)</span>改變可行mode集合，<strong>不直接縮放後果</strong>。一般runtime列read／reversible／compensable／irreversible；sandbox需可逆mutation或dry-run介面，不能用於不可逆commit；approve用於compensable／irreversible。</li>
+<li><span class="math inline">\(g_t\)</span>是多抽樣仍不能補出的意圖缺漏，超閾值先clarify；<span class="math inline">\(d_t\)</span>代表證據過時，有refresh才先re-read。兩者不同於單純模型不確定。</li>
+</ol>
+<p>（<a href="https://arxiv.org/html/2610.36570v1#S4.SS1">§IV-A</a>）</p>
+<p>對可行mode <span class="math inline">\(m\)</span>，用殘餘錯誤比例<span class="math inline">\(\gamma_m\)</span>最小化</p>
+<div class="math block">
+\[J(m)=\gamma_m\hat p_t\hat c_t+\lambda k(m)+\mu q(m),\]
+</div>
+<p><span class="math inline">\(k\)</span>為compute、<span class="math inline">\(q\)</span>為互動成本。一般設計要求依工具／可逆性／checker實估<span class="math inline">\(\gamma_m(\xi_t)\)</span>，但<strong>本文模擬直接設每mode常數</strong>。忽略互動成本時，干預相對direct的預期傷害下降<span class="math inline">\((1-\gamma_m)\hat r_t\)</span>超過<span class="math inline">\(\lambda k(m)\)</span>才划算。若<span class="math inline">\(\hat r_t&gt;\hat\tau\)</span>移除direct，否則還需direct在<span class="math inline">\(J\)</span>最小才執行；ledger是另加的可選檢查。（<a href="https://arxiv.org/html/2610.36570v1#alg1">§IV-B，演算法1</a>）</p>
+<h2 id="有限樣本閾值只在寫明的條件下有效">有限樣本閾值：只在寫明的條件下有效</h2>
+<p>令direct集合<span class="math inline">\(A_\tau=\{X:S(X)\le\tau\}\)</span>，selective risk為<span class="math inline">\(R(\tau)=\mathbb E[L\mid X\in A_\tau]\)</span>，coverage為集合機率。對事先固定的<span class="math inline">\(K\)</span>點grid，以</p>
+<div class="math block">
+\[\widehat R(\tau)+\sqrt{\frac{\ln(K/\delta)}{2n_\tau}}\le\epsilon\]
+</div>
+<p>挑覆蓋最多的可行閾值。命題1要求<strong>scorer與grid在抽校準資料前固定</strong>；標記<span class="math inline">\(L\in[0,1]\)</span>；records i.i.d.來自部署的proposed-action分布；與擬合$ f_{\rm cal}$的資料分離；<span class="math inline">\(n_\tau&gt;0\)</span>。則至少<span class="math inline">\(1-\delta\)</span>機率，所有符合式子的grid閾值都有<span class="math inline">\(R(\tau)\le\epsilon\)</span>。（<a href="https://arxiv.org/html/2610.36570v1#S5.SS1">§V-A，式5／命題1</a>）</p>
+<p>一條trajectory內action相依，exchangeability不足以替代i.i.d.，因此校準每trajectory只取一record。保證涵蓋<strong>整個被認證direct集合</strong>，不自動延伸到更小的再篩subset：subset可能濃縮高損失。對部署policy要認證完整<span class="math inline">\(\pi_\tau\)</span>的direct指示函式（trajectory prefix的固定函式），不能只先認證風險分數閾值就稱整個runtime安全。主比較實際用<span class="math inline">\(\hat\tau=\infty\)</span>；有限閾值另在stress/check段驗證。（<a href="https://arxiv.org/html/2610.36570v1#S5.SS1">§V-A–B</a>）</p>
+<h2 id="trajectory-ledger條件會計不是可靠性證書">Trajectory ledger：條件會計，不是可靠性證書</h2>
+<p>可選ledger <span class="math inline">\(H_t=\sum_{i\le t}D_i\bar r_i\)</span>只記direct步驟。命題2若要求<span class="math inline">\(D_t,\bar r_t\)</span>在路由資訊<span class="math inline">\(\mathcal G_t\)</span>下可測、每direct步皆滿足</p>
+<div class="math block">
+\[\mathbb E[c_tF_t\mid\mathcal G_t]\le\bar r_t,\]
+</div>
+<p>且<span class="math inline">\(\sum_tD_t\bar r_t\le B_H\)</span>幾乎處處成立，才有direct累積期望傷害<span class="math inline">\(\mathbb E[\sum_tD_tc_tF_t]\le B_H\)</span>。不要求步驟獨立，但<strong>校準point estimate不是每步條件上界</strong>；被干預action的殘餘傷害也不在帳上。不能把這個期望界寫成每trajectory實現傷害必≤budget。（<a href="https://arxiv.org/html/2610.36570v1#S5.SS2">§V-B，命題2</a>）</p>
+<h2 id="模擬設計干預效果全是給定值">模擬設計：干預效果全是給定值</h2>
+<p>20seed，每seed獨立40000-action calibration與6000條20步test trajectories，共120000 test actions／seed。Read-only58%、reversible28%、irreversible14%；class-dependent Beta真失敗率加trajectory難度擾動造成步驟相依，controller只看noisy raw failure score與noisy consequence。（<a href="https://arxiv.org/html/2610.36570v1#S6.SS1">§VI-A</a>）</p>
+<table>
+<thead>
+<tr>
+<th>模擬mode</th>
+<th style="text-align:right">殘餘比例<span class="math inline">\(\gamma\)</span></th>
+<th style="text-align:right">compute <span class="math inline">\(k\)</span></th>
+<th style="text-align:right">interaction <span class="math inline">\(q\)</span></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Direct</td>
+<td style="text-align:right">1.00</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0</td>
+</tr>
+<tr>
+<td>Verify</td>
+<td style="text-align:right">.42</td>
+<td style="text-align:right">1.0</td>
+<td style="text-align:right">0</td>
+</tr>
+<tr>
+<td>Sandbox</td>
+<td style="text-align:right">.15</td>
+<td style="text-align:right">1.6</td>
+<td style="text-align:right">.04</td>
+</tr>
+<tr>
+<td>Approve</td>
+<td style="text-align:right">.04</td>
+<td style="text-align:right">2.2</td>
+<td style="text-align:right">.65</td>
+</tr>
+</tbody>
+</table>
+<p>模擬sandbox只允許reversible mutations；approve只允許irreversible且<span class="math inline">\(\hat c\ge .55\)</span>，比一般runtime概念更窄。Clarify僅ambiguity stress family測，abstain與staleness branch均未測；六mode設計不代表六mode都有實證。各方法共用每action一個uniform draw以配對結果；失敗機率設為<span class="math inline">\(\gamma_mp_t\)</span>。（<a href="https://arxiv.org/html/2610.36570v1#S6.SS1">§VI-A</a>）</p>
+<p>Scalar gates只verify；menu gates按<span class="math inline">\(\hat p\)</span>、<span class="math inline">\(\hat c\)</span>或<span class="math inline">\(\hat p\hat c\)</span>排序，把最高風險action送最強可行干預。這些及CASEL／消融配到compute .486，<span class="math inline">\(\lambda:\mu=.02:.015\)</span>；Base、Always-Verify、Mutation-Gated是不同成本的固定policy，不在此同成本組內。（<a href="https://arxiv.org/html/2610.36570v1#S6.SS1">§VI-A</a>）</p>
+<p>HSR是**trajectory中至少一個失敗且真後果<span class="math inline">\(c\ge .45\)</span>**的比例；task success是20步皆無失敗的trajectory比例。MNH是每trajectory的<span class="math inline">\(\sum_{t=1}^{20}c_tF_t\)</span>平均，非每步均值；direct coverage與approval的分母則是actions。（<a href="https://arxiv.org/html/2610.36570v1#S6.SS1">§VI-A</a>）</p>
+<h2 id="作者自報主結果有取捨不是每項最佳">作者自報主結果：有取捨，不是每項最佳</h2>
+<p>下列均是同compute .486；Task success與HSR為trajectory百分比，表2另報20seed標準差。</p>
+<table>
+<thead>
+<tr>
+<th>Policy</th>
+<th style="text-align:right">Task success</th>
+<th style="text-align:right">HSR↓</th>
+<th style="text-align:right">MNH↓</th>
+<th style="text-align:right">Direct coverage</th>
+<th style="text-align:right">Approval/action↓</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Uncertainty-Menu</td>
+<td style="text-align:right">48.79%</td>
+<td style="text-align:right">14.75%</td>
+<td style="text-align:right">.184</td>
+<td style="text-align:right">66.9%</td>
+<td style="text-align:right">6.9%</td>
+</tr>
+<tr>
+<td>Consequence-Menu</td>
+<td style="text-align:right">43.54%</td>
+<td style="text-align:right">4.38%</td>
+<td style="text-align:right">.136</td>
+<td style="text-align:right">74.7%</td>
+<td style="text-align:right">13.8%</td>
+</tr>
+<tr>
+<td>Risk-Menu</td>
+<td style="text-align:right">46.26%</td>
+<td style="text-align:right">5.82%</td>
+<td style="text-align:right">.120</td>
+<td style="text-align:right">74.2%</td>
+<td style="text-align:right">12.6%</td>
+</tr>
+<tr>
+<td>CASEL</td>
+<td style="text-align:right">47.01%</td>
+<td style="text-align:right">7.02%</td>
+<td style="text-align:right">.123</td>
+<td style="text-align:right">69.1%</td>
+<td style="text-align:right">8.7%</td>
+</tr>
+<tr>
+<td>CASEL-NoRev（只verify）</td>
+<td style="text-align:right">46.56%</td>
+<td style="text-align:right">15.53%</td>
+<td style="text-align:right">.194</td>
+<td style="text-align:right">51.4%</td>
+<td style="text-align:right">0%</td>
+</tr>
+<tr>
+<td>CASEL+Budget</td>
+<td style="text-align:right">45.82%</td>
+<td style="text-align:right">11.82%</td>
+<td style="text-align:right">.167</td>
+<td style="text-align:right">63.9%</td>
+<td style="text-align:right">4.3%</td>
+</tr>
+<tr>
+<td>CASEL-Uncal</td>
+<td style="text-align:right">47.83%</td>
+<td style="text-align:right">8.22%</td>
+<td style="text-align:right">.129</td>
+<td style="text-align:right">69.3%</td>
+<td style="text-align:right">8.4%</td>
+</tr>
+</tbody>
+</table>
+<p>CASEL對Uncertainty-Menu的HSR少7.73points，配對95%CI [−7.87,−7.60]，但task success少1.79points，因後者對所有錯誤等權。Risk-Menu已有更低HSR／MNH；CASEL以約30%較少approval（8.7對12.6%）換近似傷害與略高task success。反向說Risk-Menu比CASEL約多45%approval，兩比例分母不同。Consequence-Menu最低HSR但較高MNH且task success最低，不能只憑HSR判全面勝出。（<a href="https://arxiv.org/html/2610.36570v1#S6.T2">§VI-B，表2</a>）</p>
+<p>若另配到含互動的總成本<span class="math inline">\(\lambda k+\mu q\)</span>，Risk-Menu為HSR6.22%、MNH.126、success45.60%，CASEL為7.02%、.123、47.01%。作者明說per-mode <span class="math inline">\(J\)</span>未在傷害上超過product-score gate，優勢是approval取捨。Isotonic使ECE下降94.5%、Brier下降9.3%。只看direct ranking、coverage .1–1.0的selective-risk AUC：<span class="math inline">\(\hat p\)</span> .01050、<span class="math inline">\(\hat c\)</span> .00593、product .00533；product較uncertainty少49.2%，較consequence少10.1%。（<a href="https://arxiv.org/html/2610.36570v1#S6.SS2">§VI-B–C</a>）</p>
+<h2 id="消融與保證檢查ledger是負結果">消融與保證檢查：ledger是負結果</h2>
+<p>只verify把HSR由7.02%推至15.53%，說明可行干預與commit語意配合的重要。Budget <span class="math inline">\(B_H=.08,\bar r=\hat p\hat c\)</span>同成本HSR11.82%、MNH.167；ledger填滿後在trajectory末端升級低風險action，花費落在小期望傷害。其整段budget sweep在harm–compute被CASEL支配，harm–approval則在同一curve，預設因此省略ledger。Uncal傷害較高，但success反而高.82points；圖4十項配對差異皆Holm校正<span class="math inline">\(p&lt;10^{-4}\)</span>，不代表每個方向都更好。（<a href="https://arxiv.org/html/2610.36570v1#S6.SS4">§VI-D</a>）</p>
+<p>閾值檢查另用40000條fresh calibration trajectories各隨機一step、20點grid、<span class="math inline">\(\delta=.1\)</span>：<span class="math inline">\(\epsilon\ge .015\)</span>可認證unrestricted policy（coverage69.1%、true selective risk .0048）；<span class="math inline">\(.014\)</span>所有20seed受閾值約束（<span class="math inline">\(\hat\tau=.014\)</span>、coverage62.3%、risk .0035、cost .553）。再低會被約.010 Hoeffding slack擋住；160000 records時在<span class="math inline">\(.009\)</span>有約束、<span class="math inline">\(.008\)</span>僅8/20seed可認證。這些測試true selective risk均未超<span class="math inline">\(\epsilon\)</span>，不能忽略其分布與資料假設。（<a href="https://arxiv.org/html/2610.36570v1#S6.SS5">§VI-E</a>）</p>
+<p>Budget的每步條件上界在54% direct steps失敗（真<span class="math inline">\(p_tc_t&gt;\bar r_t\)</span>）；<span class="math inline">\(B_H=.04/.08\)</span>時實現direct harm超budget 10%／2%，被干預action殘餘harm .086（約半MNH）又不受ledger涵蓋。命題2不是所評系統的保證，有限樣本direct風險與整trajectory有害副作用也不能混成同一指標。（<a href="https://arxiv.org/html/2610.36570v1#S6.SS5">§VI-E</a>）</p>
+<h2 id="stress-tests與作者限制">Stress tests與作者限制</h2>
+<p>Ambiguity stress令10% action缺意圖；verify/sandbox不能消除這種錯，approval只減半、clarify設定消除95%。此假設下clarify9.8% actions（precision94%、recall92%），HSR由19.1%降8.4%；同compute無<span class="math inline">\(g\)</span>為18.5%、Risk-Menu16.4%。不能把模擬clarify成效當真人提問實測。（<a href="https://arxiv.org/html/2610.36570v1#S6.SS5">§VI-E</a>）</p>
+<p>把<span class="math inline">\(\hat p\)</span>、<span class="math inline">\(\hat c\)</span>或各干預效果減半，CASEL HSR升至16.6%、18.8%、21.0%，仍比同cost Uncertainty-Menu的23.4%、25.9%、24.3%低，且距Risk-Menu在.6points內；排序相對穩定不表示絕對傷害可忽略誤設。（<a href="https://arxiv.org/html/2610.36570v1#S6.SS5">§VI-E</a>）</p>
+<p>作者要求按domain重校準、以trajectory-disjoint真trace保守估<span class="math inline">\(\gamma_m\)</span>，drift時重選閾值／估effectiveness／調成本權重。MCP proxy或pre-execution hook是部署路徑，非已完成部署。<span class="math inline">\(\tau^2\)</span>-Bench、WebArena、AgentDojo、AgentAbstain、ToolEmu、SP-Bench都列<strong>planned、尚未跑</strong>；REFLEX與CA2I僅定位比較、未實驗對比。本文證明的是假設simulator內的allocation取捨，未量測真verifier、rollback或human approval成效。（<a href="https://arxiv.org/html/2610.36570v1#S7">§VII</a>、<a href="https://arxiv.org/html/2610.36570v1#S8">§VIII</a>）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.36570_CASEL.zh-TW.html">CASEL翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 405d927b</footer></main></body></html>

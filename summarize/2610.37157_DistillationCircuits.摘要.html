@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="405d927badef085dc2609fdf46afd5103c93fd49"><title>What Survives Distillation? A Mechanistic Interpretability Study of GPT-2 and DistilGPT-2 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a></nav><main class="reading"><aside class="source-meta"><p>作者：Nabeelah Faumi、Deshan Sumanathilaka</p><p>日期：2026-10-27（v1，cs.CL）</p><p>arXiv：2610.37157</p><p>閱讀說明：依官方v1完整主文、Limitations及附錄A整理；數字為作者自報，區分IOI行為／指定電路、GT機率質量／accuracy與attention相關／因果驗證；未重現實驗。</p><p><a href="https://arxiv.org/html/2610.37157v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="深度減半後留下什麼gpt-2distilgpt-2的電路比較">深度減半後留下什麼？GPT-2／DistilGPT-2的電路比較</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>作者以12層GPT-2與6層DistilGPT-2，對照IOI與Greater-Than（GT）兩種已知電路：IOI行為大幅退化且未找出原name-mover功能重映射；GT保留較多行為、attention模式及早期year-encoding因果貢獻，並出現teacher L9H1→student L4H1的對應。作者稱為「compression–collapse dichotomy」，但末尾明言IOI null不排除替代機制、GT完整因果鏈尚未驗完，不能把摘要的強敘事讀成全面電路消失或完整GT機制已證。（<a href="https://arxiv.org/html/2610.37157v1">摘要</a>、<a href="https://arxiv.org/html/2610.37157v1#S5.SS6">§5.6–5.7</a>、<a href="https://arxiv.org/html/2610.37157v1#Sx1">Limitations</a>）</p>
+<h2 id="問題模型與資料">問題、模型與資料</h2>
+<p>RQ1問深度減半後內部表示是否仍相似；RQ2問依賴teacher後層的IOI／GT如何保留、重組或失敗。兩模型hidden dimension皆768，GPT-2為12層、12heads，student6層、約82M參數，由teacher隔層初始化再用語言建模與soft-label蒸餾。此文分析既有模型，<strong>不重新干預蒸餾訓練或比較objective</strong>。（<a href="https://arxiv.org/html/2610.37157v1#S1">§1</a>、<a href="https://arxiv.org/html/2610.37157v1#S3">§3</a>、<a href="https://arxiv.org/html/2610.37157v1#A1.SS1">附錄A.1</a>）</p>
+<p>一般表示分析用1000個TinyStories validation樣本，長64–256tokens、TransformerLens、單NVIDIA L4；IOI與GT另用各1000clean／1000corrupted prompts。IOI有15種句型，主要分數是正確indirect-object相對subject的logit difference；GT問年份後兩碼，主要分數為所有<span class="math inline">\(yy&gt;YY\)</span>下一token機率質量之和。這兩種任務分數不是同一metric。（<a href="https://arxiv.org/html/2610.37157v1#S4">§4</a>、<a href="https://arxiv.org/html/2610.37157v1#S4.SS5">§4.5–4.6</a>）</p>
+<h2 id="方法相似性歸因介入各自回答不同問題">方法：相似性、歸因、介入各自回答不同問題</h2>
+<table>
+<thead>
+<tr>
+<th>Probe</th>
+<th>本文如何做</th>
+<th>可支持的層級</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Debiased linear CKA</td>
+<td>residual以非padding位置mean-pool成<span class="math inline">\(n\times768\)</span>、float64、unbiased HSIC</td>
+<td>表示關係相似，非因果功能等價</td>
+</tr>
+<tr>
+<td>Logit lens</td>
+<td>intermediate hidden經final LN與unembedding，算next-token accuracy</td>
+<td>中間表示對token預測的可讀性</td>
+</tr>
+<tr>
+<td>Attention</td>
+<td>entropy、top-k mass、BOS／previous／EOS、flattened pattern cosine</td>
+<td>attention形狀與功能候選對應</td>
+</tr>
+<tr>
+<td>Teacher SAE</td>
+<td>同一GPT-2預訓練字典套兩模型，量L0、feature correlation、drift</td>
+<td>teacher feature basis內保留，會漏student-only features</td>
+</tr>
+<tr>
+<td>DLA／patching</td>
+<td>輸出歸因；corrupted run的head output換clean activation，另測可用path</td>
+<td>指定component／路徑在該介入下的貢獻，非自動驗完整電路</td>
+</tr>
+</tbody>
+</table>
+<p>（本檔補註，非作者自陳）表中「可支持的層級」用來區分證據種類，不把相似性提升成完整因果機制。</p>
+<p>§4.1的same-index比較0／3／5層；proportional列G0/D0、G2/D1、G4/D2、G7/D3、G9/D4、G11/D5。Name-mover與GT head matching以500prompt discovery找候選，另500held-out evaluation確認；注意力相似仍需分開看IO-selective功能及因果介入。（<a href="https://arxiv.org/html/2610.37157v1#S4.SS1">§4.1–4.6</a>）</p>
+<h2 id="一般表示更像壓縮teacher進程而非同層逐一保留">一般表示：更像壓縮teacher進程，而非同層逐一保留</h2>
+<p>Perplexity並非不變：TinyStories GPT-2／student為11.54／17.55（+52.1%），WikiText-2為33.02／49.33（+49.4%）。作者要說的是整體PPL不足定位哪個電路失敗，<strong>不是student aggregate metrics與teacher等同</strong>。（<a href="https://arxiv.org/html/2610.37157v1#S5.T2">§5.1，表2</a>）</p>
+<p>Proportional CKA早期.9998、中期約.967、後期約.790，overall .921±.109；same-index到layer5只有.314，overall .752±.298。最後student與teacher最後層更像，勝過與teacher第5層比；這支持表徵時間進程被壓縮的解釋。Logit-lens表3列proportional相對accuracy <span class="math inline">\(r\)</span>由.97到2.10，多數中間層較高、末層.97；這是next-token層級比較，不是IOI或GT accuracy。（<a href="https://arxiv.org/html/2610.37157v1#S5.SS2">§5.2–5.3</a>、<a href="https://arxiv.org/html/2610.37157v1#A1.T7">附錄表7</a>）</p>
+<p>Attention平均entropy為teacher2.001bits／student2.094bits；previous-token attention在student layer1約.36，teacher約.24。Proportional pattern cosine .894±.086，same-index .631±.255。Teacher SAE的same-index L5 survival .086、reconstruction error為teacher34.9倍；SAE所列G1/D0 early pair survival約.0002（表9四捨五入.000），G6/D3、G11/D5為.527／.529、cosine皆.927。此為特定字典／配對下的feature retention，不能推成student總共只剩多少特徵。（<a href="https://arxiv.org/html/2610.37157v1#S5.SS4">§5.4–5.5</a>、<a href="https://arxiv.org/html/2610.37157v1#A1.T9">附錄表8–9</a>）</p>
+<h2 id="ioi作者稱collapse但null範圍有限">IOI：作者稱collapse，但null範圍有限</h2>
+<table>
+<thead>
+<tr>
+<th>IOI指標</th>
+<th style="text-align:right">GPT-2</th>
+<th style="text-align:right">DistilGPT-2</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Accuracy</td>
+<td style="text-align:right">94.8%</td>
+<td style="text-align:right">35.2%</td>
+</tr>
+<tr>
+<td>Mean logit difference</td>
+<td style="text-align:right">2.942±1.797</td>
+<td style="text-align:right">−.467±1.335</td>
+</tr>
+</tbody>
+</table>
+<p>Student在兩name選擇的50%chance以下（單尾binomial，<span class="math inline">\(n=1000,p&lt;.001\)</span>），負logit difference代表偏向錯誤subject而非只是猶豫。作者提repeated-name heuristic只是<strong>未測假說</strong>：subject在prompt出現兩次、IO一次，不可當已找到替代電路。（<a href="https://arxiv.org/html/2610.37157v1#S5.SS6">§5.6</a>）</p>
+<p>DLA的student peak-layer contribution .0168，對teacher layer9的2.74約小160倍。可用7heads（3previous-token、2duplicate-token、2induction）patch回復整體甚微；induction仍有小顯著effect <span class="math inline">\(d=.298,p&lt;.001\)</span>，但PT→IND pathway不顯著 <span class="math inline">\(d=.031,p=.329\)</span>。因此「collapse」不等於每個低層component皆零因果作用。（<a href="https://arxiv.org/html/2610.37157v1#S4.SS5">§4.5</a>、<a href="https://arxiv.org/html/2610.37157v1#S5.SS6">§5.6</a>）</p>
+<p>Name-mover matching的held-out CKA約.18–.52，pattern Pearson由約−.15到+.78；但沒匹配head重現IO-selective attention。表4的preservation為0%、0%、−14.6%、−21.3%、nan；作者整體稱沒有正向name-mover保存，不能把nan當實測0%，也不能把高pattern相關當功能保留。這是所查head／matching程序的null，Limitations明說不排除另一機制解殘餘IOI，需causal scrubbing或自動電路發現再查。（<a href="https://arxiv.org/html/2610.37157v1#S5.T4">表4</a>、<a href="https://arxiv.org/html/2610.37157v1#Sx1">Limitations</a>）</p>
+<h2 id="gt行為與head對應保留完整causal-survival仍未完驗">GT：行為與head對應保留，完整causal survival仍未完驗</h2>
+<table>
+<thead>
+<tr>
+<th>GT指標</th>
+<th style="text-align:right">GPT-2</th>
+<th style="text-align:right">DistilGPT-2</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Accuracy</td>
+<td style="text-align:right">94.0%</td>
+<td style="text-align:right">87.3%</td>
+</tr>
+<tr>
+<td>GT probability mass</td>
+<td style="text-align:right">.855</td>
+<td style="text-align:right">.750</td>
+</tr>
+</tbody>
+</table>
+<p>作者的「87.7% performance recovery」對應<span class="math inline">\(.750/.855\)</span>的<strong>機率質量比</strong>，不是87.3%／94.0%的accuracy ratio。DLA peak由teacher layer9（L9H1／L9MLP／L10MLP）轉student layer4（L4MLP／L4H1／L5MLP）。Student L4H1與teacher L9H1的1000例full attention-pattern Pearson平均.945±.079、中位.981、93.6%例<span class="math inline">\(r&gt;.8\)</span>；五代表例皆偵測到YY token不等於1000例100%成功。（<a href="https://arxiv.org/html/2610.37157v1#S5.T5">§5.7，表5</a>）</p>
+<p>GT head activation patch只測原year-encoding L0H1、L1H5：teacher raw .332／.305，student .283／.255；以noise ceiling .547正規化後teacher .606／.557、student .517／.465，overall Cohen <span class="math inline">\(d=.681,p&lt;.0001\)</span>。支持<strong>早期year encoding</strong>有因果保存，並不是對重映射L4H1→comparison→output全鏈的驗證。作者因原GT指定路徑無兩端皆在layers0–5而未做path patching；Limitations明說要補完整路徑與activation/path patching，才更能支持完整survival。（<a href="https://arxiv.org/html/2610.37157v1#S5.T6">§5.7.1，表6</a>、<a href="https://arxiv.org/html/2610.37157v1#Sx1">Limitations</a>）</p>
+<h2 id="原文記錄口徑保留原報不自行修數字">原文記錄口徑：保留原報，不自行修數字</h2>
+<p>以下口徑對照為本檔補註，非作者自陳的勘誤。</p>
+<p>§3稱GPT-2約117M參數，表2列124M；§4.5分別記24 circuit heads、19 structurally absent與分析7 available heads；表1另列各類head及availability。本文依實際7-head測試清單（3previous-token、2duplicate-token、2induction）描述，不推定或重算總數。（<a href="https://arxiv.org/html/2610.37157v1#S3">§3</a>、<a href="https://arxiv.org/html/2610.37157v1#S4.T1">表1</a>、<a href="https://arxiv.org/html/2610.37157v1#S5.T2">表2</a>）</p>
+<p>§4.1 proportional列G7/D3、G9/D4，logit-lens表3則列D3/G6、D4/G8；SAE表9另有G1/D0、G6/D3。各probe的表列配對不能混當同一配對。§4.2定義<span class="math inline">\(r=\mathrm{Acc}_{distil}/\mathrm{Acc}_{GPT2}\)</span>；§5.3在same-index敘述「underperforms」同時寫<span class="math inline">\(r\)</span>最高3.95；表3的<span class="math inline">\(\Delta\)</span>欄正負方向也未清楚交代。本文保留<span class="math inline">\(r\)</span>原報並避免憑符號自行還原accuracy或替作者判定哪邊較高。（<a href="https://arxiv.org/html/2610.37157v1#S4.SS1">§4.1–4.2</a>、<a href="https://arxiv.org/html/2610.37157v1#S5.T3">§5.3，表3</a>、<a href="https://arxiv.org/html/2610.37157v1#A1.T9">附錄表9</a>）</p>
+<h2 id="作者限制與可採結論">作者限制與可採結論</h2>
+<p>作者末列四項限制：僅兩電路／單teacher–student pair，跨蒸餾法與模型家族的泛化未知；IOI null不排除alternative mechanism；teacher SAE basis會漏student-only features；GT目前只key head對應與部分早期介入，完整causal chain尚未驗證。§6.2將compressibility稱為<strong>candidate explanation</strong>，要更多中間深度電路與model pairs才能證成一般原則，不能照摘要較強語氣寫成已建立普遍規律。（<a href="https://arxiv.org/html/2610.37157v1#S6.SS2">§6.2</a>、<a href="https://arxiv.org/html/2610.37157v1#Sx1">Limitations</a>）</p>
+<p>附錄A.1只提出intermediate-layer matching、attention transfer或circuit-aware loss的後續方向，未真正干預distillation objective。A.2的SAE以batch64串流統計、online sums算feature Pearson，減少記憶體需求；這是計算實作細節，不增加因果證據。可採結論是：對這個pair及兩任務，單看PPL不足描述機制差異，應把行為、表示、功能選擇性與完整因果驗證分層檢查。（<a href="https://arxiv.org/html/2610.37157v1#A1.SS1">附錄A.1–A.2</a>、<a href="https://arxiv.org/html/2610.37157v1#S7">§7</a>）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.37157_DistillationCircuits.zh-TW.html">蒸餾電路翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 405d927b</footer></main></body></html>
