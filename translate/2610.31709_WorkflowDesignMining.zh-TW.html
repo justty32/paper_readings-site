@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="d144aa5b5a9ed91bd348e6867e5252f04e2a8a47"><title>Mining the Design Space of Multi-Agent Workflows 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Xavier Cadet、Junyan Cheng、Peter Chin、Kyle Richardson</p><p>日期：2026-10-22（v1，cs.SE）</p><p>arXiv：2610.31709</p><p>閱讀說明：主文及附錄 A–K 精譯，省略完整書目、大表及prompt全文；數字為作者自報，未重現。</p><p><a href="https://arxiv.org/html/2610.31709v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="從完整搜尋軌跡挖掘多agent工作流設計">從完整搜尋軌跡挖掘多agent工作流設計</h1>
+<h2 id="第-iiii-節將搜尋資料變成統計試驗場">第 I–III 節：將搜尋資料變成統計試驗場</h2>
+<p>人工研究只測少數固定拓撲，自動最佳化又多只保留最佳工作流。本文留下所有中間版本，把<code>graph.py</code>協調程式、<code>prompt.py</code>角色模板、任務bundle及驗證成績組成語料，再找可解析、可重現的設計規律。score是固定bundle的平均確定驗證accuracy，另記推論cost。（<a href="https://arxiv.org/html/2610.31709v1#S3">§I–III</a>）</p>
+<p>特徵有／無，或高於／不高於每puzzle中位數，形成high／low arms；<code>Delta</code>是兩arm平均score差。附錄A明確說這是固定搜尋政策下的觀察estimand，不是無條件介入效果；雖文中類比A/B，並未隨機分派只改單一因素。（<a href="https://arxiv.org/html/2610.31709v1#A1">§III-A、附錄 A</a>；後半為本檔補註，非作者自陳）</p>
+<h2 id="第-iv-a-節保留aflow全部round">第 IV-A 節：保留AFlow全部round</h2>
+<p>作者自報以GPT-5.4、temperature 0作optimizer，worker／aggregator限GPT-5.4-mini或nano。每search有20個MCTS round，每condition五次獨立search；每次選parent、改程式與prompt、評估並記分，不只留argmax。每workflow執行最多20個LLM calls。（作者自報，<a href="https://arxiv.org/html/2610.31709v1#S4.SS1">§IV-A、附錄 B</a>）</p>
+<p>可組合六算子：Sequential為單agent串接；Star為隔離平行解題後一次聚合；SharedMemory為依序讀寫持久文件；Debate為互讀提案再修訂；另有每輪coordinator或moderator介入的兩變體。operator內通訊round不同於MCTS搜尋round，數個operator可串接或條件組合。（<a href="https://arxiv.org/html/2610.31709v1#A3.SS1">§IV-A、附錄 C-A</a>）</p>
+<h2 id="第-iv-b-節固定推理題與過濾">第 IV-B 節：固定推理題與過濾</h2>
+<p>作者自報原取30種具程式generator／verifier介面的Enigmata puzzle，共87個難度bundle。每bundle產20個instance，在五次search及全部round重用；環境無工具，驗證器精確給每instance零／一，不用LLM judge。先得到1701條完成search的34020候選，排1031份不可執行workflow，再移除四種所有workflow均零分的滑塊題，留下26種題、28568份workflow。（作者自報，<a href="https://arxiv.org/html/2610.31709v1#S4.SS2">§IV-B、附錄 B-A、C-D–E、表IX</a>）</p>
+<p>（本檔補註，非作者自陳）同search的後代高度相關，不能視為獨立樣本；重用bundle控制重抽instance的差異，不代表已測新instance泛化或消除模型所有推論變異。</p>
+<h2 id="第-iv-c-節隔離test的特徵探勘">第 IV-C 節：隔離test的特徵探勘</h2>
+<p>AutoResearch逐步改擷取與回歸腳本，只從workflow source及允許的puzzle／difficulty描述建立特徵，以validation <code>R^2 - lambda*d</code>評分，L0項懲罰活躍特徵數。按完整search切分，作者自報train／validation／test有19822／4278／4468份workflow，同search不跨split。（作者自報，<a href="https://arxiv.org/html/2610.31709v1#S4.SS3">§IV-C、附錄 D-A、表IX</a>）</p>
+<p>sandbox移除hash、round與path，禁止target encoding、label群組均值與cost作特徵，test實體隔離，方向先固定再驗test。附錄D揭露早期探勘曾用round index及train均值造成洩漏，後加禁令；每輪保存script、metrics及feature清單以便重跑。（<a href="https://arxiv.org/html/2610.31709v1#A4">附錄 D</a>）</p>
+<h2 id="第-v-節先gate再比較設計">第 V 節：先gate，再比較設計</h2>
+<p>作者自報10個主要AutoResearch run共300次trial，提出70個candidate contrasts。graph-only最佳validation <code>R^2</code>為0.521、8特徵，加入prompt特徵為0.638、27特徵；這是預測擬合，不是task accuracy。（作者自報，<a href="https://arxiv.org/html/2610.31709v1#S5.SS2">§V-B、附錄 E-C</a>；末句為本檔補註，非作者自陳）</p>
+<p>每puzzle用train擬合LightGBM，validation須<code>R^2 &gt; 0.05</code>及Spearman <code>rho &gt; 0.30</code>才准入，作者自報保留13種可預測題。每contrast的兩arm各需至少20份workflow，故test可測題數仍隨特徵改變。CI以search為cluster，而非把workflow當獨立；跨題另看Wilcoxon與方向重現。（作者自報，<a href="https://arxiv.org/html/2610.31709v1#S5.SS2">§V-B、附錄 B-B、E-B、I</a>）</p>
+<h2 id="第-v-b-節三層設計規律">第 V-B 節：三層設計規律</h2>
+<p>作者自報Star-first：source中第一個實例化operator為Star者，對比其他入口，test median <code>Delta=-0.045</code>，12題可測、4題95%cluster-Wald CI嚴格為負。這不代表所有平行化皆差；feature依source順序擷取，不是任意動態執行路徑證明。（作者自報，<a href="https://arxiv.org/html/2610.31709v1#S5">表I、V</a>；後半為本檔補註，非作者自陳）</p>
+<p>作者自報含SharedMemory相對不含者，test median <code>Delta=+0.135</code>，10題可測、6題CI嚴格為正；不是只和Debate同預算的一對一對照。語料含SharedMemory平均score 0.23、含Debate 0.18為描述統計，兩種集合可有其他設計差異。（作者自報，<a href="https://arxiv.org/html/2610.31709v1#S5.SS2">§V-B、表VI、XI</a>；對照界線為本檔補註，非作者自陳）</p>
+<p>作者自報prompt平均字元數高於每題median者，test median <code>Delta=+0.118</code>，13題可測、6題CI嚴格為正；placeholder總出現次數高於median者為<code>+0.059</code>，13題可測、7題CI嚴格為正。placeholder重複亦計次，不是獨特欄位數。作者明示字數本身不被主張為單獨因果來源，重點是prompt細節與context routing。（作者自報，<a href="https://arxiv.org/html/2610.31709v1#S5.SS2">§V-B、表VII</a>）</p>
+<p>這些median在0–1accuracy尺度，並非全語料或每題皆增減同量；strict CI計數也不同於點估計符號。test是新search、仍共享既定bundle，不能叫未見任務測試（本檔補註，非作者自陳；依據<a href="https://arxiv.org/html/2610.31709v1#S4.SS2">§IV-B、表I、附錄 D-A</a>）。</p>
+<h2 id="第-vivii-節與作者局限">第 VI–VII 節與作者局限</h2>
+<p>完整軌跡提供失敗及中間設計，有助理解accuracy／cost權衡；prompt不能被當成拓撲比較中的固定無關常數。作者限於無工具、確定評分Enigmata及GPT-5.4家族，MCTS政策也限制被探索的設計；未來需換模型家族、搜尋法及工具互動領域驗證。（<a href="https://arxiv.org/html/2610.31709v1#S6">§VI–VII、Limitations</a>）</p>
+<p>作者自報含SharedMemory平均bundle cost 0.25美元、含Debate 0.13美元；較高score未等於同cost優勢。附錄G按每instance平均0.0064美元及計畫1740條search估約4454美元evaluation費，optimizer模型另計，不能當已結算全pipeline總額。（作者自報，<a href="https://arxiv.org/html/2610.31709v1#A7">表XI、附錄 G</a>；成本界線為本檔補註，非作者自陳）</p>
+<h2 id="附錄-ak估計重現與不確定性">附錄 A–K：估計、重現與不確定性</h2>
+<p>A將結果定為政策條件觀察量；B/C列參數、過濾與算子介面；D列資料split、禁洩漏規則及prompt；E列語料、候選及cluster推論；F為one-shot baseline，G估成本，H展示搜尋後期也可退步，故只留勝者會丟訊號；I以permutation null校準gate；J/K說明影響及LLM用途。（<a href="https://arxiv.org/html/2610.31709v1#A1">附錄 A–K</a>）</p>
+<p>作者自報train每arm19–47個search clusters，test僅4–14且多數低於10；附錄指出Wald CI漸近支持常需更多cluster。逐題顯著與效果大小因此有限樣本不確定性，方向重現不能當作精確通用幅度。（作者自報，<a href="https://arxiv.org/html/2610.31709v1#A5.SS2">附錄 E-B</a>）</p>
+<p>（本檔補註，非作者自陳）search split與sandbox減少洩漏，不能消除觀察性confounding或將特徵篩選變成隨機實驗。可把持久共享狀態及明確context routing當自家實驗假說，仍需同預算、受控修改及新任務核實。</p>
+<blockquote>
+<p>重點摘要見 <a href="../summarize/2610.31709_WorkflowDesignMining.%E6%91%98%E8%A6%81.html">Workflow Design Mining 摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 d144aa5b · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>

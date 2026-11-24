@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="d144aa5b5a9ed91bd348e6867e5252f04e2a8a47"><title>RoboAware: Learning to Coordinate Embodied Skills from Counterfactual Outcomes 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Bohan Zhou、Xingbei Chen、Emily Huang、Weilin Ruan、Haojian Huang、Yehang Zhang、Zexi Li、Wenqian Li、Qize Yu、Zetian Song、Leyi Wu、Jinghao Li、Mingxuan Song、Xinrun Xu、Zongyang Qiu、Yangkai Wei、Tianyi Zhang、Kaiwen Zhou、Yinchuan Li、James Cheng</p><p>日期：2026-10-08（v1，cs.RO）</p><p>arXiv：2610.11480</p><p>閱讀說明：精要摘要；完整閱讀主文、附錄A–D與書目，核對HTML公式、表格及圖說；未取圖像或影片。所有實驗數字均為作者自報，未重現。主文與附錄的獎勵發放時點、Overall加權描述有不一致，保留於限制。</p><p><a href="https://arxiv.org/html/2610.11480v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="roboaware-learning-to-coordinate-embodied-skills-from-counterfactual-outcomes-重點摘要">RoboAware: Learning to Coordinate Embodied Skills from Counterfactual Outcomes 重點摘要</h1>
+<h2 id="一句話">一句話</h2>
+<p>先在模擬器把同一狀態還原，實際比較模組化程式與端到端策略的後果，再只訓練一個狀態條件式協調器，讓凍結的coding agent在技能語意邊界選擇由哪個策略家族接手。<a href="https://arxiv.org/html/2610.11480v1#S2">§1–2</a></p>
+<h2 id="問題與方法">問題與方法</h2>
+<p>程式生成擅長組合長程任務，接觸控制則受限於可用原語；凍結VLA／WAM有局部控制能力，但未必能處理整段任務的分布轉移。只觀察已執行分支，無法知道另一家族在原狀態會不會更好。RoboAware把「哪個家族負責下一段」設為唯一高層動作，並未訓練coding agent或低層執行器。<a href="https://arxiv.org/html/2610.11480v1#S2.SS1">§1–2.1</a></p>
+<p>P⁵將技能分成感知、姿態提案、操作前移動、執行、操作後移動。輸入包括指令、RGB與深度、本體感覺、可觀察歷史、目前技能與階段。協調器選<code>Mod</code>或<code>E2E</code>，coding agent才在該家族限制內生成局部程式。姿態提案僅容許<code>Mod</code>；端到端呼叫內部產生目標，不一定經過此階段。<code>Perform_E2E</code>可跨多個階段，但一次呼叫是原子的，直到後置條件成立、失敗或預算耗盡才重選；協調器選家族，家族內的<code>route_id</code>仍由coding agent指定。<a href="https://arxiv.org/html/2610.11480v1#A1.SS1">§2.2.1、附錄A.1、B.1</a></p>
+<p>模組化API綁定InstructSAM、作者增補的NeuGraspNet+、cuRoboV2與確定性夾爪控制；端到端API保留π₀.₅與FastWAM作局部執行器。NeuGraspNet+擴增幾何候選，以原網路評分，只在規劃可行的候選中選抓姿，未重訓抓取網路。作者自報，在共享cuRoboV2的18任務Panda篩選中，其Success@1／3／5皆18/18；作者也承認選擇規則使用此benchmark開發，新物件分布仍待驗證。這是元件篩選，不能視為完整任務成功率。<a href="https://arxiv.org/html/2610.11480v1#A2.T6">附錄B.3、表6</a></p>
+<p>SCB保存物理狀態與配對的歷史前綴，還原後對每個合法家族各生成並執行程式；同一root內比較相同起點，鄰近root可以不同。EAL用UCB引導MCTS選擇，展開新節點時至少比較所有合法家族，再完成後綴rollout並回傳累積獎勵；失敗及非偏好分支仍保留。作者自報，每個階段入口在前後10個已存控制步的合法鄰域，有放回抽4個root，每root預算20次完整後綴模擬，並非20個環境步。<a href="https://arxiv.org/html/2610.11480v1#A1.SS2">§2.2.2、附錄A.2、C.4</a></p>
+<p>資料收集完畢才離線擬合Q模型，以Smooth-L1 Bellman loss與target network學習剩餘技能及任務回報，並非直接回歸MCTS估值或rollout回報。作者自報，獎勵權重為感知0.2、操作0.3、終局任務0.5，折扣1；附錄規定前兩項只在技能完成時發放。模組感知以mask IoU計分，E2E則以是否操作正確物件計分；操作依抓取／抬升predicate或位置與旋轉門檻判定。這些oracle只用於訓練。<a href="https://arxiv.org/html/2610.11480v1#A1.SS5">式3–5、附錄A.5、表12</a></p>
+<p>作者自報，Qwen3.5-0.8B加兩層、寬512的MLP讀取<code>&lt;VALUE&gt;</code>；RGB與深度色圖各224×224，本體感覺序列化為文字，保留最近4次完整轉移及較早歷史摘要。backbone與value head全量微調，AdamW、batch 16、學習率<code>1e-5</code>、10,000次更新，每500次刷新target；以同root及同鄰域群組做90/10訓練／驗證切分，選最低驗證Bellman loss。部署凍結Q，取最大Q等價於取softmax責任偏好最大值；此偏好是家族間相對值。部署無還原、oracle、線上搜索或參數更新。<a href="https://arxiv.org/html/2610.11480v1#A1.SS4">附錄A.2–A.4</a></p>
+<h2 id="評估條件與主要結果">評估條件與主要結果</h2>
+<p>作者自報，任務池為80個LIBERO-Pro、4個RoboSuite、16個RoboTwin 2.0，共100個桌面操作任務；seed 0收集訓練資料，seed 1–10各測一次，共1,000 episodes。這是同任務池的新場景seed泛化，並非保留全新任務。主評估終局成功才計成功，crash、timeout及無合法家族都保留在分母；跨episode記憶與歷史任務檢索停用，包括依賴記憶的基線。π₀／π₀.₅與雙臂不相容的RoboTwin欄標為缺值。<a href="https://arxiv.org/html/2610.11480v1#A3.SS3">§3.1、表3、附錄C.1–C.3</a></p>
+<p>作者自報，RoboAware的LIBERO-Pro八個T／S分組依序為68.0%、68.0%、92.0%、86.0%、66.0%、84.0%、64.0%、62.0%；合併LIBERO-Pro為73.8%，RoboSuite與RoboTwin皆90.0%，表3 Overall為77.0%。作者表3另列ASPIRE Overall 57.0%、Harness-VLA 50.0%；這些數字受其停用跨episode記憶及各自缺值／加權口徑限制，不宜脫離協議排序。<a href="https://arxiv.org/html/2610.11480v1#S3.T3">表3–4</a></p>
+<p>以下為作者自報的消融成功率，依序為LIBERO-Pro／RoboSuite／RoboTwin。MO只容許模組程式，EO只容許端到端程式；UO仍訓練Q但無同狀態分支，TF完全不訓練協調器；FH固定移交，ES於episode開始選一次家族。<a href="https://arxiv.org/html/2610.11480v1#S3.SS3">表4–6</a></p>
+<table>
+<thead>
+<tr>
+<th>配置</th>
+<th>成功率（%）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MO／EO</td>
+<td>54.8／67.5／41.9；49.5／60.0／45.6</td>
+</tr>
+<tr>
+<td>UO／TF</td>
+<td>58.5／75.0／53.8；51.0／60.0／40.0</td>
+</tr>
+<tr>
+<td>FH／ES</td>
+<td>64.5／82.5／55.6；59.3／70.0／51.9</td>
+</tr>
+<tr>
+<td>RoboAware</td>
+<td>73.8／90.0／90.0</td>
+</tr>
+</tbody>
+</table>
+<p>作者自報，UCB與均勻分配在相同預算下比較，收益於20次後趨緩，因此採20次。跨coding backend與機體測試只取4個RoboTwin任務，以3種客戶端及4種機體比較；Claude Code／Cursor皆用Claude Opus 4.8，Codex用GPT-5.5。機體變換同時使用對應adapter及相容低層控制器，不能解讀為完全不換低層模型；本文文字與圖說未給全部格子的可讀數值，此處只保留作者稱平均差距小的定性結論。<a href="https://arxiv.org/html/2610.11480v1#A3.SS1">§3.3、圖5–6、附錄C.1、C.5</a></p>
+<h2 id="附錄結果與閱讀限制">附錄結果與閱讀限制</h2>
+<p>作者自報，另做Harness-VLA元件研究：先以24任務、seed 42篩選，Full為15/24，移除記憶套件與SAM3為9/24；移除記憶亦移除seed-0 reference，不能視為單獨記憶效應。確認階段為80任務×3 seeds，每配置排240 episodes，服務連線錯誤使有效完成覆蓋率只剩47.1%–49.2%。Full有效成功率56.6%，無記憶16.9%，無記憶與SAM3為20.9%；這裡排除服務錯誤，與主評估保留abort分母不同。配對結論只限共同完成episode，未測SAM3單獨移除，也不能與不同prompt／協議的歷史81.25%直接比較。<a href="https://arxiv.org/html/2610.11480v1#A4.SS1">附錄D.1、表13–15</a></p>
+<p>作者自報，LIBERO-Pro與RoboTwin失敗中，抓取／持物不穩29.8%，受限接觸／插入等16.7%，合計46.5%；37.7%歸Others，因紀錄不足無法判別原因。不能把已辨識類別當成完整失敗分布。作者自報，Q擬合使用4張80GB A100約6小時，另有約一天資料收集；訓練成本須含反事實收集。<a href="https://arxiv.org/html/2610.11480v1#A4.SS3">附錄C.7、D.3</a></p>
+<p>作者自陳，目前僅整合兩家族；新增RL、檢索或示範策略可能需要新反事實資料與重訓協調器。責任只在P⁵邊界改變，原子E2E呼叫內的暫時失敗得由內部控制器處理，模糊觀察下更細的中斷仍未解決。範圍限桌面操作，未納入移動操作套件。<a href="https://arxiv.org/html/2610.11480v1#S5">§5、附錄C.1</a></p>
+<p>（本檔補註，非作者自陳）原文有兩處口徑需保留：§2.2.2寫每階段末產生感知／操作分數，附錄A.2與A.5卻限定技能完成才發放；表3圖說定義Overall為可用欄平均，附錄C.3又稱主文欄採episode加權。兩者一般不等價，不能替所有基線自行統一。本文照表報77.0%，不重算替換。圖像與影片未取閱，未以圖中不可讀數值補造結果。<a href="https://arxiv.org/html/2610.11480v1#S2.SS2.SSS2">§2.2.2</a>、<a href="https://arxiv.org/html/2610.11480v1#S3.T3">表3</a>、<a href="https://arxiv.org/html/2610.11480v1#A3.SS3">附錄C.3</a></p>
+<h2 id="對讀者的價值">對讀者的價值</h2>
+<p>（本檔補註，非作者自陳）可借用的是「先定義可比較的接手邊界，再蒐集同起點替代後果」的協調設計。移植到agent工具路由時，要先有可還原環境、合法動作契約、可觀察歷史與明確評分；只靠不同狀態的成功日誌不能直接替代本文SCB。這是閱讀啟發，本文未驗證一般軟體agent的效果。<a href="https://arxiv.org/html/2610.11480v1#A1">§2、附錄A.1–A.2</a></p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 d144aa5b · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>

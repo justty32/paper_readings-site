@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="d144aa5b5a9ed91bd348e6867e5252f04e2a8a47"><title>Mining the Design Space of Multi-Agent Workflows 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Xavier Cadet、Junyan Cheng、Peter Chin、Kyle Richardson</p><p>日期：2026-10-22（v1，cs.SE）</p><p>arXiv：2610.31709</p><p>閱讀說明：自讀主文、全部附錄 A–K 與書目；數字為作者自報，未重現；觀察性對比不視為介入因果效果。</p><p><a href="https://arxiv.org/html/2610.31709v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="不只留下最佳工作流也留下設計為何失敗的證據">不只留下最佳工作流，也留下設計為何失敗的證據</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>本文保留AFlow搜尋中所有中間工作流，用可確定驗證的推理題建立程式碼／prompt／成績語料，再以隔離test的AutoResearch挖特徵，在完整search層級留出資料上核對方向；得到的是固定搜尋政策內的觀察規律，不是通用拓撲因果定律。（<a href="https://arxiv.org/html/2610.31709v1#S3">§III–V、附錄 A</a>）</p>
+<h2 id="問題與方法">問題與方法</h2>
+<p>人工多agent研究常只比較少數拓撲，自動最佳化又只留最終勝者，丟掉中間與負例。本文把每個workflow視為<code>graph.py</code>協調程式與<code>prompt.py</code>角色模板，成績為固定bundle上平均驗證accuracy，另記cost。特徵從自身source擷取，搭配允許的puzzle family與difficulty descriptor，預測不同設計的表現。（<a href="https://arxiv.org/html/2610.31709v1#S3.SS1">§I、§III-A</a>）</p>
+<p><strong>採樣階段</strong>重用AFlow的MCTS程序，GPT-5.4提出程式及prompt修改，worker／aggregator限GPT-5.4-mini或nano。可組合Sequential、Star、SharedMemory、Debate、StarWithCoordinator、DebateWithModerator；Star是獨立平行求解後一次聚合，SharedMemory是輪流讀寫持久文件，Debate是每輪互讀提案再改答案。每個operator的通訊round與MCTS search round不同。（<a href="https://arxiv.org/html/2610.31709v1#S4.SS1">§IV-A、附錄 C</a>）</p>
+<p>作者自報每條search保留20個round，每condition跑5次，每workflow執行最多20個LLM calls；同puzzle／difficulty的20個instance固定重用。先取30種具generator／verifier介面的Enigmata puzzle，移除不可執行workflow與四種全零滑塊題，最終26種題、28568份workflow。這些不是28568個互不相關任務或獨立抽樣。（作者自報，<a href="https://arxiv.org/html/2610.31709v1#S4">§IV-A–B、附錄 B–C</a>）</p>
+<p><strong>分析階段</strong>AutoResearch改特徵擷取與回歸腳本，最大化validation <code>R^2 - lambda*d</code>，以活躍特徵數作L0懲罰。整條search只能屬一split，剝除round、hash、path等識別資訊，禁止target encoding／目標衍生群組均值／cost特徵；test實體隔離，方向在碰test前固定。作者並揭露早期曾出現round index與train-mean洩漏，後修正規則。（<a href="https://arxiv.org/html/2610.31709v1#S4.SS3">§IV-C、附錄 D</a>）</p>
+<h2 id="分母gate與統計對比">分母、gate與統計對比</h2>
+<p>作者自報有效資料train／validation／test為19822／4278／4468份workflow。這是search層級留出，仍重用相同題型、難度與instance bundle；不能稱為對未見問題instance的泛化測試。（作者自報，<a href="https://arxiv.org/html/2610.31709v1#A5">表IX、附錄 C-D、D-A</a>；後半為本檔補註，非作者自陳）</p>
+<p>先用train訓LightGBM，在validation需<code>R^2 &gt; 0.05</code>且Spearman <code>rho &gt; 0.30</code>才准入，作者自報留下13種可預測puzzle。每個候選特徵在每題內分high／low arms：二元特徵有／無，連續特徵高於／不高於每題median；每arm至少20份workflow才可測。<code>Delta</code>是兩arm平均accuracy差，不是配對只改單一因素後的提升。（作者自報，<a href="https://arxiv.org/html/2610.31709v1#S5.SS2">§V-B、附錄 B-B、I</a>；末句為本檔補註，非作者自陳）</p>
+<p>以search為cluster估95% Wald CI，避免把同MCTS後代當獨立樣本；跨題以Wilcoxon、方向一致及conditional verification彙整。作者自報10個主要AutoResearch run合計300次trial產70個候選contrast；它們與最終表I的七個variant不是同一數量。（作者自報，<a href="https://arxiv.org/html/2610.31709v1#S5.SS2">§V-B、附錄 E-C</a>）</p>
+<h2 id="主要結果">主要結果</h2>
+<p>下表皆為作者自報，<code>Delta</code>是可測puzzle的held-out median score contrast，數值在0–1 accuracy尺度。嚴格同方向欄指95% CI完全在零某一側，不是所有點估計的符號。（<a href="https://arxiv.org/html/2610.31709v1#S5">表I、V–VII</a>）</p>
+<table>
+<thead>
+<tr>
+<th>特徵high arm與對照</th>
+<th style="text-align:right">Test可測題數</th>
+<th style="text-align:right">Median Delta</th>
+<th style="text-align:right">嚴格同方向題數</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>第一個source-order operator為Star vs其他</td>
+<td style="text-align:right">12</td>
+<td style="text-align:right">−0.045</td>
+<td style="text-align:right">負4／12</td>
+</tr>
+<tr>
+<td>含SharedMemory vs不含</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">＋0.135</td>
+<td style="text-align:right">正6／10</td>
+</tr>
+<tr>
+<td>prompt平均字元數高於每題median vs其餘</td>
+<td style="text-align:right">13</td>
+<td style="text-align:right">＋0.118</td>
+<td style="text-align:right">正6／13</td>
+</tr>
+<tr>
+<td>placeholder出現次數高於median vs其餘</td>
+<td style="text-align:right">13</td>
+<td style="text-align:right">＋0.059</td>
+<td style="text-align:right">正7／13</td>
+</tr>
+</tbody>
+</table>
+<p>Star-first對比不是所有平行化都不好。SharedMemory的＋0.135對照是不含SharedMemory的工作流，並非嚴格只與Debate一對一同預算比較；語料含SharedMemory平均score為0.23，含Debate為0.18只是描述統計。prompt長度與placeholder是可解析的代理特徵，作者明說不主張單獨增加字數具因果效果。（作者自報，<a href="https://arxiv.org/html/2610.31709v1#S5.SS2">§V-B、表VI、XI</a>；對照界線為本檔補註，非作者自陳）</p>
+<p>作者自報graph-only最佳validation <code>R^2</code>為0.521、8特徵，加入prompt解析為0.638、27特徵。這是validation預測擬合，不是accuracy從52.1%升至63.8%，也不是直接部署加長prompt的收益。（作者自報，<a href="https://arxiv.org/html/2610.31709v1#S5.SS2">§V-B</a>；後半為本檔補註，非作者自陳）</p>
+<h2 id="成本與局限">成本與局限</h2>
+<p>作者自報含SharedMemory的workflow平均bundle cost為0.25美元，含Debate為0.13美元，品質較高伴隨較高成本，未證等cost優勢。附錄G以每instance平均0.0064美元、全計畫1740條search估約4454美元evaluation費，optimizer模型另計；這不是已逐筆結算的全pipeline總成本。（作者自報，<a href="https://arxiv.org/html/2610.31709v1#S6">§VI、表XI、附錄 G</a>；成本界線為本檔補註，非作者自陳）</p>
+<p>作者明示：範圍限無工具、確定規則評分的Enigmata推理題與單一模型家族；搜尋政策是固定GPT-5.4的MCTS，規律只反映其探索到的可執行設計。附錄A明確將estimand定為policy-conditioned observational quantity，非unconditioned intervention。固定bundle移除的是比較時的instance重抽樣差異，不代表消除LLM推論所有隨機變異。（<a href="https://arxiv.org/html/2610.31709v1#A1">Limitations、附錄 A</a>；末句為本檔補註，非作者自陳）</p>
+<p>作者自報train每arm有19–47個search clusters，test僅4–14且多數少於10，低於附錄所述漸近Wald coverage常用支持範圍；因此逐題CI大小與strict-sign計數應保守看待，方向重現不等於每題效果精確。（作者自報，<a href="https://arxiv.org/html/2610.31709v1#A5.SS2">§V-B、附錄 E-B</a>）</p>
+<p>（本檔補註，非作者自陳）search-level split及sandbox減少洩漏，仍不把觀察比較變成隨機實驗；搜尋偏好、prompt內容、模型角色、呼叫數和cost可共同變動。多候選探索與小cluster也限制單一顯著結果的強度；應以受控重做驗證後再移植到程式、網頁或工具互動場景。</p>
+<h2 id="對讀者的價值接點">對讀者的價值・接點</h2>
+<p>（本檔補註，非作者自陳）對ai_core或多agent管線，最值得保存的不只是勝者，而是帶source、prompt、環境、分數及search lineage的所有嘗試。可先把「共享可持續狀態」「明確context routing」當待驗假說，再在自家同預算實驗中核實，避免把本文相關性當架構鐵律。（依據<a href="https://arxiv.org/html/2610.31709v1#S3">§III–VI</a>）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.31709_WorkflowDesignMining.zh-TW.html">Workflow Design Mining 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 d144aa5b · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>

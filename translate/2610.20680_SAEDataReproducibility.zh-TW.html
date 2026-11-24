@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="d144aa5b5a9ed91bd348e6867e5252f04e2a8a47"><title>Diminishing Returns of Data in Sparse Autoencoders: Functional Behavior does not Guarantee Feature Reproducibility 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Sambit Ghosh、Madelyn Mathai、R. Venkatesh Babu、Chirag Agarwal</p><p>日期：2026-10-14（v1）</p><p>arXiv：2610.20680</p><p>閱讀說明：依官方 HTML 主文、附錄 A–B 與書目閱讀；精譯保留理論條件與主要實驗，大表、重複例子、完整證明與書目從略。未下載圖像或重現實驗。</p><p><a href="https://arxiv.org/html/2610.20680v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="diminishing-returns-of-data-in-sparse-autoencoders-functional-behavior-does-not-guarantee-feature-reproducibility">Diminishing Returns of Data in Sparse Autoencoders: Functional Behavior does not Guarantee Feature Reproducibility</h1>
+<h2 id="問題與研究位置第-12-節">問題與研究位置（第 1–2 節）</h2>
+<p>稀疏自編碼器（SAE）將密集模型活化分解成稀疏特徵，希望解決單一神經元對多種不相關概念產生反應的多義性。但良好的重建表現，不等於不同訓練得到同一組特徵。既有研究已指出跨種子的特徵不穩定與子空間相似性；本文進一步問：活化資料量及挑選方式，如何影響功能表現與逐一特徵重現性？</p>
+<p>作者分開考察兩種收斂。功能收斂看重建及下游評估；特徵收斂看學到的方向能否透過一對一配對重現。其核心結論是資料需求取決於目的，不能用整體功能指標接近參考值，代替單一潛在特徵的重現性檢查。</p>
+<h2 id="何時應該找回相同特徵第-3-節附錄-b">何時應該找回相同特徵（第 3 節、附錄 B）</h2>
+<p>令完整樣本與隨機保留比例為 <code>q</code> 的樣本，用同一 SAE 目標訓練。比較前先將編碼器、解碼器特徵正規化，再各自尋找使 Frobenius 距離最小的排列。定理的前提包括：相同架構、前處理、稀疏機制、損失權重及母體加權；兩個經驗目標一致收斂至相同母體風險；最佳化誤差趨零；母體最小值具有共同潛在排列下的特徵可辨識性，且其他特徵系統與最優解有正分離。</p>
+<p>在這些條件下，對固定 <code>q&gt;0</code>，兩次訓練的編碼器與解碼器特徵距離各自依機率趨零。附錄以母體超額風險受統計誤差及最佳化誤差控制，再用可辨識性和三角不等式推得結果。這是有條件的漸近敘述，不是已證實有限預算 SAE 必然找回唯一真實字典。</p>
+<p>若再假設編碼器與解碼器共用特徵索引，且兩邊最優一對一配對皆唯一、與其他排列有固定正間隔，則兩邊 Hungarian 配對相同的機率趨一。然而有限資料下，兩邊挑中同一個參考特徵，只表示對象一致，並不保證兩邊餘弦相似度都高。</p>
+<h2 id="實驗設計第-4-節附錄-a">實驗設計（第 4 節、附錄 A）</h2>
+<p>以下設定與結果均為作者自報。模型為 Gemma-2-2B 的第 12 層、Pythia-160M 的第 6 層，以及 Qwen3-8B 的第 17 層；架構為 ReLU、BatchTopK、JumpReLU、Matryoshka BatchTopK。前兩模型評估 16,384 與 65,536 個字典特徵，Qwen 僅評估後者。同組比較固定模型、活化位置、字典寬度、稀疏設定及最佳化超參數。</p>
+<p>FineWeb 文字流經凍結的語言模型，目標層活化進入緩衝區。每次更新保留 <code>q∈{0.01,0.05,0.10,1.0}</code> 的新活化，對應標示的 5M、25M、50M、500M token 預算；選中活化只使用一次，再由新文字更新緩衝區。這不是縮小固定回放資料集。作者同時表示各預算沿用 500M 的訓練配置與最佳化步數，改變保留比例。</p>
+<p>選樣比較均勻隨機抽樣（RS）與最遠點抽樣（FPS）。功能評估沿用 SAEBench；特徵重現性則借用既有工作的 Hungarian 一對一配對，分別最大化編碼器與解碼器的總餘弦相似度。</p>
+<h2 id="功能資料需求依指標而異第-5-節表-42326">功能資料需求依指標而異（第 5 節、表 4–23、26）</h2>
+<p>重建評估衡量 SAE 重建能否保留模型的下一 token 預測行為，相對原模型及零消融基準計算。作者觀察到，小資料預算通常已接近 500M 參考，25M 與 50M 尤為接近。單一潛在特徵的稀疏探測也常保留概念資訊；增加資料卻未必降低特徵吸收或提高 AutoInterp，SCR、TPP、RAVEL 與遺忘的變化則依架構、稀疏度及寬度而異，常不單調。遺忘尤其依賴配置。</p>
+<p>接近參考不等於沒有差距。表 26 對 Gemma 的相配 SAE 配置做雙尾配對 t 檢定，並非以重複種子為配對單位。作者自報，ReLU 的 5M 隨機子集相對 500M，平均 loss recovered 少 0.005，<code>p&lt;0.001</code>；AutoInterp 少 0.020，<code>p&lt;0.001</code>。BatchTopK 的 50M 隨機子集在遺忘指標仍少 0.047，<code>p=0.005</code>。這些結果不能簡化成所有功能均已等價；未達顯著差異也不等於證明等效。</p>
+<p>同預算下，RS 通常較能保留重建及若干介入表現；FPS 常提高 AutoInterp，卻沒有全指標優勢。作者以相同活化池分析選樣偏移：表 1 的 Gemma 5M FPS 子集，平均活化範數比完整流高 <code>28.8±0.9%</code>，分箱範數分布的 KL 為 2.28 bits；RS 的平均偏移為 <code>0.0±0.4%</code>，KL 顯示為 0.000。前述誤差為跨緩衝更新的標準差，不是跨訓練種子的信賴區間。FPS 更偏向高範數區域，顯示幾何多樣性與代表原分布是不同選樣目的。<a href="https://arxiv.org/html/2610.20680v1#S5">來源：第 5 節、表 1、26</a>。</p>
+<h2 id="功能相似仍未重現相同特徵第-6-節表-2325">功能相似仍未重現相同特徵（第 6 節、表 2–3、25）</h2>
+<p>嚴格共享特徵要求：編碼器、解碼器獨立配對都挑中同一參考 latent，且兩邊餘弦相似度都超過 <code>τ=0.7</code>。作者自報，Gemma BatchTopK 的 5M 設定，平均配對解碼器餘弦只有 0.454；雖然 66.61% 特徵的配對對象一致，嚴格共享比例僅 2.20%。到 50M，兩者分別升至 83.47% 與 28.86%。百分比的分母是該字典的特徵，不是 token，也不是只在已一致配對者中計算。</p>
+<p>Gemma ReLU 的嚴格共享比例由 5M 的 28.42% 增至 50M 的 47.26%。表 25 的 Qwen 與 Pythia 亦呈現類似趨勢。這些表的直接證據限於 ReLU 與 BatchTopK，不能把特徵重現性的量測範圍擴成所有四種架構。表 3 的挑選範例也顯示：低、中方向對齊下，配對一致仍可能對應不同語意；高對齊範例才描述近似的比較級詞語模式。<a href="https://arxiv.org/html/2610.20680v1#S6">來源：第 6 節、表 2–3</a>。</p>
+<h2 id="結論限制與閱讀界線第-7-節">結論、限制與閱讀界線（第 7 節）</h2>
+<p>作者建議依用途選擇資料規模。若目的是重建或整體功能評估，可先測較小預算；若把單一 latent 當作科學研究對象，就應明確檢查特徵重現性。更多資料與較好的功能分數，都不能單獨充當特徵可信度證書。</p>
+<p>作者自陳，訓練與功能評估高度依賴 SAEBench 的實作、假設及指標限制，並稱其 RAVEL 與遺忘評估只支援 Gemma。</p>
+<p>（本檔補註，非作者自陳）表 12–19 卻列出 Pythia 的 RAVEL 數值，與上述限制文字不一致，本文不自行裁定有效性。第 4 節同列固定最佳化步數與選中活化只用一次，也不足以推算端到端運算節省。附錄 B 的假設編號引用與主文有錯置；此處依主文明列條件呈現，不代作者補證明。上述實驗的跨預算比較以有限的 500M 參考 SAE 為準，不代表找回已知真實特徵或通用安全保證。<a href="https://arxiv.org/html/2610.20680v1#S7">來源：第 7 節</a>、<a href="https://arxiv.org/html/2610.20680v1#A2">附錄 B</a>。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 d144aa5b · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>

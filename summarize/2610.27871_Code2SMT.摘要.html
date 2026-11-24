@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="d144aa5b5a9ed91bd348e6867e5252f04e2a8a47"><title>A Neuro-Symbolic Reasoning Engine for Compilation-Free Patch Presence Testing 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Siyuan Li、Jiayi Zhou、Zhiyuan Xia、Weijie Wang、Yaowen Zheng、Weiran Tang、Hong Li、Hongsong Zhu、Shanqing Guo</p><p>日期：2026-10-20（v1，cs.SE）</p><p>arXiv：2610.27871</p><p>閱讀說明：完整自讀官方HTML可取得的主文與書目；正文提到Appendix但HTML未提供。實驗數字為作者自報，未重現；採表列分數，不採摘要未充分分解的accuracy增益。</p><p><a href="https://arxiv.org/html/2610.27871v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="sylares讓llm翻譯程式讓z3判定補丁">SyLares：讓LLM翻譯程式，讓Z3判定補丁</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>SyLares將LLM放在原始碼與反編譯偽碼的解析、正規化及符號對應工作，交給Z3檢查產生的邏輯式是否等價，避免前作Lares在求解失敗後改由LLM直接判斷補丁是否存在。（<a href="https://arxiv.org/html/2610.27871v1#S3.SS4">§III-D</a>）</p>
+<h2 id="問題與方法">問題與方法</h2>
+<p>函式相似不代表漏洞已修補；小幅修改條件或加入檢查，就可能改變安全性。傳統補丁存在測試需要編譯修補前後版本，容易卡在依賴、編譯器與建置設定。Lares已提出免編譯流程，SyLares延續這個前作基礎，重點改為Code2SMT神經符號耦合，而非本文首次取消編譯。（<a href="https://arxiv.org/html/2610.27871v1#S2">§II、§VIII</a>）</p>
+<p>輸入包括目標二進位、對應原始專案與補丁commit；前提是其他程式相似度方法已找出疑似有漏洞的函式。免編譯指建立補丁特徵時無須自行建置參照二進位，仍需把目標二進位反編譯。（<a href="https://arxiv.org/html/2610.27871v1#S3.SS1">§III-A</a>；後句為本檔補註，非作者自陳）</p>
+<p>補丁增強參照MVP的輕量切片，使用Joern加入資料流、控制流相關敘述並展開巨集；分析限函式內。定位階段保留AST邊界截斷程式，在原碼標出補丁行，讓LLM回傳對應偽碼切片。只有新增或刪除的補丁另用反向匹配，補出修補前後候選，再做驗證。（<a href="https://arxiv.org/html/2610.27871v1#S3.SS2">§III-B–C</a>）</p>
+<p>Code2SMT的Extractor先用確定性的FSM解析條件、賦值、回傳與函式呼叫，複雜非標準偽碼才交LLM後備解析。Normalizer把異質表達轉為SMT-LIB相容表示，推定原碼與偽碼中哪些表達指向同個變數；Verifier交Z3檢查等價。若Z3回報語法或型別錯誤，將診斷送回LLM修改後重試。本文實作用Claude-3.5-Sonnet、IDA Pro、Tree-Sitter、Joern與Z3。（<a href="https://arxiv.org/html/2610.27871v1#S3.SS4">§III-D、§IV</a>）</p>
+<h2 id="實驗與比較條件">實驗與比較條件</h2>
+<p>作者自報資料集來自OpenSSL、Freetype、Tcpdump、Libxml2，含73個CVE、224個相異的漏洞／修補函式，形成4480個測例；另加2024年10月後揭露的20個漏洞、400個案例。建置採gcc v9.4.0、clang v6，優化等級O0–O3，架構涵蓋x86、x64、ARM。這些建置用來產生評估資料，不是SyLares使用時的參照編譯要求。（作者自報，<a href="https://arxiv.org/html/2610.27871v1#S5.T2.2.1">§V、表II</a>；末句為本檔補註，非作者自陳）</p>
+<p>正類是已修補函式：precision衡量判成已修補者有多少正確，recall衡量已修補者有多少被找回；把有漏洞函式判成已修補計為假陽性。跨架構表只報SyLares，作者說所選基線不能直接跨架構比較，不能把它當作與基線同條件的勝負表。（<a href="https://arxiv.org/html/2610.27871v1#S5.SS3">§V、§V-C</a>）</p>
+<h2 id="主要結果">主要結果</h2>
+<p>作者自報Z3完成查詢的coverage：Lares為897／4480，表列20.02%；SyLares為4480／4480，100%。coverage的定義是Z3能完整處理並得出確定結論，並非測試正確率。（作者自報，<a href="https://arxiv.org/html/2610.27871v1#S5.SS1">§V-A、表III</a>）</p>
+<p>下表皆作者自報，採表IV的x86條件；表V及§V-C進一步把這組SyLares結果對應至x86-clang。數值是跨優化等級平均，最後一欄則為新增漏洞案例的平均。</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>Precision</th>
+<th>Recall</th>
+<th>F1</th>
+<th>新增漏洞F1</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Robin</td>
+<td>0.63</td>
+<td>0.72</td>
+<td>0.67</td>
+<td>0.70</td>
+</tr>
+<tr>
+<td>PS3</td>
+<td>0.61</td>
+<td>0.78</td>
+<td>0.68</td>
+<td>0.69</td>
+</tr>
+<tr>
+<td>Lares</td>
+<td>0.72</td>
+<td>0.83</td>
+<td>0.77</td>
+<td>0.79</td>
+</tr>
+<tr>
+<td>SyLares</td>
+<td>0.82</td>
+<td>0.84</td>
+<td>0.83</td>
+<td>0.82</td>
+</tr>
+</tbody>
+</table>
+<p>來源：<a href="https://arxiv.org/html/2610.27871v1#S5.T4.2">表IV、表V、§V-B–C</a>。作者自報BinXray僅O0有結果，其餘優化等級失效，因此不列平均比較。</p>
+<p>作者自報表V的跨環境平均F1：x86-gcc為0.78、x64-gcc為0.77、arm-gcc為0.74、x86-clang為0.83、x64-clang為0.78。這顯示方法可處理不同環境，但結果仍隨環境變化。（作者自報，<a href="https://arxiv.org/html/2610.27871v1#S5.T5.2">表V</a>；後句為本檔補註，非作者自陳）</p>
+<p>作者自報消融的完整SyLares F1為0.829；去掉補丁增強、補丁定位、LLM後備解析、Normalizer，分別為0.736、0.580、0.790、0.574；以LLM替換Z3作最終判斷則為0.676。定位與符號正規化尤其關鍵，但移除定位的變體同時改成讓LLM直接看偽碼判補丁，不能視為完全隔離的單一元件因果效果。（作者自報，<a href="https://arxiv.org/html/2610.27871v1#S5.T7.2.1">§V-D、表VII</a>；後半為本檔補註，非作者自陳）</p>
+<p>作者自報SyLares總時間39.4秒，分離線20.3秒、線上19.1秒；Lares總時間35.9秒，Robin為489.3秒、PS3為64.5秒。這組計時不含編譯；商業LLM平均每驗證案例約0.30美元。（作者自報，<a href="https://arxiv.org/html/2610.27871v1#S5.SS5">§IV、§V-E、圖6</a>）</p>
+<h2 id="限制與閱讀價值">限制與閱讀價值</h2>
+<p>作者自陳重複出現的補丁敘述會讓定位誤認已修補，微小編輯也可能被編譯差異掩蓋；LLM幻覺仍存在於Normalizer，若把偽碼翻成語意不等價的SMT-LIB，Z3仍可能給出錯誤的補丁判定。商業API有費用，LLM偶爾輸出非預期格式而需重試。（<a href="https://arxiv.org/html/2610.27871v1#S5.SS6">§V-F、§VI</a>）</p>
+<p>（本檔補註，非作者自陳）本研究證明的是此資料集的查詢可處理率與補丁分類表現；求解器對輸入公式的確定性，不能取代對LLM切片、翻譯與符號對應是否忠實的驗證。因此100% coverage不能解讀為原始程式完整語意皆已獲證明。</p>
+<p>（本檔補註，非作者自陳）對ai_core或agent工具鏈的接點，是將模型限制在「把非結構材料轉成可檢查表示」，保留解析與正規化產物，再讓獨立檢查器決定。最值得追問的是轉譯是否忠實，不能只驗格式通過或求解完成。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 d144aa5b · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>

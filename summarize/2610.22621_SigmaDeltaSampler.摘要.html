@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="d144aa5b5a9ed91bd348e6867e5252f04e2a8a47"><title>Noise-shaped Sampling and Annealing for Scalable On-the-edge Training of Binary and Ternary AI Models 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zihao Chen、Zhili Xiao、Rui-Jie Zhu、Yipeng Wang、Jason Eshraghian、Shantanu Chakrabartty</p><p>日期：2026-10-15（v1，cs.LG）</p><p>arXiv：2610.22621</p><p>閱讀說明：自讀主文、全部附錄 S1–S9 與書目；數字為作者自報，未重現；硬體流量為分析估計，非計數器實測。</p><p><a href="https://arxiv.org/html/2610.22621v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="用累積誤差驅動離散權重翻轉">用累積誤差驅動離散權重翻轉</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>ΣΔ-Sampler把抽樣退火放進雜訊整形回授，直接更新二元／三元權重，以累積梯度和已實現更新的差取代全精度影子權重與AdamW動量；可擴展至大型語言模型，但仍需連續梯度、部分連續參數及依情境調整翻轉上限。（<a href="https://arxiv.org/html/2610.22621v1">§1、§3–4</a>）</p>
+<h2 id="問題與方法">問題與方法</h2>
+<p>二元權重上的任意損失都可精確寫成Walsh–Fourier多線性展開，對應各階Ising交互作用。這是表示等價，不要求顯式列出所有係數。Ising求解尋找固定能量最低點，訓練則需泛化；mini-batch又讓有效耦合隨步驟變化。作者把低階項視為慢變輪廓、高階挫折與量化／抽樣視為快速擾動，提出以頻率結構分離兩者。（<a href="https://arxiv.org/html/2610.22621v1#S4">§1、§4.1–4.3</a>）</p>
+<p>每個離散權重保留積分器，累積當前梯度並扣回已實現離散更新的縮放回授。高於自適應門檻且方向要求變更時確定翻轉；低於門檻時按溫度控制的Boltzmann機率探索。門檻由log幅度EMA與自動增益控制調節，卷積層使用藍雜訊rank mask，線性層用白雜訊抽樣。三元權重以<code>W_on-W_off</code>表示；§4.4描述共用積分器、相反決策訊號與獨立隨機抽樣。（<a href="https://arxiv.org/html/2610.22621v1#S4">§4.3–4.5、S2</a>）</p>
+<p>理論雜訊傳遞因子為<code>1-z^-1</code>，但推導建立在局部極小值附近的小訊號線性化、近似白加性雜訊、局部正曲率與近似固定有效步長／回授；窄頻近似另需適應頻寬遠小於閉迴路極點。不能把這項局部分析當任意非凸網路的全域收斂保證。（<a href="https://arxiv.org/html/2610.22621v1">§4.3、S1</a>；末句為本檔補註，非作者自陳）</p>
+<h2 id="主要結果與比較條件">主要結果與比較條件</h2>
+<p>以下數字皆為作者自報，準確率單位為百分比，未自行重跑。</p>
+<table>
+<thead>
+<tr>
+<th>任務</th>
+<th>結果</th>
+<th>出處與條件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Planted QUBO</td>
+<td>維度100，約100步進入盆地並精確找回植入解</td>
+<td>§2.1、圖2；特定合成instance，非一般QUBO保證</td>
+</tr>
+<tr>
+<td>CIFAR-10、VGG</td>
+<td>全離散三元92.20%，FP 92.88%，重跑全離散TWN 91.47%</td>
+<td>表1；TWN原作92.56%與本文重跑不同</td>
+</tr>
+<tr>
+<td>CIFAR-10耗時</td>
+<td>全離散三元0.73小時、FP 0.38小時、全離散TWN 10.85小時</td>
+<td>表1、§2.2；H100，相同硬體；本文與FP／TWN訓練排程長度不同</td>
+</tr>
+<tr>
+<td>ImageNet-1000、ResNet-18</td>
+<td>Top-1／Top-5為61.65%／83.81%；FP為65.40%／86.76%；TWN為61.80%／84.20%</td>
+<td>表3；本文連分類權重都離散，TWN保留FP分類頭</td>
+</tr>
+<tr>
+<td>語言模型從零訓練</td>
+<td>370M／1.3B／2.7B的尾100步平均training loss為6.4544／5.9684／5.9846</td>
+<td>表4；相同資料次序與cap，不是下游評測或scaling law</td>
+</tr>
+<tr>
+<td>語言模型續訓</td>
+<td>最佳cap <code>10^-4</code>最終eval loss 3.0241，STE為3.1644</td>
+<td>表S5；共同0.13B量化checkpoint、100步，scale初始化令起始loss不同</td>
+</tr>
+</tbody>
+</table>
+<p>CIFAR-10每epoch三元耗時13.4秒、FP 9.2秒、TWN 247.8秒；三元相對TWN約18.5倍快，但相對FP有開銷，且三元排程200 epochs、FP／TWN為150。不能把摘要「數量級加速」讀成對FP全面加速。（作者自報，<a href="https://arxiv.org/html/2610.22621v1#S2">§2.2</a>；末句為本檔補註，非作者自陳）</p>
+<p>持續學習把CIFAR-10分成8舊類與2新類；先訓150 epochs，再用新類加20%或50%舊類混合資料訓50 epochs，兩邊均保留完整optimizer state。三元法第二階段舊類最終77.51%／84.36%，FP為83.85%／88.23%，新類則為97.60%／97.00%。作者觀察休眠權重再活化，但這不是免replay或完全無遺忘的證據。（作者自報，<a href="https://arxiv.org/html/2610.22621v1">表2、§2.3、S3</a>；末句為本檔補註，非作者自陳）</p>
+<h2 id="語言模型的實作邊界">語言模型的實作邊界</h2>
+<p>作者自報各從零訓練run呈現約1.065B tokens，來自FineWeb-Edu固定單一shard，會繞回重讀，因此是tokens presented而非unique tokens。連續參數以fp32保存、bf16 autocast；作者提醒直接用bf16參數會讓細小AdamW更新歸零，造成對STE不公平。embedding、LM head、normalization與scale仍由AdamW更新。（<a href="https://arxiv.org/html/2610.22621v1">S4.1–S4.3</a>）</p>
+<p>主文從零比較固定cap <code>10^-3</code>。附錄定義cap同時控制每層、每三元分量、每步的確定翻轉quota與隨機機率上限，兩機制一同變動，未拆解各自效果。最適cap依尺度與是否續訓改變；續訓cap <code>10^-1</code>的eval loss惡化至7.1105。最佳續訓結果不能與主文固定cap從零結果混成同一設定。（作者自報，<a href="https://arxiv.org/html/2610.22621v1">S4.5、S5、表S4–S5</a>）</p>
+<h2 id="記憶體與能源哪些是實測">記憶體與能源：哪些是實測</h2>
+<p>作者自報三元權重持久狀態每參數6 bytes，含兩個byte code與fp32積分器；FP為16 bytes，STE表5另列離散code後為17 bytes。積分器重用gradient buffer，連續參數仍為16 bytes。2.7B模型分析持久狀態由43.25 GB降為17.87 GB，省58.7%；全程排除activation memory，不能當總GPU峰值記憶體。（<a href="https://arxiv.org/html/2610.22621v1">§2.5、表5、S6.1</a>；末句為本檔補註，非作者自陳）</p>
+<p>作者將實測flip count映成假設32-byte sector的DRAM交易數，每flip收一整sector並於dense成本封頂；晚期視覺模型約1600倍、2.7B模型約24600倍減少。這只涵蓋weight-update traffic，排除activation、gradient、optimizer state與communication，並非實測總HBM頻寬或總能源下降。（作者自報，<a href="https://arxiv.org/html/2610.22621v1">§2.5、S6.2</a>）</p>
+<p>A100上的VGG-7能源另作實測：ΣΔ每epoch 3004 J、FP 1659 J，約1.8倍開銷；作者歸因未融合kernel及吞吐量差距，期待fused實作改善，並未實證全面省電。（作者自報，<a href="https://arxiv.org/html/2610.22621v1">S8、表S9</a>）</p>
+<h2 id="作者局限與原文差異">作者局限與原文差異</h2>
+<p>作者承認有界平行翻轉不符合FSA重尾提案，快速降溫只是概念類比，不能套用FSA／經典SA收斂定理；與FP仍有精度差距，LLM僅單一語料且tokens不足，流量需硬體counter驗證。反向仍依賴連續梯度；全低精度訓練與DFA／SPSA屬未來方向。（<a href="https://arxiv.org/html/2610.22621v1#S3">§3</a>）</p>
+<p>附錄S7的超參數排序僅單seed；S9顯示ΣΔ對深網路殘差連接至少與STE同樣依賴，去除skip惡化更快，中間skip配置可不穩定，加入高階skip未超越標準ResNet。這限制「雜訊整形即可消除深度最佳化困難」的解讀。（<a href="https://arxiv.org/html/2610.22621v1">S7、S9</a>；末句為本檔補註，非作者自陳）</p>
+<p>（本檔補註，非作者自陳）原文§2.4稱替換MLGRU內BitLinear，§4.6／S4.1卻描述attention與SwiGLU；§4.4稱off分量排除autograd並共用積分器，S2結尾稱off梯度由autograd產生。本檔保留差異，以Methods／S4敘述實驗設定，不據此斷言唯一實作；code與資料只承諾接受後公開。（<a href="https://arxiv.org/html/2610.22621v1">§2.4、§4.4、§4.6、S2、S4、Code Availability</a>）</p>
+<h2 id="對讀者的價值接點">對讀者的價值・接點</h2>
+<p>（本檔補註，非作者自陳）對ai_core的低精度持續適應，值得測的是「保留誤差而非保留全精度影子權重」能否減少持久狀態；應同時記錄任務精度、flip率、總流量與實測能源，並在相同資料／初始化／連續optimizer下調cap，避免只看稀疏寫入估計就宣稱整體節能。</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.22621_SigmaDeltaSampler.zh-TW.html">ΣΔ-Sampler翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 d144aa5b · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>

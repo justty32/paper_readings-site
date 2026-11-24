@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="d144aa5b5a9ed91bd348e6867e5252f04e2a8a47"><title>AGAR: A Reinforcement Learning Substrate for LLM Program Evolution 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Haoran Li、Zengle Ge、Xiaomin Yuan、YUI LO、Haoxin Li、Songlin Zhou、Qianhui Liu、Jiahua Ying、Yuanhang Liu、Mingju Chen、Annan Li、Jianmin Wu、Dawei Yin、Dou Shen</p><p>日期：2026-10-06（v1，cs.AI）</p><p>arXiv：2610.09215</p><p>閱讀說明：主文各節與關鍵附錄精要譯文，非逐字全譯；量化結果均為作者自報。譯註另標，保留指定 v1 的內部矛盾。</p><p><a href="https://arxiv.org/html/2610.09215v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="agar用於-llm-程式演化的強化學習基礎設施">AGAR：用於 LLM 程式演化的強化學習基礎設施</h1>
+<h2 id="摘要與第-1-節問題與主張">摘要與第 1 節：問題與主張</h2>
+<p>語言模型改寫候選程式，搜尋迴圈決定存活者；選擇、變異、多樣性、記憶及信用歸因仍受手設規則支配。AGAR 將迴圈形式化為 Markov 決策過程：動作是條件前綴，不是生成程式；估計器可替換或關閉，不訓練後端權重。</p>
+<p>模組分解並非數學唯一決定。貢獻為工具轉移介面、TextGrad 及非同步信用歸因分析。（摘要、§1）</p>
+<h2 id="第-2-節兩條背景脈絡">第 2 節：兩條背景脈絡</h2>
+<p>演化評分附著於個體，資訊用於生成下一候選，未累積成軌跡回報。障礙不是獎勵稀疏，而是外生適應度沒有連結親子價值的 Bellman 遞迴。AGAR 讓遞迴可定義，未實現經驗式回推；M2 以啟發式前向估計引導選擇／排序，不是從實現回報學得。可學物件是文字，不是模型權重。（§2.1–2.2）</p>
+<h2 id="第-3-節形式化與工具轉移">第 3 節：形式化與工具轉移</h2>
+<h3 id="狀態動作與轉移">狀態、動作與轉移</h3>
+<p>狀態包含親代程式、適應度、譜系、年齡、變異史，以及族群分數、多樣性與預算進度。</p>
+<p>動作串接 M1–M3 輸出；M4 是檢索脈絡，不是前綴因子。凍結黑箱 LLM 依前綴、任務與親代生成程式，評估後納入族群；模型似然不可取得。（§3.1，式 1）</p>
+<h3 id="獎勵與折扣退化">獎勵與折扣退化</h3>
+<p>作者在式 2 定義代理獎勵：</p>
+<pre><code class="language-text">r_hat = Δf + γ V_M2(child)
+        + w_max Δf_max + w_mean Δf_mean + λ H(π)
+</code></pre>
+<p>獎勵合併親子改善、後代估值、族群改善及多樣性。作者自報 γ=0.95、w_max=0.7、w_mean=0.3、λ=0.1，未掃描 λ；γ 與譜系 horizon 分開。（§3.1 式 2、附錄 D.2）</p>
+<p>目標是折扣回報期望加熵項。H 為平均成對餘弦距離，略過缺特徵者；行為類別 Shannon entropy 另作輔助。無參考策略，故無 KL 懲罰。（§3.2 式 3、附錄 D.2）</p>
+<p>作者的 Observation 1：γ 為零即退化為一步目標，據此解讀既有系統；非零折扣的實驗效果尚待研究。（§3.2）</p>
+<h3 id="模組與-critic">模組與 critic</h3>
+<p>M1 沿譜系作文字歸因；M2 在評估前估計排序；M3 選親代並決定探索／利用，同時維持多樣性；M4 提供抽象規則與方向性路徑記憶。它們保留 RL 工具功能，卻不具經驗式數值回推。TD 修正僅形式化，未接入。（§3.3、附錄 D.7 表 5）</p>
+<p>critic 只檢查模組輸出是否適當。黑箱共同消費前綴，貢獻須靠外部移除消融識別；作者未報此分解。（§3.4）</p>
+<h2 id="第-4-節文字空間的策略改善">第 4 節：文字空間的策略改善</h2>
+<p>TextGrad 依舊指引、rollout 脈絡與代理獎勵更新持久指引 θ_i，不是改逐步輸出或權重。（§4.1、附錄 D.5，式 4）</p>
+<p>作者自報整段重寫在 206 次執行、9,844 組更新對中，首次即填滿 2,000 字元；相鄰相似度 0.18、首尾 2–6%，差的改寫仍持續到下次覆寫。（§4.2）</p>
+<p>修正版每期至多新增一條、編輯／移除一條規則，也可不改；延後驗證及回退，避免子代尚無後代時只看即時分數。作者自報呼叫由 8 次減為 2 次，僅編輯 M1、M4，其他指引未被程式讀取。（§4.2）</p>
+<h2 id="第-5-節可擴充與非同步執行">第 5 節：可擴充與非同步執行</h2>
+<p>作者自報配置空間有 180 種，已評估 14 種。接入 discounted-UCB 新增單一模組檔 236 行，控制器及協定未改，並刪除 26 行手調啟發式。附錄明說該 bandit 未用於任何報告實驗；案例證明能接入，不證明有效。（§5.1、附錄 D.9）</p>
+<p>執行緒池曾因共享評估器的鎖而悄悄序列化，須隔離每項工作的模組狀態；後端替換介面必須明示隔離語義。（§5.1）</p>
+<p>串流排程維持 W 個在途工作，任一完成就納入族群並補件。控制器獨佔族群寫入，worker 讀快照、寫自己的軌跡，慢工作不拖住整批。（§5.2）</p>
+<p>過時度 τ 是落地與派送的族群版本差，W−1 不是一般上界。作者自報 ahc011 在 W=8 時平均 6.05、p95 為 12、最大 22，18.6% 超過 7；W=1 時全為零。輪詢視窗內按派送而非完成順序納入。（§5.3、附錄 D.4 表 3）</p>
+<p>舊快照影響所有模組及文字更新；缺逐 token 似然，不能直接採重要性比率校正。作者未校正延遲，亦未串接 τ 與 M2 誤差逐筆統計。（§5.3、附錄 D.4）</p>
+<h2 id="第-6-節實驗">第 6 節：實驗</h2>
+<p>作者自報 19 項任務含 10 項 C++ 競賽最佳化、3 項數學構造、6 項 Python 系統／ML 發現；使用 DeepSeek-V4-Flash、GLM-5.2，規劃三個種子。基線 OpenEvolve（OE）與 ShinkaEvolve（SE）由作者移植任務後執行，各用自身 harness；vanilla 為關閉轉移模組的自家底座。（§6.1）</p>
+<p>下表為作者自報 best-at-budget mean ± std；各任務先除以跨系統最大值再平均，不是成功率。（§6.2，表 1）</p>
+<table>
+<thead>
+<tr>
+<th>後端</th>
+<th style="text-align:right">OE</th>
+<th style="text-align:right">SE</th>
+<th style="text-align:right">Base</th>
+<th style="text-align:right">Combo</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DeepSeek-V4-Flash</td>
+<td style="text-align:right">0.855±0.193</td>
+<td style="text-align:right">0.919±0.138</td>
+<td style="text-align:right">0.949±0.107</td>
+<td style="text-align:right">0.990±0.024</td>
+</tr>
+<tr>
+<td>GLM-5.2</td>
+<td style="text-align:right">0.897±0.131</td>
+<td style="text-align:right">0.929±0.093</td>
+<td style="text-align:right">0.979±0.045</td>
+<td style="text-align:right">0.972±0.052</td>
+</tr>
+</tbody>
+</table>
+<p>改善集中在競賽程式，飽和任務壓低變異；ahc015、ahc027 的 AGAR 有種子未完成。（§6.2 表 1、附錄 D.10）</p>
+<p>底座階梯 L0 只改寫目前最佳；L1 加靈感樣本與 critic；L2 再加優先回放、島嶼剪枝、清除及多樣性槽位；L3 再加逐測例弱點報告。作者自報 DeepSeek 上五項任務、每格三種子且跑滿 100 次評估，各層平均為 0.7851、0.8465、0.8425、0.8998，首尾相對增加 14.6%。這是表 2 原始分數平均，不是表 1 正規化平均。（§6.3，表 2）</p>
+<p>階梯不單調，L1 到 L2 平均下降；ahc015 首尾下降 14.5%，增益主要來自 ahc008 的 66.2% 與 ahc016 的 52.7%。作者認為相鄰層差異在雜訊內，只支持累積堆疊與裸迴圈比較，不能歸因至單層或單模組。（§6.3，表 2）</p>
+<h2 id="第-7-節與關鍵附錄限制及重現">第 7 節與關鍵附錄：限制及重現</h2>
+<p>遞迴可定義不等於已有經驗式回推。後續包括接入 TD 修正、延遲校正、跨模型 critic、更大樣本的模組消融及價值尺度標準化。（§7）</p>
+<p>作者明示相同評估次數下，LLM 呼叫為基線的 2–4 倍，無呼叫數匹配實驗；主結果單 worker、僅兩個後端與三種子規模，只支持定性結論。M2 未按實現後代分數訓練，自我校準可能偏誤；近期個體無後代證據時價值為零，退回適應度。價值與適應度的關聯部分由選擇規則製造。TextGrad 無收斂保證，critic 與模組共用後端有共享盲點。（附錄 D.8）</p>
+<p>託管模型非固定產物、top-p 未固定，絕對分數未必可重現；程式、配置與日誌承諾出版後公開。LLM 亦用於實作及寫作，作者負責主張；生成程式僅沙箱評估、不部署。（附錄 A–C）</p>
+<h3 id="譯註原文疑義">譯註：原文疑義</h3>
+<p>以下為本譯文核對事項，不是作者新增結論：</p>
+<ul>
+<li>§3.3 稱 Base／Combo 差在 M2、M3；§6.3 又稱對應 L2／L3；附錄 D.9 說 bandit 未用於報告實驗，不能把主表改善歸給它。</li>
+<li>式 1、附錄 D.1 明列前綴為 M1–M3、M4 為脈絡；§3.3 卻說四個因子、§3.4 說四個輸出皆串接。§4.2 稱更新 M4 指引，附錄 D.1 又稱 M4 無 θ。</li>
+<li>附錄 B 宣稱每條件完整三種子、100 次評估、無例外，與表 1 缺種子註記衝突；附錄 D.10 缺失標記亦未完整對應。階梯與主表配置的對應說法，另有部分同名任務分數不一致。均未補值或調和。</li>
+</ul>
+<p>已對照 HTML；省略參考文獻、完整介面表及全任務分數表。</p>
+<blockquote>
+<p>重點整理見 <a href="../summarize/2610.09215_AGAR.%E6%91%98%E8%A6%81.html">AGAR 摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 d144aa5b · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>

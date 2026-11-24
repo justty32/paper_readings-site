@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="d144aa5b5a9ed91bd348e6867e5252f04e2a8a47"><title>Post-hoc Epistemic Uncertainty for Vision-Language-Action Policies 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Johannes Keller、Albrecht M. Bloße、Adrian Lindenmeyer、Thomas Neumuth、Daniel Schneider</p><p>日期：2026-10-21（v1，cs.RO）</p><p>arXiv：2610.29730</p><p>閱讀說明：自讀主文、全部附錄 A–C 與99筆書目；數字為作者自報，未重現；GP條件變異數衡量指定embedding幾何中的示範覆蓋，不是失敗機率。</p><p><a href="https://arxiv.org/html/2610.29730v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="用單一vla的表徵估計示範覆蓋並拆開任務間與任務內評估">用單一VLA的表徵估計示範覆蓋，並拆開任務間與任務內評估</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>在凍結SmolVLA表徵上加Gaussian process（GP）kernel-variance head，不需回歸目標或梯度更新，即可支援示範取得與轉交較強policy；但實驗也顯示，標準LIBERO-10主要獎勵辨認任務間訓練覆蓋，並未充分檢驗任務內排序。（<a href="https://arxiv.org/html/2610.29730v1#S3">§I、§III–V</a>）</p>
+<h2 id="問題與方法">問題與方法</h2>
+<p>ensemble disagreement需要額外訓練、微調及執行另一個policy。本文直接問查詢觀察附近是否有訓練示範。support只含該policy訓練示範的觀察，不用primary、supervisor或評估執行的成敗。新增示範或更新policy後，必須重新抽support embeddings並重fit；不改動動作預測。（<a href="https://arxiv.org/html/2610.29730v1#S3.SS1">§III-A</a>）</p>
+<p>先按support做逐座標標準化、可選PCA及Ledoit–Wolf收縮共變異數白化，取得<code>z</code>。Gaussian kernel與分數為原式（1）：</p>
+<div class="math block">
+\[k(z,z&#x27;)=\exp(-\|z-z&#x27;\|^2/(2\ell^2)),\qquad
+u(z)=k(z,z)-k(z,Z)(K_{ZZ}+\lambda I)^{-1}k(Z,z).\]
+</div>
+<p>這是指定embedding函式上的零均值、單位先驗變異數GP之條件變異數；只需要support位置與Cholesky分解，不需要輸出值。遠離support接近先驗變異數；有ridge時，孤立支援點為<code>lambda/(1+lambda)</code>，不能說所有支援點嚴格為零。embedding保留動作相關距離是前提，本文沒有在訓練時強制它。（<a href="https://arxiv.org/html/2610.29730v1#S3.SS1">§II、§III-A，式1–2</a>）</p>
+<p>作者自報KV-Ctx將兩相機與指令的final prefix token均值，加上8個state座標，組成2888維，再PCA至512維；<code>lambda=10^-3</code>，bandwidth由第<code>ceil(sqrt(N))</code>近鄰距離中位數決定。KV-Dec讀固定Gaussian初始chunk在第9／10次flow evaluation的action-expert hidden state，平均50個action tokens得480維，全共變異數白化、median pairwise bandwidth、<code>lambda=10^-2</code>。Ctx只需prefix forward，Dec另跑九步action expert。（作者自報，<a href="https://arxiv.org/html/2610.29730v1#A1">§III-A、附錄 A表7</a>）</p>
+<p>另裝raw／fused context heads：raw讀融合前各相機、指令與state，fused讀attention後對應token群。raw可定位哪種輸入陌生，fused還能發現各自熟悉、組合卻陌生的輸入；這不是失敗原因或有效矯正介入的因果辨識。（<a href="https://arxiv.org/html/2610.29730v1#S5.SS8">§III-A、§V-E、§V-H</a>）</p>
+<h2 id="實驗設計與分母">實驗設計與分母</h2>
+<p>作者自報主SAVE研究用三個seed。primary與ensemble第二policy初始以1437份示範訓練，涵蓋LIBERO其他三套件及LIBERO-10的task 0–2；十個target tasks的379份示範是候選池。support只取各唯一準備／已取得示範的起始觀察。supervisor另以全部40任務1693份示範訓練，作自動化援助proxy。（作者自報，<a href="https://arxiv.org/html/2610.29730v1#S3.SS4">§III-D</a>）</p>
+<p>SAVE保留既有規則：每任務平均uncertainty形成抽樣權重，抽到任務後取最不確定condition；原先已取得／準備示範仍可被查詢。作者自報各arm皆15輪、每輪五次query與4000次更新，故75個query slots不必等於75份新示範。校準與referral另在Random arm的round 0、10共同policy上計分，每任務50個起始state、每condition獨立執行三次；不能把不同acquisition arm的成效當這組校準對照。（作者自報，<a href="https://arxiv.org/html/2610.29730v1#S3.SS2">§III-B–D</a>）</p>
+<p>「task-level calibration」是任務平均uncertainty與成功率的負Spearman／Pearson相關，不是校準失敗機率。referral依uncertainty把condition轉給supervisor，按實際signed gain <code>s_i-p_i</code>計總成功率；nAUC是超過random referral的曲線面積，除以hindsight oracle超過random的面積，random為0、oracle為1。global可利用任務身份，within-task在每任務轉交同一比例，任務內常數分數得零。（<a href="https://arxiv.org/html/2610.29730v1#S3.SS3">§III-C，式3–4</a>）</p>
+<h2 id="主要結果">主要結果</h2>
+<p>下表皆為作者自報；校準／global nAUC平均Random arm兩checkpoint，成功率是SAVE第15輪，誤差為三seed樣本標準差。（<a href="https://arxiv.org/html/2610.29730v1#S4">表1–3</a>）</p>
+<table>
+<thead>
+<tr>
+<th>指標</th>
+<th style="text-align:right">KV-Ctx</th>
+<th style="text-align:right">KV-Dec</th>
+<th style="text-align:right">VFD</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>負Spearman</td>
+<td style="text-align:right">0.77±0.08</td>
+<td style="text-align:right">0.75±0.17</td>
+<td style="text-align:right">0.75±0.12</td>
+</tr>
+<tr>
+<td>負Pearson</td>
+<td style="text-align:right">0.82±0.09</td>
+<td style="text-align:right">0.80±0.14</td>
+<td style="text-align:right">0.64±0.17</td>
+</tr>
+<tr>
+<td>SAVE最終成功率</td>
+<td style="text-align:right">65.7±1.8%</td>
+<td style="text-align:right">61.8±1.9%</td>
+<td style="text-align:right">61.9±2.5%</td>
+</tr>
+<tr>
+<td>global referral nAUC</td>
+<td style="text-align:right">0.50±0.04</td>
+<td style="text-align:right">0.51±0.07</td>
+<td style="text-align:right">0.48±0.06</td>
+</tr>
+</tbody>
+</table>
+<p>作者自報GU最終64.4±3.1%、Random 54.7±5.1%；兩kernel heads的75次query全是新示範，VFD平均69.3、GU 62.7、Random 46.3份。三seed只支持觀察表現相近，不能證明等價或穩定優勢；更多unique demonstrations也使「選新示範較好」與「避免重複」無法隔離。（作者自報，<a href="https://arxiv.org/html/2610.29730v1#S4.SS2">§IV-B、§V-H、表2</a>）</p>
+<p>作者自報每輪額外overhead為KV-Ctx 1.0 GPU-minute、VFD 43.8；後者包含第二policy微調，前者包含抽feature／refit／score，皆排除各arm共同的primary訓練。部署時評500個conditions為Ctx 0.8、Dec 8.9、VFD 38.8 GPU-minutes；所稱最高約50倍只指uncertainty scoring、約44倍指每輪額外成本，並非整體機器人控制或訓練加速。（作者自報，<a href="https://arxiv.org/html/2610.29730v1#S4.SS2">§IV-B、§V-C、表2</a>）</p>
+<h2 id="任務間覆蓋不等於任務內排序">任務間覆蓋不等於任務內排序</h2>
+<p>作者自報只按示範數的<code>1/(1+n_k)</code>參考分數，負Spearman／Pearson即0.82／0.83、global nAUC 0.52；它需要task labels，不能部署作未見任務估計。round 10同condition不同執行仍佔單次成敗變異44%；within-task nAUC為Ctx 0.05±0.12、Dec 0.11±0.03、VFD 0.07±0.05。這說明global表現主要反映哪些任務有訓練覆蓋，並未建立強任務內辨識力。（作者自報，<a href="https://arxiv.org/html/2610.29730v1#S4.SS4">§IV-C–D、表1、3</a>）</p>
+<p>擾動研究是另一regime：作者自報primary改以全部379份LIBERO-10示範訓練，support取每第十frame，另測受控相機、語言、state及跨模態組合。表4起始觀察每任務25 states，昂貴VFD只測10；配對比較只用共同states。熟悉指令與熟悉場景若不相容，raw heads皆chance，fused heads與whole-policy heads仍可偵測。（作者自報，<a href="https://arxiv.org/html/2610.29730v1#S4.SS5">§III-D、§IV-E、表4–5</a>）</p>
+<p>referral另用每任務十個states、clean及九個label-preserving families的12項擾動，supervisor已訓練同族擾動。作者自報within-task nAUC為Dec 0.46±0.03、VFD 0.40±0.03，配對差0.06、95%區間[0.03,0.10]；Ctx 0.40±0.05，對VFD差區間跨零。優勢成立於這種supervisor已學會處理的變異，不能外推陌生failure mechanism；擾動陌生也不保證有害或轉交有益。（作者自報，<a href="https://arxiv.org/html/2610.29730v1#S4.SS6">§IV-F、附錄 C表10–11</a>）</p>
+<h2 id="作者局限與讀者接點">作者局限與讀者接點</h2>
+<p>作者明示僅測SmolVLA、模擬LIBERO與少量seed／重複執行；bootstrap主要描述已測任務而非未見任務。feature collapse、token平均及PCA可遮蔽重要差異；低變異數不代表policy已會成功。head參數只經有限探索，未系統敏感度分析，也缺同樣廉價的distance／density baseline對照。（<a href="https://arxiv.org/html/2610.29730v1#S5.SS8">§V-H、附錄 A</a>）</p>
+<p>作者明示referral在執行前從同起始state獨立啟動自動supervisor，沒有測人類協助、中途交接、恢復或介入成本。執行中偵測僅證明對排定擾動敏感，未證預警、episode false-alarm率或回應alarm能改善結果。exact GP需立方分解時間與平方儲存；超過約10000筆support及稀疏近似對排序／取得／成本的影響未測。（作者自報，<a href="https://arxiv.org/html/2610.29730v1#S5.SS8">§V-H</a>）</p>
+<p>（本檔補註，非作者自陳）對ai_core／機器人agent可把「表徵覆蓋」作獨立觀測訊號，與失敗風險、supervisor能力及介入成本分開建模。評估應同時列global／within-task、示範數參考及重複執行，避免把便宜的陌生偵測直接當成可靠求助策略。（依據<a href="https://arxiv.org/html/2610.29730v1#S5.SS4">§V-D–H</a>）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.29730_PosthocVLAUncertainty.zh-TW.html">Posthoc VLA Uncertainty 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 d144aa5b · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>

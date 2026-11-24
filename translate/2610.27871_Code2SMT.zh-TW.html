@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="d144aa5b5a9ed91bd348e6867e5252f04e2a8a47"><title>A Neuro-Symbolic Reasoning Engine for Compilation-Free Patch Presence Testing 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Siyuan Li、Jiayi Zhou、Zhiyuan Xia、Weijie Wang、Yaowen Zheng、Weiran Tang、Hong Li、Hongsong Zhu、Shanqing Guo</p><p>日期：2026-10-20（v1，cs.SE）</p><p>arXiv：2610.27871</p><p>閱讀說明：主文逐節精譯，表格與書目擇要；官方HTML未提供正文提及的附錄。實驗數字均作者自報，未重現。</p><p><a href="https://arxiv.org/html/2610.27871v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="第iii節相似函式仍可能處於不同修補狀態">第I–II節：相似函式仍可能處於不同修補狀態</h1>
+<p>程式碼重用會傳播已知漏洞。函式級二進位相似度可找到疑似漏洞，卻難區分只改少量敘述的修補版與漏洞版。既有修補存在性測試又常須編譯修補前後原始碼，受相依套件、編譯參數及工具版本牽制。本文沿用作者前作Lares的免編譯方向，直接比較原始碼與目標二進位的反編譯偽碼。（<a href="https://arxiv.org/html/2610.27871v1#S2">§I–II</a>）</p>
+<p>Lares先嘗試Z3，失敗時由LLM判定；複雜指標與非標準偽碼使符號通道失效，最終判斷容易受幻覺影響。SyLares的改變是讓LLM負責抽取、翻譯與符號對應，由Z3執行最後的等價性查詢。免編譯方向是前作貢獻，本文重點是Code2SMT的神經符號耦合。（<a href="https://arxiv.org/html/2610.27871v1#S3.SS4">§II-C、§III-D</a>）</p>
+<h2 id="第iii-ab節輸入前提與修補增強">第III-A–B節：輸入前提與修補增強</h2>
+<p>系統預設其他程式碼相似度工具已找出疑似漏洞函式；輸入為目標二進位、對應原始碼專案與修補commit。先取得修補前後原始碼的相關切片，再定位至目標偽碼，最後驗證。它不是從任意二進位自動發現所有未知漏洞。（<a href="https://arxiv.org/html/2610.27871v1#S3.SS1">§III-A</a>；末句為本檔補註，非作者自陳）</p>
+<p>修補增強沿用MVP的輕量切片方向，以Joern進行函式內分析。資料流補入修補變數的定義與使用；控制流補入包住修補的條件、區塊及後續敘述；巨集分析從原始碼取出具體值，替換修補中的巨集名稱，以對應偽碼常數。作者明說直接查找巨集可能出錯，但不需編譯。（<a href="https://arxiv.org/html/2610.27871v1#S3.SS2">§III-B</a>）</p>
+<h2 id="第iii-c節定位與反向比對">第III-C節：定位與反向比對</h2>
+<p>系統在原始函式中以<code>//patch_code</code>標記切片；為容納模型上下文，依AST邊界裁切，保留修補所在控制結構。提示提供原始碼與偽碼片段，要求LLM回傳匹配位置及切片的JSON。相似性定位本身仍不能判定是否已修補。（<a href="https://arxiv.org/html/2610.27871v1#S3.SS3">§III-C1–2</a>）</p>
+<p>純新增或純刪除修補只有單側差異。反向比對將已定位偽碼再對到另一側原始碼：新增修補對回修補前版本，刪除修補對回修補後版本，以形成可供後續驗證的成對結果。（<a href="https://arxiv.org/html/2610.27871v1#S3.SS3.SSS3">§III-C3</a>）</p>
+<h2 id="第iii-d節code2smt推理引擎">第III-D節：Code2SMT推理引擎</h2>
+<p>Extractor先用自訂有限狀態機逐字做詞法分析，抽取條件、指定、回傳及函式呼叫等邏輯單元。遇到非標準反編譯表示式時，才用LLM解析，輸出統一字典結構；這一步不判定修補狀態。（<a href="https://arxiv.org/html/2610.27871v1#S3.SS4.SSS1">§III-D1</a>）</p>
+<p>Normalizer用LLM將異質表示式轉成相容SMT-LIB的規範形式，並對齊符號。例如原始碼的結構欄位與偽碼中的位址解參考，需映射為同一變數，Z3才能比較邏輯，而非比較不相關名稱。Verifier將公式交給Z3；若發生語法或型別錯誤，將錯誤訊息送回Normalizer修正後重試，最後裁決仍由Z3作出。（<a href="https://arxiv.org/html/2610.27871v1#S3.SS4.SSS2">§III-D2–3</a>）</p>
+<h2 id="第iv節實作">第IV節：實作</h2>
+<p>IDA Pro產生反編譯偽碼，Tree-Sitter切出函式，Joern分析資料與控制流，Z3負責最終公式查詢；神經元件使用Claude-3.5-Sonnet。作者自報每驗證案例平均API成本約0.30美元，預設temperature為1.0。（作者自報，<a href="https://arxiv.org/html/2610.27871v1#S4">§IV</a>）</p>
+<h2 id="第v-a節資料與形式驗證涵蓋率">第V-A節：資料與形式驗證涵蓋率</h2>
+<p>作者自報主要資料含OpenSSL、Freetype、Tcpdump與Libxml2，73個CVE、224個修補前後函式，產生4480個測試案例；另以2024年10月之後揭露的20個漏洞構成400案例，檢查新漏洞表現。採gcc v9.4.0與clang v6、O0–O3，以及x86、x64、ARM。這些是評估資料的編譯設定，不代表使用SyLares時須重新編譯參考程式。（作者自報，<a href="https://arxiv.org/html/2610.27871v1#S5">§V、表II</a>；末句為本檔補註，非作者自陳）</p>
+<p>作者將涵蓋率定義為Z3可完整處理並得到明確結論的案例比例。Lares為897／4480，表III列20.02%；SyLares為4480／4480，即100%。（作者自報，<a href="https://arxiv.org/html/2610.27871v1#S5.SS1">§V-A、表III</a>）</p>
+<p>（本檔補註，非作者自陳）100%是查詢可完成率，不是分類正確率，也不等於已證明LLM翻譯忠於原始程式的全部語意。結論稱涵蓋率提升80%，本檔保留分子與分母，避免混淆百分比與百分點。</p>
+<h2 id="第v-bc節跨最佳化架構與編譯器">第V-B–C節：跨最佳化、架構與編譯器</h2>
+<p>表IV的x86設定中，作者自報平均precision／recall／F1：SyLares為0.82／0.84／0.83，Lares為0.72／0.83／0.77，Robin與PS3平均F1分別0.67、0.68。SyLares各最佳化層級F1皆至少0.82；新漏洞案例平均F1為0.82。（作者自報，<a href="https://arxiv.org/html/2610.27871v1#S5.SS2">§V-B、表IV</a>）</p>
+<p>§V-C明確把上述高分設定對應至x86-clang。表V作者自報平均F1：x86-gcc為0.78、x64-gcc為0.77、arm-gcc為0.74、x86-clang為0.83、x64-clang為0.78。既有方法無法直接做跨架構比較，因此該表只報SyLares，不是各baseline在所有架構上的對照排名。（作者自報，<a href="https://arxiv.org/html/2610.27871v1#S5.SS3">§V-C、表V</a>）</p>
+<h2 id="第v-de節消融與成本">第V-D–E節：消融與成本</h2>
+<p>表VII作者自報完整模型F1為0.829；移除修補增強、定位、Extractor的LLM備援、Normalizer後，分別為0.736、0.580、0.790、0.574；將Z3換成LLM最後裁決為0.676。Extractor消融只移除神經備援，並未移除整個Extractor；Z3消融是改由LLM裁決。（作者自報，<a href="https://arxiv.org/html/2610.27871v1#S5.SS4">§V-D、表VII</a>）</p>
+<p>作者比較不同LLM與temperature，Claude-3.5-Sonnet的F1最高，GPT-4o次之；DeepSeek-Coder召回率高但精確率低。作者自報非零temperature每案例重複五次，未見明顯變異。（作者自報，<a href="https://arxiv.org/html/2610.27871v1#S5.SS4">§V-D、表VI</a>）</p>
+<p>作者自報SyLares總耗時39.4秒，含離線20.3秒、線上19.1秒；Lares總耗時35.9秒。Code2SMT增加線上LLM呼叫。圖中的時間比較不含參考二進位的編譯時間，須保留這項成本邊界。（作者自報，<a href="https://arxiv.org/html/2610.27871v1#S5.SS5">§V-E、圖6</a>）</p>
+<h2 id="第v-fviii節失敗討論與結論">第V-F–VIII節：失敗、討論與結論</h2>
+<p>作者自陳三類失敗：新增敘述已存在於函式其他位置，導致誤認已修補；微小修改被編譯差異掩蓋，造成定位或辨識錯誤；Normalizer仍可能幻覺，生成與偽碼語意不等價的SMT-LIB，使求解器對錯誤公式給出錯誤分類。最終裁決形式化並未消除翻譯階段風險。（<a href="https://arxiv.org/html/2610.27871v1#S5.SS6">§V-F</a>）</p>
+<p>作者也承認商用模型API成本，及隨機輸出格式偶爾需要重試；提出以修補資料微調開源模型作為後續方向。相關工作把本文定位為漏洞偵測之後的修補驗證，補足函式相似度無法分辨的細微修補。結論主張把LLM的感知能力接到符號求解器，而不是由LLM補位作最終判官。（<a href="https://arxiv.org/html/2610.27871v1#S6">§VI–VIII</a>）</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 d144aa5b · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>

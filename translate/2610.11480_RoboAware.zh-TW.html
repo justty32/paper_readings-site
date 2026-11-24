@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="d144aa5b5a9ed91bd348e6867e5252f04e2a8a47"><title>RoboAware: Learning to Coordinate Embodied Skills from Counterfactual Outcomes 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Bohan Zhou、Xingbei Chen、Emily Huang、Weilin Ruan、Haojian Huang、Yehang Zhang、Zexi Li、Wenqian Li、Qize Yu、Zetian Song、Leyi Wu、Jinghao Li、Mingxuan Song、Xinrun Xu、Zongyang Qiu、Yangkai Wei、Tianyi Zhang、Kaiwen Zhou、Yinchuan Li、James Cheng</p><p>日期：2026-10-08（v1，cs.RO）</p><p>arXiv：2610.11480</p><p>閱讀說明：依官方HTML v1完整閱讀主文、附錄A–D及書目後精譯；擇要保留方法、實驗條件與限制，省略大表逐列、程式及書目全文。數字均為作者自報；保留原文獎勵發放時點與Overall口徑差異，未自行修正。</p><p><a href="https://arxiv.org/html/2610.11480v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="roboaware-learning-to-coordinate-embodied-skills-from-counterfactual-outcomes">RoboAware: Learning to Coordinate Embodied Skills from Counterfactual Outcomes</h1>
+<h2 id="摘要與第1節問題">摘要與第1節：問題</h2>
+<p>編碼代理能組合模組化技能與凍結的端到端策略，但未必知道哪一家族能在當前物理狀態成功。只看實際執行的分支，也無從得知同一狀態下另一家族的結果。RoboAware只學習狀態條件化的責任協調器，讓凍結的編碼代理依所選家族產生局部程式區塊。<a href="https://arxiv.org/html/2610.11480v1#S1">原文§1</a></p>
+<h2 id="第2節方法">第2節：方法</h2>
+<p>P⁵把技能分成感知、提出目標、操作前移動、執行、操作後處理。高層在語意邊界選Mod或E2E；低層編碼代理產生可執行區塊。輸入為指令、RGB-D與本體感覺、可觀察歷史、目前技能及階段。僅協調器Q模型受訓；編碼代理、API、綁定與底層檢查點均固定。Mod使用InstructSAM、作者擴充的NeuGraspNet+、cuRoboV2及確定性的夾爪介面；E2E保留π₀.₅與FastWAM作抓取—抬升等局部執行器，而非假定它們能完成整個任務。<a href="https://arxiv.org/html/2610.11480v1#S2">§2.1–2.2.1</a></p>
+<p>提出目標階段只允許Mod，因E2E不回傳顯式末端執行器目標。E2E可跳過該階段，一次原子呼叫跨越數個階段；呼叫達成後置條件、回報失敗或耗盡預算前不重選家族。Q只選家族，家族內的<code>route_id</code>由編碼代理選擇。<a href="https://arxiv.org/html/2610.11480v1#A1.SS1">附錄A.1</a></p>
+<p>SCB在訓練模擬器保存並還原相同物理狀態及歷史前綴，對每個允許家族重新生成並執行程式。EAL以可還原狀態作MCTS節點、家族作邊；UCB選路，新節點先評估每個家族，非終止後繼狀態繼續模擬至停止。回傳沿樹路徑更新經驗平均，失敗及未偏好分支也保留。作者自報每根預算<code>K=20</code>，計的是完成的後綴模擬次數。資料收完才以離線Bellman更新學Q，並非直接回歸樹估計或蒙地卡羅回報。<a href="https://arxiv.org/html/2610.11480v1#S2.SS2.SSS2">§2.2.2</a></p>
+<p>訓練獎勵為<code>r̃ = w_p r_p + w_m r_m + w_t d r</code>。作者自報權重依序0.2、0.3、0.5，折扣γ為1。Mod感知分數是遮罩IoU，E2E則檢查實際作用物件身分；操作分數依抓取／接觸謂詞或目標姿態門檻。主文說每階段結束得到分數，附錄A.2、A.5詳規則說技能完成才發感知與操作分數，其餘轉移為零；此處保留措辭差異。終端任務獎勵只在終止時發放。Q以Smooth-L1損失擬合<code>r̃ + γ(1-d) max Q_target(x',c')</code>，終止不bootstrap。<a href="https://arxiv.org/html/2610.11480v1#S2.E3">式3–5</a>、<a href="https://arxiv.org/html/2610.11480v1#A1.SS5">A.5</a></p>
+<p>部署時凍結Q，選softmax相對偏好最高的家族，等價於選Q最大者。只依可觀察回饋更新歷史及未完成階段，沒有還原、特權輸入、樹搜尋或線上參數更新。<a href="https://arxiv.org/html/2610.11480v1#S2.SS2.SSS3">§2.2.3</a></p>
+<h2 id="第3節實驗與分析">第3節：實驗與分析</h2>
+<p>作者自報同一任務池含LIBERO-Pro 80題、RoboSuite 4題、RoboTwin 2.0 16題。場景種子0用於訓練，種子1–10各測一次，共1,000回合；測的是同任務池的新場景種子泛化。基線停用跨回合記憶，主評估的崩潰與逾時仍列分母。LIBERO-Pro每個T／S欄含10題×10種子。<a href="https://arxiv.org/html/2610.11480v1#S3.SS1">§3.1</a>、<a href="https://arxiv.org/html/2610.11480v1#A3">C.1–C.3</a></p>
+<p>作者自報表3 Overall為77.0%，LIBERO-Pro彙整73.8%，RoboSuite與RoboTwin各90.0%。表3註明Overall取可用欄位平均；C.3另稱主表依caption使用回合加權。兩處口徑描述不一致，本文照錄。（本檔補註，非作者自陳）不能將全部基線當作相同完整回合分母的排名。單臂π₀、π₀.₅不相容雙臂RoboTwin，以斜線表示。作者將低零樣本表現歸於任務分布偏移，並指出單回合協議限制記憶型方法的經驗累積。<a href="https://arxiv.org/html/2610.11480v1#S3.T3">表3</a></p>
+<p>作者自報消融結果如下；欄序為LIBERO-Pro／RoboSuite／RoboTwin成功率：</p>
+<table>
+<thead>
+<tr>
+<th>變體</th>
+<th>成功率％</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>僅Mod</td>
+<td>54.8／67.5／41.9</td>
+</tr>
+<tr>
+<td>僅E2E</td>
+<td>49.5／60.0／45.6</td>
+</tr>
+<tr>
+<td>只用已執行軌跡訓練，無同狀態配對</td>
+<td>58.5／75.0／53.8</td>
+</tr>
+<tr>
+<td>不訓練協調器</td>
+<td>51.0／60.0／40.0</td>
+</tr>
+<tr>
+<td>固定交接</td>
+<td>64.5／82.5／55.6</td>
+</tr>
+<tr>
+<td>回合開始選一次</td>
+<td>59.3／70.0／51.9</td>
+</tr>
+<tr>
+<td>RoboAware</td>
+<td>73.8／90.0／90.0</td>
+</tr>
+</tbody>
+</table>
+<p>作者據此支持同狀態配對及逐階段協調。相同模擬預算下UCB優於均勻分配；跨編碼後端及機體敏感度只測RoboTwin四題。（本檔補註，非作者自陳）不能推廣成全面跨機體驗證。<a href="https://arxiv.org/html/2610.11480v1#S3.SS3">§3.3表4–6、圖5–6</a></p>
+<h2 id="第45節定位結論與限制">第4–5節：定位、結論與限制</h2>
+<p>相關方法可從回溯軌跡、適用性記憶、成功檢測或策略內候選比較推測選擇；本文差異在共用技能階段介面下，實際還原模擬器取得跨家族同狀態結果。作者目前只整合Mod與E2E；加入其他策略可能需要新反事實資料及重訓。責任只在P⁵邊界交接，原子E2E呼叫內的暫時失敗仍交內部控制器處理，模糊觀測下更細中斷尚待研究。<a href="https://arxiv.org/html/2610.11480v1#S5">§4–5</a></p>
+<h2 id="附錄ad實作與補充結果">附錄A–D：實作與補充結果</h2>
+<p>作者自報Q用Qwen3.5-0.8B及MLP，RGB與深度色圖各縮至224×224，本體感覺序列化為文字；保留最近4次完整階段轉移，舊歷史摘要不含oracle。每階段入口鄰域抽4根，時間窗10個保存控制步；同根與鄰域群組一起分入90／10訓練驗證集。採全參數微調、10,000次更新，依驗證Bellman損失選模型。作者自報4張80GB A100擬合約6小時，另花約一天收資料，後者佔主要牆鐘時間。<a href="https://arxiv.org/html/2610.11480v1#A1.SS2">A.2–A.4</a>、<a href="https://arxiv.org/html/2610.11480v1#A3.SS7">C.7</a></p>
+<p>API回傳型別化的來源、檢查與失敗資訊；要求碰撞檢查的呼叫不得暗中改為不檢查。NeuGraspNet+以幾何候選與規劃可行性篩選補強原模型，沒有重訓；作者承認在該基準上發展規則，新物件分布仍須驗證。後端篩選與主評估任務數、初始化協議不同，Full與抓取—抬升也屬不同成功條件，不能混比。<a href="https://arxiv.org/html/2610.11480v1#A2">附錄B</a></p>
+<p>D.1是獨立Harness-VLA研究，排除服務錯誤後的有效完成分母與主評估不同。作者自報80題×3種子、每配置排程240回合，Full有效113／240，成功64/113（56.6%）、覆蓋47.1%；去記憶套件（Memory及seed-0 reference）有效成功率16.9%，去記憶及SAM3為20.9%。覆蓋僅47.1–49.2%，不能據此確定整個排程集效果；確認階段未測單獨去SAM3。失敗分析中作者自報抓持不穩29.8%、接觸／插入16.7%，但37.7%因紀錄不足歸Others，限制原因歸納。<a href="https://arxiv.org/html/2610.11480v1#A4">D.1–D.3</a></p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 d144aa5b · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>

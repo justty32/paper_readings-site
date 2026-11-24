@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="d144aa5b5a9ed91bd348e6867e5252f04e2a8a47"><title>SimPT: An Automated Simulation Framework for Intervention-Based VLA Post-Training 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Caicheng Wang、Zipeng Ye、Zhexuan Zhou（官方HTML personname欄；另見note）</p><p>日期：2026-10-21（v1，cs.RO）</p><p>arXiv：2610.29161</p><p>閱讀說明：官方HTML的personname只列三姓名，Affiliation標籤另呈Zilong Huang, Xi Zhang, Yuchen Xie及Meituan；保留顯示限定，不自行重建完整作者名單。完整讀主文、兩表、六圖圖說、50個math與42筆書目，無附錄實文，未抓圖片。數字均作者自報，未重現；模擬自動回復與真機人工HIL分開。</p><p><a href="https://arxiv.org/html/2610.29161v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="先在模擬自動蒐集失敗修正再把後訓練改良拿到真機驗證">先在模擬自動蒐集失敗修正，再把後訓練改良拿到真機驗證</h1>
+<h2 id="一句話">一句話</h2>
+<p>SimPT把VLA rollout、失敗後的expert recovery、資料蒐集、後訓練及獨立評估接起來。Agent-Compiled Progress Graph（PG）用模擬器特權狀態追蹤任務階段、保存快照；rollout終止失敗後，再從較後面的階段開始嘗試CuRobo expert回復。它主要自動化演算法開發所需的修正資料管線，不是讓部署中的VLA自行取得通用線上接管能力。（<a href="https://arxiv.org/html/2610.29161v1#S3">§I、§III</a>；末句為本檔補註，非作者自陳）</p>
+<h2 id="問題與既有方法的差別">問題與既有方法的差別</h2>
+<p>VLA遇到示範分布之外的狀態，錯誤會把後續狀態推得更遠；人工HIL可用接管與修正示範改善，但真機資料與反覆測試成本高。IntervenGen已能擴增人類來源的修正軌跡，仍需要人工決定初始示範何時、如何介入；CuRobo則擅長依預設序列規劃動作，本身不推斷policy當前進度。SimPT把進度判斷編譯成固定state checks，再以snapshot rollback取得修正資料。（<a href="https://arxiv.org/html/2610.29161v1#S1">§I、§II</a>）</p>
+<h2 id="progress-graph如何建立與執行">Progress Graph如何建立與執行</h2>
+<p>準備agent讀RoboTwin task source code，輸出任務指令、物件與手臂分工、可用state fields、stage dependencies及成功條件。接著多個Codex agents依同一spec與可重用state-check library，各產candidate graph，定義前進與退回邊；靜態驗證失敗便依回饋修改。有效候選優先選較少state fields，再比stage數及check數。（<a href="https://arxiv.org/html/2610.29161v1#S3.SS2">§III-B</a>）</p>
+<p>PG不是單向完成清單。例如Lift Pot兩臂各有approach分支，兩邊條件都過才進bimanual join；右手失去抓握時，可重新啟用右approach並把依賴它的join、grasp與lift改回未完成，同時保留左approach進度。判斷依物件位姿、gripper、contact等特權模擬器狀態，不靠每一步重新問VLM。（<a href="https://arxiv.org/html/2610.29161v1#S3.F2">§III-B、圖2</a>）</p>
+<p>腳本以模擬expert trajectories校準資料相關threshold，例如approach完成距離的upper quantile；grasp-loss threshold保留graph prior、成功常數依原任務定義。agent用expert replay診斷並修訂條件，重新校準與replay驗證後固定graph及參數；collection runtime不再查agent。（<a href="https://arxiv.org/html/2610.29161v1#S3.SS2">§III-B</a>）</p>
+<p>作者自報每task產三個候選、每候選最多兩次靜態修訂；七task共21個候選最後全通過靜態驗證，九個首次通過，另12個平均修訂1.17次。生成與靜態驗證平均每task 8.0分鐘，範圍4.5–11.5分鐘。這是該驗證程序的pass rate，不是任意狀態下的任務成功保證。（作者自報，<a href="https://arxiv.org/html/2610.29161v1#S4.SS2">§IV-A、§IV-B</a>；末句為本檔補註，非作者自陳）</p>
+<h2 id="快照回復與訓練資料">快照、回復與訓練資料</h2>
+<p>每個stage保留最新snapshot，內容含simulator state、active stages與capture step。rollout以失敗終止後，從較進階stage的快照還原，讓CuRobo programmatic expert完成剩餘任務；失敗就退到更早stage，最後可回初始狀態重新開始。成功回復才保留修正軌跡。（<a href="https://arxiv.org/html/2610.29161v1#S3.SS3">§III-C</a>）</p>
+<p>資料buffer保存policy成功、失敗rollouts及expert corrections，各後訓練法依自身objective選取。需要完整corrected trajectory時，以失敗rollout在回復點之前的共同policy prefix，串接expert recovery segment；失敗的原continuation與成功的expert continuation因而有同一回復起點。這種訓練sample的共享prefix，不代表後面Naive對PG的整批蒐集是同一組配對失敗軌跡。（<a href="https://arxiv.org/html/2610.29161v1#S3.SS4">§III-D</a>；末句為本檔補註，非作者自陳）</p>
+<h2 id="實驗邊界與回復效率">實驗邊界與回復效率</h2>
+<p>作者自報七項RoboTwin任務為Lift Pot、Move Can Pot、Place Empty Cup、Beat Block Hammer、Place Can Basket、Handover Block及Stack Blocks Two。所有policy用<code>π0.5</code> backbone與50 action chunk；各task以50條expert demonstrations做SFT parent。Naive與PG沿用同parent checkpoint、240個指定environment seeds與同CuRobo expert，但各自獨立執行rollout。Naive每50 policy steps存快照，失敗後逆時間嘗試回復。（作者自報，<a href="https://arxiv.org/html/2610.29161v1#S4.SS1">§IV-A</a>）</p>
+<p>每task、每collection procedure固定一份parent收集的資料，四方法共用後依objective組sample；各訓10,000 policy steps，以40 validation seeds調參。最後每task用200個固定held-out seeds，均先通過official expert planning及task-success checks，並與collection／validation不重疊；每方法跨七task為1,400 trials。獨立評估只跑更新VLA，不含PG、recovery expert或特權狀態。（作者自報，<a href="https://arxiv.org/html/2610.29161v1#S4.SS1">§IV-A、圖3</a>）</p>
+<p>每試一個snapshot算一次recovery attempt；attempts per recovery是總attempts除以成功回復rollouts數，recovery success則以失敗policy rollouts為分母。作者自報pooled aggregate：Naive→PG總attempts為3,781→945，減75.0%；attempts per recovery為7.62→1.79，減76.5%；recovery success為93.4%→98.9%。這三項分母不同，不能把75.0%稱作policy success提升。（作者自報，<a href="https://arxiv.org/html/2610.29161v1#S4.T1">表I</a>；末句為本檔補註，非作者自陳）</p>
+<p>七task回復attempts皆減少，成功率維持或上升；Handover Block的attempts自1,329降192、success自83.6%升98.3%。由於Naive／PG為獨立蒐集，即使用同seed及parent，也不宜宣稱以上是對完全相同失敗rollouts的逐一反事實配對結果。（作者自報，<a href="https://arxiv.org/html/2610.29161v1#S4.T1">§IV-B、表I</a>；末句為本檔補註，非作者自陳）</p>
+<h2 id="四種後訓練法pg不是全部都贏">四種後訓練法：PG不是全部都贏</h2>
+<p>HG-DAgger以expert corrective actions作behavior cloning；RECAP用value-based advantages條件化訓練。DPO+SFT依FlowPRO附錄J的做法結合flow-matching DPO與SFT；FlowPRO再加proximal regularizer，約束隱式reward幅度。這些方法不是SimPT新發明，SimPT是共同實作與評估它們的框架。（<a href="https://arxiv.org/html/2610.29161v1#S4.SS1">§II-A、§IV-A</a>）</p>
+<p>以下均作者自報，每列每collection procedure各1,400 held-out trials；PG−Naive差異是百分點。</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>Naive success</th>
+<th>PG success</th>
+<th>差異</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RECAP</td>
+<td>66.64%</td>
+<td>76.50%</td>
+<td>+9.86 pp</td>
+</tr>
+<tr>
+<td>HG-DAgger</td>
+<td>80.21%</td>
+<td>82.14%</td>
+<td>+1.93 pp</td>
+</tr>
+<tr>
+<td>DPO+SFT</td>
+<td>62.64%</td>
+<td>63.14%</td>
+<td>+0.50 pp</td>
+</tr>
+<tr>
+<td>FlowPRO</td>
+<td>76.07%</td>
+<td>71.86%</td>
+<td>−4.21 pp</td>
+</tr>
+</tbody>
+</table>
+<p>來源：<a href="https://arxiv.org/html/2610.29161v1#S4.T2">表II</a>。PG資料下HG-DAgger整體最高、七task中五項最佳，SFT baseline為67.29%；DPO+SFT整體還低於SFT，但在Place Empty Cup最佳，FlowPRO在Beat Block Hammer最佳。作者指出偏好方法把actions向successful recovery軌跡插值，未考慮物件configuration或contact state，因此不能保證失敗狀態下的action可行性。（作者自報，<a href="https://arxiv.org/html/2610.29161v1#S4.SS3">§IV-C</a>）</p>
+<h2 id="recap-cf-lpf改良及真機驗證">RECAP-CF-LPF改良及真機驗證</h2>
+<p>標準RECAP在同批trajectories上fit value並產advantage labels，可能過擬合。作者新增five-fold cross-fitting：每條trajectory的value由其他fold訓練的模型預測；再對30Hz取樣的out-of-fold value sequence施二階、zero-phase Butterworth low-pass filter，cutoff 1Hz，最後算50-step advantages。這是CF與LPF的合併refinement，文中沒有各自單獨收益的完整消融。（<a href="https://arxiv.org/html/2610.29161v1#S4.SS4">§IV-D</a>；末句為本檔補註，非作者自陳）</p>
+<p>作者自報validation七task mean由81.43%升85.00%，增3.57 pp；六task改善、Place Empty Cup不變，Place Can Basket自60.0%升70.0%。Held-out evaluation另報76.50%→79.36%，增2.86 pp，每variant各1,400 trials；五task改善，但Beat Block Hammer降1.0 pp、Handover Block降2.0 pp。整體差異95% CI為0.36–5.36 pp，依每task內evaluation seeds做20,000次paired bootstrap；這不是跨多次重新訓練的變異估計。（作者自報，<a href="https://arxiv.org/html/2610.29161v1#S4.SS4">§IV-D、圖5</a>；末句為本檔補註，非作者自陳）</p>
+<p>真機是另外的Ethernet cable-insertion人工HIL後訓練：兩部AgileX PiPER手臂、三個RGB cameras，人員操作對應master arms採demonstrations與corrections。兩variant皆用1,672條training trajectories，含200人工示範、802個有人類介入episodes及670自主rollouts。這不表示模擬PG直接取代了真機人工介入，也不是把純模擬checkpoint零樣本部署。（作者自報，<a href="https://arxiv.org/html/2610.29161v1#S4.SS4">§IV-D</a>；末句為本檔補註，非作者自陳）</p>
+<p>作者自報25個改變線長、初始位置及機殼擺放的distinct scenarios：RECAP-CF-LPF成功24/25（96%），標準RECAP為18/25（72%）；標準成功的18場景也全被改良版解出。另用抓線、雙臂交接、插入各加一分的累積progress score，滿分每場景三分，總分75；兩者分別72/75與59/75。成功率與累積進度不是同一指標。（作者自報，<a href="https://arxiv.org/html/2610.29161v1#S4.F6">§IV-D、圖6</a>；末句為本檔補註，非作者自陳）</p>
+<h2 id="限制與讀者價值">限制與讀者價值</h2>
+<p>作者承認後訓練效果仍對task及scene characteristics敏感，未來擬以real-to-sim reconstruction拉近模擬與deployment場景。（<a href="https://arxiv.org/html/2610.29161v1#S5">§V</a>）</p>
+<p>（本檔補註，非作者自陳）可借用的是把「進度監測、可還原狀態、expert completion、訓練sample construction、無輔助評估」分成可檢查的介面；PG靜態通過、expert回復成功與更新policy獨立成功是不同驗收。若移植到agent開發，應保留失敗原continuation與修正後continuation的共同prefix，同時分報蒐集成本、後訓練效益與最終無輔助成功，避免把更好的修正資料收集當成部署agent的自主回復保證。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 d144aa5b · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>

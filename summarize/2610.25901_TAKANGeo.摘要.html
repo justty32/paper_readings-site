@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="d144aa5b5a9ed91bd348e6867e5252f04e2a8a47"><title>Out-of-Distribution Detection in Continual Learning 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Nimeshika Udayangani、Flora D. Salim、Christopher Leckie、Sarah Erfani</p><p>日期：2026-10-19（v1，cs.LG）</p><p>arXiv：2610.25901</p><p>閱讀說明：完整讀官方HTML主文、附錄A–F、13張內容表、全部公式及圖說、63筆書目；未下載圖像、code或重現實驗。數字均作者自報。保留表文不完全一致、部分指標下降與任務索引疑義；不把rehearsal-free、two-level manifold或benchmark表現解作形式隱私／安全保證。</p><p><a href="https://arxiv.org/html/2610.25901v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="按任務新舊調rbf寬度再用prompt-keys檢查未知輸入">按任務新舊調RBF寬度，再用prompt keys檢查未知輸入</h1>
+<h2 id="一句話">一句話</h2>
+<p>TA-KAN在prompt-based class-incremental learning的KAN分類頭上，讓舊任務使用較窄的RBF、新任務保留較寬的RBF，再把分類信心乘上輸入與prompt keys的相似度。目標是在不保存舊訓練樣本的條件下，同時降低遺忘與辨認尚未學過的類別；主要增量是分類頭的task-adaptive locality與prompt-space OOD guidance，不是重新訓練整個backbone。（<a href="https://arxiv.org/html/2610.25901v1#S3">§1、§3</a>）</p>
+<h2 id="問題與評估場景">問題與評估場景</h2>
+<p>一般class-incremental learning（CIL）要把新類別納入同一模型，同時保留舊類別的分類能力。OOD-CL還要求：對目前未學過的類別，不能過度自信地硬分到已知類別。某個類別今天是OOD，之後收到該任務的標記訓練資料時，就可能成為ID。（<a href="https://arxiv.org/html/2610.25901v1#S3.SS1">§2、§3.1</a>）</p>
+<p>本文在每次增量學習之前評估：已學任務的test samples作ID，下一個即將到來任務的test samples作OOD；總計<code>N-1</code>次，訓練時不保存舊任務exemplars。這不是任意外部資料集、所有未知分布或不靠標籤自主發現新類別的測試。作者也將未知資料的取得與標記流程排除在研究範圍之外。（<a href="https://arxiv.org/html/2610.25901v1#A2">§3.1、附錄B</a>；第二句為本檔補註，非作者自陳）</p>
+<p>prompt-based CIL保留預訓練backbone，學習較少量的prompts、keys與分類頭。已有KAC用RBF-KAN取代linear head改善分類遺忘，但作者觀察到：辨別OOD時，舊ID任務的表現仍比新任務差；closed-world分類較好，不代表對未知輸入的信心也可靠。（<a href="https://arxiv.org/html/2610.25901v1#S3.SS2">§2、§3.2、圖1–2</a>）</p>
+<h2 id="ta-kan調locality不替每個任務另造分類器">TA-KAN：調locality，不替每個任務另造分類器</h2>
+<p>RBF-KAN將正規化embedding的各維度展開成多個Gaussian basis，再展平後乘共用分類矩陣<code>W</code>。RBF越窄，對中心附近變化越敏感，能刻畫細緻ID與near-OOD的差別；但所有任務都變窄，會犧牲對類內變化的泛化。因此本文針對舊任務加強locality，讓較新任務保有較平滑的response。（<a href="https://arxiv.org/html/2610.25901v1#S3.SS2.SSS1">§2、§3.2.1</a>）</p>
+<p>對輸入先取得frozen backbone的query表示，用cosine similarity找最相近的task key，估計task affinity。訓練時用真實task identity挑寬度，推論時則用估計task affinity；OOD輸入也被匹配到最相似的ID任務區域，這是決定在哪個區域應收窄response，不代表OOD真的屬於該task。（<a href="https://arxiv.org/html/2610.25901v1#S3.SS2.SSS1">§3.2.1</a>）</p>
+<p>寬度為<code>σ_t = α_t s</code>，其中<code>s</code>是RBF中心間距，作者預設線性schedule：<code>α_t = α_min + (t-1)(α_max-α_min)/(N-1)</code>。序列中較後的task寬度較大，<code>t = N</code>時達<code>α_max = 1</code>。這些factor預先決定，不是每個任務再學一組RBF參數；TA-KAN共用一個RBF layer，learnable parameter數與標準KAN-Head相同。（<a href="https://arxiv.org/html/2610.25901v1#S3.E9">式7–10、註1</a>）</p>
+<p>「參數不增加」的比較基準是KAN-Head。作者另外明說：KAN與TA-KAN因RBF expansion，相較linear head有更多參數，故也做parameter-matched MLP對照。prompt bank與已學類別的資訊仍須保存；rehearsal-free指不保存舊訓練樣本，不等於零狀態或固定總記憶體。（<a href="https://arxiv.org/html/2610.25901v1#S4.SS3">§4.3、附錄E.6</a>；末句為本檔補註，非作者自陳）</p>
+<h2 id="guidance分類信心還要得到任務空間支持">Guidance：分類信心還要得到任務空間支持</h2>
+<p>標準geometry-based OOD常要在所有ID features裡查近鄰，本文改用已學prompt keys作task-level prototypes。作者先寫最近<code>k</code>個prompt的平均相似度，實際採單一最相似key；預設分類信心為maximum softmax probability（MSP）。cosine similarity從<code>[-1,1]</code>縮放成<code>[0,1]</code>後，得到<code>S_Guided(x) = MSP(x) × (Γ(x)+1)/2</code>。（<a href="https://arxiv.org/html/2610.25901v1#S3.SS2.SSS2">§3.2.2、式11–13</a>）</p>
+<p>作者把這稱為two-level manifold constraint：分類信心捕捉class-level對齊，key相似度捕捉task-level對齊；任一項低，都會壓低ID分數。式14是在每task一個prompt的簡化設定下，以class與task prototype alignment說明此直覺；它不是已證明任意OOD都能被分離的定理。（<a href="https://arxiv.org/html/2610.25901v1#S3.E14">式14</a>；末句為本檔補註，非作者自陳）</p>
+<p>（本檔補註，非作者自陳）公式索引有需保留的邊界：task-affinity式使用已學任務<code>1…T</code>，guidance式13卻寫<code>1…N</code>；本文協議仍限制只能用當前及已學資訊。本摘要不據此宣稱推論能看未來task keys，也不自行修正原式。schedule亦預設知道總任務數<code>N</code>；附錄提出未知新增task可加prototype並以factor 1初始化，屬作者延伸建議，未將它當成已驗證無界task stream結果。（<a href="https://arxiv.org/html/2610.25901v1#A5.SS2">§3.2.1–§3.2.2、附錄E.2</a>）</p>
+<h2 id="實驗配置與指標">實驗配置與指標</h2>
+<p>作者自報以ViT-B/16、CODAPrompt為主要框架，CUB-200與CIFAR-100各測5、10、20 tasks，ImageNet-R另加40 tasks；每setting三次獨立trial，使用不同class-order shuffle，trial內各方法保持相同順序與初始化等隨機性。<code>α_min</code>從<code>{0.25,0.5,0.75}</code>用小型held-out validation選0.5，40-task例外設0.25，<code>α_max = 1</code>。（作者自報，<a href="https://arxiv.org/html/2610.25901v1#A3">§4.1、附錄C</a>）</p>
+<p>（本檔補註，非作者自陳）§4.1把CUB-200與CIFAR-100共同寫成5／10／20 tasks各40／20／10類，字面總數均為200，與CIFAR-100名稱不合。本摘要只採實際表列task數，不替作者補定CIFAR每task類數。（<a href="https://arxiv.org/html/2610.25901v1#S4.SS1">§4.1、表5</a>）</p>
+<p>OOD指標包含AUC、95% true-positive operating point的FPR，以及ID／OOD的average precision；<code>L</code>是論文所稱最後學習階段、跨已見任務的平均，<code>A</code>則平均增量歷程。另報ID分類<code>ACC_L</code>、<code>ACC_A</code>。FPR越低越好，其餘越高越好。這些評估數字不等於已完成實際部署閾值的校準；作者只建議部署時可用當前task統計或小驗證集選閾值。（<a href="https://arxiv.org/html/2610.25901v1#A5.SS2">§4.1、附錄E.2</a>）</p>
+<p>對照不只換OOD分數，也有Cosine-Head、NCM Readout與標準KAN。MORE、ProKT、MSP-BC-CE均被放進本文共同框架，部分分類頭改為同規模KAN；MORE仍用大小1000的rehearsal buffer，因此這是本文重建的對照配置，不宜直接當成各原作未修改成績。（作者自報，<a href="https://arxiv.org/html/2610.25901v1#A3">附錄C</a>）</p>
+<h2 id="主要結果與不能省掉的例外">主要結果與不能省掉的例外</h2>
+<p>以下均為作者自報CUB-200、MSP預設分數的表列結果，每列依序為<code>FPR_L / AUC_L / ACC_L</code>，不是三個不同實驗的總平均。</p>
+<table>
+<thead>
+<tr>
+<th>task設定</th>
+<th>KAN-Head</th>
+<th>TA-KAN</th>
+<th>TA-KAN＋Guidance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>5 tasks</td>
+<td>59.65 / 83.48 / 81.55</td>
+<td>52.11 / 85.86 / 80.86</td>
+<td>48.73 / 86.42 / 80.86</td>
+</tr>
+<tr>
+<td>10 tasks</td>
+<td>71.11 / 80.53 / 78.29</td>
+<td>70.63 / 81.55 / 77.49</td>
+<td>68.28 / 81.99 / 77.49</td>
+</tr>
+<tr>
+<td>20 tasks</td>
+<td>59.69 / 81.86 / 75.24</td>
+<td>51.35 / 84.42 / 75.70</td>
+<td>50.48 / 84.77 / 75.70</td>
+</tr>
+</tbody>
+</table>
+<p>來源：<a href="https://arxiv.org/html/2610.25901v1#S4.T1">表1</a>。TA-KAN主要改善這些setting的OOD指標，但5、10 tasks的ID accuracy低於KAN-Head；10 tasks的Guidance FPR 68.28也沒有低過MSP-BC-CE的67.88，不能把整體優勢寫成每格最佳。（作者自報，<a href="https://arxiv.org/html/2610.25901v1#S4.T1">表1</a>）</p>
+<p>作者以fine-grained語義歧義與類內variation解釋資料集差異：CUB-200近似鳥類間的細微差異較適合窄response；ImageNet-R同類含卡通、素描等風格，過度locality可能損失invariance。這是作者的機制解釋，不是資料集外的充分條件。（<a href="https://arxiv.org/html/2610.25901v1#S4.SS2">§4.2</a>）</p>
+<p>ImageNet-R仍有明確取捨：作者自報40 tasks的KAN accuracy為73.95，TA-KAN為72.38。Guidance也非每格改善：20 tasks FPR從TA-KAN的42.57變42.61，40 tasks AUC從86.48變86.41。CIFAR-100的20 tasks，TA-KAN單獨FPR反而由KAN的45.06升45.68，加入Guidance後降到43.94。（作者自報，<a href="https://arxiv.org/html/2610.25901v1#A4.T5">表2、表5</a>）</p>
+<p>附錄E.3文字概括不同confidence score均有一致改善，但表格有反例。例如CUB-200、10 tasks、Energy score的TA-KAN FPR為61.86，加Guidance後68.17，AUC也由80.35降79.56。DualPrompt的10-task CUB-200擴展亦是FPR 67.09→62.83改善，AUC 81.86→80.67下降。保留這些表列結果，才能區分「方法有用」和「所有分數都單調改善」。（作者自報，<a href="https://arxiv.org/html/2610.25901v1#A5.T12">表9、表12</a>；末句為本檔補註，非作者自陳）</p>
+<h2 id="消融與效率">消融與效率</h2>
+<p>作者自報CUB-200跨task設定平均：KAN的<code>FPR_L / AUC_L / ACC_L</code>為63.48／81.96／78.36，TA-KAN為58.03／83.94／78.02，加入Guidance後55.83／84.39／78.02。統一收窄所有task的RBF雖有OOD改善，accuracy降到76.11；可訓練task-wise寬度版本的FPR為64.69，反而高於標準KAN。parameter-matched MLP的FPR為77.46，沒有僅靠增加參數就複製收益。（作者自報，<a href="https://arxiv.org/html/2610.25901v1#S4.T3">表3、表7</a>）</p>
+<p>作者另用capacity-comparable cubic B-spline KAN與固定寬度RBF-KAN比較，支持此實驗中採RBF；不同<code>α_min</code>也呈locality與generalization的取捨。geometry對照KNN與NNGuide需另外給1000筆buffer，本文guidance不需舊raw samples，但這不構成資料永不洩漏的形式隱私證明。（作者自報，<a href="https://arxiv.org/html/2610.25901v1#A5.SS4">附錄E.1–E.4</a>；末句為本檔補註，非作者自陳）</p>
+<p>作者自報在NVIDIA A100的CUB-200、5-task設定，每epoch訓練時間：Linear 11.6062秒、KAN 11.6449秒、TA-KAN 11.6838秒；每sample推論為4.5659、4.5895、4.5887毫秒。作者給出TA-KAN相較linear增加0.67%訓練時間、0.50%推論時間。表13沒有另列TA-KAN＋Guidance的實測列，不能把這些精確開銷直接冠到完整guided pipeline；共用ViT與prompt module主導計算，是作者對小額差異的解釋。（作者自報，<a href="https://arxiv.org/html/2610.25901v1#A5.T13">附錄E.6、表13</a>；第三句為本檔補註，非作者自陳）</p>
+<h2 id="限制與讀者價值">限制與讀者價值</h2>
+<p>作者自陳方法建立在prompt-based CL，主要處理classifier層的task-recency bias，不改feature representations；擴展到其他classifier及非prompt框架仍是未來工作。未知輸入的標記／取得流程、未知無界task stream的實證與部署閾值保證，也不在現有表格能證實的範圍。（<a href="https://arxiv.org/html/2610.25901v1#A6">附錄B、E.2、F</a>；第二句為本檔補註，非作者自陳）</p>
+<p>（本檔補註，非作者自陳）對持續學習系統最可移植的想法，是把「舊任務分類準確」和「舊任務能否被辨成已知」分開驗證，並保留任務表示作低成本的第二道信心訊號。套到LLM agent前，仍需另驗任務key的語義、分數校準與分布變動；本文是視覺CIL實驗，不是agent安全攔截器的已驗證方案。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 d144aa5b · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>

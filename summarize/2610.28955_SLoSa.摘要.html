@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="d144aa5b5a9ed91bd348e6867e5252f04e2a8a47"><title>SLoSa: Small, Low-Power, and Safe Foundation Models for Robotic Task Planning 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Weizhe Xu、Jialiang Fan、Essien Taylor、Zijun Wang、Russell Joseph、Fanxin Kong</p><p>日期：2026-10-20（v1，cs.RO）</p><p>arXiv：2610.28955</p><p>閱讀說明：完整自讀官方HTML主文、七表、五圖圖說、80個math與26筆書目；HTML沒有附錄實文，未下載圖像。數字均為作者自報，未重現；安全只對所編碼的高階符號規格成立，家庭環境為各自另訓模型的全觀測非互動改編版。</p><p><a href="https://arxiv.org/html/2610.28955v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="把形式驗證回饋放進小模型訓練再保留執行前驗證">把形式驗證回饋放進小模型訓練，再保留執行前驗證</h1>
+<h2 id="一句話">一句話</h2>
+<p>SLoSa以古典規劃器、teacher LLM與形式驗證器建資料，對量化小模型先做SFT，再用分層驗證reward做GRPO。目的在提高第一輪就能產生可執行、達標且合乎指定安全約束的計畫，並降低推論時反覆修補成本；模型本身沒有因此取得無條件的物理安全保證。（<a href="https://arxiv.org/html/2610.28955v1#S1">§I、§VI</a>；末項保證界線另見作者§VI）</p>
+<h2 id="安全與成功如何定義">安全與成功如何定義</h2>
+<p>問題包含符號狀態、動作、初始狀態、目標與安全約束。動作有前置條件及效果；可執行計畫才能產生完整狀態軌跡，再判斷終態是否達標、整段軌跡是否符合PDDL3約束。驗證器按固定順序判定第一個失敗：格式錯誤／未定義動作或物件、前置條件違反、安全違反、目標失敗，全部通過才算成功。每個輸出恰屬一類。（<a href="https://arxiv.org/html/2610.28955v1#S3">§III</a>）</p>
+<p>這使「零安全違規」不能單獨當成好成績：無法解析或根本不可執行的輸出會在更早階段被分類，尚未接受安全檢查。作者明確把safety awareness限定為符合形式任務規格，把low power當部署實測目標。（前句為本檔補註，非作者自陳；<a href="https://arxiv.org/html/2610.28955v1#S5.T2">§III、表II</a>）</p>
+<h2 id="三階段方法">三階段方法</h2>
+<p><strong>資料要迫使行為改變。</strong> 在Blocksworld、Ferry、Grippers與Spanner中，先求可執行且達標的原計畫，再加入排序、經安全中間態、資源限制或強制檢查等PDDL3約束。僅保留「原計畫在新約束下違反安全，但另有通過驗證的替代計畫」之問題；不是在不變的答案旁貼上一句安全文字。作者也提醒，behavior-changing只相對於選定原計畫，不代表規格涵蓋所有真實危害。（<a href="https://arxiv.org/html/2610.28955v1#S4.SS1">§IV-A、表I</a>）</p>
+<p>難度只依已驗證替代計畫長度分Easy／Medium／Hard，不是完整任務難度估計。每個底層問題提供一個PDDL prompt及一個結構化或敘事自然語言prompt；作者自報對20%問題另由GPT-5.4-mini產多樣示範，仍只收驗證成功的計畫。（作者自報，<a href="https://arxiv.org/html/2610.28955v1#S4.SS1">§IV-A</a>）</p>
+<p><strong>Compression-aware SFT。</strong> 小模型以低精度載入，只訓練parameter-efficient adapters；positive targets全是通過驗證的grounded action sequence，每行一個動作。這裡的compression是量化與adapter微調配置，不是從大teacher直接推導出小模型的形式壓縮證明。（<a href="https://arxiv.org/html/2610.28955v1#S4.SS2">§IV-B</a>；末句為本檔補註，非作者自陳）</p>
+<p><strong>Verifier-guided GRPO。</strong> 驗證器充當程式化reward，不另訓reward model或critic。作者自報格式錯誤reward為<code>-1</code>、成功為<code>1</code>；前置條件、安全、目標失敗分別落在<code>[-0.9,-0.7]</code>、<code>[-0.6,-0.4]</code>、<code>[-0.3,-0.1]</code>。古典規劃器再依失敗評估狀態到目標的最短剩餘距離，只在同一失敗區間內排序，不能讓「接近目標」蓋過較嚴重的違規類型。成功計畫不加長度reward，目標是提高驗證接受率，並非最短計畫。（作者自報，<a href="https://arxiv.org/html/2610.28955v1#S4.SS3">§IV-C、§V-A</a>）</p>
+<p>同group reward全相同時，該group不參與policy及KL項；整步都無active group便跳過optimizer與scheduler更新，但仍推進step counter及資料cursor，不補抽樣。課程由短計畫逐步轉向較長計畫。（<a href="https://arxiv.org/html/2610.28955v1#S4.SS3">§IV-C</a>）</p>
+<h2 id="實驗設計與主結果">實驗設計與主結果</h2>
+<p>作者自報每PDDL domain有250個受約束問題、各兩種prompt，共500個prompt；SFT與GRPO各用1,000個prompt，源自彼此不重疊的500個底層問題。validation與test也在底層問題層級分離，避免同題跨格式洩漏。模型為Qwen3-4B、Llama-3.1-8B-Instruct及Qwen3-14B，均4-bit載入；LoRA rank 32、scaling 64、dropout 0.05。評估採greedy decoding、不輸出中間CoT，Qwen3 training與evaluation皆關thinking mode。（作者自報，<a href="https://arxiv.org/html/2610.28955v1#S5.SS1">§V-A</a>）</p>
+<p>下表為當前200-instance PDDL test的作者自報success；它要求格式、可執行性、目標與安全同時過關。</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>PT</th>
+<th>SFT</th>
+<th>GRPO</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen3-4B</td>
+<td>0.0%</td>
+<td>59.0%</td>
+<td>70.5%</td>
+</tr>
+<tr>
+<td>Llama-8B</td>
+<td>0.0%</td>
+<td>62.0%</td>
+<td>74.0%</td>
+</tr>
+<tr>
+<td>Qwen3-14B</td>
+<td>0.0%</td>
+<td>67.0%</td>
+<td>76.0%</td>
+</tr>
+</tbody>
+</table>
+<p>來源：<a href="https://arxiv.org/html/2610.28955v1#S5.T2">表II</a>。直接prompt的GPT-5.6 Sol及Claude Sonnet 5分別為26.5%與31.0%；這是已做任務專用後訓練的小模型對直接prompt模型的比較，不能讀成同訓練資料／同後訓練預算的模型能力排名。（作者自報表值；比較界線為本檔補註，非作者自陳）</p>
+<p>作者自報Qwen3-4B GRPO仍有25.0%前置條件違反與0.5%安全違反，Llama-8B及Qwen3-14B前置條件違反為18.0%與22.0%。成功率提升不代表神經產生器已保證所有輸出正確。（作者自報，<a href="https://arxiv.org/html/2610.28955v1#S5.T2">表II</a>；末句為本檔補註，非作者自陳）</p>
+<h2 id="安全資料消融與家庭環境">安全資料消融與家庭環境</h2>
+<p>Qwen3-4B資料消融均為等大小positive-only資料、只有SFT而無GRPO。U-SFT用無約束正例；OC-SFT的問題半數約束不改原解、半數behavior-changing；BC-SFT只用behavior-changing問題。作者自報success分別為3.5%／53.0%／59.0%，bootstrap 95% CI分別<code>[1.7,7.0]</code>／<code>[46.1,59.8]</code>／<code>[52.1,65.6]</code>。Goal reach為17.5%／56.0%／59.5%；在goal-reach輸出內違反至少一項約束的比例為80.0%／5.4%／0.8%，這個條件分母與表II全test的互斥失敗率不同。（作者自報，<a href="https://arxiv.org/html/2610.28955v1#S5.T3">§V-C、表III</a>）</p>
+<p>VirtualHome-Safe與ALFWorld-FO-Safe各建獨立資料，分別從相同pretrained initialization另訓Qwen3-4B，而非把PDDL checkpoint零樣本搬過去。每題一次輸出完整計畫，沒有中間環境回饋或replanning；ALFWorld版本給完整符號狀態，不是標準部分觀測互動protocol。作者自報兩者PT皆0.0%，SFT→GRPO分別74.5%→80.5%、76.0%→85.0%。圖3只說明高階符號約束，非碰撞安全。（作者自報，<a href="https://arxiv.org/html/2610.28955v1#S5.T4">§V-A、§V-D、表IV與圖3</a>）</p>
+<h2 id="本機成本修補與實體示範">本機成本、修補與實體示範</h2>
+<p>INT4部署在RTX 4080 16GB與Jetson AGX Orin 64GB；作者自報batch一、單一併發請求，同100個PDDL prompts測三輪，先20個warmup。下表只列Jetson結果，均作者自報；延遲包含生成及解析，吞吐量只計decoding。（<a href="https://arxiv.org/html/2610.28955v1#S5.T5">§V-E、表V</a>）</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>P50／P90秒</th>
+<th>tokens/s</th>
+<th>peak GB</th>
+<th>平均W</th>
+<th>Energy/plan J</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen3-4B</td>
+<td>18.28／23.53</td>
+<td>4.30</td>
+<td>3.89</td>
+<td>17.85</td>
+<td>316.33</td>
+</tr>
+<tr>
+<td>Llama-8B</td>
+<td>15.88／20.01</td>
+<td>5.01</td>
+<td>6.06</td>
+<td>23.14</td>
+<td>355.18</td>
+</tr>
+<tr>
+<td>Qwen3-14B</td>
+<td>22.00／30.04</td>
+<td>3.55</td>
+<td>11.50</td>
+<td>26.41</td>
+<td>581.14</td>
+</tr>
+</tbody>
+</table>
+<p>表V caption把energy稱作per accepted plan，定義則是測量推論能量含請求間overhead後除以plans數；排除載入、warmup與validation能量。因此以上保留作者欄名及定義，不當成完整系統每個成功實體任務的能耗。（<a href="https://arxiv.org/html/2610.28955v1#S5.T5">表V</a>；末句為本檔補註，非作者自陳）</p>
+<p>把三個Llama-8B checkpoint放入既有SafePilot，最多三輪，iteration含初始生成；只接受通過所有verifier checks者。作者自報PT／SFT／GRPO最終success為0.5%／68.0%／77.5%，相較初始success增加0.5／6.0／3.5個百分點，平均iterations為2.995／1.735／1.500，平均tokens為5185.81／2179.52／1782.87。這支持後訓練減輕修補負擔，而非完全移除推論時驗證。（作者自報，<a href="https://arxiv.org/html/2610.28955v1#S5.T6">表VI</a>；末句為本檔補註，非作者自陳）</p>
+<p>桌面6-DoF手臂示範由VLM把初始／目標影像及自然語言安全要求接地為PDDL3，再由Qwen3-4B出高階計畫，驗證通過才映射到固定操作skills。作者自報SFT／GRPO各30 trials，接受計畫17／19，實體成功13／14，低階失敗4／5；另13／11計畫被拒絕而不執行。驗證接受與物理完成分開報，低階失敗包含堆疊精度與超出可達工作區。（作者自報，<a href="https://arxiv.org/html/2610.28955v1#S5.T7">§V-F、表VII</a>）</p>
+<h2 id="限制與讀者價值">限制與讀者價值</h2>
+<p>作者明列：安全監督源於符號動作模型與形式驗證結果；評估不涵蓋感知錯誤、motion-level failures及未建模物理風險。長horizon的Blocksworld仍難，手臂只測單一workcell與固定低階skills。（<a href="https://arxiv.org/html/2610.28955v1#S6">§VI</a>）</p>
+<p>（本檔補註，非作者自陳）可移植的設計是把驗證失敗分型作訓練訊號，並用真正改變原解的安全資料迫使模型回應約束；部署仍保留接地、驗證與低階控制三個責任邊界。若借用到agent系統，應同時量第一輪success、各失敗類別、修補後success與包含驗證的完整成本，避免只用條件安全率或排除驗證的能耗宣稱端到端安全／低耗。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 d144aa5b · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>

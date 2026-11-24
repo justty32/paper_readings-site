@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="d144aa5b5a9ed91bd348e6867e5252f04e2a8a47"><title>FrugalEvo: Towards Cost-Aware LLM-Guided Program Evolution 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Hui Chen、Xuan Qi、James Xu Zhao、Zhaopeng Feng、Shilong Liu、Kuang Xu、Pang Wei Koh、Bryan Hooi</p><p>日期：2026-10-02（v1，cs.NE）</p><p>arXiv：2610.03675</p><p>閱讀說明：依主文與附錄 A–D 整理；量化結果為作者自報。固定預算指 LLM API 美元成本，不是固定算力或端到端總成本；保留 BA-AUC 尺度疑義與表格例外。</p><p><a href="https://arxiv.org/html/2610.03675v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="frugalevo-重點摘要">FrugalEvo 重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>FrugalEvo 把程式演化分工給昂貴模型與便宜模型：前者提出策略，後者實作、接收執行回饋並反覆改善；再調整提示順序以重用前綴快取。它要改善的是固定 LLM 美元預算內的搜尋品質，而非固定候選數、固定算力或所有執行成本下的效率。（§1–2）</p>
+<h2 id="問題與方法">問題與方法</h2>
+<p>每個候選程式交給自動評估器，取得要最大化的分數及輔助回饋。資料庫保存程式、分數、策略與失敗紀錄；目標是在預算耗盡前找出最高分程式。方法適用於能以程式執行產生可用回饋的最佳化任務。（§2.1、§5）</p>
+<p>工作流程如下（§2.2；附錄 A，演算法 1）：</p>
+<ul>
+<li><strong>低成本冷啟動</strong>：先讓便宜模型改善初始程式，停滯後才把目前最佳解交給策略探索，避免昂貴模型圍繞過弱起點設計。</li>
+<li><strong>脈絡建立</strong>：昂貴模型分析題目與評估器，辨識目標、限制及可用套件；結合目前最佳程式、參考程式及歷史回饋。</li>
+<li><strong>策略探索</strong>：昂貴模型在一次呼叫提出多個不同機制的修改方案，交代替換範圍、算力限制及預期增益。</li>
+<li><strong>試作與排名</strong>：便宜模型先針對各策略試作，再依評估分數排序。附錄演算法另允許探索模型提供獨立參考程式；若它改善分數，可成為共同父程式。</li>
+<li><strong>依策略精煉</strong>：一輪內固定策略與父程式，最多嘗試 M 次；失敗回饋累積在後續提示中，但失敗程式不取代父程式。只要改善目前最佳解，就更新父程式並以同策略開新一輪；整輪沒有改善才換策略。</li>
+<li><strong>搜尋記憶</strong>：以島嶼式 MAP-Elites 維持多樣性，保存候選及策略嘗試；剩餘預算不足以支付後續呼叫時，回傳最佳程式。</li>
+</ul>
+<h3 id="快取設計的作用與前提">快取設計的作用與前提</h3>
+<p>提示依變動頻率排序：固定任務與輸出規則在前，較穩定的島嶼最佳解與菁英程式居中，隨機參考與頻繁變動資訊在後；新回饋附加到尾端。目的在增加相同前綴，而不是快取整個搜尋結果。（§2.2）</p>
+<p><strong>本檔解讀</strong>：節費依賴供應商支援相同前綴的 KV／提示快取，以及實際命中情況。附錄 C 表 7 列有快取讀寫價格，但主文消融沒有單獨移除快取設計，也未報命中率或快取節費比例，不能把完整系統的收益全歸因於快取。</p>
+<h2 id="ba-auc衡量提早找到好解但有尺度缺口">BA-AUC：衡量提早找到好解，但有尺度缺口</h2>
+<p>作者定義累積 LLM 成本為 c，目前為止最佳評估分數為 q(c)，預算為 B：</p>
+<div class="math block">
+\[\operatorname{BA\text{-}AUC}(B)=\int_0^B q(c)\,\mathrm{d}c.\]
+</div>
+<p>這是分數對美元成本的面積，<strong>沒有在公式中除以預算</strong>。提早找到好解會增加面積；提前結束的 run 把最後最佳分數持平延伸至 B，超支的曲線則在 B 截斷。（§2.1，式 4）</p>
+<p><strong>來源疑義</strong>：表 1 的圓形填裝原始分數約為 2.636，卻報 BA-AUC@2 約為 1.99；Min-Max-3 與 Cloudcast 的原始結果為越低越好，但形式化問題統一寫成最大化分數。這表示不能直接拿表中原始數值重建所有面積；提供的主文、附錄及 HTML 公式未交代完整尺度轉換。保留作者表值，不自行猜測正規化、倒數或基準值。（§2.1；表 1–2；附錄 B）</p>
+<p><strong>本檔解讀</strong>：BA-AUC 宜在同任務、同預算及同評分尺度下比較；不能直接跨任務或跨美元上限比較，也不是每美元「新增改善量」的明確正規化指標。</p>
+<h2 id="實驗設計與公平性邊界">實驗設計與公平性邊界</h2>
+<p>作者評估數學、系統與演算法最佳化共 20 項任務，分別為 5、5、10 項。數學與系統表格報三次 run 的平均、樣本標準差及最佳值；不把單次最高分當平均成果。（§3.1；表 1–2；附錄 B）</p>
+<table>
+<thead>
+<tr>
+<th>模型配置</th>
+<th>FrugalEvo 的探索／實作</th>
+<th>其餘四項主要基線</th>
+<th>每次 run 的 LLM 美元預算</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPT 配置</td>
+<td>GPT-5.6 Terra／Luna</td>
+<td>GPT-5.6 Terra</td>
+<td>數學 $2；系統及演算法 $1</td>
+</tr>
+<tr>
+<td>GLM 配置</td>
+<td>GLM-5.3／Flash</td>
+<td>GLM-5.3</td>
+<td>數學 $1；系統 $0.5</td>
+</tr>
+</tbody>
+</table>
+<p>以上均為作者自報設定（§3.1）。主要基線為 OpenEvolve、ShinkaEvolve、AdaEvolve、EvoX；AlphaEvolve 僅引用既有數學結果。演算法任務從 ALE-Agent 解答出發，以 private score 評估，主文僅報 GPT 配置。（§3.1–3.2）</p>
+<p><strong>本檔解讀</strong>：這是固定美元下「框架加模型配置」的比較，不是所有方法使用相同模型組合的純框架消融；可用呼叫次數、token 數及算力不必相同。作者將注意力放在 LLM 推論費，沒有把 CPU 評估、其他 CPU／GPU 任務執行與時間成本完整納入實驗預算。AlphaEvolve、CORAL、SwarmResearch 的引用結果也不能視為同管線重跑。（§1、§3.1–3.2）</p>
+<h2 id="主要結果區分平均最佳與例外">主要結果：區分平均、最佳與例外</h2>
+<p>下列數值皆為作者自報，未獨立重跑。</p>
+<h3 id="數學最佳化">數學最佳化</h3>
+<p>作者在數學表格的兩組配置均取得所有任務最高平均 BA-AUC，但未在每個「平均／最佳分數」欄位都勝出。例如 GPT 的 Heilbronn Triangle 最佳值低於 OpenEvolve 與 EvoX；GLM 的同任務平均略低於 EvoX。（§3.2，表 1）</p>
+<table>
+<thead>
+<tr>
+<th>任務／指標</th>
+<th style="text-align:right">GPT 配置</th>
+<th style="text-align:right">GLM 配置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>圓形填裝：平均／最佳半徑總和</td>
+<td style="text-align:right">2.635989／2.635996</td>
+<td style="text-align:right">2.635422／2.635990</td>
+</tr>
+<tr>
+<td>圓形填裝：平均 BA-AUC</td>
+<td style="text-align:right">1.9925（預算 $2）</td>
+<td style="text-align:right">0.9939（預算 $1）</td>
+</tr>
+<tr>
+<td>Signal Processing：平均分數</td>
+<td style="text-align:right">0.77791</td>
+<td style="text-align:right">0.78404</td>
+</tr>
+<tr>
+<td>Heilbronn Convex：最佳分數</td>
+<td style="text-align:right">0.02781</td>
+<td style="text-align:right">0.03094</td>
+</tr>
+</tbody>
+</table>
+<p>表內數值出自表 1。作者稱與有可比報告的 AlphaEvolve 數學任務相當或更好，是跨配置看可達結果，不代表每一配置、每次 run 都超越。（§3.2）</p>
+<p>圓形填裝把 26 個可變半徑圓放入單位正方形；作者報 GPT 在花費 $1.68 時取得 2.635996，GLM 在 $0.55 時取得 2.635990。引用的 CORAL／SwarmResearch 約花 $50，分別取得 2.635985／2.635996。作者也明說解法在評估器容差內小幅增加半徑，因此末位優勢應連同容差解讀，不能當成嚴格幾何最優證明。（§3.2，圖 3；附錄 B，表 4）</p>
+<h3 id="系統與演算法最佳化">系統與演算法最佳化</h3>
+<p>系統任務中，FrugalEvo 的最終平均與最佳值整體良好，但 GPT 的 Cloudcast 平均 BA-AUC 為 0.1565，低於 AdaEvolve 的 0.1578。GLM 的 Cloudcast 平均 BA-AUC 則為 0.0776，高於表中基線；所以摘要的「數學加系統九項較佳」不能解讀成兩組配置各自恰好只勝九項。（§3.2，表 2；前述項數判讀為本檔依表比較）</p>
+<p>Transaction Scheduling 平均分數在 GPT／GLM 配置分別為 4252.11／4288.01，平均 BA-AUC 分別為 4133.73／2107.07；兩個面積使用不同預算，不能直接用大小判模型優劣。ALE-Bench-Lite 的跨任務平均 private score 為 1924.9，OpenEvolve 為 1887.5，AdaEvolve 為 1881.9；這是平均結果，不代表各演算法題皆勝。（§3.2，表 2、圖 4）</p>
+<h2 id="消融與限制">消融與限制</h2>
+<p>表 3 的消融僅涵蓋圓形填裝與 Signal Processing。Signal Processing 平均分數由完整系統的 0.77791，降至雙 Terra 的 0.68534、雙 Luna 的 0.74865、移除冷啟動的 0.75576、移除序列回饋的 0.76072。這支持作者在該美元預算下的分工設計，但不等於昂貴模型本身較差。圓形填裝移除序列回饋後，最佳分數仍可達完整系統同值，平均則下降。（§3.3，表 3）</p>
+<p>作者明示限制：候選必須能在程式環境執行與評分，不易直接延伸到需濕實驗的領域；策略提示由人工設計，尚未自動從任務導出。倫理聲明另指出生成解答未經人類專家驗證，只供研究參考；重現聲明承諾於發表時釋出程式、資料與補充材料，不等於本檔已確認實際釋出狀態。（§5、Ethics Statement、Reproducibility Statement）</p>
+<p><strong>本檔判讀</strong>：論文提供的是特定模型價格、快取條件與小額 API 預算下的有力案例。尚缺 BA-AUC 尺度轉換細節、快取獨立消融與端到端資源帳，不能外推為任意供應商價格、固定算力或高昂評估任務中的普遍成本優勢。</p>
+<blockquote>
+<p>主文與關鍵附錄的精要譯文見 <a href="../translate/2610.03675_FrugalEvo.zh-TW.html">FrugalEvo 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 d144aa5b · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>

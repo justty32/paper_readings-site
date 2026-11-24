@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="d144aa5b5a9ed91bd348e6867e5252f04e2a8a47"><title>MetaLearnNCA: Few-Shot Offline Meta-Learning via Interacting Neural Cellular Automata 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Etienne Guichard、Stefano Nichele</p><p>日期：2026-10-06（v1，cs.LG）</p><p>arXiv：2610.08479</p><p>閱讀說明：完整讀官方HTML主文、附錄A–J及書目後精譯；省略相關工作逐篇介紹、完整公式推導、演算法逐行、全表與圖像、書目全文。數字為作者自報，未重現；不認證圖內未轉文字曲線或通道圖像。</p><p><a href="https://arxiv.org/abs/2610.08479v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="metalearnnca-few-shot-offline-meta-learning-via-interacting-neural-cellular-automata">MetaLearnNCA: Few-Shot Offline Meta-Learning via Interacting Neural Cellular Automata</h1>
+<h2 id="問題與雙nca構想12">問題與雙NCA構想（§1–2）</h2>
+<p>MetaLearnNCA把少樣本適應拆為兩個互動系統：Active-NCA在二維空間程式條件下分類，Meta-NCA讀取support標籤與預測之間的空間殘差，更新該程式。support適應完成後，程式凍結並廣播給query，只需前向細胞展開；測試適應與推論都不計解析梯度。這個「免梯度」不涵蓋離線元訓練。<a href="https://arxiv.org/html/2610.08479v1#S1">§1</a></p>
+<h2 id="局部更新與空間程式3">局部更新與空間程式（§3）</h2>
+<p>兩網路共用BaseNCA形式：循環邊界下，每通道用四個固定3×3濾波器取得identity、兩向Sobel與Laplacian感知，再以兩層1×1卷積和ReLU產生狀態增量。隱層寬256，末層零初始化且無bias；每格以Bernoulli(0.5)遮罩作隨機更新。<a href="https://arxiv.org/html/2610.08479v1#S3.SS1">§3.1</a></p>
+<p>Active-NCA共57輸入通道：1個影像、24個唯讀程式、32個動態狀態；動態通道0–9是類別logits，10–31是循環記憶。程式在感知前與狀態串接，作為分散的前激活偏置。Meta-NCA輸入10通道殘差與32通道記憶，共42通道，從更新後動態狀態的前24通道取出程式。<a href="https://arxiv.org/html/2610.08479v1#S3.SS2">§3.2–3.3</a></p>
+<p>殘差是<code>E=(Y_spatial−Softmax(logits))⊙M_alive</code>，其中<code>M_alive=I(X&gt;−0.8)</code>，避免背景產生誤差。每個task以U(0,1)初始化共享程式，清空meta狀態；每次support互動先讓Active-NCA跑2N步、Meta-NCA跑N步，再對support batch的程式通道取均值。適應後固定程式，query再跑2N步。這裡仍有顯式batch聚合。<a href="https://arxiv.org/html/2610.08479v1#S3.SS3">§3.3–3.4</a></p>
+<p>作者提出類別場可能佔近正交子空間、均值池化可能形成全像疊加的假說，但明說未實驗驗證，不應視為已證實的記憶機制。<a href="https://arxiv.org/html/2610.08479v1#S3.SS4">§3.4</a></p>
+<h2 id="元訓練與測試45附錄abj">元訓練與測試（§4–5、附錄A–B、J）</h2>
+<p>兩套權重透過展開的適應軌跡共同訓練。query交叉熵只計筆畫遮罩內像素，除以有效像素數加epsilon；測試則在筆畫內平均logits後取最大類別。訓練時N′在16–19、K′在3–5隨機變動，避免固定展開長度過擬合；附錄B測試演算法使用N=19、5次適應。<a href="https://arxiv.org/html/2610.08479v1#S4">§4</a>、<a href="https://arxiv.org/html/2610.08479v1#A2">附錄B</a></p>
+<p>只用Omniglot的964個background類訓練，28×28灰階，正規化至[−1,1]；每task為10-way、每類1 support與5 query，即10個support、50個query。共5,000 meta-epochs，meta-batch為32 tasks，AdamW學習率10^−3、weight decay 10^−5，梯度L2裁剪1.0。附錄J列其他資料不作Omniglot的反色步驟；基線採Conv4-64，FOMAML測試更新5步且學習率依domain及shot設定。<a href="https://arxiv.org/html/2610.08479v1#S5">§5</a>、<a href="https://arxiv.org/html/2610.08479v1#A10">附錄J</a></p>
+<h2 id="跨域結果與證據範圍61">跨域結果與證據範圍（§6.1）</h2>
+<p>表1使用1個隨機checkpoint、10個獨立testing seeds，報accuracy與95%信賴區間。下表擇錄10-shot；這不是跨訓練seed的估計。MetaLearnNCA約118k參數，ProtoNet與FOMAML約115k，RelationNet約225k。<a href="https://arxiv.org/html/2610.08479v1#S6.T1">表1</a></p>
+<table>
+<thead>
+<tr>
+<th>資料集</th>
+<th style="text-align:right">MetaLearnNCA</th>
+<th style="text-align:right">ProtoNet</th>
+<th style="text-align:right">FOMAML</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Omniglot</td>
+<td style="text-align:right">96.12±0.70</td>
+<td style="text-align:right">97.40±1.27</td>
+<td style="text-align:right">98.80±0.94</td>
+</tr>
+<tr>
+<td>MNIST</td>
+<td style="text-align:right">89.71±0.43</td>
+<td style="text-align:right">79.17±1.48</td>
+<td style="text-align:right">72.37±2.01</td>
+</tr>
+<tr>
+<td>KMNIST</td>
+<td style="text-align:right">51.26±1.27</td>
+<td style="text-align:right">35.42±1.42</td>
+<td style="text-align:right">36.23±1.18</td>
+</tr>
+<tr>
+<td>Fashion-MNIST</td>
+<td style="text-align:right">54.40±1.22</td>
+<td style="text-align:right">31.63±1.29</td>
+<td style="text-align:right">50.53±1.82</td>
+</tr>
+<tr>
+<td>USPS</td>
+<td style="text-align:right">65.02±3.10</td>
+<td style="text-align:right">55.54±1.89</td>
+<td style="text-align:right">69.75±2.16</td>
+</tr>
+<tr>
+<td>MedMNIST Organ</td>
+<td style="text-align:right">26.43±2.22</td>
+<td style="text-align:right">25.99±2.14</td>
+<td style="text-align:right">34.24±1.31</td>
+</tr>
+</tbody>
+</table>
+<p>MNIST、KMNIST、Fashion-MNIST三種shot均優於表中所有基線，但不是所有domain都勝出；FOMAML在MedMNIST三種shot均較佳。本檔補註，非作者自陳：§6.1稱FOMAML勝USPS的1-/5-shot與表1不符；表內1-shot是本法53.26對42.40，5-shot為57.10對64.91，10-shot為65.02對69.75，應依表值解讀。<a href="https://arxiv.org/html/2610.08479v1#S6.SS1">§6.1、表1</a></p>
+<p>圖2另用42個獨立meta-training runs，各配1個隨機test seed，共42對；10-shot下隨適應次數0–5畫軌跡。作者描述0–1次約chance、2次明顯上升、3–4次趨平，延長循環通常不發散但USPS例外。這與表1的10個test seeds是不同統計設計。<a href="https://arxiv.org/html/2610.08479v1#S6.F2">圖2與正文</a></p>
+<h2 id="損傷通道與位移6263附錄ci">損傷、通道與位移（§6.2–6.3、附錄C–I）</h2>
+<p>作者在適應後的24通道程式注入半徑4像素圓形噪聲，每圓約佔28×28面積6.4%。正文自報一次破壞後93.4%、兩個不重疊破壞後81.8%，相對未破壞98.0%；兩次破壞的run間變異明顯增大。這是空間程式擾動實驗，不是硬體損傷測試。<a href="https://arxiv.org/html/2610.08479v1#S6.SS2">§6.2</a></p>
+<p>附錄D對Omniglot逐通道加噪／歸零：動態通道大多仍逾94%，少數降至約92–94%；作者明說其98.0%基準只測1個seed。程式通道歸零以97.0%為基準，單通道最多下降約1.5–3.0個百分點。附錄E在相同訓練seed、不同support／程式初值／更新遮罩下，MNIST兩次測試為91.92%與91.93%，程式MAD為0.2034；這是作者對非唯一解的觀察。<a href="https://arxiv.org/html/2610.08479v1#A4">附錄D–E</a></p>
+<p>附錄I以訓練seed 0、5-shot／10-way、每位移5個測試runs，support維持原圖、query用循環邊界位移1–4像素。MNIST於1、2、4像素分別84.43±1.41%、82.93±2.62%、59.01±3.37%；Omniglot於4像素70.13±8.81%。作者主張有限位移彈性；不能擴張成任意平移、尺度與雜亂背景不變性。<a href="https://arxiv.org/html/2610.08479v1#A9">附錄I、表2</a></p>
+<h2 id="結論與限制78">結論與限制（§7–8）</h2>
+<p>作者將權重固定、空間狀態適應視為局部credit assignment的實作；神經元、微柱與神經調質場的對照明定位為推測性生物比喻。評估仍集中在有中心偏置的字元／輪廓；通道、隱層寬、步數與重複次數由經驗選取。免測試梯度不代表訓練便宜：反傳展開軌跡仍耗時與記憶體，推向高解析RGB亦受局部傳播速度限制。實驗未分離細胞更新器、空間記憶與前景遮罩的獨立效益，也未建立runtime優勢；ARC-AGI僅列未來方向。<a href="https://arxiv.org/html/2610.08479v1#S7">§7–8</a></p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 d144aa5b · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>

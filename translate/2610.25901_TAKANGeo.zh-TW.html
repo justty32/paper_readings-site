@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="d144aa5b5a9ed91bd348e6867e5252f04e2a8a47"><title>Out-of-Distribution Detection in Continual Learning 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Nimeshika Udayangani, Flora D. Salim, Christopher Leckie, Sarah Erfani</p><p>日期：2026-10-19（v1，cs.LG）</p><p>arXiv：2610.25901</p><p>閱讀說明：完整讀主文、附錄A–F、63項書目、377個數學元素、13表及四圖圖說；擇譯方法、結果與限制，省略完整表格及書目。數字均作者自報，未重現。原文類別數、損失符號、keys索引及指標敘述疑義保留。</p><p><a href="https://arxiv.org/html/2610.25901v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="不存舊樣本以任務自適應kan與prompt幾何偵測未知類別">不存舊樣本，以任務自適應KAN與prompt幾何偵測未知類別</h1>
+<h2 id="問題與既有方法">問題與既有方法</h2>
+<p>類別增量學習（CIL）持續學新類別並保留舊知識，還須識別未知的分布外樣本（OOD）；今天的OOD可能轉成未來已知分布（ID）。分類信心受遺忘、近期偏差及過度自信影響，幾何OOD方法又常需舊資料。</p>
+<p>本文針對無回放的prompt式CIL，使用凍結ViT、可學prompts／keys與分類頭。既有KAN分類頭雖改善閉世界辨識，對舊任務的OOD判別仍偏弱；TA-KAN以任務年齡調整RBF局部性，再用prompt空間幾何輔助分類信心。（<a href="https://arxiv.org/html/2610.25901v1#S2">§1–2</a>）</p>
+<h2 id="ood-cl協議">OOD-CL協議</h2>
+<p>學完<code>T</code>個任務、學第<code>T+1</code>個任務前，把已學任務測試資料視為ID，下一任務測試資料視為OOD；整個<code>N</code>任務序列做<code>N-1</code>次檢測。OOD評分越高表示越像ID，達門檻才接受。偵測時可用的訓練資料限於當前已學任務，沒有舊樣本buffer。（<a href="https://arxiv.org/html/2610.25901v1#S3.SS1">§3.1</a>）</p>
+<p>作者明示，未知類別的標記資料取得不在範圍，後續依任務提供的標記資料學習。（<a href="https://arxiv.org/html/2610.25901v1#A2">附錄B</a>）</p>
+<h2 id="ta-kan依任務調整局部性">TA-KAN：依任務調整局部性</h2>
+<p>RBF-KAN把正規化特徵逐維展開為Gaussian基底，展平交共享權重矩陣分類。窄基底較局部，寬基底較平滑；一律縮窄會傷害泛化，TA-KAN讓舊任務較窄、新任務較寬。（<a href="https://arxiv.org/html/2610.25901v1#S3.SS2.SSS1">§2、§3.2.1</a>）</p>
+<p>推論時不提供真實task ID。模型沿用query–key cosine匹配，選已學keys中最相似者所屬任務作為task affinity估計，再選其寬度。對OOD，這是最相似已知區域，不是未知類別識別。</p>
+<p>基底寬度為<code>α_t s</code>，<code>s</code>是均勻中心點的間距；作者使用預定排程：</p>
+<p><code>α_t = α_min + (t-1)(α_max-α_min)/(N-1)</code>。</p>
+<p>其中<code>α_max=1</code>，舊任務寬度較小。整個分類器共用一個RBF層，寬度因子由排程決定而非額外可學參數。訓練時用真實task ID選寬度，式10結合交叉熵與query–key匹配項；凍結backbone不變。（<a href="https://arxiv.org/html/2610.25901v1#S3.E9">式7–10</a>）</p>
+<p>（本檔補註，非作者自陳）式6為cosine、式10正號加入，與文字「拉近query與key」的最小化方向不清，不自行修符號。</p>
+<p>作者假設總任務數<code>N</code>已知或有界；若新增任務，提出增設prototype、寬度因子初始化為1的延伸想法，未將此當成已驗證的無限任務設定。（<a href="https://arxiv.org/html/2610.25901v1#A5.SS2">附錄E.2</a>）</p>
+<h2 id="幾何引導分數">幾何引導分數</h2>
+<p>直接以舊資料embedding做最近鄰搜尋不符合無回放條件。本文改用已學prompt keys作任務原型：原先考慮最近<code>k</code>個prompt的平均相似度，實驗發現單一最相似key稍佳，因此用最大cosine相似度<code>Γ(x)</code>。預設分類分數為MSP，將cosine從<code>[-1,1]</code>映射至<code>[0,1]</code>，得到：</p>
+<p><code>S_Guided(x) = MSP(x) × (Γ(x)+1)/2</code>。</p>
+<p>分類信心提供類別層級訊息，key alignment提供任務層級訊息，不需保存舊樣本。作者以單prompt簡化式，把分數解讀為class alignment乘task alignment的兩層manifold constraint。（<a href="https://arxiv.org/html/2610.25901v1#S3.SS2.SSS2">§3.2.2、式11–14</a>）</p>
+<p>（本檔補註，非作者自陳）式13把key搜尋上界寫成總任務數<code>N</code>，task-affinity式則為已學數<code>T</code>；依無未來資料的協議解讀為已學keys，不宣稱存取未來keys。式14是簡化幾何解釋，不是原MSP與RBF分類器的完整等式證明。</p>
+<h2 id="設定與指標">設定與指標</h2>
+<p>作者自報，主模型為CODAPrompt、ViT-B/16，在CUB-200、CIFAR-100測5／10／20任務，ImageNet-R另測40任務。每設定三次獨立trial，隨機打亂類別順序形成任務，同一trial各方法共用類別順序及初始化等隨機條件。預設<code>α_min=0.5</code>，從<code>{0.25,0.5,0.75}</code>以小型留出驗證集選擇，40任務改0.25。（<a href="https://arxiv.org/html/2610.25901v1#A3">§4.1、附錄C</a>）</p>
+<p>（本檔補註，非作者自陳）§4.1把CUB-200與CIFAR-100共同列為每任務40／20／10類，字面合計與CIFAR-100名稱不合；此處只保留任務數，不臆改類別切法。</p>
+<p>作者使用AUC、95%TPR下FPR、ID／OOD的average precision及分類ACC；<code>L</code>標末期指標，<code>A</code>標增量平均，FPR越低越好，其餘越高越好。（本檔補註，非作者自陳）§4.1「學完最後任務」與§3.1增量前檢測有歧義，不補末期OOD集合。附錄E.2評估不調門檻，部署仍須以當前資料或驗證集設門檻。（<a href="https://arxiv.org/html/2610.25901v1#S4.SS1">§4.1</a>、<a href="https://arxiv.org/html/2610.25901v1#A5.SS2">附錄E.2</a>）</p>
+<p>比較含線性、cosine、NCM及KAN分類頭，另將MORE、ProKT與MSP-BC-CE配上KAN作強基線。作者自報MORE的回放buffer為1000；這是比較方法的額外資源，不是本文方法使用buffer。（<a href="https://arxiv.org/html/2610.25901v1#A3">附錄C</a>）</p>
+<h2 id="主要結果與例外">主要結果與例外</h2>
+<p>作者自報，CUB-200五任務KAN→TA-KAN→加guidance的FPR為59.65→52.11→48.73，AUC為83.48→85.86→86.42，ACC為81.55→80.86→80.86。OOD改善伴隨ID小幅下降。（<a href="https://arxiv.org/html/2610.25901v1#S4.T3">表1、3</a>）</p>
+<p>作者自報，ImageNet-R二十任務TA-KAN加guidance的FPR反而42.57→42.61，四十任務AUC亦86.48→86.41；TA-KAN各任務設定ACC都略低於KAN。CIFAR-100二十任務KAN→TA-KAN的FPR為45.06→45.68，guidance後降至43.94。（本檔補註，非作者自陳）正文概括「持續改善且保留ID」不能解讀成逐設定、逐指標保證。（<a href="https://arxiv.org/html/2610.25901v1#S4.T2">表2</a>、<a href="https://arxiv.org/html/2610.25901v1#A4.T5">表5</a>）</p>
+<p>作者解釋，CUB-200細粒度類別與近OOD較模糊，局部性帶來較大效益；ImageNet-R同類包含素描、卡通等大幅風格變化，過窄響應可能降低不變性。這是局部辨識與泛化的取捨。（<a href="https://arxiv.org/html/2610.25901v1#S4.SS2">§4.2</a>）</p>
+<h2 id="消融與延伸評估">消融與延伸評估</h2>
+<p>作者比較參數匹配MLP、固定窄寬度、可訓練任務寬度與B-spline KAN。表3平均ACC顯示，一律縮窄的KAN由78.36降至76.11；任務寬度直接訓練亦未優於標準KAN。作者將後者歸因於已知任務過度適應；這是實驗解釋，非普遍定理。（<a href="https://arxiv.org/html/2610.25901v1#A5.SS1">§4.3、附錄E.1</a>）</p>
+<p>附錄比較post-hoc分數、具1000樣本buffer的KNN／NNGuide及DualPrompt。作者自報DualPrompt十任務CUB-200的TA-KAN加guidance，FPR67.09→62.83改善，AUC卻81.86→80.67下降。表9–10的guidance對Energy等分數亦有退步，不能推成換任意score都改善。（<a href="https://arxiv.org/html/2610.25901v1#A5.SS5">附錄E.3–E.5</a>）</p>
+<h2 id="效率結論與限制">效率、結論與限制</h2>
+<p>作者自報A100上CUB-200五任務，線性頭與TA-KAN每epoch訓練為11.6062／11.6838秒，每樣本推論4.5659／4.5887毫秒；TA-KAN相對線性頭訓練增加0.67%、推論0.50%。（本檔補註，非作者自陳）此表不列guidance，不能將這兩百分比當成完整加guidance流程的量測。TA-KAN與標準KAN的可學參數相同，不代表與線性頭參數相同。（<a href="https://arxiv.org/html/2610.25901v1#A5.T13">表13、附錄E.6</a>）</p>
+<p>作者限於prompt式持續學習，保留凍結backbone與既有prompt學習；其他分類器、非prompt框架仍待延伸，未知資料標記取得不在研究範圍。（<a href="https://arxiv.org/html/2610.25901v1#S5">§5</a>、<a href="https://arxiv.org/html/2610.25901v1#A6">附錄F</a>）</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 d144aa5b · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>

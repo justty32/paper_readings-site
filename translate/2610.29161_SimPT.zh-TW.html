@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="d144aa5b5a9ed91bd348e6867e5252f04e2a8a47"><title>SimPT: An Automated Simulation Framework for Intervention-Based VLA Post-Training 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Caicheng Wang, Zipeng Ye, Zhexuan Zhou（HTML personname列；作者結構限定見note）</p><p>日期：2026-10-21（v1，cs.RO）</p><p>arXiv：2610.29161</p><p>閱讀說明：官方HTML personname僅列三人，Affiliation標籤另呈Zilong Huang, Xi Zhang, Yuchen Xie及Meituan；不自行修正成完整作者名單。完整讀主文、兩表、六圖圖說、50個數學元素及42項書目，無獨立附錄。擇譯方法、結果與限制，省略完整表格及書目；數字均作者自報，未重現。模擬失敗後回復不等於真機無人介入。</p><p><a href="https://arxiv.org/html/2610.29161v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="以進度圖與模擬快照自動產生vla修正資料">以進度圖與模擬快照自動產生VLA修正資料</h1>
+<h2 id="引言與相關研究">引言與相關研究</h2>
+<p>VLA遇到示範分布以外的狀態時，錯誤可能累積。人類在迴圈的HIL後訓練能用專家接管修正，但真機資料及反覆評估耗費人力與硬體。SimPT整合模擬rollout、修正資料收集、政策訓練與獨立評估，支援先在模擬比較及改良演算法，再將改良用於真機HIL。（<a href="https://arxiv.org/html/2610.29161v1#S1">§I</a>）</p>
+<p>HG-DAgger以專家接管更新政策，RECAP用價值估計，FlowPRO用偏好及近端正則化。SimPT利用特權模擬狀態保存快照，rollout終局失敗後才回復、產修正軌跡，非執行中人類接管。（<a href="https://arxiv.org/html/2610.29161v1#S2">§II</a>）</p>
+<h2 id="方法一agent-compiled-progress-graph">方法一：Agent-Compiled Progress Graph</h2>
+<p>Progress Graph（PG）是含前進及退回邊的任務階段圖。完成條件成立便啟用後續階段；先決條件流失時重新啟用較早階段。準備agent由RoboTwin程式抽出指令、物件／手臂分配、狀態欄位、依賴及成功準則。adapter提供姿態、夾爪及接觸狀態。</p>
+<p>多個獨立Codex agent用規格及可重用檢查庫編出候選圖，再依靜態驗證回饋修訂。通過者依序偏好較少狀態欄位、階段及檢查。腳本以模擬專家軌跡校準資料依賴的閾值；agent再依replay診斷及修訂完成／退回條件，重新校準驗證。最終圖及參數於資料收集時固定，執行中只跑狀態檢查，不再查詢agent。（<a href="https://arxiv.org/html/2610.29161v1#S3.SS2">§III-B</a>）</p>
+<p>Lift Pot例子分別追蹤左右手接近，再以join確認雙手皆就位；右手失去抓握時，重新啟用右側接近，取消相依的雙手join、抓握及抬升完成標記，保留左側已完成狀態。接近閾值取專家完成時距離的高分位數；抓握流失閾值沿用圖中固定先驗，任務成功常數沿原始定義。（<a href="https://arxiv.org/html/2610.29161v1#S3.F2">圖2、式1</a>）</p>
+<h2 id="方法二快照與專家回復">方法二：快照與專家回復</h2>
+<p>各階段保留最新穩定快照，存模擬器狀態、active stages與擷取步數。終局失敗後，優先還原較進階階段，交由CuRobo程式化專家完成剩餘任務。成功回復的軌跡才收為修正資料；失敗就退到較早快照，初始狀態是最終fallback。（<a href="https://arxiv.org/html/2610.29161v1#S3.SS3">§III-C、式2</a>）</p>
+<p>buffer同時存成功／失敗政策rollout與專家修正，各學習法依目標選用。完整修正軌跡由回復前政策prefix接專家suffix，與原失敗continuation區分。訓練後獨立評估更新政策。（<a href="https://arxiv.org/html/2610.29161v1#S3.SS4">§III-D、式3–4</a>）</p>
+<h2 id="實驗設定與評估邊界">實驗設定與評估邊界</h2>
+<p>作者自報，使用Lift Pot、Move Can Pot、Place Empty Cup、Beat Block Hammer、Place Can Basket、Handover Block、Stack Blocks Two七個RoboTwin任務。各任務三候選圖，每候選最多修訂兩次；政策骨幹皆為<code>π_0.5</code>、action chunk為50，以50份專家示範SFT訓練各任務parent policy。</p>
+<p>Naive與PG用相同parent checkpoint、240個指定環境seeds及CuRobo專家，但各自獨立執行收集。Naive每50個政策步存快照，失敗後按時間反序嘗試。每個任務／收集法的固定資料由各演算法共用；每法訓練10000步，以每任務40個validation seeds調參。</p>
+<p>最終評估每任務200個固定held-out seeds，先通過官方專家的規劃及成功檢查，與收集／驗證集分離，每法共1400次。獨立評估只跑更新VLA，不帶PG、回復專家或特權狀態；圖3信賴區間條件於已訓練政策。（<a href="https://arxiv.org/html/2610.29161v1#S4.F3">§IV-A、圖3</a>）</p>
+<h2 id="進度圖構建與回復效率">進度圖構建與回復效率</h2>
+<p>作者自報，21個候選圖最終全通過靜態驗證，9個首次通過，餘12個平均修訂1.17次；生成與靜態驗證平均每任務8.0分鐘。（<a href="https://arxiv.org/html/2610.29161v1#S4.SS2">§IV-B</a>）</p>
+<p>每個送專家測試的快照算一次attempt；attempts per recovery為總嘗試除以回復成功rollouts，recovery success分母為失敗政策rollouts。作者自報，合併計數下Naive→PG總嘗試3781→945，減75.0%；每成功回復7.62→1.79，回復率93.4%→98.9%。Handover Block嘗試1329→192、回復率83.6%→98.3%；其餘各任務回復率維持或提高。（<a href="https://arxiv.org/html/2610.29161v1#S4.T1">表I</a>）</p>
+<p>（本檔補註，非作者自陳）獨立收集不能當同批失敗逐例配對，回復率也非後訓練政策成功率。</p>
+<h2 id="四種後訓練方法">四種後訓練方法</h2>
+<p>作者自報，用PG資料時，HG-DAgger整體成功率82.14%，七任務中五項最高；RECAP為76.50%，高於SFT的67.29%；FlowPRO與DPO+SFT為71.86%、63.14%，後者低於SFT，但兩者各在Beat Block Hammer與Place Empty Cup最佳。作者指出，有限資料下RECAP價值函式可能過擬合且時間預測有雜訊；兩偏好法向成功軌跡插值action chunks，未納入物件配置或接觸狀態，故失敗狀態的動作可行性無保證。（<a href="https://arxiv.org/html/2610.29161v1#S4.SS3">§IV-C、圖3</a>）</p>
+<p>比較Naive／PG資料，作者自報RECAP為66.64%／76.50%，HG-DAgger為80.21%／82.14%，DPO+SFT為62.64%／63.14%；FlowPRO反而76.07%降至71.86%。因此PG資料改善多數方法，不是全部方法皆受益。（<a href="https://arxiv.org/html/2610.29161v1#S4.T2">表II</a>）</p>
+<h2 id="改良recap交叉擬合加低通濾波">改良RECAP：交叉擬合加低通濾波</h2>
+<p>標準RECAP在同一資料擬合並預測價值，advantage標籤可能過擬合。RECAP-CF-LPF用五折cross-fitting，讓每條軌跡的價值由其他折訓練的模型預測；計算50步advantage前，對30Hz的out-of-fold價值序列施加二階、零相位、截止1Hz的Butterworth低通濾波。這是合併改良。（<a href="https://arxiv.org/html/2610.29161v1#S4.SS4">§IV-D</a>）</p>
+<p>作者自報，validation整體成功81.43%→85.00%，六任務改善、一項不變。held-out每variant 1400次則76.50%→79.36%，增2.86個百分點；五任務提高，Beat Block Hammer與Handover Block各降1.0及2.0個百分點。以任務內evaluation seeds做20000次paired bootstrap，整體差的95%信賴區間為0.36–5.36個百分點，不能與validation結果混用。（<a href="https://arxiv.org/html/2610.29161v1#S4.F5">圖5及正文</a>）</p>
+<h2 id="真機hil驗證及結論">真機HIL驗證及結論</h2>
+<p>作者自報，真機為雙AgileX PiPER手臂及三RGB相機，人工操作master arms收資料。兩variant皆用1672條訓練軌跡：200份人類示範、802個有人介入episode、670次全自主rollout。任務依序抓線、雙手交接、插入Ethernet接口；完全插入才算成功，每完成一里程碑得一分，最高三分。（<a href="https://arxiv.org/html/2610.29161v1#S4.F6">§IV-D、圖6</a>）</p>
+<p>作者自報，在改變線長、起始位置及機殼位置的25場景中，RECAP-CF-LPF成功24/25（96%），標準RECAP為18/25（72%），標準法成功的18場景改良法皆成功；累積進度為72/75對59/75。（本檔補註，非作者自陳）這是改良演算法用於真機HIL後訓練的結果，不是模擬政策直接零樣本遷移，亦非真機資料收集無人介入。（<a href="https://arxiv.org/html/2610.29161v1#S4.SS4">§IV-D</a>）</p>
+<p>作者總結，SimPT可用來探索介入式VLA後訓練；目前表現仍受任務與場景特性影響，未來將加入real-to-sim重建以縮小模擬和部署差異。（<a href="https://arxiv.org/html/2610.29161v1#S5">§V</a>）</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 d144aa5b · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>

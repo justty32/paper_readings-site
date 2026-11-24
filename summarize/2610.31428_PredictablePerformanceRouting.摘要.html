@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="d144aa5b5a9ed91bd348e6867e5252f04e2a8a47"><title>Predictable performance is suboptimal, and what it means for model routing 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Guanhua Zhang、Moritz Hardt</p><p>日期：2026-10-22（v1，cs.LG）</p><p>arXiv：2610.31428</p><p>閱讀說明：自讀主文、全部證明與附錄 A–C 及書目；實驗數字為作者自報，未重現。</p><p><a href="https://arxiv.org/html/2610.31428v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="預測器比模型自己更懂它額外價值從哪裡來">預測器比模型自己更懂它，額外價值從哪裡來？</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>本文以模型對所選答案的機率為基準，證明額外正確性預測優勢可經重新校準等量轉成答案 log loss 的改善；在合成與參數計數假設下，這個優勢受模型距同容量最佳值的差距與新增容量所限，並延伸到等升級率的雙模型 cascade。（<a href="https://arxiv.org/html/2610.31428v1#S3">§3–4</a>）</p>
+<h2 id="問題與核心定義">問題與核心定義</h2>
+<p>預測「模型會不會答對」常被用於 routing，但要先問學得的 predictor 比模型自己的 confidence 多提供多少資訊。令 <code>f</code> 是答案機率分布，選最大機率答案，<code>Z</code> 表示此答案是否正確；self-confidence 為該答案的機率，不是模型口頭聲稱的信心。<code>L_Y</code> 衡量 gold answer 的 log loss，<code>L_Z</code> 衡量二元正確性的 log loss，額外可預測性為 <code>E = L_Z(f) - L_Z(g,f)</code>。（<a href="https://arxiv.org/html/2610.31428v1#S3.SS1">§3.1</a>）</p>
+<h2 id="主要理論">主要理論</h2>
+<p><strong>等量轉移</strong>：將原先所選答案的機率改成 predictor 的正確機率，剩餘質量依其他答案原比例分配。正確／錯誤機率以外的 alternative loss 不變，因此 <code>L_Y(C_g(f)) = L_Y(f) - E</code>。需有限答案 loss、predictor full support，並在定義中要求原先未選答案的總質量非零。這是 log loss 的恆等式，不是 accuracy 同量提升，也不是訓練原模型權重的演算法。（<a href="https://arxiv.org/html/2610.31428v1#S3.SS2">命題1、§3.2；附錄 A.1</a>；末句為本檔補註，非作者自陳）</p>
+<p><strong>次佳差距與容量</strong>：假設固定任務分布上每個參數預算均有可達的最低答案 loss <code>L_Y*(P)</code>，模型類容許組合模型與 predictor。所有參數含凍結權重均計入，共享只算一次，固定算術不另加參數；故 <code>P</code> 參數模型與 <code>Q</code> 參數 predictor 合成後至多用 <code>P+Q</code>。定理1給出 <code>E &lt;= delta_P(f) + L_Y*(P) - L_Y*(P+Q)</code>。只有超過容量增益的額外可預測性才證明模型在自身預算下次佳；不是只要 predictor 有用就證明原模型差。（<a href="https://arxiv.org/html/2610.31428v1#S3.SS3">§3.3，假設1、定理1</a>）</p>
+<p><strong>上界不是必然趨勢</strong>：若 loss floor 凸、容量效益遞減，小 predictor 的容量修正可進一步縮小；但次佳差距下降不必使最大 <code>E</code> 下降。附錄以保持所選答案和 confidence、僅改善錯誤時 alternative 分布的構造證明兩者可分離。（<a href="https://arxiv.org/html/2610.31428v1#A1.SS3">附錄 A.3–A.4</a>）</p>
+<h2 id="雙模型-cascade-的條件">雙模型 cascade 的條件</h2>
+<p>先執行弱模型，再由 router 決定哪些題升級給強模型；與 confidence routing 比較時，兩者升級比例 <code>rho</code> 相同。若 <code>u</code> 是兩種升級決策的差，cascade accuracy 優勢等於「額外捕捉的弱模型錯誤」減「額外遇到的強模型錯誤」。能多抓弱模型錯誤的 router 可轉成對 confidence logit 的有效校正，定理2由此限制弱錯誤捕捉增益。（<a href="https://arxiv.org/html/2610.31428v1#S4.SS1">§4.1–4.2</a>）</p>
+<p>令 <code>Delta = delta_P1(f1) + L_Y*(P1) - L_Y*(P1+Q+2)</code>，其上界為 <code>sqrt(min(rho,1-rho) * Delta)</code>。額外兩個參數是升級率與校正強度。只有當 learned router 額外遇到的強模型錯誤非負時，同一上界才直接約束完整 cascade accuracy 優勢；若 router 更會避開強模型錯誤，還有另一來源的收益。（<a href="https://arxiv.org/html/2610.31428v1#S4.SS2">定理2、推論2；附錄 A.5–A.7</a>）</p>
+<h2 id="實驗設計與結果">實驗設計與結果</h2>
+<p>作者自報評估八家族的16個 base／instruction-tuned release，規模7–12B；任務為 WinoGrande、CommonsenseQA、GSM8K、MMLU-Pro。前兩者以正規化選項 likelihood 建分布，後兩者以每題128個生成樣本估答案頻率，再以最高機率答案及其機率評估。生成題的 confidence 需多次取樣，不能直接當作單次生成免費得到的訊號。（作者自報，<a href="https://arxiv.org/html/2610.31428v1#S3.SS4.SSS1">§3.4.1、附錄 B.2</a>；末句為本檔補註，非作者自陳）</p>
+<p>每個模型／任務／微調階段分別訓練 Qwen3-Embedding-4B predictor，讀題目、答案、分布，生成題另給以多數答案結尾的抽樣推理軌跡。用 development 的85%訓練、15%選 checkpoint／seed。微調後 development accuracy 未改善者剔除，留下依任務16／16／14／13對，共59對；因此結果是改善子集，不涵蓋所有微調結果。empirical suboptimality 是相對留存群組最佳觀察答案 loss 的差，不是已量得理論 floor。（作者自報，<a href="https://arxiv.org/html/2610.31428v1#A2">§3.4.1、附錄 B.1、B.3–B.4</a>）</p>
+<p>作者自報上述四任務中，empirical suboptimality 與 <code>E</code> 的 Pearson 相關依序0.98／0.98／0.93／0.65。微調後59對的答案 loss 都下降，<code>E</code> 在55對下降。Llama-3.1-8B 的 CommonsenseQA 軌跡中，<code>E</code> 由0.107降至0.004 nats。這是觀察趨勢，不是定理保證逐模型都下降。（作者自報，<a href="https://arxiv.org/html/2610.31428v1#S3.SS4.SSS2">§3.4.2，圖1–3</a>）</p>
+<p>cascade 使用 Qwen3.5-122B-A10B 為強模型，前兩任務微調、後兩者用 released model。<code>100D</code> 是跨相同升級率積分的平均 accuracy 優勢，單位為百分點，不是某固定服務預算的收益。作者自報微調後此優勢在53／59對下降；留存模型平均如下。（作者自報，<a href="https://arxiv.org/html/2610.31428v1#S4.SS3">§4.3、附錄 B.5、表8</a>）</p>
+<table>
+<thead>
+<tr>
+<th>任務</th>
+<th style="text-align:right">Released→微調後平均優勢，百分點</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>WinoGrande</td>
+<td style="text-align:right">1.38→0.18</td>
+</tr>
+<tr>
+<td>CommonsenseQA</td>
+<td style="text-align:right">1.09→0.18</td>
+</tr>
+<tr>
+<td>GSM8K</td>
+<td style="text-align:right">0.52→0.20</td>
+</tr>
+<tr>
+<td>MMLU-Pro</td>
+<td style="text-align:right">0.94→0.07</td>
+</tr>
+</tbody>
+</table>
+<p>全表為作者自報（<a href="https://arxiv.org/html/2610.31428v1#A3.SS5">附錄 C.5，表8</a>）。作者另自報118個留存版本中91個的強錯誤項在跨升級率平均後非負；這不表示每個升級率都滿足推論2條件。MMLU-Pro 微調後平均多捕捉弱錯誤0.94百分點，卻被強錯誤抵銷0.87，剩0.07。（作者自報，同附錄）</p>
+<h2 id="結論與局限">結論與局限</h2>
+<p>作者明示：理論只給上界，不能推出每次降低答案 loss 都縮小 predictor 優勢；完整 cascade 優勢還依賴強模型錯誤，後續需研究不執行強模型時如何預測升級收益。self-confidence 不可取得時，predictor 僅恢復此訊號也可能有用；可預測價值另來自次佳差距及新增容量。（<a href="https://arxiv.org/html/2610.31428v1#S5">§5</a>）</p>
+<p>作者在附錄說明相關檢定假設觀察值獨立，未調整多重比較；小型 predictor 的跨模型相關也不一致，不能把主4B結果泛化成任意 predictor 的定律。（<a href="https://arxiv.org/html/2610.31428v1#A3.SS1">附錄 C.1、C.3</a>）</p>
+<h2 id="對讀者的價值接點">對讀者的價值・接點</h2>
+<p>（本檔補註，非作者自陳）設計 agent routing 時，先建立能取得的 confidence 與校準基準，分開評 correctness log loss、題目排序、固定升級率 accuracy 及實際成本。正斜率 Platt 校準可降 loss 卻不改排序，所以「更會估機率」不等於「更會挑題升級」；也不能由本文推論多模型 routing 普遍無用。（依據<a href="https://arxiv.org/html/2610.31428v1#S4.SS3">§4.3、§5</a>）</p>
+<blockquote>
+<p>精要逐節翻譯見 <a href="../translate/2610.31428_PredictablePerformanceRouting.zh-TW.html">Predictable Performance Routing 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 d144aa5b · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>

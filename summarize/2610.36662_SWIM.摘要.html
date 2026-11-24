@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="d144aa5b5a9ed91bd348e6867e5252f04e2a8a47"><title>SWIM: Learning What Matters from Behaviors for JEPA World Models 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Jiaming Hu、Shi Bo、Yan Zheng、Tian Wang、Florian Dubost、Alejandro Mottini、Junze Liu、Arvind Srinivasan、Kai Zhong、Kun Qian、Sharon Gao、Vianne Gao、Houyu Zhang、Qingjun Cui</p><p>日期：2026-10-27（v1，cs.RO）</p><p>arXiv：2610.36662</p><p>閱讀說明：完整自讀主文、附錄A–G與書目；實驗數字為作者自報，未重現。</p><p><a href="https://arxiv.org/html/2610.36662v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="swim用離線行為學習狀態距離的權重">SWIM：用離線行為學習狀態距離的權重</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>SWIM從離線軌跡學習哪些狀態變化有助反推動作，再把連續權重交給既有SCALE校準JEPA的潛在距離；部署仍從影像規劃，不需要模擬器狀態或額外逆動力學計算。（<a href="https://arxiv.org/html/2610.36662v1#S4">§1、§4</a>）</p>
+<h2 id="問題與方法">問題與方法</h2>
+<p>等權狀態監督會重複計算冗餘座標，也可能讓無關變數干擾目標距離。SWIM保留預先構造的候選狀態座標，學習每個座標的相對重要性，不是直接從影像發現任意物理變數。（<a href="https://arxiv.org/html/2610.36662v1#S1">§1、§5.1</a>；後半為本檔補註，非作者自陳）</p>
+<p>第一階段以目前狀態與未來位移預測記錄動作：目前狀態不加gate，位移乘上環境內跨軌跡共用的sigmoid gate。Gaussian MLP與gate共同最小化動作NLL、正確／錯配位移的辨別損失及gate的L1懲罰。SWIM-H用hinge，SWIM-N用InfoNCE。辨別項避免預測器只依賴目前狀態；gate保持連續，沒有硬式特徵刪除。訓練不用影像、reward或成功標籤。（<a href="https://arxiv.org/html/2610.36662v1#S4.SS1">§4.1、附錄A</a>）</p>
+<p>第二階段凍結gate，將標準化座標轉成<code>q_tilde=sqrt(g*)*q</code>，故平方距離為<code>sum_k g*_k*(q_i,k-q_j,k)^2</code>。加權後不能再逐座標標準化，否則會抵銷權重。只替換SCALE的狀態距離監督目標，保留LeWM預測與SIGReg損失；SCALE、LeWM、SIGReg及CEM／iCEM皆是本文沿用的方法。逆動力學預測器在此後丟棄。（<a href="https://arxiv.org/html/2610.36662v1#S4.SS2">§3–4、附錄B</a>）</p>
+<h2 id="實驗設定與主要結果">實驗設定與主要結果</h2>
+<p>作者自報在OGBench的Cube、Cube-Double、Cube-Triple、Cube-Quadruple與Scene評估。每個LeWM系方法用五個訓練seed，每任務／設定／規劃器／訓練seed評估600 episodes，分六個評估seed各100 episodes。所有方法共用離線資料、規劃協定與實例。CEM每輪300候選取30精英，做10輪；horizon為五個決策步、frame skip為5，執行完整計畫才重規劃；每episode至多50環境步，目標是同軌跡初始狀態之後25環境步的狀態。（作者自報，<a href="https://arxiv.org/html/2610.36662v1#A5">§5.1、附錄E</a>）</p>
+<p>以下為作者自報CEM成功率百分比、五訓練seed平均±標準差。SWIM欄使用各任務最佳λ；不是固定超參數結果。</p>
+<table>
+<thead>
+<tr>
+<th>任務</th>
+<th>LeWM</th>
+<th>SCALE-All</th>
+<th>SWIM-H⋆</th>
+<th>SWIM-N⋆</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cube</td>
+<td>67.7±1.0</td>
+<td>74.6±1.1</td>
+<td>75.9±1.5</td>
+<td>75.8±1.2</td>
+</tr>
+<tr>
+<td>Cube-Double</td>
+<td>16.4±1.1</td>
+<td>18.2±0.8</td>
+<td>19.4±1.1</td>
+<td>19.3±0.7</td>
+</tr>
+<tr>
+<td>Cube-Triple</td>
+<td>30.6±0.8</td>
+<td>31.3±1.2</td>
+<td>32.6±1.0</td>
+<td>32.4±0.5</td>
+</tr>
+<tr>
+<td>Cube-Quadruple</td>
+<td>28.3±1.0</td>
+<td>29.6±0.7</td>
+<td>30.7±0.9</td>
+<td>30.5±0.6</td>
+</tr>
+<tr>
+<td>Scene</td>
+<td>30.5±0.5</td>
+<td>33.4±1.9</td>
+<td>37.3±3.3</td>
+<td>39.4±2.3</td>
+</tr>
+</tbody>
+</table>
+<p>來源：<a href="https://arxiv.org/html/2610.36662v1#S5.T1">表1</a>。作者指出DINO-WM在Cube-Triple仍較強。</p>
+<p>固定預設λ時，SWIM-H為0.03、SWIM-N為0.1。作者將每個訓練seed的所有任務與兩種規劃器成功率先平均，再以五seed對SCALE-All做paired t-test，分別提升0.9個百分點（p=0.009）與1.0個百分點（p=0.022）；全部十設定平均提升0.7個百分點（p=0.006）。不能把這些p值當成表1每任務各自的顯著性。（作者自報，<a href="https://arxiv.org/html/2610.36662v1#S5.SS2">§5.1–5.2</a>；末句為本檔補註，非作者自陳）</p>
+<h2 id="污染消融與理論的證據範圍">污染、消融與理論的證據範圍</h2>
+<p>作者自報在Cube原22維加入無關Scene軌跡的26維。InfoNCE、λ=0.1時，原座標權重排序的Spearman為0.995，全部干擾維gate不超過0.31。單訓練seed的CEM成功率，乾淨SCALE-All為75.5%，污染後74.2%，污染SWIM、λ=0.05為75.2%；iCEM則依序76.3%、75.5%、76.7%。報告用的0.5門檻不參與實際訓練距離。（作者自報，<a href="https://arxiv.org/html/2610.36662v1#A4">§5.3、附錄D、表6–7</a>）</p>
+<p>附錄F消融均為單訓練seed。作者說移除NLL或辨別項後成功率相近，但gate分布改變；因此不能據此說每個損失都已證明是成功率提升的必要原因。資料效率實驗以完整資料學得的gate作參照，測的是權重穩定度，不是少資料世界模型的成功率。（<a href="https://arxiv.org/html/2610.36662v1#A6">附錄F.1、F.4</a>；解讀界線為本檔補註，非作者自陳）</p>
+<p>定理4.1把候選選擇誤差分成距離校準、latent rollout與參考任務權重差異。附錄G明說Stage1不被假設滿足優於等權的充分條件；這不是無條件的規劃改善保證。（<a href="https://arxiv.org/html/2610.36662v1#A7">§4.3、附錄G</a>）</p>
+<h2 id="作者限制與閱讀價值">作者限制與閱讀價值</h2>
+<p>作者自陳方法依賴訓練時提供的狀態變數及離線行為覆蓋，目前只透過SCALE展示；其他狀態監督目標與更豐富的狀態相依權重仍待研究。錯配樣本未核實是否不可達或行為不相容，相近樣本會弱化對比。gate與預測器可互相縮放，所以絕對gate尺度不可識別，第二階段只看相對權重。（<a href="https://arxiv.org/html/2610.36662v1#S6">§6、附錄A–B</a>）</p>
+<p>（本檔補註，非作者自陳）對agent／世界模型設計的啟發是：資料中「容易預測的變化」與「規劃應重視的變化」需要不同的設計。SWIM提供可替換的監督距離，但行為相關性仍是任務重要性的代理，不能當成因果重要性或跨任務通用性保證。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 d144aa5b · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>

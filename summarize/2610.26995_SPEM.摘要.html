@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="d144aa5b5a9ed91bd348e6867e5252f04e2a8a47"><title>SPEM: Structure-Aware Procedural Memory for Efficient Skill Use in LLM Agents 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Ran Zhou、Zehui Kong、Fanyu Lin、Jiaheng Liu、Zhen Zhang、Yuxiang Ren</p><p>日期：2026-10-19（v1，cs.AI）</p><p>arXiv：2610.26995</p><p>閱讀說明：完整自讀官方HTML主文、三表、圖說及全部書目；HTML未附文中引用的supplementary Sections A–D，未取得完整超參數、抽取規則、圖3其餘曲線點值與額外控制。數字為作者自報，未重現；模板命中、exact-template重跑與主結果分開解讀。</p><p><a href="https://arxiv.org/html/2610.26995v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="把成功軌跡存成程序骨架再按當前狀態挑技能">把成功軌跡存成程序骨架，再按當前狀態挑技能</h1>
+<h2 id="一句話">一句話</h2>
+<p>SPEM不把skill library當成平面文字庫：它一面保存單項技能，一面把成功軌跡壓成可重用的Skill-DAG；新任務先找模板，找不到或模板不足時才用Skill-GNN排序候選技能。實驗支持在指定benchmark與backbone下改善成功率／成本的折衷，並非每個成本或每個分數都最佳。（<a href="https://arxiv.org/html/2610.26995v1#Sx3">Method、表1</a>）</p>
+<h2 id="兩層記憶與按需選擇">兩層記憶與按需選擇</h2>
+<p>Atomic Skill Memory為每個技能保存metadata、semantic embedding與輕量執行回饋，包括使用頻率、成功率及成本。Skill-DAG Memory則保存節點、具方向的依賴邊、任務embedding與執行metadata。對新query先以相似度threshold搜尋模板，若有符合者便注入最高分模板作程序指引；否則以TopK召回有界數量的atomic skills。（<a href="https://arxiv.org/html/2610.26995v1#Sx3.SSx1">Dual-Layer Procedural Memory、式1–6</a>）</p>
+<p>當模板缺席或不符合當前狀態，Skill-GNN建構task、context、candidate skill節點及typed edges，讓任務相關性、狀態相容性、技能關係與可用依賴線索一起進入message passing。網路為候選技能評utility score，把高分技能及精簡依賴提示交給LLM executor；它提供引導，並不是取代executor或以形式證明保證執行正確。（<a href="https://arxiv.org/html/2610.26995v1#Sx3.SSx2">Structure-Aware Skill Selection、式7–9</a>；末句為本檔補註，非作者自陳）</p>
+<p>有目標域trajectory時，Skill-GNN用trajectory prefix表示當前狀態、下一個執行skill作監督。缺trajectory時，作者以library metadata產pseudo query，再由語意、shared tools、tags或schema compatibility建立弱關係warm start；作者明說此初始化不使用task outcomes、verifier rewards或evaluation trajectories。初期仍以atomic retrieval與既有模板為主，GNN只作bounded reranking，累積成功後才逐步適應。（<a href="https://arxiv.org/html/2610.26995v1#Sx3.SSx2.SSS0.Px3">Cold-Start Deployment、式10–11</a>）</p>
+<h2 id="成功軌跡如何變成模板">成功軌跡如何變成模板</h2>
+<p>作者先把執行步驟與相關狀態連成graph，邊表示時間、entity dependency、state transition及terminal reachability；再從成功terminal backward slice，移除失敗分支、冗餘探索與無貢獻操作，依時間與依賴修補後存成Skill-DAG。新的非模板成功建立模板；模板引導成功則強化／精煉舊模板，失敗只更新reliability statistics。（<a href="https://arxiv.org/html/2610.26995v1#Sx3.SSx3">Trajectory-DAG Extraction、式12–14</a>）</p>
+<p>（本檔補註，非作者自陳）文中把可經temporal或dependency path到成功節點者納入backward slice，但「與成功相連」不自動證明「對成功必要」。如何可靠刪冗餘與repair dependency的詳細規則指向未附的Supplementary A.3，不能僅靠該集合式視為已驗證的因果最小程序。</p>
+<h2 id="實驗設計與成本口徑">實驗設計與成本口徑</h2>
+<p>作者自報ALFWorld採dev split的140 episodes、每題最多30環境steps，所有skill方法共用37個<code>alfworld-*</code>技能；Skill-DAG只從成功的non-evaluation trajectories建立，GNN訓練與evaluation instances分離。SkillsBench採GoS execution setting、Docker與Harbor，每題至多兩次attempts、兩個concurrent trials；允許重試後仍屬infrastructure failure者排除，所有方法留下相同67個valid model tasks，共用<code>skills_200</code> library。這兩個benchmark的訓練／重用機制不同，SkillsBench主要測atomic retrieval與warm-start reranking，不是同等程度的模板重用。（作者自報，<a href="https://arxiv.org/html/2610.26995v1#Sx4.SSx1">Experimental Setup</a>；末句範圍提醒為本檔補註，非作者自陳）</p>
+<p>比較四個baseline：Vanilla Skills全載、Vector Skills平面embedding TopK、GoS靜態graph retrieval、SkillDAG依賴與自演化graph。MiniMax-M2.7與GPT-5.2-Codex分別作較弱／較強backbone，所有方法共用split、library、agent interface、environment與verifier protocol。（<a href="https://arxiv.org/html/2610.26995v1#Sx4.SSx1">Baselines、Implementation Details</a>）</p>
+<p>SkillsBench的reward由official verifier決定，tokens只計average input tokens；ALFWorld則報success、環境steps與執行期間average token consumption。runtime均為agent-only：排除環境setup、dependency installation、Docker build及verifier runtime，但包含SPEM執行時觸發的retrieval／reranking。因此不能把報表秒數當作完整部署端到端時間。（<a href="https://arxiv.org/html/2610.26995v1#Sx4.SSx1.SSS0.Px2">Metrics</a>；末句為本檔補註，非作者自陳）</p>
+<h2 id="主結果有較佳折衷也有明確例外">主結果：有較佳折衷，也有明確例外</h2>
+<p>下表均作者自報，僅列SPEM；SkillsBench reward依原文百分比口徑，tokens／runtime依各benchmark上述定義。</p>
+<table>
+<thead>
+<tr>
+<th>Backbone</th>
+<th>SkillsBench reward／input tokens／秒</th>
+<th>ALFWorld success／steps／tokens／秒</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MiniMax-M2.7</td>
+<td>25.14%／721926／360.5</td>
+<td>70.7%／18.29／45785.7／51.56</td>
+</tr>
+<tr>
+<td>GPT-5.2-Codex</td>
+<td>38.38%／980029／618.7</td>
+<td>87.1%／15.07／47409.1／66.01</td>
+</tr>
+</tbody>
+</table>
+<p>來源：<a href="https://arxiv.org/html/2610.26995v1#Sx4.T1">表1</a>。MiniMax在SkillsBench的SkillDAG reward為27.09%，高於SPEM；作者自報SPEM相較該baseline省26.3% input tokens與24.3% runtime。GPT在SkillsBench的GoS reward為37.50%，SPEM為38.38%；作者自報省15.7% input tokens與12.3% runtime。這是不同baseline／backbone的比較，不能混成同一個通用節省比例。（作者自報，<a href="https://arxiv.org/html/2610.26995v1#Sx4.SSx2">Main Results</a>；口徑提醒為本檔補註，非作者自陳）</p>
+<p>ALFWorld中，SPEM兩backbone的success與runtime均為表列最佳，但不是每項都贏：GPT的SkillDAG steps為11.73，少於SPEM的15.07；Vector Skills tokens為47357.3，略少於SPEM的47409.1。MiniMax的SkillDAG steps為16.37，亦少於SPEM的18.29。故「best overall trade-off」是整體折衷主張，不等於全面Pareto支配。（作者自報表值，<a href="https://arxiv.org/html/2610.26995v1#Sx4.T1">表1</a>；最後解讀為本檔補註，非作者自陳）</p>
+<h2 id="模板消融與擴大library">模板、消融與擴大library</h2>
+<p>作者自報成功trajectory平均13.4 steps壓至6.0 backbone steps、刪54.9% operations。ALFWorld模板hit在MiniMax／GPT分別56.43%／60.71%；只在hit tasks內的success則為74.68%／85.88%，不能把條件成功率當全體成功率。（作者自報，<a href="https://arxiv.org/html/2610.26995v1#Sx4.T2">表2、Analysis of DAG-Template Effectiveness</a>；分母提醒為本檔補註，非作者自陳）</p>
+<p>作者另將已成功完成task的trajectory抽成DAG，再直接提供給同task重跑。此exact-template分析自報全部受測task保有success，steps從11.42降6.26、tokens從23.77K降11.93K、runtime從28.01秒降20.88秒。這隔離「已知正確骨架」的效益，不是陌生任務自動檢索模板的泛化成功率，也不能與前述13.4→6.0抽取壓縮當成同一對照組。（作者自報，<a href="https://arxiv.org/html/2610.26995v1#Sx4.SSx3">Analysis of DAG-Template Effectiveness</a>；範圍限定為本檔補註，非作者自陳）</p>
+<p>ALFWorld消融自報Full SPEM success 70.7%，去Skill-DAG為56.8%、去Skill-GNN為58.3%、以完整trace替代抽取DAG為63.0%；表3未明寫backbone，不把它描述為兩backbone各自的共同結果。library擴至2000 skills時，作者自報GNN較retrieval-only的Hit@1由0.0升至0.51、MRR由0.112升至0.573；這是檢索排序指標，不是整體任務success。圖3曲線本次未下載圖片，不推讀圖中額外點值。（作者自報，<a href="https://arxiv.org/html/2610.26995v1#Sx4.T3">表3、Scalability</a>；範圍限定為本檔補註，非作者自陳）</p>
+<h2 id="限制與讀者價值">限制與讀者價值</h2>
+<p>作者結論承認當前表現仍依賴retrieval quality與agent執行指引的能力。（<a href="https://arxiv.org/html/2610.26995v1#Sx5">Conclusion</a>）</p>
+<p>（本檔補註，非作者自陳）主文將完整超參數、敏感度與抽取repair細則指往未附的Supplementary A–D；本次也無法完整核實訓練成本如何攤提。不以本文表格宣稱已核實任意library或部署環境的同等效益。</p>
+<p>（本檔補註，非作者自陳）對agent系統設計，值得借用的是分開「單技能召回」與「已驗證程序重用」，再用執行回饋管理模板可靠度。若移植，應分別量template hit、hit後success、fallback success與retrieval成本，保留原始trajectory供回溯；精簡模板只是執行提示，不能取代權限邊界與結果驗證。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 d144aa5b · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>
