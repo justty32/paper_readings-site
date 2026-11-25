@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="6f0c65a5cdf9f0bc4e5ad8a410b5fffc55c1278d"><title>QuantForge: Discovering Residual Decompositions for MXFP4 Post-Training Quantization 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Qiulin Shang、Zhoutong Wu、Jie Hu、Kun Yuan</p><p>日期：2026-10-27（v2；初版 2026-09-28，cs.LG）</p><p>arXiv：2609.34680</p><p>閱讀說明：依主文與附錄 A–D 整理；數值均為作者自報，非獨立重現。區分 QuantForge 搜尋系統、固定 HiRes 量化器、搜尋預算及假量化部署成本。</p><p><a href="https://arxiv.org/html/2609.34680v2" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="quantforge-重點摘要">QuantForge 重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>QuantForge 不只保留分數好的量化程式，還預先登記競爭解釋、執行能區分它們的控制實驗，要求後續程式落實實驗裁決，再量測新狀態的殘差。這套搜尋得到固定的 HiRes 量化器，依序處理座標幾何、合法離散編碼與網路路徑誤差。搜尋系統與量化器不是同一個東西；量化模型時不必重跑 LLM 程式演化。（§4–5）</p>
+<h2 id="為何要從分數走向程式修訂">為何要從分數走向程式修訂</h2>
+<p>MXFP4 的每個實體區塊由 32 個 E2M1 值共用 E8M0 二的冪次尺度。大值可能決定整塊指數，使小值難以表示；座標變換又會同時改變編碼誤差、GPTQ 曲率及後續注意力與門控 MLP 的誤差。因此，單一候選的分數進步，不足以決定下一步該改座標、編碼還是恢復路徑。（§1、§3）</p>
+<p>QuantForge 分開維護「可執行前緣」與「殘差前緣」：前者保存有用程式，後者保存仍有競爭解釋的設計問題。提案先寫下各解釋對控制條件的預測，再選擇成本最低、足以區分所有登記解釋的控制集合。裁決必須轉為後續程式要求，並以原始碼差異及執行探針確認；證據不足則保持問題未解。候選可以因實測有效而保留，即使原本解釋已遭否定。（§4.1–4.3、式 2–3、附錄 A.2）</p>
+<p>修訂後重新量測，才決定下一個可處理的問題，作者稱為 progressive residual factorization。這是對登記解釋與指定介入的受控分辨，不是窮盡所有可能機制的普遍因果證明。§4.1 的混合精度例子只是說明，並非允許 HiRes 私下加入高精度權重。（§4、附錄 A；末兩句為本摘要的證據邊界說明）</p>
+<h2 id="hires固定量化器的三階段">HiRes：固定量化器的三階段</h2>
+<ol>
+<li><strong>幾何塑形</strong>：以校正輸入二階矩及反向權重幾何建立參考座標，再用實際 W4/A4 編碼的誤差與訊號交互作用修正。局部修正會抑制跨資料折或權重／活化貢獻不一致的訊號；其範數界保證變換可逆。最後以對角縮放平衡兩側量化風險，只有重新編碼後重建損失不增加才接受。成對變換在離散化前保留線性算子的函數。（§5.1、式 4–7、附錄 B.2）</li>
+<li><strong>離散實現</strong>：安裝座標後重跑校正，以變換後、A4 編碼前的活化估計 GPTQ 曲率，產生合法 W4 權重。動態 A4 不只取最近碼，而是參考已安裝 W4 算子的誤差，在固定區塊指數下搜尋合法碼；每塊最多改一個元素，僅接受輸出誤差目標的負變化。（§5.2、式 8、附錄 B.3）</li>
+<li><strong>結構恢復</strong>：先對每層每個 KV head 的 value 輸出擬合共享純量縮放與偏移，再於注意力已修正的模型上重新蒐集 MLP 統計。MLP 以每層三個純量調整 gate 位移、gate 尺度與 up 尺度，經加權 ridge、穩健彙整與幅度限制後送入嚴格 W4A4 down projection。（§5.3、式 9–11、附錄 B.4）</li>
+</ol>
+<p>「嚴格 W4A4」限定目標線性層的運算元與儲存編碼合法，不表示所有計算皆為四位元。嵌入、正規化、RoPE 與輸出 head 保留較高精度；低維恢復位於 GEMM 外，沒有額外高精度權重矩陣，但包含較高精度算術與輔助狀態。本文數值評估採 PyTorch 邏輯假量化、BF16 解碼權重，並關閉 KV cache。（§3、附錄 B.1）</p>
+<h2 id="量化品質先分清-fit-7-與-robust-fit">量化品質：先分清 Fit-7 與 Robust Fit</h2>
+<p>作者以相同 BF16 checkpoint、C4-train 校正資料及 MXFP4 合約，比較九個基線與 HiRes。校正為 seed 0 的 128 段、每段 2,048 tokens；七項任務為 WT2／C4 困惑度及 ARC-C、ARC-E、HellaSwag、PIQA、WinoGrande 準確率。除 WinoGrande 外，準確率採 normalized accuracy。（§6.1、附錄 C.1）</p>
+<p>相對 BF16 的損害，困惑度為 <code>PPL_q/PPL_16 - 1</code>，準確率為 <code>1 - Acc_q/Acc_16</code>。每模型的 Fit-7 是七任務平均損害與最差任務損害各占一半；七模型 Robust Fit 再將平均 Fit-7 與最差模型 Fit-7 各取一半。兩者越低越好，不是準確率或七模型的單純平均。損害不截斷於零，優於 BF16 的結果可為負值。（§6.1、式 12–13；附錄 A.1、C.2）</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th style="text-align:right">七模型平均 Fit-7</th>
+<th style="text-align:right">七模型 Robust Fit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPTQ</td>
+<td style="text-align:right">0.14422</td>
+<td style="text-align:right">0.18624</td>
+</tr>
+<tr>
+<td>BRQ</td>
+<td style="text-align:right">0.08440</td>
+<td style="text-align:right">0.11152</td>
+</tr>
+<tr>
+<td>WUSH</td>
+<td style="text-align:right">0.07345</td>
+<td style="text-align:right">0.09910</td>
+</tr>
+<tr>
+<td>HiRes</td>
+<td style="text-align:right">0.06726</td>
+<td style="text-align:right">0.09300</td>
+</tr>
+</tbody>
+</table>
+<p>數值均為作者自報，來源為表 1。七模型包含 Llama-3.2-3B、Qwen3-4B、Mistral-7B-v0.3、Qwen3-8B、Llama-3-8B、OLMo-2-13B 與 Qwen3-32B；其中 Qwen3-4B 是搜尋可見模型，不能把整個面板稱為未見模型測試。（表 1、附錄 A.1）HiRes 在這個面板的兩項整體指標最低，但並非每模型或每任務都勝出：Qwen3-4B 的 Fit-7 為 0.0524，高於 WUSH 的 0.0479；Qwen3-8B 的五準確率任務平均亦稍低於 WUSH。（表 1、表 12）</p>
+<p>凍結 HiRes 在 OLMo-2-13B 的 Fit-7 為 0.077301，WUSH 為 0.082295；Qwen3-32B 則為 0.027369，WUSH 為 0.036489，BRQ 為 0.042486。這支持所測架構及尺度上的遷移，不代表所有模型皆成立。（作者自報：§6.1、表 8–9；末句為本摘要判讀）</p>
+<p>各階段累加使 Qwen3-8B 的 Fit-3 從嚴格 RTN 的 0.20249 降至幾何後 0.07828、離散後 0.06502、恢復後 0.03259；Llama-3-8B 對應為 0.31653、0.16741、0.15530、0.14830。Fit-3 只含 WT2、C4、ARC-C，不可與 Fit-7 混比。固定部署順序而改用注意力修正前的舊 MLP 統計，兩模型 seed 0 的 Fit-3 分別惡化至 0.04173、0.15824。跨 seed 0、3、5 的重新量測與元件實驗支持這些條件依賴，但只涵蓋所測兩個模型。（作者自報：表 2、表 13、表 25、附錄 C.3–C.5）</p>
+<h2 id="搜尋實驗同評估呼叫數不等於所有成本相同">搜尋實驗：同評估呼叫數，不等於所有成本相同</h2>
+<p>必須區分兩種流程。實際開發 HiRes 從 GPTQ 出發，以 Qwen3-4B 的 Fit-3 引導提案，Llama-3.1-8B 作遷移驗證；提案者會收到彙總的遷移接受訊號，因此該模型不是完全不回饋的 holdout。獨立框架比較則從相同 RTN 出發，只以 Qwen3-4B WT2 困惑度搜尋，每隔 20 次呼叫測 Llama-3.1-8B champion，分數與診斷完全不回饋或參與後代選擇。（附錄 A.1）</p>
+<p>獨立比較有八個配對 seed；各臂共用 proposer、初始程式、可編輯介面及 evaluator。QuantForge 每次執行的 240 次預算分為新候選 141、控制 69、合規探針 30；三個基線皆評估 240 個新候選。另有每 seed 12 次 held-out 探測，不列入該預算。ReflectMem 與 QuantForge 的每次輸入上限同為 65,536 tokens，其中記憶至多 16,384 tokens。（作者自報：§6.2、附錄 D.1）</p>
+<table>
+<thead>
+<tr>
+<th>搜尋臂</th>
+<th style="text-align:right">最終 held-out PPL 中位數</th>
+<th style="text-align:right">達 PPL &lt;= 8 的執行數</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Score-only</td>
+<td style="text-align:right">10.03</td>
+<td style="text-align:right">1/8</td>
+</tr>
+<tr>
+<td>TextMem</td>
+<td style="text-align:right">9.20</td>
+<td style="text-align:right">3/8</td>
+</tr>
+<tr>
+<td>ReflectMem</td>
+<td style="text-align:right">8.09</td>
+<td style="text-align:right">3/8</td>
+</tr>
+<tr>
+<td>QuantForge</td>
+<td style="text-align:right">7.80</td>
+<td style="text-align:right">6/8</td>
+</tr>
+</tbody>
+</table>
+<p>表中皆為作者自報，來源為表 32。QuantForge 對 ReflectMem 在八個配對 seed 中勝七個，平均差為 -0.250，配對 t 的 95% 信賴區間為 [-0.386058, -0.113942]。這個統計範圍是指定搜尋設定的八次配對執行，不是七模型 HiRes 面板的不確定度，也不是八個獨立研究領域。（附錄 D.1）</p>
+<p>移除強制落實與合規檢查，將釋出的 30 次呼叫改為候選，使候選數增至 171，held-out PPL 中位數反而由 7.80 升至 8.06。另從同八條軌跡各取最早六個可排除登記解釋的控制事件，固定父程式、歷史及證據重播，共 48 組；裁決約束使改善後代由 15/48 升至 28/48。這是有選樣規則的局部重播，不是 48 次獨立完整搜尋。（作者自報：附錄 D.2、表 35–40）</p>
+<p>本摘要的成本判讀：結果支持相同 evaluator-call 預算下較有效的發現，但未統一換算不同條件的 GPU 時數、完整 LLM token／費用或牆鐘時間，不能稱為完整成本公平。附錄 D.3 也顯示，控制數量與檢查嚴格度會排擠候選探索；多跑控制或更嚴檢查並不自動得到更佳搜尋結果。（依附錄 D.1–D.3 判讀）</p>
+<h2 id="計算儲存與推論代價">計算、儲存與推論代價</h2>
+<p>作者的最佳化實作每個目標線性層、每個 Block32 保留 FP32 的折疊變換、對稱 Gram 上三角及完整誤差交互矩陣，合計每塊 10,304 bytes，另加恢復係數。BF16 解碼版本的靜態總量因此比 BF16 參數負載增加 1.87%–2.61%，而不是已得到低位元記憶體節省。（附錄 C.6、表 28）</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th style="text-align:right">BF16／HiRes 靜態總量（GiB）</th>
+<th style="text-align:right">BF16／HiRes 完整 forward（ms）</th>
+<th style="text-align:right">一次性量化（min）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen3-8B</td>
+<td style="text-align:right">15.256／15.654</td>
+<td style="text-align:right">1,286／1,343</td>
+<td style="text-align:right">61.6</td>
+</tr>
+<tr>
+<td>Llama-3-8B</td>
+<td style="text-align:right">14.958／15.331</td>
+<td style="text-align:right">1,224／1,279</td>
+<td style="text-align:right">57.8</td>
+</tr>
+<tr>
+<td>Qwen3-32B</td>
+<td style="text-align:right">61.024／62.164</td>
+<td style="text-align:right">5,438／5,654</td>
+<td style="text-align:right">286.9</td>
+</tr>
+</tbody>
+</table>
+<p>作者自報，來源為表 28–29。靜態總量不含活化、暫存工作區及 allocator 保留。forward 在單張 A100-SXM4-80GB、PyTorch 2.9.1／CUDA 12.6 上，以融合算子、batch 1、2,048 輸入 tokens、無生成、KV cache 關閉量測；資料已在 GPU，暖身 10 次後取 30 次同步完整 forward 的中位數。延遲比 BF16 增加 3.97%–4.49%，不是原生 FP4 加速。（附錄 C.6、表 29）</p>
+<p>表 22 另用 eager/reference 假量化後端測一碼修正，對照同一 W4A4 模型關閉修正：兩個 8B 模型生成吞吐由 41.7 降至 40.6 tok/s、43.2 降至 42.1 tok/s。這與表 29 的融合、無生成完整 forward 不同，不能拼成同一部署數據。（作者自報及口徑說明：附錄 C.4、C.6、表 22、表 29）</p>
+<h2 id="限制與閱讀判斷">限制與閱讀判斷</h2>
+<p>作者明示尚未在原生 MXFP4 kernel 上驗證實際延遲、吞吐與記憶體。論文主要提供數值品質及特定假量化實作的成本證據，不能由名義位元數推得端到端節省。（§7、附錄 C.6）</p>
+<p>基線也是共同合約下的移植與組合，並非全部照官方原始部署：例如 BRQ 的隨機符號、共享及 RNG 選擇仍未解；TORQ、BATQuant 為作者獨立重作，部分方法改用共同校正資料或拓撲安全調整。排行榜應解讀為本文合約內的比較，不宜外推為各方法所有實作的最終優劣。（附錄 C.1；末句為本摘要判讀）</p>
+<p>本摘要判讀：值得借鑑的是讓證據對下一版程式產生可檢查的約束，以及在算子／路徑改變後重測殘差。八個搜尋 seed、指定競爭解釋及固定模型面板支持這個設計方向，但未建立跨領域保證；HiRes 的數值收益也尚未等同可直接部署的低成本原生低位元系統。</p>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 6f0c65a5 · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>
