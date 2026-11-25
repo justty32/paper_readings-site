@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="bcb77a8342a04eecde17e8cb7fe84bd618145ece"><title>Code to Control: Synthesizing Parameterized Reactive Controllers 精要逐節翻譯 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zergham Ahmed、Joshua B. Tenenbaum、Chris Bates、Samuel J. Gershman</p><p>日期：2026-09-30（v1，cs.AI）</p><p>arXiv：2609.38733</p><p>閱讀說明：主文各節與附錄 A 精要翻譯，非全文逐字譯本；數值均為作者自報，譯者的證據邊界說明另標。</p><p><a href="https://arxiv.org/html/2609.38733v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="code-to-control合成參數化反應式控制器">Code to Control：合成參數化反應式控制器</h1>
+<h2 id="摘要">摘要</h2>
+<p>近期以 LLM 進行控制的方法，或直接呼叫語言模型選擇動作，或合成世界模型並在每次決策時規劃，因而產生可能妨礙即時使用的延遲。我們提出 Code to Control，合成可直接作為策略執行的 Python 控制器。方法將程式結構與參數分開：LLM 合成結構，連續控制的參數則由無導數搜尋依環境回饋擬合。學成後的控制器不需在決策時執行 LLM 推論或規劃。在本文計時流程下，其動作選擇也比 PPO 策略更快。實驗涵蓋 Atari、Flappy Bird 與 MuJoCo，並檢驗效能、動力學改變下的遷移及連續控制。（原文摘要；以下「我們」均指作者）</p>
+<h2 id="第-1-節引言">第 1 節：引言</h2>
+<p>一般用途代理應能即時行動、快速學習並靈活泛化。直接以語言模型當策略，每個決策都要付出模型推論成本；理論導向強化學習及程式世界模型雖具結構與樣本效率優勢，動作選擇仍要透過模型規劃。完整世界模型可能複雜，微小合成錯誤也可能在 rollout 中累積。</p>
+<p>我們改為直接合成控制器。LLM 不取得環境動力學或示範，而是從互動軌跡與獎勵學習。這個方法特別適合簡單反應式策略已能有效控制、完整世界模型卻構建繁瑣且助益有限的領域。連續控制中，LLM 可寫出計算可解讀狀態量的特徵映射，再以隨機搜尋擬合特徵到致動器扭矩的矩陣。這將計算從決策時移向策略合成階段。（§1）</p>
+<h2 id="第-21-節問題定義">第 2.1 節：問題定義</h2>
+<p>每個領域視為有限時域馬可夫決策過程。代理觀察狀態表示、選擇動作並取得純量獎勵；episode 可提早終止，回報是沿軌跡獎勵的不折扣總和。我們搜尋以 Python 表示的策略程式，目標是最大化預期 episode 回報。LLM 提供程式空間中的先驗與候選提案。</p>
+<p>離散領域的策略由觀測映射到動作；連續領域另外讀取從 episode 起點累計的時間步。軌跡中的觀測、動作、獎勵和下一觀測，可作為合成策略的證據。（§2.1）</p>
+<h2 id="第-22-節控制器表示">第 2.2 節：控制器表示</h2>
+<p>離散領域的輸入為文字編碼的物件集合，含類別、框中心、尺寸及相鄰影格計算的速度。相同類別可有多個物件。連續領域則使用關節位置與速度等狀態，例如 HalfCheetah 的後大腿角度與角速度。</p>
+<p>連續控制器分解為特徵映射與數值矩陣：</p>
+<pre><code class="language-text">phi(o,t): 觀測與時間步 -&gt; m 個程式化特徵
+W: 每個致動器一列、每個特徵一欄的權重矩陣
+policy(o,t) = clip(W * normalized_phi(o,t), action_min, action_max)
+</code></pre>
+<p>這是原文式（1）的表示。特徵以運行中的均值、變異數正規化，因為常數、週期函式及速度可能尺度不同；如果每個權重都施加相同幅度擾動，未正規化時對動作的影響會相差很大。外層裁切則確保命令在環境允許的扭矩範圍內。時間步可生成正弦、餘弦等週期特徵，提供步態相位，並與當前觀測的回饋搭配；它不代表完整的軌跡記憶。（§2.2、式 1）</p>
+<h3 id="第-221-節合成與參數最佳化">第 2.2.1 節：合成與參數最佳化</h3>
+<p>提示脈絡包含狀態格式、原始動作空間、物件 API、通用任務說明及初始觀測，不提供環境動力學或示範。</p>
+<p>離散情況先合成可執行策略，運行一個 episode，再將最新程式、該回合軌跡與回報交給 LLM 產生修訂。修訂永遠從最新策略出發，另行保留歷來最佳控制器。初始 Atari 與 Flappy Bird 控制器的常數也由 LLM 決定，並非由額外數值搜尋器擬合。（§2.2.1、附錄 A.2）</p>
+<p>連續情況先以隨機動作蒐集轉移，再由 LLM 獨立提議多組特徵映射。每組映射固定後，以實測 episode 回報為目標，用 ARS 最佳化 <code>W</code>，評估後保存最佳成品。與離散設定不同，LLM <strong>不根據該映射取得的回報修訂結構</strong>；回報只用於該候選的權重擬合。附錄亦指出，擬合權重不展示給 LLM。（§2.2.1、附錄 A.1、A.3）</p>
+<h2 id="第-31-節實驗設定">第 3.1 節：實驗設定</h2>
+<p>實驗涵蓋 Atari、Flappy Bird 與 MuJoCo。Atari 以 OCAtari 將影格解析為物件類別、框與速度；Flappy Bird 暴露相同格式的物件觀測。控制器輸出環境的原始動作，而不是預先定義的任務技能。（§3.1）</p>
+<h2 id="第-32-節atari-程式策略">第 3.2 節：Atari 程式策略</h2>
+<h3 id="基線與評估">基線與評估</h3>
+<p>ReAct 直接呼叫 LLM 選動作；WorldCoder 合成 Python 轉移模型並規劃；PPO 是無模型強化學習基線。PoE-World 以多個程式專家組合轉移模型，但需人類示範，因此只在有示範的 Pong 比較。</p>
+<p>我們報告每次搜尋的最佳 episode 分數，對每款遊戲的三個 seed 取中位數，並報告 LLM 呼叫、消耗的 tokens，以及<strong>找到該控制器的最佳 episode 之前累計的環境步數，不含該 episode</strong>。Code to Control 每回合呼叫一次，最多 20 次；WorldCoder 允許 30 次；ReAct 每個動作都要呼叫，所以改用 token 限制。PoE-World 額外取得 650 步人類示範。（作者自報，§3.2 Evaluation、圖 2）</p>
+<p>譯者說明：環境步數的排除條件依 Evaluation 的明確定義保留；呼叫及 token 數依原圖所報，不擅自將相同截點套用到這兩欄。</p>
+<h3 id="表現與互動成本">表現與互動成本</h3>
+<table>
+<thead>
+<tr>
+<th>遊戲</th>
+<th style="text-align:right">Code to Control</th>
+<th style="text-align:right">ReAct</th>
+<th style="text-align:right">WorldCoder</th>
+<th style="text-align:right">PPO，2,000 萬步</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pong</td>
+<td style="text-align:right">+18</td>
+<td style="text-align:right">-17</td>
+<td style="text-align:right">-19</td>
+<td style="text-align:right">+21</td>
+</tr>
+<tr>
+<td>Space Invaders</td>
+<td style="text-align:right">490</td>
+<td style="text-align:right">105</td>
+<td style="text-align:right">310</td>
+<td style="text-align:right">115</td>
+</tr>
+<tr>
+<td>Asterix</td>
+<td style="text-align:right">3,100</td>
+<td style="text-align:right">750</td>
+<td style="text-align:right">600</td>
+<td style="text-align:right">1,200</td>
+</tr>
+<tr>
+<td>Breakout</td>
+<td style="text-align:right">19</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">2</td>
+<td style="text-align:right">21</td>
+</tr>
+<tr>
+<td>Fishing Derby</td>
+<td style="text-align:right">+31</td>
+<td style="text-align:right">15</td>
+<td style="text-align:right">-60</td>
+<td style="text-align:right">-95</td>
+</tr>
+<tr>
+<td>Freeway</td>
+<td style="text-align:right">22</td>
+<td style="text-align:right">19</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">24</td>
+</tr>
+</tbody>
+</table>
+<p>以上為作者自報的圖 2A。Code to Control 超過全部遊戲的 WorldCoder、ReAct 與訓練 10 萬步的 PPO；訓練至 2,000 萬步後，PPO 在 Pong、Breakout、Freeway 較高，其餘仍由 Code to Control 領先。Pong 的 PoE-World 得分為 -17。（§3.2、圖 2A、2C）</p>
+<p>六款遊戲合計使用 120 次 LLM 呼叫與 487k tokens。Pong 在圖 2C 列出 7 次呼叫、27k tokens 與 25,312 環境步。（作者自報，§3.2、圖 2B–2C）</p>
+<p>譯者說明：呼叫及 token 數保留原圖數值；25,312 步按 §3.2 Evaluation 定義，累計至最佳 episode 之前，不含該回合，因此不是包含執行該回合與辨認最佳表現的完整取得成本。Performance 及圖說採「找到控制器」的簡寫，不能抹去這項排除條件；原文不足以補算含最佳回合的步數。圖 2B 總 token 成本與圖 2C 報告控制器成本欄也須分開，不能混稱完整搜尋或訓練成本，更不是部署成本。圖中 PPO 數字為訓練預算，不能將此比較當成完全匹配的互動預算試驗。</p>
+<h3 id="決策時間">決策時間</h3>
+<p>我們在遊玩遇到的 300 個狀態上測量產生動作的時間，取跨狀態中位數。Code to Control 是 11.4 微秒，PPO 是 76.5 微秒，ReAct 是 1.29 秒，WorldCoder 是每動作 46 毫秒。ReAct 計算一次語言模型呼叫；規劃基線用規劃時間除以產生的動作數。圖示標示 95% 信賴區間，WorldCoder 的誤差棒則是三次執行的範圍。（作者自報，§3.2、圖 2D）</p>
+<p>譯者說明：原文未充分列出硬體、PPO 執行裝置、batch 或暖身條件，也未證實計入感知前處理。因此此處比較是作者流程下的動作選擇成本，不是完整視覺控制管線或全部訓練成本。</p>
+<h3 id="程式分析與失敗模式">程式分析與失敗模式</h3>
+<p>成功的修訂常是小幅具體改動：利用速度預測近未來位置、約束預測位置、加入容忍區減少振盪，以及處理物件消失。Space Invaders 的修訂加入了子彈威脅及碰撞時間估計。</p>
+<p>Pong 的早期策略追蹤球的當前位置，容忍區為 8 像素，常來不及接球。LLM 看到軌跡後改為 <code>ball.y + ball.dy * lead_ticks</code>，設 <code>lead_ticks = 5</code> 並將容忍區縮為 4 像素，下一回合分數從 -8 升至 +18。（作者自報，§3.2、附錄 A.3）</p>
+<p>修訂不保證進步。360 個 Atari episodes 中，72% 低於當次搜尋迄今最佳值，28% 比緊接前回合下降超過 25%。最佳控制器出現回合的中位數是第 5 回合，但有些直到第 19 回合仍有改善。這些實驗中的程式全部可解析，沒有非法動作或執行崩潰；主要問題是後續修訂破壞有效邏輯，因此保存最佳策略十分重要。（作者自報，§3.2）</p>
+<h2 id="第-33-節動力學改變下的穩健性">第 3.3 節：動力學改變下的穩健性</h2>
+<p>我們只在原版 Flappy Bird 合成控制器，再測八種重力、阻力、拍翅強度、管道速度及缺口改變。先原封不動評估；若未達 20,000 步存活上限，則固定程式結構，只用新環境回饋重擬合數值常數，不再呼叫 LLM。（作者自報，§3.3）</p>
+<p>原版控制器用 21,419 環境步、20 次呼叫及 96k tokens 學得，存活至上限，分數為 311。由於遊戲本身沒有 episode 上限、管道又以固定頻率到來，該分數是評估上限決定的；因此以存活作為主要成功指標。ReAct 與 WorldCoder 分別只得 5、1 分；PPO 經 200 萬環境步後達到相近持續遊玩，作者稱約為本方法互動量的 93 倍。（作者自報，§3.3、圖 3A）</p>
+<p>三個最佳控制器在重力增加、速度相關阻力、回合中途增加重力、較窄缺口下，不需適應即存活至上限。原文指出，凍結策略失敗的五個格子中，僅調參可讓三個恢復至上限，另兩個有改善但未達上限。反轉重力方向無法靠重擬合恢復成功遊玩，因為需要結構改動。（作者自報，§3.3、圖 3B）</p>
+<p>譯者說明：「失敗格」沿用原文，不改稱五種擾動。凍結控制器的直接遷移與用新環境回饋重新調參，是不同證據，後者不是零樣本。</p>
+<h2 id="第-34-節連續控制">第 3.4 節：連續控制</h2>
+<p>MuJoCo 每個致動器需要數值命令，因此使用 LLM 特徵映射與無導數權重搜尋。我們在此測試能否產生有效控制器，<strong>不主張已完成環境互動預算匹配的樣本效率比較</strong>。（§3.4）</p>
+<p>GIF-MCTS、WorldCoder 使用作者未修改的實作、同一 LLM 後端與取樣設定，各環境預算 30 次呼叫；合成世界模型時無法呼叫真 MuJoCo 引擎。Code to Control 每環境使用 6 次呼叫。CQL 與 oracle 規劃數字引用自 Dainese 等人的既有研究；oracle 保留相同規劃程序，但以真模擬器替代學得轉移模型。（作者自報，§3.4、圖 4）</p>
+<table>
+<thead>
+<tr>
+<th>任務</th>
+<th style="text-align:right">Code to Control</th>
+<th style="text-align:right">GIF-MCTS</th>
+<th style="text-align:right">WorldCoder</th>
+<th style="text-align:right">CQL</th>
+<th style="text-align:right">Oracle</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Hopper</td>
+<td style="text-align:right">1,155.40</td>
+<td style="text-align:right">56.6</td>
+<td style="text-align:right">8.1</td>
+<td style="text-align:right">137.4</td>
+<td style="text-align:right">229.1</td>
+</tr>
+<tr>
+<td>HalfCheetah</td>
+<td style="text-align:right">3,958.95</td>
+<td style="text-align:right">-87.4</td>
+<td style="text-align:right">-69.4</td>
+<td style="text-align:right">-1.3</td>
+<td style="text-align:right">893.3</td>
+</tr>
+<tr>
+<td>Walker2d</td>
+<td style="text-align:right">1,388.54</td>
+<td style="text-align:right">31.9</td>
+<td style="text-align:right">8.5</td>
+<td style="text-align:right">278.0</td>
+<td style="text-align:right">334.7</td>
+</tr>
+<tr>
+<td>Swimmer</td>
+<td style="text-align:right">320.53</td>
+<td style="text-align:right">-11.2</td>
+<td style="text-align:right">-18.7</td>
+<td style="text-align:right">28.4</td>
+<td style="text-align:right">317.8</td>
+</tr>
+<tr>
+<td>Humanoid</td>
+<td style="text-align:right">472.92</td>
+<td style="text-align:right">153.9</td>
+<td style="text-align:right">299.2</td>
+<td style="text-align:right">393.3</td>
+<td style="text-align:right">1,860.7</td>
+</tr>
+<tr>
+<td>Ant</td>
+<td style="text-align:right">1,003.93</td>
+<td style="text-align:right">448.4</td>
+<td style="text-align:right">396.6</td>
+<td style="text-align:right">998.0</td>
+<td style="text-align:right">1,304.7</td>
+</tr>
+<tr>
+<td>HumanoidStandup</td>
+<td style="text-align:right">127,370</td>
+<td style="text-align:right">29,715</td>
+<td style="text-align:right">29,671</td>
+<td style="text-align:right">51,046</td>
+<td style="text-align:right">138,076</td>
+</tr>
+<tr>
+<td>Inverted Pendulum</td>
+<td style="text-align:right">1,000.00</td>
+<td style="text-align:right">4.6</td>
+<td style="text-align:right">15.4</td>
+<td style="text-align:right">66.7</td>
+<td style="text-align:right">42.5</td>
+</tr>
+<tr>
+<td>Inverted Double Pendulum</td>
+<td style="text-align:right">9,358.85</td>
+<td style="text-align:right">84.4</td>
+<td style="text-align:right">99.8</td>
+<td style="text-align:right">164.0</td>
+<td style="text-align:right">241.6</td>
+</tr>
+<tr>
+<td>Reacher</td>
+<td style="text-align:right">-9.24</td>
+<td style="text-align:right">-7.0</td>
+<td style="text-align:right">-8.9</td>
+<td style="text-align:right">-11.5</td>
+<td style="text-align:right">-6.8</td>
+</tr>
+</tbody>
+</table>
+<p>數值皆為作者圖 4 所報 episode return，圖說稱取獨立執行中位數；CQL 與 oracle 是引用結果，不能當成本文全部同管線重現。Code to Control 在九項任務超過兩個程式模型規劃基線，例外為 Reacher；十項均高於所引 CQL，六項高於 oracle。這表示特定規劃程序本身也可能限制表現，並非僅有模型誤差。（§3.4）</p>
+<h3 id="控制結構與回報解讀">控制結構與回報解讀</h3>
+<p>HalfCheetah 特徵含姿態、腿部組態、前進速度、肢體非對稱及週期訊號。較大擬合權重主要分配給當前物理狀態特徵，週期項較小；Swimmer 也如此。因此這些控制器並非主要依賴固定週期步態，而會依當前狀態調整動作。（§3.4）</p>
+<p>HalfCheetah 在 1,000 步走 212.55 公尺、平均前進速度 4.25 公尺／秒；Swimmer 位移 12.83 公尺、均速 0.321 公尺／秒。兩者沒有存活加分，回報來自前進速度扣除控制成本。Hopper、Walker2d、Ant、Humanoid 則含每步存活獎勵，高回報不必然代表有效前進。Humanoid 的回報是 472.92，中位位移卻為 -0.44 公尺，累積存活獎勵為 512；Hopper 與 Walker2d 在 1,000 步中僅移動 1.46、3.12 公尺。（作者自報，§3.4）</p>
+<h2 id="第-4-節相關研究">第 4 節：相關研究</h2>
+<p>理論導向 RL 與 WorldCoder、GIF-MCTS、PoE-World 等方法學習結構化或程式化轉移模型，再透過模型規劃。Code to Control 直接產生策略，不在決策時模擬學得模型。PoE-World 額外使用示範並假設知道目標，本方法自行蒐集互動資料、從回報學習。</p>
+<p>PIRL、PROPEL、LEAPS 及 LLM-GS 等程式策略研究，通常在預定義 DSL 或符號程式空間內搜尋；本方法使用通用 Python，無須再翻譯成 DSL。Code as Policies 從自然語言指令組合提供的感知與控制 API，Voyager 生成可重用技能，Eureka 合成獎勵而讓 RL 最佳化策略；本方法則從互動和獎勵合成直接作用於原始動作空間的策略。</p>
+<p>ARS 與演化策略都可透過參數擾動、無須反向傳播穿過環境來最佳化策略。本文的組合方式，是先讓 LLM 寫出程式特徵，再讓 ARS 只擬合特徵到動作的數值矩陣。（§4）</p>
+<h2 id="第-5-節討論與限制">第 5 節：討論與限制</h2>
+<p>直接執行程式把計算移出決策時刻，保留結構化且可解讀的策略表示。這些實驗集中於當前觀測即可支援有效行為的反應式控制；如果任務需要顯式預測或長期前瞻，世界模型規劃可能更適合。</p>
+<p>本方法目前使用結構化狀態，而非直接從像素學習。允許程式結構修改可以改善行為，但過度修訂也可能破壞有效結構；固定結構又會限制適應，適當折衷仍待研究。環境目標也左右結果，例如部分 MuJoCo 任務能以存活而非大量移動取得可觀回報。（§5）</p>
+<p>譯者證據邊界：結構化物件與物理狀態是相對具特權的輸入，原文不足以確認每個基線都具完全相同資訊或承擔相同感知成本。文中沒有完整交代連續任務的環境互動與 ARS 搜尋預算，也未給出足以隔離 LLM 特徵貢獻的純 ARS 特徵消融；因此不能用較少 LLM 呼叫推出完整訓練更便宜。這些屬於未充分支持的外推，不是已重現驗證的結論。</p>
+<h3 id="可重現性與-ai-使用聲明">可重現性與 AI 使用聲明</h3>
+<p>作者提供程式庫 <code>https://github.com/ZerghamAhmed/code-to-control</code>，並指向附錄的演算法、提示和程式例。Atari 與 Flappy Bird 使用 <code>claude-haiku-4-5</code>；MuJoCo 使用 <code>claude-opus-4-8</code>，同一領域的各方法採相同模型。作者聲明以生成式 AI 協助文獻檢索、寫作潤飾、研究構想與執行，並對經審核的最終內容負責。（§5 後聲明）</p>
+<h2 id="附錄-a演算法提示與程式例">附錄 A：演算法、提示與程式例</h2>
+<h3 id="a1完整程序">A.1：完整程序</h3>
+<p>演算法先組成提示脈絡。離散分支合成策略、rollout、保存最佳，再從最新程式及其軌跡修訂。連續分支先收集隨機轉移，再獨立合成特徵、最佳化權重、評估並保存最佳控制器；部署動作由正規化特徵的線性組合與範圍裁切產生。（附錄 A.1）</p>
+<h3 id="a2提示的關鍵約束">A.2：提示的關鍵約束</h3>
+<p>離散提示要求直接輸出反應式控制器，不寫轉移模型、不模擬、不展開搜尋。它明示每步取得當前真實狀態、座標慣例、物件可能出現或消失，以及非法動作或例外會由 runner 替代為 fallback 動作並記錄失敗。提示建議利用相對幾何與速度預判、少量清楚分支，以及失敗前的真實軌跡；數值常數由 LLM 自行負責。提供的物件 API 可直接呼叫，不應另行匯入。（附錄 A.2）</p>
+<p>連續提示要求 <code>terms(state,t)</code> 每次回傳恰好 14 個有限浮點數，只可匯入 <code>math</code>，並處理缺失欄位。候選應涵蓋原始狀態、速度、不同頻率或相位的週期項、交互作用、常數偏置與飽和項。重點是提出多樣控制元件，由後續搜尋決定各項權重，不是讓單一特徵直接解完整任務。（作者設定，附錄 A.2）</p>
+<h3 id="a3代表性控制器">A.3：代表性控制器</h3>
+<p>Pong 程式利用球速外推目標，搭配死區控制球拍上下移動；Flappy Bird 先避免天花板與地面，再配對管道、估計缺口中心，依距離採取不同反應。HalfCheetah 範例回傳 14 個項，包含偏置、身體高度與角度、前後腿角度和、線速度與角速度、姿態乘前進速度、週期訊號及腿部不對稱。這裡 LLM 只生成特徵，擬合矩陣由搜尋決定，不會回送給 LLM。（附錄 A.3）</p>
+<p>本譯文未逐字轉錄提示、大段 JSON、完整程式或參考文獻；保留了它們對演算法分工、觀測權限、失敗處理與可重現性的關鍵資訊。</p>
+<blockquote>
+<p>重點整理見 <a href="../summarize/2609.38733_CodeToControl.%E6%91%98%E8%A6%81.html">Code to Control 摘要</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 bcb77a83 · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>

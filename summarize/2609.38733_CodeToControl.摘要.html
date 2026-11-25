@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-revision" content="bcb77a8342a04eecde17e8cb7fe84bd618145ece"><title>Code to Control: Synthesizing Parameterized Reactive Controllers 重點摘要 · 論文閱讀</title><link rel="stylesheet" href="../html/_shared.css"><link rel="stylesheet" href="../assets/reading.css"><script>window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]],processEscapes:true},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"]}};</script><script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script></head><body><nav><span class="nav-brand">論文閱讀</span><a href="../html/index.html">總覽</a><a href="../index/README.html">論文索引</a><a href="../html/deep.html">深掘綜述</a><a href="../html/video.html">訪談</a><a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></nav><main class="reading"><aside class="source-meta"><p>作者：Zergham Ahmed、Joshua B. Tenenbaum、Chris Bates、Samuel J. Gershman</p><p>日期：2026-09-30（v1，cs.AI）</p><p>arXiv：2609.38733</p><p>閱讀說明：依主文與附錄 A 整理；數值皆為作者自報，非獨立重現。分開標示觀測與成本邊界、零樣本遷移及參數重擬合。</p><p><a href="https://arxiv.org/html/2609.38733v1" rel="noopener">論文／訪談原始來源</a></p></aside><h1 id="code-to-control-重點摘要">Code to Control 重點摘要</h1>
+<h2 id="一句話概括">一句話概括</h2>
+<p>Code to Control 把部署時的 LLM 推理或世界模型規劃，改成直接執行 Python 控制器。離散遊戲由 LLM 根據實玩軌跡修訂整份策略；連續控制則由 LLM 提議特徵程式，再用環境回報驅動的無導數搜尋擬合權重。快的是學完後的動作選擇，不代表合成與訓練沒有 LLM 或環境成本。（§2、§5）</p>
+<h2 id="問題與方法">問題與方法</h2>
+<p>世界模型方法要先學轉移模型，再於決策時規劃；模型誤差和規劃成本都可能妨礙即時控制。本文直接搜尋可執行策略，適用於當前觀測已足以支持有效反應的任務。輸入不是原始像素：Atari 由 OCAtari 提供物件類別、框中心、尺寸與相鄰影格估計的速度；Flappy Bird 使用同類物件介面；MuJoCo 提供關節位置、速度等結構化物理狀態。LLM 取得狀態格式、原始動作、物件 API、通用任務說明及初始觀測，但不直接取得環境動力學或示範。（§2.1–2.2、§3.1）</p>
+<ul>
+<li><strong>離散領域</strong>：LLM 合成 <code>policy(state) -&gt; action</code>，執行後讀取該策略、軌跡與回報，再修訂最新策略。數值常數也由 LLM 負責，沒有另外替初始遊戲策略調參的搜尋器。系統另外保存歷來最佳策略，避免後續退步覆蓋成果。（§2.2.1、附錄 A.1–A.2）</li>
+<li><strong>連續領域</strong>：先用隨機動作蒐集轉移，LLM 獨立合成多組特徵映射 <code>phi(o,t)</code>；每組固定後，由 Augmented Random Search（ARS）擬合矩陣 <code>W</code>。實驗提示要求每組回傳 14 個特徵。回報只用來調整該候選的 <code>W</code>，<strong>不回傳給 LLM 修訂特徵結構</strong>，權重也不展示給 LLM。（§2.2.1、附錄 A.1–A.3）</li>
+</ul>
+<p>連續策略為 <code>clip(W * normalized_phi(o,t), action_min, action_max)</code>。運行中的均值、變異數正規化可避免特徵尺度讓相同幅度的權重擾動產生懸殊影響；外層裁切符合致動器範圍。時間步可產生週期訊號，與當前狀態回饋共同形成控制，但不等於保留完整歷史。程式內可以用速度外推目標，所謂「無規劃」不是完全沒有預測，而是不在決策時展開世界模型搜尋。（§2.2、§3.2、附錄 A.3）</p>
+<h2 id="atari效能搜尋代價與評估口徑">Atari：效能、搜尋代價與評估口徑</h2>
+<p>以下皆為作者自報。評分是<strong>每次搜尋中最佳 episode 分數，再取三個 seed 的中位數</strong>，不是固定最終策略在大量獨立測試 episode 上的平均表現。環境步數按 §3.2 Evaluation 定義，累計至找到報告控制器的最佳 episode 之前，<strong>不含該 episode</strong>；LLM 呼叫與 token 數則依原圖所報，不將環境步數的截點自行套用到這兩欄。Code to Control 每回合呼叫一次 LLM，預算 20 次；WorldCoder 預算 30 次；ReAct 每個動作都呼叫 LLM，改以 token 限制。PoE-World 只比 Pong，另取得其他方法沒有的 650 步人類示範。（§3.2、圖 2）</p>
+<table>
+<thead>
+<tr>
+<th>遊戲</th>
+<th style="text-align:right">Code to Control</th>
+<th style="text-align:right">PPO，10 萬步</th>
+<th style="text-align:right">PPO，2,000 萬步</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pong</td>
+<td style="text-align:right">+18</td>
+<td style="text-align:right">-21</td>
+<td style="text-align:right">+21</td>
+</tr>
+<tr>
+<td>Space Invaders</td>
+<td style="text-align:right">490</td>
+<td style="text-align:right">105</td>
+<td style="text-align:right">115</td>
+</tr>
+<tr>
+<td>Asterix</td>
+<td style="text-align:right">3,100</td>
+<td style="text-align:right">150</td>
+<td style="text-align:right">1,200</td>
+</tr>
+<tr>
+<td>Breakout</td>
+<td style="text-align:right">19</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">21</td>
+</tr>
+<tr>
+<td>Fishing Derby</td>
+<td style="text-align:right">+31</td>
+<td style="text-align:right">-99</td>
+<td style="text-align:right">-95</td>
+</tr>
+<tr>
+<td>Freeway</td>
+<td style="text-align:right">22</td>
+<td style="text-align:right">21</td>
+<td style="text-align:right">24</td>
+</tr>
+</tbody>
+</table>
+<p>表中數值據作者 §3.2、圖 2A。Code to Control 在所列六款遊戲均超過 WorldCoder、ReAct 與低互動預算 PPO；對高預算 PPO 則三勝三負，不能寫成全面優於深度 RL。Pong 的 PoE-World、ReAct、WorldCoder 分別為 -17、-17、-19。（作者自報，§3.2、圖 2A、2C）</p>
+<p>作者報六款遊戲合計 120 次 LLM 呼叫、487k tokens；圖 2C 的 Pong 欄列 7 次呼叫、27k tokens 與 25,312 環境步。呼叫及 token 數保留原圖數值；25,312 步按 §3.2 Evaluation 的定義，不含找到報告控制器的最佳 episode，因此不是包含該回合執行與辨認最佳表現的完整取得成本。原文 Performance 與圖說雖以「找到控制器」簡寫，仍須保留 Evaluation 的排除條件；原文不足以補算含最佳回合的環境步數。（作者自報及原文口徑說明，§3.2、圖 2B–2C）</p>
+<p>本摘要的成本邊界解讀：圖 2B 的總 token 成本、圖 2C 的報告控制器成本欄與 PPO 的訓練預算，不能混為相同統計口徑，也不能當成部署成本。作者依上述截點討論互動效率，沒有把 API 價格或整體訓練牆鐘時間統一換算；這些數字不足以代表完整搜尋、訓練或完整取得成本。（依 §3.2、圖 2B–2C 判讀）</p>
+<p>搜尋並不單調改善。作者自報 360 個 Atari episodes 中，72% 低於該次搜尋迄今最佳分數，28% 比前回合下降超過 25%；最佳策略出現回合的中位數為第 5 回合，少數直到第 19 回合才改善。這些實驗沒有語法錯誤、非法動作或執行崩潰，主要失敗是修改破壞有效控制邏輯，不代表任意生成程式都安全可靠。（§3.2）</p>
+<h2 id="決策延遲只在指定量測邊界內成立">決策延遲：只在指定量測邊界內成立</h2>
+<p>作者自報在遊玩中遇到的 300 個狀態上測量單步策略執行，取跨狀態中位數：Code to Control 為 11.4 微秒，PPO 76.5 微秒，ReAct 1.29 秒，WorldCoder 46 毫秒。ReAct 包含單次 LLM API 呼叫；規劃法用規劃時間除以該次規劃供應的動作數。圖中標示 95% 信賴區間，但 WorldCoder 誤差棒是三次執行的範圍。（§3.2、圖 2D）</p>
+<p><strong>證據邊界</strong>：這是學成後的動作產生時間，沒有證明包含影像擷取、物件辨識、環境模擬或訓練的端到端系統更快。主文及所附關鍵附錄未充分交代硬體、PPO 執行裝置、batch 或暖身設定；因此「比 PPO 快」應保留「依作者此計時流程」的限定，不能泛化為所有神經策略。（本摘要依 §3.2 與附錄 A 的資訊完整性判讀）</p>
+<h2 id="flappy-bird遷移不等於重新調參">Flappy Bird：遷移不等於重新調參</h2>
+<p>作者只在原版遊戲合成策略，再測試八種重力、阻力、拍翅強度、管道速度或缺口寬度改變。原版控制器用 21,419 環境步、20 次 LLM 呼叫與 96k tokens，存活至 20,000 步評估上限；311 分受該上限限制，不能解讀成策略能力的自然極限。作者以存活為主要成功指標，PPO 約需 200 萬互動步達到相近持續遊玩。（作者自報，§3.3、圖 3A）</p>
+<p>三個 champion 在重力增加、速度相關阻力、回合中途重力增加及較窄缺口下，都能不改動地存活至上限。凍結策略失敗後，作者固定程式結構，只依新環境回饋重擬合常數，不再呼叫 LLM；文中稱五個失敗格中有三個恢復至上限，其餘兩個改善但未達上限，並指出反轉重力方向未能恢復成功遊玩，需要結構改動。（作者自報，§3.3、圖 3B）</p>
+<p>本摘要保留原文「失敗格」的表述，不把它擅自改成五種不同擾動或五個獨立成功率。重新調參使用了新環境互動，與直接使用凍結控制器的零樣本遷移必須分開。（本摘要解讀）</p>
+<h2 id="mujoco結構合成與數值最佳化的組合">MuJoCo：結構合成與數值最佳化的組合</h2>
+<p>作者自報在十項任務中，九項高於 GIF-MCTS 與 WorldCoder，例外為 Reacher；也全數高於引用自既有研究的 CQL 結果。Code to Control 每環境使用 6 次 LLM 呼叫，兩個程式世界模型基線各用 30 次，採相同 LLM 後端與取樣設定。<strong>作者明說沒有做匹配環境互動預算的 MuJoCo 樣本效率比較</strong>；較少 LLM 呼叫不表示 ARS 的 rollout 成本較低。（§3.4、圖 4）</p>
+<table>
+<thead>
+<tr>
+<th>任務</th>
+<th style="text-align:right">Code to Control</th>
+<th style="text-align:right">GIF-MCTS</th>
+<th style="text-align:right">WorldCoder</th>
+<th style="text-align:right">真模擬器規劃 oracle</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HalfCheetah</td>
+<td style="text-align:right">3,958.95</td>
+<td style="text-align:right">-87.4</td>
+<td style="text-align:right">-69.4</td>
+<td style="text-align:right">893.3</td>
+</tr>
+<tr>
+<td>Swimmer</td>
+<td style="text-align:right">320.53</td>
+<td style="text-align:right">-11.2</td>
+<td style="text-align:right">-18.7</td>
+<td style="text-align:right">317.8</td>
+</tr>
+<tr>
+<td>HumanoidStandup</td>
+<td style="text-align:right">127,370</td>
+<td style="text-align:right">29,715</td>
+<td style="text-align:right">29,671</td>
+<td style="text-align:right">138,076</td>
+</tr>
+<tr>
+<td>Reacher</td>
+<td style="text-align:right">-9.24</td>
+<td style="text-align:right">-7.0</td>
+<td style="text-align:right">-8.9</td>
+<td style="text-align:right">-6.8</td>
+</tr>
+</tbody>
+</table>
+<p>作者自報的 episode return，取獨立執行中位數；oracle 與 CQL 為引用結果，而非本文統一重訓所得。（§3.4、圖 4）Code to Control 在六項任務高於 oracle；該 oracle 使用真 MuJoCo 轉移、但保留原規劃程序，支持「該規劃器也可能是瓶頸」，不是證明規劃普遍不如反應式策略。</p>
+<p>回報也不等於走得好。作者報 HalfCheetah 在 1,000 步走 212.55 公尺、均速 4.25 公尺／秒，Swimmer 位移 12.83 公尺、均速 0.321 公尺／秒；兩者沒有存活獎勵。相較之下，Humanoid 回報 472.92 卻有 -0.44 公尺中位位移，累積存活獎勵為 512。部分任務可藉少量移動和維持存活得到不低的回報，不能把所有任務成績稱為成功行走。（作者自報，§3.4）</p>
+<h2 id="限制與閱讀判斷">限制與閱讀判斷</h2>
+<p>作者明示：尚未從像素直接學習；過度修訂可能毀掉好策略，固定結構又限制適應；回報設計會影響所學行為；需要顯式預測與長期前瞻的問題仍可能較適合世界模型規劃。（§5）</p>
+<p>本摘要的判斷：本文最清楚的貢獻，是用可解讀程式表徵與數值最佳化分工，把大量計算移出決策時刻。尚不足以推出一般控制的全面優勢：物件與物理狀態屬結構化、相對具特權的輸入，不能當成與像素端到端 RL 同條件；文中不足以核定各基線感知成本及觀測資訊完全相同。連續任務缺少完整匹配互動預算，也未提供足以隔離 LLM 特徵貢獻的純 ARS 特徵對照。這些是證據缺口，不是本文已證明的失敗。（依 §2–3、§5 及附錄 A 判讀）</p>
+<blockquote>
+<p>主文與關鍵附錄精要翻譯見 <a href="../translate/2609.38733_CodeToControl.zh-TW.html">Code to Control 翻譯</a>。</p>
+</blockquote>
+<footer class="site-footer"><a href="../html/index.html">回閱讀總覽</a> · 閱讀版本 bcb77a83 · <a href="https://justty32.github.io/paper_readings_site/papers.html">ELI5 論文入門／研究遊樂場</a></footer></main></body></html>
